@@ -180,6 +180,8 @@ pub(super) async fn upsert_account_config(
     account: AccountConfigData,
 ) -> AccountOperationResult {
     let save_result = (|| -> Result<String, String> {
+        // Held from the read to the write, not past it.
+        let _file = mxr_config::lock_config_file().map_err(|e| e.to_string())?;
         let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
         persist_account_passwords(&account).map_err(|e| e.to_string())?;
 
@@ -243,12 +245,15 @@ pub(super) async fn set_default_account(
     state: &Arc<AppState>,
     key: &str,
 ) -> Result<String, String> {
-    let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
-    if !config.accounts.contains_key(key) {
-        return Err(format!("Account '{key}' cannot be set as default"));
+    {
+        let _file = mxr_config::lock_config_file().map_err(|e| e.to_string())?;
+        let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
+        if !config.accounts.contains_key(key) {
+            return Err(format!("Account '{key}' cannot be set as default"));
+        }
+        config.general.default_account = Some(key.to_string());
+        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
     }
-    config.general.default_account = Some(key.to_string());
-    mxr_config::save_config(&config).map_err(|e| e.to_string())?;
     state.reload_accounts_from_disk().await?;
     Ok(format!("Default account set to '{key}'."))
 }
@@ -313,13 +318,14 @@ pub(super) async fn remove_account_config(
         );
     }
 
-    let save_result = (|| -> Result<(), String> {
-        let mut config = config;
+    // The database work is done; the config change is one locked update that
+    // loads the file inside the lock, not the copy read before those awaits.
+    let save_result = mxr_config::update_config(|config| {
         config.accounts.remove(key);
-        refresh_default_account(&mut config);
-        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
-        Ok(())
-    })();
+        refresh_default_account(config);
+        Ok::<_, mxr_config::ConfigError>(())
+    })
+    .map_err(|e| e.to_string());
     if let Err(error) = save_result {
         return account_operation_result(
             false,
@@ -403,6 +409,19 @@ pub(super) async fn disable_account_config(
     state: &Arc<AppState>,
     key: &str,
 ) -> AccountOperationResult {
+    let file_lock = match mxr_config::lock_config_file() {
+        Ok(lock) => lock,
+        Err(error) => {
+            return account_operation_result(
+                false,
+                format!("Failed to disable account '{key}'."),
+                Some(account_step(false, error.to_string())),
+                None,
+                None,
+                None,
+            )
+        }
+    };
     let mut config = match mxr_config::load_config() {
         Ok(config) => config,
         Err(error) => {
@@ -430,7 +449,9 @@ pub(super) async fn disable_account_config(
     account.enabled = false;
     let account_id = config_account_id(key, account);
     refresh_default_account(&mut config);
-    if let Err(error) = mxr_config::save_config(&config) {
+    let saved = mxr_config::save_config(&config);
+    drop(file_lock);
+    if let Err(error) = saved {
         return account_operation_result(
             false,
             format!("Failed to disable account '{key}'."),

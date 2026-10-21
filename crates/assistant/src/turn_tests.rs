@@ -11,6 +11,7 @@ struct ScriptedModel {
     replies: Mutex<VecDeque<Result<ToolChatResponse, LlmError>>>,
     requests: Mutex<Vec<ToolChatRequest>>,
     window: Option<u32>,
+    leaves_machine: Option<bool>,
 }
 
 impl ScriptedModel {
@@ -22,7 +23,12 @@ impl ScriptedModel {
             replies: Mutex::new(replies.into()),
             requests: Mutex::new(Vec::new()),
             window,
+            leaves_machine: None,
         }
+    }
+    fn running_in(mut self, leaves_machine: bool) -> Self {
+        self.leaves_machine = Some(leaves_machine);
+        self
     }
     fn requests(&self) -> Vec<ToolChatRequest> {
         self.requests.lock().unwrap().clone()
@@ -53,6 +59,9 @@ impl ChatModel for ScriptedModel {
     }
     fn context_window(&self) -> Option<u32> {
         self.window
+    }
+    fn leaves_machine(&self) -> Option<bool> {
+        self.leaves_machine
     }
 }
 
@@ -109,6 +118,7 @@ impl ToolHost for RecordingHost {
 #[derive(Default)]
 struct MemorySink {
     appended: Mutex<Vec<ToolChatMessage>>,
+    metas: Mutex<Vec<MessageMeta>>,
     written: Mutex<Vec<String>>,
     summaries: Mutex<Vec<Summary>>,
     progress: Mutex<Vec<Progress>>,
@@ -116,8 +126,9 @@ struct MemorySink {
 
 #[async_trait]
 impl TurnSink for MemorySink {
-    async fn append(&self, message: &ToolChatMessage, _meta: &MessageMeta) -> Result<(), String> {
+    async fn append(&self, message: &ToolChatMessage, meta: &MessageMeta) -> Result<(), String> {
         self.appended.lock().unwrap().push(message.clone());
+        self.metas.lock().unwrap().push(meta.clone());
         Ok(())
     }
     async fn progress(&self, progress: Progress) {
@@ -740,5 +751,90 @@ async fn an_approved_call_mxr_blocks_is_stored_as_a_failure_and_shows_as_running
             Progress::Calling { tool, reason, arguments }
                 if tool == "mxr_mutate" && reason == "Archive it." && arguments["action"] == "archive")),
         "the approved call shows as running: {progress:?}"
+    );
+}
+
+/// The same conversation continued by a different model, as when the user
+/// switches from a local model to a hosted one and back: each model gets the
+/// whole history, every result still follows its call, and each reply
+/// records which model wrote it and where that runs.
+#[tokio::test]
+async fn a_conversation_survives_switching_models_and_each_reply_keeps_its_own_mark() {
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    let mut history = Vec::new();
+    let named = |model: &str, mut response: ToolChatResponse| {
+        response.model = model.into();
+        response
+    };
+
+    let local = ScriptedModel::new(vec![
+        named(
+            "gemma4:latest",
+            calls(&[("call_a", "mxr_search", json!({"q": "bank"}))]),
+        ),
+        named("gemma4:latest", answer("Two from the bank.")),
+    ])
+    .running_in(false);
+    let outcome = agent(&local, &host, &sink)
+        .send(&mut history, &[], "bank mail?".into())
+        .await;
+    assert!(matches!(outcome, TurnOutcome::Finished));
+
+    let hosted = ScriptedModel::new(vec![
+        named(
+            "claude-haiku-5-5 via Anthropic",
+            calls(&[("toolu_b", "mxr_search", json!({"q": "rent"}))]),
+        ),
+        named("claude-haiku-5-5 via Anthropic", answer("One about rent.")),
+    ])
+    .running_in(true);
+    let outcome = agent(&hosted, &host, &sink)
+        .send(&mut history, &[], "and rent?".into())
+        .await;
+    assert!(matches!(outcome, TurnOutcome::Finished));
+
+    let local_again = ScriptedModel::new(vec![named("gemma4:latest", answer("Anything else?"))])
+        .running_in(false);
+    let outcome = agent(&local_again, &host, &sink)
+        .send(&mut history, &[], "thanks".into())
+        .await;
+    assert!(matches!(outcome, TurnOutcome::Finished));
+
+    // The hosted model saw the local model's whole turn, and the local model
+    // saw both, every call answered by the result with its id.
+    let hosted_saw = &hosted.requests()[0].messages;
+    assert!(hosted_saw
+        .iter()
+        .any(|m| matches!(m, ToolChatMessage::Tool { call_id, .. } if call_id == "call_a")));
+    let last_saw = &local_again.requests()[0].messages;
+    for id in ["call_a", "toolu_b"] {
+        let call = last_saw.iter().position(|m| matches!(m, ToolChatMessage::Assistant { tool_calls, .. } if tool_calls.iter().any(|c| c.id == id)));
+        let result = last_saw
+            .iter()
+            .position(|m| matches!(m, ToolChatMessage::Tool { call_id, .. } if call_id == id));
+        assert!(
+            call.is_some() && result > call,
+            "{id} must be answered after it is called"
+        );
+    }
+
+    // Each reply was stored with the model and place that wrote it.
+    let replies: Vec<(Option<String>, Option<bool>)> = sink
+        .appended
+        .lock()
+        .unwrap()
+        .iter()
+        .zip(sink.metas.lock().unwrap().iter())
+        .filter(|(message, _)| matches!(message, ToolChatMessage::Assistant { text, .. } if !text.is_empty()))
+        .map(|(_, meta)| (meta.model.clone(), meta.leaves_machine))
+        .collect();
+    assert_eq!(
+        replies,
+        [
+            (Some("gemma4:latest".into()), Some(false)),
+            (Some("claude-haiku-5-5 via Anthropic".into()), Some(true)),
+            (Some("gemma4:latest".into()), Some(false)),
+        ]
     );
 }

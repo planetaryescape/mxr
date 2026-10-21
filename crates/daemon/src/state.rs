@@ -222,7 +222,7 @@ impl RuntimeTasks {
 
 /// Build the configured LLM provider. Returns a `NoopProvider` when
 /// LLM is disabled in config; a `RoutedProvider` when the model is one mxr
-/// routes itself (`claude-*` through Anthropic then OpenRouter, using the
+/// routes itself (`claude-*` through Anthropic and `gpt-*` through OpenAI, each then OpenRouter, using the
 /// keys stored with `mxr llm key set`); otherwise an
 /// `OpenAiCompatibleProvider` pointed at the configured `base_url`
 /// (Ollama / LM Studio / OpenAI / etc.). That one reads its API key from
@@ -272,6 +272,20 @@ fn build_llm_provider(
     ))
 }
 
+/// Why a locked config update did not happen.
+enum ConfigChangeError {
+    /// The file couldn't be locked, read or written.
+    Failed(mxr_config::ConfigError),
+    /// The change looked at the current config and said no.
+    Refused(String),
+}
+
+impl From<mxr_config::ConfigError> for ConfigChangeError {
+    fn from(error: mxr_config::ConfigError) -> Self {
+        Self::Failed(error)
+    }
+}
+
 /// The providers a model goes through when mxr routes it itself, or `None`
 /// when `llm.base_url` serves it. A `base_url` other than the default is the
 /// user's own server, whose model names are theirs.
@@ -280,8 +294,14 @@ pub(crate) fn llm_model_routes(
 ) -> Option<Vec<mxr_llm::Route>> {
     let default_url = mxr_config::LlmConfig::default().base_url;
     let url = config.base_url.trim().trim_end_matches('/');
-    let custom_endpoint = !url.is_empty() && url != default_url.trim_end_matches('/');
-    mxr_llm::routes_for_model(&config.model, custom_endpoint)
+    let endpoint = if url.is_empty() || url == default_url.trim_end_matches('/') {
+        mxr_llm::Endpoint::Default
+    } else if mxr_llm::is_loopback_endpoint(url) {
+        mxr_llm::Endpoint::Local
+    } else {
+        mxr_llm::Endpoint::Remote
+    };
+    mxr_llm::routes_for_model(&config.model, endpoint)
 }
 
 pub(crate) fn base_llm_config(config: &mxr_config::LlmConfig) -> mxr_config::EffectiveLlmConfig {
@@ -427,7 +447,7 @@ fn relationship_data_block_reason(
         && (llm_model_routes(effective).is_some()
             || !mxr_llm::is_loopback_endpoint(&effective.base_url))
     {
-        // Routed models go to Anthropic and OpenRouter, whatever base_url says.
+        // Routed models go to their vendor and OpenRouter, whatever base_url says.
         let endpoint = if llm_model_routes(effective).is_some() {
             format!("hosted provider (model {})", effective.model)
         } else {
@@ -581,6 +601,10 @@ pub struct AppState {
     reload_tx: watch::Sender<u64>,
     runtime_tasks: RuntimeTasks,
     admin_blocking: Arc<Semaphore>,
+    /// Held from snapshot to install by everything that rewrites the
+    /// in-memory config, so one writer's stale snapshot can never replace
+    /// another's change (a revoked cloud-data setting above all).
+    config_write: tokio::sync::Mutex<()>,
     pub(crate) auth_sessions: ParkingMutex<HashMap<AuthSessionId, AuthSessionRuntime>>,
     /// Live progress of the sync pass running for each account, plus the
     /// contacts a mid-backfill account still owes the relationship worker.
@@ -879,6 +903,7 @@ impl AppState {
             reload_tx,
             runtime_tasks,
             admin_blocking,
+            config_write: Default::default(),
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
             next_background_claim: std::sync::atomic::AtomicU64::new(1),
@@ -1807,14 +1832,30 @@ impl AppState {
     /// outside it (`mxr config set llm.*`, a text editor). What was learned
     /// about the routes is forgotten with the old providers.
     pub async fn reload_llm_config_from_disk(&self) -> std::result::Result<(), String> {
+        let _writing = self.config_write.lock().await;
+        self.sync_llm_from_disk()
+    }
+
+    /// `[llm]` as it is on disk, applied to the running daemon. The caller
+    /// holds `config_write`.
+    fn sync_llm_from_disk(&self) -> std::result::Result<(), String> {
         let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
-        if self.is_restore_pending() {
-            config.llm.enabled = false;
-            config.llm.overrides = Default::default();
-        }
+        self.mask_for_restore(&mut config);
         apply_llm_config_to_runtime(&self.llm, &config.llm);
         self.config.write().llm = config.llm;
         Ok(())
+    }
+
+    /// A restored workspace stays paused: AI and semantic search are off in
+    /// the running daemon until it is activated, whatever the file says. The
+    /// file itself is never written with this mask.
+    fn mask_for_restore(&self, config: &mut mxr_config::MxrConfig) {
+        if self.is_restore_pending() {
+            config.llm.enabled = false;
+            config.llm.overrides = Default::default();
+            config.search.semantic.enabled = false;
+            config.search.semantic.auto_download_models = false;
+        }
     }
 
     pub async fn mutate_config<F>(
@@ -1824,9 +1865,58 @@ impl AppState {
     where
         F: FnOnce(&mut mxr_config::MxrConfig),
     {
-        let mut config = self.config_snapshot();
-        mutator(&mut config);
-        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+        self.try_mutate_config(|config| {
+            mutator(config);
+            Ok(())
+        })
+        .await
+    }
+
+    /// Change the config file and the running daemon together. The change is
+    /// made to the file's own current contents, never to the daemon's copy:
+    /// the file is the source of every write, because `mxr config set` and an
+    /// editor change it behind the daemon's back and the daemon's copy can be
+    /// older. The mutator sees what is on disk, may refuse after looking at
+    /// it, and what it leaves is saved and then installed in memory the way a
+    /// reload installs it (restore mask and runtime application included).
+    pub async fn try_mutate_config<F>(
+        &self,
+        mutator: F,
+    ) -> std::result::Result<mxr_config::MxrConfig, String>
+    where
+        F: FnOnce(&mut mxr_config::MxrConfig) -> std::result::Result<(), String>,
+    {
+        // In-process writers first, then the file lock, always in that order.
+        let _writing = self.config_write.lock().await;
+        let mut seen = None;
+        let result = mxr_config::update_config(|config| {
+            seen = Some(config.clone());
+            mutator(config).map_err(ConfigChangeError::Refused)?;
+            Ok::<_, ConfigChangeError>(config.clone())
+        });
+        match result {
+            Ok(saved) => self.install_config(saved).await,
+            Err(ConfigChangeError::Refused(reason)) => {
+                // Looking at the file taught the daemon what it has now, even
+                // though nothing was changed: keep its copy in step.
+                if let Some(on_disk) = seen {
+                    if let Err(error) = self.install_config(on_disk).await {
+                        tracing::warn!(%error, "couldn't apply the config found on disk");
+                    }
+                }
+                Err(reason)
+            }
+            Err(ConfigChangeError::Failed(error)) => Err(error.to_string()),
+        }
+    }
+
+    /// Put a config that is already on disk into the running daemon. The
+    /// caller holds `config_write`. Returns what was installed.
+    async fn install_config(
+        &self,
+        mut config: mxr_config::MxrConfig,
+    ) -> std::result::Result<mxr_config::MxrConfig, String> {
+        self.mask_for_restore(&mut config);
         self.semantic
             .apply_config(config.search.semantic.clone())
             .await
@@ -1960,6 +2050,7 @@ impl AppState {
     }
 
     pub async fn reload_accounts_from_disk(self: &Arc<Self>) -> std::result::Result<(), String> {
+        let _writing = self.config_write.lock().await;
         let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
         if self.is_restore_pending() {
             config.llm.enabled = false;
@@ -2115,6 +2206,7 @@ impl AppState {
             reload_tx,
             runtime_tasks,
             admin_blocking,
+            config_write: Default::default(),
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
             next_background_claim: std::sync::atomic::AtomicU64::new(1),
@@ -2207,6 +2299,7 @@ impl AppState {
             reload_tx,
             runtime_tasks,
             admin_blocking,
+            config_write: Default::default(),
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
             next_background_claim: std::sync::atomic::AtomicU64::new(1),
@@ -2325,6 +2418,7 @@ impl AppState {
                 reload_tx,
                 runtime_tasks,
                 admin_blocking,
+                config_write: Default::default(),
                 auth_sessions: ParkingMutex::new(HashMap::new()),
                 sync_runs: ParkingMutex::new(HashMap::new()),
                 next_background_claim: std::sync::atomic::AtomicU64::new(1),

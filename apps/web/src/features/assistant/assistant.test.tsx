@@ -469,6 +469,24 @@ describe("transcript", () => {
     expect(screen.getByTestId("model-mark")).not.toHaveTextContent("cloud");
   });
 
+  test("a reply keeps the place its own model ran after the model in use changes", () => {
+    const reply = {
+      ...turn[2]!,
+      model: "claude-haiku-5-5 via Anthropic",
+      leaves_machine: true,
+    } as AssistantItem;
+    render(
+      <Transcript
+        items={[turn[0]!, turn[1]!, reply]}
+        running={false}
+        provenance={{ model: "gemma4", leavesMachine: false }}
+      />,
+    );
+    expect(screen.getByTestId("model-mark")).toHaveTextContent(
+      "claude-haiku-5-5 via Anthropic · cloud",
+    );
+  });
+
   test("rows a reply refers to draw under it, each opening beside the assistant", () => {
     navigate.mockClear();
     const reply = {

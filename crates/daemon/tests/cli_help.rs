@@ -703,6 +703,14 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
             "cli_help_assistant_reject",
             &["assistant", "reject", "--help"],
         ),
+        (
+            "cli_help_assistant_model",
+            &["assistant", "model", "--help"],
+        ),
+        (
+            "cli_help_assistant_model_set",
+            &["assistant", "model", "set", "--help"],
+        ),
         ("cli_help_assistant_send", &["assistant", "send", "--help"]),
         ("cli_help_assistant_show", &["assistant", "show", "--help"]),
         (

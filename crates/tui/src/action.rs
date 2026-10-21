@@ -296,6 +296,8 @@ pub enum Action {
     ToggleAssistant,
     NewAssistantConversation,
     OpenAssistantConversations,
+    /// Pick the model the assistant uses.
+    OpenAssistantModels,
     /// Let reversible changes run without asking in this conversation.
     ToggleAssistantTrust,
     /// Asks the daemon what would go (`dry_run`), then confirms.
@@ -630,6 +632,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ToggleAssistant
                 | NewAssistantConversation
                 | OpenAssistantConversations
+                | OpenAssistantModels
                 | ToggleAssistantTrust
                 | DeleteAssistantConversation
                 | OpenMailboxScreen
@@ -690,6 +693,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ToggleAssistant
                 | NewAssistantConversation
                 | OpenAssistantConversations
+                | OpenAssistantModels
                 | ToggleAssistantTrust
                 | DeleteAssistantConversation
                 | OpenMailboxScreen
@@ -756,6 +760,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ToggleAssistant
                 | NewAssistantConversation
                 | OpenAssistantConversations
+                | OpenAssistantModels
                 | ToggleAssistantTrust
                 | DeleteAssistantConversation
                 | OpenMailboxScreen
@@ -802,6 +807,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ToggleAssistant
                 | NewAssistantConversation
                 | OpenAssistantConversations
+                | OpenAssistantModels
                 | ToggleAssistantTrust
                 | DeleteAssistantConversation
                 | OpenMailboxScreen
@@ -848,6 +854,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ToggleAssistant
                 | NewAssistantConversation
                 | OpenAssistantConversations
+                | OpenAssistantModels
                 | ToggleAssistantTrust
                 | DeleteAssistantConversation
                 | OpenMailboxScreen

@@ -415,6 +415,68 @@ pub fn save_config(config: &MxrConfig) -> Result<(), ConfigError> {
     save_config_to_path(config, &config_file_path())
 }
 
+/// An exclusive advisory lock on the config file, held until it is dropped.
+/// It lives on a sibling `config.toml.lock`, not the config file itself, so
+/// saving the config never replaces the file being locked.
+#[derive(Debug)]
+pub struct ConfigFileLock {
+    _file: std::fs::File,
+}
+
+fn lock_path(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".lock");
+    path.with_file_name(name)
+}
+
+/// Wait for the exclusive lock on the config file at `path`. Everything that
+/// reads the config, changes it and writes it back holds this across the
+/// three, in this process or another (`mxr config set` runs in its own), so
+/// one writer's stale copy never replaces another's change.
+pub fn lock_config_file_at(path: &Path) -> Result<ConfigFileLock, ConfigError> {
+    let lock = lock_path(path);
+    let io = |source| ConfigError::ReadFile {
+        path: lock.clone(),
+        source,
+    };
+    if let Some(parent) = lock.parent() {
+        std::fs::create_dir_all(parent).map_err(io)?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock)
+        .map_err(io)?;
+    file.lock().map_err(io)?;
+    Ok(ConfigFileLock { _file: file })
+}
+
+/// [`lock_config_file_at`] for the default config file.
+pub fn lock_config_file() -> Result<ConfigFileLock, ConfigError> {
+    lock_config_file_at(&config_file_path())
+}
+
+/// Load the config at `path`, change it and save it, holding the config file
+/// lock throughout. Nothing is saved when `mutate` fails.
+pub fn update_config_at_path<T, E: From<ConfigError>>(
+    path: &Path,
+    mutate: impl FnOnce(&mut MxrConfig) -> Result<T, E>,
+) -> Result<T, E> {
+    let _lock = lock_config_file_at(path)?;
+    let mut config = load_config_from_path(path)?;
+    let out = mutate(&mut config)?;
+    save_config_to_path(&config, path)?;
+    Ok(out)
+}
+
+/// [`update_config_at_path`] for the default config file.
+pub fn update_config<T, E: From<ConfigError>>(
+    mutate: impl FnOnce(&mut MxrConfig) -> Result<T, E>,
+) -> Result<T, E> {
+    update_config_at_path(&config_file_path(), mutate)
+}
+
 /// Settings that were removed because nothing read them. Serde ignores unknown
 /// fields, so an old `config.toml` that still sets them keeps loading; the
 /// loader names them once instead of letting them look like working settings.

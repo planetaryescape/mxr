@@ -17,39 +17,35 @@ pub async fn run(demo: bool, key: String, force: bool) -> anyhow::Result<()> {
     }
 
     let config_path = mxr_config::config_file_path();
-    let mut config = mxr_config::load_config_from_path(&config_path).unwrap_or_default();
+    mxr_config::update_config_at_path(&config_path, |config| {
+        if config.accounts.contains_key(&key) && !force {
+            anyhow::bail!(
+                "An account with key `{key}` already exists in {}. Pass --force to overwrite.",
+                config_path.display()
+            );
+        }
 
-    if config.accounts.contains_key(&key) && !force {
-        anyhow::bail!(
-            "An account with key `{key}` already exists in {}. Pass --force to overwrite.",
-            config_path.display()
-        );
-    }
+        let account = AccountConfig {
+            name: "Demo".into(),
+            email: "demo@example.com".into(),
+            enabled: true,
+            sync: Some(SyncProviderConfig::Fake),
+            send: None,
+        };
+        config.accounts.insert(key.clone(), account);
 
-    let account = AccountConfig {
-        name: "Demo".into(),
-        email: "demo@example.com".into(),
-        enabled: true,
-        sync: Some(SyncProviderConfig::Fake),
-        send: None,
-    };
-    config.accounts.insert(key.clone(), account);
-
-    // Make sure the demo account is the default if no default is set —
-    // saves the user a step.
-    if config
-        .general
-        .default_account
-        .as_deref()
-        .is_none_or(str::is_empty)
-    {
-        config.general.default_account = Some(key.clone());
-    }
-
-    if let Some(parent) = config_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    mxr_config::save_config_to_path(&config, &config_path)?;
+        // Make sure the demo account is the default if no default is set —
+        // saves the user a step.
+        if config
+            .general
+            .default_account
+            .as_deref()
+            .is_none_or(str::is_empty)
+        {
+            config.general.default_account = Some(key.clone());
+        }
+        Ok(())
+    })?;
 
     println!("✓ Wrote demo account `{key}` to {}", config_path.display());
     println!();
@@ -296,38 +292,33 @@ fn run_llm_wizard() -> anyhow::Result<()> {
     .prompt()?;
 
     let config_path = mxr_config::config_file_path();
-    let mut config = mxr_config::load_config_from_path(&config_path).unwrap_or_default();
-    match preset {
+    let config = mxr_config::load_config_from_path(&config_path).unwrap_or_default();
+    // The answers only; nothing is written until they are all in.
+    let (base_url, model, api_key_env, allow_cloud_relationship_data) = match preset {
         "Local Ollama" => {
             let model_default = config.llm.model.clone();
             let model = Text::new("Model")
                 .with_default(model_default.as_str())
                 .prompt()?;
-            apply_llm_setup_config(
-                &mut config,
-                true,
-                "http://localhost:11434/v1".into(),
+            (
+                "http://localhost:11434/v1".to_string(),
                 model,
                 String::new(),
                 false,
-            );
+            )
         }
-        "OpenAI-compatible cloud" => {
-            apply_llm_setup_config(
-                &mut config,
-                true,
-                Text::new("Base URL")
-                    .with_default("https://api.openai.com/v1")
-                    .prompt()?,
-                Text::new("Model").with_default("gpt-4o-mini").prompt()?,
-                Text::new("API key environment variable")
-                    .with_default("OPENAI_API_KEY")
-                    .prompt()?,
-                Confirm::new("Allow relationship data to leave this machine?")
-                    .with_default(false)
-                    .prompt()?,
-            );
-        }
+        "OpenAI-compatible cloud" => (
+            Text::new("Base URL")
+                .with_default("https://api.openai.com/v1")
+                .prompt()?,
+            Text::new("Model").with_default("gpt-4o-mini").prompt()?,
+            Text::new("API key environment variable")
+                .with_default("OPENAI_API_KEY")
+                .prompt()?,
+            Confirm::new("Allow relationship data to leave this machine?")
+                .with_default(false)
+                .prompt()?,
+        ),
         "Custom" => {
             let base_url_default = config.llm.base_url.clone();
             let model_default = config.llm.model.clone();
@@ -346,22 +337,25 @@ fn run_llm_wizard() -> anyhow::Result<()> {
                 Confirm::new("Allow relationship data to leave this machine?")
                     .with_default(allow_cloud_default)
                     .prompt()?;
-            apply_llm_setup_config(
-                &mut config,
-                true,
-                base_url,
-                model,
-                api_key_env,
-                allow_cloud_relationship_data,
-            );
+            (base_url, model, api_key_env, allow_cloud_relationship_data)
         }
         _ => unreachable!("inquire Select returned an unknown LLM option"),
-    }
+    };
 
-    if let Some(parent) = config_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    mxr_config::save_config_to_path(&config, &config_path)?;
+    // The write re-reads the file under the lock and sets only these keys, so
+    // whatever else changed while the prompts were open (the daemon's own
+    // saves, `mxr config set`) is kept.
+    mxr_config::update_config_at_path(&config_path, |config| {
+        apply_llm_setup_config(
+            config,
+            true,
+            base_url,
+            model,
+            api_key_env,
+            allow_cloud_relationship_data,
+        );
+        Ok::<_, mxr_config::ConfigError>(())
+    })?;
     println!("Saved LLM config to {}", config_path.display());
     Ok(())
 }

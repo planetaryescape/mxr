@@ -118,6 +118,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         // Refused for agent profiles before scoping; a conversation can
         // read any account.
         Request::GetAssistantAvailability
+        | Request::GetAssistantModels
+        | Request::SetAssistantModel { .. }
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }
         | Request::AssistantCancel { .. }

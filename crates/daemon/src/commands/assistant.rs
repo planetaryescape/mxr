@@ -3,7 +3,7 @@
 //! to settle and prints the conversation, with the command that answers
 //! anything left waiting.
 
-use crate::cli::{AssistantAction, OutputFormat};
+use crate::cli::{AssistantAction, AssistantModelAction, OutputFormat};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::*;
@@ -46,6 +46,32 @@ pub async fn run(action: AssistantAction, format: Option<OutputFormat>) -> anyho
                     availability.reason.as_deref().unwrap_or("unknown reason")
                 );
             }
+            Ok(())
+        }
+        AssistantAction::Model { action: None } => {
+            let response = client.request(Request::GetAssistantModels).await?;
+            let ResponseData::AssistantModels { models } = ok(response)? else {
+                anyhow::bail!("unexpected response to GetAssistantModels");
+            };
+            if is_json(&format) {
+                return print_json(&models, &format);
+            }
+            print!("{}", models_text(&models));
+            Ok(())
+        }
+        AssistantAction::Model {
+            action: Some(AssistantModelAction::Set { model, dry_run }),
+        } => {
+            let response = client
+                .request(Request::SetAssistantModel { model, dry_run })
+                .await?;
+            let ResponseData::AssistantModelChange { change } = ok(response)? else {
+                anyhow::bail!("unexpected response to SetAssistantModel");
+            };
+            if is_json(&format) {
+                return print_json(&change, &format);
+            }
+            println!("{}", change_text(&change));
             Ok(())
         }
         AssistantAction::Send {
@@ -503,6 +529,72 @@ fn conversation_from(response: Response) -> anyhow::Result<AssistantConversation
     match ok(response)? {
         ResponseData::AssistantConversation { conversation } => Ok(conversation),
         _ => anyhow::bail!("unexpected response from the assistant"),
+    }
+}
+
+fn place(cloud: bool) -> &'static str {
+    if cloud {
+        "cloud"
+    } else {
+        "on this machine"
+    }
+}
+
+/// The choices as a table, the one in use marked with `*`.
+fn models_text(models: &AssistantModelsData) -> String {
+    let mut text = String::new();
+    match &models.current {
+        Some(current) => text.push_str(&format!("The assistant uses {current}.\n\n")),
+        None => text.push_str("No assistant model is set.\n\n"),
+    }
+    let label_width = models
+        .choices
+        .iter()
+        .map(|choice| choice.label.chars().count())
+        .max()
+        .unwrap_or(0);
+    let id_width = models
+        .choices
+        .iter()
+        .map(|choice| choice.id.chars().count())
+        .max()
+        .unwrap_or(0);
+    for choice in &models.choices {
+        let mark = if models.current.as_deref() == Some(choice.id.as_str()) {
+            '*'
+        } else {
+            ' '
+        };
+        let note = choice
+            .unavailable_reason
+            .as_deref()
+            .map_or_else(String::new, |reason| format!("  unavailable: {reason}"));
+        text.push_str(&format!(
+            "{mark} {:label_width$}  {:id_width$}  {}{note}\n",
+            choice.label,
+            choice.id,
+            place(choice.cloud),
+        ));
+    }
+    text.push_str("\nSwitch with: mxr assistant model set <id>\n");
+    text
+}
+
+fn change_text(change: &AssistantModelChangeData) -> String {
+    let current = change.models.current.as_deref().unwrap_or_default();
+    let chosen = change
+        .models
+        .choices
+        .iter()
+        .find(|choice| choice.id == current);
+    let name = chosen.map_or_else(
+        || current.to_string(),
+        |choice| format!("{} ({})", choice.label, place(choice.cloud)),
+    );
+    match (change.changed, change.dry_run) {
+        (false, _) => format!("The assistant already uses {name}."),
+        (true, true) => format!("Would switch the assistant to {name}. Nothing was changed."),
+        (true, false) => format!("The assistant now uses {name}, from its next message."),
     }
 }
 

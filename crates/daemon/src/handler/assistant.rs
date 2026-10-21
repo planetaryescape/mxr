@@ -3,7 +3,8 @@
 
 use super::{HandlerError, HandlerResult};
 use crate::assistant::{
-    abandon_pending, conversation_view, parse_pending, start_turn, summary_view, TurnStart,
+    abandon_pending, conversation_view, models, parse_pending, set_model, start_turn, summary_view,
+    TurnStart,
 };
 use crate::state::AppState;
 use mxr_assistant::{Answer, Decision};
@@ -26,6 +27,10 @@ pub(super) async fn handle(state: &Arc<AppState>, req: &Request) -> HandlerResul
         Request::GetAssistantAvailability => Ok(ResponseData::AssistantAvailability {
             availability: availability(state),
         }),
+        Request::GetAssistantModels => Ok(ResponseData::AssistantModels {
+            models: models(state),
+        }),
+        Request::SetAssistantModel { model, dry_run } => set_model(state, model, *dry_run).await,
         Request::AssistantSend {
             conversation_id,
             message,

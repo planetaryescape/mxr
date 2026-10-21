@@ -21,8 +21,7 @@ pub async fn run(action: Option<ConfigAction>) -> anyhow::Result<()> {
             let config_path = mxr_config::config_file_path();
             if !config_path.exists() {
                 // Ensure config file exists with defaults before opening
-                let config = mxr_config::load_config().unwrap_or_default();
-                mxr_config::save_config(&config)?;
+                mxr_config::update_config(|_| Ok::<_, mxr_config::ConfigError>(()))?;
             }
             let editor = mxr_compose::editor::resolve_editor(None);
             let status = std::process::Command::new(&editor)
@@ -39,9 +38,9 @@ pub async fn run(action: Option<ConfigAction>) -> anyhow::Result<()> {
             println!("{value}");
         }
         ConfigAction::Set { key, value } => {
-            let mut config = mxr_config::load_config()?;
-            set_config_value(&mut config, &key, &value)?;
-            mxr_config::save_config(&config)?;
+            // Held from the read to the write: the running daemon saves config
+            // too, and must not restore what this changes.
+            mxr_config::update_config(|config| set_config_value(config, &key, &value))?;
             println!("Set {key} = {value}");
             if key.starts_with("llm.") {
                 apply_llm_change_to_running_daemon().await;

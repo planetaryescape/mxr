@@ -715,6 +715,54 @@ mod tests {
         assert_eq!(body["messages"][1]["content"], raw);
     }
 
+    /// Switching from a local model (or OpenAI) to Claude mid-conversation:
+    /// their turns have no Anthropic blocks to replay, so they are rebuilt
+    /// from text and tool calls, and each result stays next to its call.
+    #[test]
+    fn turns_other_providers_wrote_are_rebuilt_as_text_and_tool_use() {
+        let turn = |id: &str, provider: Option<&str>| ToolChatMessage::Assistant {
+            text: String::new(),
+            tool_calls: vec![ToolCall {
+                id: id.into(),
+                name: "mxr_search".into(),
+                arguments: json!({"query": id}),
+            }],
+            provider_turn: provider.map(|provider| ProviderTurn {
+                provider: provider.into(),
+                content: json!([{"type": "reasoning", "opaque": true}]),
+            }),
+        };
+        let result = |id: &str| ToolChatMessage::Tool {
+            call_id: id.into(),
+            content: "[]".into(),
+            is_error: false,
+        };
+        let body = tool_request(vec![
+            ToolChatMessage::User {
+                content: "one".into(),
+            },
+            turn("call_gemma", None),
+            result("call_gemma"),
+            ToolChatMessage::User {
+                content: "two".into(),
+            },
+            turn("call_gpt", Some("openai")),
+            result("call_gpt"),
+        ]);
+        assert!(!body.to_string().contains("opaque"));
+        let messages = body["messages"].as_array().unwrap();
+        let roles: Vec<&str> = messages
+            .iter()
+            .map(|message| message["role"].as_str().unwrap())
+            .collect();
+        assert_eq!(roles, ["user", "assistant", "user", "assistant", "user"]);
+        assert_eq!(messages[1]["content"][0]["type"], "tool_use");
+        assert_eq!(messages[1]["content"][0]["id"], "call_gemma");
+        assert_eq!(messages[2]["content"][0]["tool_use_id"], "call_gemma");
+        assert_eq!(messages[3]["content"][0]["id"], "call_gpt");
+        assert_eq!(messages[4]["content"][0]["tool_use_id"], "call_gpt");
+    }
+
     #[test]
     fn parallel_tool_results_and_a_following_user_turn_share_one_user_message() {
         let body = tool_request(vec![

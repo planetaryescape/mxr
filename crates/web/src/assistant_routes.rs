@@ -35,6 +35,49 @@ async fn availability(
     passthrough(response)
 }
 
+async fn models(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::GetAssistantModels,
+    )
+    .await?;
+    passthrough(response)
+}
+
+/// Body of `POST /api/v1/mail/assistant/model`.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct AssistantModelBody {
+    /// A model id from the list `GET .../assistant/models` returns.
+    model: String,
+    /// Check the choice and say what would change, without changing it.
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn set_model(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<AssistantModelBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        None,
+        Request::SetAssistantModel {
+            model: body.model,
+            dry_run: body.dry_run,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
 async fn list(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -193,6 +236,8 @@ async fn delete(
 pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/assistant/availability", get(availability))
+        .route("/assistant/models", get(models))
+        .route("/assistant/model", post(set_model))
         .route("/assistant/conversations", get(list).post(send))
         .route("/assistant/conversations/{id}", get(get_conversation))
         .route("/assistant/conversations/{id}/decide", post(decide))

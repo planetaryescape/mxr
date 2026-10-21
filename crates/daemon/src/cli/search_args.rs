@@ -75,7 +75,7 @@ pub enum SemanticAction {
 pub enum LlmAction {
     /// Show each AI feature's model, the providers it goes through and their health
     Status,
-    /// Manage the Anthropic and OpenRouter API keys used for Claude models
+    /// Manage the Anthropic, OpenAI and OpenRouter API keys used for hosted models
     Key {
         #[command(subcommand)]
         action: LlmKeyAction,
@@ -108,6 +108,7 @@ pub enum LlmKeyAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum LlmProviderArg {
     Anthropic,
+    Openai,
     Openrouter,
 }
 
@@ -115,6 +116,7 @@ impl From<LlmProviderArg> for mxr_protocol::LlmProviderData {
     fn from(value: LlmProviderArg) -> Self {
         match value {
             LlmProviderArg::Anthropic => Self::Anthropic,
+            LlmProviderArg::Openai => Self::Openai,
             LlmProviderArg::Openrouter => Self::Openrouter,
         }
     }

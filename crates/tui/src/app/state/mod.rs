@@ -29,8 +29,8 @@ pub use arrivals::{
     ArrivalsListFetch, ArrivalsListState, MoveMenu, SenderAsk, TrustState, CHIP_BATCH,
 };
 pub use assistant::{
-    AnswerDraft, AssistantCall, AssistantFocus, AssistantListState, AssistantOutbound,
-    AssistantPrompt, AssistantState,
+    AnswerDraft, AssistantCall, AssistantFocus, AssistantListState, AssistantModelsState,
+    AssistantOutbound, AssistantPrompt, AssistantState,
 };
 pub use command_palette::CommandPaletteState;
 pub use compose::{

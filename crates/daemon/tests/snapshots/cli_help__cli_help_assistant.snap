@@ -8,6 +8,7 @@ Usage: mxr assistant [OPTIONS] <COMMAND>
 
 Commands:
   status   Whether the assistant can run, and on which model
+  model    The model the assistant uses: list the choices, or set one for every conversation. Hosted models need their key (`mxr llm key set`)
   send     Send a message, starting a conversation unless --conversation is given, and wait for the reply. Changes the assistant wants to make, and questions it asks, are printed with the command that answers them
   approve  Approve a change the assistant is waiting on. It runs exactly the call shown
   reject   Decline a change or question; nothing runs

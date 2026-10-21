@@ -7,10 +7,12 @@
 
 mod host;
 mod links;
+mod models;
 mod readout;
 mod titles;
 mod view;
 
+pub(crate) use models::{models, set_model};
 pub(crate) use view::{conversation_view, summary_view};
 
 use crate::state::AppState;
@@ -332,6 +334,10 @@ impl ChatModel for PinnedModel {
 
     fn context_window(&self) -> Option<u32> {
         Some(self.0.context_window()).filter(|window| *window > 0)
+    }
+
+    fn leaves_machine(&self) -> Option<bool> {
+        Some(self.0.leaves_machine())
     }
 }
 

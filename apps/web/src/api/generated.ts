@@ -545,6 +545,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/assistant/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set the model the assistant uses from its next message, for every conversation; refused for a model outside the list, without its key, or off this machine while the cloud setting is off */
+        post: operations["mail_assistant_set_model"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/assistant/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The models the assistant can be set to, which can be picked now and why not, and the one in use */
+        get: operations["mail_assistant_models"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/attachments/download": {
         parameters: {
             query?: never;
@@ -5057,6 +5091,12 @@ export interface components {
                   failed_call_ids?: string[];
                   /** @enum {string} */
                   kind: "assistant";
+                  /**
+                   * @description Whether the model that wrote this reply runs off this machine,
+                   *     as it was when it wrote it. Absent for replies from before the
+                   *     daemon recorded it.
+                   */
+                  leaves_machine?: boolean | null;
                   model?: string | null;
                   /**
                    * @description When the reply links two or more emails or people that one step
@@ -5113,6 +5153,47 @@ export interface components {
                   kind: "person";
                   person_id: string;
               };
+        /** @description Body of `POST /api/v1/mail/assistant/model`. */
+        AssistantModelBody: {
+            /** @description Check the choice and say what would change, without changing it. */
+            dry_run?: boolean;
+            /** @description A model id from the list `GET .../assistant/models` returns. */
+            model: string;
+        };
+        /** @description What `SetAssistantModel` did, or with `dry_run` would do. */
+        AssistantModelChangeData: {
+            /** @description False when the model was already the one in use. */
+            changed: boolean;
+            dry_run: boolean;
+            /** @description The models after the change (with `dry_run`, as they would be). */
+            models: components["schemas"]["AssistantModelsData"];
+            previous?: string | null;
+        };
+        /** @description One model the assistant can run on. */
+        AssistantModelChoiceData: {
+            /** @description Whether it can be picked now. */
+            available: boolean;
+            /** @description True when conversations with it go to a provider off this machine. */
+            cloud: boolean;
+            /** @description The model id, as `set` takes it. */
+            id: string;
+            /** @description What a person calls it ("Claude Haiku 5.5"). */
+            label: string;
+            /**
+             * @description Why it can't be picked, with the command that fixes it when there is
+             *     one. Set exactly when `available` is false.
+             */
+            unavailable_reason?: string | null;
+        };
+        /** @description The models the assistant can be set to, and the one it uses now. */
+        AssistantModelsData: {
+            choices: components["schemas"]["AssistantModelChoiceData"][];
+            /**
+             * @description The model the next turn uses. It may not be in `choices`: a model set
+             *     by hand in config.toml stays as it is until one is picked.
+             */
+            current?: string | null;
+        };
         /**
          * @description How the last turn ended.
          * @enum {string}
@@ -7287,7 +7368,7 @@ export interface components {
          * @description A hosted provider mxr can hold a key for.
          * @enum {string}
          */
-        LlmProviderData: "anthropic" | "openrouter";
+        LlmProviderData: "anthropic" | "openai" | "openrouter";
         /** @enum {string} */
         LlmRouteStateData:
             "ok" | "cooling" | "broken" | "recovering" | "probing" | "no_key";
@@ -10363,6 +10444,11 @@ export interface components {
                   explain: boolean;
                   /** Format: int32 */
                   limit: number;
+                  /**
+                   * @description Page size comes from `[search] max_results` on the daemon and `limit`
+                   *     is only the fallback for a daemon that does not know this field.
+                   */
+                  limit_from_config?: boolean;
                   mode?: components["schemas"]["SearchMode"] | null;
                   /** Format: int32 */
                   offset?: number;
@@ -11622,6 +11708,16 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  cmd: "GetAssistantModels";
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "SetAssistantModel";
+                  dry_run?: boolean;
+                  model: string;
+              }
+            | {
+                  /** @enum {string} */
                   cmd: "AssistantSend";
                   context?: components["schemas"]["AssistantViewContextData"];
                   conversation_id?: string | null;
@@ -11985,6 +12081,12 @@ export interface components {
                   has_more?: boolean;
                   /** @enum {string} */
                   kind: "SearchResults";
+                  /**
+                   * Format: int32
+                   * @description The page size the daemon actually used, which may come from
+                   *     `[search] max_results`. Older daemons omit it.
+                   */
+                  limit?: number | null;
                   /** Format: int32 */
                   next_offset?: number | null;
                   results: components["schemas"]["SearchResultItem"][];
@@ -12965,6 +13067,16 @@ export interface components {
                   availability: components["schemas"]["AssistantAvailabilityData"];
                   /** @enum {string} */
                   kind: "AssistantAvailability";
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "AssistantModels";
+                  models: components["schemas"]["AssistantModelsData"];
+              }
+            | {
+                  change: components["schemas"]["AssistantModelChangeData"];
+                  /** @enum {string} */
+                  kind: "AssistantModelChange";
               }
             | {
                   conversation: components["schemas"]["AssistantConversationData"];
@@ -16176,6 +16288,64 @@ export interface operations {
         };
         responses: {
             /** @description The `AssistantDelete` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_assistant_set_model: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantModelBody"];
+            };
+        };
+        responses: {
+            /** @description The `AssistantModelChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_assistant_models: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `AssistantModels` variant */
             200: {
                 headers: {
                     [name: string]: unknown;

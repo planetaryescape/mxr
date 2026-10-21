@@ -371,6 +371,11 @@ pub struct LlmConfig {
     /// model answers one request at a time well; raise it for a hosted
     /// endpoint. Clamped to 1..=8.
     pub gist_concurrency: usize,
+    /// The models the assistant's picker offers, by id. Where each runs
+    /// follows from its id: `claude-*` goes to Anthropic, `gpt-*` to OpenAI,
+    /// anything else to `base_url`. Empty means the defaults.
+    #[serde(skip_serializing_if = "is_default_assistant_models")]
+    pub assistant_models: Vec<String>,
     /// Optional feature-specific provider overrides. Each override inherits
     /// unspecified fields from this base `[llm]` section.
     pub overrides: LlmOverrides,
@@ -388,10 +393,27 @@ impl Default for LlmConfig {
             background_request_timeout_secs: 45,
             allow_cloud_relationship_data: false,
             gist_concurrency: 1,
+            assistant_models: DEFAULT_ASSISTANT_MODELS.map(String::from).to_vec(),
             overrides: LlmOverrides::default(),
         }
     }
 }
+
+/// Saving config leaves the list out while it is the defaults, so a later
+/// release can improve them for everyone who never edited the list.
+fn is_default_assistant_models(models: &[String]) -> bool {
+    models == DEFAULT_ASSISTANT_MODELS
+}
+
+/// What the assistant's model picker lists when config names none: one
+/// local model and four hosted ones.
+pub const DEFAULT_ASSISTANT_MODELS: [&str; 5] = [
+    "gemma4:latest",
+    "gpt-6-luna",
+    "gpt-5.6-terra",
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5",
+];
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -435,6 +457,21 @@ pub struct EffectiveLlmConfig {
 }
 
 impl LlmConfig {
+    /// The picker's models: `assistant_models` without blanks and repeats,
+    /// or the defaults when it names none.
+    pub fn assistant_model_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = Vec::new();
+        for id in self.assistant_models.iter().map(|id| id.trim()) {
+            if !id.is_empty() && !ids.iter().any(|seen| seen == id) {
+                ids.push(id.to_string());
+            }
+        }
+        if ids.is_empty() {
+            return DEFAULT_ASSISTANT_MODELS.map(String::from).to_vec();
+        }
+        ids
+    }
+
     pub fn effective_override(&self, override_config: &LlmOverrideConfig) -> EffectiveLlmConfig {
         EffectiveLlmConfig {
             enabled: override_config.enabled.unwrap_or(self.enabled),

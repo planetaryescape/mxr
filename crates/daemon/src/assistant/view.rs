@@ -78,6 +78,7 @@ pub(crate) fn conversation_view(
                         seq: row.seq,
                         text,
                         model: meta.model.clone(),
+                        leaves_machine: meta.leaves_machine,
                         failed_call_ids: Vec::new(),
                         rows: Vec::new(),
                         created_at: row.created_at,
@@ -537,6 +538,7 @@ mod tests {
             seq,
             text: "Starred it.".into(),
             model: None,
+            leaves_machine: None,
             failed_call_ids: Vec::new(),
             rows: Vec::new(),
             created_at: 0,
@@ -605,6 +607,7 @@ mod tests {
             seq: 9,
             text: text.into(),
             model: None,
+            leaves_machine: None,
             failed_call_ids: Vec::new(),
             rows: Vec::new(),
             created_at: 0,
@@ -965,5 +968,77 @@ mod tests {
         );
         let titles: Vec<&str> = reply.1.iter().map(|row| row.title.as_str()).collect();
         assert_eq!(titles, vec!["Pay Patreon", "Book an engineer to come out"]);
+    }
+    fn stored_reply(
+        seq: i64,
+        text: &str,
+        model: &str,
+        leaves_machine: bool,
+    ) -> mxr_store::AssistantMessageRow {
+        let message = mxr_llm::ToolChatMessage::Assistant {
+            text: text.into(),
+            tool_calls: Vec::new(),
+            provider_turn: None,
+        };
+        let meta = MessageMeta {
+            model: Some(model.into()),
+            leaves_machine: Some(leaves_machine),
+            ..MessageMeta::default()
+        };
+        mxr_store::AssistantMessageRow {
+            seq,
+            message_json: serde_json::to_string(&message).unwrap(),
+            meta_json: Some(serde_json::to_string(&meta).unwrap()),
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn each_reply_keeps_the_model_and_place_that_wrote_it_after_a_switch() {
+        let row = mxr_store::AssistantConversationRow {
+            id: "c".into(),
+            title: "t".into(),
+            status: "idle".into(),
+            last_outcome: None,
+            last_error: None,
+            pending_json: None,
+            auto_approve: false,
+            summary: None,
+            summary_through_seq: None,
+            created_at: 0,
+            updated_at: 0,
+            message_count: 2,
+        };
+        let view = conversation_view(
+            &row,
+            &[
+                stored_reply(1, "From the local model.", "gemma4:latest", false),
+                stored_reply(
+                    2,
+                    "From the hosted one.",
+                    "claude-haiku-5-5 via Anthropic",
+                    true,
+                ),
+            ],
+        );
+        let marks: Vec<(Option<&str>, Option<bool>)> = view
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                AssistantItemData::Assistant {
+                    model,
+                    leaves_machine,
+                    ..
+                } => Some((model.as_deref(), *leaves_machine)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            marks,
+            [
+                (Some("gemma4:latest"), Some(false)),
+                (Some("claude-haiku-5-5 via Anthropic"), Some(true)),
+            ]
+        );
     }
 }

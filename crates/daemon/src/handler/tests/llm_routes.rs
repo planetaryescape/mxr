@@ -11,7 +11,7 @@ use mxr_protocol::{
 
 const SECRET: &str = "sk-ant-test-secret-do-not-leak";
 
-async fn send(state: &Arc<AppState>, request: Request) -> Response {
+pub(super) async fn send(state: &Arc<AppState>, request: Request) -> Response {
     let msg = IpcMessage {
         expected_workspace: None,
         id: 1,
@@ -35,7 +35,7 @@ async fn status(state: &Arc<AppState>) -> LlmStatusSnapshot {
 
 /// Runs `body` with config, data and secrets in a temp dir and no provider
 /// keys in the environment.
-fn isolated<F, Fut>(body: F)
+pub(super) fn isolated<F, Fut>(body: F)
 where
     F: FnOnce(Arc<AppState>) -> Fut,
     Fut: std::future::Future<Output = ()>,
@@ -53,6 +53,7 @@ where
             ("MXR_DATA_DIR", Some(dir.path().join("data"))),
             ("MXR_SECRETS_PATH", Some(dir.path().join("secrets.toml"))),
             ("ANTHROPIC_API_KEY", None),
+            ("OPENAI_API_KEY", None),
             ("OPENROUTER_API_KEY", None),
         ],
         || {
@@ -65,7 +66,7 @@ where
     );
 }
 
-async fn use_model(state: &Arc<AppState>, model: &str, base_url: &str) {
+pub(super) async fn use_model(state: &Arc<AppState>, model: &str, base_url: &str) {
     let mut config = state.config_snapshot();
     config.llm.enabled = true;
     config.llm.model = model.to_string();
@@ -73,7 +74,7 @@ async fn use_model(state: &Arc<AppState>, model: &str, base_url: &str) {
     state.set_config_for_test(config).await;
 }
 
-const LOCAL: &str = "http://localhost:11434/v1";
+pub(super) const LOCAL: &str = "http://localhost:11434/v1";
 
 #[test]
 fn a_routed_model_counts_as_cloud_for_every_gate() {
@@ -186,6 +187,16 @@ fn status_lists_every_feature_with_its_routes_and_which_has_a_key() {
             providers,
             [LlmProviderData::Anthropic, LlmProviderData::Openrouter]
         );
+        // Every hosted provider has a key row, so `mxr llm key status` lists OpenAI.
+        let listed: Vec<_> = snapshot.keys.iter().map(|key| key.provider).collect();
+        assert_eq!(
+            listed,
+            [
+                LlmProviderData::Anthropic,
+                LlmProviderData::Openai,
+                LlmProviderData::Openrouter
+            ]
+        );
         assert_eq!(row.routes[0].model, "claude-haiku-5-5");
         assert_eq!(row.routes[1].model, "anthropic/claude-haiku-5.5");
         // No keys: nothing to try.
@@ -228,7 +239,7 @@ fn route_health_shows_up_in_status_with_a_reason_and_a_retry_time() {
             },
         )
         .await;
-        let route = mxr_llm::routes_for_model("claude-haiku-5-5", false)
+        let route = mxr_llm::routes_for_model("claude-haiku-5-5", mxr_llm::Endpoint::Default)
             .unwrap()
             .remove(0);
         state
@@ -384,7 +395,7 @@ fn a_reload_forgets_what_the_old_setup_taught_about_a_route() {
             },
         )
         .await;
-        let route = mxr_llm::routes_for_model("claude-haiku-5-5", false)
+        let route = mxr_llm::routes_for_model("claude-haiku-5-5", mxr_llm::Endpoint::Default)
             .unwrap()
             .remove(0);
         state

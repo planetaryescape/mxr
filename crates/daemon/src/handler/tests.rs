@@ -704,6 +704,7 @@ mod archive_recovery;
 mod arrivals;
 mod arrivals_report;
 mod assistant;
+mod assistant_models;
 mod body_and_invites;
 mod categories;
 mod category_rules;

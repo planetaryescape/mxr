@@ -587,7 +587,11 @@ A `claude-*` model name is the exception: `base_url` and `api_key_env` don't
 apply. It goes to Anthropic's own API with the key from
 `mxr llm key set anthropic` (or `ANTHROPIC_API_KEY`), and to OpenRouter with
 `mxr llm key set openrouter` (or `OPENROUTER_API_KEY`) when Anthropic isn't
-working. See [Use Claude](/guides/llm-features/#use-claude-through-anthropic-with-openrouter-as-fallback).
+working. A `gpt-<number>` model such as `gpt-6-luna` goes to OpenAI's own API
+with the key from `mxr llm key set openai` (or `OPENAI_API_KEY`), and to
+OpenRouter when OpenAI isn't working, unless `base_url` points at a remote
+server of your own. See [Use Claude](/guides/llm-features/#use-claude-through-anthropic-with-openrouter-as-fallback)
+and [Use GPT models](/guides/llm-features/#use-gpt-models-through-openai-with-openrouter-as-fallback).
 
 ```toml
 [llm]
@@ -599,6 +603,8 @@ context_window = 8192
 request_timeout_secs = 120
 background_request_timeout_secs = 45
 allow_cloud_relationship_data = false
+# The assistant's model picker. Left out, or empty, these five are offered.
+assistant_models = ["gemma4:latest", "gpt-6-luna", "gpt-5.6-terra", "claude-haiku-5-5", "claude-sonnet-5-5"]
 ```
 
 The API key is read from `api_key_env` at runtime and is never persisted
@@ -609,6 +615,10 @@ is sent — correct for Ollama and LM Studio.
 (default 45) bounds the daemon's own background work, such as relationship
 summaries and commitment extraction, so a dead endpoint can't hold a background
 worker for the full foreground wait.
+
+`assistant_models` lists the model ids the [assistant's picker](/guides/assistant/#pick-the-model)
+offers. A pick is written to `[llm.overrides.assistant] model`, not here. Saving
+LLM settings in the web app keeps this list as you wrote it.
 
 `gist_concurrency` (default 1, at most 8) sets how many list-row gists the
 daemon writes at once in the background. A local model does best one at a
@@ -660,7 +670,7 @@ section. Feature keys: `summarize` (also row gists and `mxr triage`),
 `archive_ask`, `decision_log`, `briefing`, `expert`,
 `delivery_extraction` (confirm/enrich for [delivery tracking](/guides/deliveries/)),
 and `assistant` (the [assistant](/guides/assistant/), which needs a model that
-can call tools, and summarises older messages once a conversation nears
+can call tools, and whose model you can pick from a list, and summarises older messages once a conversation nears
 `context_window`).
 
 `relationship_summary`, `commitments`, `voice_match`, `answer_coverage`,

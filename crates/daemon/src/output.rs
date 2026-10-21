@@ -292,6 +292,7 @@ mod tests {
                     seq: 1,
                     text: "hi".into(),
                     model: None,
+                    leaves_machine: None,
                     failed_call_ids: Vec::new(),
                     rows: vec![AssistantReadoutRowData {
                         title: hostile.into(),

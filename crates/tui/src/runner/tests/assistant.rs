@@ -564,7 +564,7 @@ fn toasts_stack_beside_the_pane_and_leave_its_hint_line_visible() {
         app.push_toast(crate::app::Toast::success("Archived 3 messages"));
         let screen = render_to_string(width, 30, |frame| app.draw(frame));
         assert!(screen.contains("Archived 3 messages"), "{screen}");
-        assert!(screen.contains("L history · T trust · D"), "{screen}");
+        assert!(screen.contains("L history · M model"), "{screen}");
     }
 }
 
@@ -583,6 +583,7 @@ fn linked_reply() -> App {
              [Ann](mxr:person/person:ann@elsewhere.test). See [Q1 again](mxr:thread/{LINKED_THREAD})."
         ),
         model: None,
+        leaves_machine: None,
         failed_call_ids: Vec::new(),
         created_at: 0,
     });
@@ -669,6 +670,7 @@ fn a_person_in_the_folded_quiet_band_opens_it_and_is_selected() {
                     seq: 9,
                     text: "Ask [Leo Park](mxr:person/person:leo@example.com).".into(),
                     model: None,
+                    leaves_machine: None,
                     failed_call_ids: Vec::new(),
                     created_at: 0,
                 });
@@ -708,6 +710,7 @@ fn a_later_reply_without_links_leaves_the_earlier_links_open() {
             seq: 3,
             text: "Anything else?".into(),
             model: None,
+            leaves_machine: None,
             failed_call_ids: Vec::new(),
             created_at: 0,
         });
@@ -726,4 +729,181 @@ fn numbers_past_the_links_do_nothing() {
     assert!(app.pending_assistant_thread_open.is_none());
     assert_eq!(app.mailbox.mailbox_view, view);
     assert_eq!(app.assistant.focus, AssistantFocus::Pane);
+}
+
+fn model_choice(
+    id: &str,
+    label: &str,
+    cloud: bool,
+    reason: Option<&str>,
+) -> mxr_protocol::AssistantModelChoiceData {
+    mxr_protocol::AssistantModelChoiceData {
+        id: id.into(),
+        label: label.into(),
+        cloud,
+        available: reason.is_none(),
+        unavailable_reason: reason.map(str::to_string),
+    }
+}
+
+fn models() -> mxr_protocol::AssistantModelsData {
+    mxr_protocol::AssistantModelsData {
+        current: Some("gemma4:latest".into()),
+        choices: vec![
+            model_choice("gemma4:latest", "Gemma 4", false, None),
+            model_choice(
+                "gpt-6-luna",
+                "GPT-6 Luna",
+                true,
+                Some("Add an OpenAI key: mxr llm key set openai"),
+            ),
+            model_choice("claude-haiku-5-5", "Claude Haiku 5.5", true, None),
+        ],
+    }
+}
+
+/// The pane open on the picker, with the choices answered and drained.
+fn picking() -> App {
+    let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
+    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    press(&mut app, KeyCode::Char('M'), KeyModifiers::SHIFT);
+    assert!(matches!(
+        requests(&mut app).as_slice(),
+        [Request::GetAssistantModels]
+    ));
+    app.apply_assistant_result(
+        AssistantCall::Models,
+        Ok(ResponseData::AssistantModels { models: models() }),
+    );
+    app
+}
+
+#[test]
+fn m_opens_the_model_picker_on_the_one_in_use_and_names_the_key_in_the_hint() {
+    let mut app = picking();
+    let picker = app.assistant.models.as_ref().expect("the picker is open");
+    assert_eq!(picker.selected, 0);
+    let screen = render_to_string(140, 30, |frame| app.draw(frame));
+    assert!(screen.contains("Gemma 4"), "{screen}");
+    assert!(screen.contains("GPT-6 Luna"), "{screen}");
+    assert!(screen.contains("Add an OpenAI key"), "{screen}");
+    assert!(screen.contains("Enter use this model"), "{screen}");
+    // The pane's own hint line advertises the key.
+    app.assistant.models = None;
+    let screen = render_to_string(140, 30, |frame| app.draw(frame));
+    assert!(screen.contains("M model"), "{screen}");
+}
+
+#[test]
+fn enter_on_an_available_model_asks_the_daemon_to_set_it_and_a_disabled_one_says_why() {
+    let mut app = picking();
+    // GPT-6 Luna has no key: no request, the reason shows instead.
+    press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    assert!(requests(&mut app).is_empty());
+    assert_eq!(
+        app.assistant.error.as_deref(),
+        Some("Add an OpenAI key: mxr llm key set openai")
+    );
+
+    press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    let sent = app.assistant.take_outbound();
+    assert!(matches!(
+        sent.as_slice(),
+        [outbound] if matches!(&outbound.request, Request::SetAssistantModel { model, dry_run: false } if model == "claude-haiku-5-5")
+    ));
+    app.apply_assistant_result(
+        sent[0].call.clone(),
+        Ok(ResponseData::AssistantModelChange {
+            change: mxr_protocol::AssistantModelChangeData {
+                dry_run: false,
+                changed: true,
+                previous: Some("gemma4:latest".into()),
+                models: mxr_protocol::AssistantModelsData {
+                    current: Some("claude-haiku-5-5".into()),
+                    ..models()
+                },
+            },
+        }),
+    );
+    // The picker closes and the model line is asked for again.
+    assert!(app.assistant.models.is_none());
+    assert!(matches!(
+        requests(&mut app).as_slice(),
+        [Request::GetAssistantAvailability]
+    ));
+}
+
+#[test]
+fn a_refused_pick_keeps_the_picker_open_with_the_daemons_words() {
+    let mut app = picking();
+    app.apply_assistant_result(
+        AssistantCall::SetModel,
+        Err(MxrError::Ipc("Claude Haiku 5.5 can't be used yet.".into())),
+    );
+    assert!(app.assistant.models.is_some());
+    assert_eq!(
+        app.assistant.error.as_deref(),
+        Some("Claude Haiku 5.5 can't be used yet.")
+    );
+}
+
+#[test]
+fn esc_closes_the_picker_and_the_palette_lists_the_command() {
+    let mut app = picking();
+    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(app.assistant.models.is_none());
+    assert!(app.assistant.open);
+
+    let commands = crate::ui::command_palette::default_commands();
+    assert!(commands
+        .iter()
+        .any(|command| command.action == Action::OpenAssistantModels));
+}
+
+#[test]
+fn the_picker_scrolls_to_keep_the_highlighted_model_in_view_on_a_short_pane() {
+    let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
+    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    press(&mut app, KeyCode::Char('M'), KeyModifiers::SHIFT);
+    requests(&mut app);
+    // Eight models, each unavailable with a reason that wraps in a narrow pane.
+    let choices = (1..=8)
+        .map(|n| {
+            model_choice(
+                &format!("model-{n}"),
+                &format!("Model {n}"),
+                true,
+                Some("Add a provider key with the command mxr llm key set provider-name now"),
+            )
+        })
+        .collect();
+    app.apply_assistant_result(
+        AssistantCall::Models,
+        Ok(ResponseData::AssistantModels {
+            models: mxr_protocol::AssistantModelsData {
+                current: None,
+                choices,
+            },
+        }),
+    );
+    for number in 1..=8 {
+        let screen = render_to_string(80, 28, |frame| app.draw(frame));
+        assert!(
+            screen.contains(&format!("Model {number}")),
+            "Model {number} fell off the pane:\n{screen}"
+        );
+        assert!(
+            screen.contains("› ") && screen.contains("Esc back"),
+            "the highlight or hint line is gone:\n{screen}"
+        );
+        press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
+    }
+    // And back up to the first.
+    for _ in 0..8 {
+        press(&mut app, KeyCode::Char('k'), KeyModifiers::NONE);
+    }
+    let screen = render_to_string(80, 28, |frame| app.draw(frame));
+    assert!(screen.contains("Model 1"), "{screen}");
 }

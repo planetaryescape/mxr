@@ -23,6 +23,6 @@ expression: render(&state)
 "│ ──────────────────────────────────────────── │"
 "│ › Ask about your mail, or say what to do     │"
 "│ qwen3:8b · runs on this machine              │"
-"│ i write · N new · L history · T trust · D    │"
-"│ delete · e steps · Ctrl-c stop               │"
+"│ i write · N new · L history · M model · T    │"
+"│ trust · D delete · e steps · Ctrl-c stop     │"
 "╰──────────────────────────────────────────────╯"

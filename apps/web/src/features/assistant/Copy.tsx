@@ -29,8 +29,12 @@ export function Reply({
   provenance?: Provenance;
 }) {
   const model = item.model ?? provenance?.model ?? null;
-  // Where it ran is only known when the model that wrote it is the one configured now.
-  const where = provenance && model === provenance.model ? provenance.leavesMachine : undefined;
+  // The daemon records where each reply ran, so it still says so after the
+  // model is switched. A reply from before that was recorded is placed only
+  // when the model that wrote it is the one in use now.
+  const where =
+    item.leaves_machine ??
+    (provenance && model === provenance.model ? provenance.leavesMachine : undefined);
   return (
     <div>
       <MarkdownView

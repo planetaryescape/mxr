@@ -1148,6 +1148,60 @@
         }
       }
     },
+    "/api/v1/mail/assistant/model": {
+      "post": {
+        "tags": [],
+        "summary": "Set the model the assistant uses from its next message, for every conversation; refused for a model outside the list, without its key, or off this machine while the cloud setting is off",
+        "operationId": "mail_assistant_set_model",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantModelBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `AssistantModelChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/assistant/models": {
+      "get": {
+        "tags": [],
+        "summary": "The models the assistant can be set to, which can be picked now and why not, and the one in use",
+        "operationId": "mail_assistant_models",
+        "responses": {
+          "200": {
+            "description": "The `AssistantModels` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/attachments/download": {
       "post": {
         "tags": [],
@@ -9575,6 +9629,13 @@
                   "assistant"
                 ]
               },
+              "leaves_machine": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Whether the model that wrote this reply runs off this machine,\nas it was when it wrote it. Absent for replies from before the\ndaemon recorded it."
+              },
               "model": {
                 "type": [
                   "string",
@@ -9743,6 +9804,108 @@
           }
         ],
         "description": "Where a client opens something the assistant found. Replies link the\nsame places as markdown links: `mxr:thread/<id>` and `mxr:person/<id>`."
+      },
+      "AssistantModelBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/assistant/model`.",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "description": "Check the choice and say what would change, without changing it."
+          },
+          "model": {
+            "type": "string",
+            "description": "A model id from the list `GET .../assistant/models` returns."
+          }
+        }
+      },
+      "AssistantModelChangeData": {
+        "type": "object",
+        "description": "What `SetAssistantModel` did, or with `dry_run` would do.",
+        "required": [
+          "dry_run",
+          "changed",
+          "models"
+        ],
+        "properties": {
+          "changed": {
+            "type": "boolean",
+            "description": "False when the model was already the one in use."
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "models": {
+            "$ref": "#/components/schemas/AssistantModelsData",
+            "description": "The models after the change (with `dry_run`, as they would be)."
+          },
+          "previous": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AssistantModelChoiceData": {
+        "type": "object",
+        "description": "One model the assistant can run on.",
+        "required": [
+          "id",
+          "label",
+          "cloud",
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether it can be picked now."
+          },
+          "cloud": {
+            "type": "boolean",
+            "description": "True when conversations with it go to a provider off this machine."
+          },
+          "id": {
+            "type": "string",
+            "description": "The model id, as `set` takes it."
+          },
+          "label": {
+            "type": "string",
+            "description": "What a person calls it (\"Claude Haiku 5.5\")."
+          },
+          "unavailable_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it can't be picked, with the command that fixes it when there is\none. Set exactly when `available` is false."
+          }
+        }
+      },
+      "AssistantModelsData": {
+        "type": "object",
+        "description": "The models the assistant can be set to, and the one it uses now.",
+        "required": [
+          "choices"
+        ],
+        "properties": {
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantModelChoiceData"
+            }
+          },
+          "current": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model the next turn uses. It may not be in `choices`: a model set\nby hand in config.toml stays as it is until one is picked."
+          }
+        }
       },
       "AssistantOutcomeData": {
         "type": "string",
@@ -16263,6 +16426,7 @@
         "description": "A hosted provider mxr can hold a key for.",
         "enum": [
           "anthropic",
+          "openai",
           "openrouter"
         ]
       },
@@ -30503,6 +30667,43 @@
           },
           {
             "type": "object",
+            "description": "The models the assistant can be set to and the one it uses now.\nReturns `ResponseData::AssistantModels`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetAssistantModels"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Set the model the assistant's next turn uses, for every conversation.\nRefused for a model that isn't in the list, has no key, or would send\nmail off this machine without `llm.allow_cloud_relationship_data`.\nWith `dry_run` nothing is written. Returns\n`ResponseData::AssistantModelChange`.",
+            "required": [
+              "model",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetAssistantModel"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "model": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Send the user's message, starting a conversation when\n`conversation_id` is `None`. Returns as soon as the turn starts, with\nthe conversation `running`; `AssistantUpdated` events follow until it\nsettles. Calls still waiting for the user are declined first. Returns\n`ResponseData::AssistantConversation`.",
             "required": [
               "message",
@@ -35619,6 +35820,44 @@
                 "type": "string",
                 "enum": [
                   "AssistantAvailability"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetAssistantModels`.",
+            "required": [
+              "models",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "AssistantModels"
+                ]
+              },
+              "models": {
+                "$ref": "#/components/schemas/AssistantModelsData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SetAssistantModel`.",
+            "required": [
+              "change",
+              "kind"
+            ],
+            "properties": {
+              "change": {
+                "$ref": "#/components/schemas/AssistantModelChangeData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "AssistantModelChange"
                 ]
               }
             }

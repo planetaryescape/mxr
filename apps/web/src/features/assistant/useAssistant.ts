@@ -16,8 +16,10 @@ import {
   fetchAvailability,
   fetchConversation,
   fetchConversations,
+  fetchModels,
   sendMessage,
   setAutoApprove,
+  setModel,
   type AssistantConversation,
   type AssistantDecision,
   type AssistantProgress,
@@ -37,6 +39,32 @@ export function useAvailability() {
     queryKey: assistantKeys.availability,
     queryFn: fetchAvailability,
     staleTime: 30_000,
+  });
+}
+
+/** The picker's choices. A daemon from before the picker answers 404: no picker then. */
+export function useModels() {
+  return useQuery({
+    queryKey: assistantKeys.models,
+    queryFn: fetchModels,
+    staleTime: 10_000,
+    retry: false,
+  });
+}
+
+/** Sets the assistant's model; the mark and the next reply's provenance follow the daemon's answer. */
+export function usePickModel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: setModel,
+    onSuccess: (models) => {
+      queryClient.setQueryData(assistantKeys.models, models);
+      void queryClient.invalidateQueries({ queryKey: assistantKeys.availability });
+      // An open Settings > LLM form holds the old assistant model and saves
+      // its whole overrides map; it must show the new one before it can.
+      void queryClient.invalidateQueries({ queryKey: ["llm-config"] });
+      void queryClient.invalidateQueries({ queryKey: ["llm-status"] });
+    },
   });
 }
 

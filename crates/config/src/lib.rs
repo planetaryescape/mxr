@@ -8,10 +8,11 @@ mod types;
 pub use resolve::{
     app_instance_name, bridge_port_path, bridge_token_path, clear_bridge_port, config_dir,
     config_file_path, daemon_token_path, data_dir, gmail_oauth_keychain_service, is_demo_instance,
-    load_config, load_config_from_path, load_config_from_str, read_bridge_port,
-    read_or_create_bridge_token, remote_bridge_token_path, resolve_daemon_token,
-    retired_config_keys_in, save_config, save_config_to_path, scoped_credential_service,
-    secrets_file_path, socket_path, token_dir, write_bridge_port, ConfigError, DAEMON_TOKEN_ENV,
+    load_config, load_config_from_path, load_config_from_str, lock_config_file,
+    lock_config_file_at, read_bridge_port, read_or_create_bridge_token, remote_bridge_token_path,
+    resolve_daemon_token, retired_config_keys_in, save_config, save_config_to_path,
+    scoped_credential_service, secrets_file_path, socket_path, token_dir, update_config,
+    update_config_at_path, write_bridge_port, ConfigError, ConfigFileLock, DAEMON_TOKEN_ENV,
     DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, PROD_INSTANCE_NAME, RETIRED_CONFIG_KEYS,
 };
 pub use secret_store::SecretStore;

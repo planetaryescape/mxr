@@ -7,7 +7,7 @@ pub(crate) fn edit_tui_config(app: &mut App) -> Result<String, MxrError> {
     let current_config = load_config().map_err(|error| MxrError::Ipc(error.to_string()))?;
 
     if !config_path.exists() {
-        mxr_config::save_config(&current_config)
+        mxr_config::update_config(|_| Ok::<_, mxr_config::ConfigError>(()))
             .map_err(|error| MxrError::Ipc(error.to_string()))?;
     }
 

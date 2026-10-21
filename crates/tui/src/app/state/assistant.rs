@@ -4,8 +4,8 @@
 
 use mxr_protocol::{
     AssistantAvailabilityData, AssistantConversationData, AssistantConversationSummaryData,
-    AssistantDeleteData, AssistantItemData, AssistantLinkData, AssistantPendingData,
-    AssistantProgressData, AssistantStatusData, Request,
+    AssistantDeleteData, AssistantItemData, AssistantLinkData, AssistantModelsData,
+    AssistantPendingData, AssistantProgressData, AssistantStatusData, Request,
 };
 use std::time::Instant;
 
@@ -45,6 +45,9 @@ pub enum AssistantCall {
         conversation_id: String,
     },
     List,
+    /// The model choices, or the choice just set.
+    Models,
+    SetModel,
     DeletePreview,
     Delete,
 }
@@ -74,6 +77,14 @@ impl AnswerDraft {
 pub struct AssistantListState {
     pub loading: bool,
     pub conversations: Vec<AssistantConversationSummaryData>,
+    pub selected: usize,
+}
+
+/// The model picker: the daemon's choices and the highlighted row.
+#[derive(Debug, Clone, Default)]
+pub struct AssistantModelsState {
+    pub loading: bool,
+    pub models: Option<AssistantModelsData>,
     pub selected: usize,
 }
 
@@ -111,6 +122,7 @@ pub struct AssistantState {
     /// The furthest the transcript can scroll, from the last draw.
     pub max_scroll: u16,
     pub list: Option<AssistantListState>,
+    pub models: Option<AssistantModelsState>,
     /// The last request that failed, in the daemon's words.
     pub error: Option<String>,
     pub outbound: Vec<AssistantOutbound>,
@@ -125,6 +137,11 @@ impl AssistantState {
 
     pub fn take_outbound(&mut self) -> Vec<AssistantOutbound> {
         std::mem::take(&mut self.outbound)
+    }
+
+    /// A list the pane shows in place of the transcript.
+    pub fn overlay_open(&self) -> bool {
+        self.list.is_some() || self.models.is_some()
     }
 
     pub fn running(&self) -> bool {

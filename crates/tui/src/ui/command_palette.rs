@@ -877,6 +877,12 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Assistant".into(),
         },
         PaletteCommand {
+            label: "Assistant: choose the model (local or cloud)".into(),
+            shortcut: "M in the pane".into(),
+            action: Action::OpenAssistantModels,
+            category: "Assistant".into(),
+        },
+        PaletteCommand {
             label: "Assistant: approve reversible changes automatically (on/off)".into(),
             shortcut: String::new(),
             action: Action::ToggleAssistantTrust,

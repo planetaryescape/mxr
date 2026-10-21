@@ -111,6 +111,8 @@ use utoipa::{
         mail_assistant_availability, mail_assistant_list, mail_assistant_send,
         mail_assistant_get, mail_assistant_decide, mail_assistant_cancel, mail_assistant_delete,
         mail_assistant_auto_approve,
+        mail_assistant_models,
+        mail_assistant_set_model,
         mail_updates_digest, mail_updates_let_go, mail_updates_source,
         mail_arrivals, mail_arrivals_list, mail_arrivals_modes, mail_message_move,
         mail_move_undo, mail_corrections
@@ -159,6 +161,7 @@ use utoipa::{
         crate::assistant_routes::AssistantDecideBody,
         crate::assistant_routes::AssistantDeleteBody,
         crate::assistant_routes::AssistantAutoApproveBody,
+        crate::assistant_routes::AssistantModelBody,
         crate::reading_routes::MarginaliaSyncBody,
         crate::updates_routes::UpdatesLetGoBody,
         crate::updates_routes::UpdateSourceBody,
@@ -1458,6 +1461,31 @@ fn mail_reading_marginalia_sync() {}
 )]
 #[allow(dead_code)]
 fn mail_assistant_availability() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/assistant/models",
+    summary = "The models the assistant can be set to, which can be picked now and why not, and the one in use",
+    responses(
+        (status = 200, description = "The `AssistantModels` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_assistant_models() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/assistant/model",
+    summary = "Set the model the assistant uses from its next message, for every conversation; refused for a model outside the list, without its key, or off this machine while the cloud setting is off",
+    request_body = crate::assistant_routes::AssistantModelBody,
+    responses(
+        (status = 200, description = "The `AssistantModelChange` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_assistant_set_model() {}
 
 #[utoipa::path(
     get,

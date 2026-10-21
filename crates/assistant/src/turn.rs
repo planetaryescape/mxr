@@ -34,6 +34,10 @@ pub trait ChatModel: Send + Sync {
     fn context_window(&self) -> Option<u32> {
         None
     }
+    /// Whether the model runs off this machine, when known.
+    fn leaves_machine(&self) -> Option<bool> {
+        None
+    }
 }
 
 /// Where mxr's tools run.
@@ -71,6 +75,10 @@ pub trait TurnSink: Send + Sync {
 pub struct MessageMeta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Whether that model runs off this machine, so a reply keeps saying
+    /// where it was written after the model is switched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leaves_machine: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
     /// The user-facing reason for each tool call, by call id.
@@ -333,6 +341,7 @@ impl Agent<'_> {
 
             let mut meta = MessageMeta {
                 model: Some(response.model.clone()),
+                leaves_machine: self.model.leaves_machine(),
                 usage: response.usage.clone(),
                 reasons: HashMap::new(),
             };

@@ -1,6 +1,6 @@
 ---
 title: LLM features (summarize, draft assist)
-description: Configure Ollama, LM Studio, Claude through Anthropic with OpenRouter as fallback, or any OpenAI-compatible endpoint for thread summarisation and draft assist in mxr.
+description: Configure Ollama, LM Studio, Claude through Anthropic, GPT models through OpenAI (each with OpenRouter as fallback), or any OpenAI-compatible endpoint for thread summarisation and draft assist in mxr.
 ---
 
 ## Every model feature uses the backend you configure here
@@ -47,6 +47,7 @@ every major option:
 | **Together AI** | `https://api.together.xyz/v1` | `TOGETHER_API_KEY` | |
 | **Mistral La Plateforme** | `https://api.mistral.ai/v1` | `MISTRAL_API_KEY` | |
 | **Claude** (`claude-*` models) | _not used_ | _not used_ | Anthropic's own API, with OpenRouter as fallback. See [Use Claude](#use-claude-through-anthropic-with-openrouter-as-fallback). |
+| **GPT** (`gpt-6-luna`, `gpt-5.6-terra` and other `gpt-<number>` models) | _not used_ | _not used_ | OpenAI's own API with a stored key, with OpenRouter as fallback. See [Use GPT models](#use-gpt-models-through-openai-with-openrouter-as-fallback). |
 
 mxr's local-first stance: model features are off until you set
 `[llm] enabled = true`, and the default endpoint is Ollama on
@@ -129,6 +130,50 @@ sends](#know-what-each-request-sends-and-where) applies, including the
 as written by a cloud model, with the provider that answered
 (`claude-haiku-5-5 via Anthropic`).
 
+## Use GPT models through OpenAI, with OpenRouter as fallback
+
+A model whose name is `gpt-` and a number (`gpt-6-luna`, `gpt-5.6-terra`,
+`gpt-4o-mini`) is OpenAI's own. It works like a Claude model: mxr sends it to
+OpenAI's API first and to OpenRouter, as `openai/<model>`, when OpenAI isn't
+working. Store the key the same way:
+
+```bash
+op read "op://<vault>/<item>/credential" | mxr llm key set openai
+mxr llm key status
+```
+
+If no key is stored, mxr reads `OPENAI_API_KEY`; a stored key wins. An
+OpenRouter key alone also serves these models. The `openai` row in `mxr llm
+status` and `mxr llm key status` shows its state like the others.
+
+`base_url` and `api_key_env` don't apply to these ids while `base_url` is the
+default Ollama or a server on this machine, because those servers don't serve
+OpenAI's models. If you point `base_url` at a remote server of your own, such
+as `https://api.openai.com/v1` with `api_key_env = "OPENAI_API_KEY"`, a `gpt-*`
+model keeps going there and mxr does nothing different. Local model names such
+as `gpt-oss:20b` never match, since they have no number straight after `gpt-`.
+
+OpenAI's current models reject `max_tokens` and any temperature but the
+default, so mxr sends the token cap as `max_completion_tokens`, leaves room in
+it for reasoning, and sends no temperature.
+
+## Pick the assistant's model
+
+The [assistant](/guides/assistant/#pick-the-model) has a model picker: the web
+app's model mark under the message box, `M` in the terminal pane, and `mxr
+assistant model set <id>`. It lists the models in `llm.assistant_models`, five
+by default:
+
+```toml
+[llm]
+assistant_models = ["gemma4:latest", "gpt-6-luna", "gpt-5.6-terra", "claude-haiku-5-5", "claude-sonnet-5-5"]
+```
+
+Each entry is a model id, and where it runs follows from the id as above.
+Leave the setting out, or empty, for the five. After editing it, run
+`mxr restart`. A pick is stored as
+`[llm.overrides.assistant] model`, so it changes only the assistant.
+
 ## Configuration
 
 In the file printed by `mxr config path`:
@@ -195,8 +240,8 @@ mxr llm status --format json
 ```
 
 `base_url` shows the endpoint. A `localhost`, `127.x.x.x` or `::1` host is
-local; anything else is cloud. A `claude-*` model has no `base_url` and is
-always cloud.
+local; anything else is cloud. A `claude-*` model, and a `gpt-*` model
+routed to OpenAI, have no `base_url` and are always cloud.
 
 ## Send one feature to a different model
 

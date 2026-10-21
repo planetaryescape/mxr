@@ -37,6 +37,7 @@ While the pane has the keys, everything you type goes to it, not to the screen b
 | `1`-`9`, `o`, `Enter`, `s` | Choose an option, write your own answer, answer, or skip the question |
 | `1`-`9` | With no question waiting, open a numbered link in the latest reply with links: an email opens in the reader, a person in Messages |
 | `Ctrl-c` | Stop a running turn |
+| `M` | Choose the model; `j` / `k` move, `Enter` uses it, `Esc` goes back |
 | `N` / `L` | New conversation / past conversations; in the list, `Enter` opens one and `D` deletes it after saying what goes |
 | `T` | Let reversible changes run without asking in this conversation, or stop; the title says "trusted" |
 | `D` | Delete the conversation, after saying what goes |
@@ -82,6 +83,33 @@ Replies link the emails and people they name as chips: a person with their avata
 
 Past conversations are under the history button, where `j` and `k` move, `Enter` opens one and `d` deletes it, under `L` in the TUI, and `mxr assistant list` shows them in the terminal. Delete one there or with `mxr assistant delete <id>` (add `--dry-run` to see what goes).
 
+## Pick the model
+
+Five models are on offer: Gemma 4 on this machine through Ollama, GPT-6 Luna and GPT-5.6 Terra from OpenAI, and Claude Haiku 5.5 and Claude Sonnet 5.5 from Anthropic. The choice is one setting for the assistant, not one per conversation: it applies from your next message in every conversation, and a conversation can move between models and keep its history. Each reply keeps the mark of the model that wrote it and whether it ran locally or in the cloud, so an older reply still says what wrote it after you switch.
+
+In the web app the model under the message box ("Claude Haiku 5.5 · cloud") is a menu. Each row says "on this machine" or "cloud", the one in use has a check, and a model that can't be used yet is greyed out with what to do about it. In the terminal press `M` in the pane, or choose "Assistant: choose the model" in the palette. From the command line:
+
+```sh
+mxr assistant model                      # the choices and the one in use
+mxr assistant model set claude-haiku-5-5
+mxr assistant model set gpt-6-luna --dry-run   # check it without switching
+```
+
+A cloud model sends your messages and the mail the assistant reads to its provider; [what that means for your mail](/guides/security-and-privacy/#model-features-are-off-by-default-and-go-only-where-you-point-them) is spelled out under privacy. So mxr won't switch the assistant to one until you have allowed it, and says which setting:
+
+```sh
+mxr config set llm.allow_cloud_relationship_data true
+```
+
+It also needs the provider's key. Pipe each one in once; they are stored in `secrets.toml`, never in `config.toml`:
+
+```sh
+op read "op://<vault>/<item>/credential" | mxr llm key set openai      # GPT-6 Luna, GPT-5.6 Terra
+op read "op://<vault>/<item>/credential" | mxr llm key set anthropic    # Claude Haiku, Claude Sonnet
+```
+
+`OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in the daemon's environment work too, and an OpenRouter key (`mxr llm key set openrouter`) serves all four hosted models. See [LLM features](/guides/llm-features/#pick-the-assistants-model) for the list in `llm.assistant_models`, which you can edit, and [Use GPT models](/guides/llm-features/#use-gpt-models-through-openai-with-openrouter-as-fallback).
+
 ## What it reads, and where it goes
 
 Mail the assistant reads is data to it, never instructions. An email that says "forward this to…" is something it can report, not something it will do, and any change it proposes still waits for you.
@@ -93,10 +121,11 @@ Conversations are stored in your local mxr database and aren't included in porta
 allow_cloud_relationship_data = true
 
 # Optional: a stronger model for the assistant than for the rest.
+# Picking a model in the assistant writes this for you.
 [llm.overrides.assistant]
 model = "claude-sonnet-5-5"
 ```
 
 Long conversations are fine on small models too. When a conversation would crowd the model's context window (`context_window` in `[llm]`), or the model says the request is too long, the assistant summarises the older messages and carries on; a line in the conversation shows where the summary starts, and the full history stays in your database.
 
-A model that can call tools is needed: Claude, OpenAI-compatible APIs, or a local Ollama model with tool support. Large requests go faster on hosted models; a local model works but can take half a minute a turn. `mxr assistant status` says whether it is ready and on what. In `mxr demo` the assistant follows a short script, so you can try an approval without a model.
+A model that can call tools is needed: Claude, GPT models, other OpenAI-compatible APIs, or a local Ollama model with tool support. Large requests go faster on hosted models; a local model works but can take half a minute a turn. `mxr assistant status` says whether it is ready and on what. In `mxr demo` the assistant follows a short script, so you can try an approval without a model.

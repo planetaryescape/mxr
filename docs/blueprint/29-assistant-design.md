@@ -121,7 +121,7 @@ A trusted conversation (D122's amendment) says so in the header ("trusted ▾"),
 
 - **Empty:** no robot or illustration. A Heading, "Ask about your mail, or have it do the tedious part.", then three suggestions as quiet rows, with the current page's context first ("Summarise who's waiting in Messages" when Messages is open). The `⌘.` hint sits in the composer's meta.
 - **History:** a list using the shared `Row`: the title, the last line in `--text-2`, the time, and a mark for conversations waiting on you. `D` deletes after the dry run, as now.
-- **Composer:** Body in the input, with the model and where it runs in meta below. `↵` sends. While a turn runs, Stop lives in the live line above the composer, not in place of the send button, so the composer keeps one shape.
+- **Composer:** Body in the input, with the model and where it runs in meta below; that mark is a menu button (D145). It lists the assistant's models in the panel's menu styling (the TrustMenu's): the label, then "on this machine" or "cloud" in `--text-3`, a check on the one in use, and a model that can't be used yet disabled with its reason ("Add an OpenAI key: mxr llm key set openai"). No sparkle or AI glyph (D141). Escape closes it. In the TUI, `M` in the pane opens the same list in place of the transcript. `↵` sends. While a turn runs, Stop lives in the live line above the composer, not in place of the send button, so the composer keeps one shape.
 
 ## Arriving and leaving
 

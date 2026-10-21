@@ -80,8 +80,8 @@ pub fn draw(
             Style::default().fg(theme.text_muted),
         )));
     }
-    card.extend(warnings);
-    let bottom = (footer.len() + card.len()).min(usize::from(inner.height.saturating_sub(2)));
+    let bottom = (footer.len() + card.len() + warnings.len())
+        .min(usize::from(inner.height.saturating_sub(2)));
     let chunks = Layout::vertical([
         Constraint::Min(1),
         Constraint::Length(u16::try_from(bottom).unwrap_or(u16::MAX)),
@@ -102,16 +102,33 @@ pub fn draw(
     };
     frame.render_widget(Paragraph::new(body), chunks[0]);
 
-    let mut bottom_lines = card;
-    bottom_lines.extend(footer);
-    let skip = bottom_lines
-        .len()
-        .saturating_sub(usize::from(chunks[1].height));
     frame.render_widget(
-        Paragraph::new(bottom_lines.into_iter().skip(skip).collect::<Vec<_>>()),
+        Paragraph::new(bottom_block(card, warnings, footer, chunks[1].height)),
         chunks[1],
     );
     max_scroll
+}
+
+/// The card, its warnings and the footer cut to `height` rows from the top.
+/// The warnings go last: while `y` can approve a change that can't be
+/// undone, its warning outlasts the card and the footer's input rows.
+fn bottom_block(
+    card: Vec<Line<'static>>,
+    warnings: Vec<Line<'static>>,
+    footer: Vec<Line<'static>>,
+    height: u16,
+) -> Vec<Line<'static>> {
+    let height = usize::from(height);
+    let warnings: Vec<_> = warnings.into_iter().take(height).collect();
+    let footer_room = height - warnings.len();
+    let footer_skip = footer.len().saturating_sub(footer_room);
+    let card_room = footer_room - (footer.len() - footer_skip);
+    let card_skip = card.len().saturating_sub(card_room);
+    card.into_iter()
+        .skip(card_skip)
+        .chain(warnings)
+        .chain(footer.into_iter().skip(footer_skip))
+        .collect()
 }
 
 fn title_line(state: &AssistantState, theme: &Theme) -> Line<'static> {
@@ -1265,6 +1282,24 @@ mod tests {
             screen.contains("Sends an email. Can't be undone."),
             "{screen}"
         );
+    }
+
+    #[test]
+    fn the_warning_outlasts_a_footer_that_fills_the_bottom() {
+        let line = |text: &str| Line::from(text.to_string());
+        let kept = bottom_block(
+            vec![line("YOUR CALL"), line("Send a reply")],
+            vec![line("Sends an email. Can't be undone.")],
+            (0..12).map(|n| line(&format!("footer {n}"))).collect(),
+            8,
+        );
+        let text: Vec<String> = kept.iter().map(ToString::to_string).collect();
+        assert_eq!(text.len(), 8, "{text:?}");
+        assert_eq!(text[0], "Sends an email. Can't be undone.");
+        assert_eq!(text[7], "footer 11", "the keys stay last: {text:?}");
+        let roomy = bottom_block(vec![line("a")], vec![line("w")], vec![line("f")], 5);
+        let roomy: Vec<String> = roomy.iter().map(ToString::to_string).collect();
+        assert_eq!(roomy, ["a", "w", "f"]);
     }
 
     #[test]

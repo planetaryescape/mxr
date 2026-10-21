@@ -306,7 +306,7 @@ fn decode_place_message(row: &sqlx::sqlite::SqliteRow) -> Result<PlaceMessage, s
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::test_fixtures::*;
     use crate::Store;
@@ -353,6 +353,26 @@ mod tests {
 
         let one = plan(&store, &place_message_sql()).await;
         assert!(!one.iter().any(|s| s.starts_with("SCAN")), "{one:#?}");
+
+        assert_thread_lookups_use_the_thread(&steps);
+        assert_thread_lookups_use_the_thread(&one);
+    }
+
+    /// The evidence columns look up each row's thread several times. Searching
+    /// by account alone walks the whole mailbox per row: on a 110k-message
+    /// store that was ~0.3s a message and starved the reader pool.
+    pub(crate) fn assert_thread_lookups_use_the_thread(steps: &[String]) {
+        let lookups: Vec<_> = steps
+            .iter()
+            .filter(|s| s.starts_with("SEARCH sent ") || s.starts_with("SEARCH previous "))
+            .collect();
+        assert!(!lookups.is_empty(), "{steps:#?}");
+        assert!(
+            lookups
+                .iter()
+                .all(|s| s.contains("(account_id=? AND thread_id=?)")),
+            "thread lookups must use account and thread: {steps:#?}"
+        );
     }
 
     #[tokio::test]

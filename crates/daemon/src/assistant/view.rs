@@ -969,10 +969,12 @@ mod tests {
         let titles: Vec<&str> = reply.1.iter().map(|row| row.title.as_str()).collect();
         assert_eq!(titles, vec!["Pay Patreon", "Book an engineer to come out"]);
     }
-||||||| parent of 1e0aa19bb (feat: pick the assistant's model, local or cloud, from the web, TUI and CLI)
-
-
-    fn stored_reply(seq: i64, text: &str, model: &str, leaves_machine: bool) -> mxr_store::AssistantMessageRow {
+    fn stored_reply(
+        seq: i64,
+        text: &str,
+        model: &str,
+        leaves_machine: bool,
+    ) -> mxr_store::AssistantMessageRow {
         let message = mxr_llm::ToolChatMessage::Assistant {
             text: text.into(),
             tool_calls: Vec::new(),
@@ -1011,7 +1013,12 @@ mod tests {
             &row,
             &[
                 stored_reply(1, "From the local model.", "gemma4:latest", false),
-                stored_reply(2, "From the hosted one.", "claude-haiku-5-5 via Anthropic", true),
+                stored_reply(
+                    2,
+                    "From the hosted one.",
+                    "claude-haiku-5-5 via Anthropic",
+                    true,
+                ),
             ],
         );
         let marks: Vec<(Option<&str>, Option<bool>)> = view

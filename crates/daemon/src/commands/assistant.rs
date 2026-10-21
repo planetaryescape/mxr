@@ -587,9 +587,10 @@ fn change_text(change: &AssistantModelChangeData) -> String {
         .choices
         .iter()
         .find(|choice| choice.id == current);
-    let name = chosen.map_or(current.to_string(), |choice| {
-        format!("{} ({})", choice.label, place(choice.cloud))
-    });
+    let name = chosen.map_or_else(
+        || current.to_string(),
+        |choice| format!("{} ({})", choice.label, place(choice.cloud)),
+    );
     match (change.changed, change.dry_run) {
         (false, _) => format!("The assistant already uses {name}."),
         (true, true) => format!("Would switch the assistant to {name}. Nothing was changed."),

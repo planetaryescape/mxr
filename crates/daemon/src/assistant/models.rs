@@ -32,7 +32,12 @@ fn label(id: &str) -> String {
 /// Ollama serves `gemma4` and `gemma4:latest` as the same model, and a
 /// config written by hand uses either.
 fn same_model(a: &str, b: &str) -> bool {
-    let bare = |id: &str| id.trim().strip_suffix(":latest").unwrap_or(id.trim()).to_string();
+    let bare = |id: &str| {
+        id.trim()
+            .strip_suffix(":latest")
+            .unwrap_or_else(|| id.trim())
+            .to_string()
+    };
     bare(a) == bare(b)
 }
 
@@ -193,7 +198,7 @@ mod tests {
             .choices
             .iter()
             .find(|choice| choice.id == id)
-            .unwrap_or_else(|| panic!("no {id} choice"))
+            .unwrap()
     }
 
     #[test]
@@ -237,8 +242,10 @@ mod tests {
     fn the_default_list_is_not_written_back_to_config() {
         let toml = toml::to_string(&LlmConfig::default()).unwrap();
         assert!(!toml.contains("assistant_models"), "{toml}");
-        let mut custom = LlmConfig::default();
-        custom.assistant_models = vec!["gemma4:latest".into()];
+        let custom = LlmConfig {
+            assistant_models: vec!["gemma4:latest".into()],
+            ..LlmConfig::default()
+        };
         assert!(toml::to_string(&custom)
             .unwrap()
             .contains("assistant_models"));
@@ -258,7 +265,10 @@ mod tests {
                 .as_deref(),
             Some("Add an Anthropic key: mxr llm key set anthropic")
         );
-        assert!(models.choices.iter().all(|c| c.available == c.unavailable_reason.is_none()));
+        assert!(models
+            .choices
+            .iter()
+            .all(|c| c.available == c.unavailable_reason.is_none()));
     }
 
     #[test]
@@ -279,7 +289,12 @@ mod tests {
     fn cloud_is_true_for_hosted_models_and_false_for_the_local_one() {
         let models = models_for(&config("gemma4"), &keys(&[]));
         assert!(!choice(&models, "gemma4:latest").cloud);
-        for id in ["gpt-6-luna", "gpt-5.6-terra", "claude-haiku-5-5", "claude-sonnet-5-5"] {
+        for id in [
+            "gpt-6-luna",
+            "gpt-5.6-terra",
+            "claude-haiku-5-5",
+            "claude-sonnet-5-5",
+        ] {
             assert!(choice(&models, id).cloud, "{id}");
         }
     }
@@ -297,7 +312,10 @@ mod tests {
         assert!(choice(&models, "gemma4:latest").available);
         for id in ["gpt-6-luna", "claude-sonnet-5-5"] {
             let reason = choice(&models, id).unavailable_reason.clone().unwrap();
-            assert!(reason.contains("llm.allow_cloud_relationship_data"), "{reason}");
+            assert!(
+                reason.contains("llm.allow_cloud_relationship_data"),
+                "{reason}"
+            );
         }
     }
 
@@ -323,7 +341,9 @@ mod tests {
         assert!(!mystery.cloud && mystery.available);
         // A vendor/model slug is OpenRouter's, so it needs that key.
         assert_eq!(
-            choice(&models, "openai/gpt-4o").unavailable_reason.as_deref(),
+            choice(&models, "openai/gpt-4o")
+                .unavailable_reason
+                .as_deref(),
             Some("Add an OpenRouter key: mxr llm key set openrouter")
         );
     }

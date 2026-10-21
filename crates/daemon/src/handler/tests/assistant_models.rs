@@ -120,7 +120,10 @@ fn a_model_outside_the_list_is_refused_and_nothing_changes() {
     isolated(|state| async move {
         use_model(&state, "gemma4", LOCAL).await;
         let message = refusal(pick(&state, "gpt-9-imaginary", false).await);
-        assert!(message.contains("isn't one of the assistant's models"), "{message}");
+        assert!(
+            message.contains("isn't one of the assistant's models"),
+            "{message}"
+        );
         assert!(message.contains("gemma4:latest"), "{message}");
         assert_eq!(assistant_model_on_disk(), None);
         assert_eq!(availability(&state).await.model.as_deref(), Some("gemma4"));
@@ -155,7 +158,11 @@ fn a_cloud_pick_with_the_cloud_setting_off_is_refused_naming_the_setting() {
         assert_eq!(assistant_model_on_disk(), None);
         // The list says the same, so a client shows it disabled.
         let listed = models(&state).await;
-        let haiku = listed.choices.iter().find(|c| c.id == "claude-haiku-5-5").unwrap();
+        let haiku = listed
+            .choices
+            .iter()
+            .find(|c| c.id == "claude-haiku-5-5")
+            .unwrap();
         assert!(!haiku.available);
         // Local stays pickable.
         assert!(listed.choices[0].available);
@@ -238,14 +245,21 @@ fn a_key_never_appears_in_a_response_a_status_or_a_log_line() {
             format!("{:?}", send(&state, Request::GetLlmConfig).await),
         ];
         for response in &seen {
-            assert!(!response.contains(SECRET), "a key reached a response: {response}");
+            assert!(
+                !response.contains(SECRET),
+                "a key reached a response: {response}"
+            );
         }
         // The wire form too, not only Debug.
         seen.clear();
         let wire = serde_json::to_string(&send(&state, Request::GetLlmStatus).await).unwrap();
         assert!(!wire.contains(SECRET));
         assert!(wire.contains("\"present\":true"));
-        assert!(!logs.text().contains(SECRET), "a key reached the log: {}", logs.text());
+        assert!(
+            !logs.text().contains(SECRET),
+            "a key reached the log: {}",
+            logs.text()
+        );
         assert!(logs.text().contains("assistant model set"));
     });
 }
@@ -261,7 +275,10 @@ fn a_list_naming_an_unknown_id_shows_it_instead_of_failing() {
         let listed = models(&state).await;
         assert_eq!(listed.choices.len(), 2);
         let mystery = &listed.choices[1];
-        assert_eq!((mystery.label.as_str(), mystery.cloud), ("mystery-model-9", false));
+        assert_eq!(
+            (mystery.label.as_str(), mystery.cloud),
+            ("mystery-model-9", false)
+        );
         assert!(mystery.available);
     });
 }
@@ -276,7 +293,10 @@ fn a_model_set_by_hand_is_current_even_when_it_is_not_listed() {
             ..Default::default()
         });
         state.set_config_for_test(config).await;
-        assert_eq!(models(&state).await.current.as_deref(), Some("my-own-model"));
+        assert_eq!(
+            models(&state).await.current.as_deref(),
+            Some("my-own-model")
+        );
     });
 }
 
@@ -294,7 +314,13 @@ fn saving_llm_settings_keeps_the_edited_model_list() {
         else {
             panic!("expected the config");
         };
-        let saved = send(&state, Request::UpdateLlmConfig { config: Box::new(config) }).await;
+        let saved = send(
+            &state,
+            Request::UpdateLlmConfig {
+                config: Box::new(config),
+            },
+        )
+        .await;
         assert!(matches!(saved, Response::Ok { .. }), "{saved:?}");
         assert_eq!(
             state.config_snapshot().llm.assistant_models,
@@ -333,7 +359,10 @@ fn agents_cannot_change_the_assistants_model() {
             let IpcPayload::Response(Response::Error { message, .. }) = response.payload else {
                 panic!("expected a refusal");
             };
-            assert!(message.contains("can't drive the in-app assistant"), "{message}");
+            assert!(
+                message.contains("can't drive the in-app assistant"),
+                "{message}"
+            );
         }
     });
 }

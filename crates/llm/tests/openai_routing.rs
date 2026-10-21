@@ -1,6 +1,5 @@
 #![expect(
     clippy::unwrap_used,
-    clippy::panic,
     reason = "test fixtures unwrap mock servers and fail loudly"
 )]
 
@@ -75,7 +74,10 @@ async fn bodies(server: &MockServer) -> Vec<Value> {
 
 fn completion() -> CompletionRequest {
     CompletionRequest {
-        messages: vec![ChatMessage::system("Write a gist."), ChatMessage::user("A thread.")],
+        messages: vec![
+            ChatMessage::system("Write a gist."),
+            ChatMessage::user("A thread."),
+        ],
         max_tokens: Some(400),
         temperature: Some(0.1),
     }
@@ -108,7 +110,11 @@ async fn a_gpt_model_goes_to_openai_with_its_key_and_the_parameters_openai_accep
     ])
     .await;
     mount(&rig.openai, reply("gpt-6-luna-2026-10-01", "from openai")).await;
-    mount(&rig.openrouter, reply("openai/gpt-6-luna", "from openrouter")).await;
+    mount(
+        &rig.openrouter,
+        reply("openai/gpt-6-luna", "from openrouter"),
+    )
+    .await;
 
     let response = rig.provider.complete(completion()).await.unwrap();
 
@@ -124,7 +130,12 @@ async fn a_gpt_model_goes_to_openai_with_its_key_and_the_parameters_openai_accep
     assert_eq!(sent[0]["max_completion_tokens"], 400 + 2048);
     let received = rig.openai.received_requests().await.unwrap();
     assert_eq!(
-        received[0].headers.get("authorization").unwrap().to_str().unwrap(),
+        received[0]
+            .headers
+            .get("authorization")
+            .unwrap()
+            .to_str()
+            .unwrap(),
         format!("Bearer {OPENAI_KEY}")
     );
     assert!(bodies(&rig.openrouter).await.is_empty());
@@ -142,7 +153,11 @@ async fn a_failing_openai_key_falls_over_to_openrouter_under_its_slug() {
         ResponseTemplate::new(401).set_body_json(json!({"error": {"message": "bad key"}})),
     )
     .await;
-    mount(&rig.openrouter, reply("openai/gpt-6-luna", "from openrouter")).await;
+    mount(
+        &rig.openrouter,
+        reply("openai/gpt-6-luna", "from openrouter"),
+    )
+    .await;
 
     let response = rig.provider.complete(completion()).await.unwrap();
 
@@ -158,7 +173,11 @@ async fn a_failing_openai_key_falls_over_to_openrouter_under_its_slug() {
 #[tokio::test]
 async fn with_only_an_openrouter_key_openai_is_never_asked() {
     let rig = Rig::new(&[(RouteProvider::OpenRouter, OPENROUTER_KEY)]).await;
-    mount(&rig.openrouter, reply("openai/gpt-6-luna", "from openrouter")).await;
+    mount(
+        &rig.openrouter,
+        reply("openai/gpt-6-luna", "from openrouter"),
+    )
+    .await;
 
     rig.provider.complete(completion()).await.unwrap();
 
@@ -170,7 +189,12 @@ async fn with_only_an_openrouter_key_openai_is_never_asked() {
 async fn with_no_key_the_error_names_the_command_and_never_a_key() {
     let rig = Rig::new(&[]).await;
 
-    let error = rig.provider.complete(completion()).await.unwrap_err().to_string();
+    let error = rig
+        .provider
+        .complete(completion())
+        .await
+        .unwrap_err()
+        .to_string();
 
     assert!(error.contains("mxr llm key set"), "{error}");
     assert!(error.contains("OPENAI_API_KEY"), "{error}");

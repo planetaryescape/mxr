@@ -769,19 +769,29 @@ async fn a_conversation_survives_switching_models_and_each_reply_keeps_its_own_m
     };
 
     let local = ScriptedModel::new(vec![
-        named("gemma4:latest", calls(&[("call_a", "mxr_search", json!({"q": "bank"}))])),
+        named(
+            "gemma4:latest",
+            calls(&[("call_a", "mxr_search", json!({"q": "bank"}))]),
+        ),
         named("gemma4:latest", answer("Two from the bank.")),
     ])
     .running_in(false);
-    let outcome = agent(&local, &host, &sink).send(&mut history, &[], "bank mail?".into()).await;
+    let outcome = agent(&local, &host, &sink)
+        .send(&mut history, &[], "bank mail?".into())
+        .await;
     assert!(matches!(outcome, TurnOutcome::Finished));
 
     let hosted = ScriptedModel::new(vec![
-        named("claude-haiku-5-5 via Anthropic", calls(&[("toolu_b", "mxr_search", json!({"q": "rent"}))])),
+        named(
+            "claude-haiku-5-5 via Anthropic",
+            calls(&[("toolu_b", "mxr_search", json!({"q": "rent"}))]),
+        ),
         named("claude-haiku-5-5 via Anthropic", answer("One about rent.")),
     ])
     .running_in(true);
-    let outcome = agent(&hosted, &host, &sink).send(&mut history, &[], "and rent?".into()).await;
+    let outcome = agent(&hosted, &host, &sink)
+        .send(&mut history, &[], "and rent?".into())
+        .await;
     assert!(matches!(outcome, TurnOutcome::Finished));
 
     let local_again = ScriptedModel::new(vec![named("gemma4:latest", answer("Anything else?"))])
@@ -794,12 +804,19 @@ async fn a_conversation_survives_switching_models_and_each_reply_keeps_its_own_m
     // The hosted model saw the local model's whole turn, and the local model
     // saw both, every call answered by the result with its id.
     let hosted_saw = &hosted.requests()[0].messages;
-    assert!(hosted_saw.iter().any(|m| matches!(m, ToolChatMessage::Tool { call_id, .. } if call_id == "call_a")));
+    assert!(hosted_saw
+        .iter()
+        .any(|m| matches!(m, ToolChatMessage::Tool { call_id, .. } if call_id == "call_a")));
     let last_saw = &local_again.requests()[0].messages;
     for id in ["call_a", "toolu_b"] {
         let call = last_saw.iter().position(|m| matches!(m, ToolChatMessage::Assistant { tool_calls, .. } if tool_calls.iter().any(|c| c.id == id)));
-        let result = last_saw.iter().position(|m| matches!(m, ToolChatMessage::Tool { call_id, .. } if call_id == id));
-        assert!(call.is_some() && result > call, "{id} must be answered after it is called");
+        let result = last_saw
+            .iter()
+            .position(|m| matches!(m, ToolChatMessage::Tool { call_id, .. } if call_id == id));
+        assert!(
+            call.is_some() && result > call,
+            "{id} must be answered after it is called"
+        );
     }
 
     // Each reply was stored with the model and place that wrote it.

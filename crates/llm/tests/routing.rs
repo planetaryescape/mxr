@@ -13,9 +13,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use mxr_llm::{
-    route_statuses, routes_for_model, ApiKey, ApiKeySource, Endpoint, ChatMessage, CompletionRequest,
-    LlmError, LlmFeature, LlmRuntime, RouteHealth, RouteProvider, RouteState, RoutedProvider,
-    RoutedProviderConfig,
+    route_statuses, routes_for_model, ApiKey, ApiKeySource, ChatMessage, CompletionRequest,
+    Endpoint, LlmError, LlmFeature, LlmRuntime, RouteHealth, RouteProvider, RouteState,
+    RoutedProvider, RoutedProviderConfig,
 };
 use serde_json::{json, Value};
 use wiremock::matchers::{method, path};
@@ -190,7 +190,9 @@ async fn mount_openrouter(rig: &Rig, response: ResponseTemplate) {
 }
 
 fn anthropic_route() -> mxr_llm::Route {
-    routes_for_model(MODEL, Endpoint::Default).unwrap().remove(0)
+    routes_for_model(MODEL, Endpoint::Default)
+        .unwrap()
+        .remove(0)
 }
 
 #[tokio::test]

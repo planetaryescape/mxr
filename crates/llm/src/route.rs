@@ -164,8 +164,8 @@ pub fn routes_for_model(model: &str, endpoint: Endpoint) -> Option<Vec<Route>> {
         return None;
     }
     // `anthropic/...` names the OpenRouter slug directly: OpenRouter only.
-    let openrouter_only =
-        vendor == "anthropic" || (endpoint == Endpoint::Default && OPENROUTER_VENDORS.contains(&vendor));
+    let openrouter_only = vendor == "anthropic"
+        || (endpoint == Endpoint::Default && OPENROUTER_VENDORS.contains(&vendor));
     openrouter_only.then(|| {
         vec![Route {
             provider: RouteProvider::OpenRouter,
@@ -189,10 +189,7 @@ pub fn is_claude_model(model: &str) -> bool {
 /// families reject `max_tokens` and non-default sampling parameters.
 pub fn is_openai_model(model: &str) -> bool {
     let model = model.trim();
-    is_openai_id(model)
-        || model
-            .strip_prefix("openai/")
-            .is_some_and(is_openai_id)
+    is_openai_id(model) || model.strip_prefix("openai/").is_some_and(is_openai_id)
 }
 
 /// OpenAI's own ids: `gpt-` and a digit, so a local `gpt-oss` never matches.

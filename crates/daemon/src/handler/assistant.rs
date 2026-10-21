@@ -3,8 +3,8 @@
 
 use super::{HandlerError, HandlerResult};
 use crate::assistant::{
-    abandon_pending, conversation_view, models, parse_pending, set_model, start_turn,
-    summary_view, TurnStart,
+    abandon_pending, conversation_view, models, parse_pending, set_model, start_turn, summary_view,
+    TurnStart,
 };
 use crate::state::AppState;
 use mxr_assistant::{Answer, Decision};

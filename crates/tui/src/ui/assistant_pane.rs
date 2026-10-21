@@ -1095,7 +1095,11 @@ fn models_lines(
     ];
     let Some(data) = &models.models else {
         lines.push(Line::from(Span::styled(
-            if models.loading { "Loading…" } else { "No models listed." },
+            if models.loading {
+                "Loading…"
+            } else {
+                "No models listed."
+            },
             muted,
         )));
         return lines;
@@ -1112,7 +1116,11 @@ fn models_lines(
         } else {
             muted
         };
-        let place = if choice.cloud { "cloud" } else { "on this machine" };
+        let place = if choice.cloud {
+            "cloud"
+        } else {
+            "on this machine"
+        };
         let row = format!(
             "{}{} {}  {place}",
             if selected { "› " } else { "  " },

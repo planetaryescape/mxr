@@ -2,6 +2,10 @@
 
 > A local-first, open-source, keyboard-native email client for terminal users, built around a daemon, a clean provider-agnostic model, and a programmable core.
 
+For verified implementation gaps, shipped features that these plans understate,
+and docs-site drift, see the [2026-10-20 implementation audit](../research/blueprint-implementation-audit-2026-10-20.md).
+It distinguishes missing code from historical designs and explicitly deferred work.
+
 ## Document Index
 
 | # | Document | What it covers |

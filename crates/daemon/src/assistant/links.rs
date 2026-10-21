@@ -5,10 +5,13 @@
 //! model can garble an id, so the reply is checked and filled in against
 //! what the tools actually returned in this conversation:
 //! - a link stays only when its id came back in a result;
-//! - a subject or a person's name the reply quotes exactly is linked to the
-//!   one email or person a result gave it, unless results gave that same
-//!   text to more than one.
+//! - a subject, a to-do's title or a person's name the reply quotes exactly
+//!   is linked to the one email or person a result gave it, unless results
+//!   gave that same text to more than one. Names come from the keys mxr's
+//!   results use, and from the rows a step shows (`readout::listed_rows`),
+//!   so a to-do with only a title and a thread still links.
 
+use super::readout::listed_rows;
 use mxr_protocol::AssistantLinkData;
 use regex::Regex;
 use serde_json::Value;
@@ -66,6 +69,11 @@ impl KnownLinks {
         self.results.push('\n');
         if let Ok(value) = serde_json::from_str::<Value>(result) {
             self.collect_names(&value);
+        }
+        for row in listed_rows(result) {
+            if let Some(link) = row.link {
+                self.add_name(&row.title, link_target(&link));
+            }
         }
     }
 
@@ -185,6 +193,14 @@ impl KnownLinks {
     }
 }
 
+/// The markdown target a reply link uses for a row's object.
+fn link_target(link: &AssistantLinkData) -> String {
+    match link {
+        AssistantLinkData::Thread { thread_id } => format!("mxr:thread/{thread_id}"),
+        AssistantLinkData::Person { person_id } => format!("mxr:person/{person_id}"),
+    }
+}
+
 /// The first place `name` stands as whole words in `text`.
 fn word_match(text: &str, name: &str) -> Option<usize> {
     text.match_indices(name)
@@ -262,5 +278,36 @@ mod tests {
         let reply = "Weekly sync twice; see [Invoice 2847](https://x.test) and `Invoice 2847`. \
                      Invoice 28470 is not it.";
         assert_eq!(known.apply(reply), reply);
+    }
+
+    #[test]
+    fn links_to_do_titles_from_the_rows_a_step_shows() {
+        // A to-do has a title and a thread but no subject, so only its row
+        // in the readout names it.
+        let known = known(&[json!({"todos": {"your_turn": [
+            {"title": "Pay Patreon", "thread_id": "thread-pat-1", "verb": "pay"},
+            {"title": "Book an engineer to come out", "thread_id": "thread-eng-1"},
+            {"title": "Renew passport", "thread_id": "thread-pass-1"},
+            {"title": "Renew passport", "thread_id": "thread-pass-2"},
+        ]}})]);
+        let reply = "Pay Patreon, and Book an engineer to come out. Renew passport is shared. \
+                     Call the dentist is not in any result.";
+        assert_eq!(
+            known.apply(reply),
+            "[Pay Patreon](mxr:thread/thread-pat-1), and [Book an engineer to come out](mxr:thread/thread-eng-1). \
+             Renew passport is shared. Call the dentist is not in any result."
+        );
+    }
+
+    #[test]
+    fn links_people_and_threads_from_listing_rows() {
+        let known = known(&[
+            json!({"messages": {"your_turn": [{"id": "person:ann@work.com", "title": "Ann Lee"}]}}),
+            json!({"envelopes": [{"title": "Quarterly plan review", "thread_id": "thread-plan-1"}]}),
+        ]);
+        assert_eq!(
+            known.apply("Ann Lee sent Quarterly plan review."),
+            "[Ann Lee](mxr:person/person:ann@work.com) sent [Quarterly plan review](mxr:thread/thread-plan-1)."
+        );
     }
 }

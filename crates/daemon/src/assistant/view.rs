@@ -880,4 +880,90 @@ mod tests {
         };
         assert_eq!(state, Some(AssistantCallStateData::Failed));
     }
+
+    fn message(seq: i64, message: ToolChatMessage) -> AssistantMessageRow {
+        AssistantMessageRow {
+            seq,
+            message_json: serde_json::to_string(&message).expect("a message"),
+            meta_json: None,
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn a_plain_reply_that_quotes_listed_titles_gets_their_links_and_rows() {
+        let conversation = AssistantConversationRow {
+            id: "conv-1".into(),
+            title: "To do".into(),
+            status: "idle".into(),
+            last_outcome: None,
+            last_error: None,
+            pending_json: None,
+            auto_approve: false,
+            summary: None,
+            summary_through_seq: None,
+            created_at: 0,
+            updated_at: 0,
+            message_count: 4,
+        };
+        let todos = json!({"todos": {"your_turn": [
+            {"title": "Pay Patreon", "thread_id": "thread-pat-1"},
+            {"title": "Book an engineer to come out", "thread_id": "thread-eng-1"},
+            {"title": "Renew passport", "thread_id": "thread-pass-1"},
+        ]}});
+        let messages = vec![
+            message(
+                1,
+                ToolChatMessage::User {
+                    content: "what pressing thing do i need to take care of".into(),
+                },
+            ),
+            message(
+                2,
+                ToolChatMessage::Assistant {
+                    text: String::new(),
+                    tool_calls: vec![mxr_llm::ToolCall {
+                        id: "call-1".into(),
+                        name: "mxr_todo_list".into(),
+                        arguments: json!({}),
+                    }],
+                    provider_turn: None,
+                },
+            ),
+            message(
+                3,
+                ToolChatMessage::Tool {
+                    call_id: "call-1".into(),
+                    content: todos.to_string(),
+                    is_error: false,
+                },
+            ),
+            message(
+                4,
+                ToolChatMessage::Assistant {
+                    // Plain prose: no mxr: links, as small local models write.
+                    text: "Pay Patreon is due first, then Book an engineer to come out.".into(),
+                    tool_calls: Vec::new(),
+                    provider_turn: None,
+                },
+            ),
+        ];
+
+        let view = conversation_view(&conversation, &messages);
+        let reply = view
+            .items
+            .iter()
+            .find_map(|item| match item {
+                AssistantItemData::Assistant { text, rows, .. } => Some((text, rows)),
+                _ => None,
+            })
+            .expect("a reply");
+        assert_eq!(
+            reply.0,
+            "[Pay Patreon](mxr:thread/thread-pat-1) is due first, then \
+             [Book an engineer to come out](mxr:thread/thread-eng-1)."
+        );
+        let titles: Vec<&str> = reply.1.iter().map(|row| row.title.as_str()).collect();
+        assert_eq!(titles, vec!["Pay Patreon", "Book an engineer to come out"]);
+    }
 }

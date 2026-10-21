@@ -570,10 +570,77 @@ labels shows its precision above a bar recorded in the rubric.
 | Creating a renewal to-do from a yearly record | automatic (a missed renewal costs money; a wrong one is dismissed, and that dismissal measures it) |
 | Closing an RSVP to-do when you answered the invite | automatic (your own action is the evidence) |
 | Expiring an item at the end of its window | automatic, never a to-do you made or edited, never at the provider |
+| Writing `mxr/` labels to the mail server | automatic, once the person has agreed at setup or upgrade |
 | Closing a to-do because a receipt arrived | suggestion |
 | An update breaking through to To do | suggestion |
 | Generalising corrections into a rule | suggestion |
 | Accepting an audit finding | suggestion |
+
+## Sorting lives on the mail server too, as mailbox labels you can change anywhere
+
+BK, 21 October 2026. mxr's sorting is written back to each account's own
+server as ordinary mailbox labels, so Gmail on the phone or the web shows
+it, and changing one there teaches mxr. "Mailbox label" here means the
+provider's own tag (a Gmail label, an Outlook category, an IMAP keyword),
+not a learning label from the next section.
+
+| Mailbox label | Means | Changes when |
+|---|---|---|
+| `mxr/Messages`, `mxr/Updates`, `mxr/Reading` | The email's home | Its home changes (a correction, a rule, a new policy version) |
+| `mxr/To do`, `mxr/Archive` | The email carries that aspect | The aspect is created or dismissed |
+| `mxr/Open` | Something in it still needs you in some mode | It's done, snoozed or expired in every mode that holds it |
+| `mxr/<category>` | A personal category you chose to sync | You add or remove the category |
+
+The kind labels are permanent filing tags: a ticked-off to-do keeps
+`mxr/To do`, so `label:mxr/to-do` finds every to-do email ever, and only
+`mxr/Open` tracks what's live. Each personal category has its own setting,
+synced to the server or kept local; mode names are reserved, so a category
+can't be called "Updates".
+
+### Labels are written from the stored assessment, never from a placement path
+
+The writer reads the stored assessment and the item states, so the server
+shows exactly what mxr's own views show. It sits behind the provider
+traits: the daemon asks for a desired set of `mxr/` tags per message and
+each provider crate maps it to its own mechanism (Gmail labels via batch
+modify, Outlook categories, IMAP keywords via `STORE`, with keyword names
+sanitised to the IMAP charset). Writes go through a bounded queue that
+respects provider rate limits and batch sizes, and only ever touch tags in
+the `mxr/` namespace; a user's own labels are never changed.
+
+### A change made on the server is a correction, and mxr's own writes are not
+
+Sync already sees label changes. Every write mxr makes is recorded with the
+tag state it expects, so an incoming change that matches a pending or
+recent write is mxr's echo and is ignored. Any other change to an `mxr/`
+tag is the user teaching:
+
+| Change on the server | Treated as |
+|---|---|
+| A home label replaced by another (`mxr/Updates` → `mxr/Messages`) | An email move (`X`) to that mode |
+| `mxr/To do` or `mxr/Archive` added | A move to To do (creates the to-do) or Archive (files the record) |
+| `mxr/To do` or `mxr/Archive` removed | Dismissing that aspect |
+| `mxr/Open` removed | Done in every mode holding it |
+| A synced category label added or removed | Adding or removing that category |
+| A home label removed with nothing in its place | Ignored: every email has a home, so mxr writes it back and notes the conflict in `mxr why` |
+
+Each of these goes through the same path as the key it stands for, so it
+writes a learning label and counts in the eval exactly like a correction
+made in mxr.
+
+### What gets labelled, and with whose consent
+
+New mail, plus the last 90 days of existing mail, gets labels. Older mail
+gets them only when it enters a mode again (a reply, a new to-do or
+record, an open from search). Nothing is written until the person agrees:
+on first run, and once for existing users after the upgrade that brings
+this, mxr says what it will write and how many emails the first pass
+covers, and asks. Turning it off later offers, with a preview, to remove
+every `mxr/` label it wrote.
+
+The rollout is per provider in this order: Gmail, then Outlook categories,
+then IMAP keywords. All three are in scope (BK); IMAP keywords are invisible
+in many mail apps, which the setup screen says.
 
 ## Models are optional judges, never the foundation
 
@@ -603,8 +670,9 @@ first; today every feature parses free text.
 - Every mutation, batch and reclassification has a preview whose
   selection is exactly what apply changes.
 - Providers are reached only through `MailSyncProvider` and
-  `MailSendProvider`; understanding and attention are local and never
-  write to the provider, except the D108 archive on last done.
+  `MailSendProvider`. mxr writes to the server only the D108 archive on
+  last done and, with the person's consent, tags in its own `mxr/`
+  namespace; it never changes a user's own labels or folders.
 - AI is off by default. Background model work runs on loopback unless
   the user sets `allow_cloud_background_classification` with their own
   API key. Mail is wrapped as untrusted data and is never instructions.
@@ -646,6 +714,14 @@ everything else: they adopt the verbatim quote check and `natural_time`.
 3. **Judgments, the resolver and the stored assessment.** Every
    projection reads it; every email gets a home; "Why here" comes from
    the deciding claim.
+3a. **Your sorting shows up in Gmail.** Consent at setup and upgrade,
+   `mxr/` home, aspect and `mxr/Open` labels written from the stored
+   assessment for new mail and the last 90 days, with the echo ledger.
+3b. **Change it in Gmail and mxr learns.** Server-side changes to `mxr/`
+   labels become corrections through the existing move, dismiss and done
+   paths (needs step 5's learning labels to count in the eval).
+3c. **Synced categories, then Outlook categories, then IMAP keywords**,
+   each its own release.
 4. **Attention evidence on items.** Severity, when the cost lands, effort
    and value on every item type, from the shared facts.
 5. **Labels, uncertainty and reports.** Labels from every correction,
@@ -727,6 +803,17 @@ From BK, 21 October 2026:
 - When nothing needs you, Now offers one readable only when it's earned.
 - When what can't wait exceeds your time, Now shows all of it, ordered,
   and says how much time it needs.
+- Sorting is written back to the server as `mxr/` mailbox labels, two-way:
+  a change made on the server is a correction mxr learns from.
+- Labels go on new mail and the last 90 days; older mail when it enters a
+  mode again.
+- Kind labels are permanent; a separate `mxr/Open` label tracks what's
+  live.
+- Each personal category is synced or kept local by its own setting.
+- All providers: Gmail labels, Outlook categories, IMAP keywords (in that
+  order).
+- Writing labels needs the person's consent, asked once at setup and once
+  after the upgrade that adds it.
 
 From the 19 October conversation (`chatgpt.com/c/6ad616d9-04b0-83ed-8e62-fff9cee96d28`):
 

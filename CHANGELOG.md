@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.126](https://github.com/planetaryescape/mxr/compare/v0.6.125...v0.6.126) (2026-10-21)
+
+
+### Features
+
+* list every message an assistant change touches in the TUI ([#576](https://github.com/planetaryescape/mxr/issues/576)) ([06214a7](https://github.com/planetaryescape/mxr/commit/06214a73ca7e0803354161585dd9d87fdf74ee28))
+* pick the assistant's model, local or cloud ([#572](https://github.com/planetaryescape/mxr/issues/572)) ([593e67b](https://github.com/planetaryescape/mxr/commit/593e67b5f8c3de42d88b87bb9ca9553207492694))
+
+
+### Bug Fixes
+
+* link names a reply quotes from a step's rows ([#570](https://github.com/planetaryescape/mxr/issues/570)) ([3b679c5](https://github.com/planetaryescape/mxr/commit/3b679c5d182ff704c108acc1ff746040e5aaead0))
+
+
+### Documentation
+
+* allow six build and test workers per queued job ([381e555](https://github.com/planetaryescape/mxr/commit/381e55544ea984a620f0990813610828d0ba9b57))
+* three queued jobs of five workers each ([0d939ce](https://github.com/planetaryescape/mxr/commit/0d939cebaa2fa0442165565af7b69fb5f7163a06))
+
 ## [0.6.125](https://github.com/planetaryescape/mxr/compare/v0.6.124...v0.6.125) (2026-10-21)
 
 

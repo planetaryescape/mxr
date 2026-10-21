@@ -1289,7 +1289,11 @@ pub(crate) fn next_backoff_secs(previous_secs: u64, error: &MxrError) -> u64 {
 
 pub(crate) fn classify_sync_error(error: &str) -> &'static str {
     let lower = error.to_ascii_lowercase();
-    if lower.contains("rate limit") || lower.contains("retry after") {
+    // Emitted by the Gmail provider when a refreshed token could not be saved.
+    // The grant is intact, so this is neither a sign-in nor a network problem.
+    if lower.contains("local token cache write failed") {
+        "store_index"
+    } else if lower.contains("rate limit") || lower.contains("retry after") {
         "rate_limit"
     } else if lower.contains("timeout")
         || lower.contains("timed out")

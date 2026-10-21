@@ -529,7 +529,7 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 | Welcome / setup | `d` demo, `g` Gmail, `i` IMAP, `Enter` open form, `Esc` dismiss |
 | Saved-search form | typing fields, `Tab` / `Shift-Tab` move, `Ctrl-s` save, `Esc` cancel |
 | Saved-search delete | `Enter` / `y` confirm delete, `Esc` / `n` cancel |
-| Compose send-confirm | `s` send, `d` save as draft, `e` re-edit, `Esc` cancel |
+| Compose send-confirm | `s` send, `d` save as draft, `e` re-edit, `Esc` cancel; on a blocked draft, `O` overrides and sends once (`Ctrl-O` also works) |
 | Unsubscribe confirm | `u` unsubscribe + archive, `U` unsubscribe + trash, `a` archive only, `A` archive all from sender, `Esc` cancel |
 | Analytics filter modal | typing fields, `Tab` / `Shift-Tab` move, `Enter` apply, `Esc` cancel |
 | Error modal | `j` / `k`, `Ctrl-d` / `Ctrl-u` scroll, `q` / `x` / `Esc` close |

@@ -17,7 +17,7 @@ import {
   Volume2,
   Users,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useRef, type ComponentType, type ReactNode } from "react";
 
 import { AppearanceSection } from "./AppearanceSection";
 import { ComposeSettingsSection } from "./ComposeSettingsSection";
@@ -36,6 +36,7 @@ import { Row } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 import { fetchAdminStatus } from "@/features/diagnostics/api";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useScrollFade } from "@/hooks/useScrollFade";
 import { cn } from "@/lib/utils";
 
 interface SectionDef {
@@ -204,30 +205,19 @@ export function SettingsRoute() {
  */
 function SectionTabs({ current }: { current: string }) {
   const strip = useRef<HTMLUListElement>(null);
-  const [fade, setFade] = useState(false);
+  const tabs = useScrollFade<HTMLElement>();
   useEffect(() => {
-    const list = strip.current;
-    const scroller = list?.parentElement;
-    if (!list || !scroller) return;
-    list
-      .querySelector('[aria-current="page"]')
+    strip.current
+      ?.querySelector('[aria-current="page"]')
       ?.scrollIntoView({ inline: "center", block: "nearest" });
-    const measure = () =>
-      setFade(scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft > 4);
-    measure();
-    scroller.addEventListener("scroll", measure, { passive: true });
-    window.addEventListener("resize", measure);
-    return () => {
-      scroller.removeEventListener("scroll", measure);
-      window.removeEventListener("resize", measure);
-    };
   }, [current]);
   return (
     <nav
+      ref={tabs.ref}
       aria-label="Settings sections"
       className={cn(
         "overflow-x-auto [scrollbar-width:none]",
-        fade && "[mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)]",
+        tabs.fade && "[mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)]",
       )}
     >
       <ul ref={strip} className="-mb-px flex h-8 gap-6">

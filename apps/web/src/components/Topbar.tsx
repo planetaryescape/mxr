@@ -220,7 +220,9 @@ export function Topbar() {
       <Button
         type="button"
         variant="outline"
-        className="h-8 w-[min(360px,34vw)] shrink justify-start max-sm:w-auto max-sm:flex-1 gap-2 px-2.5 text-left text-sm font-normal text-muted-foreground"
+        // min-w-0 lets search give way on a phone; without it the label's
+        // width pushed Compose past the right edge at 390px.
+        className="h-8 w-[min(360px,34vw)] min-w-0 shrink justify-start max-sm:w-auto max-sm:flex-1 gap-2 px-2.5 text-left text-sm font-normal text-muted-foreground"
         onClick={() => setSearchOpen(true)}
         aria-label="Search mail"
       >
@@ -234,7 +236,7 @@ export function Topbar() {
           type="button"
           size="sm"
           variant="ghost"
-          className="h-8 w-8 p-0"
+          className="h-8 w-8 shrink-0 p-0"
           onClick={() => setHelpOpen(true)}
           aria-label="Keyboard help"
           title="Keyboard help"
@@ -248,7 +250,7 @@ export function Topbar() {
       <Button
         size="sm"
         variant="secondary"
-        className="border-t border-primary/35 shadow-sm shadow-black/5"
+        className="shrink-0 border-t border-primary/35 shadow-sm shadow-black/5"
         onClick={() => useComposeUi.getState().openCompose(newMessageIntent(), "overlay")}
         aria-label="Compose new email"
         title={`Compose (${formatChord("c")})`}
@@ -268,7 +270,7 @@ function AssistantToggle() {
       type="button"
       size="sm"
       variant="ghost"
-      className={cn("h-8 w-8 p-0", open && "bg-muted text-primary")}
+      className={cn("h-8 w-8 shrink-0 p-0", open && "bg-muted text-primary")}
       onClick={() => toggle("pointer")}
       aria-pressed={open}
       aria-label="Assistant"

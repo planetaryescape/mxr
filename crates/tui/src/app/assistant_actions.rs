@@ -98,6 +98,30 @@ impl App {
         Some(None)
     }
 
+    /// `a` unfolds every waiting approval's full message list, or folds them
+    /// all back when they are all open already.
+    fn toggle_assistant_full_lists(&mut self) {
+        let calls: Vec<String> = self
+            .assistant
+            .pending()
+            .iter()
+            .filter_map(|pending| match pending {
+                AssistantPendingData::Approval { call_id, .. } => Some(call_id.clone()),
+                AssistantPendingData::Question { .. } => None,
+            })
+            .collect();
+        let all_open = calls
+            .iter()
+            .all(|call| self.assistant.full_list_calls.contains(call));
+        for call in calls {
+            if all_open {
+                self.assistant.full_list_calls.remove(&call);
+            } else {
+                self.assistant.full_list_calls.insert(call);
+            }
+        }
+    }
+
     fn assistant_input_key(&mut self, key: KeyEvent) {
         let input = &mut self.assistant.input;
         match (key.code, key.modifiers) {
@@ -153,6 +177,10 @@ impl App {
                 (KeyCode::Char('x'), KeyModifiers::NONE) => {
                     let shown = self.assistant.exact_call_for.as_deref() == Some(call_id.as_str());
                     self.assistant.exact_call_for = (!shown).then_some(call_id);
+                    return None;
+                }
+                (KeyCode::Char('a'), KeyModifiers::NONE) => {
+                    self.toggle_assistant_full_lists();
                     return None;
                 }
                 _ => {}
@@ -528,6 +556,7 @@ impl App {
         assistant.input_sent = Some(message);
         assistant.sending = true;
         assistant.started_at = Some(Instant::now());
+        assistant.phrase_since = Some(Instant::now());
         assistant.progress = None;
         assistant.error = None;
         assistant.prompt = None;
@@ -760,12 +789,13 @@ impl App {
         }
         if status == AssistantStatusData::Running {
             assistant.started_at.get_or_insert_with(Instant::now);
-            if progress.is_some() {
-                assistant.progress = progress;
+            if let Some(progress) = progress {
+                assistant.set_progress(Some(progress), Instant::now());
             }
         } else {
             assistant.progress = None;
             assistant.started_at = None;
+            assistant.phrase_since = None;
         }
         assistant.refetch();
     }
@@ -928,9 +958,11 @@ impl App {
         assistant.conversation_id = Some(conversation.id.clone());
         if conversation.status == AssistantStatusData::Running {
             assistant.started_at.get_or_insert_with(Instant::now);
+            assistant.phrase_since.get_or_insert_with(Instant::now);
         } else {
             assistant.progress = None;
             assistant.started_at = None;
+            assistant.phrase_since = None;
         }
 
         let waiting = conversation.status == AssistantStatusData::AwaitingUser;

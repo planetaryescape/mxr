@@ -13,13 +13,13 @@
 use super::commitments_extract::COMMITMENT_PREFILTER;
 use super::relationship_profile::commitment_data;
 use super::thread_context::owned_addresses;
-use super::thread_gist::{collapse_whitespace, find_phrase_ignoring_case, json_object, plain_text};
-use super::time::{parse_zone, resolve_in_zone};
+use super::thread_gist::{json_object, plain_text};
+use super::time::{due_words_in_zone, parse_zone};
 use super::{HandlerError, HandlerResult};
 use crate::state::{llm_endpoint_is_local, AppState};
 use chrono::{DateTime, Utc};
 use mxr_core::id::MessageId;
-use mxr_core::natural_time::TimeResolution;
+use mxr_core::text::find_verbatim;
 use mxr_core::types::{Address, MessageFlags};
 use mxr_llm::{
     guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
@@ -40,13 +40,7 @@ const FEATURE: LlmFeature = LlmFeature::Commitments;
 const DETECT_BUDGET: Duration = Duration::from_secs(8);
 const TEXT_MAX_CHARS: usize = 8_000;
 const WHAT_MAX_CHARS: usize = 120;
-const DUE_MAX_CHARS: usize = 60;
 const MAX_PROMISES: usize = 5;
-/// Words in front of a due phrase that the time parser doesn't read.
-const DUE_FILLERS: &[&str] = &[
-    "by", "on", "before", "until", "till", "no", "later", "than", "at", "the", "this", "for",
-    "sometime", "around", "within",
-];
 
 pub(crate) const SYSTEM_PROMPT: &str = r#"You find promises the SENDER of an email makes: things the sender says they will do.
 
@@ -222,7 +216,7 @@ async fn detect(
     for raw in raw.promises {
         // Only what the message says is offered, in its own words: an
         // invented deliverable is dropped even when its date is real.
-        let Some(what) = verified(&outgoing.body, &raw.what, WHAT_MAX_CHARS) else {
+        let Some(what) = find_verbatim(&outgoing.body, &raw.what, WHAT_MAX_CHARS) else {
             continue;
         };
         if promises
@@ -231,12 +225,13 @@ async fn detect(
         {
             continue;
         }
-        let due_phrase = raw
-            .due
-            .and_then(|due| verified(&outgoing.body, &due, DUE_MAX_CHARS));
-        let due = match due_phrase.as_deref() {
-            Some(phrase) => resolve_due(state, phrase, now, time_zone)?,
+        let due_words = match raw.due.as_deref() {
+            Some(due) => due_words_in_zone(state, &outgoing.body, due, now, time_zone)?,
             None => None,
+        };
+        let (due_phrase, due) = match due_words {
+            Some(words) => (Some(words.phrase), words.resolution),
+            None => (None, None),
         };
         promises.push(DetectedPromiseData {
             what,
@@ -263,15 +258,6 @@ async fn detect(
     ))
 }
 
-/// Model text found in the message, as the message writes it (whitespace
-/// collapsed for display), or `None` when it isn't there or is too long.
-fn verified(body: &str, model_text: &str, max_chars: usize) -> Option<String> {
-    let wanted = model_text.trim().trim_end_matches(['.', ',', ';', '!']);
-    let slice = find_phrase_ignoring_case(body, wanted)?;
-    let text = collapse_whitespace(slice);
-    (text.chars().count() <= max_chars).then_some(text)
-}
-
 fn answer(
     status: PromiseDetectionStatusData,
     promises: Vec<DetectedPromiseData>,
@@ -290,38 +276,6 @@ fn unavailable(status: PromiseDetectionStatusData, message: &str) -> PromiseDete
         message: Some(message.to_string()),
         ..answer(status, Vec::new(), None)
     }
-}
-
-/// Resolve the due words with the same parser every time field uses. People
-/// write "by Friday" or "first thing Monday", so leading words the parser
-/// doesn't read are dropped until what's left resolves.
-fn resolve_due(
-    state: &AppState,
-    phrase: &str,
-    now: Option<DateTime<Utc>>,
-    time_zone: Option<&str>,
-) -> Result<Option<TimeResolution>, HandlerError> {
-    let words: Vec<&str> = phrase
-        .split_whitespace()
-        .map(|word| word.trim_matches(|c: char| matches!(c, ',' | '.' | '!' | '?' | ';')))
-        .filter(|word| !word.is_empty())
-        .collect();
-    let first_kept = words
-        .iter()
-        .position(|word| !DUE_FILLERS.contains(&word.to_ascii_lowercase().as_str()))
-        .unwrap_or(words.len());
-    // "within 2 days" reads as "in 2 days".
-    let within = first_kept > 0 && words[first_kept - 1].eq_ignore_ascii_case("within");
-    for start in first_kept..words.len() {
-        let mut candidate = words[start..].join(" ");
-        if within && start == first_kept {
-            candidate = format!("in {candidate}");
-        }
-        if let Ok(resolution) = resolve_in_zone(state, &candidate, now, time_zone)? {
-            return Ok(Some(resolution));
-        }
-    }
-    Ok(None)
 }
 
 pub(super) async fn record_promise(
@@ -599,9 +553,16 @@ mod tests {
     async fn due_words_drop_leading_fillers_until_they_resolve() {
         let (state, _, _) = fixture(r#"{"promises":[]}"#, Duration::ZERO).await;
         let at = |phrase: &str| {
-            resolve_due(&state, phrase, Some(anchor()), Some("Europe/London"))
-                .unwrap()
-                .map(|resolution| resolution.at)
+            due_words_in_zone(
+                &state,
+                phrase,
+                phrase,
+                Some(anchor()),
+                Some("Europe/London"),
+            )
+            .unwrap()
+            .and_then(|words| words.resolution)
+            .map(|resolution| resolution.at)
         };
         let friday_nine = Utc.with_ymd_and_hms(2026, 10, 2, 8, 0, 0).unwrap();
         assert_eq!(at("by Friday"), Some(friday_nine));

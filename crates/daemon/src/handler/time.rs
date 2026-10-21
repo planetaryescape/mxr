@@ -1,7 +1,7 @@
 //! `ResolveTime`: preview a natural-language time phrase.
 
 use chrono::{DateTime, Local, Utc};
-use mxr_core::natural_time::{resolve_time, TimeResolution, TimeResolveError};
+use mxr_core::natural_time::{due_words, resolve_time, DueWords, TimeResolution, TimeResolveError};
 use mxr_protocol::ResponseData;
 
 use super::{HandlerError, HandlerResult};
@@ -32,6 +32,24 @@ pub(super) fn resolve_in_zone(
     Ok(match parse_zone(time_zone)? {
         Some(zone) => resolve_time(input, &now.with_timezone(&zone), &prefs),
         None => resolve_time(input, &now.with_timezone(&Local), &prefs),
+    })
+}
+
+/// Due words a model copied from `source`, checked against it and resolved
+/// in the same zone and with the same preferences as every other phrase.
+/// `None` means the source doesn't say them.
+pub(super) fn due_words_in_zone(
+    state: &AppState,
+    source: &str,
+    model_words: &str,
+    now: Option<DateTime<Utc>>,
+    time_zone: Option<&str>,
+) -> Result<Option<DueWords>, HandlerError> {
+    let now = now.unwrap_or_else(Utc::now);
+    let prefs = state.snooze_time_prefs();
+    Ok(match parse_zone(time_zone)? {
+        Some(zone) => due_words(source, model_words, &now.with_timezone(&zone), &prefs),
+        None => due_words(source, model_words, &now.with_timezone(&Local), &prefs),
     })
 }
 

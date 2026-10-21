@@ -22,7 +22,7 @@ mxr send DRAFT_ID --check --format json \
 mxr commitments --status open --format json
 ```
 
-What you get: a JSON array of rows like `{ id, contact_email, direction, what, by_when, evidence_msg_id, status, created_at }`. `direction` is `yours` (you owe work) or `theirs` (they owe you). Every row has a message id you can `mxr cat` to read the original.
+What you get: a JSON array of rows like `{ id, contact_email, direction, what, by_when, evidence_msg_id, status, created_at }`. `direction` is `yours` (you owe work) or `theirs` (they owe you). Every row has a message id you can `mxr cat` to read the original. `by_when` is set only when the words that say when ("by Friday", "next week") appear in that message and the [time parser](/reference/time-phrases/) reads them, counted from when the message was written; mxr never takes a date from the model. Otherwise it is `null`.
 
 ### List, filter, and resolve
 

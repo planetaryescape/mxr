@@ -31,6 +31,7 @@
 //! "3pm fri", "tomorrow morning", "tonight 9". A named weekday always means
 //! the next one, never today. A time with no day means its next occurrence.
 
+mod due;
 mod grammar;
 mod resolve;
 
@@ -39,6 +40,8 @@ mod tests;
 
 use chrono::{DateTime, Local, TimeZone, Utc, Weekday};
 use serde::{Deserialize, Serialize};
+
+pub use due::{due_words, DueWords};
 
 /// The user's preferred hours, taken from the snooze config.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

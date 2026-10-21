@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.128](https://github.com/planetaryescape/mxr/compare/v0.6.127...v0.6.128) (2026-10-21)
+
+
+### Features
+
+* work through the five modes from Raycast ([#582](https://github.com/planetaryescape/mxr/issues/582)) ([7b3d50c](https://github.com/planetaryescape/mxr/commit/7b3d50c71d968d9c16c9eaa215f9ee7d8ed72922))
+
+
+### Bug Fixes
+
+* one icon per mode across the web app ([#586](https://github.com/planetaryescape/mxr/issues/586)) ([5b04d77](https://github.com/planetaryescape/mxr/commit/5b04d77a258e7007c6a410f2ae5e8fa099161ee8))
+* play the finishing scene once a day on Now and Reading ([#585](https://github.com/planetaryescape/mxr/issues/585)) ([6a76a49](https://github.com/planetaryescape/mxr/commit/6a76a49b8a3d1b48402e4fdf45c360c52186b40c))
+
 ## [0.6.127](https://github.com/planetaryescape/mxr/compare/v0.6.126...v0.6.127) (2026-10-21)
 
 

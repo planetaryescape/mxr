@@ -10444,6 +10444,11 @@ export interface components {
                   explain: boolean;
                   /** Format: int32 */
                   limit: number;
+                  /**
+                   * @description Page size comes from `[search] max_results` on the daemon and `limit`
+                   *     is only the fallback for a daemon that does not know this field.
+                   */
+                  limit_from_config?: boolean;
                   mode?: components["schemas"]["SearchMode"] | null;
                   /** Format: int32 */
                   offset?: number;
@@ -12076,6 +12081,12 @@ export interface components {
                   has_more?: boolean;
                   /** @enum {string} */
                   kind: "SearchResults";
+                  /**
+                   * Format: int32
+                   * @description The page size the daemon actually used, which may come from
+                   *     `[search] max_results`. Older daemons omit it.
+                   */
+                  limit?: number | null;
                   /** Format: int32 */
                   next_offset?: number | null;
                   results: components["schemas"]["SearchResultItem"][];

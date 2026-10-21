@@ -40,7 +40,7 @@ run_mxr() {
   fi
 }
 
-tmp="$(mktemp -d)"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/mxr-v1-launch-proof.XXXXXX")"
 cleanup() {
   local original_status="$1"
   trap - EXIT

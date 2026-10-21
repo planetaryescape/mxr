@@ -434,6 +434,7 @@ async fn restored_cached_mail_is_visible_while_paused_and_after_activation_witho
                 mxr_protocol::ClientKind::Cli,
                 &mxr_transport::PeerInfo::local(),
                 &Request::Search {
+                    limit_from_config: false,
                     query: "label:inbox".into(),
                     limit: 100,
                     offset: 0,

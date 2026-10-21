@@ -1839,6 +1839,7 @@ mod tests {
     #[test]
     fn a_search_counts_the_total_matches_not_the_page() {
         let results = result_of(mxr_protocol::ResponseData::SearchResults {
+            limit: None,
             results: Vec::new(),
             total: 14,
             has_more: true,
@@ -1858,6 +1859,7 @@ mod tests {
             "Searched your mail: 14 found"
         );
         let none = result_of(mxr_protocol::ResponseData::SearchResults {
+            limit: None,
             results: Vec::new(),
             total: 0,
             has_more: false,

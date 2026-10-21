@@ -143,6 +143,8 @@ exact filenames, restart, follow and failure semantics.
 
 `default_mode` controls the search mode used when a request does not specify one explicitly.
 
+`default_sort` and `max_results` apply to user searches that leave the sort or page size out: `mxr search`, the TUI search screen and mailbox `/` filter, web search and the MCP `mxr_search` tool. `default_sort` is the sort order (`date_desc`, `date_asc` or `relevance`). `max_results` is the default page size, not a cap: an explicit `--limit` above it is honoured. An explicit `--sort` or `--limit` always wins. The daemon owns both values, so a client attached to a remote daemon gets that daemon's defaults. A `max_results` of `0` is read as `1`. Both values are read when the daemon starts, so restart it (`mxr restart`) after `mxr config set search.*`.
+
 ## `[search.semantic]`
 
 ### `enabled`

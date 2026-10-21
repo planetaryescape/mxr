@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use chrono::{TimeZone, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{Address, Envelope, MessageFlags, UnsubscribeMethod};
-use mxr_core::{SearchMode, SortOrder};
+use mxr_core::SearchMode;
 use mxr_tui::app::{App, PendingSearchDebounce, PendingSearchRequest};
 
 fn schedule_debounce(app: &mut App, query: &str, due_at: Instant) {
@@ -72,7 +72,7 @@ fn expired_debounce_fires_pending_search_on_tick() {
         .expect("expired debounce flushes a real search request");
     assert_eq!(request.query, "from:alice");
     assert_eq!(request.mode, SearchMode::Lexical);
-    assert_eq!(request.sort, SortOrder::DateDesc);
+    assert_eq!(request.sort, None);
 }
 
 #[test]

@@ -1,7 +1,7 @@
 use crate::app;
 use crate::async_result::{AsyncResult, StatusSnapshot};
 use crate::ipc::{ipc_call, IpcRequest};
-use crate::search_ipc::{ipc_search_segment, run_streamed_search_page_initial};
+use crate::search_ipc::ipc_search_segment;
 use mxr_core::MxrError;
 use mxr_protocol::{Request, Response, ResponseData};
 use std::collections::VecDeque;
@@ -103,7 +103,7 @@ pub(crate) fn spawn_replaceable_request_worker(
                 continue;
             };
 
-            if let Some(result) = execute_replaceable_request(&bg, &result_tx, request).await {
+            if let Some(result) = execute_replaceable_request(&bg, request).await {
                 let _ = result_tx.send(result);
             }
         }
@@ -147,7 +147,6 @@ pub(crate) fn enqueue_replaceable_request(
 
 async fn execute_replaceable_request(
     bg: &mpsc::UnboundedSender<IpcRequest>,
-    result_tx: &mpsc::UnboundedSender<AsyncResult>,
     request: ReplaceableRequest,
 ) -> Option<AsyncResult> {
     match request {
@@ -157,14 +156,6 @@ async fn execute_replaceable_request(
                 session_id = pending.session_id,
                 "tui replaceable request dequeued"
             );
-            let stream_initial = pending.target == app::SearchTarget::SearchPage
-                && !pending.append
-                && pending.offset == 0;
-            if stream_initial {
-                run_streamed_search_page_initial(bg, result_tx, pending).await;
-                return None;
-            }
-
             let result = ipc_search_segment(
                 bg,
                 &pending.query,
@@ -474,7 +465,7 @@ mod tests {
             ReplaceableRequest::Search(app::PendingSearchRequest {
                 query: "alpha".into(),
                 mode: mxr_core::SearchMode::Lexical,
-                sort: mxr_core::types::SortOrder::DateDesc,
+                sort: None,
                 limit: 20,
                 offset: 0,
                 target: app::SearchTarget::Mailbox,
@@ -487,7 +478,7 @@ mod tests {
             ReplaceableRequest::Search(app::PendingSearchRequest {
                 query: "beta".into(),
                 mode: mxr_core::SearchMode::Lexical,
-                sort: mxr_core::types::SortOrder::DateDesc,
+                sort: None,
                 limit: 20,
                 offset: 0,
                 target: app::SearchTarget::SearchPage,

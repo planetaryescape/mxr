@@ -358,7 +358,7 @@ fn search_page_snapshot() {
         scores: std::collections::HashMap::new(),
         triage_verdicts: std::collections::HashMap::new(),
         mode: mxr_core::SearchMode::Lexical,
-        sort: mxr_core::SortOrder::DateDesc,
+        sort: None,
         has_more: false,
         loading_more: false,
         total_count: Some(1),

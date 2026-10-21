@@ -69,7 +69,7 @@ impl App {
                 } else {
                     self.reset_search_page_workspace();
                     self.search.page.editing = true;
-                    self.search.page.sort = SortOrder::DateDesc;
+                    self.search.page.sort = None;
                 }
             }
             Action::OpenGlobalSearch => {

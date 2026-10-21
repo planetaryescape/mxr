@@ -89,6 +89,8 @@ Selectors accept account key, email address, account id, or an
 unambiguous display name. Unknown or ambiguous selectors fail before the
 search runs.
 
+Without `--limit` or `--sort`, `mxr search` uses the `[search]` settings in your config: `max_results` is the page size and `default_sort` the order. Explicit flags win. The daemon reads these settings at startup, so run `mxr restart` after changing them.
+
 Account filtering happens before pagination and applies to lexical,
 hybrid, and semantic modes. That means `--limit 50 --account work`
 returns up to 50 work-account hits, not "50 global hits, then filter to

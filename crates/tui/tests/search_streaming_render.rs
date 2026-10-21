@@ -78,7 +78,7 @@ fn result_list_renders_first_batch_before_query_completes() {
         scores: Default::default(),
         triage_verdicts: Default::default(),
         mode: mxr_core::SearchMode::Lexical,
-        sort: mxr_core::SortOrder::DateDesc,
+        sort: None,
         // has_more = true is the daemon's signal that more results
         // are still on the wire.
         has_more: true,

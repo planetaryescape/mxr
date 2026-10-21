@@ -788,6 +788,16 @@ pub enum SortOrder {
     Relevance,
 }
 
+impl From<SortOrder> for mxr_core::types::SortOrder {
+    fn from(value: SortOrder) -> Self {
+        match value {
+            SortOrder::DateDesc => Self::DateDesc,
+            SortOrder::DateAsc => Self::DateAsc,
+            SortOrder::Relevance => Self::Relevance,
+        }
+    }
+}
+
 /// Semantic search configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]

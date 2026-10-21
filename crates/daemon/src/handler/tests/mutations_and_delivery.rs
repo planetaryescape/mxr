@@ -814,6 +814,7 @@ async fn lexical_hits(state: &Arc<AppState>, query: &str) -> usize {
         id: 9,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
+            limit_from_config: false,
             query: query.to_string(),
             limit: 10,
             offset: 0,
@@ -1906,6 +1907,7 @@ async fn read_only_safety_policy_blocks_mutations_but_allows_search() {
         id: 2,
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::Search {
+            limit_from_config: false,
             query: "hello".into(),
             limit: 10,
             offset: 0,
@@ -1965,6 +1967,7 @@ async fn agent_profile_enforces_account_allowlist_in_dispatch() {
         id: 1,
         source: ::mxr_protocol::ClientKind::Agent,
         payload: IpcPayload::Request(Request::Search {
+            limit_from_config: false,
             query: "hello".into(),
             limit: 10,
             offset: 0,
@@ -1986,6 +1989,7 @@ async fn agent_profile_enforces_account_allowlist_in_dispatch() {
         id: 2,
         source: ::mxr_protocol::ClientKind::Agent,
         payload: IpcPayload::Request(Request::Search {
+            limit_from_config: false,
             query: "hello".into(),
             limit: 10,
             offset: 0,

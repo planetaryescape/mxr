@@ -42,7 +42,8 @@ pub struct SearchPageState {
     pub scores: HashMap<MessageId, f32>,
     pub triage_verdicts: HashMap<MessageId, String>,
     pub mode: SearchMode,
-    pub sort: SortOrder,
+    /// `None` takes the daemon's `[search] default_sort`.
+    pub sort: Option<SortOrder>,
     pub has_more: bool,
     pub loading_more: bool,
     pub total_count: Option<u32>,
@@ -74,7 +75,7 @@ impl Default for SearchPageState {
             scores: HashMap::new(),
             triage_verdicts: HashMap::new(),
             mode: SearchMode::Lexical,
-            sort: SortOrder::DateDesc,
+            sort: None,
             has_more: false,
             loading_more: false,
             total_count: None,
@@ -103,7 +104,7 @@ pub enum SearchTarget {
 pub struct PendingSearchRequest {
     pub query: String,
     pub mode: SearchMode,
-    pub sort: SortOrder,
+    pub sort: Option<SortOrder>,
     pub limit: u32,
     pub offset: u32,
     pub target: SearchTarget,

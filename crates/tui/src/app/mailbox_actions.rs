@@ -798,7 +798,7 @@ impl App {
                     self.search.page.query = query.clone();
                     self.search.page.editing = false;
                     self.search.page.mode = mode;
-                    self.search.page.sort = SortOrder::DateDesc;
+                    self.search.page.sort = None;
                     self.search.page.active_pane = SearchPane::Results;
                     self.search.bar.query = query.clone();
                     self.search.bar.mode = mode;

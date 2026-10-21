@@ -4,12 +4,16 @@ use crate::commands::triage::{render_triage, request_triage};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::id::MessageId;
-use mxr_core::types::{Envelope, MessageFlags, SortOrder};
+use mxr_core::types::{Envelope, MessageFlags};
 use mxr_protocol::{
     Request, Response, ResponseData, SearchAggregationGroupBy, SearchAggregationRow, SearchExplain,
     SearchResultItem,
 };
 use std::collections::HashMap;
+
+/// Page size asked for when the user gives no `--limit` and an older daemon
+/// ignores `limit_from_config`. A current daemon uses `[search] max_results`.
+const FALLBACK_SEARCH_LIMIT: u32 = 50;
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
@@ -28,11 +32,11 @@ pub async fn run(
     if query.is_empty() {
         anyhow::bail!("Search query required");
     }
-    let limit = limit.unwrap_or(50);
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     if triage {
-        let payload = request_triage(&mut client, query, account_id, limit, mode).await?;
+        let payload = request_triage(&mut client, query, account_id, limit.unwrap_or(50), mode)
+            .await?;
         return render_triage(payload, &mut client, format, None, None).await;
     }
     if let Some(group_by) = group_by {
@@ -42,7 +46,7 @@ pub async fn run(
                 account_id,
                 mode: mode.map(Into::into),
                 group_by: group_by.into(),
-                limit: Some(limit),
+                limit: Some(limit.unwrap_or(50)),
             })
             .await?;
         let (group_by, total, groups) = crate::commands::expect_response(resp, |r| match r {
@@ -63,17 +67,18 @@ pub async fn run(
     let resp = client
         .request(Request::Search {
             query,
-            limit,
+            limit: limit.unwrap_or(FALLBACK_SEARCH_LIMIT),
             offset,
             account_id,
             mode: mode.map(Into::into),
-            sort: Some(sort.map_or(SortOrder::DateDesc, Into::into)),
+            sort: sort.map(Into::into),
             explain,
+            limit_from_config: limit.is_none(),
         })
         .await?;
 
     let fmt = resolve_format(format);
-    let (results, total, has_more, next_offset, explain_payload) =
+    let (results, total, has_more, next_offset, explain_payload, page_limit) =
         crate::commands::expect_response(resp, |r| match r {
             Response::Ok {
                 data:
@@ -83,10 +88,21 @@ pub async fn run(
                         has_more,
                         next_offset,
                         explain: explain_payload,
+                        limit: page_limit,
                     },
-            } => Some((results, total, has_more, next_offset, explain_payload)),
+            } => Some((
+                results,
+                total,
+                has_more,
+                next_offset,
+                explain_payload,
+                page_limit,
+            )),
             _ => None,
         })?;
+    // An older daemon omits the page size; the requested fallback is then the
+    // closest thing to the size it used.
+    let limit = page_limit.or(limit).unwrap_or(FALLBACK_SEARCH_LIMIT);
 
     let envelopes = fetch_search_envelopes(&mut client, &results).await?;
 

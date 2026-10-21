@@ -1129,9 +1129,14 @@ pub enum Request {
         #[serde(default)]
         account_id: Option<AccountId>,
         mode: Option<SearchMode>,
+        /// `None` asks the daemon for `[search] default_sort`.
         #[serde(default)]
         sort: Option<SortOrder>,
         explain: bool,
+        /// Page size comes from `[search] max_results` on the daemon and `limit`
+        /// is only the fallback for a daemon that does not know this field.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        limit_from_config: bool,
     },
     SyncNow {
         account_id: Option<AccountId>,
@@ -3540,6 +3545,10 @@ pub enum ResponseData {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         next_offset: Option<u32>,
         explain: Option<SearchExplain>,
+        /// The page size the daemon actually used. Set when the request chose
+        /// its own size; older daemons omit it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u32>,
     },
     SyncStatus {
         sync: AccountSyncStatus,

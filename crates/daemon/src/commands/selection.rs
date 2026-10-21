@@ -124,6 +124,7 @@ pub async fn resolve_message_ids(
                     mode: None,
                     sort: Some(SortOrder::DateDesc),
                     explain: false,
+                    limit_from_config: false,
                 })
                 .await?;
             match resp {
@@ -172,6 +173,7 @@ pub async fn resolve_thread_ids(
                     mode: None,
                     sort: Some(SortOrder::DateDesc),
                     explain: false,
+                    limit_from_config: false,
                 })
                 .await?;
             let results = match resp {

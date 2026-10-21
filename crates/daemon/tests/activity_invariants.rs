@@ -73,6 +73,7 @@ fn no_forbidden_keys_appear_in_recorder_outputs() {
     // mapper produces — it doesn't go through the store, so it's the right
     // place to fail loudly if the mapper starts leaking sensitive fields.
     let make_search = || Request::Search {
+        limit_from_config: false,
         query: "user@example.com password reset".into(),
         limit: 50,
         offset: 0,
@@ -137,6 +138,7 @@ fn activity_mapper_preserves_agent_and_mcp_sources() {
     use mxr_protocol::{ClientKind, Request};
 
     let req = Request::Search {
+        limit_from_config: false,
         query: "from:alice".into(),
         limit: 10,
         offset: 0,
@@ -187,6 +189,7 @@ async fn activity_privacy_config_filters_real_mapper_shapes_before_persistence()
     let recorder = Recorder::spawn(store.clone(), &config.activity);
     let requests = [
         Request::Search {
+            limit_from_config: false,
             query: "PRIVATE_QUERY".into(),
             limit: 10,
             offset: 0,

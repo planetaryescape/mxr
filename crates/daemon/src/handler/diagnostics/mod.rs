@@ -132,6 +132,7 @@ pub(crate) async fn search(
         has_more: execution.has_more,
         next_offset: execution.next_offset.map(|value| value as u32),
         explain: execution.explain,
+        limit: Some(limit),
     })
 }
 
@@ -1217,6 +1218,7 @@ pub(crate) async fn run_saved_search(
         has_more: execution.has_more,
         next_offset: execution.next_offset.map(|value| value as u32),
         explain: None,
+        limit: Some(limit),
     })
 }
 

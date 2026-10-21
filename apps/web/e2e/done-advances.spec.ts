@@ -9,7 +9,7 @@
 
 import { expect, test, type Page, type Response } from "@playwright/test";
 
-import { acceptArchiveReview, archiveViaBridge, type ArchiveOperation } from "./helpers/archive";
+import { archiveViaBridge, type ArchiveOperation } from "./helpers/archive";
 import { expectCursorOn, mailList, openList, reader } from "./helpers/mail";
 import { bridge, bridgeAuth, openApp, readE2EState } from "./helpers/state";
 import { freshOwedConversations } from "./helpers/reply-request";
@@ -487,32 +487,12 @@ test.describe("Inbox: the reader after archive", () => {
     const openedUrl = page.url();
     const openedTitle = await reader(page).getAttribute("aria-label");
     await page.keyboard.press("h");
-    const consent = acceptArchiveReview(page);
     await page.keyboard.press("e");
-    await consent;
     await expect(page).not.toHaveURL(openedUrl);
     await expect(reader(page)).not.toHaveAttribute("aria-label", openedTitle!);
     await expect(reader(page)).toBeVisible();
 
     await page.keyboard.press("u");
-    await expect(page).toHaveURL(openedUrl);
-    await expect(reader(page)).toHaveAttribute("aria-label", openedTitle!);
-  });
-
-  test("canceling archive review in the reader keeps the conversation open", async ({ page }) => {
-    await openList(page, "/m/inbox");
-    await page.keyboard.press("G");
-    await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
-    const openedUrl = page.url();
-    const openedTitle = await reader(page).getAttribute("aria-label");
-    const dialogPromise = page.waitForEvent("dialog");
-
-    await page.keyboard.press("e");
-    const dialog = await dialogPromise;
-    expect(dialog.type()).toBe("confirm");
-    await dialog.dismiss();
-
     await expect(page).toHaveURL(openedUrl);
     await expect(reader(page)).toHaveAttribute("aria-label", openedTitle!);
   });
@@ -530,10 +510,9 @@ test.describe("Inbox: the reader after archive", () => {
       await new Promise((resolve) => setTimeout(resolve, 2_500));
       await route.continue();
     });
-    const consent = acceptArchiveReview(page);
     const submitStarted = page.waitForRequest("**/archive-operations/submit");
     await page.keyboard.press("e");
-    await Promise.all([consent, submitStarted]);
+    await submitStarted;
     await expect(page).toHaveURL(lastUrl);
     await expect(page).not.toHaveURL(lastUrl, { timeout: 15_000 });
     await expect(reader(page)).toBeVisible();
@@ -564,10 +543,9 @@ test.describe("Inbox: the reader after archive", () => {
       await new Promise((resolve) => setTimeout(resolve, 2_500));
       await route.continue();
     });
-    const consent = acceptArchiveReview(page);
     const submitStarted = page.waitForRequest("**/archive-operations/submit");
     await page.keyboard.press("[");
-    await Promise.all([consent, submitStarted]);
+    await submitStarted;
     await expect(page).toHaveURL(openedUrl);
     await expect(page).toHaveURL(previousUrl, { timeout: 15_000 });
 
@@ -591,9 +569,7 @@ test.describe("Inbox: the reader after archive", () => {
     // before it has rows leaves nothing to advance to, and WebKit loses that race.
     await expect(mailList(page).getByRole("option").first()).toBeVisible();
 
-    const consent = acceptArchiveReview(page);
     await page.keyboard.press("e");
-    await consent;
     await expect(page).not.toHaveURL(openedUrl);
     await expect(page).toHaveURL(/\/m\/archive\/[^/]+$/);
 
@@ -725,10 +701,9 @@ test.describe("Reading: the email reader after archive", () => {
       await new Promise((resolve) => setTimeout(resolve, 2_500));
       await route.continue();
     });
-    const consent = acceptArchiveReview(page);
     const submitStarted = page.waitForRequest("**/archive-operations/submit");
     await page.keyboard.press("[");
-    await Promise.all([consent, submitStarted]);
+    await submitStarted;
     await expect(page).toHaveURL(previousUrl, { timeout: 15_000 });
 
     await page.keyboard.press("u");

@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-import { acceptArchiveReview } from "./helpers/archive";
 import {
   cursorRowId,
   expectCursorOn,
@@ -34,9 +33,7 @@ test("keyboard-only triage: open, archive-and-advance, find it in All Mail, undo
   await expect(reader(page)).toHaveAttribute("data-active-pane", "true");
   const archivedName = stableRowName((await rowById(page, first!).getAttribute("aria-label"))!);
 
-  const consent = acceptArchiveReview(page);
   await page.keyboard.press("e");
-  await consent;
   // The reader advances after the Archive operation completes.
   await expect(page).not.toHaveURL(openedUrl);
   await expect(page).toHaveURL(/\/m\/inbox\/[^/]+$/);
@@ -74,9 +71,7 @@ test("select three with x, archive them together, undo brings all three back", a
   // x advances the cursor after each toggle.
   expect(await cursorRowId(page)).toBe(ids[3]);
 
-  const consent = acceptArchiveReview(page);
   await page.keyboard.press("e");
-  await consent;
   for (const id of ids.slice(0, 3)) await expect(rowById(page, id)).toHaveCount(0);
   await expect(rowById(page, ids[3]!)).toBeVisible();
   // The toast waits for the daemon's answer, which can take longer than the

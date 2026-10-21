@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { expect, test } from "@playwright/test";
 
-import { acceptArchiveReview } from "./helpers/archive";
 import { deliver } from "./helpers/spool";
 import { expectCursorOn, mailRows, openList, reader, renderedRowIds } from "./helpers/mail";
 import { bridge, openApp } from "./helpers/state";
@@ -81,9 +80,7 @@ test("archive-and-advance from search, then Esc lands on the next result", async
   };
   expect(await threadHasInboxMessage()).toBe(true);
 
-  const consent = acceptArchiveReview(page);
   await page.keyboard.press("]");
-  await consent;
   await expect(page).not.toHaveURL(opened);
   await expect(page).toHaveURL(new RegExp(`/search/[^/?]+\\?q=${query}$`));
   await expect(page.getByText(/^Archived \d+ messages?$/)).toBeVisible();

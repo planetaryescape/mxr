@@ -3,14 +3,14 @@ import { join } from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-import { acceptArchiveReview, type ArchiveOperation } from "./helpers/archive";
+import type { ArchiveOperation } from "./helpers/archive";
 import { cursorTo, mailRows, openList, rowById } from "./helpers/mail";
 import { bridge, readE2EState } from "./helpers/state";
 import { deliver, rejectMutationFor } from "./helpers/spool";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-test("hover Archive reviews the selection before consent, then Undo restores it", async ({
+test("hover Archive acts at once on the reviewed selection, then Undo restores it", async ({
   page,
 }) => {
   await openList(page, "/m/inbox");
@@ -18,6 +18,12 @@ test("hover Archive reviews the selection before consent, then Undo restores it"
   const rowId = (await row.getAttribute("id"))!;
   const requests: string[] = [];
   const receipts: ArchiveOperation[] = [];
+  // Archive is instant; a native dialog here would be the old browser confirmation.
+  const dialogs: string[] = [];
+  page.on("dialog", (dialog) => {
+    dialogs.push(dialog.message());
+    void dialog.dismiss();
+  });
   page.on("request", (request) => {
     if (request.url().includes("/archive-operations/")) {
       requests.push(`${request.method()} ${new URL(request.url()).pathname}`);
@@ -39,10 +45,6 @@ test("hover Archive reviews the selection before consent, then Undo restores it"
   );
   await row.hover();
   await expect(rowById(page, rowId)).toBeVisible();
-  const consent = acceptArchiveReview(page, async (message) => {
-    expect(message.split("\n").slice(1)).toHaveLength(1);
-    expect(requests.some((request) => request.endsWith("/submit"))).toBe(false);
-  });
   await row.getByTitle("Archive (e)").click();
 
   const review = await reviewResponse;
@@ -51,8 +53,6 @@ test("hover Archive reviews the selection before consent, then Undo restores it"
   const reviewed = (await review.json()) as { kind: string; operation: ArchiveOperation };
   expect(reviewed.kind).toBe("ArchiveOperation");
   expect(reviewed.operation.items).toHaveLength(1);
-  const consentMessage = await consent;
-  expect(consentMessage).toContain(reviewed.operation.items[0]?.message_id ?? "");
 
   const submission = await submitResponse;
   expect(submission.ok(), await submission.text()).toBe(true);
@@ -71,6 +71,7 @@ test("hover Archive reviews the selection before consent, then Undo restores it"
     requests.indexOf("POST /api/v1/mail/archive-operations/submit"),
   );
   await expect(page.getByText(/^Archived 1 messages?$/)).toBeVisible();
+  expect(dialogs).toEqual([]);
   await expect(rowById(page, rowId)).toHaveCount(0);
   await expect
     .poll(() =>
@@ -104,9 +105,9 @@ test("a rejected Archive submit leaves the row in place and retains the review",
     });
   });
 
-  const consent = acceptArchiveReview(page);
+  const rejected = page.waitForResponse("**/api/v1/mail/archive-operations/submit");
   await page.keyboard.press("e");
-  await consent;
+  await rejected;
   await expect(page.getByText(/failed|rejected/i).first()).toBeVisible();
   await expect(rowById(page, rowId)).toBeVisible();
   expect(retainedReviewId).toBeTruthy();
@@ -124,9 +125,7 @@ test("a rejected Archive submit leaves the row in place and retains the review",
 test("Archive from e can be undone with z", async ({ page }) => {
   await openList(page, "/m/inbox");
   const rowId = (await mailRows(page).first().getAttribute("id"))!;
-  const consent = acceptArchiveReview(page);
   await page.keyboard.press("e");
-  await consent;
   await expect(rowById(page, rowId)).toHaveCount(0);
 
   const undoResponse = page.waitForResponse("**/api/v1/mail/mutations/undo");
@@ -175,9 +174,7 @@ test("a provider rejection in a multi-message Archive keeps Undo for the complet
     await cursorTo(page, (label) => label.includes(completedName));
     await page.keyboard.press("x");
 
-    const consent = acceptArchiveReview(page);
     await page.keyboard.press("e");
-    await consent;
     await expect(page.getByText(/1 confirmed complete; .*not_executed:/).first()).toBeVisible();
 
     let receipt: ArchiveOperation | undefined;

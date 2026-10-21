@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use mxr_core::id::{AccountId, MessageId};
+use mxr_core::natural_time::{due_words, TimePrefs};
 use mxr_core::types::MessageDirection;
 use mxr_llm::{
     wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime,
@@ -16,7 +17,7 @@ use std::sync::Arc;
 const MAX_EXCERPTS: usize = 12;
 /// Total prompt ceiling (guard + task + delimiters + excerpts).
 const MAX_PROMPT_CHARS: usize = 14_000;
-const COMMITMENTS_TASK: &str = "Extract only explicit open asks, promises, decisions, or follow-ups from these emails. Do not infer implied work. Return strict JSON: {\"commitments\":[{\"who_owes\":\"name/email\",\"what\":\"concrete obligation\",\"by_when\":\"RFC3339 or null\",\"evidence_msg_id\":\"message id from input\",\"direction\":\"yours|theirs\"}]}. Use direction=yours when the account owner owes the contact, theirs when the contact owes the account owner.";
+const COMMITMENTS_TASK: &str = "Extract only explicit open asks, promises, decisions, or follow-ups from these emails. Do not infer implied work. Return strict JSON: {\"commitments\":[{\"who_owes\":\"name/email\",\"what\":\"concrete obligation\",\"due\":\"the words in that message that say when, copied exactly, or null\",\"evidence_msg_id\":\"message id from input\",\"direction\":\"yours|theirs\"}]}. Use direction=yours when the account owner owes the contact, theirs when the contact owes the account owner. For due, copy the words as written, such as \"by Friday\" or \"next week\"; never work out a date yourself.";
 const TRUNCATION_NOTE: &str = "\n[...truncated...]\n";
 
 #[derive(Debug, Deserialize)]
@@ -31,8 +32,10 @@ struct ExtractedCommitment {
     what: String,
     evidence_msg_id: String,
     direction: CommitmentDirection,
+    /// The evidence message's own words for when, never a date the model
+    /// works out.
     #[serde(default)]
-    by_when: Option<String>,
+    due: Option<String>,
 }
 
 /// `force` is for explicit user rebuilds: it skips the background gate that
@@ -185,7 +188,10 @@ pub async fn extract_commitments(
             status: CommitmentStatus::Open,
             who_owes: commitment.who_owes.trim().to_string(),
             what: normalized_what,
-            by_when: commitment.by_when.as_deref().and_then(parse_datetime),
+            by_when: commitment
+                .due
+                .as_deref()
+                .and_then(|due| due_by(sample, due, &reader_config)),
             evidence_msg_id,
             extracted_at: Utc::now(),
             resolved_at: None,
@@ -237,13 +243,21 @@ fn normalize_what(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn parse_datetime(value: &str) -> Option<DateTime<Utc>> {
-    if value.trim().eq_ignore_ascii_case("null") || value.trim().is_empty() {
-        return None;
-    }
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|value| value.with_timezone(&Utc))
+/// The due words resolved against when the evidence message was written: a
+/// "by Friday" from last month means that Friday, not the next one. The
+/// words must be in the text the model read. This crate has no daemon
+/// config, so a day without a time takes the default hours and the machine's
+/// local zone rather than the user's snooze preferences.
+fn due_by(
+    sample: &mxr_store::RelationshipMessageSample,
+    words: &str,
+    reader_config: &ReaderConfig,
+) -> Option<DateTime<Utc>> {
+    let body = clean(Some(&sample.body), None, reader_config).content;
+    let written = sample.date.with_timezone(&Local);
+    due_words(&body, words, &written, &TimePrefs::default())?
+        .resolution
+        .map(|resolution| resolution.at)
 }
 
 fn commitment_id(
@@ -319,11 +333,11 @@ mod tests {
         let llm = Arc::new(LlmRuntime::new(Arc::new(SequenceLlm {
             responses: Mutex::new(vec![
                 format!(
-                    r#"{{"commitments":[{{"who_owes":"Alice","what":"Send launch date","by_when":null,"evidence_msg_id":"{}","direction":"theirs"}}]}}"#,
+                    r#"{{"commitments":[{{"who_owes":"Alice","what":"Send launch date","due":null,"evidence_msg_id":"{}","direction":"theirs"}}]}}"#,
                     first.as_str()
                 ),
                 format!(
-                    r#"{{"commitments":[{{"who_owes":"Alice","what":"  send launch date  ","by_when":null,"evidence_msg_id":"{}","direction":"theirs"}}]}}"#,
+                    r#"{{"commitments":[{{"who_owes":"Alice","what":"  send launch date  ","due":null,"evidence_msg_id":"{}","direction":"theirs"}}]}}"#,
                     second.as_str()
                 ),
             ]),
@@ -368,9 +382,9 @@ mod tests {
         .await;
         let llm = sequence_llm(&[&format!(
             r#"{{"commitments":[
-                {{"who_owes":"me","what":"Rejoin the gym before the 5th","by_when":null,"evidence_msg_id":"{marketing}","direction":"yours"}},
-                {{"who_owes":"me","what":"Send the signed form","by_when":null,"evidence_msg_id":"{sent}","direction":"yours"}},
-                {{"who_owes":"Alice","what":"Send the launch date","by_when":null,"evidence_msg_id":"{marketing}","direction":"theirs"}}
+                {{"who_owes":"me","what":"Rejoin the gym before the 5th","due":null,"evidence_msg_id":"{marketing}","direction":"yours"}},
+                {{"who_owes":"me","what":"Send the signed form","due":null,"evidence_msg_id":"{sent}","direction":"yours"}},
+                {{"who_owes":"Alice","what":"Send the launch date","due":null,"evidence_msg_id":"{marketing}","direction":"theirs"}}
             ]}}"#
         )]);
 
@@ -525,6 +539,70 @@ mod tests {
             .expect("forced");
     }
 
+    async fn extracted_due(body: &str, written: DateTime<Utc>, due: &str) -> Option<DateTime<Utc>> {
+        let store = Store::in_memory().await.expect("store");
+        let account = test_account();
+        store.insert_account(&account).await.expect("account");
+        let evidence = insert_message_with(
+            &store,
+            &account,
+            &ThreadId::new(),
+            "evidence",
+            body,
+            written,
+            MessageDirection::Inbound,
+        )
+        .await;
+        let reply = serde_json::json!({"commitments": [{
+            "who_owes": "Alice",
+            "what": "Send the launch date",
+            "due": due,
+            "evidence_msg_id": evidence.as_str(),
+            "direction": "theirs",
+        }]})
+        .to_string();
+        let llm = sequence_llm(&[&reply]);
+        let inserted = extract_commitments(&store, &llm, &account.id, "alice@example.com", false)
+            .await
+            .expect("extract");
+        assert_eq!(inserted, 1, "the commitment is kept, dated or not");
+        store
+            .list_contact_commitments(&account.id, Some("alice@example.com"), None)
+            .await
+            .expect("commitments")
+            .remove(0)
+            .by_when
+    }
+
+    #[tokio::test]
+    async fn due_words_resolve_against_when_the_evidence_was_written() {
+        use chrono::{Datelike, Weekday};
+        let written = Utc::now() - chrono::Duration::days(30);
+        let due = extracted_due(
+            "I will send the launch date by Friday.",
+            written,
+            "by Friday",
+        )
+        .await
+        .expect("dated from the message's words");
+        // The Friday after the message, which is long past, not the coming one.
+        assert_eq!(due.with_timezone(&Local).weekday(), Weekday::Fri);
+        assert!(due > written && due <= written + chrono::Duration::days(8));
+        assert!(due < Utc::now());
+    }
+
+    #[tokio::test]
+    async fn due_words_the_evidence_never_says_leave_the_commitment_undated() {
+        let written = Utc::now() - chrono::Duration::days(2);
+        let body = "I will send the launch date soon.";
+        assert_eq!(extracted_due(body, written, "by Friday").await, None);
+        // A date the model worked out, in the old RFC 3339 shape.
+        assert_eq!(
+            extracted_due(body, written, "2026-10-09T17:00:00Z").await,
+            None
+        );
+    }
+
     #[test]
     fn parse_accepts_prose_and_unclosed_fences_around_json() {
         for reply in [
@@ -578,6 +656,27 @@ mod tests {
         offset_minutes: i64,
         direction: MessageDirection,
     ) -> MessageId {
+        insert_message_with(
+            store,
+            account,
+            thread_id,
+            provider_id,
+            "I will send the launch date.",
+            Utc::now() + chrono::Duration::minutes(offset_minutes),
+            direction,
+        )
+        .await
+    }
+
+    async fn insert_message_with(
+        store: &Store,
+        account: &Account,
+        thread_id: &ThreadId,
+        provider_id: &str,
+        body: &str,
+        date: DateTime<Utc>,
+        direction: MessageDirection,
+    ) -> MessageId {
         let outbound = direction == MessageDirection::Outbound;
         let (from, to) = if outbound {
             (account.email.as_str(), "alice@example.com")
@@ -585,7 +684,6 @@ mod tests {
             ("alice@example.com", account.email.as_str())
         };
         let message_id = MessageId::new();
-        let date = Utc::now() + chrono::Duration::minutes(offset_minutes);
         let envelope = mxr_core::types::Envelope {
             id: message_id.clone(),
             account_id: account.id.clone(),
@@ -607,7 +705,7 @@ mod tests {
             subject: "Launch".to_string(),
             date,
             flags: MessageFlags::empty(),
-            snippet: "I will send the launch date.".to_string(),
+            snippet: body.to_string(),
             has_attachments: false,
             size_bytes: 10,
             unsubscribe: UnsubscribeMethod::None,
@@ -623,7 +721,7 @@ mod tests {
         store
             .insert_body(&MessageBody {
                 message_id: message_id.clone(),
-                text_plain: Some("I will send the launch date.".to_string()),
+                text_plain: Some(body.to_string()),
                 text_html: None,
                 attachments: Vec::new(),
                 fetched_at: date,

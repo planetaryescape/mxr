@@ -5,7 +5,12 @@
 //! no commitment markers at all) with an `LlmFeature::Commitments`
 //! call. Stores results in `draft_commitment_candidates`; promotion
 //! to `contact_commitments` happens after a successful send.
+//!
+//! The model copies the due words; code checks them against the draft and
+//! resolves them with the natural-time parser, so a deadline is never a
+//! date the model wrote (D111).
 
+use super::time::due_words_in_zone;
 use crate::state::AppState;
 use mxr_core::types::Draft;
 use mxr_llm::{
@@ -34,8 +39,9 @@ struct LlmCommitment {
     who_owes: String,
     #[serde(default)]
     what: String,
+    /// The draft's own words for when, never a date the model works out.
     #[serde(default)]
-    by_when: Option<chrono::DateTime<chrono::Utc>>,
+    due: Option<String>,
     #[serde(default)]
     direction: Option<String>,
 }
@@ -88,10 +94,12 @@ pub(crate) async fn extract_and_store(
                 "You extract concrete future-tense commitments the SENDER is making. \
                  Output STRICT JSON with the schema: \
                  {\"commitments\": [{\"who_owes\": str, \"what\": str, \
-                 \"by_when\": str|null, \"direction\": \"yours\"|\"theirs\"}]}\n\n\
+                 \"due\": str|null, \"direction\": \"yours\"|\"theirs\"}]}\n\n\
                  Rules: \"what\" must name a concrete deliverable (skip vague items \
                  like \"think about it\"). \"who_owes\" is the sender's email. \
-                 \"by_when\" is RFC 3339 if a date is named, else null. \
+                 \"due\" is the words in the draft that say when, copied exactly \
+                 as written (for example \"by Friday\" or \"next week\"), or null \
+                 when no time is named. Never work out a date yourself. \
                  If there are none, return {\"commitments\": []}.",
             )),
             ChatMessage::user(format!(
@@ -127,6 +135,15 @@ pub(crate) async fn extract_and_store(
             Some("theirs") => CommitmentDirection::Theirs,
             _ => CommitmentDirection::Yours,
         };
+        // The draft is being written now, so its "by Friday" means the
+        // coming Friday in the daemon's zone.
+        let by_when = match entry.due.as_deref() {
+            Some(due) => due_words_in_zone(state, &cleaned, due, Some(now), None)
+                .map_err(|e| e.to_string())?
+                .and_then(|words| words.resolution)
+                .map(|resolution| resolution.at),
+            None => None,
+        };
         let candidate = DraftCommitmentCandidate {
             id: new_candidate_id(),
             draft_id: draft.id.clone(),
@@ -139,7 +156,7 @@ pub(crate) async fn extract_and_store(
                 entry.who_owes
             },
             what: what.to_string(),
-            by_when: entry.by_when,
+            by_when,
             extracted_at: now,
         };
         state
@@ -387,7 +404,7 @@ mod tests {
     #[tokio::test]
     async fn extract_persists_candidates_returned_by_llm() {
         let body = r#"{"commitments":[
-            {"who_owes":"me@example.com","what":"send the deck","by_when":null,"direction":"yours"}
+            {"who_owes":"me@example.com","what":"send the deck","due":null,"direction":"yours"}
         ]}"#;
         let (state, account_id, stub) = fixture(body).await;
         let draft = draft_with_body(&account_id, "I'll send the deck Friday. Thanks!");
@@ -404,10 +421,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn due_words_from_the_draft_become_the_deadline_through_promotion() {
+        use chrono::{Datelike, Local, Weekday};
+        let body = r#"{"commitments":[
+            {"who_owes":"me@example.com","what":"send the deck","due":"by Friday","direction":"yours"}
+        ]}"#;
+        let (state, account_id, _) = fixture(body).await;
+        let draft = draft_with_body(&account_id, "I'll send the deck by Friday. Thanks!");
+        let started = chrono::Utc::now();
+        let stored = extract_and_store(&state, &draft).await.unwrap();
+        let due = stored[0].by_when.expect("dated from the draft's words");
+        let expected = mxr_core::natural_time::resolve_time(
+            "Friday",
+            &started.with_timezone(&Local),
+            &state.snooze_time_prefs(),
+        )
+        .unwrap()
+        .at;
+        assert_eq!(due, expected);
+        assert_eq!(due.with_timezone(&Local).weekday(), Weekday::Fri);
+
+        promote_after_send(&state, &draft, &mxr_core::MessageId::new())
+            .await
+            .unwrap();
+        let promoted = state
+            .store
+            .list_contact_commitments(&account_id, Some("alice@example.com"), None)
+            .await
+            .unwrap();
+        assert_eq!(promoted[0].by_when, Some(due));
+    }
+
+    #[tokio::test]
+    async fn a_due_the_draft_never_says_leaves_the_commitment_undated() {
+        // "by Monday" isn't in the draft; the RFC 3339 date is the model
+        // working out a date, which the draft doesn't say either.
+        let body = r#"{"commitments":[
+            {"who_owes":"me@example.com","what":"send the deck","due":"by Monday","direction":"yours"},
+            {"who_owes":"me@example.com","what":"send the notes","due":"2026-10-09T17:00:00Z","direction":"yours"}
+        ]}"#;
+        let (state, account_id, _) = fixture(body).await;
+        let draft = draft_with_body(
+            &account_id,
+            "I'll send the deck soon, and I'll send the notes when I can.",
+        );
+        let stored = extract_and_store(&state, &draft).await.unwrap();
+        assert_eq!(stored.len(), 2, "undated commitments are still kept");
+        assert!(stored.iter().all(|candidate| candidate.by_when.is_none()));
+    }
+
+    #[tokio::test]
     async fn extract_drops_entries_with_empty_what() {
         let body = r#"{"commitments":[
-            {"who_owes":"me@example.com","what":"","by_when":null,"direction":"yours"},
-            {"who_owes":"me@example.com","what":"send invoice","by_when":null,"direction":"yours"}
+            {"who_owes":"me@example.com","what":"","due":null,"direction":"yours"},
+            {"who_owes":"me@example.com","what":"send invoice","due":null,"direction":"yours"}
         ]}"#;
         let (state, account_id, _) = fixture(body).await;
         let draft = draft_with_body(&account_id, "I'll get back to you tomorrow.");
@@ -419,7 +486,7 @@ mod tests {
     #[tokio::test]
     async fn promotion_after_send_writes_exactly_one_contact_commitment_row() {
         let body = r#"{"commitments":[
-            {"who_owes":"me@example.com","what":"send the deck","by_when":null,"direction":"yours"}
+            {"who_owes":"me@example.com","what":"send the deck","due":null,"direction":"yours"}
         ]}"#;
         let (state, account_id, _) = fixture(body).await;
         let draft = draft_with_body(&account_id, "I'll send the deck Friday.");
@@ -458,7 +525,7 @@ mod tests {
     #[tokio::test]
     async fn promotion_is_idempotent_when_run_twice() {
         let body = r#"{"commitments":[
-            {"who_owes":"me@example.com","what":"send the deck","by_when":null,"direction":"yours"}
+            {"who_owes":"me@example.com","what":"send the deck","due":null,"direction":"yours"}
         ]}"#;
         let (state, account_id, _) = fixture(body).await;
         let draft = draft_with_body(&account_id, "I'll send the deck Friday.");

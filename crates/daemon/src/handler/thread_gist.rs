@@ -15,6 +15,7 @@ use super::thread_context::{build_thread_context, owned_addresses};
 use super::{HandlerError, HandlerResult};
 use crate::state::{llm_endpoint_is_local, AppState};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::text::{collapse_whitespace, find_normalized, fold_quotes};
 use mxr_core::types::Envelope;
 use mxr_llm::{
     guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
@@ -700,21 +701,6 @@ pub(super) fn plain_text(value: &str, max_chars: usize) -> String {
     format!("{}…", cut.trim_end_matches([',', ';', ':', ' ']))
 }
 
-pub(super) fn collapse_whitespace(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// Curly quotes and apostrophes compare equal to straight ones; models
-/// swap them freely. The mapping is one char for one char, so a match in
-/// the folded text is the same span in the unfolded one.
-fn fold_quotes(c: char) -> char {
-    match c {
-        '\u{2018}' | '\u{2019}' | '\u{201B}' | '\u{2032}' => '\'',
-        '\u{201C}' | '\u{201D}' | '\u{201F}' | '\u{2033}' => '"',
-        other => other,
-    }
-}
-
 /// The quote exactly as it appears in a message's text, or `None` when it is
 /// too short, too long, or not in the thread. Matching ignores how
 /// whitespace is laid out and curly versus straight quote marks; the span
@@ -745,50 +731,10 @@ fn verify_quote(
     })
 }
 
-/// `phrase` as it is written in `text`, matching the way quotes are checked
-/// but also ignoring letter case: the original slice, or `None` when the
-/// text doesn't say it. Model output is only shown when it passes this.
-pub(super) fn find_phrase_ignoring_case<'a>(text: &'a str, phrase: &str) -> Option<&'a str> {
-    let fold = |c: char| fold_quotes(c.to_lowercase().next().unwrap_or(c));
-    let wanted = normalize(&collapse_whitespace(phrase), fold);
-    if wanted.is_empty() {
-        return None;
-    }
-    find_normalized(text, &wanted, fold).map(|span| &text[span])
-}
-
 /// `phrase` (already whitespace-collapsed) as the chars `find_normalized`
 /// compares against.
 fn normalize(phrase: &str, fold: impl Fn(char) -> char) -> Vec<char> {
     phrase.chars().map(fold).collect()
-}
-
-/// Byte range in `text` whose whitespace-collapsed, quote-folded form equals
-/// `wanted` (already collapsed and folded).
-fn find_normalized(
-    text: &str,
-    wanted: &[char],
-    fold: impl Fn(char) -> char,
-) -> Option<std::ops::Range<usize>> {
-    // Each normalized char with the byte range of the original it stands for.
-    let mut normalized: Vec<(char, usize, usize)> = Vec::new();
-    for (index, c) in text.char_indices() {
-        let end = index + c.len_utf8();
-        if c.is_whitespace() {
-            match normalized.last_mut() {
-                Some((' ', _, last_end)) => *last_end = end,
-                _ => normalized.push((' ', index, end)),
-            }
-        } else {
-            normalized.push((fold(c), index, end));
-        }
-    }
-    let start = normalized
-        .windows(wanted.len())
-        .position(|window| window.iter().map(|(c, _, _)| *c).eq(wanted.iter().copied()))?;
-    let first = normalized[start];
-    let last = normalized[start + wanted.len() - 1];
-    Some(first.1..last.2)
 }
 
 #[cfg(test)]

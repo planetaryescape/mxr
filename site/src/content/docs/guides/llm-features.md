@@ -155,7 +155,10 @@ as `gpt-oss:20b` never match, since they have no number straight after `gpt-`.
 
 OpenAI's current models reject `max_tokens` and any temperature but the
 default, so mxr sends the token cap as `max_completion_tokens`, leaves room in
-it for reasoning, and sends no temperature.
+it for reasoning, and sends no temperature. GPT-6 Luna and the GPT-5.6 models
+take tool calls on Chat Completions only with reasoning off, so requests with
+tools to those ids carry `reasoning_effort: "none"`; no other id gets the
+field.
 
 ## Pick the assistant's model
 

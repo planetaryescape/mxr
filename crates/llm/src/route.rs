@@ -192,12 +192,15 @@ pub fn is_openai_model(model: &str) -> bool {
     is_openai_id(model) || model.strip_prefix("openai/").is_some_and(is_openai_id)
 }
 
-/// OpenAI models that take tool calls on Chat Completions only with
-/// `reasoning_effort: "none"` (they default to medium): GPT-6 and GPT-5.x.
+/// OpenAI models confirmed to take tool calls on Chat Completions only with
+/// `reasoning_effort: "none"` (they default to medium): GPT-6 Luna and the
+/// GPT-5.6 family. An explicit list, not a prefix: other GPT-6 ids (Astra,
+/// 6.1 Sol) reject the field and need the Responses API for tools, so they
+/// get none until someone confirms otherwise.
 pub fn openai_tools_need_no_reasoning(model: &str) -> bool {
     let model = model.trim();
     let model = model.strip_prefix("openai/").unwrap_or(model);
-    model.starts_with("gpt-6") || model.starts_with("gpt-5.")
+    model == "gpt-6-luna" || ["gpt-5.6-terra", "gpt-5.6-luna"].contains(&model)
 }
 
 /// OpenAI's own ids: `gpt-` and a digit, so a local `gpt-oss` never matches.
@@ -374,16 +377,25 @@ mod tests {
     }
 
     #[test]
-    fn gpt_6_and_gpt_5_x_need_reasoning_off_for_tool_calls() {
+    fn only_the_confirmed_models_get_reasoning_off_for_tool_calls() {
         for yes in [
             "gpt-6-luna",
             "gpt-5.6-terra",
+            "gpt-5.6-luna",
             "openai/gpt-6-luna",
-            "gpt-5.1",
         ] {
             assert!(openai_tools_need_no_reasoning(yes), "{yes}");
         }
-        for no in ["gpt-4o-mini", "gpt-oss:20b", "claude-haiku-5-5", "gemma4"] {
+        for no in [
+            "gpt-6-astra",
+            "gpt-6.1-sol",
+            "gpt-5.1",
+            "gpt-5.5",
+            "gpt-4o-mini",
+            "gpt-oss:20b",
+            "claude-haiku-5-5",
+            "gemma4",
+        ] {
             assert!(!openai_tools_need_no_reasoning(no), "{no}");
         }
     }

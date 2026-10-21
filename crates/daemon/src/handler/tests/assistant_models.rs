@@ -362,6 +362,44 @@ fn a_revoke_racing_a_pick_is_never_overwritten_by_the_picks_old_snapshot() {
 }
 
 #[test]
+fn a_config_set_in_another_process_is_never_restored_by_a_pick_in_flight() {
+    isolated(|state| async move {
+        for round in 0..20 {
+            cloud_allowed_on_disk(&state).await;
+            let mut config = state.config_snapshot();
+            config.llm.overrides.assistant = None;
+            save(&state, config).await;
+            // What `mxr config set llm.allow_cloud_relationship_data false`
+            // does in its own process: one locked read-modify-write of the
+            // file, then a reload request.
+            let cli = tokio::task::spawn_blocking(|| {
+                mxr_config::update_config(|config| {
+                    config.llm.allow_cloud_relationship_data = false;
+                    Ok::<_, mxr_config::ConfigError>(())
+                })
+                .unwrap();
+            });
+            let pick = pick(&state, "claude-haiku-5-5", false);
+            let (_, cli) = tokio::join!(pick, cli);
+            cli.unwrap();
+            send(&state, Request::ReloadLlmConfig).await;
+
+            assert!(
+                !mxr_config::load_config()
+                    .unwrap()
+                    .llm
+                    .allow_cloud_relationship_data,
+                "round {round}: the pick restored the setting on disk"
+            );
+            assert!(
+                !state.config_snapshot().llm.allow_cloud_relationship_data,
+                "round {round}: the daemon allows cloud again"
+            );
+        }
+    });
+}
+
+#[test]
 fn a_pick_during_a_pending_restore_does_not_turn_ai_back_on() {
     isolated(|state| async move {
         // The file says AI is on; a restored workspace keeps it off until it

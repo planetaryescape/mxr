@@ -1859,17 +1859,22 @@ impl AppState {
     where
         F: FnOnce(&mut mxr_config::MxrConfig) -> std::result::Result<(), String>,
     {
+        // In-process writers first, then the file lock, always in that order.
         let _writing = self.config_write.lock().await;
-        // `mxr config set llm.*` writes the file from another process and then
-        // asks this daemon to reload; if that write landed but the request is
-        // still waiting for the lock, this change must start from it, not
-        // overwrite it.
-        if let Err(error) = self.sync_llm_from_disk() {
-            tracing::warn!(%error, "couldn't re-read [llm] before changing config");
-        }
-        let mut config = self.config_snapshot();
-        mutator(&mut config)?;
-        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+        let config = {
+            // `mxr config set` writes the file from another process. Holding
+            // the file lock from the re-read to the save means its write lands
+            // wholly before this change (and is read here) or wholly after
+            // (and is not overwritten by a copy taken before it).
+            let _file = mxr_config::lock_config_file().map_err(|e| e.to_string())?;
+            if let Err(error) = self.sync_llm_from_disk() {
+                tracing::warn!(%error, "couldn't re-read [llm] before changing config");
+            }
+            let mut config = self.config_snapshot();
+            mutator(&mut config)?;
+            mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+            config
+        };
         self.semantic
             .apply_config(config.search.semantic.clone())
             .await

@@ -584,12 +584,18 @@ fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding 
         // (a Gmail 401, an IMAP login the server rejected); doctor must agree.
         || crate::loops::classify_sync_error(err) == "auth"
     {
-        (
-            DoctorFindingCategory::OAuth,
-            vec![format!(
-                "Re-authenticate `{account}`: run `mxr accounts add` for the same provider/account key, or use the account OAuth flow in the web app."
-            )],
-        )
+        // Re-adding the account cannot fix a rejected OAuth client or scope, so
+        // name the real cause first and keep re-authorization as the last step.
+        let mut steps = Vec::new();
+        if lower.contains("invalid_client") || lower.contains("unauthorized_client") {
+            steps.push("Google rejected the OAuth client, not the sign-in: check the client ID and secret in the account config. A custom client must be a \"Desktop app\" client in Google Cloud Console.".to_string());
+        } else if lower.contains("invalid_scope") {
+            steps.push("Google rejected the requested scopes: enable the Gmail API for the project and list the gmail.readonly, gmail.modify and gmail.labels scopes on the OAuth consent screen.".to_string());
+        }
+        steps.push(format!(
+            "Re-authenticate `{account}`: run `mxr accounts add` for the same provider/account key, or use the account OAuth flow in the web app."
+        ));
+        (DoctorFindingCategory::OAuth, steps)
     } else if lower.contains("rate") && lower.contains("limit") {
         (
             DoctorFindingCategory::Sync,
@@ -895,6 +901,9 @@ mod tests {
         let rows: &[(&str, &str, Kind, DoctorFindingCategory, bool)] = &[
             // Gmail: a genuinely rejected grant, and an expired API session.
             ("gmail invalid_grant", "Provider error: Auth error: OAuth2 error: invalid_grant", Kind::Auth, DoctorFindingCategory::OAuth, true),
+            ("gmail invalid_client", "Provider error: Auth error: OAuth2 error: invalid_client", Kind::Auth, DoctorFindingCategory::OAuth, true),
+            ("gmail invalid_request", &format!("{TOKEN_UNAVAILABLE}: token endpoint returned invalid_request (HTTP 400 Bad Request)"), Kind::Offline, DoctorFindingCategory::Network, false),
+            ("gmail unknown code", &format!("{TOKEN_UNAVAILABLE}: token endpoint returned upstream_failure (HTTP 400 Bad Request)"), Kind::Offline, DoctorFindingCategory::Network, false),
             ("gmail 401", "Provider error: Authentication expired — re-auth required", Kind::Auth, DoctorFindingCategory::OAuth, true),
             // Gmail: everything that is not a rejected grant.
             ("gmail token connection", &format!("{TOKEN_UNAVAILABLE}: token endpoint connection failed"), Kind::Offline, DoctorFindingCategory::Network, false),
@@ -941,6 +950,31 @@ mod tests {
                 "doctor names a next step: {name}"
             );
         }
+    }
+
+    #[test]
+    fn a_rejected_client_or_scope_names_the_real_fix_before_reauthorizing() {
+        for (code, expected) in [
+            ("invalid_client", "OAuth client"),
+            ("unauthorized_client", "OAuth client"),
+            ("invalid_scope", "scopes"),
+        ] {
+            let finding = classify_sync_error(
+                "work",
+                &format!("Provider error: Auth error: OAuth2 error: {code}"),
+            );
+            assert!(
+                finding.remediation[0].contains(expected),
+                "{code}: {:?}",
+                finding.remediation
+            );
+            assert!(finding.remediation.last().unwrap().contains("accounts add"));
+        }
+        let grant = classify_sync_error(
+            "work",
+            "Provider error: Auth error: OAuth2 error: invalid_grant",
+        );
+        assert_eq!(grant.remediation.len(), 1);
     }
 
     #[test]

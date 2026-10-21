@@ -33,13 +33,20 @@ the background helper and the older explicit helper (`with_refresh_token`):
   malformed 200 become `RefreshUnavailable` with the status ("returned an
   unreadable HTTP 400 response"). Doctor and sync health treat that as
   retryable.
-- Only a well-formed lowercase OAuth error code (`invalid_grant`,
-  `invalid_client`, ...) becomes `OAuth2`, which prescribes reauthorization.
-  `temporarily_unavailable` and `server_error` stay retryable. Other text in
-  the `error` field is never copied into diagnostics.
+- Only an explicit allowlist of RFC 6749 section 5.2 rejection codes becomes
+  `OAuth2` and prescribes action: `invalid_grant` (reauthorize), plus
+  `invalid_client`, `unauthorized_client` and `invalid_scope`. For the last
+  three doctor first names the real cause (check the OAuth client, or enable
+  the Gmail API and list the scopes), since re-adding the account cannot fix
+  them, and keeps reauthorization as the final step. Every other code, known
+  (`invalid_request`, `temporarily_unavailable`, `server_error`) or not, stays
+  retryable with the code and HTTP status in the message. Text in the `error`
+  field that is not shaped like a code is never copied into diagnostics.
 - Transport failures are reduced to a fixed category (timed out, connection
   failed, TLS handshake failed, response could not be read), so reqwest URLs,
-  hosts and ports never appear.
+  hosts and ports never appear. A timeout while reading the body is reported as
+  a timeout: reqwest 0.13 flags it as both timeout and decode, so the timeout
+  is checked first.
 - Redirects are reported with their status, not followed.
 
 The older helper no longer propagates `error_description` (diagnostic polish,
@@ -67,7 +74,7 @@ cached source would remove them if that ever shows up in logs.
 ## Network-before-auth keyword precedence is pinned across providers
 
 Resolved. `provider_failures_classify_the_same_in_sync_health_and_doctor` in
-`crates/daemon/src/handler/status_helpers.rs` runs 19 synthetic Gmail, IMAP and
+`crates/daemon/src/handler/status_helpers.rs` runs 22 synthetic Gmail, IMAP and
 SMTP errors through sync health and doctor: rejected credentials, connection
 reset and TLS failure inside the IMAP login wrapper, XOAUTH2 token-fetch
 failures (transport and `invalid_grant`), SMTP credential rejection, and every

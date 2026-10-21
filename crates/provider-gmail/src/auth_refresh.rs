@@ -25,9 +25,15 @@ const MAX_RETRY_AFTER_SECS: u64 = 3600;
 /// Used when a 429 carries no usable `Retry-After`, matching Gmail API 429s.
 const DEFAULT_RETRY_AFTER_SECS: u64 = 60;
 
-/// OAuth error codes that describe the endpoint, not the grant (RFC 6749
-/// section 4.1.2.1), so they must not prescribe reauthorization.
-const TRANSIENT_OAUTH_CODES: &[&str] = &["temporarily_unavailable", "server_error"];
+/// OAuth error codes (RFC 6749 section 5.2) that mean Google rejected the
+/// grant or the client, which only the user can fix. Every other code, known
+/// or not, is a response mxr cannot act on and stays retryable.
+const REJECTION_CODES: &[&str] = &[
+    "invalid_grant",
+    "invalid_client",
+    "unauthorized_client",
+    "invalid_scope",
+];
 
 #[derive(Deserialize)]
 struct TokenResponse {
@@ -149,7 +155,9 @@ pub(crate) async fn read_refreshed_token(
     }
     let body = match response.json::<TokenResponse>().await {
         Ok(body) => body,
-        Err(error) if error.is_decode() => {
+        // reqwest reports a timeout while reading the body as a decode error
+        // too, so the timeout has to be ruled out first.
+        Err(error) if error.is_decode() && !error.is_timeout() => {
             // Neither a revoked grant nor a usable token: say what arrived.
             return Err(AuthError::RefreshUnavailable(format!(
                 "token endpoint returned an unreadable HTTP {status} response"
@@ -159,11 +167,11 @@ pub(crate) async fn read_refreshed_token(
     };
     if !status.is_success() {
         return Err(match body.error.as_deref().and_then(oauth_error_code) {
-            Some(code) if TRANSIENT_OAUTH_CODES.contains(&code) => {
-                AuthError::RefreshUnavailable(format!("{code} (HTTP {status})"))
-            }
-            // Only an OAuth error code is proof the endpoint rejected the grant.
-            Some(code) => AuthError::OAuth2(code.to_string()),
+            // Only these codes are proof the endpoint rejected the grant or client.
+            Some(code) if REJECTION_CODES.contains(&code) => AuthError::OAuth2(code.to_string()),
+            Some(code) => AuthError::RefreshUnavailable(format!(
+                "token endpoint returned {code} (HTTP {status})"
+            )),
             None => AuthError::RefreshUnavailable(format!(
                 "token endpoint returned HTTP {status} without an OAuth error code"
             )),
@@ -193,8 +201,8 @@ pub(crate) async fn read_refreshed_token(
     })
 }
 
-/// An OAuth error code as the RFC defines them (`invalid_grant`, ...). Anything
-/// else in that field is untrusted text and is not carried into diagnostics.
+/// An OAuth error code by shape (`invalid_request`, ...). Anything else in that
+/// field is untrusted text and is not carried into diagnostics.
 fn oauth_error_code(code: &str) -> Option<&str> {
     let well_formed = !code.is_empty()
         && code.len() <= 64
@@ -370,13 +378,51 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn only_a_well_formed_oauth_code_is_carried_into_the_error() {
-        let (rejected, _) = refresh_error(
-            ResponseTemplate::new(400).set_body_json(serde_json::json!({"error": "invalid_grant"})),
-        )
-        .await;
-        assert!(matches!(rejected, AuthError::OAuth2(ref code) if code == "invalid_grant"));
+    async fn only_grant_and_client_rejections_are_oauth_errors() {
+        for code in [
+            "invalid_grant",
+            "invalid_client",
+            "unauthorized_client",
+            "invalid_scope",
+        ] {
+            let (rejected, _) = refresh_error(
+                ResponseTemplate::new(400).set_body_json(serde_json::json!({ "error": code })),
+            )
+            .await;
+            assert!(
+                matches!(rejected, AuthError::OAuth2(ref c) if c == code),
+                "{code}"
+            );
+        }
+    }
 
+    #[tokio::test]
+    async fn other_oauth_codes_are_retryable_with_their_code_and_status() {
+        for code in [
+            "invalid_request",
+            "unsupported_grant_type",
+            "access_denied",
+            "upstream_failure",
+            "temporarily_unavailable",
+            "server_error",
+        ] {
+            let (error, tokens) = refresh_error(
+                ResponseTemplate::new(400).set_body_json(serde_json::json!({ "error": code })),
+            )
+            .await;
+            let AuthError::RefreshUnavailable(message) = &error else {
+                panic!("{code} is not proof of revocation: {error:?}");
+            };
+            assert!(
+                message.contains(code) && message.contains("HTTP 400"),
+                "{message}"
+            );
+            assert_eq!(tokens.refresh_token().as_deref(), Some("synthetic-refresh"));
+        }
+    }
+
+    #[tokio::test]
+    async fn text_that_is_not_an_oauth_code_stays_out_of_diagnostics() {
         // The field is remote text; anything but a code stays out of diagnostics.
         let (untrusted, _) = refresh_error(
             ResponseTemplate::new(400)
@@ -434,18 +480,6 @@ mod tests {
         ));
         assert_eq!(source.access_token().await.unwrap(), "new-access");
         assert_eq!(tokens.refresh_token().as_deref(), Some("synthetic-refresh"));
-    }
-
-    #[tokio::test]
-    async fn transient_oauth_codes_are_retryable_not_revocations() {
-        for code in ["temporarily_unavailable", "server_error"] {
-            let (error, tokens) = refresh_error(
-                ResponseTemplate::new(400).set_body_json(serde_json::json!({ "error": code })),
-            )
-            .await;
-            assert!(matches!(error, AuthError::RefreshUnavailable(_)), "{code}");
-            assert_eq!(tokens.refresh_token().as_deref(), Some("synthetic-refresh"));
-        }
     }
 
     #[tokio::test]

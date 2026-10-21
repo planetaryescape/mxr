@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.124](https://github.com/planetaryescape/mxr/compare/v0.6.123...v0.6.124) (2026-10-21)
+
+
+### Features
+
+* answer Now and mode reads from ready-made views ([#567](https://github.com/planetaryescape/mxr/issues/567)) ([ecffbc9](https://github.com/planetaryescape/mxr/commit/ecffbc966cead4a1081c52553e4cfb31861d11b5))
+
 ## [0.6.123](https://github.com/planetaryescape/mxr/compare/v0.6.122...v0.6.123) (2026-10-21)
 
 

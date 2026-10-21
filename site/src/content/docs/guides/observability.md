@@ -66,6 +66,22 @@ mxr status --format json | jq '{degraded, accounts, total_messages}'
 
 The table output prints `unknown` for the fields it has no reading for, instead of a zero that reads like an empty mailbox. Poll again once the sync settles — nothing needs fixing. The version, PID, and feature-health fields are always a real reading.
 
+### Why a second `mxr now` is instant
+
+Now, the rail, Messages, Updates and the Reading edition are built from every inbox message, which takes about a second on a large mailbox. The daemon keeps the last build of each one you read and answers the next read from it, as long as nothing it shows can have changed:
+
+- Anything you change through mxr (a done, a move, a reply) makes the next read rebuild first.
+- New mail and other stored changes do the same. Log, sync-bookkeeping and index writes don't count.
+- A view older than a minute is rebuilt first, because the views word time ("due soon", evening).
+
+In the background, the daemon rebuilds the views you read in the last 30 minutes a couple of seconds after mail changes, so reads usually find one ready. `generated_at` in the JSON says when a view was built. A read that records something always runs: `mxr reading` counts as a visit; `mxr reading edition --peek` does not.
+
+To watch the rebuilds, set `level = "debug"` under `[logging]` in `config.toml`, restart the daemon, and search the log:
+
+```bash
+mxr logs --no-follow --search 'mode view refreshed' --since 10m
+```
+
 ## Read past logs without `tail -f`
 
 Use `mxr logs` to read the active file and retained mxr archives on this machine.

@@ -307,6 +307,14 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         });
         state.register_wrapped_warmer(wrapped_warmer_handle);
 
+        // Keeps recently read Now/mode views rebuilt after mail changes.
+        // Fire-and-forget like the prune loops: a lost pass costs nothing.
+        let mode_cache_state = state.clone();
+        tokio::spawn(async move {
+            let shutdown_rx = mode_cache_state.shutdown_receiver();
+            crate::handler::mode_cache::refresher_loop(mode_cache_state, shutdown_rx).await;
+        });
+
         // Activity prune loop: enforces the tiered retention windows from
         // config. Fire-and-forget; on shutdown the watch channel exits the
         // loop. Not registered with `runtime_tasks` because we don't need to

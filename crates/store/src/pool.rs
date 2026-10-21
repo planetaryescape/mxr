@@ -1,7 +1,10 @@
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
+
+use crate::ChangeFeed;
 use std::path::Path;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// SQLite-level busy retry. Multiple connections can be told to wait
@@ -19,8 +22,31 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 /// Mutation Failed / Contacts refresh error" entries.
 const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(90);
 
+/// What a pool's `after_connect` callback returns.
+type ConnectFuture<'c> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), sqlx::Error>> + Send + 'c>>;
+
+/// Install the change hooks on each writer connection the pool opens.
+fn watch_changes(
+    changes: &Arc<ChangeFeed>,
+) -> impl for<'c> Fn(
+    &'c mut sqlx::SqliteConnection,
+    sqlx::pool::PoolConnectionMetadata,
+) -> ConnectFuture<'c>
+       + Send
+       + Sync
+       + 'static {
+    let changes = Arc::clone(changes);
+    move |connection, _| {
+        let changes = Arc::clone(&changes);
+        Box::pin(async move { changes.watch(connection).await })
+    }
+}
+
 pub struct Store {
     writer: SqlitePool,
+    /// Commits on `writer` that can change a mail view.
+    changes: Arc<ChangeFeed>,
     resource_dir: std::path::PathBuf,
     reader: SqlitePool,
     /// Serialises the cleanup of a deleted message's files and index
@@ -56,9 +82,11 @@ impl Store {
             .busy_timeout(BUSY_TIMEOUT)
             .pragma("foreign_keys", "ON");
 
+        let changes = Arc::new(ChangeFeed::default());
         let writer = SqlitePoolOptions::new()
             .max_connections(1)
             .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
+            .after_connect(watch_changes(&changes))
             .connect_with(write_opts)
             .await?;
 
@@ -82,6 +110,7 @@ impl Store {
 
         let store = Self {
             writer,
+            changes,
             reader,
             resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
@@ -109,6 +138,7 @@ impl Store {
             .await?;
         let store = Self {
             writer: pool.clone(),
+            changes: Arc::new(ChangeFeed::default()),
             reader: pool,
             resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
@@ -122,8 +152,10 @@ impl Store {
             .journal_mode(SqliteJournalMode::Wal)
             .pragma("foreign_keys", "ON");
 
+        let changes = Arc::new(ChangeFeed::default());
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
+            .after_connect(watch_changes(&changes))
             .connect_with(opts)
             .await?;
 
@@ -131,6 +163,7 @@ impl Store {
             resource_dir: std::env::temp_dir()
                 .join(format!("mxr-draft-attachments-{}", uuid::Uuid::now_v7())),
             writer: pool.clone(),
+            changes,
             reader: pool,
             message_cleanup: tokio::sync::Mutex::new(()),
         };
@@ -313,6 +346,11 @@ impl Store {
             }
         }
         Ok(())
+    }
+
+    /// Commits that can change a mail view; see [`ChangeFeed`].
+    pub fn change_feed(&self) -> &ChangeFeed {
+        &self.changes
     }
 
     pub fn writer(&self) -> &SqlitePool {
@@ -1422,6 +1460,7 @@ mod tests {
             .unwrap();
         let store = Store {
             writer: writer.clone(),
+            changes: std::sync::Arc::new(crate::ChangeFeed::default()),
             reader: writer,
             resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),

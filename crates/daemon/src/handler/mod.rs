@@ -59,6 +59,7 @@ mod messages_text;
 mod messages_view;
 pub(crate) mod microsoft_todo;
 mod microsoft_todo_cli;
+pub(crate) mod mode_cache;
 mod mode_done;
 mod mode_guide;
 mod mode_rules;
@@ -506,6 +507,9 @@ pub async fn handle_request_with_peer(
                         }
                         Err(response) => *response,
                     };
+                if !request_is_read_only(req) {
+                    state.mode_cache.note_mutation();
+                }
 
                 // Activity capture seam. Fire-and-forget; never propagates errors.
                 // See `docs/activity-log.md`.
@@ -589,6 +593,15 @@ async fn dispatch(
     // A scoped profile passed `enforce_client_profile`, so it exists.
     let scoped_profile = account_scope::profile_name(source)
         .and_then(|name| config.agent_surfaces.profiles.get(name));
+    // Scoped profiles filter what they read, so they always build.
+    if let Some(view) = scoped_profile
+        .is_none()
+        .then(|| mode_cache::ModeView::of(req))
+        .flatten()
+    {
+        let result = Box::pin(state.mode_cache.read(state, view)).await;
+        return respond(result, request, &account_id, account_key, started_at);
+    }
     let result = match req {
         Request::RemoteRead {
             expected_workspace,
@@ -2154,7 +2167,16 @@ async fn dispatch(
             .map_err(HandlerError::from),
         (result, _) => result,
     };
+    respond(result, request, &account_id, account_key, started_at)
+}
 
+fn respond(
+    result: HandlerResult,
+    request: &str,
+    account_id: &str,
+    account_key: &str,
+    started_at: std::time::Instant,
+) -> Response {
     match result {
         Ok(data) => {
             tracing::debug!(

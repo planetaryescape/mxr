@@ -1371,3 +1371,41 @@ fn a_degraded_first_status_snapshot_leaves_the_total_unknown() {
         "a degraded snapshot must not overwrite a reading that was real"
     );
 }
+
+#[test]
+fn status_bar_names_search_mode_only_while_a_query_is_active() {
+    let mut app = App::new();
+    assert_eq!(app.status_bar_state().search_mode, None);
+
+    app.search.bar.mode = mxr_core::SearchMode::Hybrid;
+    app.search.bar.query = "invoice".into();
+    assert_eq!(
+        app.status_bar_state().search_mode,
+        None,
+        "typing in the filter bar is not an applied filter"
+    );
+
+    app.search.active = true;
+    assert_eq!(
+        app.status_bar_state().search_mode,
+        Some(mxr_core::SearchMode::Hybrid),
+        "an applied mailbox filter names its mode"
+    );
+
+    app.search.active = false;
+    assert_eq!(app.status_bar_state().search_mode, None);
+
+    app.screen = Screen::Search;
+    app.search.page.mode = mxr_core::SearchMode::Semantic;
+    assert_eq!(
+        app.status_bar_state().search_mode,
+        None,
+        "an empty search screen has no query"
+    );
+
+    app.search.page.query = "invoice".into();
+    assert_eq!(
+        app.status_bar_state().search_mode,
+        Some(mxr_core::SearchMode::Semantic)
+    );
+}

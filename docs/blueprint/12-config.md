@@ -91,6 +91,13 @@ path. The ANSI default does not depend on truecolor support.
 
 Choose Midnight for the TUI with `mxr config set appearance.theme midnight`.
 
+`appearance.sidebar`, `appearance.date_format`, `appearance.date_format_full`
+and `appearance.subject_max_width` were retired. The TUI formats dates by age,
+sizes columns to the terminal and has no sidebar to hide, so the keys are
+ignored. Existing files still load; the loader warns once and names them.
+`humanizer.apply_to_summaries` was retired the same way; nothing produces
+summaries to humanize.
+
 ## IMAP connection limit
 
 Each IMAP account accepts `max_connections` in its sync block. The default is

@@ -415,16 +415,63 @@ pub fn save_config(config: &MxrConfig) -> Result<(), ConfigError> {
     save_config_to_path(config, &config_file_path())
 }
 
+/// Settings that were removed because nothing read them. Serde ignores unknown
+/// fields, so an old `config.toml` that still sets them keeps loading; the
+/// loader names them once instead of letting them look like working settings.
+pub const RETIRED_CONFIG_KEYS: &[&str] = &[
+    "appearance.sidebar",
+    "appearance.date_format",
+    "appearance.date_format_full",
+    "appearance.subject_max_width",
+    "humanizer.apply_to_summaries",
+];
+
+/// The retired keys that appear in a parsed config document, in
+/// [`RETIRED_CONFIG_KEYS`] order.
+pub fn retired_config_keys_in(table: &toml::Table) -> Vec<&'static str> {
+    RETIRED_CONFIG_KEYS
+        .iter()
+        .copied()
+        .filter(|key| {
+            let Some((section, field)) = key.split_once('.') else {
+                return false;
+            };
+            table
+                .get(section)
+                .and_then(toml::Value::as_table)
+                .is_some_and(|table| table.contains_key(field))
+        })
+        .collect()
+}
+
+/// Warns once per process. Logs key names only, never values.
+fn warn_retired_config_keys_once(contents: &str) {
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    let Ok(table) = contents.parse::<toml::Table>() else {
+        return;
+    };
+    let keys = retired_config_keys_in(&table);
+    if keys.is_empty() {
+        return;
+    }
+    WARNED.call_once(|| {
+        tracing::warn!("config keys ignored: no longer used: {}", keys.join(", "));
+    });
+}
+
 /// Load config from a specific file path. Returns defaults if file doesn't exist.
 pub fn load_config_from_path(path: &Path) -> Result<MxrConfig, ConfigError> {
     let mut config = match std::fs::read_to_string(path) {
-        Ok(contents) => load_config_from_str(&contents).map_err(|e| match e {
-            ConfigError::ParseToml { source, .. } => ConfigError::ParseToml {
-                path: path.to_path_buf(),
-                source,
-            },
-            other => other,
-        })?,
+        Ok(contents) => {
+            warn_retired_config_keys_once(&contents);
+            load_config_from_str(&contents).map_err(|e| match e {
+                ConfigError::ParseToml { source, .. } => ConfigError::ParseToml {
+                    path: path.to_path_buf(),
+                    source,
+                },
+                other => other,
+            })?
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             tracing::debug!(
                 "config file not found at {}, using defaults",

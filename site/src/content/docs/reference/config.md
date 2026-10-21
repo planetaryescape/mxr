@@ -485,10 +485,9 @@ MXR_ACTIVITY=off mxr daemon          # recorder is spawned but writes are droppe
 ## `appearance`
 
 - `theme`
-- `sidebar`
-- `date_format`
-- `date_format_full`
-- `subject_max_width`
+
+`sidebar`, `date_format`, `date_format_full` and `subject_max_width` were retired
+and no longer do anything. mxr warns once when they are present and ignores them.
 
 ## `bridge`
 

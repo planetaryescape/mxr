@@ -1,3 +1,5 @@
+use crate::ui::search_page::search_mode_label;
+use mxr_core::SearchMode;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use throbber_widgets_tui::{Throbber, ThrobberState, BRAILLE_SIX};
@@ -29,6 +31,9 @@ pub struct StatusBarState {
     /// True while any replaceable request or queued mutation is in
     /// flight — renders the spinner at the left edge of the bar.
     pub busy: bool,
+    /// Set while a search query or an applied mailbox filter is active;
+    /// the bar names the mode after the counts.
+    pub search_mode: Option<SearchMode>,
 }
 
 pub fn draw(
@@ -87,6 +92,11 @@ pub fn draw(
         if let Some(feature_health_status) = state.feature_health_status.as_deref() {
             tail.push_str(" | ");
             tail.push_str(feature_health_status);
+        }
+        if let Some(mode) = state.search_mode {
+            tail.push_str(" | [mode: ");
+            tail.push_str(search_mode_label(mode));
+            tail.push(']');
         }
         vec![Span::raw(counts), sync, Span::raw(tail)]
     };
@@ -218,6 +228,7 @@ mod tests {
             pending_mutation_status: None,
             mutation_batch_total: total,
             busy: true,
+            search_mode: None,
         }
     }
 
@@ -309,5 +320,56 @@ mod tests {
         assert!(line.contains("=ALL MAIL 77/166="), "{line}");
         assert!(!line.contains("Latest mail"), "{line}");
         assert!(!line.contains("feature warnings"), "{line}");
+    }
+
+    fn rendered_at_width(state: &StatusBarState, width: u16) -> String {
+        let theme = crate::theme::Theme::default();
+        let spinner = ThrobberState::default();
+        let mut terminal = Terminal::new(ratatui::backend::TestBackend::new(width, 1)).unwrap();
+        terminal
+            .draw(|frame| draw(frame, frame.area(), state, Some(&spinner), &theme))
+            .unwrap();
+        text(terminal.backend().buffer())
+    }
+
+    #[test]
+    fn an_active_search_mode_is_named_after_the_counts() {
+        let mut searching = state(0, 0);
+        searching.busy = false;
+        searching.total_count = Some(42);
+        searching.search_mode = Some(SearchMode::Hybrid);
+        let line = rendered_at_width(&searching, 120);
+        let counts = line.find("[Msgs:42").expect("counts");
+        let mode = line.find("[mode: hybrid]").expect("mode chip");
+        assert!(counts < mode, "{line}");
+    }
+
+    #[test]
+    fn no_search_means_no_mode_chip() {
+        let mut calm = state(0, 0);
+        calm.busy = false;
+        assert!(!rendered_at_width(&calm, 120).contains("[mode:"));
+    }
+
+    #[test]
+    fn the_mode_chip_leaves_a_sync_warning_visible_at_120_columns() {
+        let mut warning = state(0, 0);
+        warning.busy = false;
+        warning.mailbox_name = "ALL MAIL".into();
+        warning.total_count = Some(4_242);
+        warning.unread_count = 77;
+        warning.starred_count = 7;
+        warning.body_status = Some("Latest mail 42m ago".into());
+        warning.sync_status =
+            Some("Latest mail 25m ago · Gmail paused: rate limited, retrying 09:50".into());
+        warning.compact_sync_status = Some("Gmail: retrying 09:50".into());
+        warning.sync_warning = true;
+        warning.search_mode = Some(SearchMode::Semantic);
+        let line = rendered_at_width(&warning, 120);
+        assert!(line.contains("[mode: semantic]"), "{line}");
+        assert!(
+            line.contains("retrying 09:50"),
+            "the sync warning must survive the mode chip: {line}"
+        );
     }
 }

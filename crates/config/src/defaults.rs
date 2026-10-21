@@ -64,10 +64,6 @@ impl Default for AppearanceConfig {
     fn default() -> Self {
         Self {
             theme: "default".to_string(),
-            sidebar: true,
-            date_format: "%b %d".to_string(),
-            date_format_full: "%Y-%m-%d %H:%M".to_string(),
-            subject_max_width: 60,
         }
     }
 }

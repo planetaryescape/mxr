@@ -922,6 +922,7 @@ fn bars_snapshot() {
                 pending_mutation_status: None,
                 mutation_batch_total: 0,
                 busy: false,
+                search_mode: None,
             },
             None,
             &mxr_tui::theme::Theme::default(),

@@ -107,6 +107,7 @@ export default defineConfig({
             { label: 'Web App', slug: 'guides/web-app' },
             { label: 'Sound, Key Hints and Touch', slug: 'guides/sound-hints-and-touch' },
             { label: 'Desktop App', slug: 'guides/desktop-app' },
+            { label: 'Raycast', slug: 'guides/raycast' },
             { label: 'Recipes (fzf, jq, xargs, cron)', slug: 'guides/recipes' },
           ],
         },

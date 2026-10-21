@@ -78,6 +78,12 @@ commit_all 'keybindings reference change'
 assert_scope pull_request "$baseline" HEAD false true false true false
 
 reset_fixture
+mkdir -p apps/raycast/src
+echo raycast >apps/raycast/src/now.tsx
+commit_all 'Raycast extension change'
+assert_scope pull_request "$baseline" HEAD false true false false false
+
+reset_fixture
 mkdir -p docs/reference
 echo '{}' >docs/reference/tui-keymap.json
 commit_all 'TUI keymap reference change'

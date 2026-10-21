@@ -1,0 +1,68 @@
+import { Alert, Toast, confirmAlert, showToast } from "@raycast/api";
+import { undoMutation } from "../bridge/modes";
+
+export interface Previewed<R> {
+  /** Confirm-dialog title, e.g. "Done here?" */
+  title: string;
+  /** Button that commits. */
+  confirm: string;
+  /** The dry run: the same selection the real change will act on. */
+  preview: () => Promise<R>;
+  commit: () => Promise<R>;
+  /** What the daemon says the change will do, for the dialog. */
+  describe: (preview: R) => string;
+  /** The undo handle of a committed change, when the daemon kept one. */
+  undoId?: (result: R) => string | null | undefined;
+  /** Toast title once it is done. */
+  done: string;
+  /** Refresh the list after the change, or after an undo. */
+  refresh: () => void;
+}
+
+/** Preview a change, ask, commit, then offer Undo: the daemon's preview path. */
+export async function runPreviewed<R>(change: Previewed<R>): Promise<void> {
+  const toast = await showToast({ style: Toast.Style.Animated, title: "Checking…" });
+  try {
+    const preview = await change.preview();
+    await toast.hide();
+    const confirmed = await confirmAlert({
+      title: change.title,
+      message: change.describe(preview),
+      primaryAction: { title: change.confirm, style: Alert.ActionStyle.Default },
+    });
+    if (!confirmed) return;
+
+    const progress = await showToast({ style: Toast.Style.Animated, title: "Working…" });
+    const result = await change.commit();
+    change.refresh();
+    const undoId = change.undoId?.(result);
+    progress.style = Toast.Style.Success;
+    progress.title = change.done;
+    if (undoId) {
+      progress.primaryAction = {
+        title: "Undo",
+        shortcut: { modifiers: ["cmd"], key: "z" },
+        onAction: async (shown) => {
+          shown.style = Toast.Style.Animated;
+          shown.title = "Undoing…";
+          try {
+            await undoMutation(undoId);
+            change.refresh();
+            shown.style = Toast.Style.Success;
+            shown.title = "Undone";
+          } catch (error) {
+            shown.style = Toast.Style.Failure;
+            shown.title = "Undo failed";
+            shown.message = message(error);
+          }
+        },
+      };
+    }
+  } catch (error) {
+    await showToast({ style: Toast.Style.Failure, title: "mxr", message: message(error) });
+  }
+}
+
+export function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

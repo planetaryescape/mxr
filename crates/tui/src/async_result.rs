@@ -275,7 +275,7 @@ pub(crate) enum AsyncResult {
         reply: Box<Result<ReplyContext, MxrError>>,
         reply_all: Box<Result<ReplyContext, MxrError>>,
     },
-    ExportResult(Result<String, MxrError>),
+    ExportResult(Result<String, String>),
     Unsubscribe(Result<UnsubscribeResultData, MxrError>),
     DraftCleanup {
         path: std::path::PathBuf,

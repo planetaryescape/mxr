@@ -138,14 +138,7 @@ impl App {
                     }
                 }
             }
-            Action::ExportThread => {
-                if let Some(env) = self.context_envelope() {
-                    self.mailbox.pending_export_thread = Some(env.thread_id.clone());
-                    self.status_message = Some("Exporting thread...".into());
-                } else {
-                    self.status_message = Some("No message selected".into());
-                }
-            }
+            Action::ExportThread => self.open_export_modal(),
             _ => unreachable!("action routed to wrong handler"),
         }
     }

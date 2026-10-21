@@ -9,6 +9,7 @@ mod compose_actions;
 mod compose_helpers;
 mod diagnostics_actions;
 mod draw;
+mod export_helpers;
 mod focus_run;
 mod hints;
 mod input;

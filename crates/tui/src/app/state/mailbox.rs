@@ -686,7 +686,9 @@ pub struct MailboxState {
     pub selected_set: HashSet<MessageId>,
     pub visual_mode: bool,
     pub visual_anchor: Option<usize>,
-    pub pending_export_thread: Option<mxr_core::id::ThreadId>,
+    /// Set by the export picker on confirm; the runner takes it and performs
+    /// the daemon request and the write or copy.
+    pub pending_export: Option<super::export_modal::PendingExport>,
     pub sidebar_accounts_expanded: bool,
     /// Spinner state for the per-account "syncing" indicator in the
     /// sidebar. Ticked while any account reports sync_in_progress.
@@ -790,7 +792,7 @@ impl MailboxState {
             selected_set: HashSet::new(),
             visual_mode: false,
             visual_anchor: None,
-            pending_export_thread: None,
+            pending_export: None,
             sidebar_accounts_expanded: true,
             sidebar_sync_throbber: ThrobberState::default(),
             sidebar_system_expanded: true,

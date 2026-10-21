@@ -1,4 +1,5 @@
 use super::super::MutationEffect;
+use super::export_modal::ExportModalState;
 use crate::ui::label_picker::{LabelPicker, LabelPickerMode};
 use crate::ui::personal_category_picker::PersonalCategoryPicker;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -178,6 +179,8 @@ pub struct ModalsState {
     /// attachment list. Lets them choose where to save instead of
     /// silently saving the file to the client's internal cache.
     pub save_attachment: SaveAttachmentModalState,
+    /// Export picker opened by `E`: format, then destination, then path.
+    pub export: ExportModalState,
 }
 
 /// State for the "save attachment as..." modal. Pre-filled with the

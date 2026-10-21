@@ -626,7 +626,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `r` | Reply |  |
 | `a` | Reply all |  |
 | `f` | Forward |  |
-| `E` | Export as Markdown |  |
+| `E` | Export thread: pick a format, then copy or save |  |
 | `B` | Thread briefing |  |
 | `W` | Who is this sender? |  |
 | `p` | Sender profile |  |

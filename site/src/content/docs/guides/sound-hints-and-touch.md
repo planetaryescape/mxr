@@ -19,9 +19,10 @@ promise you made follows it, if one is open.
   "Once per clearing" is remembered in this browser only.
 - Finishing a focus session with everyone answered shows the same scene
   ("Low tide. That's everyone.").
-- Emptying Reading, Paper trail or the reply queue shows a smaller version.
-- Messages (when nobody is waiting on you), To do (when nothing is due today
-  or earlier) and Updates (when the digest is let go) show the small version
+- Paper trail or the reply queue shows a smaller version.
+- Now (when it has no items), Messages (when nobody is waiting on you), To do
+  (when nothing is due today or earlier), Updates (when the digest is let go)
+  and Reading (when nothing is left in its edition) show the small version
   too, once per mode per day. Archive has none. With **Reduced** motion you
   get the words and no scene.
 - To make it a still picture, set **Settings > Appearance > Motion** to

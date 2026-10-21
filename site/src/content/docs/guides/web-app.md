@@ -481,7 +481,7 @@ page links to the Inbox and says how to file an email by hand.
 
 A done row folds away and the light is already on the next one. Press `e` once
 and you see the fold; press it repeatedly and the rows drop at once. When you
-put Messages, To do or Updates to bed, a small shore settles where the list
+put Now, Messages, To do, Updates or Reading to bed, a small shore settles where the list
 was, once per mode per day, followed by where the work is next ("Next: 3 in
 To do"). A change the assistant makes, or mail that arrives while the page is
 open, shows on its rows as a thin underline that fades in under a second.

@@ -6,6 +6,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 
 import { Button } from "@/components/ui/button";
 import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
+import { FinishingMoment } from "@/features/low-tide/FinishingMoment";
+import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
@@ -126,6 +128,16 @@ function Edition({ status, view }: { status: ReturnType<typeof useEdition>; view
   const phase = useDelayedPending(status.isLoading);
   const data = status.data;
   const [dialog, setDialog] = useState<Dialog>(null);
+  const hidden = useModeDone((s) => s.hidden.reading);
+  // Reading is put to bed when its edition is let go (docs/blueprint/27). Read
+  // items stay listed until they are let go or expire, so an emptied edition
+  // is the finish.
+  const finished = useLowTide(
+    "reading",
+    view === "later" || !data,
+    data ? visibleBands(data, hidden).length > 0 : false,
+    { daily: true },
+  );
   return (
     <>
       <EditionHeader
@@ -144,7 +156,13 @@ function Edition({ status, view }: { status: ReturnType<typeof useEdition>; view
           onRetry={() => void status.refetch()}
         />
       ) : data ? (
-        <Bands edition={data} guide={guide.data} view={view} setDialog={setDialog} />
+        <Bands
+          edition={data}
+          guide={guide.data}
+          view={view}
+          setDialog={setDialog}
+          finished={finished}
+        />
       ) : null}
       {dialog?.kind === "unsubscribe" ? (
         <ReadingUnsubscribeDialog source={dialog.source} onClose={() => setDialog(null)} />
@@ -224,11 +242,13 @@ function Bands({
   guide,
   view,
   setDialog,
+  finished,
 }: {
   edition: ReadingEdition;
   guide?: ModeGuide;
   view?: "later";
   setDialog: (dialog: Dialog) => void;
+  finished: boolean;
 }) {
   const navigate = useNavigate();
   const marginalia = useMarginaliaStatus();
@@ -502,7 +522,8 @@ function Bands({
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
         <PageEmpty
           framed
-          glyph="reading"
+          glyph={finished ? undefined : "reading"}
+          moment={finished ? <FinishingMoment /> : undefined}
           title={empty?.never_had_any ? "Nothing here yet" : "You're current"}
           body={
             <>

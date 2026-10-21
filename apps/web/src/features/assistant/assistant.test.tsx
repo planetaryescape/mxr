@@ -645,6 +645,16 @@ describe("links to mail", () => {
     expect(writing).toContain("Q1 report");
   });
 
+  test("an app-link marker the model wrote itself is dropped, so an outside link never looks like an email", () => {
+    const html = renderMarkdown(
+      'See <a href="https://evil.test" data-app-link="thread" data-app-link-id="t-1">Q1 report</a>.',
+      { appLinks: true },
+    );
+    expect(html).toContain('href="https://evil.test"');
+    expect(html).toContain('target="_blank"');
+    expect(html).not.toContain("data-app-link");
+  });
+
   test("people and emails are chips, not underlined links, and clicking navigates in the app", () => {
     navigate.mockClear();
     render(

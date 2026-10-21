@@ -61,14 +61,18 @@ pub fn draw(
     push_wrapped(&mut footer, "", &hint_text(state), width, muted, muted);
 
     let mut card = card_lines(state, width, theme);
+    let warnings = warning_lines(state, width, theme);
     // The card can take half the pane, or all the footer leaves while the
-    // exact call is unfolded; the footer always shows.
+    // exact call is unfolded; the footer always shows. The warning sits
+    // outside that room, so a long preview can't push it off while `y`
+    // still approves.
     let card_room = if state.exact_call_for.is_some() {
         usize::from(inner.height.saturating_sub(2)).saturating_sub(footer.len())
     } else {
         0
     }
-    .max(usize::from(inner.height / 2));
+    .max(usize::from(inner.height / 2))
+    .saturating_sub(warnings.len());
     if card.len() > card_room {
         card.truncate(card_room.saturating_sub(1));
         card.push(Line::from(Span::styled(
@@ -76,6 +80,7 @@ pub fn draw(
             Style::default().fg(theme.text_muted),
         )));
     }
+    card.extend(warnings);
     let bottom = (footer.len() + card.len()).min(usize::from(inner.height.saturating_sub(2)));
     let chunks = Layout::vertical([
         Constraint::Min(1),
@@ -606,6 +611,28 @@ pub(crate) fn transcript_lines(
     lines
 }
 
+/// The daemon's warnings for the waiting changes that can't be undone, in
+/// the danger colour. Drawn after the card, right above the keys.
+fn warning_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    if state.list.is_some() {
+        return lines;
+    }
+    let danger = Style::default().fg(theme.error).bold();
+    for pending in state.pending() {
+        if let AssistantPendingData::Approval {
+            warning: Some(warning),
+            ..
+        } = pending
+        {
+            if !warning.is_empty() {
+                push_wrapped(&mut lines, "", &one_line(warning), width, danger, danger);
+            }
+        }
+    }
+    lines
+}
+
 /// What waits for the user: a change to approve, or questions to answer.
 fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
@@ -628,9 +655,9 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
                 arguments,
                 reason,
                 title,
-                warning,
                 preview,
                 preview_error,
+                ..
             } => {
                 lines.push(Line::from(Span::styled("YOUR CALL", label)));
                 push_wrapped(
@@ -727,12 +754,6 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
                             push_json(&mut lines, "preview ", preview, width, muted);
                         }
                     }
-                }
-                // The daemon's words, in the danger colour, last so they sit
-                // right above the keys.
-                if let Some(warning) = warning.as_deref().filter(|text| !text.is_empty()) {
-                    let danger = Style::default().fg(theme.error).bold();
-                    push_wrapped(&mut lines, "", &one_line(warning), width, danger, danger);
                 }
                 if let Some(AssistantPrompt::RejectReason {
                     call_id: rejecting,
@@ -1216,6 +1237,37 @@ mod tests {
     }
 
     #[test]
+    fn a_long_preview_never_pushes_the_warning_off_a_short_pane() {
+        let mut state = open_state();
+        state.focus = AssistantFocus::Pane;
+        state.conversation_id = Some("c1".into());
+        state.conversation = Some(conversation(
+            AssistantStatusData::AwaitingUser,
+            vec![user(1, "Send the reply to Ann")],
+            vec![AssistantPendingData::Approval {
+                title: Some("Send a reply to Ann".into()),
+                warning: Some("Sends an email. Can't be undone.".into()),
+                call_id: "call6".into(),
+                tool: "mxr_send_draft".into(),
+                arguments: json!({"draft_id": "d1", "confirm": true}),
+                reason: "You asked me to reply".into(),
+                preview: Some(json!({"draft": {
+                    "to": [{"email": "ann@example.test"}],
+                    "subject": "Re: Lunch",
+                    "body": "One.\nTwo.\nThree.\nFour.\nFive.\nSix.\nSeven.\nEight."
+                }})),
+                preview_error: None,
+            }],
+        ));
+        let screen = render(&state);
+        assert!(screen.contains('…'), "the card was cut: {screen}");
+        assert!(
+            screen.contains("Sends an email. Can't be undone."),
+            "{screen}"
+        );
+    }
+
+    #[test]
     fn a_warning_is_drawn_in_the_danger_colour_above_the_keys() {
         let theme = Theme::default();
         let mut state = open_state();
@@ -1235,7 +1287,7 @@ mod tests {
                 preview_error: None,
             }],
         ));
-        let lines = card_lines(&state, 40, &theme);
+        let lines = warning_lines(&state, 40, &theme);
         let warning = lines
             .iter()
             .find(|line| line.to_string().contains("Can't be undone."))

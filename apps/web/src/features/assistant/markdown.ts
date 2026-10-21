@@ -55,6 +55,10 @@ function hookLinks(): void {
   hooked = true;
   DOMPurify.addHook("afterSanitizeAttributes", (node) => {
     if (node.tagName !== "A") return;
+    // Only this hook marks an app link, after it has checked the mxr: link.
+    // Markers the model wrote itself would draw an outside link as an email.
+    node.removeAttribute(APP_LINK_ATTRIBUTE);
+    node.removeAttribute(APP_LINK_ID_ATTRIBUTE);
     const href = node.getAttribute("href") ?? "";
     const toText = () =>
       node.replaceWith(node.ownerDocument.createTextNode(node.textContent ?? ""));

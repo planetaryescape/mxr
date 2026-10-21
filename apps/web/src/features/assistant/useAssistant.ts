@@ -52,6 +52,18 @@ export function useModels() {
   });
 }
 
+/** Sets the assistant's model; the mark and the next reply's provenance follow the daemon's answer. */
+export function usePickModel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: setModel,
+    onSuccess: (models) => {
+      queryClient.setQueryData(assistantKeys.models, models);
+      void queryClient.invalidateQueries({ queryKey: assistantKeys.availability });
+    },
+  });
+}
+
 export function useConversations(enabled: boolean) {
   return useQuery({
     queryKey: assistantKeys.list,
@@ -190,15 +202,7 @@ export function useAssistantActions() {
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setAutoApprove(id, enabled),
     onSuccess: settle,
   });
-  const pickModel = useMutation({
-    mutationFn: setModel,
-    onSuccess: (models) => {
-      queryClient.setQueryData(assistantKeys.models, models);
-      // The composer's mark and the next reply's provenance follow the choice.
-      void queryClient.invalidateQueries({ queryKey: assistantKeys.availability });
-    },
-  });
-  return { send, answer, stop, trust, pickModel };
+  return { send, answer, stop, trust };
 }
 
 /**

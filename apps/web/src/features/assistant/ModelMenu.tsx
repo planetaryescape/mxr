@@ -9,7 +9,7 @@
 import { Check, ChevronDown } from "lucide-react";
 
 import { assistantToast } from "./assistantToast";
-import { useAssistantActions, useAvailability, useModels } from "./useAssistant";
+import { useAvailability, useModels, usePickModel } from "./useAssistant";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +20,7 @@ import {
 export function ModelMenu() {
   const availability = useAvailability().data;
   const models = useModels().data;
-  const { pickModel } = useAssistantActions();
+  const pickModel = usePickModel();
   // An older daemon has no picker: the plain mark stays.
   if (!models) return <PlainMark />;
 

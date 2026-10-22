@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/messages_lens/tests.rs
+assertion_line: 272
 expression: rendered
 ---
 "╭ Messages ─ People you talk with, one row each╮╭ Samir Patel · close · usually 47m ───────────────────────────────────╮"
@@ -8,10 +9,10 @@ expression: rendered
 "│   “Can you take a look and reply with the n… ││ Topics: [Contract renewal *] · Launch checklist · with Ruth: Pricing │"
 "│ Jon Bell                                 8h *││ copy                                                                 │"
 "│   Does the pricing copy read right to you?   ││──────────────────────────────────────────────────────────────────────│"
-"│                                              ││                                                      You · Wed 23:00 │"
+"│                                              ││                                               You · Wed 30 Sep 23:00 │"
 "│ PINNED                                       ││                                            Here's the renewal draft. │"
 "│ Maya Ortiz                            15:00  ││                                                                      │"
-"│                                              ││ Samir Patel · Yesterday 23:00                                        │"
+"│                                              ││ Samir Patel · Thu 1 Oct 23:00                                        │"
 "│ RECENT                                       ││ Thanks for sending the renewal draft over. Most of it is fine as     │"
 "│ Iris Chen                         Yesterday  ││ written.                                                             │"
 "│   You: Thanks, on it.                        ││                                                                      │"

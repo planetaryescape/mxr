@@ -181,7 +181,11 @@ fn message_line(
 ) -> Line<'static> {
     let marker = if selected { "\u{258c} " } else { "  " };
     let pin = if message.pinned { "\u{2022} " } else { "  " };
-    let date = message.date.format("%-d %b").to_string();
+    let date = message
+        .date
+        .with_timezone(&chrono::Local)
+        .format("%-d %b")
+        .to_string();
     // marker (2) + indent (2) + pin (2) + subject + gap (2) + date
     let subject_width = width
         .saturating_sub(2 + 2 + 2 + 2 + date.chars().count())

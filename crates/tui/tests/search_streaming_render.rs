@@ -112,6 +112,7 @@ fn result_list_renders_first_batch_before_query_completes() {
                 preview_messages: &[],
                 preview_scroll: 0,
                 html_images: &mut html_images,
+                now: chrono::Utc::now(),
             },
             &mxr_tui::theme::Theme::default(),
         );

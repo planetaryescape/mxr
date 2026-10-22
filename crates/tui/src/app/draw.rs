@@ -121,6 +121,7 @@ impl App {
                     active_pane: view.active_pane,
                     theme,
                     html_images: html_image_assets,
+                    now: chrono::Utc::now(),
                 },
             );
         } else {
@@ -276,6 +277,7 @@ impl App {
                                     preview_blocks: &preview_blocks,
                                     message_scroll_offset: self.mailbox.message_scroll_offset,
                                     html_images: &mut self.html_image_assets,
+                                    now: chrono::Utc::now(),
                                 },
                                 theme,
                             );
@@ -310,6 +312,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::now_lens::NowView {
+                                    now: chrono::Utc::now(),
                                     page: &self.mailbox.now_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
@@ -324,6 +327,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::updates_lens::UpdatesView {
+                                    now: chrono::Utc::now(),
                                     page: &self.mailbox.updates_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
@@ -335,6 +339,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::records_lens::RecordsView {
+                                    now: chrono::Utc::now(),
                                     page: &self.mailbox.records_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
@@ -346,6 +351,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::reading_lens::ReadingLensView {
+                                    now: chrono::Utc::now(),
                                     page: &self.mailbox.reading_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
@@ -358,6 +364,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 ui::todo_lens::TodoView {
+                                    now: chrono::Utc::now(),
                                     page: &self.mailbox.todo_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
@@ -436,6 +443,7 @@ impl App {
                                     preview_blocks: &preview_blocks,
                                     message_scroll_offset: self.mailbox.message_scroll_offset,
                                     html_images: &mut self.html_image_assets,
+                                    now: chrono::Utc::now(),
                                 },
                                 theme,
                             );
@@ -470,6 +478,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::now_lens::NowView {
+                                    now: chrono::Utc::now(),
                                     page: &self.mailbox.now_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
@@ -484,6 +493,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::updates_lens::UpdatesView {
+                                    now: chrono::Utc::now(),
                                     page: &self.mailbox.updates_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
@@ -495,6 +505,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::records_lens::RecordsView {
+                                    now: chrono::Utc::now(),
                                     page: &self.mailbox.records_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
@@ -506,6 +517,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::reading_lens::ReadingLensView {
+                                    now: chrono::Utc::now(),
                                     page: &self.mailbox.reading_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
@@ -518,6 +530,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 ui::todo_lens::TodoView {
+                                    now: chrono::Utc::now(),
                                     page: &self.mailbox.todo_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
@@ -594,6 +607,7 @@ impl App {
                                     active_pane: &self.mailbox.active_pane,
                                     theme,
                                     html_images: &mut self.html_image_assets,
+                                    now: chrono::Utc::now(),
                                 },
                             );
                             self.mailbox.message_scroll_offset = clamped_scroll;
@@ -614,6 +628,7 @@ impl App {
                                 active_pane: &self.mailbox.active_pane,
                                 theme,
                                 html_images: &mut self.html_image_assets,
+                                now: chrono::Utc::now(),
                             },
                         );
                         self.mailbox.message_scroll_offset = clamped_scroll;
@@ -634,6 +649,7 @@ impl App {
                         preview_messages: &preview_blocks,
                         preview_scroll: self.mailbox.message_scroll_offset,
                         html_images: &mut self.html_image_assets,
+                        now: chrono::Utc::now(),
                     },
                     theme,
                 );
@@ -686,6 +702,7 @@ impl App {
                             active_pane: &self.mailbox.active_pane,
                             theme,
                             html_images: &mut self.html_image_assets,
+                            now: chrono::Utc::now(),
                         },
                     );
                     self.mailbox.message_scroll_offset = clamped_scroll;
@@ -753,7 +770,13 @@ impl App {
 
         ui::reply_later_prompt::draw(frame, area, self.modals.reply_later_prompt.as_ref(), theme);
         ui::todo_lens::draw_prompt(frame, area, self.mailbox.todo_page.prompt.as_ref(), theme);
-        ui::records_lens::draw_overlays(frame, area, &self.mailbox.records_page, theme);
+        ui::records_lens::draw_overlays(
+            frame,
+            area,
+            &self.mailbox.records_page,
+            theme,
+            chrono::Utc::now(),
+        );
 
         // Send confirmation overlay
         let time_preview = self.compose.pending_time.lines();

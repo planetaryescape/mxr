@@ -14,6 +14,7 @@ pub struct SubscriptionsPageView<'a> {
         mxr_core::MessageId,
         std::collections::HashMap<String, crate::terminal_images::HtmlImageEntry>,
     >,
+    pub now: chrono::DateTime<chrono::Utc>,
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, view: &mut SubscriptionsPageView<'_>, theme: &Theme) {
@@ -71,6 +72,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &mut SubscriptionsPageView<'_>,
             active_pane: view.active_pane,
             theme,
             html_images: view.html_images,
+            now: view.now,
         },
     );
 }

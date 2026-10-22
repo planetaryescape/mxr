@@ -320,6 +320,7 @@ fn render_at(page: &RecordsPageState, width: u16) -> String {
             frame,
             Rect::new(0, 0, width, 34),
             &RecordsView {
+                now: chrono::Utc::now(),
                 page,
                 selected_index: 0,
                 active_pane: &ActivePane::MailList,

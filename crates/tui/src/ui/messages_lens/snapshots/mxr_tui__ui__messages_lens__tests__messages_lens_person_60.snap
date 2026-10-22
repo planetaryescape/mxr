@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/messages_lens/tests.rs
+assertion_line: 379
 expression: rendered
 ---
 "╭ Samir Patel · close · usually 47m ───────────────────────╮"
@@ -8,10 +9,10 @@ expression: rendered
 "│ Topics: [Contract renewal *] · Launch checklist · with   │"
 "│ Ruth: Pricing copy                                       │"
 "│──────────────────────────────────────────────────────────│"
-"│                                          You · Wed 23:00 │"
+"│                                   You · Wed 30 Sep 23:00 │"
 "│                                Here's the renewal draft. │"
 "│                                                          │"
-"│ Samir Patel · Yesterday 23:00                            │"
+"│ Samir Patel · Thu 1 Oct 23:00                            │"
 "│ Thanks for sending the renewal draft over. Most of it is │"
 "│ fine as written.                                         │"
 "│                                                          │"

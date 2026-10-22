@@ -158,7 +158,7 @@ impl App {
             page.original_text = None;
         }
         page.reader = Some(detail);
-        page.reader_lines = crate::ui::reading_lens::reader_line_count(page);
+        page.reader_lines = crate::ui::reading_lens::reader_line_count(page, chrono::Utc::now());
     }
 
     pub(crate) fn reading_item_failed(&mut self, key: &str, error: &str) {
@@ -195,7 +195,8 @@ impl App {
             }
             page.view = ReadingView::Article;
             page.scroll = 0;
-            page.reader_lines = crate::ui::reading_lens::reader_line_count(page);
+            page.reader_lines =
+                crate::ui::reading_lens::reader_line_count(page, chrono::Utc::now());
         }
         self.status_message = Some(status);
     }
@@ -282,7 +283,8 @@ impl App {
                 ReadingView::Article => ReadingView::Issue,
             };
             page.scroll = 0;
-            page.reader_lines = crate::ui::reading_lens::reader_line_count(page);
+            page.reader_lines =
+                crate::ui::reading_lens::reader_line_count(page, chrono::Utc::now());
             return;
         }
         page.pending_fetch = Some((target.key, false));
@@ -541,7 +543,8 @@ impl App {
         } else {
             page.original_text = None;
             page.scroll = 0;
-            page.reader_lines = crate::ui::reading_lens::reader_line_count(page);
+            page.reader_lines =
+                crate::ui::reading_lens::reader_line_count(page, chrono::Utc::now());
             self.status_message = Some("Back to the reader".into());
         }
         self.queue_best_effort_mutation(
@@ -560,7 +563,7 @@ impl App {
         let page = &mut self.mailbox.reading_page;
         page.original_text = Some(text);
         page.scroll = 0;
-        page.reader_lines = crate::ui::reading_lens::reader_line_count(page);
+        page.reader_lines = crate::ui::reading_lens::reader_line_count(page, chrono::Utc::now());
     }
 
     /// `h`: the paragraph at the top of the reader becomes a highlight.
@@ -570,7 +573,8 @@ impl App {
             self.status_message = Some("Open an item first: Enter reads it".into());
             return;
         };
-        let Some(quote) = crate::ui::reading_lens::paragraph_at_top(page) else {
+        let Some(quote) = crate::ui::reading_lens::paragraph_at_top(page, chrono::Utc::now())
+        else {
             self.status_message = Some("Scroll to the paragraph to highlight".into());
             return;
         };

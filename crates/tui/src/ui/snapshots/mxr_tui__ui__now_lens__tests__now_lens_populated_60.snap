@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/now_lens.rs
+assertion_line: 715
 expression: rendered
 ---
 "╭ Now ─ The few things that need you now, from every mode. ╮"
@@ -20,8 +21,8 @@ expression: rendered
 "│                                                          │"
 "│ ── Updates 08:00 digest ─────────────────── +23 routine  │"
 "│  1 needs a look, 2 changed. 23 routine from 9 sources.   │"
-"│  ! Google         New sign-in from Chrome on Windows ·…  │"
-"│  ◆ Strava         21.3 km over 3 runs                    │"
+"│  ! Google       New sign-in from Chrome on Wind…  Oct 7  │"
+"│  ◆ Strava       21.3 km over 3 runs               Oct 7  │"
 "│    ↵ open  A let go of this digest                       │"
 "│                                                          │"
 "│  Not now: Reading 6 this week                            │"

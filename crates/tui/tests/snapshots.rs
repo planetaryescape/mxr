@@ -131,6 +131,7 @@ fn message_view_snapshot() {
                 active_pane: &ActivePane::MessageView,
                 theme: &mxr_tui::theme::Theme::default(),
                 html_images: &mut html_images,
+                now: chrono::Utc::now(),
             },
         );
     });
@@ -407,6 +408,7 @@ fn search_page_snapshot() {
                 preview_messages: &preview,
                 preview_scroll: 0,
                 html_images: &mut html_images,
+                now: chrono::Utc::now(),
             },
             &mxr_tui::theme::Theme::default(),
         );
@@ -432,6 +434,7 @@ fn search_page_blank_snapshot() {
                 preview_messages: &[],
                 preview_scroll: 0,
                 html_images: &mut html_images,
+                now: chrono::Utc::now(),
             },
             &mxr_tui::theme::Theme::default(),
         );
@@ -542,6 +545,7 @@ fn search_page_searching_snapshot() {
                 preview_messages: &[],
                 preview_scroll: 0,
                 html_images: &mut html_images,
+                now: chrono::Utc::now(),
             },
             &mxr_tui::theme::Theme::default(),
         );

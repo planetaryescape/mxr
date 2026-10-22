@@ -4,7 +4,9 @@ use crate::app::{
 };
 use crate::terminal_images::{HtmlImageEntry, HtmlImageRenderState};
 use crate::theme::Theme;
+use crate::ui::received_label::received_label;
 use crate::ui::sanitize::strip_control_chars;
+use chrono::{DateTime, Utc};
 use html2text::render::RichAnnotation;
 use mxr_core::id::MessageId;
 use mxr_core::types::{CalendarMetadata, Envelope, HtmlImageAssetStatus, HtmlImageSourceKind};
@@ -60,6 +62,9 @@ pub struct DrawOptions<'a> {
     pub active_pane: &'a ActivePane,
     pub theme: &'a Theme,
     pub html_images: &'a mut HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
+    /// "Now" for the "2h ago" on today's mail, passed in so the render
+    /// doesn't read the clock.
+    pub now: DateTime<Utc>,
 }
 
 /// Draws the thread/message reader. Returns the scroll offset actually used,
@@ -78,6 +83,7 @@ pub fn draw(
         active_pane,
         theme,
         html_images,
+        now,
     } = options;
     let is_focused = *active_pane == ActivePane::MessageView;
     let border_style = theme.border_style(is_focused);
@@ -153,7 +159,7 @@ pub fn draw(
         }
         text_lines.push(Line::from(vec![
             Span::styled(format!("{:<label_width$}", "Date:"), label_style),
-            Span::styled(env.date.format("%Y-%m-%d %H:%M").to_string(), value_style),
+            Span::styled(received_label(env.date, now), value_style),
         ]));
         text_lines.push(Line::from(vec![
             Span::styled(format!("{:<label_width$}", "Subject:"), label_style),
@@ -1352,6 +1358,7 @@ mod tests {
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1397,6 +1404,7 @@ mod tests {
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1449,6 +1457,7 @@ mod tests {
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1497,6 +1506,7 @@ mod tests {
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1552,6 +1562,7 @@ mod tests {
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1602,6 +1613,7 @@ mod tests {
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1659,6 +1671,7 @@ mod tests {
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1719,6 +1732,7 @@ mod tests {
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });

@@ -18,6 +18,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{ActivePane, MessagesFocus, MessagesItem, MessagesPageState};
+use crate::ui::received_label::received_label_in;
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
 
@@ -45,20 +46,6 @@ fn age_label(seconds: i64) -> String {
         format!("{}h", minutes / 60)
     } else {
         format!("{}d", minutes / (24 * 60))
-    }
-}
-
-/// "18:02", "Yesterday 18:02", "Tue 18:02", "12 Mar".
-fn when(at: DateTime<Utc>, view: &MessagesView<'_>) -> String {
-    let local = at.with_timezone(&view.offset);
-    let today = view.now.with_timezone(&view.offset).date_naive();
-    let days = (today - local.date_naive()).num_days();
-    match days {
-        i64::MIN..=0 => local.format("%H:%M").to_string(),
-        1 => local.format("Yesterday %H:%M").to_string(),
-        2..=6 => local.format("%a %H:%M").to_string(),
-        _ if local.year() == today.year() => local.format("%-d %b").to_string(),
-        _ => local.format("%-d %b %Y").to_string(),
     }
 }
 
@@ -372,7 +359,8 @@ fn message_lines(
     } else {
         one_line(message.from.name.as_deref().unwrap_or(&message.from.email))
     };
-    let header = format!("{who} \u{b7} {}", when(message.date, view));
+    let when = received_label_in(message.date, view.now, &view.offset);
+    let header = format!("{who} \u{b7} {when}");
     let text = match &message.ask_quote {
         Some(quote) => message
             .text

@@ -8,6 +8,7 @@
 
 use crate::state::AppState;
 use mxr_core::id::AccountId;
+use mxr_core::types::OwnedAddresses;
 use mxr_core::SortOrder;
 use mxr_protocol::{ExpertSuggestionData, ResponseData};
 use mxr_search::{MxrSchema, QueryBuilder};
@@ -75,10 +76,10 @@ pub(crate) async fn find(
         }
         let first_date = full[0].date;
         for env in &full {
-            let email = env.from.email.to_lowercase();
-            if !include_self && self_addresses.contains(&email) {
+            if !include_self && self_addresses.contains(&env.from.email) {
                 continue;
             }
+            let email = env.from.email.to_lowercase();
             // Only credit messages that came AFTER the first one in
             // the thread -- the first message is the question, every
             // later one is an answer.
@@ -122,14 +123,8 @@ struct Aggregate {
     display_name: Option<String>,
 }
 
-async fn self_addresses_for(state: &AppState, account_id: &AccountId) -> HashSet<String> {
-    state
-        .owned_addresses(account_id)
-        .await
-        .unwrap_or_default()
-        .iter()
-        .map(str::to_lowercase)
-        .collect()
+async fn self_addresses_for(state: &AppState, account_id: &AccountId) -> OwnedAddresses {
+    state.owned_addresses(account_id).await.unwrap_or_default()
 }
 
 #[cfg(test)]

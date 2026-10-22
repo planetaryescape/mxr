@@ -133,11 +133,19 @@ impl super::Store {
                 let account_id: AccountId = decode_id(row.get::<String, _>("account_id").as_str())?;
                 let account_id_str = account_id.as_str();
                 if !owned_by_account.contains_key(&account_id_str) {
+                    // Same rule as the daemon's owned set: the accounts row's
+                    // email is always owned, even after another address is
+                    // made primary and its row removed.
+                    let configured = self
+                        .get_account(&account_id)
+                        .await?
+                        .map(|account| account.email.to_ascii_lowercase());
                     let owned = self
                         .list_account_addresses(&account_id)
                         .await?
                         .into_iter()
                         .map(|address| address.email.to_ascii_lowercase())
+                        .chain(configured)
                         .collect::<HashSet<_>>();
                     owned_by_account.insert(account_id_str.clone(), owned);
                 }

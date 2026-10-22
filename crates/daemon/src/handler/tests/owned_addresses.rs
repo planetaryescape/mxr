@@ -213,3 +213,30 @@ async fn registry_refresh_includes_an_account_inserted_after_startup() {
         .account_addresses
         .is_account_address(&account.id, &account.email));
 }
+
+#[tokio::test]
+async fn sync_registry_keeps_a_disabled_accounts_addresses() {
+    // Analytics repair reclassifies stored mail through the registry, including
+    // a disabled account's. Dropping its set would persist its own mail as
+    // inbound, and re-enabling could not repair those rows.
+    let state = AppState::in_memory().await.unwrap();
+    let account_id = state.default_account_id();
+    let primary = state
+        .store
+        .get_account(&account_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .email;
+    state
+        .store
+        .set_account_enabled(&account_id, false)
+        .await
+        .unwrap();
+
+    state.refresh_account_addresses().await;
+
+    assert!(state
+        .account_addresses
+        .is_account_address(&account_id, &primary));
+}

@@ -9,7 +9,7 @@
 
 use crate::state::AppState;
 use mxr_core::id::AccountId;
-use mxr_core::types::Draft;
+use mxr_core::types::{Draft, OwnedAddresses};
 use mxr_core::SortOrder;
 use mxr_protocol::{ResponseData, SuggestedRecipientData};
 use mxr_search::{MxrSchema, QueryBuilder};
@@ -60,7 +60,7 @@ pub(crate) async fn suggest(state: &AppState, draft: &Draft, limit: usize) -> su
         let participants = collect_participants_no_bcc(&env);
         for email in participants {
             let key = email.to_lowercase();
-            if self_addresses.contains(&key) || on_draft.contains(&key) {
+            if self_addresses.contains(&email) || on_draft.contains(&key) {
                 continue;
             }
             let agg = by_email.entry(key.clone()).or_default();
@@ -112,14 +112,8 @@ fn topic_text(draft: &Draft) -> String {
     format!("{} {first_para}", draft.subject)
 }
 
-async fn self_addresses_for(state: &AppState, account_id: &AccountId) -> HashSet<String> {
-    state
-        .owned_addresses(account_id)
-        .await
-        .unwrap_or_default()
-        .iter()
-        .map(str::to_lowercase)
-        .collect()
+async fn self_addresses_for(state: &AppState, account_id: &AccountId) -> OwnedAddresses {
+    state.owned_addresses(account_id).await.unwrap_or_default()
 }
 
 /// Bcc safety: do NOT include bcc participants in the candidate set.

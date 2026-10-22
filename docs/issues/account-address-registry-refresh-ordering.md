@@ -1,33 +1,33 @@
-# Sync's address registry can publish an older snapshot
+# A failed registry refresh leaves sync with the previous address set
 
 **Status:** open · **Found:** cross-model review of the owned-address
-refactor (round 1) · **Severity:** should-fix (sync direction only)
+refactor (rounds 1 and 2) · **Severity:** should-fix
 
 ## What happens
 
-`AppState::refresh_account_addresses` (`crates/daemon/src/state.rs`) reads the
-store, builds each account's set, then publishes it with
-`InMemoryAccountAddressLookup::replace` (`crates/core/src/types.rs`). Nothing
-serialises these refreshes or orders them. Two refreshes that overlap can
-publish out of order, so an older snapshot can overwrite a newer one:
+`AppState::refresh_account_addresses` (`crates/daemon/src/state.rs`) rebuilds
+sync's address registry after every address change. If the rebuild fails, it
+logs a warning and the handler still reports the change as done. Sync keeps
+classifying with the previous set until a later refresh succeeds:
 
-- a removed alias can come back into sync's set, or
-- a newly added alias can disappear from it.
+- a removed alias still counts as you in sync, or
+- a newly added alias does not count yet.
 
-A refresh that fails only logs a warning, so sync keeps the previous set until
-the next refresh succeeds.
+Out-of-order publishes are fixed: rebuilds are serialised behind one async
+mutex (`REGISTRY_REBUILD`), so a rebuild that read the store before a change
+cannot publish after the rebuild that change triggered.
 
-## Why it is not in the same PR
+## Effect
 
-Since the owned-address refactor, sends, reply defaults, From validation,
-safety checks and invite RSVP read the store directly
-(`AppState::owned_addresses`). Only sync's direction classification reads the
-registry. So this race changes which messages are counted as outbound during
-sync, not who a message is sent to or which From is accepted.
+Sends, reply defaults, From validation, safety checks and invite RSVP read the
+store directly (`AppState::owned_addresses`), so they are unaffected. Sync uses
+the registry to classify direction, and direction drives routing: a message
+from a newly owned address misread as inbound can meet a screener denial, which
+moves it out of the inbox (`crates/sync/src/engine.rs`, around the screener
+routing). Analytics repair also reclassifies through the registry.
 
 ## Fix sketch
 
-Serialise `load_account_address_registry` behind one async mutex, or give each
-publish a monotonically increasing version and drop publishes older than the
-current one. Either removes out-of-order publishes. Surfacing refresh errors to
-the handler that made the change would also let a failed refresh be retried.
+Return the refresh error to the handler that made the change, so the CLI shows
+it and the user can retry, or retry the rebuild in the background until it
+succeeds.

@@ -1,7 +1,7 @@
 # Owned-address changes do not invalidate cached summaries and triage
 
 **Status:** open, deferred · **Found:** cross-model review of the owned-address
-refactor (round 1) · **Severity:** should-fix
+refactor (rounds 1 and 2) · **Severity:** should-fix
 
 ## What happens
 

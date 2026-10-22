@@ -3083,7 +3083,7 @@ pub(super) async fn prepare_reply(
 
     // Default the reply's From to the owned address the message was delivered
     // to, so a message that arrived at an alias is answered from that alias.
-    let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await;
+    let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await?;
     let from = reply_from_default(&owned, &primary_email, &envelope, body.as_ref());
 
     // Reply-To is captured into the body metadata at parse time. The rules for
@@ -3136,7 +3136,7 @@ pub(super) async fn prepare_forward(
 
     // Default the forward's From to the owned address the message was
     // delivered to (same rule as reply), falling back to the primary.
-    let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await;
+    let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await?;
     let from = reply_from_default(&owned, &primary_email, &envelope, body.as_ref());
 
     Ok(ResponseData::ForwardContext {
@@ -3347,17 +3347,17 @@ fn reply_from_default(
 
 /// Load an account's primary email and the full set of owned emails
 /// (primary + registered aliases). Returns `(primary, owned)` where `owned`
-/// always leads with the primary. Best-effort: store errors yield empties so
-/// callers degrade to primary-only behaviour rather than failing a prepare.
+/// always leads with the primary. A store error fails the prepare: an empty
+/// owned set would address a reply to your own sent message back to you.
 async fn account_owned_addresses(
     state: &AppState,
     account_id: &mxr_core::AccountId,
-) -> (String, Vec<String>) {
-    let owned = state.owned_addresses(account_id).await.unwrap_or_default();
-    (
+) -> Result<(String, Vec<String>), sqlx::Error> {
+    let owned = state.owned_addresses(account_id).await?;
+    Ok((
         owned.primary().unwrap_or_default().to_string(),
         owned.iter().map(str::to_string).collect(),
-    )
+    ))
 }
 
 /// IPC handler for `Request::ResolveSendFrom`: resolve (and ownership-validate)

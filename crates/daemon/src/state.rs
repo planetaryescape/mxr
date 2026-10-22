@@ -2642,13 +2642,21 @@ pub(crate) async fn owned_addresses_for(
     ))
 }
 
+/// Serialises registry rebuilds. Without it, a rebuild that read the store
+/// before an address change could publish after the rebuild that change
+/// triggered, and sync would classify with the older set.
+static REGISTRY_REBUILD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Replace sync's registry with every account's set from `owned_addresses_for`.
+/// Disabled accounts are included: their stored mail still needs its direction
+/// classified as theirs.
 pub(crate) async fn load_account_address_registry(
     store: &Store,
     registry: &mxr_core::types::InMemoryAccountAddressLookup,
 ) -> std::result::Result<(), sqlx::Error> {
+    let _rebuild = REGISTRY_REBUILD.lock().await;
     let mut sets = Vec::new();
-    for account in store.list_accounts().await? {
+    for account in store.list_all_accounts().await? {
         let owned = owned_addresses_for(store, &account.id).await?;
         sets.push((account.id, owned));
     }

@@ -41,6 +41,7 @@ import { useComposeAutofocus } from "./session/useComposeAutofocus";
 import { useComposeAutosave } from "./session/useComposeAutosave";
 import { useComposeSend, type ComposeSessionOptions } from "./session/useComposeSend";
 import { useDraftAssist } from "./session/useDraftAssist";
+import { mapModelSpans } from "./assist/modelSpans";
 import { useDraftSaveActions } from "./session/useDraftSaveActions";
 import { useSenderAccounts } from "./session/useSenderAccounts";
 
@@ -250,7 +251,15 @@ export function useComposeSession(
 
   function updateBody(value: string) {
     const expanded = expandSnippet(value, snippets.data?.snippets ?? []);
-    setDraft((current) => (current ? { ...current, bodyMarkdown: expanded } : current));
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            bodyMarkdown: expanded,
+            modelSpans: mapModelSpans(current.modelSpans ?? [], current.bodyMarkdown, expanded),
+          }
+        : current,
+    );
     setDirty(true);
   }
 
@@ -294,6 +303,7 @@ export function useComposeSession(
       handleRefreshClick,
       handleServerSaveClick,
       openSnippetPicker: () => setSnippetPickerOpen(true),
+      openDraftHelp: assist.openHelp,
       handleSaveClick,
       requestSendAndArchive: send.requestSendAndArchive,
       requestSend: send.requestSend,

@@ -64,10 +64,8 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
       intentKey: intent.key,
       send: () => controllerRef.current.requestSend(),
       sendAndRemind: () => controllerRef.current.setRemindDialogOpen(true),
-      draftForMe: () => {
-        controllerRef.current.setAssistOpen(true);
-        controllerRef.current.generateDraft();
-      },
+      // Opens the help line for the user to ask; nothing is sent until they submit.
+      draftForMe: () => controllerRef.current.openHelp(),
     };
     useComposeUi.getState().setCommands(commands);
     return () => {

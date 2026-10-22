@@ -1,6 +1,6 @@
 import { markdown } from "@codemirror/lang-markdown";
-import { EditorState, Prec } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorState, Prec, StateEffect, StateField } from "@codemirror/state";
+import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
 import { getCM, Vim, vim } from "@replit/codemirror-vim";
 import { basicSetup } from "codemirror";
 import { useEffect, useRef, useState } from "react";
@@ -11,6 +11,7 @@ import {
   isComposeChord,
 } from "@/features/compose/session/composeShortcuts";
 import { definedShortcut } from "@/lib/actions/definition";
+import type { ModelSpan } from "@/features/compose/assist/modelSpans";
 
 interface CodeMirrorComposeEditorProps {
   value: string;
@@ -24,9 +25,45 @@ interface CodeMirrorComposeEditorProps {
   autoFocus?: boolean;
   /** Focus mode: a one-word mode indicator instead of the status row. */
   quiet?: boolean;
+  /** The selection in the body (UTF-16), or null when there is none. */
+  onSelectionChange?: (selection: { from: number; to: number } | null) => void;
+  /** Ranges the model wrote that the user has not edited; drawn with a hairline. */
+  modelSpans?: ModelSpan[];
 }
 
+const setModelSpans = StateEffect.define<ModelSpan[]>();
+
+/**
+ * Hairline marks under model-written text. The spans are owned by the
+ * draft, which maps them through each edit; this only draws them, clipped
+ * to the document so a stale range can't throw.
+ */
+const modelSpanField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(marks, transaction) {
+    for (const effect of transaction.effects) {
+      if (!effect.is(setModelSpans)) continue;
+      const length = transaction.state.doc.length;
+      return Decoration.set(
+        effect.value
+          .filter((span) => span.start >= 0 && span.start < span.end && span.end <= length)
+          .map((span) => modelSpanMark.range(span.start, span.end)),
+        true,
+      );
+    }
+    return marks.map(transaction.changes);
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+const modelSpanMark = Decoration.mark({ class: "cm-model-span" });
+
 const tokenTheme = EditorView.theme({
+  ".cm-model-span": {
+    textDecoration: "underline dotted var(--text-3)",
+    textDecorationThickness: "1px",
+    textUnderlineOffset: "4px",
+  },
   "&": {
     height: "100%",
     backgroundColor: "var(--background)",
@@ -80,12 +117,15 @@ export function CodeMirrorComposeEditor({
   onClose,
   autoFocus = false,
   quiet = false,
+  onSelectionChange,
+  modelSpans,
 }: CodeMirrorComposeEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const initialValueRef = useRef(value);
-  const callbacksRef = useRef({ onChange, onSave, onSend, onDiscard, onClose });
-  callbacksRef.current = { onChange, onSave, onSend, onDiscard, onClose };
+  const initialSpansRef = useRef(modelSpans ?? []);
+  const callbacksRef = useRef({ onChange, onSave, onSend, onDiscard, onClose, onSelectionChange });
+  callbacksRef.current = { onChange, onSave, onSend, onDiscard, onClose, onSelectionChange };
   const [vimMode, setVimMode] = useState("normal");
 
   useEffect(() => {
@@ -147,8 +187,27 @@ export function CodeMirrorComposeEditor({
             "aria-label": "Message body",
             "aria-multiline": "true",
           }),
+          modelSpanField.init(() =>
+            Decoration.set(
+              initialSpansRef.current
+                .filter(
+                  (span) =>
+                    span.start >= 0 &&
+                    span.start < span.end &&
+                    span.end <= initialValueRef.current.length,
+                )
+                .map((span) => modelSpanMark.range(span.start, span.end)),
+              true,
+            ),
+          ),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) callbacksRef.current.onChange(update.state.doc.toString());
+            if (update.docChanged || update.selectionSet) {
+              const main = update.state.selection.main;
+              callbacksRef.current.onSelectionChange?.(
+                main.empty ? null : { from: main.from, to: main.to },
+              );
+            }
           }),
         ],
       }),
@@ -164,6 +223,12 @@ export function CodeMirrorComposeEditor({
       viewRef.current = null;
     };
   }, [autoFocus]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({ effects: setModelSpans.of(modelSpans ?? []) });
+  }, [modelSpans]);
 
   useEffect(() => {
     const view = viewRef.current;

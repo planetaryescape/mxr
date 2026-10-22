@@ -439,12 +439,10 @@ snooze and the view switch. Everything else is in **More**, with its key, and
 in the command palette.
 
 **Draft in your voice** in the reply field (shown when a model is configured)
-opens the reply with **Draft for me** ready. **Draft a reply with AI** (in the
-reader's **More** menu) writes a reply in
-your voice, from real emails you sent this person. Say what it should say,
-or leave it empty to answer what they asked; anything only you can decide
-comes back as a `[[?: ...]]` gap. **Reply with this** opens the reply with the
-draft above the quoted message. [How drafts are written](/guides/llm-features/).
+opens the reply with the **Draft for me** line already open. **Draft a reply**
+in the reader's **More** menu opens the same reply. Say what it should say,
+or leave the line empty to answer what they asked; anything only you can decide
+comes back as a `[[?: ...]]` gap. [How drafts are written](/guides/llm-features/).
 
 ### Triage queues
 
@@ -544,12 +542,26 @@ were. On a phone it covers the whole screen. New messages start in the To field 
 body. The editor is Markdown with vim keys by default; **Settings →
 Compose** switches to rich text.
 
-**Draft for me** in compose writes the body in your voice. A reply can leave
-the instruction empty; a new email needs to know what it's for (the subject
-counts as context, not as the instruction). A recipient outside the
-conversation drafts a forwarding note. Refine works on what's in the editor.
+**Draft for me** is one line above the page. Click it, or press ⌘J, and say
+what the email should do or what to change. The placeholder names what will
+happen: an empty draft asks for a reply, a draft with text is finished or
+changed, and a selection is the only part that changes. **Shorter**,
+**Warmer**, **More formal** and **Proofread** steer the answer. **Polish**
+is the one action that may change your words. A new email needs to know what
+it's for (the subject counts as context, not as the instruction).
 
-Under **Draft for me**, a line says which model wrote the draft (local or
+The answer comes back as a proof that replaces the page. Your words stay in
+plain ink, additions are underlined, cuts are struck through and gaps are
+highlighted. Nothing is written over your text until you accept:
+
+- **Enter** accepts. **⌘Z** takes the accept back in one step.
+- **Esc** keeps your text as it was.
+- **⌘J** revises the proof with a note. **← →** step through earlier answers
+  for the same draft, and **Tab** moves from gap to gap.
+
+Words the model wrote keep a dotted underline until you edit them.
+
+Under the proof, a line says which model wrote the draft (local or
 cloud), how many of your emails shaped the voice and whether your history
 was used. **Sources** lists those emails and the messages it read from the
 conversation; each opens in a new tab on that message

@@ -1,5 +1,5 @@
 import { FilePlus2, Loader2, Paperclip, Trash2, X } from "lucide-react";
-import { lazy, Suspense, useRef, useState, type DragEvent } from "react";
+import { lazy, Suspense, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 
 import {
   AlertDialog,
@@ -20,7 +20,9 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 import { ComposeActionBar } from "./ComposeActionBar";
 import { ComposeIssueSummary } from "./ComposeIssueSummary";
 import { ComposeTopBar } from "./ComposeTopBar";
-import { DraftAssist } from "./DraftAssist";
+import { DraftHelpLine } from "./DraftHelpLine";
+import { DraftProof } from "./DraftProof";
+import { proofPieces } from "./assist/proof";
 import { RecipientField } from "./RecipientField";
 import { SendConfirmDialog } from "./SendConfirmDialog";
 import { SendLaterDialog } from "./SendLaterDialog";
@@ -227,39 +229,61 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         </>
       )}
 
-      <DraftAssist
-        open={controller.assistOpen}
-        onOpenChange={controller.setAssistOpen}
-        purpose={controller.aiPurpose}
-        onPurposeChange={controller.setAiPurpose}
-        register={controller.aiRegister}
-        onRegisterChange={controller.onRegisterChange}
-        length={controller.aiLength}
-        onLengthChange={controller.onLengthChange}
-        overridden={controller.aiOverridden}
-        onResetTone={controller.resetTone}
-        contextNote={controller.draftSuggestion?.context_note ?? null}
-        onGenerate={controller.generateDraft}
+      <DraftHelpLine
+        open={controller.helpOpen}
+        onOpen={controller.openHelp}
+        onClose={controller.closeHelp}
+        instruction={controller.instruction}
+        onInstructionChange={controller.setInstruction}
+        placeholder={controller.placeholder}
+        adjust={controller.adjust}
+        onToggleAdjust={controller.toggleAdjust}
+        onSubmit={
+          controller.proofOpen ? () => controller.again(controller.instruction) : controller.submit
+        }
+        onPolish={controller.polish}
         generating={controller.generating}
-        refineContext={controller.refineContext}
-        onRefineContextChange={controller.setRefineContext}
-        onRefine={controller.runRefine}
-        refining={controller.refining}
-        canRefine={controller.canRefine}
-        suggestion={controller.draftSuggestion}
-        busy={controller.busy}
+        focusNonce={controller.focusNonce}
+        disabled={controller.busy}
       />
 
       <div
         role="group"
         aria-label="Message body"
         className="relative min-h-0 flex-1 overflow-hidden"
+        onKeyDownCapture={(event) => {
+          // ⌘Z takes back an accepted proof while the text is still that
+          // proof; the editor's own undo cannot tell the accept apart.
+          if (!controller.canUndoAccept || !isUndoChord(event)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          controller.undoAccept();
+        }}
         onDragEnter={onDragEnter}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
       >
-        <div className="mx-auto h-full w-full max-w-[860px]">
+        {controller.proofOpen && controller.version ? (
+          <div className="mx-auto h-full w-full max-w-[860px]">
+            <DraftProof
+              pieces={proofPieces(
+                controller.version.proposal.changes,
+                controller.version.proposal.gaps,
+              )}
+              provenance={controller.version.proposal.provenance}
+              versionIndex={controller.versionIndex}
+              versionCount={controller.versionCount}
+              stale={controller.stale}
+              onAccept={controller.accept}
+              onKeep={controller.keepMine}
+              onStep={controller.stepVersion}
+              onAgain={() => controller.again()}
+              onRevise={controller.openHelp}
+            />
+          </div>
+        ) : null}
+        <div className="mx-auto h-full w-full max-w-[860px]" hidden={controller.proofOpen}>
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
@@ -283,6 +307,8 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
                 onSend={controller.requestSend}
                 onDiscard={controller.requestDiscard}
                 onClose={() => void controller.requestClose()}
+                onSelectionChange={controller.setSelection}
+                modelSpans={draft.modelSpans}
                 quiet={quiet}
               />
             )}
@@ -335,7 +361,6 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         onRetrySave={controller.retrySave}
         editorPreference={editorPreference}
         onEditorChange={setComposeEditor}
-        suggestion={controller.draftSuggestion}
       />
 
       <input
@@ -358,7 +383,6 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         fromAddress={
           draft.frontmatter.from || controller.selectedAccount?.email || "the selected account"
         }
-        suggestion={controller.draftSuggestion}
         sending={controller.sending}
         safetyReport={controller.safetyReport}
         safetyCheckError={controller.safetyCheckError}
@@ -532,4 +556,14 @@ function basename(path: string): string {
     if (part) return part;
   }
   return path;
+}
+
+/** ⌘Z without Shift, for the one-step undo of an accepted proof. */
+function isUndoChord(event: KeyboardEvent<HTMLElement>): boolean {
+  return (
+    (event.metaKey || event.ctrlKey) &&
+    !event.shiftKey &&
+    !event.altKey &&
+    event.key.toLowerCase() === "z"
+  );
 }

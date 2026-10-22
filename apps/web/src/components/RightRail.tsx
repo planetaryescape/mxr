@@ -7,12 +7,11 @@ import { AskArchivePanel } from "@/features/ask/AskArchivePanel";
 import { WhoisPanel, isWhoisPayload } from "@/features/ask/WhoisPanel";
 import { ExpertFinderPanel } from "@/features/mailbox/ExpertFinderPanel";
 import { AttachmentActions } from "@/features/thread/AttachmentActions";
-import { DraftAssistPanel } from "@/features/thread/DraftAssistPanel";
 import { useModals } from "@/state/modalStore";
 import { BriefingPanel } from "./right-rail/BriefingPanel";
 import { CommitmentsPanel } from "./right-rail/CommitmentsPanel";
 import { SenderProfilePanel } from "./right-rail/SenderProfilePanel";
-import { isAttachmentView, isDraftAssistPayload, isThreadContext } from "./right-rail/railPayloads";
+import { isAttachmentView, isThreadContext } from "./right-rail/railPayloads";
 
 export function RightRail() {
   const rail = useModals((s) => s.rightRail);
@@ -55,9 +54,6 @@ export function RightRail() {
 }
 
 function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
-  if (kind === "draft-assist" && isDraftAssistPayload(payload)) {
-    return <DraftAssistPanel threadId={payload.threadId} replyToMessageId={payload.messageId} />;
-  }
   if (kind === "thread-context" && isThreadContext(payload)) {
     return (
       <div className="space-y-3">
@@ -104,7 +100,6 @@ function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
 }
 
 const RAIL_TITLES: Record<string, string> = {
-  "draft-assist": "Draft a reply",
   "thread-context": "Context",
   attachments: "Attachments",
   "sender-profile": "Sender",

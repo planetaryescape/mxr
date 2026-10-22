@@ -23,6 +23,7 @@ function handlers(): ComposeShortcutHandlers {
     handleAttachShortcut: vi.fn<() => void>(),
     requestSendLater: vi.fn<() => void>(),
     openSignaturePicker: vi.fn<() => void>(),
+    openDraftHelp: vi.fn<() => void>(),
     handleRefreshClick: vi.fn<() => Promise<void>>(async () => {}),
     handleServerSaveClick: vi.fn<() => Promise<void>>(async () => {}),
     openSnippetPicker: vi.fn<() => void>(),

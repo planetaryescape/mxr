@@ -13,6 +13,7 @@ import type {
 } from "../api";
 
 import type { WorkspaceBinding } from "@/lib/workspaceOwner";
+import type { ModelSpan } from "../assist/modelSpans";
 
 export interface ComposeDraftState {
   binding?: WorkspaceBinding;
@@ -25,6 +26,8 @@ export interface ComposeDraftState {
   rawContent: string;
   frontmatter: ComposeFrontmatter;
   bodyMarkdown: string;
+  /** Ranges of the body the model wrote and the user has not edited since. */
+  modelSpans?: ModelSpan[];
   issues: ComposeIssue[];
   accountId: string;
   kind: string;
@@ -44,7 +47,7 @@ export interface ComposeIntent {
   prefillSubject?: string;
   /** Text to start the body with (an AI draft), above any quoted history. */
   prefillBody?: string;
-  /** Open with "Draft for me" expanded (the reader's "Draft in your voice"). */
+  /** Open the help line ("Draft for me") already (the reader's "Draft in your voice"). */
   openAssist?: boolean;
   /**
    * Quiet chrome (focus mode): From, To and Subject fold into one line and

@@ -588,7 +588,7 @@ the conversation's own account: naming another account in the request is
 refused. `mxr draft`
 and `mxr draft refine` print the same notes, and `mxr humanize` names the
 model under `rewrite` when it rewrote your text. In the web app the line
-sits under **Draft for me** and under the **Draft assist** panel. Select
+sits under the proof in **Draft for me**. Select
 **Sources** to list the messages; each one opens in a new tab on that
 message, so the draft you're judging stays where it is. The TUI shows the
 same line and source list with the draft.

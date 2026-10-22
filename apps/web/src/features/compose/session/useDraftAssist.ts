@@ -1,6 +1,8 @@
 /*
- * "Draft for me" and refine: LLM draft generation for the compose session,
- * plus the tone/length dials that steer it.
+ * "Draft for me" in the compose session: one help line that sends the text
+ * the user wrote to the daemon, and a proof that comes back as versions.
+ * Nothing is written over the user's text until a proof is accepted, and
+ * accepting is undone in one step until the text changes again.
  */
 
 import { useMutation } from "@tanstack/react-query";
@@ -8,12 +10,18 @@ import { useState, type Dispatch, type MutableRefObject, type SetStateAction } f
 import { toast } from "sonner";
 
 import { apiFetch } from "@/api/client";
+import { helpAction, helpPlaceholder, type HelpLineState } from "../assist/helpLine";
+import { mapModelSpans } from "../assist/modelSpans";
+import { proofPieces } from "../assist/proof";
+import { joinTextRegion, splitTextRegion, utf8Offset } from "../assist/textRegion";
 import type {
-  DraftLengthHint,
-  DraftRefineKnobs,
-  DraftSuggestionResponse,
-  VoiceRegister,
-} from "../types";
+  ComposeAssistAdjust,
+  ComposeAssistAction,
+  ComposeAssistDraft,
+  ComposeAssistProposal,
+  ComposeAssistRequest,
+  ComposeAssistResponse,
+} from "../assist/types";
 import {
   errorMessage,
   firstAddress,
@@ -28,115 +36,271 @@ interface DraftAssistInput {
   setDirty: Dispatch<SetStateAction<boolean>>;
 }
 
-export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAssistInput) {
-  const [aiPurpose, setAiPurpose] = useState("");
-  const [aiRegister, setAiRegister] = useState<VoiceRegister>("neutral");
-  const [aiLength, setAiLength] = useState<DraftLengthHint>("medium");
-  // Tone/length are inferred from the relationship by default; only send the
-  // dials as an override once the user has adjusted them.
-  const [aiOverridden, setAiOverridden] = useState(false);
-  const [refineContext, setRefineContext] = useState("");
-  const [draftSuggestion, setDraftSuggestion] = useState<DraftSuggestionResponse | null>(null);
-  const [assistOpen, setAssistOpen] = useState(intent.openAssist === true);
+/** One answer from the daemon, with what it was asked about. */
+export interface AssistVersion {
+  proposal: ComposeAssistProposal;
+  /** The text region the proof was made from; a mismatch makes it stale. */
+  sentText: string;
+  action: ComposeAssistAction;
+  instruction: string;
+}
 
-  const draftForMe = useMutation({
-    mutationFn: async () => {
+/** What accepting replaced, so ⌘Z can put it back in one step. */
+interface AcceptUndo {
+  before: string;
+  beforeSpans: ComposeDraftState["modelSpans"];
+  after: string;
+}
+
+interface ProofState {
+  versions: AssistVersion[];
+  index: number;
+  open: boolean;
+}
+
+const EMPTY_PROOF: ProofState = { versions: [], index: 0, open: false };
+
+/** A selection in the body, in UTF-16 units as the editor reports it. */
+export interface BodySelection {
+  from: number;
+  to: number;
+}
+
+const NO_ADJUST: ComposeAssistAdjust = {
+  shorter: false,
+  warmer: false,
+  more_formal: false,
+  proofread: false,
+};
+
+function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAssistDraft {
+  if (draft.draftId) return { kind: "stored", draft_id: draft.draftId };
+  if (intent.messageId) {
+    if (intent.kind === "forward") {
+      return { kind: "forward", message_id: intent.messageId, to: draft.frontmatter.to };
+    }
+    return {
+      kind: "reply",
+      message_id: intent.messageId,
+      all: intent.kind === "reply_all",
+    };
+  }
+  return {
+    kind: "new",
+    account_id: draft.accountId,
+    to: draft.frontmatter.to,
+    subject: draft.frontmatter.subject,
+  };
+}
+
+export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAssistInput) {
+  const [helpOpen, setHelpOpen] = useState(intent.openAssist === true);
+  // Bumped by ⌘J and by opening the help line, so the line takes focus each time.
+  const [focusNonce, setFocusNonce] = useState(intent.openAssist === true ? 1 : 0);
+  const [instruction, setInstruction] = useState("");
+  const [adjust, setAdjust] = useState<ComposeAssistAdjust>(NO_ADJUST);
+  const [selection, setSelection] = useState<BodySelection | null>(null);
+  // One state object: the proof's versions, which one is showing, and
+  // whether the proof is on screen. Updated only through pure updaters.
+  const [proof, setProof] = useState<ProofState>(EMPTY_PROOF);
+  const { versions, index: versionIndex, open: proofOpen } = proof;
+  const [undo, setUndo] = useState<AcceptUndo | null>(null);
+
+  const draftState = (): HelpLineState => {
+    const draft = draftRef.current;
+    const region = draft ? splitTextRegion(draft.bodyMarkdown) : null;
+    return {
+      hasText: (region?.text ?? "") !== "",
+      hasSelection: selectedRegionRange(draft?.bodyMarkdown ?? "", selection) !== null,
+      answersMessage: Boolean(intent.messageId),
+    };
+  };
+
+  const ask = useMutation({
+    mutationFn: async (input: { action: ComposeAssistAction; instruction: string }) => {
       const current = draftRef.current;
       if (!current) throw new Error("No draft is open");
-      const email = firstAddress(current.frontmatter.to);
-      if (!email) throw new Error("Add a recipient before drafting");
-      // A reply can leave the instruction empty: the daemon answers what the
-      // message asks and leaves [[?: …]] gaps for what only the user knows.
-      // A new email needs to know what it's for; the subject is context,
-      // not a substitute for saying what to write.
+      const region = splitTextRegion(current.bodyMarkdown);
+      const to = firstAddress(current.frontmatter.to);
+      if (!intent.messageId && !to) throw new Error("Add a recipient before drafting");
       const subject = current.frontmatter.subject.trim();
-      const said = aiPurpose.trim();
-      if (!intent.messageId && !said && !subject) {
+      if (!intent.messageId && !region.text.trim() && !input.instruction.trim() && !subject) {
         throw new Error("Say what this email should do");
       }
-      const purpose = intent.messageId
-        ? said
-        : [said, subject ? `(The subject line is "${subject}".)` : ""].filter(Boolean).join(" ");
-      return apiFetch<DraftSuggestionResponse>("/api/v1/mail/drafts/compose", {
+      const range = selectedRegionRange(current.bodyMarkdown, selection);
+      const request: ComposeAssistRequest = {
+        draft: assistDraft(intent, current),
+        text: region.text,
+        ...(range
+          ? {
+              selection: {
+                start: utf8Offset(region.text, range.from),
+                end: utf8Offset(region.text, range.to),
+              },
+            }
+          : {}),
+        action: input.action,
+        ...(input.instruction.trim() ? { instruction: input.instruction.trim() } : {}),
+        adjust,
+      };
+      const response = await apiFetch<ComposeAssistResponse>("/api/v1/mail/compose/assist", {
         method: "POST",
-        body: {
-          account_id: current.accountId,
-          to: { name: null, email },
-          instruction: purpose,
-          // Reply/forward: hand the daemon the source message so it drafts
-          // against the whole conversation.
-          ...(intent.messageId ? { source_message_id: intent.messageId } : {}),
-          // Only override the inferred tone/length once the user adjusts it.
-          ...(aiOverridden ? { register: aiRegister, length_hint: aiLength } : {}),
-        },
+        body: request,
       });
+      return {
+        response,
+        sentText: region.text,
+        action: input.action,
+        instruction: input.instruction,
+      };
     },
-    onSuccess: (suggestion) => applyDraftSuggestion(suggestion, "Draft inserted"),
-    onError: (error) =>
-      toast.error("Draft generation failed", { description: errorMessage(error) }),
-  });
-  const refineDraft = useMutation({
-    mutationFn: async (knobs: DraftRefineKnobs) => {
-      if (!intent.draftId) throw new Error("Refine is available for saved mxr drafts");
-      return apiFetch<DraftSuggestionResponse>("/api/v1/mail/drafts/refine", {
-        method: "POST",
-        body: {
-          draft_id: intent.draftId,
-          knobs,
-          // Refine what's in the editor, not the last saved copy.
-          ...(draftRef.current ? { body: draftRef.current.bodyMarkdown } : {}),
-        },
-      });
+    onSuccess: ({ response, sentText, action, instruction: asked }) => {
+      const version: AssistVersion = {
+        proposal: response.proposal,
+        sentText,
+        action,
+        instruction: asked,
+      };
+      setProof((current) => ({
+        versions: [...current.versions, version],
+        index: current.versions.length,
+        open: true,
+      }));
     },
-    onSuccess: (suggestion) => applyDraftSuggestion(suggestion, "Draft refined"),
-    onError: (error) => toast.error("Refine failed", { description: errorMessage(error) }),
+    onError: (error) => toast.error("Draft failed", { description: errorMessage(error) }),
   });
 
-  function applyDraftSuggestion(suggestion: DraftSuggestionResponse, title: string) {
-    setDraft((current) => (current ? { ...current, bodyMarkdown: suggestion.body } : current));
-    setDraftSuggestion(suggestion);
-    // Reflect the inferred tone in the dials (unless the user overrode it),
-    // so opening "Adjust" shows what was actually used.
-    if (!aiOverridden) {
-      if (suggestion.inferred_register) setAiRegister(suggestion.inferred_register);
-      if (suggestion.inferred_length) setAiLength(suggestion.inferred_length);
-    }
-    setDirty(true);
-    toast.success(title, { description: `Generated by ${suggestion.model}` });
+  function run(action: ComposeAssistAction, note: string) {
+    if (ask.isPending) return;
+    ask.mutate({ action, instruction: note });
   }
 
-  function runRefine(knobs: DraftRefineKnobs) {
-    const addContext = refineContext.trim();
-    refineDraft.mutate({
-      ...knobs,
-      ...(addContext ? { add_context: addContext } : {}),
+  /** ↵ in the help line: finish, edit the selection, or write. */
+  function submit() {
+    run(helpAction(draftState()), instruction);
+  }
+
+  /** The Polish word: the one action that may change the user's words. */
+  function polish() {
+    run("polish", "");
+  }
+
+  function openHelp() {
+    setHelpOpen(true);
+    setFocusNonce((nonce) => nonce + 1);
+  }
+
+  function closeHelp() {
+    setHelpOpen(false);
+  }
+
+  /**
+   * Run the proof again. A note asks for a revision of the user's text with
+   * the help line's current action; no note repeats the earlier request.
+   */
+  function again(note?: string) {
+    const version = versions[versionIndex];
+    if (!version) return;
+    if (note?.trim()) run(helpAction(draftState()), note.trim());
+    else run(version.action, version.instruction);
+  }
+
+  function accept() {
+    const current = draftRef.current;
+    const version = versions[versionIndex];
+    if (!current || !version) return;
+    const region = splitTextRegion(current.bodyMarkdown);
+    if (region.text !== version.sentText) return;
+    const { body, textStart } = joinTextRegion(region, version.proposal.text);
+    const spans = mapModelSpans(current.modelSpans ?? [], current.bodyMarkdown, body);
+    // Only the words the model added are marked; the user's own are not.
+    let offset = 0;
+    for (const piece of proofPieces(version.proposal.changes, version.proposal.gaps)) {
+      if (piece.kind === "removed") continue;
+      const length = piece.text.length;
+      if (piece.kind === "added") {
+        spans.push({ start: textStart + offset, end: textStart + offset + length });
+      }
+      offset += length;
+    }
+    setUndo({ before: current.bodyMarkdown, beforeSpans: current.modelSpans, after: body });
+    setDraft((draft) => (draft ? { ...draft, bodyMarkdown: body, modelSpans: spans } : draft));
+    setDirty(true);
+    setProof(EMPTY_PROOF);
+  }
+
+  /** Esc: the user's text stays as it was; the proof goes. */
+  function keepMine() {
+    setProof(EMPTY_PROOF);
+  }
+
+  /** ⌘Z after an accept, while the text is still the accepted text. */
+  function undoAccept(): boolean {
+    const current = draftRef.current;
+    if (!undo || !current || current.bodyMarkdown !== undo.after) return false;
+    setDraft((draft) =>
+      draft ? { ...draft, bodyMarkdown: undo.before, modelSpans: undo.beforeSpans } : draft,
+    );
+    setDirty(true);
+    setUndo(null);
+    return true;
+  }
+
+  function stepVersion(delta: number) {
+    setProof((current) => {
+      const next = current.index + delta;
+      if (next < 0 || next >= current.versions.length) return current;
+      return { ...current, index: next };
     });
   }
 
+  const version = versions[versionIndex] ?? null;
+  const currentText = draftRef.current ? splitTextRegion(draftRef.current.bodyMarkdown).text : "";
+  const showingProof = proofOpen && version !== null;
   return {
-    assistOpen,
-    setAssistOpen,
-    aiPurpose,
-    setAiPurpose,
-    aiRegister,
-    onRegisterChange: (value: VoiceRegister) => {
-      setAiRegister(value);
-      setAiOverridden(true);
-    },
-    aiLength,
-    onLengthChange: (value: DraftLengthHint) => {
-      setAiLength(value);
-      setAiOverridden(true);
-    },
-    aiOverridden,
-    resetTone: () => setAiOverridden(false),
-    refineContext,
-    setRefineContext,
-    draftSuggestion,
-    generateDraft: () => draftForMe.mutate(),
-    generating: draftForMe.isPending,
-    runRefine,
-    refining: refineDraft.isPending,
-    canRefine: Boolean(intent.draftId),
+    helpOpen,
+    openHelp,
+    closeHelp,
+    focusNonce,
+    instruction,
+    setInstruction,
+    adjust,
+    toggleAdjust: (key: keyof ComposeAssistAdjust) =>
+      setAdjust((current) => ({ ...current, [key]: !current[key] })),
+    selection,
+    setSelection,
+    placeholder: showingProof
+      ? "Say what to change, or press ↵ to try again"
+      : helpPlaceholder(draftState()),
+    submit,
+    polish,
+    again,
+    generating: ask.isPending,
+    version,
+    versionCount: versions.length,
+    versionIndex,
+    stepVersion,
+    proofOpen: showingProof,
+    stale: version !== null && version.sentText !== currentText,
+    accept,
+    keepMine,
+    canUndoAccept: undo !== null && draftRef.current?.bodyMarkdown === undo.after,
+    undoAccept,
   };
+}
+
+/**
+ * The editor's selection as a range inside the text region, or null when
+ * the selection is empty or lies in the prefix or signature.
+ */
+export function selectedRegionRange(
+  body: string,
+  selection: BodySelection | null,
+): BodySelection | null {
+  if (!selection || selection.from === selection.to) return null;
+  const region = splitTextRegion(body);
+  const start = Math.min(selection.from, selection.to) - region.prefix.length;
+  const end = Math.max(selection.from, selection.to) - region.prefix.length;
+  if (start < 0 || end > region.text.length) return null;
+  return { from: start, to: end };
 }

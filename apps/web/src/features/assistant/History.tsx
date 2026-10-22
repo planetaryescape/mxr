@@ -95,9 +95,9 @@ export function History({
                       ◇
                     </span>
                   ) : null}
-                  <span>{formatRelative(new Date(summary.updated_at * 1000))}</span>
                 </>
               }
+              time={<span>{formatRelative(new Date(summary.updated_at * 1000))}</span>}
               verbs={
                 <RowVerb
                   keys="d"

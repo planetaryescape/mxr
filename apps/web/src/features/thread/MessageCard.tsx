@@ -35,7 +35,7 @@ import { InviteCard } from "./InviteCard";
 import { MessageBody } from "./MessageBody";
 import { MessageText } from "./MessageText";
 import { PrivacyLine } from "./privacy/PrivacyLine";
-import { When } from "@/components/When";
+import { Received } from "@/components/When";
 
 export interface MessageCardProps {
   message: MessageRowView;
@@ -111,8 +111,12 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
             {name}
           </span>
           <span className="type-body truncate text-text-2">{message.snippet}</span>
-          <time dateTime={message.date} title={message.date_full} className="type-meta text-text-3">
-            <When value={message.date} />
+          <time
+            dateTime={message.date}
+            title={message.date_full}
+            className="type-meta whitespace-nowrap text-text-2"
+          >
+            <Received value={message.date} />
           </time>
         </button>
       </section>
@@ -152,9 +156,9 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
           <time
             dateTime={message.date}
             title={formatLongDate(message.date)}
-            className="mr-1 whitespace-nowrap font-mono text-2xs text-muted-foreground tabular-nums"
+            className="mr-1 whitespace-nowrap font-mono text-2xs text-text-2 tabular-nums"
           >
-            <When value={message.date} />
+            <Received value={message.date} />
           </time>
           <Button
             variant="ghost"

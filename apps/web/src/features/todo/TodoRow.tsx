@@ -3,7 +3,7 @@ import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { ModeMarks } from "@/components/ModeMark";
 import { Row, RowVerb, type LampVia } from "@/components/Row";
-import { useWhen } from "@/components/When";
+import { Received, useReceived } from "@/components/When";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { fetchThread } from "@/features/mailbox/api";
@@ -35,7 +35,7 @@ function Details({
   onOpenEmail: () => void;
   onOpenResolution: (todo: Todo, threadId: string, messageId: string) => void;
 }) {
-  const arrived = useWhen(todo.source_date);
+  const arrived = useReceived(todo.source_date);
   const thread = useQuery({
     queryKey: ["thread", todo.thread_id ?? ""],
     queryFn: () => fetchThread(todo.thread_id ?? ""),
@@ -91,7 +91,7 @@ function Details({
               <span className="text-text-1">{message.sender}</span>
               {", "}
               <time dateTime={message.date} title={formatLongDate(message.date)}>
-                {message.date_label}
+                <Received value={message.date} />
               </time>
               {" · "}
               {message.subject || "(no subject)"}
@@ -360,13 +360,15 @@ export const TodoRow = memo(function TodoRow({
               unchecked
             </span>
           ) : null}
-          <span
-            data-testid="todo-when"
-            className={cn("hidden max-w-[16rem] truncate sm:inline", cue && !done && "text-cue")}
-          >
-            {todo.when_label}
-          </span>
         </>
+      }
+      time={
+        <span
+          data-testid="todo-when"
+          className={cn("hidden max-w-[16rem] truncate sm:inline", cue && !done && "text-cue")}
+        >
+          {todo.when_label}
+        </span>
       }
       verbs={
         done ? (

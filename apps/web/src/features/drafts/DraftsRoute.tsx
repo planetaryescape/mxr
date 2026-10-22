@@ -136,10 +136,12 @@ function DraftRow({
               {draft.attachment_count}
             </span>
           ) : null}
-          <time dateTime={draft.updated_at} title={draft.updated_at_full}>
-            {draft.updated_at_relative}
-          </time>
         </>
+      }
+      time={
+        <time dateTime={draft.updated_at} title={draft.updated_at_full}>
+          {draft.updated_at_relative}
+        </time>
       }
       verbs={
         <AlertDialog>

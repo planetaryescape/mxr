@@ -173,7 +173,6 @@ export function DeliveriesRoute() {
                 secondary={detail || undefined}
                 trail={
                   <>
-                    {eta ? <span>{eta}</span> : null}
                     <span
                       className={cn(
                         ATTENTION.has(delivery.status)
@@ -187,6 +186,7 @@ export function DeliveriesRoute() {
                     </span>
                   </>
                 }
+                time={eta ? <span>{eta}</span> : undefined}
                 verbs={
                   <>
                     {delivery.tracking_url ? (

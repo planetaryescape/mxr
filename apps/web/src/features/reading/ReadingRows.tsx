@@ -91,10 +91,12 @@ export const ReadingIssueRow = memo(function ReadingIssueRow({
             <Bookmark aria-label="On Later" className="size-3.5" strokeWidth={1.75} />
           ) : null}
           <ModeMarks modes={otherModes(modes, "reading")} />
-          <span data-testid="reading-meta" className="hidden whitespace-nowrap sm:inline">
-            {meta}
-          </span>
         </>
+      }
+      time={
+        <span data-testid="reading-meta" className="hidden whitespace-nowrap sm:inline">
+          {meta}
+        </span>
       }
       verbs={
         <>

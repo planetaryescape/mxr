@@ -98,6 +98,18 @@ ignored. Existing files still load; the loader warns once and names them.
 `humanizer.apply_to_summaries` was retired the same way; nothing produces
 summaries to humanize.
 
+## Account identity
+
+Each account has a colour and a tag that mark its mail wherever a view mixes accounts (chapter 33, D147). Both are optional: the daemon assigns the colour when the account is created and derives the tag from its name.
+
+```toml
+[accounts.work]
+color = "amber"   # sky, amber, green, yellow, blue, vermilion, purple or slate
+tag = "W"         # 1 to 3 letters or digits, unique across accounts
+```
+
+An unknown colour or a bad tag fails config validation with the allowed values. A duplicate tag is refused and the account that holds it is named. `mxr accounts identity <key> --color <slot> --tag <tag> [--dry-run]` sets them without editing the file.
+
 ## IMAP connection limit
 
 Each IMAP account accepts `max_connections` in its sync block. The default is

@@ -90,6 +90,14 @@ pub(super) async fn file_size(state: &AppState, path: PathBuf) -> u64 {
         .unwrap_or(0)
 }
 
+pub(super) async fn log_total_bytes(state: &AppState, log_dir: PathBuf) -> u64 {
+    run_admin_blocking(state, "log_total_bytes", move || {
+        Ok(crate::logging::total_bytes(&log_dir))
+    })
+    .await
+    .unwrap_or(0)
+}
+
 pub(super) async fn dir_size(state: &AppState, path: PathBuf) -> u64 {
     run_admin_blocking(state, "dir_size", move || Ok(dir_size_sync(&path)))
         .await

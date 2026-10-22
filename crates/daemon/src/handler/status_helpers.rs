@@ -1,4 +1,6 @@
-use super::helpers::{dir_size, file_size, protocol_event_entry, recent_log_lines};
+use super::helpers::{
+    dir_size, file_size, log_total_bytes, protocol_event_entry, recent_log_lines,
+};
 use crate::state::AppState;
 use mxr_core::{Account, AccountId};
 use mxr_protocol::{AccountSyncStatus, FeatureHealth, FeatureHealthReport};
@@ -170,6 +172,12 @@ pub(super) async fn collect_doctor_report(
     let recent_error_logs = recent_log_lines(state, 10, Some("error"))
         .await
         .unwrap_or_default();
+    let sync_history = crate::sync_history::collect(&state.store)
+        .await
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "doctor could not summarise sync history");
+            Vec::new()
+        });
     let recommended_next_steps = if matches!(health_class, mxr_protocol::DaemonHealthClass::Healthy)
     {
         vec!["mxr status".to_string()]
@@ -247,6 +255,8 @@ pub(super) async fn collect_doctor_report(
         recent_error_logs,
         recommended_next_steps,
         findings,
+        sync_history,
+        log_total_bytes: log_total_bytes(state, data_dir.join("logs")).await,
     };
 
     tracing::trace!(

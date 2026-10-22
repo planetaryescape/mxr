@@ -8211,6 +8211,91 @@
           }
         ]
       },
+      "AccountSyncHistory": {
+        "type": "object",
+        "description": "Recent `sync_log` history for one account, as `mxr doctor` reports it.",
+        "required": [
+          "account_id",
+          "account_name",
+          "recent_syncs",
+          "failed_syncs",
+          "unfinished_syncs",
+          "finished_syncs",
+          "recurring_errors"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "account_name": {
+            "type": "string"
+          },
+          "failed_syncs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "finished_syncs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "latest_duration_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "median_duration_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Whole seconds, since `sync_log` timestamps are stored at second\nresolution.",
+            "minimum": 0
+          },
+          "recent_syncs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Rows read for this account, newest first.",
+            "minimum": 0
+          },
+          "recurring_errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecurringSyncError"
+            }
+          },
+          "slowest_duration_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "trend": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SyncDurationTrend",
+                "description": "`None` when either comparison window has fewer than five finished syncs."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unfinished_syncs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Rows without `finished_at`: still running, or abandoned mid-run. They\nnever contribute to the duration fields.",
+            "minimum": 0
+          }
+        }
+      },
       "AccountSyncStatus": {
         "type": "object",
         "required": [
@@ -14203,6 +14288,12 @@
             "format": "int64",
             "minimum": 0
           },
+          "log_total_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Active log plus rotated archives. `log_size_bytes` stays active-file only.",
+            "minimum": 0
+          },
           "recent_error_logs": {
             "type": "array",
             "items": {
@@ -14253,6 +14344,13 @@
           },
           "stale_socket": {
             "type": "boolean"
+          },
+          "sync_history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountSyncHistory"
+            },
+            "description": "Per-account `sync_log` summary. Empty from a daemon that predates it."
           },
           "sync_statuses": {
             "type": "array",
@@ -22536,6 +22634,28 @@
             "type": "boolean"
           },
           "workspace_id": {
+            "type": "string"
+          }
+        }
+      },
+      "RecurringSyncError": {
+        "type": "object",
+        "description": "One normalised failure message that recurred within an account's recent\nsync history.",
+        "required": [
+          "message",
+          "count",
+          "last_seen_at"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "last_seen_at": {
+            "type": "string"
+          },
+          "message": {
             "type": "string"
           }
         }
@@ -38436,6 +38556,15 @@
           "started",
           "joined",
           "failed"
+        ]
+      },
+      "SyncDurationTrend": {
+        "type": "string",
+        "description": "Direction of an account's recent sync durations, compared as the median of\nthe newest finished syncs against the median of the ones before them.",
+        "enum": [
+          "slower",
+          "faster",
+          "steady"
         ]
       },
       "SyncErrorData": {

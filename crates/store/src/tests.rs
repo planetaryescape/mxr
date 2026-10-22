@@ -1553,6 +1553,49 @@ async fn sync_log_lifecycle() {
 }
 
 #[tokio::test]
+async fn sync_log_recent_is_newest_first_scoped_and_limited() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let mut other = test_account();
+    other.id = AccountId::new();
+    store.insert_account(&other).await.unwrap();
+
+    let first = store
+        .insert_sync_log(&account.id, &SyncStatus::Running)
+        .await
+        .unwrap();
+    store
+        .complete_sync_log(first, &SyncStatus::Error, 0, Some("timed out"))
+        .await
+        .unwrap();
+    let second = store
+        .insert_sync_log(&account.id, &SyncStatus::Running)
+        .await
+        .unwrap();
+    store
+        .complete_sync_log(second, &SyncStatus::Success, 7, None)
+        .await
+        .unwrap();
+    store
+        .insert_sync_log(&other.id, &SyncStatus::Running)
+        .await
+        .unwrap();
+
+    let rows = store.list_recent_sync_logs(&account.id, 50).await.unwrap();
+    let ids: Vec<i64> = rows.iter().map(|row| row.id).collect();
+    assert_eq!(ids, vec![second, first]);
+    assert_eq!(rows[1].status, SyncStatus::Error);
+    assert_eq!(rows[1].error_message.as_deref(), Some("timed out"));
+    assert!(rows[1].finished_at.is_some());
+    assert_eq!(rows[0].messages_synced, 7);
+
+    let limited = store.list_recent_sync_logs(&account.id, 1).await.unwrap();
+    assert_eq!(limited.len(), 1);
+    assert_eq!(limited[0].id, second);
+}
+
+#[tokio::test]
 async fn event_log_insert_and_query() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();

@@ -56,6 +56,27 @@ mxr status --freshness --account work --limit 20 --format json
 
 With several accounts, the default scope shows the freshest mail and the worst sync state. The web app shows the same two signals in its status bar on every page, and the TUI shows them in its status line. The bridge serves it at `GET /api/v1/mail/freshness`.
 
+### Is sync slow, or failing?
+
+`mxr doctor` summarises each account's last 50 sync runs, so you can tell slow syncs from failing ones without opening the database. Unfinished runs are counted separately and never feed the durations.
+
+```bash
+mxr doctor --format table
+# Sync history (newest 50 syncs per account):
+#   Work: 50 syncs, 7 failed, 1 unfinished
+#     duration: median 7.0s, slowest 16.0s, latest 15.0s, trend slower
+#     recurring errors:
+#       7x IMAP timeout after <n> seconds fetching uid <n> (last 2026-10-21T23:25:09+00:00)
+#   Personal: 3 syncs, 1 failed, 0 unfinished
+#     duration: median 4.0s, slowest 5.0s, latest 5.0s
+#     recurring errors: none
+```
+
+- **Trend** compares the median of the newest 10 finished syncs with the 40 before them. It reads `slower` or `faster` only when the median moves by at least 50% and by at least 5 seconds. With fewer than five finished syncs in either window, the trend is left out.
+- **Recurring errors** group failures whose messages differ only in ids, numbers, timestamps, quoted values or email addresses. A message counts once it has appeared twice. The list shows at most five groups, and each message is clipped to 160 characters.
+
+The JSON report carries the same data under `sync_history`, one object per account.
+
 ### When the daemon says `degraded`
 
 `mxr status` reads its account and message counts out of SQLite. A large sync can saturate the reader pool, and rather than block, the daemon answers with `degraded: true` and no snapshot. That is "the daemon did not say", not "there are no accounts":

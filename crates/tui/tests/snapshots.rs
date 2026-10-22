@@ -714,6 +714,8 @@ fn diagnostics_page_snapshot() {
             recent_error_logs: vec![],
             recommended_next_steps: vec!["mxr status".into()],
             findings: vec![],
+            sync_history: vec![],
+            log_total_bytes: 512,
         }),
         events: vec![EventLogEntry {
             timestamp: 1710495000,

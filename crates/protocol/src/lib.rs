@@ -1312,6 +1312,8 @@ mod tests {
                         recent_error_logs: Vec::new(),
                         recommended_next_steps: Vec::new(),
                         findings: Vec::new(),
+                        sync_history: Vec::new(),
+                        log_total_bytes: 0,
                     },
                 },
                 IpcCategory::AdminMaintenance,

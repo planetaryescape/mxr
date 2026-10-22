@@ -41,16 +41,23 @@ export function LinkHoverCard({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  // Radix keeps its open timer running after a click, so a click during the
-  // delay would navigate and then open the card. Once the link is activated
-  // the card stays shut until the pointer leaves or focus moves off.
+  // Radix starts one open timer for the hover and another for focus, and a
+  // leave or blur cancels only the latest. So a click during the delay would
+  // navigate and then, through the other timer, open the card. Activating the
+  // link therefore shuts the card until a new hover or focus session starts,
+  // and a timer may only open it while the link is still hovered or focused.
   const activated = useRef(false);
+  const hovered = useRef(false);
+  const focused = useRef(false);
+  // A press focuses the link between pointerdown and click; that focus is
+  // part of the activation, not a new session.
+  const pressing = useRef(false);
   const { thread, person } = useLinkPreview(link, open);
   return (
     <HoverCard
       open={open}
       onOpenChange={(next) => {
-        if (next && activated.current) return;
+        if (next && (activated.current || !(hovered.current || focused.current))) return;
         setOpen(next);
       }}
       openDelay={OPEN_DELAY_MS}
@@ -58,18 +65,31 @@ export function LinkHoverCard({
     >
       <HoverCardTrigger
         asChild
-        onPointerDown={() => {
-          activated.current = true;
-        }}
-        onClick={() => {
-          activated.current = true;
-          setOpen(false);
+        onPointerEnter={() => {
+          hovered.current = true;
+          activated.current = false;
         }}
         onPointerLeave={() => {
-          activated.current = false;
+          hovered.current = false;
+        }}
+        onFocus={() => {
+          focused.current = true;
+          if (!pressing.current) activated.current = false;
         }}
         onBlur={() => {
-          activated.current = false;
+          focused.current = false;
+        }}
+        onPointerDown={() => {
+          pressing.current = true;
+          activated.current = true;
+        }}
+        onPointerUp={() => {
+          pressing.current = false;
+        }}
+        onClick={() => {
+          pressing.current = false;
+          activated.current = true;
+          setOpen(false);
         }}
       >
         {children}

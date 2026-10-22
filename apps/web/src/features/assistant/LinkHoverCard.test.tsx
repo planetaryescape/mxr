@@ -247,20 +247,48 @@ describe("the hover card on an email or person chip", () => {
     expect(fetched("/threads/previews")).toHaveLength(0);
   });
 
-  test("a click during the open delay navigates and the card never opens after it", async () => {
+  /** What a browser does on a click while hovering: press, focus, release, click. */
+  function clickWithFocus(chip: HTMLElement) {
+    fireEvent.pointerDown(chip);
+    act(() => chip.focus());
+    fireEvent.pointerUp(chip);
+    fireEvent.click(chip);
+  }
+
+  const never = async () => {
+    await wait(1500);
+    expect(screen.queryByTestId("link-hover-card")).toBeNull();
+    expect(fetched("/threads/previews")).toHaveLength(0);
+  };
+
+  test("a click during the open delay, then leaving, never opens the card", async () => {
     reply();
     const chip = screen.getByRole("link", { name: "Q1 report" });
     pointerEnter(chip, "mouse");
     await wait(200);
-    fireEvent.pointerDown(chip);
-    fireEvent.click(chip);
+    clickWithFocus(chip);
     expect(navigate).toHaveBeenCalledWith({ href: "/m/archive/t-1234567" });
-    await wait(1000);
-    expect(screen.queryByTestId("link-hover-card")).toBeNull();
-    expect(fetched("/threads/previews")).toHaveLength(0);
-
-    // Leaving and coming back is a fresh hover.
+    await wait(20);
     fireEvent.pointerOut(chip);
+    await never();
+
+    // Coming back is a fresh hover.
+    act(() => chip.blur());
+    pointerEnter(chip, "mouse");
+    await wait(450);
+    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+  });
+
+  test("a click during the open delay, then blurring, never opens the card", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointerEnter(chip, "mouse");
+    await wait(200);
+    clickWithFocus(chip);
+    await wait(20);
+    act(() => chip.blur());
+    await never();
+
     pointerEnter(chip, "mouse");
     await wait(450);
     expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();

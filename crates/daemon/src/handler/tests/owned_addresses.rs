@@ -240,3 +240,32 @@ async fn sync_registry_keeps_a_disabled_accounts_addresses() {
         .account_addresses
         .is_account_address(&account_id, &primary));
 }
+
+#[tokio::test]
+async fn adding_an_alias_tells_clients_that_cached_reply_contexts_may_be_stale() {
+    use mxr_protocol::{DaemonEvent, IpcPayload};
+    let state = AppState::in_memory().await.unwrap();
+    let account_id = state.default_account_id();
+    let mut events = state.event_tx.subscribe();
+
+    crate::handler::diagnostics_impl::add_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        false,
+    )
+    .await
+    .unwrap();
+
+    let announced = std::iter::from_fn(|| events.try_recv().ok()).any(|message| {
+        matches!(
+            message.payload,
+            IpcPayload::Event(DaemonEvent::AccountAddressesChanged { account_id: ref changed })
+                if *changed == account_id
+        )
+    });
+    assert!(
+        announced,
+        "address changes must reach every connected client"
+    );
+}

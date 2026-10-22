@@ -391,6 +391,20 @@ fn print_report_with_context(
     }
 }
 
+/// Asks the running daemon for its stale-registry flag. A daemon that cannot
+/// answer is already reported by the other checks, so that reads as not stale.
+async fn daemon_address_cache_stale() -> bool {
+    let Ok(mut client) = IpcClient::connect().await else {
+        return false;
+    };
+    match client.request(Request::GetDoctorReport).await {
+        Ok(Response::Ok {
+            data: ResponseData::DoctorReport { report },
+        }) => report.address_cache_stale,
+        _ => false,
+    }
+}
+
 async fn collect_report() -> anyhow::Result<DoctorReport> {
     let data_dir = mxr_config::data_dir();
     let db_path = data_dir.join("mxr.db");
@@ -519,6 +533,13 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         daemon_running = false;
     }
 
+    // Only the running daemon knows its address registry. Without one, there
+    // is no sync that could write Unknown direction.
+    let address_cache_stale = if socket_reachable {
+        daemon_address_cache_stale().await
+    } else {
+        false
+    };
     let (index_lock_held, index_lock_error) = probe_index_lock(&index_path, socket_reachable);
     let recent_error_logs = recent_log_lines_sync(10, Some("error")).unwrap_or_default();
     let lexical_index_freshness =
@@ -570,6 +591,7 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         search_worker_stopped: feature_health.as_ref().is_some_and(|health| {
             matches!(health.search, mxr_protocol::FeatureHealth::Degraded { .. })
         }),
+        address_cache_stale,
         data_stats: &data_stats,
     });
     let healthy = data_dir_exists
@@ -623,6 +645,7 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         history_retention_days: crate::loops::retention_days_on_disk(
             &mxr_config::config_file_path(),
         ),
+        address_cache_stale,
     })
 }
 

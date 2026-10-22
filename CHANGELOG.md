@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.145](https://github.com/planetaryescape/mxr/compare/v0.6.144...v0.6.145) (2026-10-22)
+
+
+### Features
+
+* list every keyboard shortcut from one definition with mxr keys ([#632](https://github.com/planetaryescape/mxr/issues/632)) ([b2bdc40](https://github.com/planetaryescape/mxr/commit/b2bdc40d9eafed78f2fa092c755c2fede080147e))
+
+
+### Bug Fixes
+
+* keep sync, cached AI results and the TUI current after an address change ([#631](https://github.com/planetaryescape/mxr/issues/631)) ([21c61d5](https://github.com/planetaryescape/mxr/commit/21c61d5f0266f6c22f32152fd36217cb766b7d65))
+
+
+### Documentation
+
+* remove a stray merge marker from the decision log ([#640](https://github.com/planetaryescape/mxr/issues/640)) ([67822bc](https://github.com/planetaryescape/mxr/commit/67822bc46aa02d4989f70398fdf8d85e8a4b69df))
+
 ## [0.6.144](https://github.com/planetaryescape/mxr/compare/v0.6.143...v0.6.144) (2026-10-22)
 
 

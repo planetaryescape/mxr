@@ -40,6 +40,8 @@ export interface DispatcherOptions {
   context: () => ActionContext;
   /** Reports the pending sequence prefix ("g", "*") for the status bar. */
   onPendingChange?: (prefix: string | null) => void;
+  /** Reports a prefix and a key that complete nothing ("g U"), for the status bar. */
+  onDeadEnd?: (sequence: string) => void;
   /** Extra veto, e.g. while compose owns the page. */
   isSuspended?: () => boolean;
   mac?: boolean;
@@ -151,18 +153,21 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
         clear();
         return;
       }
-      // Dead end: drop the prefix and treat this key on its own, the way
-      // vim does after a mistyped "g".
       clear();
-      const single = registry.resolve(token, scopes);
-      if (single && !registry.hasContinuation(token, scopes)) {
-        event.preventDefault();
-        invokeAction(single.action, ctx);
-      } else if (registry.hasContinuation(token, scopes)) {
-        event.preventDefault();
-        setPending([token]);
-        timer = setTimeout(clear, SEQUENCE_TIMEOUT_MS);
+      // A modifier chord is never a mistyped second key: ⌘K after a stray
+      // "g" still opens the palette.
+      if (isModifierChord(token)) {
+        const single = registry.resolve(token, scopes);
+        if (single && !registry.hasContinuation(token, scopes)) {
+          event.preventDefault();
+          invokeAction(single.action, ctx);
+        }
+        return;
       }
+      // Dead end: cancel and say so. Running the key on its own turned a
+      // mistyped "g U" into marking mail unread.
+      event.preventDefault();
+      options.onDeadEnd?.(chord);
     }
   };
 

@@ -11,6 +11,11 @@ export const web = {
     `/messages?${new URLSearchParams({ person: personId, ...(topic ? { topic } : {}) })}`,
   todo: (todoId: string) => `/todo?${new URLSearchParams({ row: todoId })}`,
   readingItem: (itemKey: string) => `/reading/item/${encodeURIComponent(itemKey)}`,
+  /** A conversation on the web app's search page, which reads any thread. */
+  search: (threadId: string) => `/search/${encodeURIComponent(threadId)}`,
+  /** The inbox, or one conversation in it. */
+  inbox: (threadId?: string) =>
+    threadId ? `/m/inbox/${encodeURIComponent(threadId)}` : "/m/inbox",
   /** A stored draft in the web composer. */
   draft: (draftId: string) => `/compose/${encodeURIComponent(draftId)}`,
 };

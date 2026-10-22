@@ -23,6 +23,18 @@
       "mode": "view"
     },
     {
+      "name": "inbox",
+      "title": "Inbox",
+      "subtitle": "mxr",
+      "description": "Every conversation in the inbox, and a search of all mail with mxr's query language.",
+      "mode": "view",
+      "keywords": [
+        "search",
+        "mail",
+        "email"
+      ]
+    },
+    {
       "name": "messages",
       "title": "Messages",
       "subtitle": "mxr",
@@ -69,12 +81,14 @@
   ],
   "dependencies": {
     "@raycast/api": "^2.8.0",
-    "@raycast/utils": "^2.3.2"
+    "@raycast/utils": "^2.3.2",
+    "turndown": "^7.2.4"
   },
   "devDependencies": {
     "@raycast/eslint-config": "^2.2.0",
     "@types/node": "22.19.17",
     "@types/react": "19.0.10",
+    "@types/turndown": "^5.0.6",
     "eslint": "^10.12.0",
     "prettier": "^3.9.10",
     "typescript": "^5.9.3"

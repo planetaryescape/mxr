@@ -157,6 +157,8 @@ pub(crate) async fn extract_and_store(
             },
             what: what.to_string(),
             by_when,
+            // Dated only by `unambiguous_at` above, from the draft's words.
+            by_when_source: by_when.map(|_| mxr_store::ByWhenSource::Words),
             extracted_at: now,
         };
         state
@@ -228,8 +230,9 @@ pub(crate) async fn promote_after_send(
             who_owes: c.who_owes.clone(),
             what: c.what.clone(),
             by_when: c.by_when,
-            // Candidates are dated only by `unambiguous_at` above.
-            by_when_source: c.by_when.map(|_| mxr_store::ByWhenSource::Words),
+            // The candidate's own provenance: one saved before due words
+            // existed has none, and its date stays unverified.
+            by_when_source: c.by_when.and(c.by_when_source),
             evidence_msg_id: sent_message_id.clone(),
             extracted_at: c.extracted_at,
             resolved_at: None,

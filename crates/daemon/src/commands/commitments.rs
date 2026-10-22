@@ -2,6 +2,7 @@ use crate::cli::{CommitmentStatusArg, CommitmentsAction, OutputFormat};
 use crate::commands::resolve_account;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
+use chrono::{Local, TimeZone};
 use mxr_protocol::*;
 
 pub async fn run(
@@ -73,7 +74,7 @@ fn print_list(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
                         commitment.email,
                         commitment.direction,
                         commitment.what,
-                        due_column(&commitment)
+                        due_column(&commitment, &Local)
                     );
                 }
             }
@@ -85,14 +86,20 @@ fn print_list(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
 }
 
 /// A fifth tab-separated column, only on dated rows, so the four existing
-/// columns keep their places for scripts.
-fn due_column(commitment: &CommitmentData) -> String {
-    match commitment.by_when {
-        Some(when) if commitment.date_unverified => {
-            format!("\tdue {} (date unverified)", when.format("%Y-%m-%d"))
-        }
-        Some(when) => format!("\tdue {}", when.format("%Y-%m-%d")),
-        None => String::new(),
+/// columns keep their places for scripts. The day is the deadline's day in
+/// the reader's zone, not UTC's.
+fn due_column<Tz: TimeZone>(commitment: &CommitmentData, tz: &Tz) -> String
+where
+    Tz::Offset: std::fmt::Display,
+{
+    let Some(when) = commitment.by_when else {
+        return String::new();
+    };
+    let day = when.with_timezone(tz).format("%Y-%m-%d");
+    if commitment.date_unverified {
+        format!("\tdue {day} (date unverified)")
+    } else {
+        format!("\tdue {day}")
     }
 }
 
@@ -107,7 +114,7 @@ fn status_data(value: CommitmentStatusArg) -> CommitmentStatusData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{TimeZone, Utc};
+    use chrono::{FixedOffset, TimeZone, Utc};
     use mxr_core::id::{AccountId, MessageId, ThreadId};
 
     fn commitment(by_when: bool, date_unverified: bool) -> CommitmentData {
@@ -146,11 +153,29 @@ mod tests {
 
     #[test]
     fn text_output_appends_a_due_column_only_on_dated_rows() {
-        assert_eq!(due_column(&commitment(false, false)), "");
-        assert_eq!(due_column(&commitment(true, false)), "\tdue 2026-10-02");
+        let utc = FixedOffset::east_opt(0).unwrap();
+        assert_eq!(due_column(&commitment(false, false), &utc), "");
         assert_eq!(
-            due_column(&commitment(true, true)),
+            due_column(&commitment(true, false), &utc),
+            "\tdue 2026-10-02"
+        );
+        assert_eq!(
+            due_column(&commitment(true, true), &utc),
             "\tdue 2026-10-02 (date unverified)"
+        );
+    }
+
+    #[test]
+    fn the_due_day_is_the_day_in_the_readers_zone() {
+        // 00:30 on 23 October in London (BST), which is still the 22nd in UTC.
+        let london = FixedOffset::east_opt(3600).unwrap();
+        let mut late = commitment(true, false);
+        late.by_when = Some(Utc.with_ymd_and_hms(2026, 10, 22, 23, 30, 0).unwrap());
+        assert_eq!(due_column(&late, &london), "\tdue 2026-10-23");
+        late.date_unverified = true;
+        assert_eq!(
+            due_column(&late, &london),
+            "\tdue 2026-10-23 (date unverified)"
         );
     }
 }

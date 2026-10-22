@@ -61,6 +61,16 @@ UPDATE contact_commitments SET by_when_source = 'user' \
 UPDATE contact_commitments SET by_when_source = 'model_date' \
   WHERE by_when_source IS NULL AND by_when IS NOT NULL;";
 
+/// Sets the source on draft candidates saved before the column existed. A
+/// candidate carries no evidence of who dated it, and one saved before due
+/// words (v0.6.120) can hold a model-written date, so a dated legacy candidate
+/// is `model_date`; sending its draft then promotes an unverified date, not an
+/// actionable one. Run by migration 095 and again on rows a backup copies from
+/// an older schema.
+pub(crate) const BACKFILL_DRAFT_CANDIDATE_SOURCE_SQL: &str = "\
+UPDATE draft_commitment_candidates SET by_when_source = 'model_date' \
+  WHERE by_when_source IS NULL AND by_when IS NOT NULL;";
+
 #[cfg(test)]
 mod tests {
     use super::*;

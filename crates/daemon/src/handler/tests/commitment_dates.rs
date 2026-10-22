@@ -4,12 +4,13 @@
 
 use super::desk::{Fixture, ME};
 use super::*;
-use crate::handler::{now, todos};
+use crate::handler::{commitments_extract, now, todos};
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use mxr_core::id::ThreadId;
-use mxr_core::types::MessageDirection;
+use mxr_core::types::{Address, Draft, DraftContent, DraftIntent, MessageDirection};
 use mxr_store::{
-    ByWhenSource, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord, TodoState,
+    ByWhenSource, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord,
+    DraftCommitmentCandidate, TodoState,
 };
 use std::collections::{BTreeSet, HashMap};
 
@@ -273,4 +274,101 @@ async fn a_mirrored_promise_loses_its_due_date_when_the_date_turns_out_to_be_a_m
         "a to-do the user edited keeps its date"
     );
     assert_eq!(kept.state, TodoState::Open);
+}
+
+/// A draft candidate saved before due words existed can hold a date a model
+/// wrote and has no source. Sending its draft must not make that date count.
+#[tokio::test]
+async fn a_legacy_draft_candidates_date_stays_unverified_after_send() {
+    let fx = Fixture::new().await;
+    let at = Utc::now();
+    let due = at - Duration::days(2);
+    let thread = ThreadId::new();
+    let sent = fx
+        .message(&thread, ME, "nora@example.com", Duration::days(3), None)
+        .await;
+    fx.store_envelope(&sent, MessageDirection::Outbound).await;
+    let draft = Draft {
+        revision: Some(1),
+        id: mxr_core::DraftId::new(),
+        account_id: fx.account.clone(),
+        from: None,
+        reply_headers: None,
+        intent: DraftIntent::New,
+        to: vec![Address {
+            name: None,
+            email: "nora@example.com".into(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "deck".into(),
+        content: DraftContent::markdown("I'll send both."),
+        inline_assets: Vec::new(),
+        managed_attachments: None,
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: at,
+        updated_at: at,
+    };
+    // Same date, one with no source (a row from before provenance) and one
+    // dated from the draft's words.
+    let mut ids = Vec::new();
+    for (what, source) in [("legacy", None), ("fresh", Some(ByWhenSource::Words))] {
+        let candidate = DraftCommitmentCandidate {
+            id: mxr_store::new_candidate_id(),
+            draft_id: draft.id.clone(),
+            account_id: fx.account.clone(),
+            email: "nora@example.com".into(),
+            direction: CommitmentDirection::Yours,
+            who_owes: ME.into(),
+            what: what.into(),
+            by_when: Some(due),
+            by_when_source: source,
+            extracted_at: at,
+        };
+        fx.state
+            .store
+            .upsert_draft_commitment_candidate(&candidate)
+            .await
+            .unwrap();
+        ids.push((what, format!("{}::{}", sent.id, candidate.id)));
+    }
+
+    commitments_extract::promote_after_send(&fx.state, &draft, &sent.id)
+        .await
+        .unwrap();
+
+    let id_of = |what: &str| ids.iter().find(|(w, _)| *w == what).unwrap().1.clone();
+    let legacy = fx
+        .state
+        .store
+        .get_contact_commitment(&id_of("legacy"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(legacy.by_when_source, None);
+    assert!(legacy.date_unverified(), "kept, shown as unverified");
+
+    let ResponseData::Desk { due: lane, .. } = fx.desk(100).await else {
+        panic!("expected a desk");
+    };
+    let on_desk: BTreeSet<String> = lane
+        .rows
+        .iter()
+        .filter_map(|row| row.commitment_id.clone())
+        .collect();
+    assert_eq!(on_desk, BTreeSet::from([id_of("fresh")]));
+
+    run_todo_pass(&fx, at).await;
+    let mirrored: HashMap<String, Option<DateTime<Utc>>> = fx
+        .state
+        .store
+        .list_promise_todos(&fx.account)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter_map(|todo| Some((todo.commitment_id?, todo.due_at)))
+        .collect();
+    assert_eq!(mirrored.get(&id_of("legacy")), Some(&None));
+    assert!(mirrored[&id_of("fresh")].is_some());
 }

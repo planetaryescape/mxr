@@ -29,15 +29,6 @@ pattern reads `sample.body` in `commitments.rs` (twice), `summary.rs`,
 commitments one. Read from the code at the commit that adds this file; not
 reproduced with a test.
 
-## Draft candidates carry no source
-
-`draft_commitment_candidates` has `by_when` but no source column. Promotion
-after send marks a dated candidate `words`, which is right for every candidate
-extracted since R0 (v0.6.120). A candidate extracted by an older daemon and
-still unsent at upgrade would be promoted as `words`. Candidates are rewritten
-whenever the draft is extracted again, so the window is small; add the column
-if it ever shows up.
-
 ## The live extractors still read less than the model could
 
 They check due words against reader-cleaned text without the subject, and the

@@ -49,7 +49,7 @@ import {
   type PersonPage,
 } from "./api";
 import { focusFilterBar, MessagesFilterBar } from "./MessagesFilterBar";
-import { filterOf, searchOf, type MessagesFilter } from "./filters";
+import { filterOf, searchOf, type FilterSearch, type MessagesFilter } from "./filters";
 import { MessagesList } from "./MessagesList";
 import {
   afterDone,
@@ -73,17 +73,11 @@ const PEOPLE_PANE_SIZE = { defaultSize: "22rem", minSize: "16rem", maxSize: "40r
 /** How long an arrival is marked; the glow itself is the scene duration. */
 const ARRIVAL_MS = 2_000;
 
-export interface MessagesSearch {
+export interface MessagesSearch extends FilterSearch {
   /** The selected row's id: `person:<email>` or `group:<thread>`. */
   person?: string;
   /** The selected topic's thread. */
   topic?: string;
-  /** Only rows where it is this side's turn. */
-  turn?: MessagesTurn;
-  /** Only rows with unread mail from them. */
-  unread?: boolean;
-  /** Only rows where your turn has run past your usual pace. */
-  pace?: boolean;
 }
 
 /**

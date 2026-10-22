@@ -31,11 +31,11 @@ export function filterOf(search: FilterSearch): MessagesFilter {
 }
 
 export function searchOf(filter: MessagesFilter): FilterSearch {
-  return {
-    ...(filter.turn ? { turn: filter.turn } : {}),
-    ...(filter.unread ? { unread: true } : {}),
-    ...(filter.pastPace ? { pace: true } : {}),
-  };
+  const search: FilterSearch = {};
+  if (filter.turn) search.turn = filter.turn;
+  if (filter.unread) search.unread = true;
+  if (filter.pastPace) search.pace = true;
+  return search;
 }
 
 /** A turn, a toggle or both: the list is narrower than the page's default. */

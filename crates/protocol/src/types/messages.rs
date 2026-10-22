@@ -30,11 +30,15 @@ pub mod messages_copy {
     /// what the filter kept out, then what is still there, so every client
     /// shows the same words. The turn names the view the filter sits in.
     pub fn filtered_empty(filter: super::MessagesFilterData, your_turn_people: u32) -> String {
+        debug_assert!(
+            filter.narrows(),
+            "the filtered copy is for a filter that narrows"
+        );
         let sentence = match (filter.unread, filter.past_pace) {
             (true, true) => "No unread messages from people past your usual pace.",
             (true, false) => "No unread messages from people.",
-            (false, true) => "Nobody is past your usual pace.",
-            (false, false) => "Nothing matches.",
+            // Only past pace is on: the caller only asks when a toggle is on.
+            (false, _) => "Nobody is past your usual pace.",
         };
         let sentence = match filter.turn {
             None => sentence.to_string(),
@@ -345,7 +349,7 @@ pub struct MessagesData {
 }
 
 /// Only rows where it is this side's turn.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum MessagesTurnData {
@@ -357,7 +361,7 @@ pub enum MessagesTurnData {
 
 /// What Messages keeps. Toggles AND with the turn and with each other, and
 /// none of them changes the header counts.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MessagesFilterData {
     /// Only rows where it is this side's turn; `None` keeps every turn.

@@ -198,9 +198,10 @@ direction (the table that maps today's to-do kinds to these is
   two accounts of one sender, which today's dedup key does);
 - twin-pair accuracy, where both members of a pair must be right on what they
   ask, and the same over the pairs whose members ask different things;
-- reply owed, graded as its own question against `needs_reply`, the
-  directed-request signal Your turn is built from. It reads one message, not the
-  thread, so it cannot see that you answered;
+- reply owed, graded as its own question against Your turn as the desk reads
+  it for one message: a request directed to you (`needs_reply`, the signal the
+  You owe lane uses) with nothing you sent after it in the thread. The lane's
+  other gates (copied threads, decay, snoozes, the screener) are not mirrored;
 - slices by sender kind (person, organisation, platform, list), locale (en-GB,
   en-ZA, en-US), template family and visible against held-out phrasing.
 

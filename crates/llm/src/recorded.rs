@@ -21,7 +21,7 @@ use crate::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, Ll
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 /// The environment variable that turns recording on.
@@ -248,11 +248,6 @@ impl RecordedProvider {
         std::fs::write(&staging, text).map_err(io)?;
         std::fs::rename(&staging, &path).map_err(io)
     }
-
-    /// The directory recordings live in.
-    pub fn dir(&self) -> &Path {
-        &self.dir
-    }
 }
 
 #[async_trait]
@@ -310,6 +305,7 @@ impl LlmProvider for RecordedProvider {
 mod tests {
     use super::*;
     use crate::ChatMessage;
+    use std::path::Path;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct Fake {

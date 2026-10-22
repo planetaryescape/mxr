@@ -26,6 +26,7 @@
 
 use super::classify_eval_asks::{AskGrader, AskInput, Row, ASK_QUESTIONS};
 use super::desk::{self_matcher, Senders};
+use super::desk_lanes;
 use super::modes::MEMBERSHIP_MAX_THREADS;
 use super::{arrivals, mail_kind, HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -419,6 +420,16 @@ async fn mail_reads(
         // Looked up once per email: a scan per email is quadratic on a demo
         // of tens of thousands.
         let by_id: HashMap<&MessageId, _> = messages.iter().map(|m| (&m.id, m)).collect();
+        // The newest message you sent in each thread, by the order mail was
+        // stored (`seq`), as the desk judges who wrote last
+        // (`desk_lanes::last_stored`).
+        let mut last_sent: HashMap<&ThreadId, i64> = HashMap::new();
+        for message in &messages {
+            if desk_lanes::is_outbound(message, &is_self) {
+                let newest = last_sent.entry(&message.thread_id).or_insert(message.seq);
+                *newest = (*newest).max(message.seq);
+            }
+        }
         for candidate in candidates {
             let Some(message) = by_id.get(&candidate.message_id) else {
                 continue;
@@ -429,7 +440,19 @@ async fn mail_reads(
                 MailRead {
                     kind: described.kind,
                     reason: described.reason,
-                    reply_owed: mail_kind::needs_reply(message, &is_self),
+                    // Your turn: a request directed to you that you have not
+                    // answered. The desk puts a thread in You owe only when
+                    // its latest stored message is not yours
+                    // (`desk_lanes.rs` `thread_row`: an outbound latest is
+                    // Waiting) and the inbound one passes `needs_reply`
+                    // (`desk_lanes.rs` `desk_signals`, `reply_request`).
+                    // Per message that is: needs_reply, and nothing sent
+                    // after it. The lane's other gates (copied threads,
+                    // decay, the screener, snoozes) are not mirrored.
+                    reply_owed: mail_kind::needs_reply(message, &is_self)
+                        && last_sent
+                            .get(&message.thread_id)
+                            .is_none_or(|sent| *sent < message.seq),
                 },
             );
         }

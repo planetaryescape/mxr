@@ -33,7 +33,7 @@ field counterparty  pairs     7 exact     7 (100.0%) missing 0 wrong 0 spurious 
 
 duplicates 0 merges 0
 twin pairs 0 both right 0; differing pairs 0 both right 0
-reply owed (38747 emails) expected     4 found   705 tp     2 fp   703 fn     2 precision   0.3% recall  50.0%
+reply owed (38747 emails) expected     4 found     2 tp     2 fp     0 fn     2 precision 100.0% recall  50.0%
 
 locale           en-GB                              emails  38731 expected    83 found     9 tp     7 fp     2 fn    76 precision  77.8% recall   8.4%
 locale           en-US                              emails     16 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
@@ -61,14 +61,13 @@ who      10032/11115   90.3%
 home     10208/11115   91.8%
 record    9483/11115   85.3%
 
-8975 mismatches in 47 clusters
+8272 mismatches in 46 clusters
 bulk-bill-issued ask: expected pay, got no row: 44 (16 held out)
 bulk-bill-issued record: expected yes, got no: 314 (164 held out)
 bulk-bill-payment-received record: expected yes, got no: 161 (82 held out)
 bulk-bill-statement-ready record: expected no, got yes: 63 (0 held out) [label to check]
 bulk-dated-request-ask ask: expected other, got no row: 6 (0 held out) [label to check]
 bulk-dated-request-ask ask: expected send, got no row: 24 (0 held out) [label to check]
-bulk-dated-request-ask reply: expected none owed, got owed: 703 (0 held out) [label to check]
 bulk-order-confirmation record: expected yes, got no: 310 (152 held out)
 bulk-order-delivered record: expected yes, got no: 703 (229 held out)
 bulk-order-invoice ask: expected none, got pay: 2 (0 held out)

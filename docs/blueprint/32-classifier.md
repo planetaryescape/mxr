@@ -1006,9 +1006,10 @@ What the figures say:
   whose members ask different things. A surface-only baseline gets 2 of the 21
   such pairs (10%, bar 40%), so the pairs are not separable by subject
   words, sender or length.
-- Your turn (reply owed) is graded against `needs_reply`: 15.4% recall and
-  40.0% precision on the quick set. On the full set it flags 703 colleague
-  requests that the thread shows you answered, because it reads one message.
+- Your turn (reply owed) is graded as the desk reads it for one message: a
+  request directed to you (`needs_reply`) with nothing you sent after it in the
+  thread. On the quick set that is 40.0% precision and 15.4% recall; on the
+  full set 2 found, both right, of 4 expected. The lane's other gates are not mirrored.
 - Held-out: on the full set 16 held-out asks, none found; on the quick set
   the two held-out families are both missed.
 - Your promises in sent mail are never found. Promise rows are mirrored from

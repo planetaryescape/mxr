@@ -22,7 +22,7 @@ use mxr_todo::TodoKind;
 use std::collections::BTreeMap;
 
 /// What the Your turn answer reads, for the output.
-pub(super) const REPLY_PROJECTION: &str = "the directed-request signal Your turn is built from (mail_kind::needs_reply): a message to you, in authored text, that names you with a request to reply, confirm, send or share. It reads the one message, not the thread, so an answered question still counts";
+pub(super) const REPLY_PROJECTION: &str = "Your turn as the desk reads it for one message: a request directed to you (mail_kind::needs_reply, the signal the You owe lane uses) with nothing you sent after it in the thread. The lane's other gates (copied threads, decay, snoozes, the screener) are not mirrored";
 
 /// The mismatch questions the asks add, in the order they are listed.
 pub(super) const ASK_QUESTIONS: [&str; 5] = ["ask", "amount", "due", "counterparty", "reply"];
@@ -306,7 +306,7 @@ impl AskGrader {
             });
         }
         let mut duplicates = 0;
-        for (_, row) in rows.iter().enumerate().filter(|(j, _)| !row_taken[*j]) {
+        for (row, _) in rows.iter().zip(&row_taken).filter(|(_, taken)| !**taken) {
             bump(row.kind, row.direction, &|c| c.false_positives += 1);
             // A second row for an item the email does ask is a duplicate.
             let asked = expected

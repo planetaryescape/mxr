@@ -33,6 +33,11 @@ use crate::state::AppState;
 /// word by the clock (an Updates cut, a to-do coming back, "due soon")
 /// is never more than this late.
 const MAX_AGE: Duration = Duration::from_secs(60);
+/// A connection goes back to its pool a moment after its commit, so a build
+/// right after a write waits this long for the write to land rather than be
+/// marked unsettled and built twice. A slower commit is built unsettled and
+/// replaced once it lands.
+const LAND_WAIT: Duration = Duration::from_millis(50);
 /// The refresher rebuilds a view for a change at most this often, which
 /// bounds the work if some table is written continuously.
 const MIN_REBUILD: Duration = Duration::from_secs(5);
@@ -157,8 +162,8 @@ struct Entry {
     mutations: u64,
     /// The change feed's sequence when the build started.
     changes: u64,
-    /// No write was in progress when the build started, so the build saw
-    /// every change counted in `changes`; see `Store::writer_busy`.
+    /// Every commit counted in `changes` had landed when the build
+    /// started, so the build saw them; see `ChangeFeed::landed`.
     settled: bool,
     /// The local hour the build started in; see `local_hour`.
     hour: i64,
@@ -171,8 +176,9 @@ struct Entry {
 pub(crate) struct ModeCache {
     entries: Mutex<Vec<Entry>>,
     mutations: AtomicU64,
+    /// Tests: `ChangeFeed::landed` as it was when landing was held.
     #[cfg(test)]
-    writer_held: std::sync::atomic::AtomicBool,
+    landing_held: Mutex<Option<u64>>,
 }
 
 impl ModeCache {
@@ -207,7 +213,7 @@ impl ModeCache {
             };
             let entry = &mut entries[index];
             entry.last_read = Instant::now();
-            if let Some(data) = self.servable(entry, feed.seq(), self.writer_busy(state)) {
+            if let Some(data) = self.servable(entry, feed.seq(), self.landed(state)) {
                 return Ok(data);
             }
             Arc::clone(&entry.building)
@@ -219,7 +225,7 @@ impl ModeCache {
             entries
                 .iter()
                 .find(|e| e.view == view)
-                .and_then(|entry| self.servable(entry, feed.seq(), self.writer_busy(state)))
+                .and_then(|entry| self.servable(entry, feed.seq(), self.landed(state)))
         };
         if let Some(data) = fresh {
             return Ok(data);
@@ -250,39 +256,55 @@ impl ModeCache {
         }
     }
 
-    /// Pretend a write is in progress, as if a commit were still landing.
+    /// Pretend commits counted from now on have not landed yet, as if a
+    /// slow commit were still being written.
     #[cfg(test)]
-    pub(super) fn hold_writer(&self, held: bool) {
-        self.writer_held.store(held, Ordering::Release);
+    pub(super) fn hold_landing(&self, state: &AppState, held: bool) {
+        *self.landing_held.lock() = held.then(|| state.store.change_feed().landed());
     }
 
     /// A view as a read would get it now, without building one.
     #[cfg(test)]
     pub(super) fn cached(&self, state: &AppState, view: &ModeView) -> Option<ResponseData> {
         let changes = state.store.change_feed().seq();
-        let busy = self.writer_busy(state);
+        let landed = self.landed(state);
         let entries = self.entries.lock();
         let entry = entries.iter().find(|e| &e.view == view)?;
-        self.servable(entry, changes, busy)
+        self.servable(entry, changes, landed)
     }
 
-    fn writer_busy(&self, state: &AppState) -> bool {
+    async fn wait_landed(&self, state: &AppState, changes: u64) -> bool {
         #[cfg(test)]
-        if self.writer_held.load(Ordering::Acquire) {
-            return true;
+        if self.landing_held.lock().is_some() {
+            return self.landed(state) >= changes;
         }
-        state.store.writer_busy()
+        state
+            .store
+            .change_feed()
+            .wait_landed(changes, LAND_WAIT)
+            .await
     }
 
-    /// The view, if it can answer a read now. `busy`: a write is in progress.
-    fn servable(&self, entry: &Entry, changes: u64, busy: bool) -> Option<ResponseData> {
-        // A build that started while a commit was landing may have missed
-        // it. It answers only while a write is still in progress, when a new
-        // build would be no surer; after that the read builds afresh, so
-        // stored mail never waits for the refresher to show.
+    fn landed(&self, state: &AppState) -> u64 {
+        #[cfg(test)]
+        {
+            let held = *self.landing_held.lock();
+            if let Some(held) = held {
+                return held;
+            }
+        }
+        state.store.change_feed().landed()
+    }
+
+    /// The view, if it can answer a read now. `landed`: `ChangeFeed::landed`.
+    fn servable(&self, entry: &Entry, changes: u64, landed: u64) -> Option<ResponseData> {
+        // A build that counted a commit before it landed may have missed it.
+        // It answers only until that commit lands, while a new build would
+        // be no surer; after that the read builds afresh, so stored mail
+        // never waits for the refresher to show.
         let good = entry.mutations == self.mutations.load(Ordering::Acquire)
             && entry.changes == changes
-            && (entry.settled || busy)
+            && (entry.settled || landed < entry.changes)
             && entry.built.elapsed() < MAX_AGE
             && entry.hour == local_hour();
         good.then(|| entry.data.clone()).flatten()
@@ -296,11 +318,10 @@ impl ModeCache {
         let mutations = self.mutations.load(Ordering::Acquire);
         let hour = local_hour();
         // The count first: a commit whose hook runs after this read is not
-        // counted, so the next read rebuilds. One whose hook ran before it
-        // holds the writer until it lands, so if the writer is free now the
-        // build sees it, and otherwise the build is marked unsettled.
+        // counted, so the next read rebuilds. If every commit counted here
+        // has landed, the build sees them; otherwise it is marked unsettled.
         let changes = feed.seq();
-        let settled = !self.writer_busy(state);
+        let settled = self.wait_landed(state, changes).await;
         let result = view.build(state).await;
         if let Ok(data) = &result {
             let mut entries = self.entries.lock();
@@ -323,8 +344,8 @@ impl ModeCache {
     /// change, a mutation or a new hour has made stale.
     pub(super) async fn refresh(&self, state: &AppState) {
         let feed = state.store.change_feed();
-        let settled = !self.writer_busy(state);
         let seq = feed.seq();
+        let landed = self.landed(state);
         let mutations = self.mutations.load(Ordering::Acquire);
         let due: Vec<(ModeView, Arc<tokio::sync::Mutex<()>>)> = {
             let mut entries = self.entries.lock();
@@ -334,10 +355,10 @@ impl ModeCache {
                 .filter(|e| e.data.is_some())
                 .filter(|e| {
                     // A view that may have missed a commit is rebuilt as soon
-                    // as the writer is free; only new changes wait for
-                    // `MIN_REBUILD`.
-                    let changed = settled
-                        && (!e.settled || (e.changes != seq && e.built.elapsed() >= MIN_REBUILD));
+                    // as it lands; new changes wait until theirs have landed
+                    // and for `MIN_REBUILD`.
+                    let changed = (!e.settled && landed >= e.changes)
+                        || (e.changes != seq && landed >= seq && e.built.elapsed() >= MIN_REBUILD);
                     changed || e.mutations != mutations || e.hour != local_hour()
                 })
                 .map(|e| (e.view.clone(), Arc::clone(&e.building)))

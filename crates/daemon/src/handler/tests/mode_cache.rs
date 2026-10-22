@@ -19,18 +19,19 @@ fn built_at(data: ResponseData) -> chrono::DateTime<chrono::Utc> {
     }
 }
 
-/// Stop pretending a write is in progress and wait for the real writer to
-/// be free. The test store shares one connection between reads and writes,
-/// and sqlx puts a connection back in the pool a moment after its query.
-async fn end_write(fx: &Fixture) {
-    fx.state.mode_cache.hold_writer(false);
+/// Let commits land again and wait until every counted one has: the test
+/// store marks them when its connection goes back to the pool, a moment
+/// after the query.
+async fn let_commits_land(fx: &Fixture) {
+    fx.state.mode_cache.hold_landing(&fx.state, false);
+    let feed = fx.state.store.change_feed();
     for _ in 0..1000 {
-        if !fx.state.store.writer_busy() {
+        if feed.landed() >= feed.seq() {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(1)).await;
     }
-    panic!("the writer stayed busy");
+    panic!("counted commits never landed");
 }
 
 /// When the cached Now a read would get was built, without building one.
@@ -133,13 +134,7 @@ async fn a_view_built_in_an_earlier_hour_is_rebuilt_before_it_answers() {
     assert_ne!(now_built_at(&fx).await, first);
 }
 
-/// A build that starts while a write is in progress may miss the commit it
-/// counted. It answers only while the write is still going; once the
-/// writer is free, the next read builds afresh, without waiting for the
-/// refresher, however long the commit took.
-#[tokio::test]
-async fn a_view_built_during_a_write_answers_only_until_the_write_ends() {
-    let fx = Fixture::new().await;
+async fn store_new_mail(fx: &Fixture) {
     fx.message(
         &ThreadId::new(),
         "maya@example.com",
@@ -148,15 +143,24 @@ async fn a_view_built_during_a_write_answers_only_until_the_write_ends() {
         None,
     )
     .await;
-    fx.state.mode_cache.hold_writer(true);
+}
+
+/// A build that counts a commit before it lands may miss it. It answers
+/// only until that commit lands; then the next read builds afresh, without
+/// waiting for the refresher, however long the commit took.
+#[tokio::test]
+async fn a_view_built_before_a_commit_landed_answers_only_until_it_lands() {
+    let fx = Fixture::new().await;
+    fx.state.mode_cache.hold_landing(&fx.state, true);
+    store_new_mail(&fx).await;
     let unsettled = now_built_at(&fx).await;
     assert_eq!(
         now_built_at(&fx).await,
         unsettled,
-        "the write is still going"
+        "the commit has not landed"
     );
 
-    end_write(&fx).await;
+    let_commits_land(&fx).await;
     let settled = now_built_at(&fx).await;
     assert_ne!(settled, unsettled);
     assert_eq!(
@@ -166,10 +170,26 @@ async fn a_view_built_during_a_write_answers_only_until_the_write_ends() {
     );
 }
 
+/// The writer going on to another transaction must not keep a view that
+/// missed an earlier, now landed, commit.
 #[tokio::test]
-async fn the_refresher_replaces_a_view_built_during_a_write_once_it_ends() {
+async fn a_view_that_missed_a_landed_commit_is_not_served_during_the_next_write() {
     let fx = Fixture::new().await;
-    fx.state.mode_cache.hold_writer(true);
+    fx.state.mode_cache.hold_landing(&fx.state, true);
+    store_new_mail(&fx).await;
+    let unsettled = now_built_at(&fx).await;
+    let_commits_land(&fx).await;
+    // The next transaction has the writer but has not committed.
+    let next = fx.state.store.writer().begin().await.unwrap();
+    assert_ne!(cached_now_built_at(&fx), Some(unsettled));
+    drop(next);
+}
+
+#[tokio::test]
+async fn the_refresher_replaces_a_view_built_before_a_commit_landed_once_it_lands() {
+    let fx = Fixture::new().await;
+    fx.state.mode_cache.hold_landing(&fx.state, true);
+    store_new_mail(&fx).await;
     let unsettled = now_built_at(&fx).await;
     fx.state.mode_cache.refresh(&fx.state).await;
     assert_eq!(
@@ -178,7 +198,7 @@ async fn the_refresher_replaces_a_view_built_during_a_write_once_it_ends() {
         "nothing to gain yet"
     );
 
-    end_write(&fx).await;
+    let_commits_land(&fx).await;
     fx.state.mode_cache.refresh(&fx.state).await;
     let refreshed = cached_now_built_at(&fx).expect("the refresher rebuilt it");
     assert_ne!(refreshed, unsettled);

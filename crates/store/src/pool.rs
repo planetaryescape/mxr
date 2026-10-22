@@ -43,6 +43,28 @@ fn watch_changes(
     }
 }
 
+/// What a pool's `after_release` callback returns.
+type ReleaseFuture<'c> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<bool, sqlx::Error>> + Send + 'c>>;
+
+/// Mark every counted commit visible when the writer connection goes back
+/// to its pool: its transaction, commit included, has finished.
+fn note_landed(
+    changes: &Arc<ChangeFeed>,
+) -> impl for<'c> Fn(
+    &'c mut sqlx::SqliteConnection,
+    sqlx::pool::PoolConnectionMetadata,
+) -> ReleaseFuture<'c>
+       + Send
+       + Sync
+       + 'static {
+    let changes = Arc::clone(changes);
+    move |_, _| {
+        changes.mark_landed();
+        Box::pin(async { Ok(true) })
+    }
+}
+
 pub struct Store {
     writer: SqlitePool,
     /// Commits on `writer` that can change a mail view.
@@ -87,6 +109,7 @@ impl Store {
             .max_connections(1)
             .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
             .after_connect(watch_changes(&changes))
+            .after_release(note_landed(&changes))
             .connect_with(write_opts)
             .await?;
 
@@ -156,6 +179,7 @@ impl Store {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .after_connect(watch_changes(&changes))
+            .after_release(note_landed(&changes))
             .connect_with(opts)
             .await?;
 
@@ -355,15 +379,6 @@ impl Store {
 
     pub fn writer(&self) -> &SqlitePool {
         &self.writer
-    }
-
-    /// A writer connection is checked out, so a transaction may be mid-commit.
-    ///
-    /// The change feed counts a commit in SQLite's commit hook, before readers
-    /// can see it. The writer pool has one connection, held until the commit
-    /// lands, so once it is back in the pool every counted commit is visible.
-    pub fn writer_busy(&self) -> bool {
-        usize::try_from(self.writer.size()).unwrap_or(usize::MAX) > self.writer.num_idle()
     }
 
     pub fn reader(&self) -> &SqlitePool {

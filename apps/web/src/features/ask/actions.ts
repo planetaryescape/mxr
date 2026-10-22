@@ -5,17 +5,13 @@
 
 import { MessageCircleQuestion } from "lucide-react";
 
-import type { Action } from "@/lib/actions/types";
+import type { ActionBehavior } from "@/lib/actions/types";
 import { useModals } from "@/state/modalStore";
 
-export const askActions: Action[] = [
+export const askActions: ActionBehavior[] = [
   {
     id: "ask.archive",
-    label: "Ask your archive",
-    description: "Ask a question and get an answer with the messages it came from",
-    group: "Search",
     icon: MessageCircleQuestion,
-    paletteOnly: true,
     run: () => {
       const modals = useModals.getState();
       modals.setCommandPaletteOpen(false);

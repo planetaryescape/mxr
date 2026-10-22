@@ -274,6 +274,8 @@ pub(crate) enum AsyncResult {
     /// silently dropped — the cold path still works.
     ReplyContextWarmed {
         message_id: MessageId,
+        /// `ComposeState::reply_context_generation` when the prewarm started.
+        generation: u64,
         reply: Box<Result<ReplyContext, MxrError>>,
         reply_all: Box<Result<ReplyContext, MxrError>>,
     },

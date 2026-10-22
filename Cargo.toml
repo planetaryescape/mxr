@@ -142,6 +142,7 @@ members = [
     "crates/deliveries",
     "crates/export",
     "crates/keychain",
+    "crates/keymap",
     "crates/humanizer",
     "crates/llm",
     "crates/mail-parse",
@@ -181,7 +182,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.6.144"
+version = "0.6.145"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.94"
@@ -223,6 +224,7 @@ mxr-records = { path = "crates/records", version = "0.6.0" }
 mxr-updates = { path = "crates/updates", version = "0.6.0" }
 mxr-export = { path = "crates/export", version = "0.6.0" }
 mxr-keychain = { path = "crates/keychain", version = "0.6.0" }
+mxr-keymap = { path = "crates/keymap", version = "0.6.0" }
 mxr-humanizer = { path = "crates/humanizer", version = "0.6.0" }
 mxr-assistant = { path = "crates/assistant", version = "0.6.0" }
 mxr-llm = { path = "crates/llm", version = "0.6.0" }
@@ -408,6 +410,7 @@ mxr-records = { workspace = true }
 mxr-updates = { workspace = true }
 mxr-export = { workspace = true }
 mxr-keychain = { workspace = true }
+mxr-keymap = { workspace = true }
 mxr-humanizer = { workspace = true }
 mxr-assistant = { workspace = true }
 mxr-llm = { workspace = true }

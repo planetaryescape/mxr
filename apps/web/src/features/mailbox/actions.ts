@@ -9,7 +9,7 @@ import { toast } from "sonner";
 
 import { apiFetch, BridgeRequestError } from "@/api/client";
 import type { components } from "@/api/generated";
-import type { Action } from "@/lib/actions/types";
+import type { ActionBehavior } from "@/lib/actions/types";
 import { fetchBridgeHealth } from "@/lib/bridgeHealth";
 import {
   buildProtocolUpdateSteps,
@@ -109,46 +109,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export const mailboxActions: Action[] = [
-  {
-    id: "mail.route",
-    command: "route",
-    label: "Route out of this queue…",
-    description: "Apply a label, clear the current queue label, mark read and archive",
-    group: "Mail",
-    icon: RouteIcon,
-    scopes: ["list", "reader"],
-    paletteOnly: true,
-  },
-  {
-    id: "mail.draft-assist",
-    command: "draftAssist",
-    label: "Draft a reply",
-    description: "Generate a reply body for this conversation",
-    group: "Compose",
-    icon: PenLine,
-    scopes: ["reader"],
-    paletteOnly: true,
-  },
+export const mailboxActions: ActionBehavior[] = [
+  { id: "mail.route", command: "route", icon: RouteIcon },
+  { id: "mail.draft-assist", command: "draftAssist", icon: PenLine },
   {
     id: "mail.find-expert",
-    label: "Find an expert",
-    description: "People in your archive who answered similar questions",
-    group: "Mail",
     icon: UserSearch,
-    paletteOnly: true,
     run: () => {
       useModals.getState().setCommandPaletteOpen(false);
       useModals.getState().openRightRail("expert-finder");
     },
   },
-  {
-    id: "mail.sync",
-    label: "Sync now",
-    description: "Fetch new mail from every account",
-    group: "Mail",
-    icon: RefreshCw,
-    paletteOnly: true,
-    run: () => void syncNow(),
-  },
+  { id: "mail.sync", icon: RefreshCw, run: () => void syncNow() },
 ];

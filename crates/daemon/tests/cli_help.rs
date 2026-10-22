@@ -502,6 +502,8 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_records_file", &["records", "file", "--help"]),
         ("cli_help_records_sender", &["records", "sender", "--help"]),
         ("cli_help_records_export", &["records", "export", "--help"]),
+        ("cli_help_keys", &["keys", "--help"]),
+        ("cli_help_keys_explain", &["keys", "explain", "--help"]),
         ("cli_help_modes", &["modes", "--help"]),
         ("cli_help_modes_explain", &["modes", "explain", "--help"]),
         ("cli_help_modes_hint", &["modes", "hint", "--help"]),

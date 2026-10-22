@@ -843,6 +843,10 @@ impl AppState {
         if let Err(err) = load_account_address_registry(&store, &account_addresses).await {
             tracing::warn!(error = %err, "failed initial account_addresses load");
         }
+        // Repair debt lives in memory, so a restart forgets Unknown directions
+        // written while an earlier daemon's registry was stale. The first sync
+        // pass reclassifies whatever Unknown rows are left.
+        account_addresses.mark_repair_owed();
 
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
@@ -908,12 +912,56 @@ impl AppState {
 
     /// Rebuild sync's registry from the store after an address change. Only
     /// sync direction reads the registry; sends and handler checks read the
-    /// store, so a failed refresh leaves them correct and sync direction stale
-    /// until the next refresh (docs/issues/account-address-registry-refresh-ordering.md).
-    pub async fn refresh_account_addresses(&self) {
-        if let Err(err) = load_account_address_registry(&self.store, &self.account_addresses).await
+    /// store, so a failed rebuild leaves them correct. The failure marks the
+    /// registry stale, which sync reads as not loaded (direction Unknown) until
+    /// `ensure_account_addresses_current` rebuilds it. Returns whether the
+    /// rebuild succeeded.
+    pub async fn refresh_account_addresses(&self) -> bool {
+        match load_account_address_registry(&self.store, &self.account_addresses).await {
+            Ok(()) => true,
+            Err(err) => {
+                tracing::warn!(error = %err, "failed to refresh account_addresses cache");
+                false
+            }
+        }
+    }
+
+    /// Before a sync pass: retry a rebuild that failed earlier, then repair the
+    /// directions written while it was stale. Returns false when the registry
+    /// is still not loaded, in which case this pass writes Unknown.
+    pub async fn ensure_account_addresses_current(&self) -> bool {
+        if !self.account_addresses.is_loaded() && !self.refresh_account_addresses().await {
+            return false;
+        }
+        self.repair_owed_directions().await;
+        true
+    }
+
+    /// Reclassify the Unknown rows written while the registry was stale. Runs
+    /// only when debt is owed, and keeps the debt if the reclassify fails.
+    async fn repair_owed_directions(&self) {
+        if !self.account_addresses.take_repair_owed() {
+            return;
+        }
+        let lookup = self.account_addresses.clone();
+        match self
+            .store
+            .reclassify_unknown_directions(|account_id, email| {
+                lookup.is_account_address(account_id, email)
+            })
+            .await
         {
-            tracing::warn!(error = %err, "failed to refresh account_addresses cache");
+            Ok(repaired) => tracing::info!(
+                directions = repaired,
+                "reclassified directions written while the account address cache was stale"
+            ),
+            Err(err) => {
+                self.account_addresses.mark_repair_owed();
+                tracing::warn!(
+                    error = %err,
+                    "could not reclassify directions written while the account address cache was stale; retrying next pass"
+                );
+            }
         }
     }
 
@@ -2071,16 +2119,42 @@ impl AppState {
             config.search.semantic.enabled = false;
             config.search.semantic.auto_download_models = false;
         }
+        // Committed sets before and after setup: a config edit can move an
+        // account's primary, and setup writes accounts added since startup.
+        let before = owned_sets_by_account(&self.store)
+            .await
+            .map_err(|e| e.to_string())?;
         let provider_setup = Self::create_providers_from_config(&config, &self.store)
             .await
             .map_err(|e| e.to_string())?;
+        let after = match owned_sets_by_account(&self.store).await {
+            Ok(after) => after,
+            Err(err) => {
+                // Provider setup may already have changed addresses. A retry
+                // would see no difference, so notify every account now.
+                for (account_id, _) in &before {
+                    crate::chimes::emit_daemon_event(
+                        self,
+                        mxr_protocol::DaemonEvent::AccountAddressesChanged {
+                            account_id: account_id.clone(),
+                        },
+                    );
+                }
+                return Err(err.to_string());
+            }
+        };
         self.sync_error_chimes
             .retain_accounts(&provider_setup.providers.keys().cloned().collect());
 
-        // Accounts added since startup are written to the store by the setup
-        // above; the registry must learn them too or sync and desk miss their
-        // primary.
+        // The registry must learn the new accounts or sync and desk miss their
+        // primary. Clients hear about address changes whether or not it rebuilds.
         self.refresh_account_addresses().await;
+        for account_id in accounts_with_changed_addresses(&before, &after) {
+            crate::chimes::emit_daemon_event(
+                self,
+                mxr_protocol::DaemonEvent::AccountAddressesChanged { account_id },
+            );
+        }
         {
             let mut runtime = self.runtime.write();
             *runtime = ProviderRuntime {
@@ -2644,6 +2718,28 @@ pub(crate) async fn owned_addresses_for(
     ))
 }
 
+/// A stable fingerprint of an account's owned set, for cache keys whose
+/// content depends on which addresses the account owns. Case and alias order
+/// do not matter; membership and the primary do. The prompts mark the primary,
+/// so a primary change must miss too.
+pub(crate) fn owned_addresses_revision(owned: &mxr_core::types::OwnedAddresses) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    let mut update = |value: &str| {
+        // Length-prefixed so no two sets hash the same bytes.
+        hasher.update(value.len().to_string().as_bytes());
+        hasher.update(b":");
+        hasher.update(value.as_bytes());
+    };
+    update(&owned.primary().unwrap_or_default().to_ascii_lowercase());
+    let mut addresses: Vec<String> = owned.iter().map(str::to_ascii_lowercase).collect();
+    addresses.sort();
+    for address in &addresses {
+        update(address);
+    }
+    base16ct::lower::encode_string(&hasher.finalize())
+}
+
 /// Serialises registry rebuilds. Without it, a rebuild that read the store
 /// before an address change could publish after the rebuild that change
 /// triggered, and sync would classify with the older set.
@@ -2652,24 +2748,246 @@ static REGISTRY_REBUILD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(
 /// Replace sync's registry with every account's set from `owned_addresses_for`.
 /// Disabled accounts are included: their stored mail still needs its direction
 /// classified as theirs.
+///
+/// A failed read marks the registry stale. That happens under the rebuild
+/// mutex, so a later successful rebuild cannot be overwritten by this failure.
 pub(crate) async fn load_account_address_registry(
     store: &Store,
     registry: &mxr_core::types::InMemoryAccountAddressLookup,
 ) -> std::result::Result<(), sqlx::Error> {
     let _rebuild = REGISTRY_REBUILD.lock().await;
+    match owned_sets_by_account(store).await {
+        Ok(sets) => {
+            registry.replace(sets);
+            Ok(())
+        }
+        Err(err) => {
+            registry.mark_stale();
+            Err(err)
+        }
+    }
+}
+
+/// Accounts whose owned set differs between two snapshots, including accounts
+/// that appear in only one of them.
+pub(crate) fn accounts_with_changed_addresses(
+    before: &[(AccountId, mxr_core::types::OwnedAddresses)],
+    after: &[(AccountId, mxr_core::types::OwnedAddresses)],
+) -> Vec<AccountId> {
+    let before: std::collections::HashMap<&AccountId, &mxr_core::types::OwnedAddresses> =
+        before.iter().map(|(id, owned)| (id, owned)).collect();
+    let after: std::collections::HashMap<&AccountId, &mxr_core::types::OwnedAddresses> =
+        after.iter().map(|(id, owned)| (id, owned)).collect();
+    let mut changed: Vec<AccountId> = before
+        .iter()
+        .filter(|(id, owned)| after.get(*id) != Some(owned))
+        .map(|(id, _)| (*id).clone())
+        .collect();
+    changed.extend(
+        after
+            .keys()
+            .filter(|id| !before.contains_key(*id))
+            .map(|id| (*id).clone()),
+    );
+    changed
+}
+
+/// Every stored account's owned set, read from committed store data.
+pub(crate) async fn owned_sets_by_account(
+    store: &Store,
+) -> std::result::Result<Vec<(AccountId, mxr_core::types::OwnedAddresses)>, sqlx::Error> {
     let mut sets = Vec::new();
     for account in store.list_all_accounts().await? {
         let owned = owned_addresses_for(store, &account.id).await?;
         sets.push((account.id, owned));
     }
-    registry.replace(sets);
-    Ok(())
+    Ok(sets)
 }
 
 #[cfg(test)]
 mod tests {
 
     use super::*;
+
+    #[test]
+    fn owned_addresses_revision_ignores_case_and_order_and_follows_the_set() {
+        use mxr_core::types::OwnedAddresses;
+        let base = OwnedAddresses::new(Some("Me@Example.com"), ["alias@example.com"]);
+        let reordered = OwnedAddresses::new(Some("ME@example.com"), ["alias@example.com"]);
+        assert_eq!(
+            owned_addresses_revision(&base),
+            owned_addresses_revision(&reordered)
+        );
+        let new_primary = OwnedAddresses::new(Some("alias@example.com"), ["Me@Example.com"]);
+        assert_ne!(
+            owned_addresses_revision(&base),
+            owned_addresses_revision(&new_primary),
+            "the prompts mark the primary, so moving it must miss the cache"
+        );
+        let grown = OwnedAddresses::new(
+            Some("Me@Example.com"),
+            ["alias@example.com", "second@example.com"],
+        );
+        assert_ne!(
+            owned_addresses_revision(&base),
+            owned_addresses_revision(&grown)
+        );
+        assert_ne!(
+            owned_addresses_revision(&base),
+            owned_addresses_revision(&OwnedAddresses::default())
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_directions_written_while_stale_are_repaired_once_the_registry_recovers() {
+        use crate::test_fixtures::TestEnvelopeBuilder;
+        use mxr_core::types::MessageDirection;
+        let state = AppState::in_memory().await.unwrap();
+        let account_id = state.default_account_id();
+        let alias = "repair-alias@example.com";
+        state
+            .store
+            .add_account_address(&account_id, alias, false)
+            .await
+            .unwrap();
+        state.refresh_account_addresses().await;
+
+        // Sync wrote this message while the set was unknown.
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .provider_id("unknown-direction")
+            .sender_address("Me", alias)
+            .build();
+        state
+            .store
+            .upsert_envelope_with_direction(&envelope, MessageDirection::Unknown)
+            .await
+            .unwrap();
+        let direction = |state: &AppState| {
+            let id = envelope.id.as_str();
+            let store = state.store.clone();
+            async move {
+                sqlx::query_scalar::<_, String>("SELECT direction FROM messages WHERE id = ?")
+                    .bind(id)
+                    .fetch_one(store.reader())
+                    .await
+                    .unwrap()
+            }
+        };
+
+        // Nothing was stale, so a pass does not reclassify.
+        assert!(state.ensure_account_addresses_current().await);
+        assert_eq!(direction(&state).await, "unknown");
+
+        // The rebuild fails, then recovers through a path that is not a sync.
+        sqlx::query("ALTER TABLE account_addresses RENAME TO account_addresses_off")
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+        state.refresh_account_addresses().await;
+        sqlx::query("ALTER TABLE account_addresses_off RENAME TO account_addresses")
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+        state.refresh_account_addresses().await;
+        assert!(state.account_addresses.is_loaded());
+
+        // The next pass repairs the row even though the sync fetched nothing.
+        assert!(state.ensure_account_addresses_current().await);
+        assert_eq!(direction(&state).await, "outbound");
+    }
+
+    #[test]
+    fn accounts_with_changed_addresses_covers_edits_appearances_and_removals() {
+        use mxr_core::types::OwnedAddresses;
+        let kept = AccountId::new();
+        let edited = AccountId::new();
+        let removed = AccountId::new();
+        let added = AccountId::new();
+        let before = vec![
+            (kept.clone(), OwnedAddresses::new(Some("k@example.com"), [])),
+            (
+                edited.clone(),
+                OwnedAddresses::new(Some("e@example.com"), []),
+            ),
+            (
+                removed.clone(),
+                OwnedAddresses::new(Some("r@example.com"), []),
+            ),
+        ];
+        let after = vec![
+            (kept.clone(), OwnedAddresses::new(Some("k@example.com"), [])),
+            (
+                edited.clone(),
+                OwnedAddresses::new(Some("e@example.com"), ["alias@example.com"]),
+            ),
+            (
+                added.clone(),
+                OwnedAddresses::new(Some("a@example.com"), []),
+            ),
+        ];
+
+        assert!(accounts_with_changed_addresses(&before, &before).is_empty());
+        let changed = accounts_with_changed_addresses(&before, &after);
+        assert_eq!(changed.len(), 3, "{changed:?}");
+        assert!(changed.contains(&edited));
+        assert!(
+            changed.contains(&removed),
+            "a disappearing account changed too"
+        );
+        assert!(changed.contains(&added), "an appearing account changed too");
+        assert!(!changed.contains(&kept));
+    }
+
+    #[tokio::test]
+    async fn a_failed_registry_load_marks_itself_stale_under_the_rebuild_lock() {
+        let state = AppState::in_memory().await.unwrap();
+        sqlx::query("ALTER TABLE account_addresses RENAME TO account_addresses_off")
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+        let failed = load_account_address_registry(&state.store, &state.account_addresses).await;
+        sqlx::query("ALTER TABLE account_addresses_off RENAME TO account_addresses")
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+
+        assert!(failed.is_err());
+        assert!(state.account_addresses.is_stale());
+        load_account_address_registry(&state.store, &state.account_addresses)
+            .await
+            .unwrap();
+        assert!(!state.account_addresses.is_stale());
+    }
+
+    #[tokio::test]
+    async fn failed_registry_rebuild_stops_sync_reading_the_set_from_before_it() {
+        let state = AppState::in_memory().await.unwrap();
+        state.refresh_account_addresses().await;
+        assert!(state.account_addresses.is_loaded());
+
+        // Make the read the rebuild performs fail while the accounts row stays
+        // readable.
+        sqlx::query("ALTER TABLE account_addresses RENAME TO account_addresses_off")
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+        state.refresh_account_addresses().await;
+        assert!(
+            !state.account_addresses.is_loaded(),
+            "sync must not classify direction with the set it held before the failed rebuild"
+        );
+
+        sqlx::query("ALTER TABLE account_addresses_off RENAME TO account_addresses")
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+
+        // The next sync pass retries the stale rebuild and classifies again.
+        assert!(state.ensure_account_addresses_current().await);
+        assert!(state.account_addresses.is_loaded());
+        assert!(!state.account_addresses.is_stale());
+    }
 
     #[tokio::test]
     async fn attachment_materialization_serializes_same_attachment_and_prunes_idle_keys() {

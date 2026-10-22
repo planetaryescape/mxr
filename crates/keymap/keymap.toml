@@ -1,0 +1,3633 @@
+# mxr's key definition: every shortcut in every client (blueprint chapter 35, D169).
+#
+# Each [[action]] is one thing a key can do. Its web keys and scopes are what the
+# web app binds; each [[action.tui]] is how the TUI binds it today, by the TUI
+# action name its dispatcher returns and the contexts it works in. Until K1c the
+# TUI still dispatches from its own code; `cargo test -p mxr-keymap` fails when
+# this file and `docs/reference/tui-keymap.json` or the web registry disagree.
+
+# Global navigation and shell. Chords follow the TUI's live key handler
+# (crates/tui/src/input.rs): g + letter for views, digits for the TUI's tabs.
+# Web-only destinations use letters the TUI leaves free, and every deliberate
+# difference carries a `note` that help displays.
+[[action]]
+id = "shell.command-palette"
+label = "Command palette"
+description = "Run any action by name"
+group = "Navigate"
+scopes = ["global"]
+keys = ["Mod+k", ":"]
+mac_keys = ["Ctrl+p"]
+hide_in_palette = true
+note = "Ctrl+P works on macOS only, where it is not the browser's Print"
+
+[[action.tui]]
+name = "OpenCommandPalette"
+keys = ["Ctrl+p"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "shell.search-palette"
+label = "Search mail"
+description = "Search the whole local archive"
+group = "Search"
+scopes = ["global"]
+keys = ["/"]
+
+[[action.tui]]
+name = "OpenGlobalSearch"
+keys = ["/"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "reading", "updates"]
+
+[[action]]
+id = "shell.help"
+label = "Keyboard help"
+description = "Every shortcut for the current view"
+group = "Navigate"
+scopes = ["global"]
+keys = ["?"]
+
+[[action.tui]]
+name = "Help"
+keys = ["?"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "shell.compose"
+label = "Compose"
+description = "Start a new message"
+group = "Compose"
+scopes = ["global"]
+keys = ["c"]
+
+[[action.tui]]
+name = "Compose"
+keys = ["c"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.undo"
+label = "Undo last action"
+description = "Reverse the last archive, trash, move, label change or send (about 60 seconds)"
+group = "Mail"
+scopes = ["global"]
+keys = ["u", "z"]
+note = "z also undoes, for Gmail muscle memory"
+
+[[action.tui]]
+name = "UndoLastMutation"
+keys = ["u"]
+contexts = ["list", "reader", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+# Now and the modes, in rail order. g + letter, as in the TUI.
+[[action]]
+id = "nav.now"
+label = "Go to Now"
+description = "The few things that need you now, from every mode"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g h"]
+
+[[action.tui]]
+name = "OpenNow"
+keys = ["g h"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.messages"
+label = "Go to Messages"
+description = "People you talk with: whose turn it is, and who you're waiting on"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g m"]
+
+[[action.tui]]
+name = "OpenMessages"
+keys = ["g m"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.updates"
+label = "Go to Updates"
+description = "Notifications gathered twice a day: read the digest, then let go"
+group = "Navigate"
+scopes = ["global"]
+# g p opened Paper trail, which is Updates now (blueprint 22).
+keys = ["g u", "g p"]
+retired_keys = ["g P"]
+
+[[action.tui]]
+name = "OpenUpdates"
+keys = ["g p", "g u"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.archive-mode"
+label = "Go to Archive"
+description = "Receipts, orders, bookings and documents, filed as records"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g e"]
+
+[[action.tui]]
+name = "OpenArchiveMode"
+keys = ["g e"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.desk"
+label = "Go to the desk"
+description = "The desk as it was before Now: every lane of what needs you"
+group = "Navigate"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "nav.waiting"
+label = "Waiting on"
+description = "Threads where you wrote last and are waiting on a reply"
+group = "Triage"
+scopes = ["global"]
+keys = ["g w"]
+note = "A lane of the desk lens in the TUI"
+
+[[action]]
+id = "nav.inbox"
+label = "Go to Inbox"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g i", "g 0"]
+
+[[action.tui]]
+name = "GoToInbox"
+keys = ["g i"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action.tui]]
+name = "OpenSavedSearchByIndex(0)"
+keys = ["g 0"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.starred"
+label = "Go to Starred"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g s"]
+
+[[action.tui]]
+name = "GoToStarred"
+keys = ["g s"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.sent"
+label = "Go to Sent"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g t"]
+
+[[action.tui]]
+name = "GoToSent"
+keys = ["g t"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.drafts"
+label = "Go to Drafts"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g d", "g E"]
+note = "One page here; in the TUI g d is the Drafts mailbox and g E its local drafts"
+
+[[action.tui]]
+name = "GoToDrafts"
+keys = ["g d"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action.tui]]
+name = "OpenStoredDrafts"
+keys = ["g E"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.archive"
+label = "Go to All Mail"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g a"]
+
+[[action.tui]]
+name = "GoToAllMail"
+keys = ["g a"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.labels"
+label = "Go to label"
+description = "Jump to any label or saved search"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g l"]
+
+[[action.tui]]
+name = "GoToLabel"
+keys = ["g l"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.analytics"
+label = "Analytics"
+group = "Analytics"
+scopes = ["global"]
+keys = ["g A"]
+
+[[action.tui]]
+name = "OpenAnalyticsScreen"
+keys = ["g A"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.activity"
+label = "Activity log"
+group = "Diagnostics"
+scopes = ["global"]
+keys = ["g y"]
+
+[[action.tui]]
+name = "OpenActivityScreen"
+keys = ["g y"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.logs"
+label = "Daemon logs"
+group = "Diagnostics"
+scopes = ["global"]
+keys = ["g L"]
+
+[[action.tui]]
+name = "OpenLogs"
+keys = ["g L"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.settings"
+label = "Settings"
+group = "Settings"
+scopes = ["global"]
+keys = ["g c", "0"]
+note = "The TUI opens config.toml in $EDITOR; the web opens Settings"
+
+[[action.tui]]
+name = "EditConfig"
+keys = ["g c"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+# Web-only views, on letters the TUI does not use.
+[[action]]
+id = "nav.snoozed"
+label = "Go to Snoozed"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g n"]
+note = "Web only"
+
+[[action]]
+id = "nav.trash"
+label = "Go to Trash"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g #"]
+note = "Web only"
+
+[[action]]
+id = "nav.spam"
+label = "Go to Spam"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g !"]
+note = "Web only"
+
+# Triage views. The same chords open the TUI's lenses and modals.
+[[action]]
+id = "nav.reply-queue"
+label = "Reply later"
+group = "Triage"
+scopes = ["global"]
+keys = ["g q"]
+
+[[action.tui]]
+name = "OpenReplyQueue"
+keys = ["g q"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.owed"
+label = "Owed replies"
+group = "Triage"
+scopes = ["global"]
+keys = ["g o"]
+
+[[action.tui]]
+name = "OpenOwedReplies"
+keys = ["g o"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.invites"
+label = "Calendar invites"
+group = "Triage"
+scopes = ["global"]
+keys = ["g v", "9"]
+
+[[action.tui]]
+name = "OpenCalendarInvites"
+keys = ["g v"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.reading"
+label = "Reading"
+description = "Newsletters you chose, as an edition; nothing here is owed"
+group = "Triage"
+scopes = ["global"]
+keys = ["g r"]
+# The web used g R and g P up to 0.6.40, while g r opened Rules.
+# Drop these retired aliases after 0.6.41.
+retired_keys = ["g R"]
+
+[[action.tui]]
+name = "OpenReading"
+keys = ["g r"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+# g u opens Updates now; Subscriptions lives under More and the palette.
+[[action]]
+id = "nav.subscriptions"
+label = "Subscriptions"
+group = "Triage"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "nav.screener"
+label = "Screener"
+group = "Triage"
+scopes = ["global"]
+keys = ["g S", "8"]
+
+[[action.tui]]
+name = "OpenScreenerQueue"
+keys = ["g S"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.jobs"
+label = "Background jobs"
+group = "Diagnostics"
+scopes = ["global"]
+palette_only = true
+
+# Tabs. 1 to 7 match the TUI's tab bar.
+[[action]]
+id = "nav.tab-mail"
+label = "Mail"
+group = "Navigate"
+scopes = ["global"]
+keys = ["1"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenTab1"
+keys = ["1"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.search-page"
+label = "Search page"
+group = "Search"
+scopes = ["global"]
+keys = ["2"]
+
+[[action.tui]]
+name = "OpenTab2"
+keys = ["2"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.rules"
+label = "Rules"
+group = "Rules"
+scopes = ["global"]
+keys = ["3"]
+
+[[action.tui]]
+name = "OpenTab3"
+keys = ["3"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.accounts"
+label = "Accounts"
+group = "Accounts"
+scopes = ["global"]
+keys = ["4"]
+
+[[action.tui]]
+name = "OpenTab4"
+keys = ["4"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.diagnostics"
+label = "Diagnostics"
+group = "Diagnostics"
+scopes = ["global"]
+keys = ["5"]
+
+[[action.tui]]
+name = "OpenTab5"
+keys = ["5"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.tab-analytics"
+label = "Analytics (tab)"
+group = "Analytics"
+scopes = ["global"]
+keys = ["6"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenTab6"
+keys = ["6"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.deliveries"
+label = "Deliveries"
+group = "Triage"
+scopes = ["global"]
+keys = ["7"]
+
+[[action.tui]]
+name = "OpenTab7"
+keys = ["7"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.saved-search-1"
+label = "Saved search 1"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g 1"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenSavedSearchByIndex(1)"
+keys = ["g 1"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.saved-search-2"
+label = "Saved search 2"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g 2"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenSavedSearchByIndex(2)"
+keys = ["g 2"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.saved-search-3"
+label = "Saved search 3"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g 3"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenSavedSearchByIndex(3)"
+keys = ["g 3"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.saved-search-4"
+label = "Saved search 4"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g 4"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenSavedSearchByIndex(4)"
+keys = ["g 4"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.saved-search-5"
+label = "Saved search 5"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g 5"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenSavedSearchByIndex(5)"
+keys = ["g 5"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.saved-search-6"
+label = "Saved search 6"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g 6"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenSavedSearchByIndex(6)"
+keys = ["g 6"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.saved-search-7"
+label = "Saved search 7"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g 7"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenSavedSearchByIndex(7)"
+keys = ["g 7"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.saved-search-8"
+label = "Saved search 8"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g 8"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenSavedSearchByIndex(8)"
+keys = ["g 8"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "nav.saved-search-9"
+label = "Saved search 9"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g 9"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenSavedSearchByIndex(9)"
+keys = ["g 9"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "settings.theme"
+label = "Theme settings"
+description = "Switch color theme"
+group = "Settings"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "settings.density"
+label = "Density settings"
+description = "Change row density"
+group = "Settings"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "settings.keybindings"
+label = "Keybinding help"
+description = "View keyboard shortcuts"
+group = "Settings"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "settings.notifications"
+label = "Notification settings"
+description = "Configure browser alerts and VIPs"
+group = "Settings"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "settings.compose"
+label = "Compose settings"
+description = "Choose editor preference"
+group = "Settings"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "settings.voice"
+label = "Voice settings"
+description = "Inspect local voice profile"
+group = "Settings"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "settings.llm"
+label = "LLM settings"
+description = "Configure summaries and draft assist"
+group = "Settings"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "settings.snippets"
+label = "Snippets"
+description = "Manage compose snippets"
+group = "Settings"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "settings.token"
+label = "Bridge token"
+description = "Paste or inspect the bridge token"
+group = "Settings"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "shell.install-app"
+label = "Install as app"
+description = "Open mxr in its own window, with its own keys"
+group = "Settings"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "compose.draft-to"
+label = "Draft to..."
+description = "Pick a recipient, then use Draft for me"
+group = "Compose"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "compose.show-commitments"
+label = "Show commitments..."
+description = "Open unresolved relationship commitments"
+group = "Compose"
+scopes = ["global"]
+palette_only = true
+
+# Mail verbs. Keys match the TUI's live mail-action handler
+# (crates/tui/src/app/input.rs), bound in both the list and the reader.
+[[action]]
+id = "mail.archive"
+label = "Archive"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["e"]
+
+[[action.tui]]
+name = "Archive"
+keys = ["e"]
+contexts = ["list", "reader"]
+
+[[action]]
+id = "mail.read-archive"
+label = "Mark read and archive"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["m"]
+note = "Same as the TUI; read/unread are I and U"
+
+[[action.tui]]
+name = "MarkReadAndArchive"
+keys = ["m"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.trash"
+label = "Move to Trash"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["#", "Delete", "Backspace"]
+
+[[action.tui]]
+name = "Trash"
+keys = ["#"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.spam"
+label = "Mark as spam"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["!"]
+
+[[action.tui]]
+name = "Spam"
+keys = ["!"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.star"
+label = "Star or unstar"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["s"]
+
+[[action.tui]]
+name = "Star"
+keys = ["s"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.mark-read"
+label = "Mark read"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["I"]
+
+[[action.tui]]
+name = "MarkRead"
+keys = ["I"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.mark-unread"
+label = "Mark unread"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["U"]
+
+[[action.tui]]
+name = "MarkUnread"
+keys = ["U"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.label"
+label = "Labels…"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["l"]
+
+[[action.tui]]
+name = "ApplyLabel"
+keys = ["l"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.move"
+label = "Move to label…"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["v"]
+
+[[action.tui]]
+name = "MoveToLabel"
+keys = ["v"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.snooze"
+label = "Snooze…"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["Z"]
+
+[[action.tui]]
+name = "Snooze"
+keys = ["Z"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.unsubscribe"
+label = "Unsubscribe…"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["D"]
+
+[[action.tui]]
+name = "Unsubscribe"
+keys = ["D"]
+contexts = ["list", "reader"]
+
+[[action]]
+id = "mail.reply-later"
+label = "Reply later…"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["b"]
+
+[[action.tui]]
+name = "FlagReplyLater"
+keys = ["b"]
+contexts = ["list", "reader", "sidebar", "place"]
+
+[[action]]
+id = "mail.make-todo"
+label = "Make a to-do from this"
+short_label = "To-do"
+description = "Add it to To do as one line: what to do, and when"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["t"]
+
+[[action.tui]]
+name = "CreateTodoFromMessage"
+keys = ["t"]
+contexts = ["list", "reader", "place", "now", "reading"]
+
+[[action]]
+id = "mail.pass-to-mode"
+label = "Pass to a mode…"
+short_label = "Pass to"
+description = "File it in Archive as a record, after a preview of the card"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["T"]
+
+[[action.tui]]
+name = "PassToMode"
+keys = ["T"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.reply"
+label = "Reply"
+group = "Compose"
+scopes = ["list", "reader"]
+keys = ["r"]
+
+[[action.tui]]
+name = "Reply"
+keys = ["r"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.reply-all"
+label = "Reply all"
+group = "Compose"
+scopes = ["list", "reader"]
+keys = ["a"]
+
+[[action.tui]]
+name = "ReplyAll"
+keys = ["a"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.forward"
+label = "Forward"
+group = "Compose"
+scopes = ["list", "reader"]
+keys = ["f"]
+
+[[action.tui]]
+name = "Forward"
+keys = ["f"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.export"
+label = "Export as Markdown"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["E"]
+
+[[action.tui]]
+name = "ExportThread"
+keys = ["E"]
+contexts = ["list", "reader", "sidebar", "place"]
+
+[[action]]
+id = "mail.briefing"
+label = "Thread briefing"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["B"]
+
+[[action.tui]]
+name = "OpenThreadBriefing"
+keys = ["B"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.whois"
+label = "Who is this sender?"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["W"]
+
+[[action.tui]]
+name = "OpenWhoisOnFocusedSender"
+keys = ["W"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.sender-profile"
+label = "Sender profile"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["p"]
+
+[[action.tui]]
+name = "OpenSenderView"
+keys = ["p"]
+contexts = ["list", "reader"]
+
+[[action]]
+id = "mail.links"
+label = "Links in this message"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["L"]
+
+[[action.tui]]
+name = "OpenLinks"
+keys = ["L"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "mail.attachments"
+label = "Attachments"
+group = "Mail"
+scopes = ["list", "reader"]
+keys = ["A"]
+
+[[action.tui]]
+name = "AttachmentList"
+keys = ["A"]
+contexts = ["list", "reader", "sidebar"]
+
+[[action]]
+id = "invite.accept"
+label = "Accept invite"
+group = "Triage"
+scopes = ["list", "reader"]
+keys = ["i a"]
+
+[[action.tui]]
+name = "RespondInvite(Accept)"
+keys = ["i a"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "invite.tentative"
+label = "Maybe (invite)"
+group = "Triage"
+scopes = ["list", "reader"]
+keys = ["i m"]
+
+[[action.tui]]
+name = "RespondInvite(Tentative)"
+keys = ["i m"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "invite.decline"
+label = "Decline invite"
+group = "Triage"
+scopes = ["list", "reader"]
+keys = ["i d"]
+
+[[action.tui]]
+name = "RespondInvite(Decline)"
+keys = ["i d"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "invite.accept-comment"
+label = "Accept with comment"
+group = "Triage"
+scopes = ["list", "reader"]
+keys = ["i A"]
+
+[[action.tui]]
+name = "RespondInviteWithComment(Accept)"
+keys = ["i A"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "invite.tentative-comment"
+label = "Maybe with comment"
+group = "Triage"
+scopes = ["list", "reader"]
+keys = ["i M"]
+
+[[action.tui]]
+name = "RespondInviteWithComment(Tentative)"
+keys = ["i M"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "invite.decline-comment"
+label = "Decline with comment"
+group = "Triage"
+scopes = ["list", "reader"]
+keys = ["i D"]
+
+[[action.tui]]
+name = "RespondInviteWithComment(Decline)"
+keys = ["i D"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "mail.cancel-reminder"
+label = "Cancel no-reply reminder"
+description = "Stop the follow-up reminder set when this message was sent"
+group = "Mail"
+scopes = ["list", "reader"]
+palette_only = true
+
+[[action]]
+id = "mail.compose-to-sender"
+label = "Write to sender"
+group = "Compose"
+scopes = ["list", "reader"]
+palette_only = true
+
+[[action]]
+id = "mail.route"
+label = "Route out of this queue…"
+description = "Apply a label, clear the current queue label, mark read and archive"
+group = "Mail"
+scopes = ["list", "reader"]
+palette_only = true
+
+[[action]]
+id = "mail.draft-assist"
+label = "Draft a reply"
+description = "Generate a reply body for this conversation"
+group = "Compose"
+scopes = ["reader"]
+palette_only = true
+
+[[action]]
+id = "mail.find-expert"
+label = "Find an expert"
+description = "People in your archive who answered similar questions"
+group = "Mail"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "mail.sync"
+label = "Sync now"
+description = "Fetch new mail from every account"
+group = "Mail"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "sidebar.down"
+label = "Next item"
+group = "Move"
+scopes = ["sidebar"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:next_item"
+keys = ["ArrowDown", "j"]
+contexts = ["sidebar"]
+
+[[action]]
+id = "sidebar.up"
+label = "Previous item"
+group = "Move"
+scopes = ["sidebar"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:prev_item"
+keys = ["ArrowUp", "k"]
+contexts = ["sidebar"]
+
+[[action]]
+id = "sidebar.top"
+label = "First item"
+group = "Move"
+scopes = ["sidebar"]
+keys = ["g g"]
+hide_in_palette = true
+
+[[action]]
+id = "sidebar.bottom"
+label = "Last item"
+group = "Move"
+scopes = ["sidebar"]
+keys = ["G"]
+hide_in_palette = true
+
+[[action]]
+id = "sidebar.open"
+label = "Open"
+group = "Move"
+scopes = ["sidebar"]
+keys = ["Enter", "o", "l", "ArrowRight"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "SidebarSelect"
+keys = ["ArrowRight", "Enter", "l", "o"]
+contexts = ["sidebar"]
+
+[[action]]
+id = "sidebar.collapse"
+label = "Collapse section"
+group = "View"
+scopes = ["sidebar"]
+keys = ["["]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:collapse_section"
+keys = ["["]
+contexts = ["sidebar"]
+
+[[action]]
+id = "sidebar.expand"
+label = "Expand section"
+group = "View"
+scopes = ["sidebar"]
+keys = ["]"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:expand_section"
+keys = ["]"]
+contexts = ["sidebar"]
+
+[[action]]
+id = "list.down"
+label = "Next conversation"
+short_label = "Next"
+group = "Move"
+scopes = ["list"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveDown"
+keys = ["ArrowDown", "j"]
+contexts = ["list"]
+
+[[action]]
+id = "list.up"
+label = "Previous conversation"
+short_label = "Previous"
+group = "Move"
+scopes = ["list"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveUp"
+keys = ["ArrowUp", "k"]
+contexts = ["list"]
+
+[[action]]
+id = "list.top"
+label = "First conversation"
+short_label = "First"
+group = "Move"
+scopes = ["list"]
+keys = ["g g", "Home"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "JumpTop"
+keys = ["g g"]
+contexts = ["list", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "list.bottom"
+label = "Last conversation"
+short_label = "Last"
+group = "Move"
+scopes = ["list"]
+keys = ["G", "End"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "JumpBottom"
+keys = ["G"]
+contexts = ["list", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "list.page-down"
+label = "Half page down"
+short_label = "Page down"
+group = "Move"
+scopes = ["list"]
+keys = ["Ctrl+d", "PageDown"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "PageDown"
+keys = ["Ctrl+d"]
+contexts = ["list", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "list.page-up"
+label = "Half page up"
+short_label = "Page up"
+group = "Move"
+scopes = ["list"]
+keys = ["Ctrl+u", "PageUp"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "PageUp"
+keys = ["Ctrl+u"]
+contexts = ["list", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "list.viewport-top"
+label = "Top of screen"
+group = "Move"
+scopes = ["list"]
+keys = ["H"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ViewportTop"
+keys = ["H"]
+contexts = ["list", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "list.viewport-middle"
+label = "Middle of screen"
+group = "Move"
+scopes = ["list"]
+keys = ["M"]
+hide_in_palette = true
+note = "L (bottom of screen) opens links, as in the TUI's list pane"
+
+[[action.tui]]
+name = "ViewportMiddle"
+keys = ["M"]
+contexts = ["list", "sidebar", "place", "todo", "now", "messages", "archive", "updates"]
+
+[[action]]
+id = "list.open"
+label = "Open conversation"
+short_label = "Open"
+group = "Move"
+scopes = ["list"]
+keys = ["Enter", "o", "ArrowRight"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenSelected"
+keys = ["ArrowRight", "o"]
+contexts = ["list"]
+
+[[action.tui]]
+name = "OpenSelected"
+keys = ["Enter"]
+contexts = ["list", "reader"]
+
+[[action]]
+id = "list.sidebar"
+label = "Go to sidebar"
+group = "Move"
+scopes = ["list"]
+keys = ["h", "ArrowLeft"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:focus_sidebar"
+keys = ["ArrowLeft", "h"]
+contexts = ["list", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "list.row-action"
+label = "This list's row action"
+short_label = "Row action"
+description = "Wake now in Snoozed, Done in the reply queue"
+group = "Mail"
+scopes = ["list"]
+keys = ["w"]
+hide_in_palette = true
+note = "Web only"
+
+[[action]]
+id = "list.toggle-select"
+label = "Select and move down"
+short_label = "Select"
+group = "Select"
+scopes = ["list"]
+keys = ["x"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleSelect"
+keys = ["x"]
+contexts = ["list", "reader", "sidebar", "place"]
+
+[[action]]
+id = "list.visual"
+label = "Visual line mode"
+description = "Extend a selection with j and k"
+group = "Select"
+scopes = ["list"]
+keys = ["V"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "VisualLineMode"
+keys = ["V"]
+contexts = ["list", "reader", "sidebar", "place"]
+
+[[action]]
+id = "list.select-all"
+label = "Select all"
+group = "Select"
+scopes = ["list"]
+keys = ["* a", "Mod+a"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "PatternSelect(All)"
+keys = ["* a"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "list.select-none"
+label = "Select none"
+group = "Select"
+scopes = ["list"]
+keys = ["* n"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "PatternSelect(None)"
+keys = ["* n"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "list.select-read"
+label = "Select read"
+group = "Select"
+scopes = ["list"]
+keys = ["* r"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "PatternSelect(Read)"
+keys = ["* r"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "list.select-unread"
+label = "Select unread"
+group = "Select"
+scopes = ["list"]
+keys = ["* u"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "PatternSelect(Unread)"
+keys = ["* u"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "list.select-starred"
+label = "Select starred"
+group = "Select"
+scopes = ["list"]
+keys = ["* s"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "PatternSelect(Starred)"
+keys = ["* s"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "list.escape"
+label = "Clear selection, then close"
+short_label = "Clear"
+group = "Select"
+scopes = ["list"]
+keys = ["Escape"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "Back"
+keys = ["Escape"]
+contexts = ["list", "sidebar", "place"]
+
+[[action]]
+id = "list.filter"
+label = "Filter this list"
+group = "Search"
+scopes = ["list"]
+keys = ["g f"]
+mac_keys = ["Ctrl+f"]
+note = "TUI Ctrl-f; Ctrl+F works on macOS only, where it is not the browser's Find"
+
+[[action.tui]]
+name = "OpenMailboxFilter"
+keys = ["Ctrl+f"]
+contexts = ["list", "reader", "sidebar"]
+
+[[action]]
+id = "list.toggle-threads"
+label = "Toggle threads / messages"
+description = "Group the list by conversation or show single messages"
+group = "View"
+scopes = ["list", "reader"]
+palette_only = true
+
+[[action]]
+id = "reader.scroll-down"
+label = "Scroll down"
+group = "Read"
+scopes = ["reader"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:scroll_down"
+keys = ["ArrowDown", "j"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.scroll-up"
+label = "Scroll up"
+group = "Read"
+scopes = ["reader"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:scroll_up"
+keys = ["ArrowUp", "k"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.page-down"
+label = "Page down"
+group = "Read"
+scopes = ["reader"]
+keys = ["Ctrl+d", "PageDown", "Space"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:page_down"
+keys = ["Ctrl+d"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.page-up"
+label = "Page up"
+group = "Read"
+scopes = ["reader"]
+keys = ["Ctrl+u", "PageUp", "Shift+Space"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:page_up"
+keys = ["Ctrl+u"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.top"
+label = "Top of thread"
+group = "Read"
+scopes = ["reader"]
+keys = ["g g", "Home"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "JumpTop"
+keys = ["g g"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.bottom"
+label = "End of thread"
+group = "Read"
+scopes = ["reader"]
+keys = ["G", "End"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:jump_bottom"
+keys = ["G"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.next-message"
+label = "Next message"
+group = "Read"
+scopes = ["reader"]
+keys = ["J"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:next_message"
+keys = ["J"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.prev-message"
+label = "Previous message"
+group = "Read"
+scopes = ["reader"]
+keys = ["K"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:prev_message"
+keys = ["K"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.toggle-message"
+label = "Expand or collapse message"
+group = "Read"
+scopes = ["reader"]
+keys = ["o"]
+hide_in_palette = true
+note = "The TUI shows every message, and its o opens the original, like O"
+
+[[action]]
+id = "reader.expand-all"
+label = "Expand or collapse all"
+short_label = "Expand all"
+group = "Read"
+scopes = ["reader"]
+# ";" as in Gmail: X moves the email to another mode (blueprint 22).
+keys = [";"]
+hide_in_palette = true
+note = "Web only"
+
+[[action]]
+id = "reader.next-thread"
+label = "Next conversation"
+short_label = "Next"
+group = "Move"
+scopes = ["reader"]
+keys = ["n"]
+hide_in_palette = true
+note = "The TUI steps results with n/N; the web steps conversations"
+
+[[action]]
+id = "reader.prev-thread"
+label = "Previous conversation"
+short_label = "Previous"
+group = "Move"
+scopes = ["reader"]
+keys = ["N"]
+hide_in_palette = true
+
+[[action]]
+id = "reader.archive-next"
+label = "Archive, open next"
+short_label = "Archive, next"
+group = "Mail"
+scopes = ["reader"]
+keys = ["]"]
+hide_in_palette = true
+note = "Web only"
+
+[[action]]
+id = "reader.archive-prev"
+label = "Archive, open previous"
+short_label = "Archive, previous"
+group = "Mail"
+scopes = ["reader"]
+keys = ["["]
+hide_in_palette = true
+note = "Web only"
+
+[[action]]
+id = "reader.list"
+label = "Back to list"
+short_label = "List"
+group = "Move"
+scopes = ["reader"]
+keys = ["h", "ArrowLeft"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:focus_list"
+keys = ["ArrowLeft", "h"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.close"
+label = "Close conversation"
+short_label = "Close"
+group = "Move"
+scopes = ["reader"]
+keys = ["Escape", "q"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "Back"
+keys = ["Escape"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.view-reader"
+label = "Reader view, or back to plain"
+short_label = "Reader view"
+description = "Cleaned text with quotes folded; press again for plain text, as in the TUI"
+group = "View"
+scopes = ["reader"]
+keys = ["R"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleReaderMode"
+keys = ["R"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "reader.view-html"
+label = "Formatted (HTML) view, or back to plain"
+description = "Press again for plain text, as in the TUI"
+group = "View"
+scopes = ["reader"]
+keys = ["H"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleHtmlView"
+keys = ["H"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.view-plain"
+label = "Plain text view"
+group = "View"
+scopes = ["reader"]
+palette_only = true
+
+[[action]]
+id = "reader.remote"
+label = "Load remote images"
+group = "View"
+scopes = ["reader"]
+keys = ["M"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleRemoteContent"
+keys = ["M"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.signature"
+label = "Show or hide signatures"
+group = "View"
+scopes = ["reader"]
+keys = ["S"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleSignature"
+keys = ["S"]
+contexts = ["list", "reader"]
+
+[[action]]
+id = "reader.quotes"
+label = "Show or hide quoted text"
+group = "View"
+scopes = ["reader"]
+keys = ["Q"]
+hide_in_palette = true
+note = "Web only"
+
+[[action]]
+id = "reader.headers"
+label = "Raw headers"
+group = "View"
+scopes = ["reader"]
+keys = ["g H"]
+note = "CLI `mxr cat --view headers`; not in the TUI"
+
+[[action]]
+id = "reader.open-original"
+label = "Open original in a new tab"
+group = "View"
+scopes = ["reader"]
+keys = ["O"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenInBrowser"
+keys = ["O"]
+contexts = ["list", "reader", "place"]
+
+[[action.tui]]
+name = "OpenInBrowser"
+keys = ["o"]
+contexts = ["reader"]
+
+[[action]]
+id = "reader.summary"
+label = "Summarize thread"
+group = "Read"
+scopes = ["reader"]
+keys = ["y"]
+
+[[action.tui]]
+name = "SummarizeCurrentThread"
+keys = ["y"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "reader.fullscreen"
+label = "Full-width reader"
+group = "View"
+scopes = ["reader"]
+keys = ["F"]
+
+[[action.tui]]
+name = "ToggleFullscreen"
+keys = ["F"]
+contexts = ["list", "reader", "sidebar", "place"]
+
+# The lit row's choice is a number (1 Allow, 2 Deny, 3 Feed, 4 Paper trail),
+# like a new sender's; the TUI modal's letters answer the same way.
+[[action]]
+id = "screener.allow"
+label = "Allow sender"
+group = "Triage"
+scopes = ["screener"]
+keys = ["1", "a"]
+
+[[action.tui]]
+name = "ScreenerDisposeAllow"
+keys = ["a"]
+contexts = ["screener"]
+
+[[action]]
+id = "screener.deny"
+label = "Deny sender"
+group = "Triage"
+scopes = ["screener"]
+keys = ["2", "d"]
+
+[[action.tui]]
+name = "ScreenerDisposeDeny"
+keys = ["d"]
+contexts = ["screener"]
+
+[[action]]
+id = "screener.feed"
+label = "Send to feed"
+group = "Triage"
+scopes = ["screener"]
+keys = ["3", "f"]
+
+[[action.tui]]
+name = "ScreenerDisposeFeed"
+keys = ["f"]
+contexts = ["screener"]
+
+[[action]]
+id = "screener.paper-trail"
+label = "Send to paper trail"
+group = "Triage"
+scopes = ["screener"]
+keys = ["4", "p"]
+
+[[action.tui]]
+name = "ScreenerDisposePaperTrail"
+keys = ["p"]
+contexts = ["screener"]
+
+[[action]]
+id = "screener.down"
+label = "Next sender"
+group = "Move"
+scopes = ["screener"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ScreenerModalNext"
+keys = ["ArrowDown", "j"]
+contexts = ["screener"]
+
+[[action]]
+id = "screener.up"
+label = "Previous sender"
+group = "Move"
+scopes = ["screener"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ScreenerModalPrev"
+keys = ["ArrowUp", "k"]
+contexts = ["screener"]
+
+[[action]]
+id = "nav.focus"
+label = "Focus & reply"
+description = "Reply to everyone waiting on you, one conversation at a time"
+group = "Compose"
+scopes = ["global"]
+# The TUI leaves g+F free; lower-case f is forward.
+keys = ["g F"]
+note = "F in the TUI's reply queue"
+
+[[action]]
+id = "focus.send"
+label = "Send and next"
+short_label = "Send, next"
+group = "Compose"
+scopes = ["focus"]
+keys = ["Mod+Enter"]
+
+[[action]]
+id = "focus.skip"
+label = "Skip for now"
+short_label = "Skip"
+group = "Compose"
+scopes = ["focus"]
+keys = ["s"]
+note = "Goes to the end of the queue"
+
+[[action]]
+id = "focus.done"
+label = "Done, no reply needed"
+group = "Compose"
+scopes = ["focus"]
+keys = ["e"]
+note = "e on the desk in the TUI"
+
+[[action]]
+id = "focus.snooze"
+label = "Snooze…"
+group = "Compose"
+scopes = ["focus"]
+keys = ["Z"]
+
+[[action]]
+id = "focus.remind"
+label = "Send, remind me if nobody replies…"
+short_label = "Send, remind"
+group = "Compose"
+scopes = ["focus"]
+keys = ["w"]
+
+[[action]]
+id = "focus.draft"
+label = "Draft in your voice"
+short_label = "Draft"
+group = "Compose"
+scopes = ["focus"]
+keys = ["d"]
+
+[[action]]
+id = "focus.reply"
+label = "Back to the reply"
+group = "Compose"
+scopes = ["focus"]
+keys = ["r"]
+hide_in_palette = true
+
+[[action]]
+id = "focus.leave"
+label = "Leave focus mode"
+group = "Compose"
+scopes = ["focus"]
+keys = ["Escape"]
+hide_in_palette = true
+
+[[action]]
+id = "place.down"
+label = "Next"
+short_label = "Next"
+group = "Move"
+scopes = ["place"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveDown"
+keys = ["ArrowDown", "j"]
+contexts = ["place"]
+
+[[action]]
+id = "place.up"
+label = "Previous"
+short_label = "Previous"
+group = "Move"
+scopes = ["place"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveUp"
+keys = ["ArrowUp", "k"]
+contexts = ["place"]
+
+[[action]]
+id = "place.open"
+label = "Open, or expand a bundle"
+short_label = "Open"
+group = "Move"
+scopes = ["place"]
+keys = ["Enter", "o"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenSelected"
+keys = ["ArrowRight", "Enter", "o"]
+contexts = ["place"]
+
+[[action]]
+id = "place.done"
+label = "Done here: let go of this in Updates or Reading"
+short_label = "Done here"
+description = "On a sender's row in Updates, every conversation of theirs, after a preview"
+group = "Triage"
+scopes = ["place"]
+keys = ["e"]
+
+[[action.tui]]
+name = "Archive"
+keys = ["e"]
+contexts = ["place"]
+
+[[action]]
+id = "place.pin"
+label = "Pin or unpin (a sweep leaves pins)"
+short_label = "Pin"
+group = "Triage"
+scopes = ["place"]
+keys = ["p"]
+
+[[action.tui]]
+name = "TogglePin"
+keys = ["p"]
+contexts = ["place"]
+
+# S and A, as in the TUI: s means star in every mail list.
+[[action]]
+id = "place.sweep-bundle"
+label = "Sweep this sender's bundle…"
+short_label = "Sweep sender"
+group = "Triage"
+scopes = ["place"]
+keys = ["S"]
+note = "Previews the daemon's dry run first; undo afterwards"
+
+[[action.tui]]
+name = "SweepBundle"
+keys = ["S"]
+contexts = ["place"]
+
+[[action]]
+id = "place.sweep-all"
+label = "Sweep the whole place…"
+short_label = "Sweep all"
+group = "Triage"
+scopes = ["place"]
+keys = ["A"]
+note = "Everything unpinned here; previews first and opens on Cancel (Tab, then Enter)"
+
+[[action.tui]]
+name = "SweepPlace"
+keys = ["A"]
+contexts = ["place"]
+
+[[action]]
+id = "place.move-sender"
+label = "Move sender to…"
+description = "People, Reading, Paper trail, Screened out or automatic, for their future mail too"
+group = "Triage"
+scopes = ["place"]
+keys = ["K"]
+note = "In the reader K is the previous message; use the palette or the line under the thread"
+
+[[action.tui]]
+name = "OpenSenderKindMenu"
+keys = ["K"]
+contexts = ["place"]
+
+[[action]]
+id = "place.unsubscribe"
+label = "Unsubscribe…"
+group = "Triage"
+scopes = ["place"]
+keys = ["D"]
+
+[[action.tui]]
+name = "Unsubscribe"
+keys = ["D"]
+contexts = ["place"]
+
+[[action]]
+id = "reader.move-sender"
+label = "Move sender to…"
+description = "People, Reading, Paper trail, Screened out or automatic, for their future mail too"
+group = "Triage"
+scopes = ["reader"]
+palette_only = true
+
+[[action]]
+id = "nav.todo"
+label = "To do"
+description = "Things email asked you to do, ordered by when to act"
+group = "Navigate"
+scopes = ["global"]
+keys = ["g x"]
+
+[[action.tui]]
+name = "OpenTodo"
+keys = ["g x"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "todo.down"
+label = "Next"
+group = "Move"
+scopes = ["todo"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveDown"
+keys = ["ArrowDown", "j"]
+contexts = ["todo"]
+
+[[action]]
+id = "todo.up"
+label = "Previous"
+group = "Move"
+scopes = ["todo"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveUp"
+keys = ["ArrowUp", "k"]
+contexts = ["todo"]
+
+[[action]]
+id = "todo.primary"
+label = "Do it: what the row's button says"
+short_label = "Do it"
+group = "Triage"
+scopes = ["todo"]
+keys = ["Enter"]
+note = "Opens a link only when the sender passed the check; otherwise the email"
+
+[[action.tui]]
+name = "TodoPrimary"
+keys = ["Enter"]
+contexts = ["todo"]
+
+[[action]]
+id = "todo.done"
+label = "Done"
+short_label = "Done"
+group = "Triage"
+scopes = ["todo"]
+# Space follows checkbox convention; the e alias matches the TUI.
+keys = ["Space", "e"]
+
+[[action.tui]]
+name = "TodoDone"
+keys = ["e"]
+contexts = ["todo"]
+
+[[action]]
+id = "todo.schedule"
+label = "Schedule…"
+short_label = "Schedule"
+group = "Triage"
+scopes = ["todo"]
+keys = ["Z"]
+
+[[action.tui]]
+name = "TodoSchedule"
+keys = ["Z"]
+contexts = ["todo"]
+
+[[action]]
+id = "todo.edit"
+label = "Edit what mxr read…"
+short_label = "Edit"
+group = "Triage"
+scopes = ["todo"]
+keys = [","]
+
+[[action.tui]]
+name = "TodoEdit"
+keys = [","]
+contexts = ["todo"]
+
+[[action]]
+id = "todo.dismiss"
+label = "Not a to-do"
+short_label = "Not a to-do"
+group = "Triage"
+scopes = ["todo"]
+keys = ["X"]
+
+[[action.tui]]
+name = "TodoDismiss"
+keys = ["X"]
+contexts = ["todo"]
+
+[[action]]
+id = "todo.open-email"
+label = "Open the email it came from"
+short_label = "Email"
+group = "Triage"
+scopes = ["todo"]
+keys = ["o"]
+
+[[action.tui]]
+name = "TodoOpenEmail"
+keys = ["o"]
+contexts = ["todo"]
+
+[[action]]
+id = "todo.details"
+label = "Why it is here and where each field came from"
+short_label = "Details"
+group = "Triage"
+scopes = ["todo"]
+keys = ["v"]
+
+[[action.tui]]
+name = "TodoReviewResolution"
+keys = ["v"]
+contexts = ["todo"]
+
+[[action]]
+id = "todo.expired"
+label = "Expired list"
+short_label = "Expired"
+group = "Triage"
+scopes = ["todo"]
+keys = ["E"]
+
+[[action.tui]]
+name = "TodoOpenExpired"
+keys = ["E"]
+contexts = ["todo"]
+
+[[action]]
+id = "todo.catchup"
+label = "Catch-up"
+short_label = "Catch-up"
+group = "Triage"
+scopes = ["todo"]
+keys = ["C"]
+
+[[action.tui]]
+name = "TodoOpenCatchup"
+keys = ["C"]
+contexts = ["todo"]
+
+[[action]]
+id = "todo.close-hint"
+label = "Dismiss the hint"
+group = "Triage"
+scopes = ["todo"]
+keys = ["Escape"]
+hide_in_palette = true
+
+[[action]]
+id = "catchup.down"
+label = "Next"
+group = "Move"
+scopes = ["catchup"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action]]
+id = "catchup.up"
+label = "Previous"
+group = "Move"
+scopes = ["catchup"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action]]
+id = "todo.catchup-keep"
+label = "Keep: it still needs me"
+short_label = "Keep"
+group = "Triage"
+scopes = ["catchup"]
+keys = ["Enter"]
+
+[[action]]
+id = "todo.catchup-let-go"
+label = "Let go of this one"
+short_label = "Let go"
+group = "Triage"
+scopes = ["catchup"]
+keys = ["e"]
+
+[[action]]
+id = "todo.catchup-let-go-all"
+label = "Let go of all…"
+short_label = "Let go of all"
+group = "Triage"
+scopes = ["catchup"]
+keys = ["A"]
+note = "Previews the daemon's dry run first; undo afterwards"
+
+[[action]]
+id = "todo.catchup-back"
+label = "Back to To do"
+group = "Triage"
+scopes = ["catchup"]
+keys = ["Escape"]
+hide_in_palette = true
+
+[[action]]
+id = "expired.down"
+label = "Next"
+group = "Move"
+scopes = ["expired"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action]]
+id = "expired.up"
+label = "Previous"
+group = "Move"
+scopes = ["expired"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action]]
+id = "todo.restore"
+label = "Restore to To do"
+short_label = "Restore"
+group = "Triage"
+scopes = ["expired"]
+keys = ["Enter"]
+
+[[action]]
+id = "todo.expired-back"
+label = "Back to To do"
+group = "Triage"
+scopes = ["expired"]
+keys = ["Escape"]
+hide_in_palette = true
+
+[[action]]
+id = "archive.down"
+label = "Next record"
+group = "Move"
+scopes = ["archive"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveDown"
+keys = ["ArrowDown", "j"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.up"
+label = "Previous record"
+group = "Move"
+scopes = ["archive"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveUp"
+keys = ["ArrowUp", "k"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.ask"
+label = "Ask Archive"
+short_label = "Ask"
+description = "Type what you remember; the answer is the field you asked for"
+group = "Triage"
+scopes = ["archive"]
+keys = ["/"]
+
+[[action.tui]]
+name = "RecordsAsk"
+keys = ["/"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.copy-reference"
+label = "Copy the reference"
+short_label = "Copy ref"
+group = "Triage"
+scopes = ["archive"]
+keys = ["y"]
+
+[[action.tui]]
+name = "RecordsCopyReference"
+keys = ["y"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.copy-amount"
+label = "Copy the amount"
+short_label = "Copy amount"
+group = "Triage"
+scopes = ["archive"]
+keys = ["Y"]
+
+[[action.tui]]
+name = "RecordsCopyAmount"
+keys = ["Y"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.open-document"
+label = "Open the document"
+short_label = "Document"
+group = "Triage"
+scopes = ["archive"]
+keys = ["Enter"]
+
+[[action.tui]]
+name = "RecordsOpenDocument"
+keys = ["Enter"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.open-email"
+label = "Open the email"
+short_label = "Email"
+group = "Triage"
+scopes = ["archive"]
+keys = ["o", "e"]
+note = "Archive has no done: records stay, so e opens the email too"
+
+[[action.tui]]
+name = "RecordsOpenEmail"
+keys = ["e", "o"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.issuer"
+label = "This issuer's records"
+short_label = "Issuer"
+group = "Triage"
+scopes = ["archive"]
+keys = ["p"]
+
+[[action.tui]]
+name = "RecordsIssuerPage"
+keys = ["p"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.prev-year"
+label = "Previous year"
+group = "Move"
+scopes = ["archive"]
+keys = ["["]
+
+[[action.tui]]
+name = "RecordsPrevYear"
+keys = ["["]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.next-year"
+label = "Next year"
+group = "Move"
+scopes = ["archive"]
+keys = ["]"]
+
+[[action.tui]]
+name = "RecordsNextYear"
+keys = ["]"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.edit"
+label = "Fix a field…"
+short_label = "Fix"
+group = "Triage"
+scopes = ["archive"]
+keys = [","]
+
+[[action.tui]]
+name = "RecordsFix"
+keys = [","]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.check"
+label = "Mark checked"
+short_label = "Checked"
+group = "Triage"
+scopes = ["archive"]
+keys = ["v"]
+
+[[action.tui]]
+name = "RecordsMarkChecked"
+keys = ["v"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.dismiss"
+label = "Not a record"
+short_label = "Not a record"
+group = "Triage"
+scopes = ["archive"]
+keys = ["X"]
+
+[[action.tui]]
+name = "RecordsDismiss"
+keys = ["X"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.export"
+label = "Export…"
+short_label = "Export"
+description = "CSV of the records in view, after a preview of what it holds"
+group = "Triage"
+scopes = ["archive"]
+keys = ["E"]
+
+[[action.tui]]
+name = "RecordsExport"
+keys = ["E"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.make-todo"
+label = "Make a to-do from this record"
+short_label = "To-do"
+group = "Triage"
+scopes = ["archive"]
+keys = ["t"]
+
+[[action.tui]]
+name = "RecordsMakeTodo"
+keys = ["t"]
+contexts = ["archive"]
+
+[[action]]
+id = "archive.filter"
+label = "Filters…"
+short_label = "Filters"
+group = "Triage"
+scopes = ["archive"]
+keys = ["g f"]
+
+[[action]]
+id = "archive.close"
+label = "Close"
+group = "Triage"
+scopes = ["archive"]
+keys = ["Escape"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "RecordsBack"
+keys = ["Escape"]
+contexts = ["archive"]
+
+[[action]]
+id = "reading.down"
+label = "Next"
+group = "Move"
+scopes = ["reading"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveDown"
+keys = ["ArrowDown", "j"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.up"
+label = "Previous"
+group = "Move"
+scopes = ["reading"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveUp"
+keys = ["ArrowUp", "k"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.read"
+label = "Read"
+short_label = "Read"
+group = "Read"
+scopes = ["reading"]
+keys = ["Enter"]
+
+[[action.tui]]
+name = "ReadingRead"
+keys = ["Enter"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.article"
+label = "Fetch the linked article"
+short_label = "Article"
+description = "Contacts the article's site, named before anything is sent"
+group = "Read"
+scopes = ["reading"]
+keys = ["L"]
+
+[[action.tui]]
+name = "ReadingArticle"
+keys = ["L"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.later"
+label = "Save for later"
+short_label = "Later"
+group = "Read"
+scopes = ["reading"]
+keys = ["b"]
+
+[[action.tui]]
+name = "ReadingLater"
+keys = ["b"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.let-go"
+label = "Let go"
+short_label = "Let go"
+group = "Read"
+scopes = ["reading"]
+keys = ["e"]
+
+[[action.tui]]
+name = "ReadingLetGo"
+keys = ["e"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.unsubscribe"
+label = "Unsubscribe…"
+short_label = "Unsubscribe"
+group = "Read"
+scopes = ["reading"]
+keys = ["D"]
+note = "Shows the evidence and the method first; nothing is sent until you confirm"
+
+[[action.tui]]
+name = "ReadingUnsubscribe"
+keys = ["D"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.original"
+label = "Read in the sender's layout"
+short_label = "Original"
+group = "Read"
+scopes = ["reading"]
+keys = ["R"]
+
+[[action.tui]]
+name = "ReadingOriginal"
+keys = ["R"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.let-go-all"
+label = "Let go of everything shown…"
+short_label = "Let go of all"
+group = "Read"
+scopes = ["reading"]
+keys = ["A"]
+note = "Previews the daemon's dry run first; undo afterwards"
+
+[[action.tui]]
+name = "ReadingLetGoAll"
+keys = ["A"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.open-email"
+label = "Open the email as sent"
+short_label = "Email"
+group = "Read"
+scopes = ["reading"]
+keys = ["o"]
+
+[[action.tui]]
+name = "ReadingOpenEmail"
+keys = ["o"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.move-sender"
+label = "This sender here: move to…"
+description = "People, Reading, Paper trail, Screened out or automatic, for their future mail too"
+group = "Read"
+scopes = ["reading"]
+keys = ["K"]
+
+[[action.tui]]
+name = "OpenSenderKindMenu"
+keys = ["K"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.later-shelf"
+label = "Open Later"
+short_label = "Later shelf"
+group = "Read"
+scopes = ["reading"]
+keys = ["B"]
+
+[[action.tui]]
+name = "ReadingLaterShelf"
+keys = ["B"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.marginalia"
+label = "Open in Marginalia"
+short_label = "Marginalia"
+description = "Sends the item's text to Marginalia the first time, then opens it there"
+group = "Read"
+scopes = ["reading"]
+keys = ["M"]
+
+[[action.tui]]
+name = "ReadingMarginalia"
+keys = ["M"]
+contexts = ["reading"]
+
+[[action]]
+id = "reading.close-hint"
+label = "Dismiss the hint"
+group = "Read"
+scopes = ["reading"]
+keys = ["Escape"]
+hide_in_palette = true
+
+[[action]]
+id = "reading.reader-down"
+label = "Scroll down"
+group = "Move"
+scopes = ["reading-reader"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action]]
+id = "reading.reader-up"
+label = "Scroll up"
+group = "Move"
+scopes = ["reading-reader"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action]]
+id = "reading.reader-article"
+label = "Article: fetch and read it"
+short_label = "Article"
+group = "Read"
+scopes = ["reading-reader"]
+keys = ["L"]
+
+[[action]]
+id = "reading.reader-issue"
+label = "Issue: the email itself"
+short_label = "Issue"
+group = "Read"
+scopes = ["reading-reader"]
+keys = ["I"]
+
+[[action]]
+id = "reading.reader-later"
+label = "Save for later"
+short_label = "Later"
+group = "Read"
+scopes = ["reading-reader"]
+keys = ["b"]
+
+[[action]]
+id = "reading.reader-let-go"
+label = "Let go and go back"
+short_label = "Let go"
+group = "Read"
+scopes = ["reading-reader"]
+keys = ["e"]
+
+[[action]]
+id = "reading.reader-next"
+label = "Next item"
+short_label = "Next"
+group = "Read"
+scopes = ["reading-reader"]
+keys = ["n"]
+
+[[action]]
+id = "reading.reader-original"
+label = "Sender's layout or cleaned"
+short_label = "Original"
+group = "Read"
+scopes = ["reading-reader"]
+keys = ["R"]
+
+[[action]]
+id = "reading.reader-highlight"
+label = "Highlight the selection"
+short_label = "Highlight"
+group = "Read"
+scopes = ["reading-reader"]
+keys = ["h"]
+
+[[action]]
+id = "reading.reader-unsubscribe"
+label = "Unsubscribe…"
+short_label = "Unsubscribe"
+group = "Read"
+scopes = ["reading-reader"]
+keys = ["D"]
+
+[[action]]
+id = "reading.reader-open-email"
+label = "Open the email as sent"
+short_label = "Email"
+group = "Read"
+scopes = ["reading-reader"]
+keys = ["o"]
+
+[[action]]
+id = "reading.reader-marginalia"
+label = "Open in Marginalia"
+short_label = "Marginalia"
+description = "Sends the item's text to Marginalia the first time, then opens it there"
+group = "Read"
+scopes = ["reading-reader"]
+keys = ["M"]
+
+[[action]]
+id = "reading.reader-back"
+label = "Back to the edition"
+group = "Read"
+scopes = ["reading-reader"]
+keys = ["Escape"]
+hide_in_palette = true
+
+[[action]]
+id = "now.down"
+label = "Next"
+group = "Move"
+scopes = ["now"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveDown"
+keys = ["ArrowDown", "j"]
+contexts = ["now"]
+
+[[action]]
+id = "now.up"
+label = "Previous"
+group = "Move"
+scopes = ["now"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveUp"
+keys = ["ArrowUp", "k"]
+contexts = ["now"]
+
+[[action]]
+id = "now.open"
+label = "Open in its mode"
+short_label = "Open"
+group = "Move"
+scopes = ["now"]
+keys = ["Enter"]
+
+[[action.tui]]
+name = "NowOpen"
+keys = ["Enter"]
+contexts = ["now"]
+
+[[action]]
+id = "now.done"
+label = "Done here"
+short_label = "Done here"
+group = "Triage"
+scopes = ["now"]
+keys = ["e"]
+
+[[action.tui]]
+name = "NowDone"
+keys = ["e"]
+contexts = ["now"]
+
+[[action]]
+id = "now.reply"
+label = "Reply"
+short_label = "Reply"
+group = "Triage"
+scopes = ["now"]
+keys = ["r"]
+
+[[action.tui]]
+name = "Reply"
+keys = ["r"]
+contexts = ["now"]
+
+[[action]]
+id = "now.open-email"
+label = "Open the email"
+short_label = "Email"
+group = "Triage"
+scopes = ["now"]
+keys = ["o"]
+
+[[action.tui]]
+name = "NowOpenEmail"
+keys = ["o"]
+contexts = ["now"]
+
+[[action]]
+id = "now.let-go-digest"
+label = "Let go of the Updates digest…"
+short_label = "Let go of digest"
+group = "Triage"
+scopes = ["now"]
+keys = ["A"]
+note = "Previews the daemon's dry run first; undo afterwards"
+
+[[action.tui]]
+name = "NowLetGoDigest"
+keys = ["A"]
+contexts = ["now"]
+
+[[action]]
+id = "now.close-hint"
+label = "Dismiss the hint"
+group = "Triage"
+scopes = ["now"]
+keys = ["Escape"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "DismissHint"
+keys = ["Escape"]
+contexts = ["now"]
+
+[[action]]
+id = "now.sender-1"
+label = "New sender: keep in Messages"
+short_label = "Messages"
+group = "Triage"
+scopes = ["now"]
+keys = ["1"]
+
+[[action]]
+id = "now.sender-2"
+label = "New sender: keep in Updates"
+short_label = "Updates"
+group = "Triage"
+scopes = ["now"]
+keys = ["2"]
+
+[[action]]
+id = "now.sender-3"
+label = "New sender: keep in Reading"
+short_label = "Reading"
+group = "Triage"
+scopes = ["now"]
+keys = ["3"]
+
+[[action]]
+id = "now.sender-4"
+label = "New sender: block"
+short_label = "Block"
+group = "Triage"
+scopes = ["now"]
+keys = ["4"]
+
+[[action]]
+id = "messages.down"
+label = "Next person"
+group = "Move"
+scopes = ["messages"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveDown"
+keys = ["ArrowDown", "j"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.up"
+label = "Previous person"
+group = "Move"
+scopes = ["messages"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveUp"
+keys = ["ArrowUp", "k"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.open"
+label = "Open the person"
+short_label = "Open"
+group = "Move"
+scopes = ["messages"]
+keys = ["Enter"]
+
+[[action.tui]]
+name = "MessagesOpen"
+keys = ["Enter"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.reply"
+label = "Reply"
+short_label = "Reply"
+group = "Triage"
+scopes = ["messages"]
+keys = ["r"]
+
+[[action.tui]]
+name = "Reply"
+keys = ["r"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.reply-all"
+label = "Reply all"
+short_label = "Reply all"
+group = "Triage"
+scopes = ["messages"]
+keys = ["a"]
+
+[[action.tui]]
+name = "ReplyAll"
+keys = ["a"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.got-it"
+label = "Got it: a short thanks, after a countdown"
+short_label = "Got it"
+group = "Triage"
+scopes = ["messages"]
+keys = ["."]
+note = "Shows the exact text and counts down; u cancels before it sends"
+
+[[action.tui]]
+name = "MessagesAck"
+keys = ["."]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.done"
+label = "Done here"
+short_label = "Done here"
+group = "Triage"
+scopes = ["messages"]
+keys = ["e"]
+
+[[action.tui]]
+name = "MessagesDone"
+keys = ["e"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.to-do"
+label = "Make it a to-do…"
+short_label = "To do"
+group = "Triage"
+scopes = ["messages"]
+keys = ["t"]
+
+[[action.tui]]
+name = "CreateTodoFromMessage"
+keys = ["t"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.reply-later"
+label = "Reply later…"
+short_label = "Reply later"
+group = "Triage"
+scopes = ["messages"]
+keys = ["b"]
+
+[[action.tui]]
+name = "FlagReplyLater"
+keys = ["b"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.pin"
+label = "Pin or unpin this person"
+short_label = "Pin"
+group = "Triage"
+scopes = ["messages"]
+keys = ["s"]
+
+[[action.tui]]
+name = "MessagesPin"
+keys = ["s"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.new-topic"
+label = "New topic with this person"
+short_label = "New topic"
+group = "Triage"
+scopes = ["messages"]
+keys = ["c"]
+
+[[action.tui]]
+name = "MessagesNewTopic"
+keys = ["c"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.prev-topic"
+label = "Previous topic"
+group = "Move"
+scopes = ["messages"]
+keys = ["["]
+
+[[action.tui]]
+name = "MessagesPrevTopic"
+keys = ["["]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.next-topic"
+label = "Next topic"
+group = "Move"
+scopes = ["messages"]
+keys = ["]"]
+
+[[action.tui]]
+name = "MessagesNextTopic"
+keys = ["]"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.person-page"
+label = "Go to the person page"
+group = "Move"
+scopes = ["messages"]
+keys = ["p"]
+
+[[action.tui]]
+name = "MessagesPersonPage"
+keys = ["p"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.as-sent"
+label = "Show the message as sent"
+short_label = "As sent"
+group = "Triage"
+scopes = ["messages"]
+keys = ["o", "v"]
+
+[[action.tui]]
+name = "MessagesAsSent"
+keys = ["o", "v"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.send-next"
+label = "Send, then the next person whose turn it is"
+short_label = "Send, next"
+group = "Triage"
+scopes = ["messages"]
+keys = ["Mod+Enter"]
+
+[[action]]
+id = "messages.escape"
+label = "Dismiss the hint, or back to the people"
+group = "Triage"
+scopes = ["messages"]
+keys = ["Escape"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MessagesBack"
+keys = ["Escape"]
+contexts = ["messages"]
+
+[[action]]
+id = "messages.sender-1"
+label = "New sender: keep in Messages"
+short_label = "Messages"
+group = "Triage"
+scopes = ["messages"]
+keys = ["1"]
+
+[[action]]
+id = "messages.sender-2"
+label = "New sender: keep in Updates"
+short_label = "Updates"
+group = "Triage"
+scopes = ["messages"]
+keys = ["2"]
+
+[[action]]
+id = "messages.sender-3"
+label = "New sender: keep in Reading"
+short_label = "Reading"
+group = "Triage"
+scopes = ["messages"]
+keys = ["3"]
+
+[[action]]
+id = "messages.sender-4"
+label = "New sender: block"
+short_label = "Block"
+group = "Triage"
+scopes = ["messages"]
+keys = ["4"]
+
+[[action]]
+id = "updates.down"
+label = "Next"
+group = "Move"
+scopes = ["updates"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveDown"
+keys = ["ArrowDown", "j"]
+contexts = ["updates"]
+
+[[action]]
+id = "updates.up"
+label = "Previous"
+group = "Move"
+scopes = ["updates"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "MoveUp"
+keys = ["ArrowUp", "k"]
+contexts = ["updates"]
+
+[[action]]
+id = "updates.expand"
+label = "Show routine"
+short_label = "Routine"
+group = "Move"
+scopes = ["updates"]
+keys = ["Enter"]
+
+[[action.tui]]
+name = "UpdatesOpen"
+keys = ["Enter"]
+contexts = ["updates"]
+
+[[action]]
+id = "updates.let-go-all"
+label = "Let go of the digest…"
+short_label = "Let go of digest"
+group = "Triage"
+scopes = ["updates"]
+keys = ["A"]
+note = "Previews the daemon's dry run first; undo afterwards"
+
+[[action.tui]]
+name = "UpdatesLetGoAll"
+keys = ["A"]
+contexts = ["updates"]
+
+[[action]]
+id = "updates.let-go-source"
+label = "Let go of this source"
+short_label = "Let go"
+group = "Triage"
+scopes = ["updates"]
+keys = ["e"]
+
+[[action.tui]]
+name = "UpdatesLetGoSource"
+keys = ["e"]
+contexts = ["updates"]
+
+[[action]]
+id = "updates.needs-me"
+label = "This needs me: make it a to-do"
+short_label = "To-do"
+group = "Triage"
+scopes = ["updates"]
+keys = ["t"]
+
+[[action.tui]]
+name = "UpdatesNeedsMe"
+keys = ["t"]
+contexts = ["updates"]
+
+[[action]]
+id = "updates.tune"
+label = "Tune this source…"
+short_label = "Tune"
+group = "Triage"
+scopes = ["updates"]
+keys = ["K"]
+
+[[action.tui]]
+name = "UpdatesTune"
+keys = ["K"]
+contexts = ["updates"]
+
+[[action]]
+id = "updates.link"
+label = "Open the link"
+short_label = "Link"
+group = "Triage"
+scopes = ["updates"]
+keys = ["L"]
+
+[[action.tui]]
+name = "UpdatesOpenLink"
+keys = ["L"]
+contexts = ["updates"]
+
+[[action]]
+id = "updates.copy-code"
+label = "Copy the one-time code"
+short_label = "Copy code"
+group = "Triage"
+scopes = ["updates"]
+keys = ["y"]
+
+[[action.tui]]
+name = "UpdatesCopyCode"
+keys = ["y"]
+contexts = ["updates"]
+
+[[action]]
+id = "updates.open-email"
+label = "Open the email"
+short_label = "Email"
+group = "Triage"
+scopes = ["updates"]
+keys = ["o"]
+
+[[action.tui]]
+name = "UpdatesOpenEmail"
+keys = ["o"]
+contexts = ["updates"]
+
+[[action]]
+id = "updates.peek"
+label = "Peek at this update under its line"
+short_label = "Peek"
+group = "Triage"
+scopes = ["updates"]
+keys = ["Space"]
+
+[[action]]
+id = "updates.pin"
+label = "Pin or unpin this source's latest email"
+short_label = "Pin"
+group = "Triage"
+scopes = ["updates"]
+keys = ["p"]
+
+[[action.tui]]
+name = "TogglePin"
+keys = ["p"]
+contexts = ["updates"]
+
+[[action]]
+id = "updates.sweep"
+label = "Sweep this sender out of Updates…"
+short_label = "Sweep sender"
+group = "Triage"
+scopes = ["updates"]
+keys = ["S"]
+note = "Previews the daemon's dry run first; undo afterwards"
+
+[[action.tui]]
+name = "UpdatesSweep"
+keys = ["S"]
+contexts = ["updates"]
+
+[[action]]
+id = "updates.close-hint"
+label = "Dismiss the hint"
+group = "Triage"
+scopes = ["updates"]
+keys = ["Escape"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "UpdatesClose"
+keys = ["Escape"]
+contexts = ["updates"]
+
+[[action]]
+id = "modes.move"
+label = "Move to…"
+short_label = "Move"
+description = "This email only: Messages, To do, Updates, Reading or Archive"
+group = "Triage"
+scopes = ["now", "messages", "list", "reader", "place", "updates", "reading"]
+keys = ["X"]
+
+[[action.tui]]
+name = "OpenMoveMenu"
+keys = ["X"]
+contexts = ["list", "reader", "place", "now", "messages", "reading", "updates"]
+
+[[action]]
+id = "modes.move-sender"
+label = "Send everything from this sender to…"
+short_label = "Move sender"
+description = "Messages, Updates or Reading, for their mail from now on"
+group = "Triage"
+scopes = ["now", "messages", "list"]
+keys = ["K"]
+
+[[action.tui]]
+name = "OpenSenderMoveMenu"
+keys = ["K"]
+contexts = ["list", "now", "messages"]
+
+[[action]]
+id = "semantic.backfill"
+label = "Backfill semantic now"
+description = "Queue local semantic chunk and embedding repair"
+group = "Semantic"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "semantic.enable"
+label = "Enable semantic search"
+description = "Toggle hybrid and semantic retrieval locally"
+group = "Semantic"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "semantic.disable"
+label = "Disable semantic search"
+description = "Toggle hybrid and semantic retrieval locally"
+group = "Semantic"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "semantic.reindex"
+label = "Reindex semantic now"
+description = "Rebuild embeddings for the active semantic profile"
+group = "Semantic"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "rules.new"
+label = "New rule"
+description = "Open the deterministic rule builder"
+group = "Rules"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "accounts.new"
+label = "Add account"
+description = "Open account onboarding"
+group = "Accounts"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "analytics.refresh-contacts"
+label = "Refresh contacts"
+description = "Rebuild relationship + contact analytics"
+group = "Analytics"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "analytics.wrapped"
+label = "Open Wrapped"
+description = "View year-in-review summary"
+group = "Analytics"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "ask.archive"
+label = "Ask your archive"
+description = "Ask a question and get an answer with the messages it came from"
+group = "Search"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "assistant.toggle"
+label = "Show or hide the assistant"
+short_label = "Assistant"
+description = "Talk to your mail: ask questions, or have it sort and tidy with your approval"
+group = "View"
+scopes = ["global"]
+keys = ["Mod+."]
+note = "Ctrl+a in the TUI, where terminals don't pass Ctrl+. through"
+
+[[action]]
+id = "assistant.new"
+label = "New assistant conversation"
+group = "View"
+scopes = ["global"]
+palette_only = true
+
+[[action]]
+id = "tui.pattern-select-thread"
+label = "Pattern select thread"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "PatternSelect(Thread)"
+keys = ["* t"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "tui.toggle-assistant"
+label = "Toggle assistant"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "ToggleAssistant"
+keys = ["Ctrl+a"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "tui.prev-search-result"
+label = "Prev search result"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "PrevSearchResult"
+keys = ["N"]
+contexts = ["list", "reader", "sidebar", "place"]
+
+[[action]]
+id = "tui.switch-pane"
+label = "Switch pane"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "SwitchPane"
+keys = ["Tab"]
+contexts = ["list", "reader", "sidebar", "place"]
+
+[[action]]
+id = "tui.next-search-result"
+label = "Next search result"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "NextSearchResult"
+keys = ["n"]
+contexts = ["list", "reader", "place"]
+
+[[action]]
+id = "tui.quit-view"
+label = "Quit view"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "QuitView"
+keys = ["q"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "tui.center-current"
+label = "Center current"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "CenterCurrent"
+keys = ["z z"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
+
+[[action]]
+id = "tui.viewport-bottom"
+label = "Viewport bottom"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "ViewportBottom"
+keys = ["L"]
+contexts = ["sidebar", "todo", "now", "messages", "archive"]
+
+[[action]]
+id = "tui.open-saved-search-form-new"
+label = "Open saved search form new"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "OpenSavedSearchFormNew"
+keys = ["n"]
+contexts = ["sidebar"]
+
+[[action]]
+id = "tui.more-from-sender"
+label = "More from sender"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "MoreFromSender"
+keys = ["+"]
+contexts = ["place"]
+
+[[action]]
+id = "tui.more-place-senders"
+label = "More place senders"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "MorePlaceSenders"
+keys = [">"]
+contexts = ["place"]
+
+[[action]]
+id = "tui.close-screener-modal"
+label = "Close screener modal"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "CloseScreenerModal"
+keys = ["Escape"]
+contexts = ["screener"]
+
+[[action]]
+id = "tui.records-open-card"
+label = "Records open card"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "RecordsOpenCard"
+keys = ["ArrowRight"]
+contexts = ["archive"]
+
+[[action]]
+id = "tui.records-next-kind"
+label = "Records next kind"
+group = "TUI"
+clients = ["tui"]
+
+[[action.tui]]
+name = "RecordsNextKind"
+keys = ["g f"]
+contexts = ["archive"]

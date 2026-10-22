@@ -19,6 +19,9 @@ ALLOW = {
     "mxr-export": {"mxr-core", "mxr-reader"},
     "mxr-humanizer": {"mxr-core"},
     "mxr-keychain": set(),
+    # Every shortcut in every client (chapter 35). Plain data, read by the
+    # daemon and the clients, so it may name no other mxr crate.
+    "mxr-keymap": set(),
     "mxr-llm": set(),
     "mxr-mail-parse": {"mxr-core"},
     # Companion executable, not a core crate. The empty set is the boundary:

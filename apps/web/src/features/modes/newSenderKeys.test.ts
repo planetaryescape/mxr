@@ -3,6 +3,7 @@
 import { fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { fromDefinition } from "@/lib/actions/definition";
 import { ActionRegistry } from "@/lib/actions/registry";
 import type { Action, ActionContext } from "@/lib/actions/types";
 import { setController } from "@/lib/keys/controllers";
@@ -37,7 +38,7 @@ beforeEach(() => {
     shortcut: "1",
     run: tab,
   } as Action);
-  registry.defineMany(newSenderActions("now"));
+  registry.defineMany(newSenderActions("now").map(fromDefinition));
   setController("now", { senderChoice1: answer });
   uninstall = installKeyDispatcher(window, { registry, context, mac: false });
 });

@@ -6,7 +6,7 @@ import { BarChart3, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { refreshAnalyticsContacts } from "@/features/analytics/api";
-import type { Action } from "@/lib/actions/types";
+import type { ActionBehavior } from "@/lib/actions/types";
 import { getRuntimeNavigate } from "@/lib/actions/runtime";
 import { useModals } from "@/state/modalStore";
 
@@ -17,14 +17,10 @@ function navigate(to: string): () => void {
   };
 }
 
-export const analyticsActions: Action[] = [
+export const analyticsActions: ActionBehavior[] = [
   {
     id: "analytics.refresh-contacts",
-    label: "Refresh contacts",
-    description: "Rebuild relationship + contact analytics",
-    group: "Analytics",
     icon: RefreshCw,
-    paletteOnly: true,
     run: () => {
       useModals.getState().setCommandPaletteOpen(false);
       refreshAnalyticsContacts()
@@ -34,13 +30,5 @@ export const analyticsActions: Action[] = [
         );
     },
   },
-  {
-    id: "analytics.wrapped",
-    label: "Open Wrapped",
-    description: "View year-in-review summary",
-    group: "Analytics",
-    icon: BarChart3,
-    paletteOnly: true,
-    run: navigate("/analytics/wrapped"),
-  },
+  { id: "analytics.wrapped", icon: BarChart3, run: navigate("/analytics/wrapped") },
 ];

@@ -534,6 +534,15 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::arrivals::run_corrections(action, account, limit, format).await?;
         }
+        Some(Command::Keys {
+            action,
+            client,
+            context,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::keys::run(action, client, context, format).await?;
+        }
         Some(Command::Modes { action, format }) => {
             crate::server::ensure_daemon_running().await?;
             commands::modes::run(action, format).await?;

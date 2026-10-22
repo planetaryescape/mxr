@@ -283,6 +283,9 @@ fn progress_sink(pass: &SyncPass) -> impl Fn(mxr_sync::SyncProgress) + Send + Sy
 /// to completion; the limit only bounds how long the caller waits before
 /// handing finalization to a reaper task.
 pub(crate) async fn run_sync_pass(mut pass: SyncPass, limit: Duration) -> SyncWait {
+    // A pass that cannot get a current address set classifies direction as
+    // Unknown (`ensure_account_addresses_current` logs why), not from a stale set.
+    pass.state.ensure_account_addresses_current().await;
     let task_state = pass.state.clone();
     let task_provider = pass.provider.clone();
     let sink = progress_sink(&pass);

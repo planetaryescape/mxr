@@ -125,3 +125,12 @@ export interface CommandAction extends ActionBase {
 }
 
 export type Action = RunAction | CommandAction;
+
+/**
+ * What a feature module declares: the action's behaviour. Its label, keys,
+ * scopes and the rest come from mxr's key definition
+ * (`crates/keymap/keymap.toml`, merged in by `fromDefinition`).
+ */
+export type ActionBehavior =
+  | Pick<RunAction, "id" | "run" | "command" | "when" | "icon">
+  | Pick<CommandAction, "id" | "run" | "command" | "when" | "icon">;

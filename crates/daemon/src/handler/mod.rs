@@ -51,6 +51,7 @@ mod gist_kind;
 mod gist_numbers;
 mod helpers;
 mod humanizer;
+mod keymap;
 mod llm_routes;
 mod mail_kind;
 mod mailbox;
@@ -1794,6 +1795,7 @@ async fn dispatch(
             )
             .await
         }
+        Request::GetKeymap => keymap::get(),
         Request::GetModeGuide { mode } => mode_guide::get(state, mode.as_deref()).await,
         Request::SetHintSeen { hint, seen } => mode_guide::set_seen(state, hint, *seen).await,
         // Boxed with the other mode requests below: their futures build the
@@ -2504,6 +2506,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetTodo { .. }
         | Request::GetTodoCatchup { .. }
         | Request::GetModeGuide { .. }
+        | Request::GetKeymap
         | Request::ListRecords { .. }
         | Request::ListRecordSubscriptions { .. }
         | Request::GetRecord { .. }
@@ -3096,6 +3099,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::CreateTodo { .. } => "create_todo",
         Request::GetTodoCatchup { .. } => "get_todo_catchup",
         Request::SetTodoCatchup { .. } => "set_todo_catchup",
+        Request::GetKeymap => "get_keymap",
         Request::GetModeGuide { .. } => "get_mode_guide",
         Request::SetHintSeen { .. } => "set_hint_seen",
         Request::ListRecords { .. } => "list_records",

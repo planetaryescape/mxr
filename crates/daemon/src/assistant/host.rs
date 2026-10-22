@@ -6,7 +6,6 @@
 use crate::state::AppState;
 use async_trait::async_trait;
 use mxr_assistant::{ToolHost, ToolOutput};
-use mxr_llm::trace::{Kind, Observation};
 use mxr_llm::ToolSpec;
 use mxr_mcp::{DaemonRequester, InProcessTools};
 use mxr_protocol::{ArchiveWorkspaceData, ClientKind, IpcMessage, IpcPayload, Request, Response};
@@ -45,13 +44,7 @@ impl ToolHost for McpHost {
     }
 
     async fn call(&self, name: &str, arguments: serde_json::Value) -> ToolOutput {
-        let span = Observation::start(name.to_string(), Kind::Tool);
-        span.input(|| arguments.clone());
-        let outcome = span.instrument(self.tools.call(name, arguments)).await;
-        span.output(|| mxr_llm::trace::text_or_json(&outcome.content));
-        if outcome.is_error {
-            span.fail(&outcome.content);
-        }
+        let outcome = self.tools.call(name, arguments).await;
         ToolOutput {
             content: outcome.content,
             is_error: outcome.is_error,

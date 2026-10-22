@@ -838,3 +838,56 @@ async fn a_conversation_survives_switching_models_and_each_reply_keeps_its_own_m
         ]
     );
 }
+
+/// A traced tool call names the model's call id, so Langfuse can pair the
+/// result with its request. The call id is unique to this test because
+/// the tracer provider is global to the test binary.
+#[cfg(feature = "langfuse")]
+#[tokio::test]
+async fn a_tool_span_names_the_call_it_answers() {
+    use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
+
+    let exporter = InMemorySpanExporter::default();
+    opentelemetry::global::set_tracer_provider(
+        SdkTracerProvider::builder()
+            .with_simple_exporter(exporter.clone())
+            .build(),
+    );
+    let model = ScriptedModel::new(vec![
+        calls(&[(
+            "traced-call",
+            "mxr_search",
+            json!({"query": "bank", "reason": "Find bank mail."}),
+        )]),
+        answer("You have one."),
+    ]);
+    let host = RecordingHost::new();
+    let sink = MemorySink::default();
+    agent(&model, &host, &sink)
+        .send(&mut Vec::new(), &[], "any bank mail?".into())
+        .await;
+
+    let attribute = |span: &opentelemetry_sdk::trace::SpanData, key: &str| {
+        span.attributes
+            .iter()
+            .find(|attribute| attribute.key.as_str() == key)
+            .map(|attribute| attribute.value.as_str().into_owned())
+    };
+    let spans = exporter.get_finished_spans().unwrap();
+    let tool = spans
+        .iter()
+        .find(|span| {
+            attribute(span, "langfuse.observation.metadata.tool_call_id").as_deref()
+                == Some("traced-call")
+        })
+        .expect("the tool call is traced with its call id");
+    assert_eq!(tool.name, "mxr_search");
+    assert_eq!(
+        attribute(tool, "langfuse.observation.type").as_deref(),
+        Some("tool")
+    );
+    assert_eq!(
+        attribute(tool, "langfuse.observation.input").as_deref(),
+        Some(r#"{"query":"bank"}"#)
+    );
+}

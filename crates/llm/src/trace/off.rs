@@ -1,7 +1,6 @@
 //! The `trace` calls without the `langfuse` feature: same signatures, no
 //! work. Closures passed in are never called, so nothing is serialized.
 
-use crate::failure::AttemptError;
 use crate::{
     ChatMessage, CompletionResponse, LlmError, LlmFeature, ToolChatMessage, ToolChatResponse,
 };
@@ -88,11 +87,4 @@ pub(crate) fn generation(
     _parameters: impl FnOnce() -> Value,
 ) -> Observation {
     Observation
-}
-
-#[inline]
-pub(crate) fn finish_chat_attempt(
-    _span: &Observation,
-    _result: &Result<ToolChatResponse, AttemptError>,
-) {
 }

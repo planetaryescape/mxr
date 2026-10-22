@@ -13,6 +13,7 @@ use crate::compact::{self, Summary};
 use crate::gate::{self, Gate};
 use crate::prompt;
 use async_trait::async_trait;
+use mxr_llm::trace::{self, Kind, Observation};
 use mxr_llm::{
     LlmError, TokenUsage, ToolCall, ToolChatMessage, ToolChatRequest, ToolChatResponse, ToolSpec,
 };
@@ -268,7 +269,9 @@ impl Agent<'_> {
                         arguments: arguments.clone(),
                     })
                     .await;
-                let output = self.host.call(tool, arguments.clone()).await;
+                let output = self
+                    .call_tool(Some(&call_id), tool, arguments.clone())
+                    .await;
                 // Same rule as a call that ran without asking: mxr's own
                 // refusal is a failure, not something that was done.
                 let is_error = output.is_error || crate::outcome::refused(&output.content);
@@ -499,7 +502,7 @@ impl Agent<'_> {
                         arguments: arguments.clone(),
                     })
                     .await;
-                let output = self.host.call(&call.name, arguments).await;
+                let output = self.call_tool(Some(&call.id), &call.name, arguments).await;
                 let is_error = output.is_error || crate::outcome::refused(&output.content);
                 done(prompt::tool_result(&output.content), is_error)
             }
@@ -513,7 +516,7 @@ impl Agent<'_> {
                         arguments: arguments.clone(),
                     })
                     .await;
-                let output = self.host.call(&call.name, arguments).await;
+                let output = self.call_tool(Some(&call.id), &call.name, arguments).await;
                 done(
                     format!(
                         "{}{}",
@@ -526,7 +529,7 @@ impl Agent<'_> {
             Gate::Approve { preview } => {
                 let (preview, preview_error) = match preview {
                     Some((tool, preview_arguments)) => {
-                        let output = self.host.call(&tool, preview_arguments).await;
+                        let output = self.call_tool(None, &tool, preview_arguments).await;
                         if output.is_error {
                             (None, Some(output.content))
                         } else {
@@ -565,8 +568,8 @@ impl Agent<'_> {
             return preview;
         }
         let lookup = self
-            .host
-            .call(
+            .call_tool(
+                None,
                 LIST_BY_IDS,
                 json!({"action": "archive", "message_ids": ids}),
             )
@@ -578,6 +581,23 @@ impl Agent<'_> {
             Ok(found) => json!({ "messages": found["preview"], "detail": preview }),
             Err(_) => preview,
         }
+    }
+
+    /// Run one tool inside a `tool` observation. `call_id` is the model's
+    /// id for the call, so a trace can pair the result with its request;
+    /// previews and lookups mxr runs on its own have none.
+    async fn call_tool(&self, call_id: Option<&str>, name: &str, arguments: Value) -> ToolOutput {
+        let span = Observation::start(name.to_string(), Kind::Tool);
+        if let Some(call_id) = call_id {
+            span.metadata("tool_call_id", call_id);
+        }
+        span.input(|| arguments.clone());
+        let output = span.instrument(self.host.call(name, arguments)).await;
+        span.output(|| trace::text_or_json(&output.content));
+        if output.is_error {
+            span.fail(&output.content);
+        }
+        output
     }
 
     fn tool_list(&self) -> Vec<ToolSpec> {

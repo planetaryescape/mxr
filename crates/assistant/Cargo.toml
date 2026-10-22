@@ -20,5 +20,11 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 
+[features]
+# Runs the tool-span test; tracing itself comes from `mxr-llm/langfuse`.
+langfuse = ["mxr-llm/langfuse"]
+
 [dev-dependencies]
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

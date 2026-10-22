@@ -9,7 +9,7 @@
  */
 
 import { Paperclip } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 
 import { Avatar } from "@/components/Avatar";
 import { MODE_GLYPHS } from "@/components/ModeMark";
@@ -26,6 +26,81 @@ import type { ThreadModes } from "@/features/modes/membership";
 const OPEN_DELAY_MS = 400;
 const CLOSE_DELAY_MS = 200;
 
+/**
+ * The one timer that opens a card. A hover or a keyboard focus starts it
+ * (restarting any pending one); it opens only if the link is still hovered or
+ * focused and not suppressed. Touch never starts it.
+ *
+ * Activating the link (pointerdown, Enter, Space, click) clears the timer,
+ * closes the card and suppresses opening until a new session: one that starts
+ * after the pointer has left AND the link has blurred. "Ended" is derived from
+ * the hovered and focused flags, which leave and blur always update, so
+ * nothing waits on a pointerup or click that may never arrive (a press that is
+ * released outside, or cancelled, still ends when the pointer leaves and the
+ * link blurs). The focus a press causes comes after its pointerdown and before
+ * any leave, so it never counts as a new session.
+ */
+function useOpenSession(setOpen: (open: boolean) => void) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hovered = useRef(false);
+  const focused = useRef(false);
+  const suppressed = useRef(false);
+  const ended = useRef(false);
+  const stop = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  useEffect(() => stop, []);
+
+  const begin = () => {
+    if (suppressed.current && ended.current) {
+      suppressed.current = false;
+      ended.current = false;
+    }
+    if (suppressed.current) return;
+    stop();
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      if (!suppressed.current && (hovered.current || focused.current)) setOpen(true);
+    }, OPEN_DELAY_MS);
+  };
+  const leave = () => {
+    if (hovered.current || focused.current) return;
+    stop();
+    if (suppressed.current) ended.current = true;
+  };
+  const activate = () => {
+    stop();
+    setOpen(false);
+    suppressed.current = true;
+    ended.current = false;
+  };
+  return {
+    onPointerEnter: (event: PointerEvent) => {
+      if (event.pointerType === "touch") return;
+      hovered.current = true;
+      begin();
+    },
+    onPointerLeave: () => {
+      hovered.current = false;
+      leave();
+    },
+    onFocus: () => {
+      focused.current = true;
+      begin();
+    },
+    onBlur: () => {
+      focused.current = false;
+      leave();
+    },
+    onPointerDown: activate,
+    onClick: activate,
+    onKeyDown: (event: { key: string }) => {
+      if (event.key === "Enter" || event.key === " ") activate();
+    },
+  };
+}
+
 export function LinkHoverCard({
   link,
   title,
@@ -41,57 +116,22 @@ export function LinkHoverCard({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  // Radix starts one open timer for the hover and another for focus, and a
-  // leave or blur cancels only the latest. So a click during the delay would
-  // navigate and then, through the other timer, open the card. Activating the
-  // link therefore shuts the card until a new hover or focus session starts,
-  // and a timer may only open it while the link is still hovered or focused.
-  const activated = useRef(false);
-  const hovered = useRef(false);
-  const focused = useRef(false);
-  // A press focuses the link between pointerdown and click; that focus is
-  // part of the activation, not a new session.
-  const pressing = useRef(false);
   const { thread, person } = useLinkPreview(link, open);
+  const session = useOpenSession(setOpen);
   return (
     <HoverCard
       open={open}
+      // Controlled, and only ever told to close: Radix runs a separate open
+      // timer for hover and for focus and can't cancel both, so opening is
+      // decided here (useOpenSession). Its close handling (leave grace, Esc,
+      // outside press) is kept.
       onOpenChange={(next) => {
-        if (next && (activated.current || !(hovered.current || focused.current))) return;
-        setOpen(next);
+        if (!next) setOpen(false);
       }}
       openDelay={OPEN_DELAY_MS}
       closeDelay={CLOSE_DELAY_MS}
     >
-      <HoverCardTrigger
-        asChild
-        onPointerEnter={() => {
-          hovered.current = true;
-          activated.current = false;
-        }}
-        onPointerLeave={() => {
-          hovered.current = false;
-        }}
-        onFocus={() => {
-          focused.current = true;
-          if (!pressing.current) activated.current = false;
-        }}
-        onBlur={() => {
-          focused.current = false;
-        }}
-        onPointerDown={() => {
-          pressing.current = true;
-          activated.current = true;
-        }}
-        onPointerUp={() => {
-          pressing.current = false;
-        }}
-        onClick={() => {
-          pressing.current = false;
-          activated.current = true;
-          setOpen(false);
-        }}
-      >
+      <HoverCardTrigger asChild {...session}>
         {children}
       </HoverCardTrigger>
       <HoverCardContent

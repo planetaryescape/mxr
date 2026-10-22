@@ -255,10 +255,10 @@ describe("the hover card on an email or person chip", () => {
     fireEvent.click(chip);
   }
 
+  /** Time passes and no card appears and nothing is fetched. */
   const never = async () => {
     await wait(1500);
-    expect(screen.queryByTestId("link-hover-card")).toBeNull();
-    expect(fetched("/threads/previews")).toHaveLength(0);
+    return [screen.queryByTestId("link-hover-card"), fetched("/threads/previews")] as const;
   };
 
   test("a click during the open delay, then leaving, never opens the card", async () => {
@@ -270,7 +270,9 @@ describe("the hover card on an email or person chip", () => {
     expect(navigate).toHaveBeenCalledWith({ href: "/m/archive/t-1234567" });
     await wait(20);
     fireEvent.pointerOut(chip);
-    await never();
+    const [card, calls] = await never();
+    expect(card).toBeNull();
+    expect(calls).toHaveLength(0);
 
     // Coming back is a fresh hover.
     act(() => chip.blur());
@@ -287,10 +289,71 @@ describe("the hover card on an email or person chip", () => {
     clickWithFocus(chip);
     await wait(20);
     act(() => chip.blur());
-    await never();
+    const [card, calls] = await never();
+    expect(card).toBeNull();
+    expect(calls).toHaveLength(0);
 
+    // The pointer leaves and comes back: a fresh session.
+    fireEvent.pointerOut(chip);
     pointerEnter(chip, "mouse");
     await wait(450);
+    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+  });
+
+  test("a brief re-hover after a click does not let the first timer through", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointerEnter(chip, "mouse");
+    await wait(200);
+    clickWithFocus(chip);
+    await wait(20);
+    fireEvent.pointerOut(chip);
+    await wait(10);
+    pointerEnter(chip, "mouse");
+    await wait(20);
+    fireEvent.pointerOut(chip); // focus stays on the link
+    const [card, calls] = await never();
+    expect(card).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  test("pressing, leaving, releasing outside and tabbing away and back still opens on focus", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointerEnter(chip, "mouse");
+    fireEvent.pointerDown(chip);
+    act(() => chip.focus());
+    fireEvent.pointerOut(chip); // released elsewhere: no pointerup or click here
+    await wait(1000);
+    expect(screen.queryByTestId("link-hover-card")).toBeNull();
+
+    act(() => chip.blur());
+    act(() => chip.focus());
+    await wait(450);
+    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+  });
+
+  test("Enter on a focused link does not open the card after it", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    act(() => chip.focus());
+    await wait(100);
+    fireEvent.keyDown(chip, { key: "Enter" });
+    fireEvent.click(chip);
+    const [card, calls] = await never();
+    expect(card).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  test("an ordinary hover opens it, and one timer serves hover plus focus", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointerEnter(chip, "mouse");
+    await wait(300);
+    act(() => chip.focus());
+    await wait(150);
+    expect(screen.queryByTestId("link-hover-card")).toBeNull();
+    await wait(300);
     expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
   });
 

@@ -119,13 +119,33 @@ jobs:
       matrix: ${{ fromJson(needs.plan.outputs.build_matrix) }}
     steps:
       - uses: actions/checkout@v7
+      # The macOS build runs on a self-hosted runner as the developer, on their
+      # Mac. Left on their ~/.cargo, ~/.rustup and sccache server, each release
+      # rewrote their toolchain and its cleanup deleted their rustup and unpacked
+      # crates mid-build. The job gets a Rust home and sccache server of its own,
+      # kept between runs.
+      - name: Use the runner's own Rust home and sccache (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          home="${RUNNER_TOOL_CACHE}/mxr-rust"
+          export CARGO_HOME="$home/cargo" RUSTUP_HOME="$home/rustup"
+          if [ ! -x "$CARGO_HOME/bin/rustup" ]; then
+            curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused --location --silent --show-error --fail https://sh.rustup.rs \
+              | sh -s -- -y --no-modify-path --default-toolchain none
+          fi
+          {
+            echo "CARGO_HOME=$CARGO_HOME"
+            echo "RUSTUP_HOME=$RUSTUP_HOME"
+            # The developer's own sccache server listens on the default 4226.
+            echo "SCCACHE_SERVER_PORT=4227"
+          } >> "$GITHUB_ENV"
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      # No rust-cache: a release runs on a new tag, and caches are scoped to the
+      # ref, so it never restored one (v0.6.114 to v0.6.142, both platforms).
       - uses: mozilla-actions/sccache-action@v0.0.11
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24

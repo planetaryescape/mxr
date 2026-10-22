@@ -100,6 +100,27 @@ impl InputHandler {
         }
     }
 
+    /// Wait for the second key of a sequence the key definition knows
+    /// (`g`, `*`, `i`), as the built-in chords do.
+    pub(crate) fn wait_for_second(&mut self, first: char) {
+        self.used_this_turn = true;
+        self.configured = None;
+        self.state = KeyState::WaitingForSecond {
+            first,
+            deadline: Instant::now() + MULTI_KEY_TIMEOUT,
+        };
+    }
+
+    /// The first key of a sequence still waiting for its second, taking it.
+    pub(crate) fn take_waiting_first(&mut self) -> Option<char> {
+        self.check_timeout();
+        self.used_this_turn = true;
+        match std::mem::replace(&mut self.state, KeyState::Normal) {
+            KeyState::WaitingForSecond { first, .. } => Some(first),
+            KeyState::Normal => None,
+        }
+    }
+
     /// Drop a waiting chord prefix: a lens took its second key.
     pub fn reset(&mut self) {
         self.state = KeyState::Normal;

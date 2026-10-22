@@ -248,6 +248,7 @@ impl App {
                 sync_status: self.last_sync_status.clone(),
                 viewing_invite,
                 pending_prefix: self.pending_input_prefix(),
+                mode_strip: self.mode_strip_hints(),
                 _marker: std::marker::PhantomData,
             },
             theme,

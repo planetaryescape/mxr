@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ModeFrame } from "@/components/ModeFrame";
 import { Button } from "@/components/ui/button";
+import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
@@ -36,14 +37,6 @@ function useScrollIntoView(index: number) {
   }, [index]);
   return ref;
 }
-
-const CATCHUP_KEYS = [
-  "todo.catchup-keep",
-  "todo.catchup-let-go",
-  "todo.catchup-let-go-all",
-  "todo.catchup-back",
-];
-const EXPIRED_KEYS = ["todo.restore", "todo.expired-back"];
 
 function BackLink() {
   return (
@@ -118,7 +111,7 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
   const listRef = useScrollIntoView(index);
 
   useShortcutScope("catchup");
-  usePageKeys(CATCHUP_KEYS);
+  usePageKeys(stripKeys("catchup"));
   useScopeController("catchup", {
     down: () => move(1),
     up: () => move(-1),
@@ -233,7 +226,7 @@ export function TodoExpiredView() {
   const listRef = useScrollIntoView(index);
 
   useShortcutScope("expired");
-  usePageKeys(EXPIRED_KEYS);
+  usePageKeys(stripKeys("expired"));
   useScopeController("expired", {
     down: () => move(1),
     up: () => move(-1),

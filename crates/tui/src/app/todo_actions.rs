@@ -4,6 +4,7 @@
 //! requests and keeps the lens honest until the daemon answers.
 
 use super::input::plain_or_shift;
+use super::key_dispatch::DefinedKey;
 use super::*;
 use crate::app::state::{TodoListFetch, TodoPanel, TodoPromptKind, TodoPromptState};
 use mxr_protocol::{
@@ -693,69 +694,29 @@ impl App {
                 _ => None,
             };
         }
-        let panel = page.panel;
-        let hint = self.active_hint().is_some();
-        let plain = key.modifiers == KeyModifiers::NONE;
-        let shifted = plain_or_shift(key.modifiers);
-        let action = match (panel, key.code) {
-            (_, KeyCode::Char('/')) if plain => Some(Action::OpenGlobalSearch),
-            (_, KeyCode::Char('h') | KeyCode::Left) if plain => {
-                self.mailbox.active_pane = ActivePane::Sidebar;
-                return None;
-            }
-            (_, KeyCode::Esc) if hint => Some(Action::DismissHint),
-            (TodoPanel::Expired | TodoPanel::Catchup, KeyCode::Esc) => Some(Action::TodoShowRunway),
-            (_, KeyCode::Char('o')) if plain => Some(Action::TodoOpenEmail),
-            (TodoPanel::Runway, KeyCode::Enter) => Some(Action::TodoPrimary),
-            (TodoPanel::Runway, KeyCode::Char('v')) if plain => Some(Action::TodoReviewResolution),
-            (TodoPanel::Runway, KeyCode::Char('e')) if plain => Some(Action::TodoDone),
-            (TodoPanel::Runway, KeyCode::Char('Z')) if shifted => Some(Action::TodoSchedule),
-            (TodoPanel::Runway, KeyCode::Char(',')) => Some(Action::TodoEdit),
-            (TodoPanel::Runway, KeyCode::Char('X')) if shifted => Some(Action::TodoDismiss),
-            (TodoPanel::Runway | TodoPanel::Catchup, KeyCode::Char('u')) if plain => {
-                let has_transient_undo =
-                    self.pending_undo.is_some() || self.pending_invite_send.is_some();
-                if !has_transient_undo
+        let context = match page.panel {
+            TodoPanel::Runway => "todo",
+            TodoPanel::Catchup => "catchup",
+            TodoPanel::Expired => "expired",
+        };
+        if key.code == KeyCode::Esc && self.active_hint().is_some() {
+            return Some(Action::DismissHint);
+        }
+        match self.defined_key(context, key) {
+            // `u` undoes an accepted resolution before the last mutation,
+            // unless a just-made change is still waiting to be undone.
+            DefinedKey::Action(Action::UndoLastMutation)
+                if self.pending_undo.is_none()
+                    && self.pending_invite_send.is_none()
                     && self
                         .selected_todo()
                         .and_then(|todo| todo.resolution.as_ref())
-                        .is_some_and(|r| r.status == "accepted")
-                {
-                    Some(Action::TodoUndoResolution)
-                } else {
-                    Some(Action::UndoLastMutation)
-                }
+                        .is_some_and(|r| r.status == "accepted") =>
+            {
+                Some(Action::TodoUndoResolution)
             }
-            (TodoPanel::Runway, KeyCode::Char('E')) if shifted => Some(Action::TodoOpenExpired),
-            (TodoPanel::Runway, KeyCode::Char('C')) if shifted => Some(Action::TodoOpenCatchup),
-            (TodoPanel::Expired, KeyCode::Enter) => Some(Action::TodoRestore),
-            (TodoPanel::Expired, KeyCode::Char('u')) if plain => Some(Action::TodoRestore),
-            (TodoPanel::Catchup, KeyCode::Enter) => Some(Action::CatchupKeep),
-            (TodoPanel::Catchup, KeyCode::Char('e')) if plain => Some(Action::CatchupLetGo),
-            (TodoPanel::Catchup, KeyCode::Char('A')) if shifted => Some(Action::CatchupLetGoAll),
-            _ => None,
-        };
-        if action.is_some() {
-            return action;
+            defined => self.run_defined_key(defined),
         }
-        self.contextual_input_action(key).filter(|action| {
-            !matches!(
-                action,
-                Action::OpenSelected
-                    | Action::ToggleSelect
-                    | Action::VisualLineMode
-                    | Action::AttachmentList
-                    | Action::ExportThread
-                    | Action::ToggleFullscreen
-                    | Action::FlagReplyLater
-                    | Action::NextSearchResult
-                    | Action::PrevSearchResult
-                    | Action::SwitchPane
-                    | Action::Back
-                    | Action::RespondInvite(_)
-                    | Action::RespondInviteWithComment(_)
-            )
-        })
     }
 
     fn microsoft_todo_request(&mut self, sync: bool) {

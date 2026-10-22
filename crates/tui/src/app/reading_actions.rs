@@ -716,60 +716,15 @@ impl App {
                 _ => {}
             }
         }
-        let action = match key.code {
-            KeyCode::Char('/') if plain => Some(Action::OpenGlobalSearch),
-            KeyCode::Char('h') | KeyCode::Left if plain => {
-                self.mailbox.active_pane = ActivePane::Sidebar;
-                return None;
+        if key.code == KeyCode::Esc {
+            if self.active_hint().is_some() {
+                return Some(Action::DismissHint);
             }
-            KeyCode::Esc if self.active_hint().is_some() => Some(Action::DismissHint),
-            KeyCode::Esc if page.later_shelf => Some(Action::ReadingLaterShelf),
-            KeyCode::Char('B') if shifted => Some(Action::ReadingLaterShelf),
-            KeyCode::Char('K') if shifted => Some(Action::OpenSenderKindMenu),
-            KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
-            KeyCode::Enter => Some(Action::ReadingRead),
-            KeyCode::Char('L') if shifted => Some(Action::ReadingArticle),
-            KeyCode::Char('b') if plain => Some(Action::ReadingLater),
-            KeyCode::Char('e') if plain => Some(Action::ReadingLetGo),
-            KeyCode::Char('A') if shifted => Some(Action::ReadingLetGoAll),
-            KeyCode::Char('D') if shifted => Some(Action::ReadingUnsubscribe),
-            KeyCode::Char('R') if shifted => Some(Action::ReadingOriginal),
-            KeyCode::Char('M') if shifted => Some(Action::ReadingMarginalia),
-            KeyCode::Char('o') if plain => Some(Action::ReadingOpenEmail),
-            KeyCode::Char('t') if plain => Some(Action::CreateTodoFromMessage),
-            KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),
-            _ => None,
-        };
-        if action.is_some() {
-            return action;
+            if page.later_shelf {
+                return Some(Action::ReadingLaterShelf);
+            }
         }
-        self.contextual_input_action(key).filter(|action| {
-            !matches!(
-                action,
-                Action::OpenSelected
-                    | Action::ToggleSelect
-                    | Action::VisualLineMode
-                    | Action::AttachmentList
-                    | Action::ExportThread
-                    | Action::ToggleFullscreen
-                    | Action::FlagReplyLater
-                    | Action::NextSearchResult
-                    | Action::PrevSearchResult
-                    | Action::SwitchPane
-                    | Action::Back
-                    | Action::Archive
-                    | Action::MarkReadAndArchive
-                    | Action::Trash
-                    | Action::Spam
-                    | Action::Star
-                    | Action::MarkRead
-                    | Action::MarkUnread
-                    | Action::Reply
-                    | Action::ReplyAll
-                    | Action::Forward
-                    | Action::RespondInvite(_)
-                    | Action::RespondInviteWithComment(_)
-            )
-        })
+        let defined = self.defined_key("reading", key);
+        self.run_defined_key(defined)
     }
 }

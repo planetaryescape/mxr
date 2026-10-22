@@ -160,3 +160,19 @@ fn a_tui_only_action_needs_a_tui_binding_and_no_web_keys() {
         ]
     );
 }
+
+#[test]
+fn the_tui_lookup_finds_keys_and_sequences_in_their_context() {
+    let keymap = defaults();
+    let (action, binding) = keymap
+        .tui_binding("todo", "e")
+        .expect("e is bound in To do");
+    assert_eq!(
+        (action.id.as_str(), binding.name.as_str()),
+        ("todo.done", "TodoDone")
+    );
+    assert!(keymap.tui_binding("todo", "g x").is_some());
+    assert!(keymap.tui_starts_sequence("todo", "g"));
+    assert!(!keymap.tui_starts_sequence("todo", "e"));
+    assert!(keymap.tui_binding("screener", "e").is_none());
+}

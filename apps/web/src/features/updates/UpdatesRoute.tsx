@@ -25,6 +25,7 @@ import { plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useLitReason } from "@/state/litReasonStore";
+import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -66,15 +67,6 @@ import {
 
 /** The line under the cursor and the open peek, kept while an email opens. */
 const UPDATES_LIST_SEARCH = ["row", "peek"] as const;
-
-/** The action ids the status strip names for a lit line, in the order they drop from the end. */
-const UPDATES_KEYS = [
-  "updates.peek",
-  "updates.let-go-source",
-  "updates.needs-me",
-  "updates.open-email",
-  "updates.let-go-all",
-];
 
 /**
  * Updates: notifications as a briefing by source, gathered at fixed cuts
@@ -318,9 +310,7 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   // While the open email has focus these keys aren't live, so the strip doesn't offer them.
   usePageKeys(
     current && (!params.threadId || activePane !== "reader")
-      ? current.code || latestCode
-        ? ["updates.copy-code", ...UPDATES_KEYS]
-        : UPDATES_KEYS
+      ? stripKeys("updates", current.code || latestCode ? [] : ["updates.copy-code"])
       : [],
   );
   useShortcutScope("updates", !params.threadId || activePane !== "reader");

@@ -3,7 +3,7 @@
 //! here, pin, a new topic, and the email as sent. The daemon owns every
 //! band, order and word; this file only sends requests and moves focus.
 
-use super::input::plain_or_shift;
+use super::key_dispatch::DefinedKey;
 use super::*;
 use crate::app::list_advance::next_after_removal;
 use crate::app::state::{
@@ -615,7 +615,6 @@ impl App {
     /// Key handling for the Messages lens.
     pub(super) fn messages_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let plain = key.modifiers == KeyModifiers::NONE;
-        let shifted = plain_or_shift(key.modifiers);
         let page = &self.mailbox.messages_page;
         if page.ack.is_some() || page.ack_requested.is_some() {
             match key.code {
@@ -624,69 +623,21 @@ impl App {
                 _ => {}
             }
         }
-        let action = match key.code {
-            KeyCode::Char('/') if plain => Some(Action::OpenGlobalSearch),
-            KeyCode::Char('h') | KeyCode::Left if plain => {
+        if key.code == KeyCode::Esc && self.active_hint().is_some() {
+            return Some(Action::DismissHint);
+        }
+        match self.defined_key("messages", key) {
+            // `h` steps back from a person's page to the list first.
+            DefinedKey::Inline("inline:focus_sidebar") => {
                 if self.mailbox.messages_page.focus == MessagesFocus::Person {
                     self.mailbox.messages_page.focus = MessagesFocus::List;
                 } else {
                     self.mailbox.active_pane = ActivePane::Sidebar;
                     self.guard_messages_ack();
                 }
-                return None;
+                None
             }
-            KeyCode::Esc if self.active_hint().is_some() => Some(Action::DismissHint),
-            KeyCode::Esc => Some(Action::MessagesBack),
-            KeyCode::Enter => Some(Action::MessagesOpen),
-            KeyCode::Char('.') if plain => Some(Action::MessagesAck),
-            KeyCode::Char('e') if plain => Some(Action::MessagesDone),
-            KeyCode::Char('s') if plain => Some(Action::MessagesPin),
-            KeyCode::Char('c') if plain => Some(Action::MessagesNewTopic),
-            KeyCode::Char('[') if plain => Some(Action::MessagesPrevTopic),
-            KeyCode::Char(']') if plain => Some(Action::MessagesNextTopic),
-            KeyCode::Char('p') if plain => Some(Action::MessagesPersonPage),
-            KeyCode::Char('o' | 'v') if plain => Some(Action::MessagesAsSent),
-            KeyCode::Char('r') if plain => Some(Action::Reply),
-            KeyCode::Char('a') if plain => Some(Action::ReplyAll),
-            KeyCode::Char('t') if plain => Some(Action::CreateTodoFromMessage),
-            KeyCode::Char('b') if plain => Some(Action::FlagReplyLater),
-            KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),
-            KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
-            KeyCode::Char('K') if shifted => Some(Action::OpenSenderMoveMenu),
-            KeyCode::Char('A') if shifted => None,
-            _ => None,
-        };
-        if action.is_some() {
-            return action;
+            defined => self.run_defined_key(defined),
         }
-        self.contextual_input_action(key).filter(|action| {
-            !matches!(
-                action,
-                Action::OpenSelected
-                    | Action::ToggleSelect
-                    | Action::VisualLineMode
-                    | Action::AttachmentList
-                    | Action::ExportThread
-                    | Action::ToggleFullscreen
-                    | Action::NextSearchResult
-                    | Action::PrevSearchResult
-                    | Action::SwitchPane
-                    | Action::Back
-                    | Action::Archive
-                    | Action::MarkReadAndArchive
-                    | Action::Trash
-                    | Action::Spam
-                    | Action::Star
-                    | Action::MarkRead
-                    | Action::MarkUnread
-                    | Action::Snooze
-                    | Action::ApplyLabel
-                    | Action::MoveToLabel
-                    | Action::RouteToLabel
-                    | Action::Forward
-                    | Action::RespondInvite(_)
-                    | Action::RespondInviteWithComment(_)
-            )
-        })
     }
 }

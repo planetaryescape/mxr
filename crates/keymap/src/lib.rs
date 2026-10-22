@@ -17,9 +17,9 @@ pub const DEFAULT_KEYMAP: &str = include_str!("../keymap.toml");
 
 /// The mail contexts the TUI's keymap probe covers. A TUI binding with
 /// `contexts = "all"` is live in every one of them.
-pub const TUI_CONTEXTS: [&str; 11] = [
-    "list", "reader", "sidebar", "place", "screener", "todo", "now", "messages", "archive",
-    "reading", "updates",
+pub const TUI_CONTEXTS: [&str; 13] = [
+    "list", "reader", "sidebar", "place", "screener", "todo", "catchup", "expired", "now",
+    "messages", "archive", "reading", "updates",
 ];
 
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).
@@ -55,6 +55,17 @@ pub fn defaults() -> &'static Keymap {
 pub struct Keymap {
     #[serde(rename = "action")]
     pub actions: Vec<KeyAction>,
+    /// The verbs the status bar offers for each state (D130).
+    #[serde(rename = "strip", default, skip_serializing_if = "Vec::is_empty")]
+    pub strips: Vec<Strip>,
+}
+
+/// The status bar's verbs for one state, in order. A client drops a member
+/// that doesn't apply to the lit item, and one it has no key for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Strip {
+    pub id: String,
+    pub actions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -202,6 +213,36 @@ impl Keymap {
         toml::from_str(text)
     }
 
+    /// The TUI binding a key or sequence (`e`, `g i`) triggers in `context`.
+    pub fn tui_binding(&self, context: &str, keys: &str) -> Option<(&KeyAction, &TuiBinding)> {
+        self.actions.iter().find_map(|action| {
+            action
+                .tui
+                .iter()
+                .find(|binding| {
+                    binding.contexts.includes(context) && binding.keys.iter().any(|k| k == keys)
+                })
+                .map(|binding| (action, binding))
+        })
+    }
+
+    /// True when `prefix` starts a longer TUI sequence in `context`, so the
+    /// TUI waits for the next key.
+    pub fn tui_starts_sequence(&self, context: &str, prefix: &str) -> bool {
+        let start = format!("{prefix} ");
+        self.actions
+            .iter()
+            .flat_map(|action| &action.tui)
+            .any(|binding| {
+                binding.contexts.includes(context)
+                    && binding.keys.iter().any(|k| k.starts_with(&start))
+            })
+    }
+
+    pub fn strip(&self, id: &str) -> Option<&Strip> {
+        self.strips.iter().find(|strip| strip.id == id)
+    }
+
     pub fn get(&self, id: &str) -> Option<&KeyAction> {
         self.actions.iter().find(|action| action.id == id)
     }
@@ -297,6 +338,17 @@ impl Keymap {
                             problems.push(format!("{id}: unknown TUI context `{context}`"));
                         }
                     }
+                }
+            }
+        }
+        let mut strip_ids = BTreeSet::new();
+        for strip in &self.strips {
+            if !strip_ids.insert(strip.id.as_str()) {
+                problems.push(format!("strip {}: defined twice", strip.id));
+            }
+            for id in &strip.actions {
+                if !ids.contains(id.as_str()) {
+                    problems.push(format!("strip {}: no action `{id}`", strip.id));
                 }
             }
         }

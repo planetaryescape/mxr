@@ -4,7 +4,6 @@
 //! on a conversation to file it. The daemon owns every rule, total and
 //! message; this module turns keys into requests.
 
-use super::input::plain_or_shift;
 use super::*;
 use crate::app::state::{PassMenu, RecordFixPrompt, RECORD_KIND_CHIPS};
 use mxr_protocol::{RecordData, RecordEditData, RecordUndoData};
@@ -798,55 +797,15 @@ impl App {
             };
         }
         let plain = key.modifiers == KeyModifiers::NONE;
-        let shifted = plain_or_shift(key.modifiers);
-        let action = match key.code {
-            KeyCode::Char('/') if plain => Some(Action::RecordsAsk),
-            KeyCode::Char('a') if plain && self.mailbox.records_page.answer.is_some() => {
-                self.show_all_matches();
-                return None;
-            }
-            KeyCode::Char('h') | KeyCode::Left if plain => {
-                self.mailbox.active_pane = ActivePane::Sidebar;
-                return None;
-            }
-            KeyCode::Esc if self.active_hint().is_some() => Some(Action::DismissHint),
-            KeyCode::Esc => Some(Action::RecordsBack),
-            KeyCode::Enter => Some(Action::RecordsOpenDocument),
-            KeyCode::Right if plain => Some(Action::RecordsOpenCard),
-            KeyCode::Char('y') if plain => Some(Action::RecordsCopyReference),
-            KeyCode::Char('Y') if shifted => Some(Action::RecordsCopyAmount),
-            KeyCode::Char('o' | 'e') if plain => Some(Action::RecordsOpenEmail),
-            KeyCode::Char('p') if plain => Some(Action::RecordsIssuerPage),
-            KeyCode::Char('[') => Some(Action::RecordsPrevYear),
-            KeyCode::Char(']') => Some(Action::RecordsNextYear),
-            KeyCode::Char(',') => Some(Action::RecordsFix),
-            KeyCode::Char('v') if plain => Some(Action::RecordsMarkChecked),
-            KeyCode::Char('X') if shifted => Some(Action::RecordsDismiss),
-            KeyCode::Char('E') if shifted => Some(Action::RecordsExport),
-            KeyCode::Char('t') if plain => Some(Action::RecordsMakeTodo),
-            KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),
-            _ => None,
-        };
-        if action.is_some() {
-            return action;
+        // With an answer showing, `a` lists every record it matched.
+        if key.code == KeyCode::Char('a') && plain && self.mailbox.records_page.answer.is_some() {
+            self.show_all_matches();
+            return None;
         }
-        self.contextual_input_action(key).filter(|action| {
-            !matches!(
-                action,
-                Action::OpenSelected
-                    | Action::ToggleSelect
-                    | Action::VisualLineMode
-                    | Action::AttachmentList
-                    | Action::ExportThread
-                    | Action::ToggleFullscreen
-                    | Action::FlagReplyLater
-                    | Action::NextSearchResult
-                    | Action::PrevSearchResult
-                    | Action::SwitchPane
-                    | Action::Back
-                    | Action::RespondInvite(_)
-                    | Action::RespondInviteWithComment(_)
-            )
-        })
+        if key.code == KeyCode::Esc && self.active_hint().is_some() {
+            return Some(Action::DismissHint);
+        }
+        let defined = self.defined_key("archive", key);
+        self.run_defined_key(defined)
     }
 }

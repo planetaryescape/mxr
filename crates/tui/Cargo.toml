@@ -18,6 +18,7 @@ mxr-compose = { workspace = true }
 mxr-config = { workspace = true }
 mxr-core = { workspace = true }
 mxr-mail-parse = { workspace = true }
+mxr-keymap = { workspace = true }
 mxr-protocol = { workspace = true }
 mxr-reader = { workspace = true }
 chrono = { workspace = true }

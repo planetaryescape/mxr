@@ -25,6 +25,8 @@ pub struct HintBarState<'a> {
     /// First key of an in-progress multi-key chord; renders as "g …" at
     /// the head of the bar so the user can see the pending prefix.
     pub pending_prefix: Option<char>,
+    /// The lit item's verbs in a mode, from the key definition's strips.
+    pub mode_strip: Option<Vec<(String, String)>>,
     pub _marker: std::marker::PhantomData<&'a ()>,
 }
 
@@ -54,6 +56,10 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
             ],
             theme,
         )]
+    } else if let (UiContext::MailboxList, 0, Some(strip)) =
+        (state.ui_context, state.selected_count, &state.mode_strip)
+    {
+        build_lines(strip, theme)
     } else {
         build_lines(
             &hints_with_keybindings(

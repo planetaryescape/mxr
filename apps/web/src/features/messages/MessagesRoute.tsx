@@ -24,6 +24,7 @@ import { NEW_SENDER_NOTE, newSenderCommands } from "@/features/modes/NewSenderCh
 import type { LampVia } from "@/components/Row";
 import type { LeaveVia } from "@/lib/leaving";
 import { useLitReason } from "@/state/litReasonStore";
+import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { doneToast, markModeDone, useModeDone } from "@/features/modes/modeDone";
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
@@ -583,11 +584,7 @@ function MessagesBody({
   const newSender = selectedId ? memberships?.get(firstThread(selected))?.new_sender : undefined;
   useLitReason(selected?.why, newSender ? NEW_SENDER_NOTE : null);
   // A new sender's choice keys are spelled out in the status note, so the strip keeps the common verbs.
-  usePageKeys(
-    selectedId
-      ? ["messages.reply", "messages.got-it", "messages.done", "messages.to-do", "messages.pin"]
-      : ["messages.open"],
-  );
+  usePageKeys(stripKeys(selectedId ? "messages" : "messages.empty"));
   useShortcutScope("messages", true);
   useScopeController("messages", {
     down: () => move(1),

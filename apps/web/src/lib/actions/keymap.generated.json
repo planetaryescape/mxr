@@ -29,6 +29,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -61,6 +63,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "reading",
@@ -92,6 +96,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -150,6 +156,7 @@
             "reader",
             "place",
             "todo",
+            "catchup",
             "now",
             "messages",
             "archive",
@@ -182,6 +189,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -214,6 +223,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -251,6 +262,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -283,6 +296,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -338,6 +353,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -356,6 +373,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -387,6 +406,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -418,6 +439,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -451,6 +474,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -469,6 +494,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -500,6 +527,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -532,6 +561,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -563,6 +594,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -594,6 +627,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -625,6 +660,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -658,6 +695,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -725,6 +764,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -756,6 +797,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -788,6 +831,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -823,6 +868,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -864,6 +911,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -905,6 +954,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -936,6 +987,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -967,6 +1020,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -998,6 +1053,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -1029,6 +1086,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -1061,6 +1120,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -1092,6 +1153,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -1124,6 +1187,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -1156,6 +1221,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -1188,6 +1255,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -1220,6 +1289,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -1252,6 +1323,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -1284,6 +1357,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -1316,6 +1391,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -1348,6 +1425,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -1380,6 +1459,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2115,6 +2196,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2147,6 +2230,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2179,6 +2264,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2211,6 +2298,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2243,6 +2332,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2275,6 +2366,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2571,6 +2664,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2604,6 +2699,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2637,6 +2734,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2670,6 +2769,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2701,6 +2802,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2733,6 +2836,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2903,6 +3008,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2935,6 +3042,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2967,6 +3076,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -2999,6 +3110,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -3031,6 +3144,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -4151,6 +4266,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -4345,7 +4462,9 @@
             "o"
           ],
           "contexts": [
-            "todo"
+            "todo",
+            "catchup",
+            "expired"
           ]
         }
       ]
@@ -4442,7 +4561,19 @@
         "j",
         "ArrowDown"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "MoveDown",
+          "keys": [
+            "ArrowDown",
+            "j"
+          ],
+          "contexts": [
+            "catchup"
+          ]
+        }
+      ]
     },
     {
       "id": "catchup.up",
@@ -4455,7 +4586,19 @@
         "k",
         "ArrowUp"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "MoveUp",
+          "keys": [
+            "ArrowUp",
+            "k"
+          ],
+          "contexts": [
+            "catchup"
+          ]
+        }
+      ]
     },
     {
       "id": "todo.catchup-keep",
@@ -4467,6 +4610,17 @@
       ],
       "keys": [
         "Enter"
+      ],
+      "tui": [
+        {
+          "name": "CatchupKeep",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "catchup"
+          ]
+        }
       ]
     },
     {
@@ -4479,6 +4633,17 @@
       ],
       "keys": [
         "e"
+      ],
+      "tui": [
+        {
+          "name": "CatchupLetGo",
+          "keys": [
+            "e"
+          ],
+          "contexts": [
+            "catchup"
+          ]
+        }
       ]
     },
     {
@@ -4492,7 +4657,18 @@
       "keys": [
         "A"
       ],
-      "note": "Previews the daemon's dry run first; undo afterwards"
+      "note": "Previews the daemon's dry run first; undo afterwards",
+      "tui": [
+        {
+          "name": "CatchupLetGoAll",
+          "keys": [
+            "A"
+          ],
+          "contexts": [
+            "catchup"
+          ]
+        }
+      ]
     },
     {
       "id": "todo.catchup-back",
@@ -4504,7 +4680,18 @@
       "keys": [
         "Escape"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "TodoShowRunway",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "catchup"
+          ]
+        }
+      ]
     },
     {
       "id": "expired.down",
@@ -4517,7 +4704,19 @@
         "j",
         "ArrowDown"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "MoveDown",
+          "keys": [
+            "ArrowDown",
+            "j"
+          ],
+          "contexts": [
+            "expired"
+          ]
+        }
+      ]
     },
     {
       "id": "expired.up",
@@ -4530,7 +4729,19 @@
         "k",
         "ArrowUp"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "MoveUp",
+          "keys": [
+            "ArrowUp",
+            "k"
+          ],
+          "contexts": [
+            "expired"
+          ]
+        }
+      ]
     },
     {
       "id": "todo.restore",
@@ -4542,6 +4753,18 @@
       ],
       "keys": [
         "Enter"
+      ],
+      "tui": [
+        {
+          "name": "TodoRestore",
+          "keys": [
+            "Enter",
+            "u"
+          ],
+          "contexts": [
+            "expired"
+          ]
+        }
       ]
     },
     {
@@ -4554,7 +4777,18 @@
       "keys": [
         "Escape"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "TodoShowRunway",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "expired"
+          ]
+        }
+      ]
     },
     {
       "id": "archive.down",
@@ -6603,6 +6837,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -6631,6 +6867,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -6724,6 +6962,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -6752,6 +6992,8 @@
             "sidebar",
             "place",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive",
@@ -6777,6 +7019,8 @@
           "contexts": [
             "sidebar",
             "todo",
+            "catchup",
+            "expired",
             "now",
             "messages",
             "archive"
@@ -6896,6 +7140,157 @@
             "archive"
           ]
         }
+      ]
+    }
+  ],
+  "strip": [
+    {
+      "id": "list",
+      "actions": [
+        "list.down",
+        "list.open",
+        "mail.archive",
+        "mail.reply",
+        "mail.snooze"
+      ]
+    },
+    {
+      "id": "list.read-only",
+      "actions": [
+        "list.down",
+        "list.open",
+        "list.row-action"
+      ]
+    },
+    {
+      "id": "now.person",
+      "actions": [
+        "now.open",
+        "now.reply",
+        "now.done",
+        "now.open-email"
+      ]
+    },
+    {
+      "id": "now.updates",
+      "actions": [
+        "now.open",
+        "now.let-go-digest"
+      ]
+    },
+    {
+      "id": "now.item",
+      "actions": [
+        "now.open",
+        "now.done",
+        "now.open-email"
+      ]
+    },
+    {
+      "id": "messages",
+      "actions": [
+        "messages.reply",
+        "messages.got-it",
+        "messages.done",
+        "messages.to-do",
+        "messages.pin"
+      ]
+    },
+    {
+      "id": "messages.empty",
+      "actions": [
+        "messages.open"
+      ]
+    },
+    {
+      "id": "todo",
+      "actions": [
+        "todo.done",
+        "todo.open-email",
+        "todo.schedule",
+        "todo.dismiss",
+        "todo.edit"
+      ]
+    },
+    {
+      "id": "todo.done",
+      "actions": [
+        "todo.primary"
+      ]
+    },
+    {
+      "id": "catchup",
+      "actions": [
+        "todo.catchup-keep",
+        "todo.catchup-let-go",
+        "todo.catchup-let-go-all",
+        "todo.catchup-back"
+      ]
+    },
+    {
+      "id": "expired",
+      "actions": [
+        "todo.restore",
+        "todo.expired-back"
+      ]
+    },
+    {
+      "id": "updates",
+      "actions": [
+        "updates.copy-code",
+        "updates.peek",
+        "updates.let-go-source",
+        "updates.needs-me",
+        "updates.open-email",
+        "updates.let-go-all"
+      ]
+    },
+    {
+      "id": "reading",
+      "actions": [
+        "reading.read",
+        "reading.later",
+        "reading.let-go",
+        "reading.unsubscribe",
+        "reading.later-shelf"
+      ]
+    },
+    {
+      "id": "reading-reader",
+      "actions": [
+        "reading.reader-next",
+        "reading.reader-later",
+        "reading.reader-let-go",
+        "reading.reader-highlight",
+        "reading.reader-back"
+      ]
+    },
+    {
+      "id": "archive",
+      "actions": [
+        "archive.ask",
+        "archive.open-email",
+        "archive.open-document",
+        "archive.copy-reference",
+        "archive.filter"
+      ]
+    },
+    {
+      "id": "archive.subscriptions",
+      "actions": [
+        "archive.ask",
+        "archive.open-email",
+        "archive.issuer",
+        "archive.filter"
+      ]
+    },
+    {
+      "id": "screener",
+      "actions": [
+        "screener.allow",
+        "screener.deny",
+        "screener.feed",
+        "screener.paper-trail"
       ]
     }
   ]

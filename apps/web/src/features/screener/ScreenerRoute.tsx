@@ -29,6 +29,7 @@ import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { formatWhen, formatRelative, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useScopeController } from "@/lib/keys/controllers";
+import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { useHeldPending } from "@/hooks/useDelayedPending";
 
@@ -188,11 +189,7 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
       setFocused((current) => Math.max(0, current - 1));
     },
   });
-  usePageKeys(
-    rows.length > 0
-      ? ["screener.allow", "screener.deny", "screener.feed", "screener.paper-trail"]
-      : [],
-  );
+  usePageKeys(rows.length > 0 ? stripKeys("screener") : []);
 
   if (queue.isPending || queueHeld) return <PageSkeleton label="Loading screener queue" />;
   if (queue.isError)

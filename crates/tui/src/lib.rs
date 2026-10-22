@@ -23,6 +23,7 @@ pub use export_output::copy_to_clipboard;
 pub mod input;
 mod ipc;
 pub mod keybindings;
+mod keymap_names;
 mod local_io;
 pub mod local_state;
 mod runner;

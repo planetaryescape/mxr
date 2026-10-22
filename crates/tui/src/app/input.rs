@@ -1491,16 +1491,8 @@ impl App {
 
         // The second key of a chord (`g r`, `g a`, `i a`) completes it,
         // before any single-key binding such as `r` reply can claim it.
-        if self.input.is_pending() {
-            // Archive's `g f` steps through its kind chips.
-            if self.records_list_focused()
-                && self.input.pending_prefix() == Some('g')
-                && key.code == KeyCode::Char('f')
-                && key.modifiers == KeyModifiers::NONE
-            {
-                self.input.reset();
-                return Some(Action::RecordsNextKind);
-            }
+        // A mode completes its own sequences from the key definition.
+        if self.input.is_pending() && self.mode_key_context().is_none() {
             return self.contextual_input_action(key);
         }
 

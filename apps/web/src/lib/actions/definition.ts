@@ -123,3 +123,21 @@ export function definedShortcut(id: string): string {
   if (!shortcut) throw new Error(`Action "${id}" has no web key in crates/keymap/keymap.toml`);
   return shortcut;
 }
+
+const strips = new Map(
+  ((keymap as { strip?: { id: string; actions: string[] }[] }).strip ?? []).map((strip) => [
+    strip.id,
+    strip.actions,
+  ]),
+);
+
+/**
+ * The status bar's verbs for a state (`[[strip]]` in the definition), minus
+ * any that don't apply to the lit item. The TUI's hint bar reads the same
+ * strips, so one state shows the same verbs in both clients.
+ */
+export function stripKeys(id: string, omit: readonly string[] = []): string[] {
+  const actions = strips.get(id);
+  if (!actions) throw new Error(`No strip "${id}" in crates/keymap/keymap.toml`);
+  return actions.filter((action) => !omit.includes(action));
+}

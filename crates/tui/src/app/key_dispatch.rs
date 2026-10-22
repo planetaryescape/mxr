@@ -46,8 +46,8 @@ fn spelling(key: KeyEvent) -> Option<String> {
 
 impl App {
     /// What `key` does in `context`, completing a waiting sequence first.
-    /// A second key that completes nothing is read on its own, as the
-    /// built-in chords read it.
+    /// A second key that completes nothing cancels the sequence and runs
+    /// nothing, as the built-in chords do.
     pub(crate) fn defined_key(&mut self, context: &str, key: KeyEvent) -> DefinedKey {
         let Some(chord) = spelling(key) else {
             self.input.reset();
@@ -57,6 +57,8 @@ impl App {
             if let Some(hit) = self.bound_key(context, &format!("{first} {chord}")) {
                 return hit;
             }
+            self.input.cancel_prefix(first, key);
+            return DefinedKey::Unbound;
         }
         if let Some(hit) = self.bound_key(context, &chord) {
             return hit;

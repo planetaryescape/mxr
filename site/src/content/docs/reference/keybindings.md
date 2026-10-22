@@ -44,7 +44,13 @@ help modal (`?`).
 | `gL` | Open logs |
 | `?` | Toggle help modal |
 | `Esc` | Back, close modal, dismiss pane, or clear selection |
-| `q` | Quit current view or exit |
+| `q` | Close the innermost layer (a menu, the reader, a sub-view, a screen); quit at the mailbox root |
+| `Ctrl-z` | Suspend the TUI to the shell; `fg` brings it back |
+
+Pasted text types into the focused text field. With no field focused, the
+TUI drops it, so a paste never runs as shortcuts. In terminals that support
+the kitty keyboard protocol, `Esc` also acts at once instead of waiting to
+see whether it starts an `Alt` key; every key works without it.
 
 ## Mail list
 
@@ -470,7 +476,7 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 | `D` | Dry-run selected rule |
 | `H` | Show history |
 | `Ctrl-s` | Save rule form |
-| `#` | Delete rule |
+| `#` | Delete rule (asks first: `y`/`Enter` deletes, `n`/`Esc` keeps it) |
 
 ## Diagnostics screen
 

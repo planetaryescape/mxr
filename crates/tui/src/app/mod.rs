@@ -37,6 +37,7 @@ mod mutation_actions;
 mod mutation_helpers;
 pub mod mutation_snapshot;
 mod now_actions;
+mod paste;
 mod pending_optimistic;
 mod personal_category_actions;
 mod place_actions;
@@ -361,6 +362,8 @@ pub struct App {
     pub compose: ComposeState,
     pub screen: Screen,
     pub should_quit: bool,
+    /// Ctrl-z: the runner suspends the TUI before the next draw.
+    pub pending_suspend: bool,
     pub command_palette: CommandPaletteState,
     pub last_sync_status: Option<String>,
     /// The newest arrival and each account's sync health (`GetFreshness`),
@@ -593,6 +596,7 @@ impl App {
             compose: ComposeState::default(),
             screen: Screen::Mailbox,
             should_quit: false,
+            pending_suspend: false,
             command_palette: CommandPaletteState::default(),
             last_sync_status: None,
             freshness: None,

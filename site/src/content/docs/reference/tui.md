@@ -228,8 +228,9 @@ Two cross-view interactions:
 - Label picker
 - Compose confirmation: `[s]` sends, `[a]` schedules send-later,
   `[n]` sends and sets a follow-up reminder, `[d]` saves a draft,
-  `[r]` refines, `[e]` reopens `$EDITOR`, `Esc` discards. When the safety
-  check blocks the draft, `[O]` overrides the block and sends once.
+  `[r]` refines, `[e]` or `Esc` reopens `$EDITOR` on the draft, and
+  `[#]` discards it. When the safety check blocks the draft, `[O]`
+  overrides the block and sends once.
 - Bulk confirmation
 - Attachment modal
 - Snooze modal: preset list plus a **Custom…** entry that opens a

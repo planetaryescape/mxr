@@ -58,13 +58,13 @@ impl App {
                         }
                     }
                 }
-                if let Some(rule_id) = self
-                    .selected_rule()
-                    .and_then(|rule| rule["id"].as_str())
-                    .map(ToString::to_string)
-                {
-                    self.rules.pending_delete = Some(rule_id.clone());
-                    self.rules.page.status = Some(format!("Deleting {rule_id}..."));
+                // Deleting is destructive, so `#` only asks; the confirm
+                // in the rules screen's keys deletes.
+                if let Some(rule) = self.selected_rule() {
+                    if let Some(rule_id) = rule["id"].as_str() {
+                        let name = rule["name"].as_str().unwrap_or(rule_id).to_string();
+                        self.rules.page.delete_confirm = Some((rule_id.to_string(), name));
+                    }
                 }
             }
             Action::ShowRuleHistory => {

@@ -8,6 +8,7 @@
 
 use super::desk::plural;
 use crate::cli::{OutputFormat, UpdatesAction};
+use crate::commands::account_mark::AccountMarks;
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{resolve_format, terminal_text};
@@ -33,7 +34,13 @@ pub async fn run(
     match action {
         None => {
             let digest = digest(&mut client, account_id, cut, expired).await?;
-            print!("{}", render_digest(&digest, format)?);
+            let marks = AccountMarks::marks_for(
+                &mut client,
+                matches!(format, OutputFormat::Table),
+                account.is_some(),
+            )
+            .await?;
+            print!("{}", render_digest(&digest, format, &marks)?);
         }
         Some(UpdatesAction::LetGo { source, dry_run }) => {
             let preview = let_go(
@@ -162,7 +169,11 @@ fn json_line<T: serde::Serialize>(value: &T, section: Option<&str>) -> anyhow::R
     Ok(serde_json::to_string(&value)?)
 }
 
-fn render_digest(digest: &UpdatesDigestData, format: OutputFormat) -> anyhow::Result<String> {
+fn render_digest(
+    digest: &UpdatesDigestData,
+    format: OutputFormat,
+    marks: &AccountMarks,
+) -> anyhow::Result<String> {
     let sections: [(&str, &[UpdateLineData]); 4] = [
         ("needs_a_look", &digest.needs_a_look),
         ("changed", &digest.changed),
@@ -214,7 +225,7 @@ fn render_digest(digest: &UpdatesDigestData, format: OutputFormat) -> anyhow::Re
             }
             out
         }
-        OutputFormat::Table => table(digest),
+        OutputFormat::Table => table(digest, marks),
     })
 }
 
@@ -274,7 +285,7 @@ fn line_text(line: &UpdateLineData) -> String {
     text
 }
 
-fn table(digest: &UpdatesDigestData) -> String {
+fn table(digest: &UpdatesDigestData, marks: &AccountMarks) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
@@ -311,7 +322,8 @@ fn table(digest: &UpdatesDigestData) -> String {
             };
             let _ = writeln!(
                 out,
-                "{mark} {:<20}  {}{count}",
+                "{mark} {}{:<20}  {}{count}",
+                marks.prefix(&line.account_id),
                 terminal_text(&super::owed::truncate(&line.source_name, 20)),
                 line_text(line)
             );
@@ -494,7 +506,7 @@ mod tests {
             source_total: 1,
             muted_total: 0,
         };
-        let printed = table(&digest);
+        let printed = table(&digest, &AccountMarks::hidden());
         assert!(!printed.contains('\u{1b}'), "{printed:?}");
         assert!(printed.contains("You've let go of Evil"), "{printed}");
     }

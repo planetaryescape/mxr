@@ -741,6 +741,8 @@ mod tests {
         config.accounts.insert(
             "personal".into(),
             AccountConfig {
+                color: None,
+                tag: None,
                 name: "Personal".into(),
                 email: "me@example.com".into(),
                 enabled: true,
@@ -756,6 +758,8 @@ mod tests {
         config.accounts.insert(
             "work".into(),
             AccountConfig {
+                color: None,
+                tag: None,
                 name: "Work".into(),
                 email: "me@work.example".into(),
                 enabled: true,
@@ -786,6 +790,8 @@ mod tests {
         config.accounts.insert(
             "work-2".into(),
             AccountConfig {
+                color: None,
+                tag: None,
                 name: "Work".into(),
                 email: "other@work.example".into(),
                 enabled: true,

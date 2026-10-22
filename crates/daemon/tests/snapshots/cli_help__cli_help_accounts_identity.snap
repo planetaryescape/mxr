@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Set an account's colour and tag, the mark on its mail. Config values override what the daemon stored and derived. Pass --color, --tag or both
+
+Usage: mxr accounts identity [OPTIONS] <KEY>
+
+Arguments:
+  <KEY>  Account key, as shown by `mxr accounts`
+
+Options:
+      --color <COLOR>    Colour slot: sky, amber, green, yellow, blue, vermilion, purple or slate
+      --tag <TAG>        Tag of 1 to 3 letters or digits. Must be unique across accounts
+      --dry-run          Show the change without writing config
+      --format <FORMAT>  Output format for `accounts` (the no-subcommand listing) [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

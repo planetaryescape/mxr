@@ -709,6 +709,15 @@ pub struct AccountConfig {
     pub enabled: bool,
     pub sync: Option<SyncProviderConfig>,
     pub send: Option<SendProviderConfig>,
+    /// Overrides the colour the daemon stored for this account: one of the
+    /// eight slot names (blueprint 33). Kept as written, even when it is not a
+    /// slot name: the daemon ignores a bad value and says so, and the file keeps
+    /// it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Overrides the tag derived from the name. One to three letters or digits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
 }
 
 /// Sync provider configuration (tagged enum).

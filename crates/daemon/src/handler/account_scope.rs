@@ -254,6 +254,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::RepairAccountConfig { account } => {
             Targets(vec![T::AccountKey(account.key.as_str())])
         }
+        Request::SetAccountIdentity { key, .. } => Targets(vec![T::AccountKey(key.as_str())]),
         Request::SetDefaultAccount { key }
         | Request::DisableAccountConfig { key }
         | Request::RemoveAccountConfig { key, .. } => Targets(vec![T::AccountKey(key.as_str())]),

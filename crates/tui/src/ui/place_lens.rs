@@ -544,6 +544,7 @@ mod tests {
     #[test]
     fn the_sweep_confirmation_keeps_account_identity_visible_at_80_columns() {
         let account = mxr_protocol::AccountSummaryData {
+            identity: None,
             account_id: AccountId::new(),
             key: Some("work".into()),
             name: "A deliberately long configured account label that should not hide the address"

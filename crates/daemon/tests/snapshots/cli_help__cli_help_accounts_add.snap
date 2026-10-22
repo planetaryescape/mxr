@@ -39,13 +39,13 @@ Options:
       --imap-port <IMAP_PORT>
           [default: 993]
 
+      --imap-no-auth
+          IMAP requires authentication. Default true
+
       --format <FORMAT>
           Output format for `accounts` (the no-subcommand listing)
 
           [possible values: table, json, jsonl, csv, ids]
-
-      --imap-no-auth
-          IMAP requires authentication. Default true
 
       --imap-username <IMAP_USERNAME>
 

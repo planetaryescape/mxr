@@ -66,6 +66,12 @@ fn settings(source_config: Option<&Path>) -> anyhow::Result<mxr_config::MxrConfi
         for (key, account) in original.accounts {
             let original = serde_json::to_value(account)?;
             let mut account = serde_json::json!({"name":original["name"],"email":original["email"],"enabled":false});
+            // The colour and tag overrides are the user's own choices, not secrets.
+            for field in ["color", "tag"] {
+                if let Some(value) = original.get(field).filter(|value| !value.is_null()) {
+                    account[field] = value.clone();
+                }
+            }
             for provider in ["sync", "send"] {
                 if let Some(value) = original.get(provider).filter(|v| !v.is_null()) {
                     let mut clean = serde_json::Map::new();
@@ -206,4 +212,38 @@ pub async fn restore(
         publish(stage.path(), &destination)?;
     }
     Ok(manifest)
+}
+
+#[cfg(test)]
+mod settings_tests {
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )]
+
+    use super::settings;
+
+    #[test]
+    fn portable_settings_keep_colour_and_tag_overrides() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[accounts.work]
+name = "Work"
+email = "bk@work.example"
+color = "amber"
+tag = "W"
+"#,
+        )
+        .unwrap();
+        let sanitized = settings(Some(&path)).unwrap();
+        let written = toml::to_string(&sanitized).unwrap();
+        let reread: mxr_config::MxrConfig = toml::from_str(&written).unwrap();
+        let work = &reread.accounts["work"];
+        assert_eq!(work.color.as_deref(), Some("amber"));
+        assert_eq!(work.tag.as_deref(), Some("W"));
+        assert!(!work.enabled);
+    }
 }

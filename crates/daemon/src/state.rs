@@ -969,16 +969,22 @@ impl AppState {
         let mut default_send_provider = None;
         let requested_default = config.general.default_account.as_deref();
 
-        for (key, acct_config) in &config.accounts {
+        // Sorted, so a provisional colour or tag shown before insertion is the
+        // one insertion stores. Every configured tag is reserved, so a derived
+        // tag never takes one.
+        let mut keys: Vec<&String> = config.accounts.keys().collect();
+        keys.sort();
+        let reserved_tags: Vec<String> = config
+            .accounts
+            .values()
+            .filter_map(|account| mxr_core::parse_account_tag(account.tag.as_deref()?).ok())
+            .collect();
+        for key in keys {
+            let acct_config = &config.accounts[key];
             let provider_kind = sync_provider_kind(acct_config.sync.as_ref());
             let send_kind = send_provider_kind(acct_config.send.as_ref());
-            let account_id = AccountId::from_provider_id(
-                provider_kind
-                    .clone()
-                    .or_else(|| send_kind.clone())
-                    .map_or("account", provider_kind_name),
-                &acct_config.email,
-            );
+            // The same id as the identity resolver and the config views use.
+            let account_id = crate::handler::config_account_id(key, acct_config);
 
             let account = Account {
                 id: account_id.clone(),
@@ -994,7 +1000,9 @@ impl AppState {
                 }),
                 enabled: acct_config.enabled,
             };
-            store.insert_account(&account).await?;
+            store
+                .insert_account_reserving(&account, &reserved_tags)
+                .await?;
 
             if !acct_config.enabled {
                 continue;
@@ -1278,6 +1286,11 @@ impl AppState {
                 }
                 send_providers.insert(account_id.clone(), fake);
             }
+        }
+
+        match crate::account_identity::resolve_from_store(store, config).await {
+            Ok(resolution) => crate::account_identity::log_warnings(&resolution.warnings),
+            Err(error) => tracing::error!(%error, "could not resolve account colours and tags"),
         }
 
         Ok(ProviderSetup {
@@ -2611,17 +2624,6 @@ fn send_provider_kind(send: Option<&mxr_config::SendProviderConfig>) -> Option<P
     }
 }
 
-fn provider_kind_name(kind: ProviderKind) -> &'static str {
-    match kind {
-        ProviderKind::Gmail => "gmail",
-        ProviderKind::Imap => "imap",
-        ProviderKind::Smtp => "smtp",
-        ProviderKind::OutlookPersonal => "outlook",
-        ProviderKind::OutlookWork => "outlook-work",
-        ProviderKind::Fake => "fake",
-    }
-}
-
 /// The one rule for an account's owned addresses: the `accounts` row's email
 /// is always primary, and every `account_addresses` row is an owned alias.
 /// Reads committed store data, so a send, a handler check and the sync
@@ -2698,6 +2700,81 @@ mod tests {
             .acquire_attachment_materialization(&other_message, &other_attachment)
             .await;
         assert_eq!(state.attachment_materialization_locks.lock().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_config_account_without_a_provider_gets_the_id_its_identity_is_shown_under() {
+        // Drives the real startup path. Before the fix startup used a different
+        // id for a provider-less account, so the resolver saw two accounts.
+        let store = Store::in_memory().await.unwrap();
+        let mut config = mxr_config::MxrConfig::default();
+        config.accounts.insert(
+            "work".into(),
+            mxr_config::AccountConfig {
+                name: "Work".into(),
+                email: "bk@work.example".into(),
+                enabled: true,
+                sync: None,
+                send: None,
+                color: None,
+                tag: None,
+            },
+        );
+        AppState::create_providers_from_config(&config, &store)
+            .await
+            .unwrap();
+
+        let rows = store.list_account_identity_slots().await.unwrap();
+        assert_eq!(rows.len(), 1, "startup must write exactly one row");
+        let resolution = crate::account_identity::resolve_from_store(&store, &config)
+            .await
+            .unwrap();
+        assert_eq!(resolution.resolved.len(), 1);
+        let shown = &resolution.resolved[0];
+        assert_eq!(shown.account_id, rows[0].account_id);
+        assert_eq!(shown.identity.color, mxr_core::AccountColor::Sky);
+        assert_eq!(shown.identity.tag, "W");
+    }
+
+    #[tokio::test]
+    async fn startup_reuses_a_provider_less_account_stored_under_its_existing_id() {
+        // Rows written before this change hold the account under the id startup
+        // always created for it. Startup must reuse that row, not add a second.
+        let store = Store::in_memory().await.unwrap();
+        let existing = mxr_core::Account {
+            id: AccountId::from_provider_id("account", "bk@work.example"),
+            name: "Work".into(),
+            email: "bk@work.example".into(),
+            sync_backend: None,
+            send_backend: None,
+            enabled: true,
+        };
+        store.insert_account(&existing).await.unwrap();
+        let before = store.list_account_identity_slots().await.unwrap();
+        assert_eq!(before[0].tag.as_deref(), Some("W"));
+
+        let mut config = mxr_config::MxrConfig::default();
+        config.accounts.insert(
+            "work".into(),
+            mxr_config::AccountConfig {
+                name: "Work".into(),
+                email: "bk@work.example".into(),
+                enabled: true,
+                sync: None,
+                send: None,
+                color: None,
+                tag: None,
+            },
+        );
+        AppState::create_providers_from_config(&config, &store)
+            .await
+            .unwrap();
+
+        let rows = store.list_account_identity_slots().await.unwrap();
+        assert_eq!(rows.len(), 1, "startup must not add a second row");
+        assert_eq!(rows[0].account_id, existing.id);
+        assert_eq!(rows[0].color, before[0].color);
+        assert_eq!(rows[0].tag.as_deref(), Some("W"));
     }
 
     fn imap_smtp_config(default_account: &str) -> mxr_config::MxrConfig {

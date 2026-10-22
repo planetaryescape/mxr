@@ -43,6 +43,10 @@ pub fn map_request(
     if !response_ok {
         return None;
     }
+    // A preview changes nothing, so it is not an activity.
+    if matches!(req, Request::SetAccountIdentity { dry_run: true, .. }) {
+        return None;
+    }
     let now = current_unix_ms();
 
     macro_rules! skip_activity {
@@ -614,6 +618,12 @@ pub fn map_request(
                 "email": account.email,
             })),
         ),
+        Request::SetAccountIdentity { key, .. } => (
+            "account.identity",
+            Some("account"),
+            Some(key.clone()),
+            Some(serde_json::json!({ "key": key })),
+        ),
         Request::RemoveAccountConfig { key, .. } => (
             "account.remove",
             Some("account"),
@@ -1165,6 +1175,8 @@ mod tests {
 
     fn secret_bearing_account_config() -> mxr_protocol::AccountConfigData {
         mxr_protocol::AccountConfigData {
+            color: None,
+            tag: None,
             key: "secret-account".into(),
             name: "Secret Account".into(),
             email: "secret@example.com".into(),
@@ -1186,6 +1198,18 @@ mod tests {
             }),
             is_default: false,
         }
+    }
+
+    #[test]
+    fn identity_dry_runs_are_not_recorded_but_real_edits_are() {
+        let request = |dry_run| Request::SetAccountIdentity {
+            key: "work".into(),
+            color: None,
+            tag: Some("W".into()),
+            dry_run,
+        };
+        assert!(map_request(&request(true), ClientKind::Cli, None, true).is_none());
+        assert!(map_request(&request(false), ClientKind::Cli, None, true).is_some());
     }
 
     #[test]

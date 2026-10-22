@@ -1062,6 +1062,8 @@ async fn mcp_category_catalog_requires_full_account_scope_and_preserves_profile_
     config.accounts.insert(
         "configured-only".into(),
         mxr_config::AccountConfig {
+            color: None,
+            tag: None,
             name: "Configured only".into(),
             email: "configured-only@example.com".into(),
             enabled: false,

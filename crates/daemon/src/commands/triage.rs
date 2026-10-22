@@ -1,4 +1,5 @@
 use crate::cli::{OutputFormat, SearchModeArg, TriageSortArg, TriageVerdictArg};
+use crate::commands::account_mark::{self, AccountMarks};
 use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
@@ -20,9 +21,10 @@ pub async fn run(
         anyhow::bail!("Triage query required");
     }
     let mut client = IpcClient::connect().await?;
+    let scoped = account.is_some();
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     let resp = request_triage(&mut client, query, account_id, limit, mode).await?;
-    render_triage(resp, &mut client, format, sort, verdict_filter).await
+    render_triage(resp, &mut client, format, sort, verdict_filter, scoped).await
 }
 
 pub(crate) async fn request_triage(
@@ -81,6 +83,7 @@ pub(crate) async fn render_triage(
     format: Option<OutputFormat>,
     sort: Option<TriageSortArg>,
     verdict_filter: Option<TriageVerdictArg>,
+    scoped: bool,
 ) -> anyhow::Result<()> {
     eprintln!(
         "triage: {} LLM call{} ({} cached, limit {})",
@@ -153,7 +156,10 @@ pub(crate) async fn render_triage(
             }
             println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
         }
-        OutputFormat::Table => render_table(&payload.messages, &envelopes),
+        OutputFormat::Table => {
+            let marks = AccountMarks::marks_for(client, true, scoped).await?;
+            render_table(&payload.messages, &envelopes, &marks);
+        }
     }
     Ok(())
 }
@@ -200,25 +206,35 @@ fn row_json(message: &TriageMessageData, env: Option<&Envelope>) -> serde_json::
     })
 }
 
-fn render_table(messages: &[TriageMessageData], envelopes: &HashMap<String, Envelope>) {
+fn render_table(
+    messages: &[TriageMessageData],
+    envelopes: &HashMap<String, Envelope>,
+    marks: &AccountMarks,
+) {
     if messages.is_empty() {
         println!("No triage results found.");
         return;
     }
+    let acct_header = if marks.shown() {
+        format!("{:<4} ", account_mark::HEADER)
+    } else {
+        String::new()
+    };
     println!(
-        "{:<8} {:<30} {:<20} {:<42} {:<10}",
+        "{acct_header}{:<8} {:<30} {:<20} {:<42} {:<10}",
         "VERDICT", "REASON", "FROM", "SUBJECT", "DATE"
     );
     println!("{}", "-".repeat(115));
     for message in messages {
         let env = envelopes.get(&message.message_id.to_string());
+        let acct = env.map_or_else(String::new, |e| marks.prefix(&e.account_id));
         let from = env.map(format_from).unwrap_or_default();
         let subject = env.map_or("", |e| e.subject.as_str());
         let date = env
             .map(|e| e.date.format("%Y-%m-%d").to_string())
             .unwrap_or_default();
         println!(
-            "{:<8} {:<30} {:<20} {:<42} {:<10}",
+            "{acct}{:<8} {:<30} {:<20} {:<42} {:<10}",
             message.verdict_token,
             truncate(&message.reason, 30),
             truncate(&from, 20),

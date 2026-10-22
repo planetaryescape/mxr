@@ -50,7 +50,38 @@ mxr accounts add imap
 mxr accounts add smtp
 mxr accounts show ACCOUNT
 mxr accounts test ACCOUNT
+mxr accounts identity ACCOUNT --color amber --tag W --dry-run
 ```
+
+## Colour and tag
+
+Every account has a colour and a tag. Where a list mixes accounts, each row
+shows its account's tag, so you can tell mail apart without opening it. The
+daemon gives an account its colour and its tag when the account is created, and
+keeps both. The tag comes from the account's name: "Work" is `W`, "Planetary
+Escape" is `PE`. If that tag is taken, the name gives more letters or a digit,
+so `Wedding` becomes `WE`. Renaming an account does not change its tag.
+
+`mxr accounts` lists each account's tag and colour. The JSON output carries
+the same values under `identity`.
+
+To change them, pass `--color` (one of `sky`, `amber`, `green`, `yellow`,
+`blue`, `vermilion`, `purple`, `slate`), `--tag` (1 to 3 letters or digits), or
+both. Add `--dry-run` to see the change without writing it:
+
+```bash
+mxr accounts identity work --color amber --tag W --dry-run
+mxr accounts identity work --tag OFF
+```
+
+A tag already used by another account is refused, and the error names that
+account. The same values can be set in config; see
+[`accounts` in the config reference](/reference/config/#accounts).
+
+Mail tables from `mxr search`, `mxr messages`, `mxr threads` and `mxr now`
+add an `ACCT` column with the tag. The column appears only when you have more
+than one enabled account and the command was not given `--account`. Scripts
+that read JSON or JSONL get `account_id` on each row, as before.
 
 ## Owned addresses and aliases
 

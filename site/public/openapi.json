@@ -7699,6 +7699,20 @@
           }
         }
       },
+      "AccountColor": {
+        "type": "string",
+        "description": "One of eight named account colour slots, in assignment order.",
+        "enum": [
+          "sky",
+          "amber",
+          "green",
+          "yellow",
+          "blue",
+          "vermilion",
+          "purple",
+          "slate"
+        ]
+      },
       "AccountConfigData": {
         "type": "object",
         "required": [
@@ -7708,6 +7722,17 @@
           "is_default"
         ],
         "properties": {
+          "color": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountColor",
+                "description": "Config override for the account's colour. `None` keeps the stored\nslot. Upserts that omit it also keep the override already in config."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "email": {
             "type": "string"
           },
@@ -7742,6 +7767,13 @@
                 "type": "null"
               }
             ]
+          },
+          "tag": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Config override for the account's tag, uppercased by the daemon.\n`None` keeps the override already in config, or the derived tag."
           }
         }
       },
@@ -7816,6 +7848,22 @@
       "AccountId": {
         "type": "string",
         "format": "uuid"
+      },
+      "AccountIdentityData": {
+        "type": "object",
+        "description": "An account's resolved colour and tag, as the daemon shows them (blueprint 33).",
+        "required": [
+          "color",
+          "tag"
+        ],
+        "properties": {
+          "color": {
+            "$ref": "#/components/schemas/AccountColor"
+          },
+          "tag": {
+            "type": "string"
+          }
+        }
       },
       "AccountMutationResultData": {
         "type": "object",
@@ -8099,6 +8147,17 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "identity": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountIdentityData",
+                "description": "Absent from daemons older than blueprint 33, so clients draw no mark."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "is_default": {
             "type": "boolean"

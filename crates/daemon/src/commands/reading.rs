@@ -5,6 +5,7 @@
 //! agents.
 
 use crate::cli::{MarginaliaAction, OutputFormat, PlaceArgs, ReadingAction};
+use crate::commands::account_mark::AccountMarks;
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format, terminal_block};
@@ -60,7 +61,13 @@ pub async fn run(
     match action.unwrap_or(ReadingAction::Edition { peek: false }) {
         ReadingAction::Edition { peek } => {
             let edition = get_edition(&mut client, account_id, !peek).await?;
-            print!("{}", render_edition(&edition, format)?);
+            let marks = AccountMarks::marks_for(
+                &mut client,
+                matches!(format, OutputFormat::Table),
+                account.is_some(),
+            )
+            .await?;
+            print!("{}", render_edition(&edition, format, &marks)?);
         }
         ReadingAction::Later {
             add,
@@ -69,7 +76,13 @@ pub async fn run(
         } => {
             if add.is_empty() && remove.is_empty() {
                 let edition = get_edition(&mut client, account_id, false).await?;
-                print!("{}", render_later(&edition, format)?);
+                let marks = AccountMarks::marks_for(
+                    &mut client,
+                    matches!(format, OutputFormat::Table),
+                    account.is_some(),
+                )
+                .await?;
+                print!("{}", render_later(&edition, format, &marks)?);
             } else {
                 let later = remove.is_empty();
                 let item_keys = if later { add } else { remove };
@@ -202,7 +215,11 @@ fn all_items(edition: &ReadingEditionData) -> impl Iterator<Item = &ReadingItemD
     edition.bands.iter().flat_map(|band| band.items.iter())
 }
 
-fn render_edition(edition: &ReadingEditionData, format: OutputFormat) -> anyhow::Result<String> {
+fn render_edition(
+    edition: &ReadingEditionData,
+    format: OutputFormat,
+    marks: &AccountMarks,
+) -> anyhow::Result<String> {
     Ok(match format {
         OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(edition)?),
         OutputFormat::Jsonl => format!("{}\n", jsonl(&all_items(edition).collect::<Vec<_>>())?),
@@ -210,7 +227,7 @@ fn render_edition(edition: &ReadingEditionData, format: OutputFormat) -> anyhow:
             .map(|item| format!("{}\n", item.item_key))
             .collect(),
         OutputFormat::Csv => csv(edition),
-        OutputFormat::Table => edition_text(edition),
+        OutputFormat::Table => edition_text(edition, marks),
     })
 }
 
@@ -278,7 +295,15 @@ fn item_lines(out: &mut String, item: &ReadingItemData) {
     let _ = writeln!(out, "    {}", item.item_key);
 }
 
-fn band_text(out: &mut String, band: &ReadingBandGroupData) {
+/// One item, with the account mark on its first line.
+fn item_block(out: &mut String, item: &ReadingItemData, marks: &AccountMarks) {
+    let mut block = String::new();
+    item_lines(&mut block, item);
+    out.push_str(&marks.prefix(&item.account_id));
+    out.push_str(&block);
+}
+
+fn band_text(out: &mut String, band: &ReadingBandGroupData, marks: &AccountMarks) {
     match &band.note {
         Some(note) => {
             let _ = writeln!(out, "{}  {note}", band.label.to_uppercase());
@@ -288,12 +313,12 @@ fn band_text(out: &mut String, band: &ReadingBandGroupData) {
         }
     }
     for item in &band.items {
-        item_lines(out, item);
+        item_block(out, item, marks);
     }
     out.push('\n');
 }
 
-fn edition_text(edition: &ReadingEditionData) -> String {
+fn edition_text(edition: &ReadingEditionData, marks: &AccountMarks) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "Reading  {}", edition.header);
     let _ = writeln!(out, "Later {}\n", edition.later_count);
@@ -301,7 +326,7 @@ fn edition_text(edition: &ReadingEditionData) -> String {
         let _ = writeln!(out, "{}\n", empty.line);
     }
     for (i, band) in edition.bands.iter().enumerate() {
-        band_text(&mut out, band);
+        band_text(&mut out, band, marks);
         if i == 0 && edition.left_off_here {
             let _ = writeln!(out, "── {} ──\n", reading_copy::LEFT_OFF);
         }
@@ -320,7 +345,11 @@ fn edition_text(edition: &ReadingEditionData) -> String {
     terminal_block(&out)
 }
 
-fn render_later(edition: &ReadingEditionData, format: OutputFormat) -> anyhow::Result<String> {
+fn render_later(
+    edition: &ReadingEditionData,
+    format: OutputFormat,
+    marks: &AccountMarks,
+) -> anyhow::Result<String> {
     Ok(match format {
         OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(&edition.later)?),
         OutputFormat::Jsonl => format!("{}\n", jsonl(&edition.later)?),
@@ -335,7 +364,7 @@ fn render_later(edition: &ReadingEditionData, format: OutputFormat) -> anyhow::R
                 out.push_str("Nothing saved. b in the app, or mxr reading later --add ITEM.\n");
             }
             for item in &edition.later {
-                item_lines(&mut out, item);
+                item_block(&mut out, item, marks);
                 if item.still_want_it {
                     let _ = writeln!(out, "    {}", reading_copy::STILL_WANT_IT);
                 }

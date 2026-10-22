@@ -3,6 +3,7 @@
 //! same Now as the web app and the TUI.
 
 use crate::cli::OutputFormat;
+use crate::commands::account_mark::AccountMarks;
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{resolve_format, terminal_text};
@@ -21,11 +22,17 @@ pub async fn run(account: Option<String>, format: Option<OutputFormat>) -> anyho
             _ => None,
         },
     )?;
-    print!("{}", render(&now, resolve_format(format))?);
+    let format = resolve_format(format);
+    let marks = if matches!(format, OutputFormat::Table) {
+        AccountMarks::load(&mut client, account.is_some()).await?
+    } else {
+        AccountMarks::hidden()
+    };
+    print!("{}", render(&now, format, &marks)?);
     Ok(())
 }
 
-fn render(now: &NowData, format: OutputFormat) -> anyhow::Result<String> {
+fn render(now: &NowData, format: OutputFormat, marks: &AccountMarks) -> anyhow::Result<String> {
     Ok(match format {
         OutputFormat::Json => format!("{}\n", serde_json::to_string_pretty(now)?),
         OutputFormat::Jsonl => items_jsonl(now)?,
@@ -46,7 +53,7 @@ fn render(now: &NowData, format: OutputFormat) -> anyhow::Result<String> {
             out
         }
         OutputFormat::Csv => csv(now),
-        OutputFormat::Table => table(now),
+        OutputFormat::Table => table(now, marks),
     })
 }
 
@@ -130,7 +137,7 @@ fn section_title(out: &mut String, title: &str, more: Option<&str>) {
     };
 }
 
-fn table(now: &NowData) -> String {
+fn table(now: &NowData, marks: &AccountMarks) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "{}", terminal_text(&now.headline));
     if let Some(empty) = &now.empty_state {
@@ -148,9 +155,14 @@ fn table(now: &NowData) -> String {
                 .counterparty_name
                 .as_deref()
                 .unwrap_or(&row.counterparty_email);
+            let acct = if marks.shown() {
+                format!("{:<4} ", marks.cell(&row.account_id))
+            } else {
+                String::new()
+            };
             let _ = writeln!(
                 out,
-                "  {:<22}  {}",
+                "  {acct}{:<22}  {}",
                 terminal_text(&super::owed::truncate(who, 22)),
                 terminal_text(&row.subject)
             );
@@ -176,7 +188,8 @@ fn table(now: &NowData) -> String {
                 .unwrap_or_default();
             let _ = writeln!(
                 out,
-                "  {}{}  {}",
+                "  {}{}{}  {}",
+                marks.prefix(&todo.account_id),
                 terminal_text(&todo.title),
                 amount,
                 terminal_text(&todo.when_label)
@@ -195,7 +208,8 @@ fn table(now: &NowData) -> String {
                 .unwrap_or_default();
             let _ = writeln!(
                 out,
-                "  {:<20}  {}{todo}",
+                "  {}{:<20}  {}{todo}",
+                marks.prefix(&line.account_id),
                 terminal_text(&super::owed::truncate(&line.source_name, 20)),
                 terminal_text(&line.fact)
             );
@@ -206,7 +220,8 @@ fn table(now: &NowData) -> String {
         let from = pick.sender_name.as_deref().unwrap_or(&pick.sender_email);
         let _ = writeln!(
             out,
-            "  {}  {}",
+            "  {}{}  {}",
+            marks.prefix(&pick.account_id),
             terminal_text(from),
             terminal_text(&pick.subject)
         );

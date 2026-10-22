@@ -6,6 +6,7 @@
 use crate::cli::{
     OutputFormat, TodoAction, TodoMicrosoftAction, TodoResolutionActionArg, TodoStateArg,
 };
+use crate::commands::account_mark::AccountMarks;
 use crate::commands::selection::parse_message_id;
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
@@ -331,6 +332,7 @@ async fn runway(
     account_id: Option<AccountId>,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
+    let scoped = account_id.is_some();
     let runway = expect_data!(
         client
             .request(Request::GetTodoRunway {
@@ -354,7 +356,8 @@ async fn runway(
             Ok(())
         }
         _ => {
-            print!("{}", terminal_block(&runway_text(&runway)));
+            let marks = AccountMarks::marks_for(client, true, scoped).await?;
+            print!("{}", terminal_block(&runway_text(&runway, &marks)));
             Ok(())
         }
     }
@@ -367,6 +370,7 @@ async fn list_state(
     limit: u32,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
+    let scoped = account_id.is_some();
     let todos = expect_data!(
         client
             .request(Request::ListTodos {
@@ -392,9 +396,16 @@ async fn list_state(
             if todos.is_empty() {
                 println!("No to-dos in that state.");
             }
+            let marks =
+                AccountMarks::marks_for(client, matches!(format, OutputFormat::Table), scoped)
+                    .await?;
             let mut out = String::new();
             for todo in &todos {
-                row(&mut out, todo, "");
+                // The mark goes on the row's first line only.
+                let mut block = String::new();
+                row(&mut block, todo, "");
+                out.push_str(&marks.prefix(&todo.account_id));
+                out.push_str(&block);
             }
             if state == TodoStateData::Expired && !todos.is_empty() {
                 out.push_str("\nRestore one with `mxr todo undo ID`.\n");
@@ -422,6 +433,7 @@ async fn catchup(
     if matches!(format, OutputFormat::Json | OutputFormat::Jsonl) {
         return print_json(&catchup, format);
     }
+    let scoped = account_id.is_some();
     let runway = expect_data!(
         client
             .request(Request::GetTodoRunway {
@@ -432,7 +444,11 @@ async fn catchup(
         TodoRunway,
         runway
     );
-    print!("{}", terminal_block(&catchup_text(&catchup, &runway)));
+    let marks = AccountMarks::marks_for(client, true, scoped).await?;
+    print!(
+        "{}",
+        terminal_block(&catchup_text(&catchup, &runway, &marks))
+    );
     Ok(())
 }
 
@@ -528,7 +544,13 @@ fn row(out: &mut String, todo: &TodoData, indent: &str) {
     let _ = writeln!(out, "{indent}            {}", todo.why);
 }
 
-fn runway_text(runway: &TodoRunwayData) -> String {
+/// One runway row, with the account mark in front of it.
+fn push_row(out: &mut String, todo: &TodoData, indent: &str, marks: &AccountMarks) {
+    out.push_str(&marks.prefix(&todo.account_id));
+    row(out, todo, indent);
+}
+
+fn runway_text(runway: &TodoRunwayData, marks: &AccountMarks) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "To do: {}", runway.header);
     if !runway.first_run.complete {
@@ -551,7 +573,7 @@ fn runway_text(runway: &TodoRunwayData) -> String {
         let _ = writeln!(out, "{}", runway.headline);
         out.push_str("\nNOW\n");
         for todo in &runway.now {
-            row(&mut out, todo, "");
+            push_row(&mut out, todo, "", marks);
         }
     }
     if !runway.coming_up.is_empty() {
@@ -559,20 +581,20 @@ fn runway_text(runway: &TodoRunwayData) -> String {
         for week in &runway.coming_up {
             let _ = writeln!(out, "  {}", week.label);
             for todo in &week.todos {
-                row(&mut out, todo, "  ");
+                push_row(&mut out, todo, "  ", marks);
             }
         }
     }
     if !runway.later.is_empty() {
         let _ = writeln!(out, "\nLATER ({})", runway.later.len());
         for todo in &runway.later {
-            row(&mut out, todo, "");
+            push_row(&mut out, todo, "", marks);
         }
     }
     if !runway.whenever.is_empty() {
         let _ = writeln!(out, "\nWHENEVER ({})", runway.whenever.len());
         for todo in &runway.whenever {
-            row(&mut out, todo, "");
+            push_row(&mut out, todo, "", marks);
         }
     }
     if !runway.done_this_week.is_empty() {
@@ -611,7 +633,11 @@ fn runway_text(runway: &TodoRunwayData) -> String {
     out
 }
 
-fn catchup_text(catchup: &TodoCatchupData, runway: &TodoRunwayData) -> String {
+fn catchup_text(
+    catchup: &TodoCatchupData,
+    runway: &TodoRunwayData,
+    marks: &AccountMarks,
+) -> String {
     let mut out = String::new();
     let open = runway.now.len()
         + runway
@@ -638,7 +664,7 @@ fn catchup_text(catchup: &TodoCatchupData, runway: &TodoRunwayData) -> String {
     }
     let _ = writeln!(out, "{}\n", catchup.why);
     for todo in &catchup.todos {
-        row(&mut out, todo, "");
+        push_row(&mut out, todo, "", marks);
     }
     if catchup.overflow_count > 0 {
         let _ = writeln!(

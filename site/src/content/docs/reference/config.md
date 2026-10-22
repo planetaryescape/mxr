@@ -298,6 +298,32 @@ Each `[accounts.<key>]` is a TOML subtable. Required:
   on sync. Useful for keeping a dormant account configured without
   paying its sync cost.
 
+Optional:
+
+- `color` — the account's colour slot: `sky`, `amber`, `green`, `yellow`,
+  `blue`, `vermilion`, `purple` or `slate`. The daemon gives each account
+  a slot when it is created and keeps it. Set `color` to pick another.
+  Two accounts may share a colour; the tag then tells them apart.
+- `tag` — one to three letters or digits, shown on the account's mail
+  wherever a list mixes accounts. Case does not matter; it is stored in
+  uppercase. The default comes from the name: the first letter of each of
+  its first two words, so "Work" is `W` and "Planetary Escape" is `PE`.
+  Two accounts cannot share a tag. The daemon ignores a configured tag that
+  another account already holds, whether configured or stored, and logs a
+  warning that names the account. It uses that account's stored tag instead.
+  The file keeps the value as written. A colour or tag that is not valid is
+  ignored the same way, and the warning lists the allowed values. The default
+  tag is stored when the account is created, so renaming an account does not
+  change it.
+
+```toml
+[accounts.work]
+name = "Work"
+email = "bk@work.example"
+color = "amber"
+tag = "W"
+```
+
 Sub-tables:
 
 - `[accounts.<key>.sync]` — inbound provider; `type = "gmail" | "imap" | "outlook_personal" | "outlook_work" | "fake"`

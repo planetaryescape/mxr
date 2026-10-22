@@ -130,7 +130,7 @@ use tracing::Instrument;
 /// directory per message.
 pub(crate) const HTML_ASSETS_DIR: &str = "_html_assets";
 
-pub(crate) use account_config::{list_account_configs, repair_account_config};
+pub(crate) use account_config::{config_account_id, list_account_configs, repair_account_config};
 pub(crate) use helpers::{
     dir_size_sync, file_size_sync, recent_log_lines_sync, should_fallback_to_tantivy,
 };
@@ -516,7 +516,7 @@ pub async fn handle_request_with_peer(
 
                 // Activity capture seam. Fire-and-forget; never propagates errors.
                 // See `docs/activity-log.md`.
-                let ok = matches!(&response, Response::Ok { .. });
+                let ok = response_succeeded(&response);
                 let account_id_for_activity =
                     request_account_id(req).map(mxr_core::AccountId::as_str);
                 if let Some(entry) = crate::activity::mapper::map_request(
@@ -596,6 +596,8 @@ async fn dispatch(
     // A scoped profile passed `enforce_client_profile`, so it exists.
     let scoped_profile = account_scope::profile_name(source)
         .and_then(|name| config.agent_surfaces.profiles.get(name));
+    // A scoped caller may not learn which account holds a tag it asked for.
+    let scoped_caller = account_scope::profile_name(source).is_some();
     // Scoped profiles filter what they read, so they always build.
     if let Some(view) = scoped_profile
         .is_none()
@@ -867,8 +869,24 @@ async fn dispatch(
             save_account,
         } => auth_sessions::complete_auth_session(state, session_id, *save_account).await,
         Request::UpsertAccountConfig { account } => {
-            accounts::upsert_account(state, account.clone()).await
+            accounts::upsert_account(state, account.clone(), !scoped_caller).await
         }
+        Request::SetAccountIdentity {
+            key,
+            color,
+            tag,
+            dry_run,
+        } => Ok(ResponseData::AccountOperation {
+            result: account_config::set_account_identity(
+                state,
+                key,
+                *color,
+                tag.as_deref(),
+                *dry_run,
+                !scoped_caller,
+            )
+            .await,
+        }),
         Request::SetDefaultAccount { key } => accounts::set_default_account_key(state, key).await,
         Request::TestAccountConfig { account } => {
             accounts::test_account(state, account.clone()).await
@@ -2399,6 +2417,7 @@ fn classify_request(req: &Request) -> RequestClass {
     use RequestClass::{Admin, Destructive, DraftOnly, Mutate, Read, Send};
     match req {
         Request::RemoteRead { .. } | Request::GetRemoteReady | Request::PreviewDraft { .. } => Read,
+        Request::SetAccountIdentity { dry_run: true, .. } => Read,
         Request::RemoteAuthority { request } if request.is_read_only() => Read,
         Request::RemoteAuthority { .. } => Admin,
         Request::GetRecoveryStatus
@@ -2656,6 +2675,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::CancelAuthSession { .. }
         | Request::CompleteAuthSession { .. }
         | Request::UpsertAccountConfig { .. }
+        | Request::SetAccountIdentity { .. }
         | Request::SetDefaultAccount { .. }
         | Request::TestAccountConfig { .. }
         | Request::DisableAccountConfig { .. }
@@ -2794,6 +2814,19 @@ fn request_is_draft_only(req: &Request) -> bool {
     matches!(classify_request(req), RequestClass::DraftOnly)
 }
 
+/// Whether a response counts as success for the activity log. An account
+/// operation the daemon refused comes back as `Ok` with `ok: false`, and that
+/// is not a success.
+fn response_succeeded(response: &Response) -> bool {
+    match response {
+        Response::Ok {
+            data: ResponseData::AccountOperation { result },
+        } => result.ok,
+        Response::Ok { .. } => true,
+        _ => false,
+    }
+}
+
 fn request_is_read_only(req: &Request) -> bool {
     matches!(classify_request(req), RequestClass::Read)
 }
@@ -2849,6 +2882,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::CancelAuthSession { .. } => "cancel_auth_session",
         Request::CompleteAuthSession { .. } => "complete_auth_session",
         Request::UpsertAccountConfig { .. } => "upsert_account_config",
+        Request::SetAccountIdentity { .. } => "set_account_identity",
         Request::SetDefaultAccount { .. } => "set_default_account",
         Request::TestAccountConfig { .. } => "test_account_config",
         Request::DisableAccountConfig { .. } => "disable_account_config",
@@ -3235,6 +3269,7 @@ fn request_account_key(req: &Request) -> Option<&str> {
         | Request::StartAuthSession { account, .. }
         | Request::UpsertAccountConfig { account }
         | Request::TestAccountConfig { account } => Some(account.key.as_str()),
+        Request::SetAccountIdentity { key, .. } => Some(key.as_str()),
         Request::SetDefaultAccount { key } => Some(key.as_str()),
         Request::DisableAccountConfig { key } => Some(key.as_str()),
         Request::RemoveAccountConfig { key, .. } => Some(key.as_str()),
@@ -4640,3 +4675,47 @@ fn search_page_size_from_config(max_results: usize) -> u32 {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod identity_activity_tests {
+    use super::*;
+    use mxr_protocol::AccountOperationResult;
+
+    fn identity_request(dry_run: bool) -> Request {
+        Request::SetAccountIdentity {
+            key: "work".into(),
+            color: None,
+            tag: Some("W".into()),
+            dry_run,
+        }
+    }
+
+    fn operation(ok: bool) -> Response {
+        Response::Ok {
+            data: ResponseData::AccountOperation {
+                result: AccountOperationResult {
+                    ok,
+                    summary: String::new(),
+                    save: None,
+                    auth: None,
+                    sync: None,
+                    send: None,
+                    device_code_url: None,
+                    device_code_user_code: None,
+                },
+            },
+        }
+    }
+
+    #[test]
+    fn a_refused_account_operation_is_not_a_success() {
+        assert!(!response_succeeded(&operation(false)));
+        assert!(response_succeeded(&operation(true)));
+    }
+
+    #[test]
+    fn an_identity_dry_run_is_read_only_and_a_real_edit_is_not() {
+        assert!(request_is_read_only(&identity_request(true)));
+        assert!(!request_is_read_only(&identity_request(false)));
+    }
+}

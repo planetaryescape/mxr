@@ -3,6 +3,7 @@
 //! lives, why, and how to clear it.
 
 use crate::cli::{OutputFormat, PlaceArg, PlaceArgs, SenderAction, SenderKindArg};
+use crate::commands::account_mark::AccountMarks;
 use crate::commands::desk::plural;
 use crate::commands::owed::{csv_escape, truncate};
 use crate::commands::selection::parse_message_id;
@@ -47,6 +48,8 @@ fn expect_ok(resp: Response) -> anyhow::Result<ResponseData> {
 
 pub async fn list(place: MailPlaceData, args: PlaceArgs) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let scoped = args.account.is_some();
+    let format = resolve_format(args.format);
     let account_id = resolve_optional_account(&mut client, args.account.as_deref()).await?;
     let data = expect_ok(
         client
@@ -61,11 +64,17 @@ pub async fn list(place: MailPlaceData, args: PlaceArgs) -> anyhow::Result<()> {
             })
             .await?,
     )?;
-    print!("{}", render_place(&data, resolve_format(args.format))?);
+    let marks =
+        AccountMarks::marks_for(&mut client, matches!(format, OutputFormat::Table), scoped).await?;
+    print!("{}", render_place(&data, format, &marks)?);
     Ok(())
 }
 
-fn render_place(data: &ResponseData, fmt: OutputFormat) -> anyhow::Result<String> {
+fn render_place(
+    data: &ResponseData,
+    fmt: OutputFormat,
+    marks: &AccountMarks,
+) -> anyhow::Result<String> {
     let ResponseData::Place {
         place,
         bundles,
@@ -128,7 +137,8 @@ fn render_place(data: &ResponseData, fmt: OutputFormat) -> anyhow::Result<String
             for b in bundles {
                 let who = b.sender_name.as_deref().unwrap_or(&b.sender_email);
                 out.push_str(&format!(
-                    "\n{:<30}  {:>4}  {}\n",
+                    "\n{}{:<30}  {:>4}  {}\n",
+                    marks.prefix(&b.account_id),
                     truncate(&terminal_text(who), 30),
                     b.message_count,
                     b.newest_at.format("%Y-%m-%d"),

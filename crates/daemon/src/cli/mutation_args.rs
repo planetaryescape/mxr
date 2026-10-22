@@ -91,6 +91,21 @@ pub enum AccountsAction {
         #[command(subcommand)]
         op: AddressesOp,
     },
+    /// Set an account's colour and tag, the mark on its mail. Config values
+    /// override what the daemon stored and derived. Pass --color, --tag or both.
+    Identity {
+        /// Account key, as shown by `mxr accounts`.
+        key: String,
+        /// Colour slot: sky, amber, green, yellow, blue, vermilion, purple or slate.
+        #[arg(long)]
+        color: Option<mxr_core::AccountColor>,
+        /// Tag of 1 to 3 letters or digits. Must be unique across accounts.
+        #[arg(long)]
+        tag: Option<String>,
+        /// Show the change without writing config.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]

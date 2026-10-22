@@ -578,10 +578,11 @@ pub fn save_config_to_path(config: &MxrConfig, path: &Path) -> Result<(), Config
 
 /// Load config from a TOML string.
 pub fn load_config_from_str(toml_str: &str) -> Result<MxrConfig, ConfigError> {
-    toml::from_str(toml_str).map_err(|e| ConfigError::ParseToml {
+    let config: MxrConfig = toml::from_str(toml_str).map_err(|e| ConfigError::ParseToml {
         path: PathBuf::from("<string>"),
         source: e,
-    })
+    })?;
+    Ok(config)
 }
 
 /// Apply environment variable overrides to the config.

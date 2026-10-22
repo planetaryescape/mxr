@@ -585,4 +585,50 @@ use_tls = true
             Some(SendProviderConfig::Smtp { .. })
         ));
     }
+
+    fn identity_config(extra_work: &str, extra_wedding: &str) -> String {
+        format!(
+            "[accounts.work]\nname = \"Work\"\nemail = \"bk@work.example\"\n{extra_work}\n\
+             [accounts.wedding]\nname = \"Wedding\"\nemail = \"bk@wedding.example\"\n{extra_wedding}\n"
+        )
+    }
+
+    #[test]
+    fn identity_values_load_exactly_as_written() {
+        // Validation belongs to the daemon's resolver, so the config keeps
+        // what the user typed, including values the daemon will ignore.
+        let config = load_config_from_str(&identity_config(
+            "color = \"teal\"\ntag = \"w\"",
+            "tag = \"WORK\"",
+        ))
+        .expect("an identity value must not fail the load");
+        let work = &config.accounts["work"];
+        assert_eq!(work.color.as_deref(), Some("teal"));
+        assert_eq!(work.tag.as_deref(), Some("w"));
+        assert_eq!(config.accounts["wedding"].tag.as_deref(), Some("WORK"));
+    }
+
+    #[test]
+    fn an_unrelated_config_edit_keeps_an_identity_value_the_daemon_ignores() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            identity_config("color = \"teal\"", "color = \"amber\""),
+        )
+        .unwrap();
+        update_config_at_path(&path, |config| {
+            config.general.sync_interval = 120;
+            Ok::<(), ConfigError>(())
+        })
+        .unwrap();
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("color = \"teal\""), "{written}");
+        let reloaded = load_config_from_path(&path).unwrap();
+        assert_eq!(reloaded.accounts.len(), 2);
+        assert_eq!(reloaded.accounts["work"].color.as_deref(), Some("teal"));
+        assert_eq!(reloaded.accounts["wedding"].color.as_deref(), Some("amber"));
+        assert_eq!(reloaded.general.sync_interval, 120);
+    }
 }

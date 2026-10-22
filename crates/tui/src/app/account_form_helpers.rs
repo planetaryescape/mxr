@@ -177,6 +177,8 @@ impl App {
             }
         };
         mxr_protocol::AccountConfigData {
+            color: None,
+            tag: None,
             key,
             name,
             email,

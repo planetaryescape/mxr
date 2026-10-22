@@ -2553,6 +2553,7 @@ mod tests {
         send_kind: Option<&str>,
     ) -> AccountSummaryData {
         AccountSummaryData {
+            identity: None,
             account_id: mxr_core::AccountId::from_provider_id("test", email),
             key: Some(key.into()),
             name: key.into(),

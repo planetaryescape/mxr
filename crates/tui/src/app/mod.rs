@@ -1211,6 +1211,8 @@ fn account_summary_to_config(
     account: &mxr_protocol::AccountSummaryData,
 ) -> Option<mxr_protocol::AccountConfigData> {
     Some(mxr_protocol::AccountConfigData {
+        color: None,
+        tag: None,
         key: account.key.clone()?,
         name: account.name.clone(),
         email: account.email.clone(),
@@ -1528,6 +1530,7 @@ mod tests {
         is_default: bool,
     ) -> mxr_protocol::AccountSummaryData {
         mxr_protocol::AccountSummaryData {
+            identity: None,
             account_id: mxr_core::AccountId::new(),
             key: Some(email.to_string()),
             name: email.to_string(),

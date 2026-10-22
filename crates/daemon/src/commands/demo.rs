@@ -1618,6 +1618,8 @@ fn ensure_demo_config(messages: usize) -> anyhow::Result<DemoPaths> {
                 enabled: true,
                 sync: Some(SyncProviderConfig::Fake),
                 send: Some(SendProviderConfig::Fake),
+                color: None,
+                tag: None,
             },
         );
         config.accounts.insert(
@@ -1628,6 +1630,8 @@ fn ensure_demo_config(messages: usize) -> anyhow::Result<DemoPaths> {
                 enabled: true,
                 sync: Some(SyncProviderConfig::Fake),
                 send: Some(SendProviderConfig::Fake),
+                color: None,
+                tag: None,
             },
         );
 

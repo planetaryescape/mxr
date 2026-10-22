@@ -177,6 +177,7 @@ pub(crate) fn requires_local_account_setup(request: &Request) -> bool {
             | Request::CancelAuthSession { .. }
             | Request::CompleteAuthSession { .. }
             | Request::UpsertAccountConfig { .. }
+            | Request::SetAccountIdentity { .. }
             | Request::SetDefaultAccount { .. }
             | Request::TestAccountConfig { .. }
             | Request::DisableAccountConfig { .. }

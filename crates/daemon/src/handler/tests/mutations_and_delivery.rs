@@ -1518,6 +1518,30 @@ async fn list_accounts_surfaces_runtime_accounts_without_config_entries() {
 }
 
 #[tokio::test]
+async fn list_accounts_carries_the_stored_identity() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+
+    let msg = IpcMessage {
+        expected_workspace: None,
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::ListAccounts),
+    };
+    let resp = handle_request(&state, &msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Accounts { accounts },
+        }) => {
+            // The only account is the first one created, so it takes the first slot.
+            let identity = accounts[0].identity.clone().expect("identity is sent");
+            assert_eq!(identity.color, mxr_core::AccountColor::Sky);
+            assert!(!identity.tag.is_empty());
+        }
+        other => panic!("Expected Accounts response, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn get_llm_status_reports_noop_provider_by_default() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 

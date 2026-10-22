@@ -120,6 +120,15 @@ local = ["mxr-semantic/local"]
 # Embed the web SPA into the binary so `mxr web` serves it from the bridge.
 # Build the SPA first: `cd apps/web && npm install && npm run build`.
 web-ui = ["mxr-web/web-ui"]
+# Developer tool: trace model calls to a Langfuse on this machine. Off in every
+# shipped binary; without it none of the tracing code or its crates is built.
+langfuse = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "reqwest/blocking",
+    "mxr-llm/langfuse",
+]
 
 [workspace]
 resolver = "2"
@@ -301,6 +310,13 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 parking_lot = "0.12"
 
+# LLM tracing to a Langfuse on this machine (OTLP over HTTP), behind the
+# `langfuse` feature. The API crate is all `mxr-llm` needs; the SDK and
+# exporter live in the daemon.
+opentelemetry = { version = "0.33.1", default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["trace"] }
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client"] }
+
 # Async traits
 async-trait = "0.1"
 
@@ -443,6 +459,9 @@ lettre = { workspace = true }
 mail-parser = { workspace = true }
 nucleo = { workspace = true }
 once_cell = { workspace = true }
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
 ratatui = { workspace = true }
 ratatui-image = { workspace = true }
 regex = { workspace = true }

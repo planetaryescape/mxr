@@ -13,6 +13,8 @@ workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+# Spans for model calls, only with the `langfuse` feature (see `trace`).
+opentelemetry = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -24,6 +26,17 @@ tracing = { workspace = true }
 # Parses endpoint URLs to decide what is provably on this machine.
 url = { workspace = true }
 
+[features]
+# Developer tool: Langfuse-shaped spans for every model call. Without it the
+# `trace` calls are empty and the OpenTelemetry crate isn't built.
+langfuse = ["dep:opentelemetry"]
+
+[[test]]
+name = "trace_spans"
+required-features = ["langfuse"]
+
 [dev-dependencies]
+# `testing`: the in-memory exporter that `tests/trace_spans.rs` reads spans from.
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 wiremock = { workspace = true }

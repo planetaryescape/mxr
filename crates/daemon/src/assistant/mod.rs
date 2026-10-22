@@ -22,6 +22,7 @@ use mxr_assistant::{
     prompt, Agent, ChatModel, Decision, Limits, MessageMeta, PendingItem, Progress, Summary,
     TurnOutcome, TurnSink, ViewContext,
 };
+use mxr_llm::trace::{Kind, Observation};
 use mxr_llm::{LlmError, LlmFeature, ToolChatMessage, ToolChatRequest, ToolChatResponse};
 use mxr_protocol::{
     AssistantProgressData, AssistantStatusData, AssistantViewContextData, DaemonEvent,
@@ -180,21 +181,65 @@ async fn run_turn(
         auto_approve: row.auto_approve,
         summary: std::sync::Mutex::new(summary),
     };
+    // One trace per turn, one Langfuse session per conversation.
+    let span = Observation::start("assistant-turn", Kind::Agent).in_session(conversation_id);
     let outcome = match start {
         TurnStart::Send { message, context } => {
+            span.input(|| serde_json::json!(message));
             let now = chrono::Local::now().to_rfc3339();
             let content = prompt::user_message(&message, &now, &view_context(context));
-            agent.send(&mut history, &pending, content).await
+            span.instrument(agent.send(&mut history, &pending, content))
+                .await
         }
-        TurnStart::Decide { decisions } => agent
-            .resume(&mut history, pending, decisions)
-            .await
-            .unwrap_or_else(TurnOutcome::Failed),
+        TurnStart::Decide { decisions } => {
+            span.input(|| serde_json::json!({ "decisions": decisions }));
+            span.instrument(agent.resume(&mut history, pending, decisions))
+                .await
+                .unwrap_or_else(TurnOutcome::Failed)
+        }
     };
     if let TurnOutcome::Failed(error) = &outcome {
         tracing::warn!(conversation_id, %error, "assistant turn failed");
     }
+    #[cfg(feature = "langfuse")]
+    record_turn(&span, &outcome, &history);
     outcome
+}
+
+/// How the turn ended, for its trace: the outcome, and the reply or error.
+#[cfg(feature = "langfuse")]
+fn record_turn(span: &Observation, outcome: &TurnOutcome, history: &[ToolChatMessage]) {
+    span.metadata("outcome", outcome_key(outcome));
+    match outcome {
+        TurnOutcome::Failed(error) => span.fail(error),
+        _ => span.output(|| last_reply(history)),
+    }
+}
+
+#[cfg(feature = "langfuse")]
+fn outcome_key(outcome: &TurnOutcome) -> &'static str {
+    match outcome {
+        TurnOutcome::Finished => "finished",
+        TurnOutcome::AwaitingUser(_) => "awaiting_user",
+        TurnOutcome::StepLimit => "step_limit",
+        TurnOutcome::Cancelled => "cancelled",
+        TurnOutcome::Failed(_) => "failed",
+    }
+}
+
+/// The turn's answer for the trace: the last thing the assistant said.
+#[cfg(feature = "langfuse")]
+fn last_reply(history: &[ToolChatMessage]) -> serde_json::Value {
+    history
+        .iter()
+        .rev()
+        .find_map(|message| match message {
+            ToolChatMessage::Assistant { text, .. } if !text.trim().is_empty() => {
+                Some(serde_json::json!(text))
+            }
+            _ => None,
+        })
+        .unwrap_or(serde_json::Value::Null)
 }
 
 /// Record how the turn ended and return the conversation's new status.

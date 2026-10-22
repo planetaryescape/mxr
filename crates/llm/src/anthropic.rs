@@ -8,7 +8,7 @@ use crate::route::ApiKey;
 use crate::tool_chat::{
     ProviderTurn, TokenUsage, ToolCall, ToolChatMessage, ToolChatRequest, ToolChatResponse,
 };
-use crate::{endpoint, ChatRole, CompletionRequest, CompletionResponse, LlmError};
+use crate::{endpoint, trace, ChatRole, CompletionRequest, CompletionResponse, LlmError};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -63,18 +63,44 @@ struct MessagesResponse {
     #[serde(default)]
     content: Vec<ContentBlock>,
     stop_reason: Option<String>,
+    /// Read only for traces.
+    #[cfg(feature = "langfuse")]
+    #[serde(default)]
+    usage: Option<TokenUsage>,
 }
 
-/// Only `text` blocks are the answer. `thinking` and anything newer are
-/// skipped.
+/// Only `text` blocks are the answer. `thinking` is kept for traces;
+/// anything newer, and `thinking` without the `langfuse` feature, is skipped.
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ContentBlock {
     Text {
         text: String,
     },
+    #[cfg(feature = "langfuse")]
+    Thinking {
+        #[serde(default)]
+        thinking: String,
+    },
     #[serde(other)]
     Other,
+}
+
+#[cfg(feature = "langfuse")]
+impl MessagesResponse {
+    fn thinking(&self) -> Option<String> {
+        let thinking: Vec<&str> = self
+            .content
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Thinking { thinking } if !thinking.trim().is_empty() => {
+                    Some(thinking.as_str())
+                }
+                _ => None,
+            })
+            .collect();
+        (!thinking.is_empty()).then(|| thinking.join("\n\n"))
+    }
 }
 
 #[derive(Deserialize)]
@@ -115,8 +141,36 @@ impl AnthropicClient {
         timeout: Option<Duration>,
     ) -> Result<CompletionResponse, AttemptError> {
         let body = build_request(model, req)?;
-        let reply: MessagesResponse = self.post(key, &body, timeout).await?;
-        interpret(reply, model)
+        let span = trace::generation(
+            "generate",
+            model,
+            &self.base_url,
+            || trace::completion_input(&req.messages),
+            || json!({"max_tokens": body.max_tokens, "effort": body.output_config.effort}),
+        );
+        let reply: MessagesResponse = match span.instrument(self.post(key, &body, timeout)).await {
+            Ok(reply) => reply,
+            Err(attempt) => {
+                span.fail(&attempt.error.to_string());
+                return Err(attempt);
+            }
+        };
+        #[cfg(feature = "langfuse")]
+        let (usage, thinking) = (reply.usage.clone(), reply.thinking());
+        let result = interpret(reply, model);
+        #[cfg(feature = "langfuse")]
+        match &result {
+            Ok(response) => trace::finish_completion_attempt(
+                &span,
+                response,
+                usage.as_ref(),
+                thinking.as_deref(),
+            ),
+            Err(attempt) => {
+                trace::fail_attempt(&span, &attempt.error, usage.as_ref(), thinking.as_deref());
+            }
+        }
+        result
     }
 
     /// One tool-calling turn. The reply's content blocks are kept whole so
@@ -129,8 +183,39 @@ impl AnthropicClient {
         timeout: Option<Duration>,
     ) -> Result<ToolChatResponse, AttemptError> {
         let body = build_tool_request(model, req)?;
-        let reply: ToolMessagesResponse = self.post(key, &body, timeout).await?;
-        interpret_tool_reply(reply, model)
+        let span = self.chat_generation(model, req, &body);
+        let result = span
+            .instrument(async {
+                let reply: ToolMessagesResponse = self.post(key, &body, timeout).await?;
+                interpret_tool_reply(reply, model)
+            })
+            .await;
+        trace::finish_chat_attempt(&span, &result);
+        result
+    }
+
+    /// The generation for one tool-calling request. The messages are shown
+    /// in the same OpenAI form as every other provider's.
+    fn chat_generation(
+        &self,
+        model: &str,
+        req: &ToolChatRequest,
+        body: &ToolMessagesRequest<'_>,
+    ) -> trace::Observation {
+        trace::generation(
+            "chat",
+            model,
+            &self.base_url,
+            || trace::chat_input(&req.messages),
+            || {
+                json!({
+                    "max_tokens": body.max_tokens,
+                    "effort": body.output_config.effort,
+                    "stream": body.stream,
+                    "tools": body.tools.len(),
+                })
+            },
+        )
     }
 
     /// [`Self::chat`] with the reply streamed and rebuilt block by block.
@@ -144,20 +229,27 @@ impl AnthropicClient {
     ) -> Result<ToolChatResponse, AttemptError> {
         let mut body = build_tool_request(model, req)?;
         body.stream = true;
-        let response = self.send_checked(key, &body, timeout).await?;
-        let mut folded = crate::stream::AnthropicStream::default();
-        crate::stream::read_events(response, |data| folded.fold(data, on_text)).await?;
-        let reply: ToolMessagesResponse =
-            serde_json::from_value(folded.finish()).map_err(|error| {
-                AttemptError::route(
-                    LlmError::Other(format!("Anthropic reply could not be read: {error}")),
-                    RouteFailure::Cooling {
-                        reason: FailureReason::plain("unreadable reply"),
-                        retry_after: None,
-                    },
-                )
-            })?;
-        interpret_tool_reply(reply, model)
+        let span = self.chat_generation(model, req, &body);
+        let result = span
+            .instrument(async {
+                let response = self.send_checked(key, &body, timeout).await?;
+                let mut folded = crate::stream::AnthropicStream::default();
+                crate::stream::read_events(response, |data| folded.fold(data, on_text)).await?;
+                let reply: ToolMessagesResponse =
+                    serde_json::from_value(folded.finish()).map_err(|error| {
+                        AttemptError::route(
+                            LlmError::Other(format!("Anthropic reply could not be read: {error}")),
+                            RouteFailure::Cooling {
+                                reason: FailureReason::plain("unreadable reply"),
+                                retry_after: None,
+                            },
+                        )
+                    })?;
+                interpret_tool_reply(reply, model)
+            })
+            .await;
+        trace::finish_chat_attempt(&span, &result);
+        result
     }
 
     async fn post<B: Serialize, R: serde::de::DeserializeOwned>(
@@ -313,6 +405,8 @@ fn interpret(
         .into_iter()
         .filter_map(|block| match block {
             ContentBlock::Text { text } => Some(text),
+            #[cfg(feature = "langfuse")]
+            ContentBlock::Thinking { .. } => None,
             ContentBlock::Other => None,
         })
         .collect();

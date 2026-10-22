@@ -39,6 +39,8 @@ Gmail OAuth refresh tokens are stored in the OS secret store when it is availabl
 
 mxr does not collect telemetry, analytics, crash reports, tracking pixels, or anonymous usage statistics.
 
+Released mxr binaries contain no tracing code. A developer can build mxr with the `langfuse` feature to record each model call (prompt, reply and token counts, so mail included) in a [Langfuse](https://langfuse.com) they run themselves; such a build sends traces only to a Langfuse on the same machine and refuses any other address, including Langfuse Cloud.
+
 ---
 
 ## Network Requests

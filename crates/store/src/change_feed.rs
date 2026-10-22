@@ -164,6 +164,40 @@ mod tests {
         );
     }
 
+    /// A transaction holds the writer through its commit, so the landed
+    /// count waits for it, and then includes it. Needs a file-backed store:
+    /// the in-memory one shares a single connection for reads and writes.
+    #[tokio::test]
+    async fn the_landed_count_waits_for_a_commit_in_flight() {
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(&dir.path().join("store.db")).await.unwrap();
+        let before = store
+            .changes_landed(Duration::from_secs(5))
+            .await
+            .expect("an idle writer");
+
+        let mut tx = store.writer().begin().await.unwrap();
+        sqlx::query("UPDATE accounts SET name = 'x' WHERE 0")
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.changes_landed(Duration::from_millis(50)).await,
+            None,
+            "a transaction holds the writer"
+        );
+        tx.rollback().await.unwrap();
+
+        store.insert_account(&test_account()).await.unwrap();
+        let after = store
+            .changes_landed(Duration::from_secs(5))
+            .await
+            .expect("the writer is free again");
+        assert!(after > before, "the committed insert is in the count");
+    }
+
     #[tokio::test]
     async fn view_tables_count_and_bookkeeping_does_not() {
         let store = Store::in_memory().await.unwrap();

@@ -324,7 +324,7 @@ mod tests {
                 ));
             }
         }
-        rows.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        rows.sort_by_key(|row| std::cmp::Reverse(row.started_at));
 
         let summary = summarize(AccountId::new(), "Work".into(), &rows);
         assert_eq!(summary.recurring_errors.len(), RECURRING_MAX_GROUPS);

@@ -508,6 +508,27 @@ fn inbox_rows_carry_their_mode_and_a_move_anywhere_refreshes_them() {
 }
 
 #[test]
+fn a_missed_address_change_is_recovered_by_dropping_cached_reply_contexts() {
+    // Events missed while disconnected can include an address change, so the
+    // gap and reconnect resync must drop the cache too.
+    let mut app = inbox_app();
+    let message = app.mailbox.envelopes[0].id.clone();
+    app.compose.reply_context_cache.insert(
+        message.clone(),
+        crate::app::ReplyContextPair {
+            reply: None,
+            reply_all: None,
+        },
+    );
+
+    handle_daemon_event(&mut app, DaemonEvent::EventsLagged { skipped: 4 });
+    assert!(
+        !app.compose.reply_context_cache.contains_key(&message),
+        "a gap may hide an alias registered while the client was away"
+    );
+}
+
+#[test]
 fn an_account_address_change_drops_every_cached_reply_context() {
     let mut app = inbox_app();
     let message = app.mailbox.envelopes[0].id.clone();

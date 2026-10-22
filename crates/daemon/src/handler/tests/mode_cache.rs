@@ -64,11 +64,14 @@ async fn bookkeeping_writes_keep_the_cached_view() {
 }
 
 #[tokio::test]
-async fn a_view_past_its_age_is_rebuilt_before_it_answers() {
+async fn an_unchanged_view_is_still_served_minutes_later() {
     let fx = Fixture::new().await;
     let first = now_built_at(&fx).await;
-    fx.state.mode_cache.age(std::time::Duration::from_secs(61));
-    assert_ne!(now_built_at(&fx).await, first);
+    fx.state
+        .mode_cache
+        .age(std::time::Duration::from_secs(5 * 60));
+    fx.state.mode_cache.refresh(&fx.state).await;
+    assert_eq!(now_built_at(&fx).await, first);
 }
 
 #[tokio::test]
@@ -87,10 +90,10 @@ async fn the_refresher_rebuilds_a_view_after_a_mutation_so_reads_stay_instant() 
 }
 
 #[tokio::test]
-async fn a_view_built_in_an_earlier_hour_is_rebuilt_before_it_answers() {
+async fn a_view_built_in_an_earlier_quarter_hour_is_rebuilt_before_it_answers() {
     let fx = Fixture::new().await;
     let first = now_built_at(&fx).await;
-    fx.state.mode_cache.previous_hour();
+    fx.state.mode_cache.previous_slot();
     assert_ne!(now_built_at(&fx).await, first);
 }
 
@@ -112,9 +115,36 @@ async fn a_view_built_while_a_change_settles_is_rebuilt_once_it_has() {
     assert_eq!(now_built_at(&fx).await, unsettled, "not settled yet");
 
     tokio::time::sleep(std::time::Duration::from_millis(2_100)).await;
-    fx.state.mode_cache.age(std::time::Duration::from_secs(6));
     fx.state.mode_cache.refresh(&fx.state).await;
-    assert_ne!(now_built_at(&fx).await, unsettled);
+    let refreshed = now_built_at(&fx).await;
+    assert_ne!(refreshed, unsettled);
+    assert_eq!(now_built_at(&fx).await, refreshed, "and is served after");
+}
+
+/// The read itself must not serve a view that may predate new mail once
+/// the change has landed, even before the refresher gets to it.
+#[tokio::test]
+async fn a_read_after_a_change_settles_never_gets_the_unsettled_view() {
+    let fx = Fixture::new().await;
+    fx.message(
+        &ThreadId::new(),
+        "maya@example.com",
+        ME,
+        Duration::minutes(5),
+        None,
+    )
+    .await;
+    let unsettled = now_built_at(&fx).await;
+    assert_eq!(now_built_at(&fx).await, unsettled, "still settling");
+
+    tokio::time::sleep(std::time::Duration::from_millis(2_100)).await;
+    let settled = now_built_at(&fx).await;
+    assert_ne!(settled, unsettled);
+    assert_eq!(
+        now_built_at(&fx).await,
+        settled,
+        "the settled build is served"
+    );
 }
 
 #[tokio::test]

@@ -7,9 +7,13 @@
 //! was built:
 //! - no request that is not read-only has finished since (any mutation
 //!   through the daemon, so your own changes always show);
-//! - the store's change feed has not moved since (sync, background loops);
-//! - it is younger than `MAX_AGE` and was built in the current local hour,
-//!   because the views word time ("due soon", the evening switch, today).
+//! - the store's change feed has not moved since (sync, background loops),
+//!   and, if a commit may still have been landing when it was built, the
+//!   feed is still busy (once it is quiet, a new build would see it);
+//! - it was built in the current local quarter hour, because the views
+//!   word time ("earlier today", the evening switch, what is coming up).
+//!   Their wording moves by the day or the hour, and a "coming up" moment
+//!   that has passed may linger until the next quarter hour.
 //!
 //! Otherwise the read builds it, as it would without the cache.
 
@@ -26,11 +30,6 @@ use tokio::sync::watch;
 use super::{messages, modes, now, reading, updates, HandlerResult};
 use crate::state::AppState;
 
-/// Longest a view is served without rebuilding first.
-const MAX_AGE: Duration = Duration::from_secs(60);
-/// The refresher rebuilds a view this old even without a change, so an
-/// active view never reaches `MAX_AGE`.
-const REFRESH_AGE: Duration = Duration::from_secs(45);
 /// SQLite's commit hook runs just before a commit lands. A view built
 /// within this long of a change may predate it, so it is rebuilt again
 /// once the feed has been quiet this long.
@@ -39,9 +38,9 @@ const SETTLE: Duration = Duration::from_secs(2);
 /// bounds the work if some table is written continuously.
 const MIN_REBUILD: Duration = Duration::from_secs(5);
 /// Views nobody read for this long are dropped instead of rebuilt. Keeping
-/// a view fresh costs a rebuild every `REFRESH_AGE` (about a second each on
-/// a large mailbox), so this is the burst a client is in use, not the gap
-/// between visits; a client keeps its own last copy for those.
+/// a view fresh costs a rebuild (about a second on a large mailbox) at every
+/// change and quarter hour, so this is the burst a client is in use, not the
+/// gap between visits; a client keeps its own last copy for those.
 const ACTIVE: Duration = Duration::from_secs(5 * 60);
 /// Most views kept. Messages' `limit` and Updates' `cut` come from the
 /// client, so the set of keys is otherwise unbounded; the least recently
@@ -162,8 +161,8 @@ struct Entry {
     /// The feed had been quiet for `SETTLE` when the build started, so the
     /// build saw every change counted in `changes`.
     settled: bool,
-    /// The local hour the build started in; see `local_hour`.
-    hour: i64,
+    /// The local quarter hour the build started in; see `time_slot`.
+    slot: i64,
     last_read: Instant,
     /// Held while this view builds, so concurrent readers wait for one build.
     building: Arc<tokio::sync::Mutex<()>>,
@@ -207,7 +206,7 @@ impl ModeCache {
             };
             let entry = &mut entries[index];
             entry.last_read = Instant::now();
-            if let Some(data) = self.servable(entry, feed.seq()) {
+            if let Some(data) = self.servable(entry, feed.seq(), feed.quiet_for() >= SETTLE) {
                 return Ok(data);
             }
             Arc::clone(&entry.building)
@@ -219,7 +218,7 @@ impl ModeCache {
             entries
                 .iter()
                 .find(|e| e.view == view)
-                .and_then(|entry| self.servable(entry, feed.seq()))
+                .and_then(|entry| self.servable(entry, feed.seq(), feed.quiet_for() >= SETTLE))
         };
         if let Some(data) = fresh {
             return Ok(data);
@@ -242,19 +241,25 @@ impl ModeCache {
         self.entries.lock().len()
     }
 
-    /// Make every cached view look built in the previous local hour.
+    /// Make every cached view look built in the previous quarter hour.
     #[cfg(test)]
-    pub(super) fn previous_hour(&self) {
+    pub(super) fn previous_slot(&self) {
         for entry in self.entries.lock().iter_mut() {
-            entry.hour -= 1;
+            entry.slot -= 1;
         }
     }
 
-    fn servable(&self, entry: &Entry, changes: u64) -> Option<ResponseData> {
+    /// The view, if it can answer a read now. `quiet`: the change feed has
+    /// been quiet for `SETTLE`.
+    fn servable(&self, entry: &Entry, changes: u64, quiet: bool) -> Option<ResponseData> {
+        // A build that started while a commit was landing may have missed
+        // it, so it only answers while the feed is still busy, when a new
+        // build would be no surer. New mail must never wait for the
+        // refresher to show.
         let good = entry.mutations == self.mutations.load(Ordering::Acquire)
             && entry.changes == changes
-            && entry.built.elapsed() < MAX_AGE
-            && entry.hour == local_hour();
+            && (entry.settled || !quiet)
+            && entry.slot == time_slot();
         good.then(|| entry.data.clone()).flatten()
     }
 
@@ -264,7 +269,7 @@ impl ModeCache {
         let feed = state.store.change_feed();
         let started = Instant::now();
         let mutations = self.mutations.load(Ordering::Acquire);
-        let hour = local_hour();
+        let slot = time_slot();
         // The count first: a commit whose hook runs after this read is not
         // counted, so the next read rebuilds; one whose hook ran before it
         // makes the feed not yet quiet, so the build is marked unsettled.
@@ -281,7 +286,7 @@ impl ModeCache {
                     entry.mutations = mutations;
                     entry.changes = changes;
                     entry.settled = settled;
-                    entry.hour = hour;
+                    entry.slot = slot;
                 }
             }
         }
@@ -289,7 +294,7 @@ impl ModeCache {
     }
 
     /// One refresher pass: drop idle views and rebuild the active ones a
-    /// change, a mutation or their age has made stale.
+    /// change, a mutation or a new quarter hour has made stale.
     pub(super) async fn refresh(&self, state: &AppState) {
         let feed = state.store.change_feed();
         let settled = feed.quiet_for() >= SETTLE;
@@ -302,13 +307,12 @@ impl ModeCache {
                 .iter()
                 .filter(|e| e.data.is_some())
                 .filter(|e| {
-                    let changed = (e.changes != seq || !e.settled)
-                        && settled
-                        && e.built.elapsed() >= MIN_REBUILD;
-                    changed
-                        || e.mutations != mutations
-                        || e.built.elapsed() >= REFRESH_AGE
-                        || e.hour != local_hour()
+                    // A view that may have missed a commit is rebuilt as soon
+                    // as the feed is quiet; only new changes wait for
+                    // `MIN_REBUILD`.
+                    let changed = settled
+                        && (!e.settled || (e.changes != seq && e.built.elapsed() >= MIN_REBUILD));
+                    changed || e.mutations != mutations || e.slot != time_slot()
                 })
                 .map(|e| (e.view.clone(), Arc::clone(&e.building)))
                 .collect()
@@ -331,14 +335,14 @@ impl ModeCache {
     }
 }
 
-/// Hours since the epoch in local time: changes at every local hour, so at
-/// the evening switch and at midnight.
-fn local_hour() -> i64 {
+/// Quarter hours since the epoch in local time: changes on every local
+/// quarter hour, so also at the evening switch and at midnight.
+fn time_slot() -> i64 {
     Local::now()
         .naive_local()
         .and_utc()
         .timestamp()
-        .div_euclid(3600)
+        .div_euclid(15 * 60)
 }
 
 impl Entry {
@@ -352,7 +356,7 @@ impl Entry {
             mutations: 0,
             changes: 0,
             settled: false,
-            hour: local_hour(),
+            slot: time_slot(),
             last_read: now,
             building: Arc::new(tokio::sync::Mutex::new(())),
         }

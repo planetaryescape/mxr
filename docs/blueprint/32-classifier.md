@@ -826,7 +826,7 @@ their own. The ladder, with status as of 21 October 2026:
 | R0b | see which stored deadlines came from the email's own words, and have mxr act only on those | `by_when_source` on commitments (D149), no new command | in progress |
 | R1 | see how well mxr sorts, per question, with every mismatch | scenario corpus (quick set), `mxr classify eval` | shipped, v0.6.122 |
 | R1b | have every one of the 50,000 demo emails graded in CI | scenario-first demo generator, held-out phrasings, full set | done (#638) |
-| R1c | see how often mxr finds what an email asks, per kind and field | label schema v2, per-kind and per-field metrics, twins, held-out template families, recorded model responses ([37](37-what-it-asks.md#r1c-measure-asks-by-kind-and-field)) | planned |
+| R1c | see how often mxr finds what an email asks, per kind and field | label schema v2, per-kind and per-field metrics, twins, held-out template families, recorded model responses ([37](37-what-it-asks.md#r1c-measure-asks-by-kind-and-field)) | built |
 | R2 | see one home for every email everywhere, with the deciding reason | facts, judges for who and what-for, the resolver, the stored assessment, every projection reading it, fallback, `classify report` | planned |
 | R2b | stop organisations with person-like addresses landing in Messages | the redesign loop on the who judge | planned |
 | R2c | trust that every to-do is something an email asks you, with whose move it is | zones, owner identity, units, rules that vote, the document reading, item identity, the four-way correction ([37](37-what-it-asks.md#r2c-every-to-do-is-something-an-email-asks-you-with-whose-move-it-is)) | planned |
@@ -906,7 +906,7 @@ is the record. It is deterministic: two runs gave identical figures.
 |---|---|---|---|---|---|
 | Who sent it | 35,791 | 38,747 | 92.4% | 90.3% (10,032 of 11,115) | 89.1% |
 | Home | 36,671 | 38,747 | 94.6% | 91.8% (10,208 of 11,115) | 89.8% |
-| To-do aspect | 38,654 | 38,747 | 99.8% | 99.9% (11,099 of 11,115) | 98.0% |
+| To-do aspect (retired in R1c; see the asks below) | 38,654 | 38,747 | 99.8% | 99.9% (11,099 of 11,115) | 98.0% |
 | Record aspect | 35,588 | 38,747 | 91.8% | 85.3% (9,483 of 11,115) | 96.6% |
 
 8,284 answers are wrong, in 41 clusters of the same scenario, question,
@@ -950,6 +950,70 @@ The labels that rest on a judgement call (12,653 of the 38,747: threads you
 were only copied on, trip reminders and schedule changes, promotions, spam,
 phishing lookalikes, sign-in alerts, statements and a colleague's dated
 request) mark their mismatches `[label to check]`.
+
+### Baseline: the asks by kind
+
+R1c stops grading the to-do as a yes or no. Each label (schema v2) lists the
+items the email should make, and `mxr classify eval` reports precision and
+recall per kind of ask from chapter 37's vocabulary, the exact match of the
+amount, due and counterparty on matched items, duplicates, merges, twin pairs
+and slices. The quick set is now 184 labelled emails (the 147 and 37 more in
+twins for every shape chapter 37 lists, en-ZA phrasings, a multi-account
+sender and two held-out template families). The full set is 38,748, one more
+than before because the owner's sent promise is labelled. Who, home and record
+are unchanged: the same labels and the same figures as above. The snapshots
+(`...classify_eval__the_quick_set_is_graded_and_every_mismatch_is_listed.snap`,
+`...classify_eval_full__the_full_set_is_graded_on_the_whole_demo.snap`) are the
+record, and `classify_eval_floor.json` holds the per-kind floor that fails CI
+on a regression.
+
+| Kind | Quick: expected / found | Quick precision | Quick recall | Full: expected / found | Full precision | Full recall |
+|---|---|---|---|---|---|---|
+| pay | 17 / 13 | 92.3% | 70.6% | 48 / 6 | 66.7% | 8.3% |
+| fix_payment | 5 / 3 | 100.0% | 60.0% | 2 / 1 | 100.0% | 50.0% |
+| sign | 4 / 3 | 100.0% | 75.0% | 2 / 2 | 100.0% | 100.0% |
+| attend | 2 / 3 | 66.7% | 100.0% | 0 / 0 | - | - |
+| send | 2 / 0 | - | 0.0% | 24 / 0 | - | 0.0% |
+| provide | 1 / 0 | - | 0.0% | 0 / 0 | - | - |
+| book | 1 / 0 | - | 0.0% | 0 / 0 | - | - |
+| other | 2 / 0 | - | 0.0% | 7 / 0 | - | 0.0% |
+| you promised: send | 2 / 0 | - | 0.0% | 1 / 0 | - | 0.0% |
+| verify, reply, upload, renew_or_cancel, register, contact | 0 / 0 | - | - | 0 / 0 | - | - |
+| all kinds | 36 / 22 | 90.9% | 55.6% | 84 / 9 | 77.8% | 8.3% |
+
+What the figures say:
+
+- Recall on live asks is 8.3% on the full set, and its asks are two generated
+  families plus the curated mail. Generated bills are found 2 times in 46, the
+  curated bills and sign requests are all found, and every colleague request
+  (24 `send`, 6 `other`) is missed: none of the rules in
+  `crates/todo/src/detect.rs` (bill, failed payment, renewal, sign, verify,
+  RSVP) is about a request to send or share something. The quick set's
+  recall is 55.6%.
+- Precision is 77.8% on 9 rows. The false alarms are two invoices marked
+  paid (a generated order invoice that says "Total due: ... (paid)") on the
+  full set, and on the quick set a promotion that says "pay by" and a
+  platform webinar that says "RSVP". The same sender's real invoice is found.
+- Fields on matched items: the amount, due and counterparty are exact on all 7
+  matched pairs of the full set, and the amount is right on 16 of 20 quick-set
+  pairs. The misses are the amount of a failed payment (not read), a euro
+  amount written "€1.234,56" read as 1.23 EUR, and rand amounts ("R1 234,56")
+  not read at all, because the money parser reads only £, $ and €.
+- One merge: the second of two service charges from one managing agent
+  replaces the first, because today's dedup key (sender domain, object, due
+  day) has no account reference.
+- Twin pairs: both members right in 27 of 42 pairs, and in 8 of the 22 pairs
+  whose members ask different things. A surface-only baseline gets 2 of the 21
+  such pairs (10%, bar 40%), so the pairs are not separable by subject
+  words, sender or length.
+- Your turn (reply owed) is graded against `needs_reply`: 15.4% recall and
+  40.0% precision on the quick set. On the full set it flags 703 colleague
+  requests that the thread shows you answered, because it reads one message.
+- Held-out: on the full set 16 held-out asks, none found; on the quick set
+  the two held-out families are both missed.
+- Your promises in sent mail are never found. Promise rows are mirrored from
+  commitments that the relationship worker extracts with a model
+  (`sync_promises` in `crates/todo/src/pass.rs`), and the eval runs no model.
 
 ## Decisions this rests on
 

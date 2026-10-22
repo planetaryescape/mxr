@@ -1,5 +1,5 @@
 //! Reads for `mxr classify eval`: which stored emails a scenario labels,
-//! and which of them made a to-do or a record. Read-only.
+//! and which to-do rows and records were made from them. Read-only.
 
 use crate::{decode_id, encode_json};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -22,10 +22,27 @@ pub struct EvalCandidate {
     pub spam: bool,
 }
 
-/// Emails a to-do or a record was made from.
+/// A to-do row, with what the eval grades about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvalTodo {
+    /// The email the row was made from.
+    pub source_message_id: MessageId,
+    /// `bill`, `payment_failed`, `renewal`, ... (`TodoKind::as_str`).
+    pub kind: String,
+    pub title: String,
+    pub counterparty: Option<String>,
+    pub amount_minor: Option<i64>,
+    pub currency: Option<String>,
+    /// The phrase the due date was read from, when there is a due date.
+    pub due_words: Option<String>,
+    pub has_due: bool,
+}
+
+/// The to-do rows and records made from some emails.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EvalAspects {
-    pub todo: HashSet<MessageId>,
+    /// In a stable order, whatever order the table returns rows in.
+    pub todos: Vec<EvalTodo>,
     pub record: HashSet<MessageId>,
 }
 
@@ -112,11 +129,11 @@ impl super::Store {
         Ok(u32::try_from(count).unwrap_or(u32::MAX))
     }
 
-    /// Which of `message_ids` a to-do or a record was made from. Closing a
-    /// to-do or dismissing a record is the user's action, not the
-    /// classifier's answer, so state is ignored; a to-do that was already
-    /// over when it was found (`expired_at_birth`) is not one the product
-    /// ever shows, so it is not counted.
+    /// The to-do rows and records made from `message_ids`. Closing a to-do
+    /// or dismissing a record is the user's action, not the classifier's
+    /// answer, so state is ignored; a to-do that was already over when it was
+    /// found (`expired_at_birth`) is not one the product ever shows, so it is
+    /// not counted.
     pub async fn classify_eval_aspects(
         &self,
         message_ids: &[MessageId],
@@ -127,23 +144,40 @@ impl super::Store {
                 .map(MessageId::as_str)
                 .collect::<Vec<_>>(),
         )?;
-        let ids = |sql: &'static str| {
-            sqlx::query_scalar::<_, String>(sql)
-                .bind(ids_json.clone())
-                .fetch_all(self.reader())
-        };
-        let todo = ids("SELECT DISTINCT source_message_id FROM todos
+        let todo_rows = sqlx::query(
+            "SELECT source_message_id, kind, title, counterparty, amount_minor, currency,
+                    due_words, (due_at IS NOT NULL) AS has_due
+             FROM todos
              WHERE source_message_id IN (SELECT value FROM json_each(?1))
-               AND expired_at_birth = 0")
+               AND expired_at_birth = 0
+             ORDER BY source_message_id, kind, title, counterparty, amount_minor, due_words",
+        )
+        .bind(ids_json.clone())
+        .fetch_all(self.reader())
         .await?;
-        let record = ids("SELECT DISTINCT message_id FROM record_messages
-             WHERE message_id IN (SELECT value FROM json_each(?1))")
+        let record = sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT message_id FROM record_messages
+             WHERE message_id IN (SELECT value FROM json_each(?1))",
+        )
+        .bind(ids_json)
+        .fetch_all(self.reader())
         .await?;
         Ok(EvalAspects {
-            todo: todo
+            todos: todo_rows
                 .iter()
-                .map(|id| decode_id(id))
-                .collect::<Result<_, _>>()?,
+                .map(|row| {
+                    Ok(EvalTodo {
+                        source_message_id: decode_id(row.try_get::<&str, _>("source_message_id")?)?,
+                        kind: row.try_get("kind")?,
+                        title: row.try_get("title")?,
+                        counterparty: row.try_get("counterparty")?,
+                        amount_minor: row.try_get("amount_minor")?,
+                        currency: row.try_get("currency")?,
+                        due_words: row.try_get("due_words")?,
+                        has_due: row.try_get("has_due")?,
+                    })
+                })
+                .collect::<Result<_, sqlx::Error>>()?,
             record: record
                 .iter()
                 .map(|id| decode_id(id))

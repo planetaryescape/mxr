@@ -4,9 +4,12 @@
 //! twins and what differs.
 //!
 //! Every pair has its own people, so one pair's history never leaks into
-//! another's. Mail you sent is context and is not labelled.
+//! another's. Mail you sent is context and is not labelled, unless it makes
+//! a promise.
 
-use super::{Expect, Home, Labelled, Review, Who};
+use super::{
+    locale_of, sender_kind, AskKind, Due, Expect, Home, Item, Labelled, Review, SenderKind, Who,
+};
 use crate::fixtures::{build_demo_msg, demo_message_id_header, DemoMessage};
 use chrono::{DateTime, Duration, Utc};
 use mxr_core::id::{AccountId, ThreadId};
@@ -20,23 +23,21 @@ pub(super) struct Twins {
     pub labels: Vec<Labelled>,
 }
 
-const fn expect(who: Who, home: Home, todo: bool, record: bool) -> Expect {
-    Expect {
-        who,
-        home,
-        todo,
-        record,
-    }
+pub(super) const fn expect(who: Who, home: Home, record: bool) -> Expect {
+    Expect::new(who, home, record)
 }
 
-const CONVERSATION: Expect = expect(Who::Person, Home::Messages, false, false);
-const COPIED: Expect = expect(Who::Person, Home::Updates, false, false);
-const NOTICE: Expect = expect(Who::Machine, Home::Updates, false, false);
-const FILED: Expect = expect(Who::Machine, Home::Updates, false, true);
-const ACTION: Expect = expect(Who::Machine, Home::Updates, true, false);
-const READING: Expect = expect(Who::List, Home::Reading, false, false);
+pub(super) const CONVERSATION: Expect = expect(Who::Person, Home::Messages, false);
+/// A person's message that asks a question or for an answer: your turn.
+pub(super) const QUESTION: Expect = CONVERSATION.replying();
+pub(super) const COPIED: Expect = expect(Who::Person, Home::Updates, false);
+pub(super) const NOTICE: Expect = expect(Who::Machine, Home::Updates, false);
+pub(super) const FILED: Expect = expect(Who::Machine, Home::Updates, true);
+/// A machine's notice that asks you to act; its items say what it asks.
+pub(super) const ACTION: Expect = expect(Who::Machine, Home::Updates, false);
+pub(super) const READING: Expect = expect(Who::List, Home::Reading, false);
 
-fn addr(name: &str, email: &str) -> Address {
+pub(super) fn addr(name: &str, email: &str) -> Address {
     Address {
         name: Some(name.to_string()),
         email: email.to_string(),
@@ -44,7 +45,7 @@ fn addr(name: &str, email: &str) -> Address {
 }
 
 /// One email to build.
-struct Mail {
+pub(super) struct Mail {
     thread: &'static str,
     from: Address,
     to: Vec<Address>,
@@ -61,7 +62,13 @@ struct Mail {
 
 impl Mail {
     /// An email to the account owner, unless `to` says otherwise.
-    fn new(thread: &'static str, from: Address, subject: &str, body: &str, hours_ago: i64) -> Self {
+    pub(super) fn new(
+        thread: &'static str,
+        from: Address,
+        subject: &str,
+        body: &str,
+        hours_ago: i64,
+    ) -> Self {
         Self {
             thread,
             from,
@@ -78,37 +85,37 @@ impl Mail {
         }
     }
 
-    fn to(mut self, to: Vec<Address>) -> Self {
+    pub(super) fn to(mut self, to: Vec<Address>) -> Self {
         self.to = to;
         self
     }
 
-    fn cc(mut self, cc: Vec<Address>) -> Self {
+    pub(super) fn cc(mut self, cc: Vec<Address>) -> Self {
         self.cc = cc;
         self
     }
 
-    fn unsubscribe(mut self) -> Self {
+    pub(super) fn unsubscribe(mut self) -> Self {
         self.unsubscribe = true;
         self
     }
 
-    fn header(mut self, name: &'static str, value: &str) -> Self {
+    pub(super) fn header(mut self, name: &'static str, value: &str) -> Self {
         self.headers.push((name, value.to_string()));
         self
     }
 
-    fn calendar(mut self, calendar: CalendarMetadata) -> Self {
+    pub(super) fn calendar(mut self, calendar: CalendarMetadata) -> Self {
         self.calendar = Some(calendar);
         self
     }
 
-    fn reply_to(mut self, earlier: &Placed) -> Self {
+    pub(super) fn reply_to(mut self, earlier: &Placed) -> Self {
         self.reply_to = Some(earlier.clone());
         self
     }
 
-    fn spam(mut self) -> Self {
+    pub(super) fn spam(mut self) -> Self {
         self.spam = true;
         self
     }
@@ -116,51 +123,85 @@ impl Mail {
 
 /// Where a built email ended up.
 #[derive(Clone)]
-struct Placed {
+pub(super) struct Placed {
     provider_id: String,
     from_email: String,
     header: String,
 }
 
 /// What a scenario says about the email it labels.
-struct Scenario {
+pub(super) struct Scenario {
     id: &'static str,
     description: &'static str,
     expect: Expect,
+    items: Vec<Item>,
+    outbound: bool,
+    locale: Option<&'static str>,
+    held_out: bool,
     twin_of: Option<&'static str>,
     differs_by: &'static str,
     review: Option<Review>,
 }
 
 impl Scenario {
-    fn new(id: &'static str, description: &'static str, expect: Expect) -> Self {
+    pub(super) fn new(id: &'static str, description: &'static str, expect: Expect) -> Self {
         Self {
             id,
             description,
             expect,
+            items: Vec::new(),
+            outbound: false,
+            locale: None,
+            held_out: false,
             twin_of: None,
             differs_by: "",
             review: None,
         }
     }
 
-    fn twin_of(mut self, of: &'static str, differs_by: &'static str) -> Self {
+    /// The email asks this of you.
+    pub(super) fn asks(mut self, items: Vec<Item>) -> Self {
+        self.items = items;
+        self
+    }
+
+    /// The email is mail you sent, labelled for the promise it makes.
+    pub(super) fn promises(mut self, items: Vec<Item>) -> Self {
+        self.items = items;
+        self.outbound = true;
+        self
+    }
+
+    /// The wording is in this locale, which the sender's domain does not say.
+    pub(super) fn locale(mut self, locale: &'static str) -> Self {
+        self.locale = Some(locale);
+        self
+    }
+
+    /// The email belongs to a template family held out of the corpus the rest
+    /// of the eval's authors see; the eval reports it apart.
+    pub(super) fn held_out(mut self) -> Self {
+        self.held_out = true;
+        self
+    }
+
+    pub(super) fn twin_of(mut self, of: &'static str, differs_by: &'static str) -> Self {
         self.twin_of = Some(of);
         self.differs_by = differs_by;
         self
     }
 
     /// The answers in `questions` are a judgement call, for `why`.
-    fn review(mut self, questions: &'static [&'static str], why: &'static str) -> Self {
+    pub(super) fn review(mut self, questions: &'static [&'static str], why: &'static str) -> Self {
         self.review = Some(Review { questions, why });
         self
     }
 }
 
-struct Builder {
+pub(super) struct Builder {
     account_id: AccountId,
-    me: Address,
-    now: DateTime<Utc>,
+    pub(super) me: Address,
+    pub(super) now: DateTime<Utc>,
     next: usize,
     messages: Vec<(Envelope, MessageBody)>,
     labels: Vec<Labelled>,
@@ -170,19 +211,20 @@ impl Builder {
     /// The day `days` from the seed's `now`, as "3 November". Every date a
     /// detector may read is derived from `now`, never written absolutely,
     /// so a scenario cannot expire as the real date moves on.
-    fn on(&self, days: i64) -> String {
+    pub(super) fn on(&self, days: i64) -> String {
         (self.now + Duration::days(days))
             .format("%-d %B")
             .to_string()
     }
 
     /// Build `mail` as inbound mail.
-    fn inbound(&mut self, mail: Mail) -> Placed {
+    pub(super) fn inbound(&mut self, mail: Mail) -> Placed {
         self.put(mail, false)
     }
 
-    /// Build mail the account owner sent: context, never labelled.
-    fn sent(
+    /// Build mail the account owner sent: context, labelled only when it
+    /// makes a promise.
+    pub(super) fn sent(
         &mut self,
         thread: &'static str,
         to: Address,
@@ -278,17 +320,29 @@ impl Builder {
         placed
     }
 
-    fn label(&mut self, placed: &Placed, scenario: Scenario) {
+    pub(super) fn label(&mut self, placed: &Placed, scenario: Scenario) {
         self.labels.push(Labelled {
             provider_id: placed.provider_id.clone(),
             from_email: placed.from_email.clone(),
             scenario: scenario.id,
             description: scenario.description,
             expect: scenario.expect,
+            items: scenario.items,
+            outbound: scenario.outbound,
+            sender: if scenario.outbound {
+                // The owner writes as a person.
+                SenderKind::Person
+            } else {
+                sender_kind(scenario.expect.who, &placed.from_email)
+            },
+            locale: scenario
+                .locale
+                .unwrap_or_else(|| locale_of(&placed.from_email)),
+            family: scenario.id,
             twin_of: scenario.twin_of,
             differs_by: scenario.differs_by,
             review: scenario.review,
-            held_out: false,
+            held_out: scenario.held_out,
         });
     }
 }
@@ -331,6 +385,8 @@ pub(super) fn build(
     booking_or_booking_reminder_marketing(&mut b);
     direct_or_crowd(&mut b);
     inbox_or_spam_folder(&mut b);
+    super::twins_asks::build(&mut b);
+    super::held_out::families(&mut b);
     Twins {
         messages: b.messages,
         labels: b.labels,
@@ -362,7 +418,7 @@ fn newsletter_from_a_correspondent(b: &mut Builder) {
         Scenario::new(
             "correspondent-note",
             "Someone you write to answers your question",
-            CONVERSATION,
+            QUESTION,
         ),
     );
     let newsletter = b.inbound(
@@ -412,12 +468,13 @@ fn receipt_that_asks_a_question(b: &mut Builder) {
         Scenario::new(
             "receipt-asks-for-an-address",
             "The same receipt, which also asks you to confirm your delivery address by Friday",
-            expect(Who::Machine, Home::Updates, true, true),
+            expect(Who::Machine, Home::Updates, true),
         )
+        .asks(vec![Item::asks(AskKind::Provide, "Fernhill Books").due(Due::Words("Friday"))])
         .twin_of("receipt-plain", "asks for an action with a due word")
         .review(
             &["who", "home", "todo"],
-            "The ask has a verb, an object and a due word, so labelled a to-do; whether a question inside a receipt is a to-do or only an unanswered question is a policy call."),
+            "The ask has a verb, an object and a due word, so labelled a to-do; whether a question inside a receipt is a to-do or only an unanswered question is a policy call. The receipt's £14.00 total is not an amount owed, so the item has no amount."),
     );
 }
 
@@ -437,6 +494,11 @@ fn no_need_to_reply(b: &mut Builder) {
             "colleague-asks",
             "A colleague asks you for something",
             CONVERSATION,
+        )
+        .asks(vec![Item::asks(AskKind::Send, "Tobias Frye")])
+        .review(
+            &["todo"],
+            "\"Could you send me the Q3 figures\" is a pending request of you with an action other than a reply, so blueprint 37 makes it an item even with no date. The earlier label said no to-do.",
         ),
     );
     let fyi = b.inbound(
@@ -512,7 +574,7 @@ fn copied_cc_or_named_in_to(b: &mut Builder) {
         Scenario::new(
             "thread-names-you-in-to",
             "The same person writes to you and a colleague, naming you in To",
-            CONVERSATION,
+            QUESTION,
         )
         .twin_of("thread-copied-only", "you are in To, not only Cc"),
     );
@@ -561,7 +623,11 @@ fn no_reply_ack_or_human_reply(b: &mut Builder) {
         Scenario::new(
             "support-human-reply",
             "A support agent answers the same request personally",
-            CONVERSATION,
+            QUESTION,
+        )
+        .review(
+            &["todo"],
+            "\"Can you try signing in again and tell me if it works?\" asks for an action and then an answer; the answer is what the agent waits for, so it is labelled Your turn and no item.",
         )
         .twin_of(
             "support-auto-ack",
@@ -663,6 +729,11 @@ fn bank_alert_or_friend_reply(b: &mut Builder) {
             "A friend's reply whose subject also has an amount and a masked card number",
             CONVERSATION,
         )
+        .asks(vec![Item::asks(AskKind::Pay, "Jess Okoro")])
+        .review(
+            &["todo"],
+            "\"Can you send me your half?\" asks the owner to pay a friend. No amount is stated (the £40 is the whole), so the item has none.",
+        )
         .twin_of("bank-alert", "a person's reply, not a bank's notification"),
     );
 }
@@ -751,6 +822,7 @@ fn invite_or_invite_reply(b: &mut Builder) {
             "A calendar invitation that asks for an RSVP",
             ACTION,
         )
+        .asks(vec![Item::asks(AskKind::Attend, "Lena Hart").due(Due::Stated)])
         .review(
             &["todo"],
             "Invites have a home in Updates (blueprint 32). Whether an invitation that asks for an RSVP is a to-do is a policy call; labelled yes because an RSVP is a to-do kind."),
@@ -848,7 +920,10 @@ fn failed_payment_or_receipt(b: &mut Builder) {
             "payment-failed",
             "A gym could not take the membership payment",
             ACTION,
-        ),
+        )
+        .asks(vec![
+            Item::asks(AskKind::FixPayment, "Hollis Gym").amount(2_900, "GBP")
+        ]),
     );
     let paid = b.inbound(Mail::new(
         "p11-paid",
@@ -883,8 +958,12 @@ fn dated_bill_or_statement_ready(b: &mut Builder) {
         Scenario::new(
             "dated-bill",
             "An energy bill with an amount and a due date nine days away",
-            expect(Who::Machine, Home::Updates, true, true),
-        ),
+            expect(Who::Machine, Home::Updates, true),
+        )
+        .asks(vec![Item::asks(AskKind::Pay, "Brightgrid Energy")
+            .amount(9_240, "GBP")
+            .due(Due::Stated)
+            .reference("BG-77310")]),
     );
     let statement = b.inbound(Mail::new(
         "p12-statement",
@@ -1070,7 +1149,7 @@ fn mailing_list_post_or_direct(b: &mut Builder) {
         Scenario::new(
             "person-writes-directly",
             "A person invites you to lunch",
-            CONVERSATION,
+            QUESTION,
         ),
     );
     let post = b.inbound(
@@ -1123,7 +1202,7 @@ fn application_ack_or_recruiter_reply(b: &mut Builder) {
         Scenario::new(
             "recruiter-reply-with-opt-out",
             "A recruiter answers your application personally; the tool adds List-Unsubscribe",
-            CONVERSATION,
+            QUESTION,
         ),
     );
     let ack = b.inbound(
@@ -1181,6 +1260,11 @@ fn comment_notification_or_colleague(b: &mut Builder) {
             "The colleague writes to you about the same document",
             CONVERSATION,
         )
+        .asks(vec![Item::asks(AskKind::Other, "Ellis Moran")])
+        .review(
+            &["todo"],
+            "\"Could you take a look?\" asks for a review of a document, an action other than a reply, so it is an item of kind other.",
+        )
         .twin_of(
             "document-comment-notification",
             "a person writing, not a service",
@@ -1221,6 +1305,9 @@ fn renewal_notice_or_card_expiring(b: &mut Builder) {
             "The same company says the card on file expires before the renewal",
             ACTION,
         )
+        .asks(vec![
+            Item::asks(AskKind::FixPayment, "Cloudbox").due(Due::Stated)
+        ])
         .twin_of("renewal-notice", "an action is needed before a date"),
     );
 }
@@ -1241,7 +1328,8 @@ fn sign_request_or_completed(b: &mut Builder) {
             "sign-request",
             "A request to review and sign an NDA",
             ACTION,
-        ),
+        )
+        .asks(vec![Item::asks(AskKind::Sign, "Marlow Ltd")]),
     );
     let done = b.inbound(Mail::new(
         "p20-completed",
@@ -1351,7 +1439,7 @@ fn direct_or_crowd(b: &mut Builder) {
         Scenario::new(
             "note-to-you-alone",
             "A colleague asks you about your desk",
-            CONVERSATION,
+            QUESTION,
         ),
     );
     let mut crowd: Vec<Address> = vec![b.me.clone()];
@@ -1397,7 +1485,7 @@ fn inbox_or_spam_folder(b: &mut Builder) {
         Scenario::new(
             "cold-intro-in-inbox",
             "A stranger's short intro in the inbox",
-            CONVERSATION,
+            QUESTION,
         ),
     );
     let spam = b.inbound(
@@ -1415,7 +1503,7 @@ fn inbox_or_spam_folder(b: &mut Builder) {
         Scenario::new(
             "cold-intro-in-spam",
             "The same intro, which the provider filed under Spam",
-            expect(Who::Person, Home::Spam, false, false),
+            expect(Who::Person, Home::Spam, false),
         )
         .twin_of("cold-intro-in-inbox", "the provider's spam verdict"),
     );
@@ -1427,13 +1515,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_account_owner_never_appears_as_a_labelled_sender() {
+    fn the_account_owner_is_a_labelled_sender_only_for_a_promise() {
         let account_id = AccountId::from_provider_id("fake", SELF_EMAIL);
         let twins = build(&account_id, &super::super::self_address(), Utc::now(), 1);
         assert!(twins
             .labels
             .iter()
-            .all(|label| !label.from_email.eq_ignore_ascii_case(SELF_EMAIL)));
+            .all(|label| label.outbound == label.from_email.eq_ignore_ascii_case(SELF_EMAIL)));
         assert!(
             twins.messages.len() > twins.labels.len(),
             "sent context exists"

@@ -13,6 +13,7 @@
 //!   set selection, the held-out accounting and the per-account scoping are
 //!   checked on every run.
 
+use super::classify_eval_floor;
 use super::*;
 use crate::handler::classify_eval::classify_eval;
 use mxr_core::id::AccountId;
@@ -179,6 +180,15 @@ fn question_lines(questions: &[mxr_protocol::ClassifyEvalQuestionData]) -> Strin
         .collect()
 }
 
+/// A field mismatch is clustered by its shape, not its value: 98 different
+/// amounts are one cluster.
+fn shape<'a>(question: &str, value: &'a str) -> &'a str {
+    match question {
+        "amount" | "due" | "counterparty" if value != "none" => "a value",
+        _ => value,
+    }
+}
+
 /// Scenario, question, expected and actual answer.
 type ClusterKey<'a> = (&'a str, &'a str, &'a str, &'a str);
 /// How many, how many of them held out, and whether any label is a judgement
@@ -203,6 +213,10 @@ fn report(summary: &ClassifyEvalSummaryData, mismatches: &[ClassifyEvalMismatchD
         summary.label_schema_version, summary.present, summary.unlabelled, summary.not_placed
     );
     out.push_str(&question_lines(&summary.questions));
+    out.push('\n');
+    if let Some(asks) = &summary.asks {
+        out.push_str(&classify_eval_floor::report(asks));
+    }
     out.push_str(&format!(
         "\nheld-out phrasings: {} emails\n",
         summary.held_out_present
@@ -216,8 +230,8 @@ fn report(summary: &ClassifyEvalSummaryData, mismatches: &[ClassifyEvalMismatchD
             .entry((
                 m.scenario.as_str(),
                 m.question.as_str(),
-                m.expected.as_str(),
-                m.actual.as_str(),
+                shape(&m.question, &m.expected),
+                shape(&m.question, &m.actual),
             ))
             .or_default();
         entry.0 += 1;
@@ -262,6 +276,7 @@ async fn the_full_set_is_graded_on_the_whole_demo() {
         summary.present
     );
     assert!(summary.held_out_present > 5_000);
+    classify_eval_floor::check("full", summary.asks.as_ref().expect("asks"));
     insta::assert_snapshot!(report(&summary, &mismatches));
 }
 
@@ -366,7 +381,7 @@ async fn the_full_set_labels_the_curated_mail_with_the_quick_sets_labels() {
 fn the_snapshot_report_does_not_depend_on_how_long_the_run_took() {
     let summary = |placed_live| ClassifyEvalSummaryData {
         set: ClassifyEvalSetData::Full,
-        label_schema_version: 1,
+        label_schema_version: 2,
         labelled_in_set: 10,
         present: 10,
         placed_live,
@@ -376,6 +391,7 @@ fn the_snapshot_report_does_not_depend_on_how_long_the_run_took() {
         held_out_present: 0,
         held_out_questions: Vec::new(),
         home_projection: String::new(),
+        asks: None,
         message: None,
     };
     assert_eq!(report(&summary(7), &[]), report(&summary(8), &[]));

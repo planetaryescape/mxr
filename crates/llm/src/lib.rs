@@ -48,6 +48,7 @@ mod endpoint;
 mod failure;
 mod health;
 mod observations;
+pub mod recorded;
 mod route;
 mod routed;
 mod stream;

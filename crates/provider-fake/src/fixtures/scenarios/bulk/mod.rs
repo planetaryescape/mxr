@@ -35,7 +35,7 @@ mod spam;
 pub(crate) use render::render;
 
 use super::held_out;
-use super::{Expect, Home, Review, Who};
+use super::{AskKind, Due, Expect, Home, Item, Review, Who};
 use pools::{Person, DEMO_PEOPLE};
 use std::sync::OnceLock;
 
@@ -48,26 +48,22 @@ const PERIOD: usize = 52;
 /// Minutes between the messages of a thread.
 pub(crate) const MINUTES_BETWEEN_MESSAGES: i64 = 47;
 
-/// What the classifier should say, built from the four questions.
-pub(crate) const fn expect(who: Who, home: Home, todo: bool, record: bool) -> Expect {
-    Expect {
-        who,
-        home,
-        todo,
-        record,
-    }
+/// What the classifier should say, built from the questions that are not
+/// the items (see [`Turn::asking`]).
+pub(crate) const fn expect(who: Who, home: Home, record: bool) -> Expect {
+    Expect::new(who, home, record)
 }
 
 /// A machine's notice: Updates, nothing to do, nothing to keep.
-pub(crate) const NOTICE: Expect = expect(Who::Machine, Home::Updates, false, false);
+pub(crate) const NOTICE: Expect = expect(Who::Machine, Home::Updates, false);
 /// A machine's receipt, order, booking or bill: Updates, kept as a record.
-pub(crate) const FILED: Expect = expect(Who::Machine, Home::Updates, false, true);
+pub(crate) const FILED: Expect = expect(Who::Machine, Home::Updates, true);
 /// A newsletter: Reading.
-pub(crate) const READING: Expect = expect(Who::List, Home::Reading, false, false);
+pub(crate) const READING: Expect = expect(Who::List, Home::Reading, false);
 /// A person's conversation with you.
-pub(crate) const CONVERSATION: Expect = expect(Who::Person, Home::Messages, false, false);
+pub(crate) const CONVERSATION: Expect = expect(Who::Person, Home::Messages, false);
 /// A person's thread you were only copied on: Updates (the copied rule).
-pub(crate) const COPIED: Expect = expect(Who::Person, Home::Updates, false, false);
+pub(crate) const COPIED: Expect = expect(Who::Person, Home::Updates, false);
 
 /// Who writes a message of a thread.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,11 +81,24 @@ pub(crate) struct Turn {
     pub scenario: &'static str,
     pub description: &'static str,
     pub from: Speaker,
-    /// The answers when the mail arrives. A to-do whose deadline had already
-    /// passed when the mail was found is never shown, so `todo` is true only
-    /// while the deadline is open (see [`Dating::Asks`]).
+    /// The answers when the mail arrives, apart from what it asks.
     pub expect: Expect,
+    /// What the message asks of you, if anything. A to-do whose deadline had
+    /// already passed when the mail was found is never shown, so the ask
+    /// counts only while the deadline is open (see [`Dating::Asks`]).
+    pub ask: Option<Ask>,
     pub review: Option<Review>,
+}
+
+/// An ask a turn makes, before the thread's own sender, amount and words are
+/// known (see [`items`]).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Ask {
+    /// The kind of ask, unless the phrasing's main verb says another
+    /// ([`variant_ask`]).
+    pub kind: AskKind,
+    /// The ask is to pay the `{amount}` the mail names.
+    pub amount: bool,
 }
 
 impl Turn {
@@ -104,7 +113,17 @@ impl Turn {
             description,
             from: Speaker::Them,
             expect,
+            ask: None,
             review: None,
+        }
+    }
+
+    /// The message asks you for `kind`; with `amount`, to pay the amount it
+    /// names.
+    pub(crate) const fn asking(self, kind: AskKind, amount: bool) -> Self {
+        Self {
+            ask: Some(Ask { kind, amount }),
+            ..self
         }
     }
 
@@ -115,6 +134,7 @@ impl Turn {
             description,
             from: Speaker::You,
             expect: CONVERSATION,
+            ask: None,
             review: None,
         }
     }
@@ -416,6 +436,8 @@ pub(crate) struct BulkLabel {
     pub turn: &'static Turn,
     pub held_out: bool,
     pub expect: Expect,
+    /// The generator's family, for slicing.
+    pub family: &'static str,
     pub from_email: &'static str,
 }
 
@@ -428,17 +450,65 @@ pub(crate) fn label(thread_num: usize, reply_idx: usize) -> Option<BulkLabel> {
     let turn = &family.turns[reply_idx];
     let sender = sender_of(family, thread_num, reply_idx)?;
     let (_, held_out) = variant_for(family, thread_num);
-    let mut expect = turn.expect;
-    if family.dating == Dating::Asks && !asks_recent(thread_num) {
-        // The deadline passed before the mail was found: no to-do is shown.
-        expect.todo = false;
-    }
     Some(BulkLabel {
         turn,
         held_out,
-        expect,
+        expect: turn.expect,
+        family: family.id,
         from_email: sender.1,
     })
+}
+
+/// The kind of ask a phrasing makes, when its main verb says something other
+/// than its turn's default, or `None` when the phrasing asks for a reply
+/// (which is Your turn, not an item). Keyed by the phrasing's id, which the
+/// generator does not read.
+fn variant_ask(family: &Family, variant_id: &str, default: AskKind) -> Option<AskKind> {
+    if family.id != "dated-request" {
+        return Some(default);
+    }
+    match variant_id {
+        // "send me the signed form", "send the headcount numbers", "share
+        // your slides", "send me ... comments", "return it to me".
+        "vendor-form" | "headcount" | "slides" | "draft-contract" | "parking-permit" => {
+            Some(AskKind::Send)
+        }
+        // "submit your expense report", "complete the training".
+        "expenses" | "training" => Some(AskKind::Other),
+        // "confirm the customer reference call": an answer to give.
+        "reference-call" => None,
+        _ => Some(default),
+    }
+}
+
+/// What the message at a position asks of you: empty for a turn that asks
+/// nothing, for an ask whose deadline had passed before the mail was found
+/// (no to-do is shown), and for a phrasing whose ask is a reply.
+pub(crate) fn items(thread_num: usize, reply_idx: usize) -> Vec<Item> {
+    let family = family_for(thread_num);
+    let Some(ask) = family.turns.get(reply_idx).and_then(|turn| turn.ask) else {
+        return Vec::new();
+    };
+    if family.dating == Dating::Asks && !asks_recent(thread_num) {
+        return Vec::new();
+    }
+    let Some(sender) = sender_of(family, thread_num, reply_idx) else {
+        return Vec::new();
+    };
+    let (variant_index, _) = variant_for(family, thread_num);
+    let (variant, _) = family.variant(variant_index);
+    let Some(kind) = variant_ask(family, variant.id, ask.kind) else {
+        return Vec::new();
+    };
+    let mut item = Item::asks(kind, sender.0);
+    if ask.amount {
+        item = item.amount(render::amount_minor(thread_num), "GBP");
+    }
+    let body = variant.bodies[family.inbound_before(reply_idx)];
+    if body.contains("{due}") {
+        item = item.due(Due::Stated);
+    }
+    vec![item]
 }
 
 #[cfg(test)]

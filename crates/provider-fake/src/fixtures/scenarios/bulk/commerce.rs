@@ -6,8 +6,8 @@
 
 use super::pools::{BILLER_SENDERS, STORE_SENDERS};
 use super::{
-    expect, Attachments, Dating, Family, Senders, Subjects, Turn, Unsubscribe, Variant, FILED,
-    NOTICE,
+    expect, AskKind, Attachments, Dating, Family, Senders, Subjects, Turn, Unsubscribe, Variant,
+    FILED, NOTICE,
 };
 use super::{Home, Who};
 
@@ -159,8 +159,9 @@ pub(super) static BILL_DUE: Family = Family {
         Turn::them(
             "bulk-bill-issued",
             "A bill with an amount, a due date and a pay link: a to-do and a record",
-            expect(Who::Machine, Home::Updates, true, true),
-        ),
+            expect(Who::Machine, Home::Updates, true),
+        )
+        .asking(AskKind::Pay, true),
         Turn::them(
             "bulk-bill-payment-received",
             "The payment received: a receipt for the bill",

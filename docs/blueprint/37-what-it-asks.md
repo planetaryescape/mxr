@@ -196,7 +196,7 @@ The 99.8% was accuracy on a set that is 99.7% "no to-do". R1b's own baseline say
   - abstention rate and precision among answered;
   - pair accuracy on twins, where both members must be right.
   Accuracy is not reported.
-- **Slices:** sender kind (person, organisation, platform, list), locale (en-GB, en-ZA, en-US to start), template family, zone, thread position, and whether rules abstained (the band gets its own scorecard).
+- **Slices:** sender kind (person, organisation, platform, list), locale (en-GB, en-ZA, en-US to start), template family, zone, thread position, and whether rules abstained (the band gets its own scorecard). R1c reports sender kind, locale, template family and visible against held-out phrasing; zone, thread position and rules-abstained arrive in R2c, where those facts first exist.
 - **Held out, reported separately:** phrasings, whole template families the generator never used for training, and `--set mine`.
 - **Twins for every shape in this chapter:**
   - marketing with pay words against a real invoice from the same kind of sender;
@@ -257,6 +257,8 @@ Provider-specific logic stays in provider crates. The judge reads only the facts
 They extend 32's ladder with letters (D184). R1c runs before R2, and the rest after R2 because they write into the stored assessment R2 freezes.
 
 ### R1c: Measure asks by kind and field
+
+**Status:** built. `mxr classify eval --set quick|full` reports precision and recall per kind of ask, exact match for the amount, due and counterparty, duplicates and merges, twin-pair accuracy, reply owed and slices. The per-kind floor (`crates/daemon/src/handler/tests/classify_eval_floor.json`) fails the quick test and the full-set job on a regression. The surface-only leak guard is `scenarios/leak_guard.rs`. The recorded-response harness is `mxr_llm::recorded::RecordedProvider`; no eval question calls a model yet, so R2d is its first user. Zone, thread-position and rules-abstained slices move to R2c. Today's baseline is in [32](32-classifier.md#baseline-the-asks-by-kind).
 
 **Previously:** the eval says 99.8%, and to-do recall on live asks is 7%. **Now:** the eval shows recall, precision and field accuracy per kind of ask, on every shape in this chapter.
 

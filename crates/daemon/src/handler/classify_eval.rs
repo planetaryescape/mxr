@@ -6,7 +6,6 @@
 //! full set is every labelled email in the store, which on a demo adds the
 //! generated bulk, labelled by where the generator put each email.
 //!
-//!
 //! * who: the mail kind the shared `describe` path gives (what `GetMessageKind`
 //!   and the arrivals line read), over the same sender signals placement uses,
 //!   so mail in Spam, which `GetMessageKind` refuses, still has a kind;
@@ -16,19 +15,23 @@
 //!   arrivals row (history older than 30 days when the account first
 //!   synced is not an arrival) is placed live by the same rules, as
 //!   `current_bucket` does;
-//! * to-do: a to-do row exists with this email as its source;
 //! * record: a record row includes this email.
+//!
+//! What an email asks of you (its to-do rows, and whether a reply is owed) is
+//! not a yes or no. It is graded per kind of ask and per field in
+//! `classify_eval_asks`, against the items each label expects.
 //!
 //! Read-only and local. It changes no classification and writes nothing,
 //! including no activity row.
 
+use super::classify_eval_asks::{AskGrader, AskInput, Row, ASK_QUESTIONS};
 use super::desk::{self_matcher, Senders};
 use super::modes::MEMBERSHIP_MAX_THREADS;
 use super::{arrivals, mail_kind, HandlerError, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
-    ClassifyEvalMismatchData, ClassifyEvalQuestionData, ClassifyEvalSetData,
+    ClassifyEvalAsksData, ClassifyEvalMismatchData, ClassifyEvalQuestionData, ClassifyEvalSetData,
     ClassifyEvalSummaryData, ResponseData, SenderKindData,
 };
 use mxr_provider_fake::fixtures::scenarios::{self, Labelled, LABEL_SCHEMA_VERSION};
@@ -43,7 +46,8 @@ type Wanted = (MessageId, ThreadId, bool);
 /// Stored emails with the labels that grade them.
 type Present = Vec<(EvalCandidate, Labelled)>;
 
-const QUESTIONS: [&str; 4] = ["who", "home", "todo", "record"];
+/// The questions graded as accuracy. What an email asks of you is not one.
+const QUESTIONS: [&str; 3] = ["who", "home", "record"];
 
 /// What today's code answers for one email.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,8 +56,16 @@ struct Actual {
     who_reason: String,
     /// `None`: the email has no arrivals row, so no home to compare.
     home: Option<Home>,
-    todo: bool,
     record: bool,
+}
+
+/// What the shared `describe` path says about one email, and whether the desk
+/// reads it as asking for a reply.
+#[derive(Debug, Clone)]
+struct MailRead {
+    kind: SenderKindData,
+    reason: String,
+    reply_owed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,11 +78,11 @@ struct Home {
 
 #[derive(Debug, Default)]
 struct Tally {
-    evaluated: [u32; 4],
-    correct: [u32; 4],
+    evaluated: [u32; 3],
+    correct: [u32; 3],
     /// The same counts over the emails worded in a held-out phrasing.
-    held_out_evaluated: [u32; 4],
-    held_out_correct: [u32; 4],
+    held_out_evaluated: [u32; 3],
+    held_out_correct: [u32; 3],
     held_out_present: u32,
     placed_live: u32,
     not_placed: u32,
@@ -100,13 +112,17 @@ fn placed(mode: &str) -> Option<&str> {
 }
 
 /// Compare one email's answers with its label. `home` is skipped, and
-/// counted as not placed, when there is none.
+/// counted as not placed, when there is none. Mail you sent is not graded
+/// here: who, home and record are about mail that arrives.
 fn grade(
     label: &Labelled,
     actual: &Actual,
     tally: &mut Tally,
     mismatches: &mut Vec<ClassifyEvalMismatchData>,
 ) {
+    if label.outbound {
+        return;
+    }
     tally.held_out_present += u32::from(label.held_out);
     let mut check = |question: usize, expected: &str, got: &str, reason: &str| {
         tally.evaluated[question] += 1;
@@ -139,31 +155,36 @@ fn grade(
         }
         None => tally.not_placed += 1,
     }
-    check(2, yes_no(label.expect.todo), yes_no(actual.todo), "");
-    check(3, yes_no(label.expect.record), yes_no(actual.record), "");
+    check(2, yes_no(label.expect.record), yes_no(actual.record), "");
 }
 
 /// Stable order whatever order the store returned rows in: scenario, then
-/// provider id in numeric order, then question.
+/// provider id in numeric order, then question (the accuracy questions, then
+/// the asks), then what was expected and got.
 fn sort_mismatches(mismatches: &mut [ClassifyEvalMismatchData]) {
     mismatches.sort_by(|a, b| {
         let question = |m: &ClassifyEvalMismatchData| {
             QUESTIONS
                 .iter()
+                .chain(&ASK_QUESTIONS)
                 .position(|q| *q == m.question)
-                .unwrap_or(QUESTIONS.len())
+                .unwrap_or(QUESTIONS.len() + ASK_QUESTIONS.len())
         };
         (
             &a.scenario,
             a.provider_id.len(),
             &a.provider_id,
             question(a),
+            &a.expected,
+            &a.actual,
         )
             .cmp(&(
                 &b.scenario,
                 b.provider_id.len(),
                 &b.provider_id,
                 question(b),
+                &b.expected,
+                &b.actual,
             ))
     });
 }
@@ -187,6 +208,7 @@ fn summarise(
     present: u32,
     unlabelled: u32,
     tally: &Tally,
+    asks: Option<ClassifyEvalAsksData>,
 ) -> ClassifyEvalSummaryData {
     ClassifyEvalSummaryData {
         set,
@@ -220,6 +242,7 @@ fn summarise(
                 .collect()
         },
         home_projection: HOME_PROJECTION.to_string(),
+        asks,
         message: (present == 0).then(|| NO_LABELLED_MAIL.to_string()),
     }
 }
@@ -290,16 +313,16 @@ pub(super) async fn classify_eval(
     let total = state.store.classify_eval_message_count(&accounts).await?;
     if present.is_empty() {
         return Ok(ResponseData::ClassifyEval {
-            summary: summarise(set, labelled_in_set, 0, total, &Tally::default()),
+            summary: summarise(set, labelled_in_set, 0, total, &Tally::default(), None),
             mismatches: Vec::new(),
         });
     }
 
-    let kinds = mail_kinds(state, &present).await?;
+    let reads = mail_reads(state, &present).await?;
     // Mail deleted between the lookup and the read has nothing to grade.
     let present: Vec<_> = present
         .into_iter()
-        .filter(|(candidate, _)| kinds.contains_key(&candidate.message_id))
+        .filter(|(candidate, _)| reads.contains_key(&candidate.message_id))
         .collect();
     let present_count = u32::try_from(present.len()).unwrap_or(u32::MAX);
     let unlabelled = total.saturating_sub(present_count);
@@ -308,35 +331,67 @@ pub(super) async fn classify_eval(
         .map(|(candidate, _)| candidate.message_id.clone())
         .collect();
     let aspects = state.store.classify_eval_aspects(&ids).await?;
-    let homes = current_homes(state, &present).await?;
+    // Mail you sent has no home: it is context, graded only for its promises.
+    let arriving: Vec<&EvalCandidate> = present
+        .iter()
+        .filter(|(_, label)| !label.outbound)
+        .map(|(candidate, _)| candidate)
+        .collect();
+    let homes = current_homes(state, &arriving).await?;
+    let mut rows: HashMap<&MessageId, Vec<Row>> = HashMap::new();
+    for todo in &aspects.todos {
+        rows.entry(&todo.source_message_id)
+            .or_default()
+            .push(Row::from_todo(todo));
+    }
     let mut tally = Tally::default();
+    let mut asks = AskGrader::default();
     let mut mismatches = Vec::new();
     for (candidate, label) in &present {
-        let Some((kind, reason)) = kinds.get(&candidate.message_id) else {
+        let Some(read) = reads.get(&candidate.message_id) else {
             continue;
         };
         let actual = Actual {
-            who: who_name(*kind),
-            who_reason: reason.clone(),
+            who: who_name(read.kind),
+            who_reason: read.reason.clone(),
             home: homes.get(&candidate.message_id).cloned(),
-            todo: aspects.todo.contains(&candidate.message_id),
             record: aspects.record.contains(&candidate.message_id),
         };
         grade(label, &actual, &mut tally, &mut mismatches);
+        asks.grade(
+            AskInput {
+                label,
+                // The store returns rows in key order; the grader does not
+                // rely on it.
+                rows: rows.remove(&candidate.message_id).unwrap_or_default(),
+                reply_found: (!label.outbound).then_some(read.reply_owed),
+            },
+            &candidate.from_email,
+        );
     }
+    let (asks, ask_mismatches) = asks.finish();
+    mismatches.extend(ask_mismatches);
     sort_mismatches(&mut mismatches);
     Ok(ResponseData::ClassifyEval {
-        summary: summarise(set, labelled_in_set, present_count, unlabelled, &tally),
+        summary: summarise(
+            set,
+            labelled_in_set,
+            present_count,
+            unlabelled,
+            &tally,
+            asks,
+        ),
         mismatches,
     })
 }
 
 /// Each email's mail kind and the reason for it, over the sender signals
-/// placement reads: the thread, the sender's history, your choices.
-async fn mail_kinds(
+/// placement reads: the thread, the sender's history, your choices. Also
+/// whether the desk reads it as asking for a reply.
+async fn mail_reads(
     state: &AppState,
     present: &[(EvalCandidate, Labelled)],
-) -> Result<HashMap<MessageId, (SenderKindData, String)>, HandlerError> {
+) -> Result<HashMap<MessageId, MailRead>, HandlerError> {
     let mut by_account: BTreeMap<String, (AccountId, Vec<&EvalCandidate>)> = BTreeMap::new();
     for (candidate, _) in present {
         by_account
@@ -371,7 +426,11 @@ async fn mail_kinds(
             let described = mail_kind::describe(&senders.signals(message, &is_self));
             kinds.insert(
                 candidate.message_id.clone(),
-                (described.kind, described.reason),
+                MailRead {
+                    kind: described.kind,
+                    reason: described.reason,
+                    reply_owed: mail_kind::needs_reply(message, &is_self),
+                },
             );
         }
     }
@@ -382,12 +441,12 @@ async fn mail_kinds(
 /// else placed live. An email whose home cannot be worked out is absent.
 async fn current_homes(
     state: &AppState,
-    present: &[(EvalCandidate, Labelled)],
+    present: &[&EvalCandidate],
 ) -> Result<HashMap<MessageId, Home>, HandlerError> {
     // The same gate the arrivals line reads under, so a rule edit cannot
     // land between rows.
     let _sorting = state.rule_mutation_gate.lock().await;
-    let ids: Vec<MessageId> = present.iter().map(|(c, _)| c.message_id.clone()).collect();
+    let ids: Vec<MessageId> = present.iter().map(|c| c.message_id.clone()).collect();
     let rows = arrivals::effective_rows(state, state.store.arrivals_by_ids(&ids).await?).await?;
     let mut homes: HashMap<MessageId, Home> = rows
         .into_iter()
@@ -405,7 +464,7 @@ async fn current_homes(
         .collect();
 
     let mut without_row: BTreeMap<String, (AccountId, Vec<Wanted>)> = BTreeMap::new();
-    for (candidate, _) in present {
+    for candidate in present {
         if !homes.contains_key(&candidate.message_id) {
             without_row
                 .entry(candidate.account_id.as_str().clone())
@@ -438,7 +497,9 @@ async fn current_homes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_provider_fake::fixtures::scenarios::{Expect, Home as ExpectedHome, Review, Who};
+    use mxr_provider_fake::fixtures::scenarios::{
+        Expect, Home as ExpectedHome, Review, SenderKind, Who,
+    };
 
     fn label(expect: Expect) -> Labelled {
         Labelled {
@@ -447,6 +508,11 @@ mod tests {
             scenario: "s",
             description: "",
             expect,
+            items: Vec::new(),
+            outbound: false,
+            sender: SenderKind::Organisation,
+            locale: "en-GB",
+            family: "s",
             twin_of: Some("t"),
             differs_by: "x",
             review: None,
@@ -454,12 +520,7 @@ mod tests {
         }
     }
 
-    const EXPECT: Expect = Expect {
-        who: Who::Machine,
-        home: ExpectedHome::Updates,
-        todo: false,
-        record: true,
-    };
+    const EXPECT: Expect = Expect::new(Who::Machine, ExpectedHome::Updates, true);
 
     fn right() -> Actual {
         Actual {
@@ -470,7 +531,6 @@ mod tests {
                 reason: "automated sender".into(),
                 live: false,
             }),
-            todo: false,
             record: true,
         }
     }
@@ -485,15 +545,14 @@ mod tests {
     fn a_right_answer_everywhere_has_no_mismatch() {
         let (tally, mismatches) = graded(EXPECT, &right());
         assert!(mismatches.is_empty());
-        assert_eq!(tally.evaluated, [1; 4]);
-        assert_eq!(tally.correct, [1; 4]);
+        assert_eq!(tally.evaluated, [1; 3]);
+        assert_eq!(tally.correct, [1; 3]);
     }
 
     #[test]
-    fn a_to_do_or_record_is_wrong_in_both_directions() {
-        // Expected no to-do, got one; expected a record, got none.
+    fn a_record_is_wrong_in_both_directions() {
+        // Expected a record, got none.
         let actual = Actual {
-            todo: true,
             record: false,
             ..right()
         };
@@ -502,18 +561,40 @@ mod tests {
             .iter()
             .map(|m| (m.question.as_str(), m.expected.as_str(), m.actual.as_str()))
             .collect();
-        assert_eq!(wrong, [("todo", "no", "yes"), ("record", "yes", "no")]);
-        assert_eq!(tally.correct, [1, 1, 0, 0]);
+        assert_eq!(wrong, [("record", "yes", "no")]);
+        assert_eq!(tally.correct, [1, 1, 0]);
         // And the opposite polarity.
-        let expects_todo = Expect {
-            todo: true,
-            record: false,
-            ..EXPECT
+        let expects_none = Expect::new(Who::Machine, ExpectedHome::Updates, false);
+        let (_, mismatches) = graded(expects_none, &right());
+        assert_eq!(mismatches.len(), 1);
+        assert_eq!(mismatches[0].expected, "no");
+        assert_eq!(mismatches[0].actual, "yes");
+    }
+
+    #[test]
+    fn what_an_email_asks_is_not_an_accuracy_question() {
+        assert_eq!(QUESTIONS, ["who", "home", "record"]);
+        let (tally, _) = graded(EXPECT, &right());
+        let summary = summarise(ClassifyEvalSetData::Quick, 1, 1, 0, &tally, None);
+        assert!(summary.questions.iter().all(|q| q.question != "todo"));
+    }
+
+    #[test]
+    fn mail_you_sent_is_not_graded_on_who_home_or_record() {
+        let sent = Labelled {
+            outbound: true,
+            ..label(EXPECT)
         };
-        let (_, mismatches) = graded(expects_todo, &right());
-        assert_eq!(mismatches.len(), 2);
-        assert_eq!(mismatches[0].expected, "yes");
-        assert_eq!(mismatches[0].actual, "no");
+        let wrong = Actual {
+            who: "person",
+            record: false,
+            ..right()
+        };
+        let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
+        grade(&sent, &wrong, &mut tally, &mut mismatches);
+        assert!(mismatches.is_empty());
+        assert_eq!(tally.evaluated, [0; 3]);
+        assert_eq!(tally.held_out_present, 0);
     }
 
     #[test]
@@ -525,7 +606,7 @@ mod tests {
         let (tally, mismatches) = graded(EXPECT, &actual);
         assert!(mismatches.is_empty(), "not placed is not a wrong answer");
         assert_eq!(tally.not_placed, 1);
-        assert_eq!(tally.evaluated, [1, 0, 1, 1]);
+        assert_eq!(tally.evaluated, [1, 0, 1]);
     }
 
     #[test]
@@ -536,16 +617,31 @@ mod tests {
             why: "a policy call",
         });
         let actual = Actual {
-            todo: true,
+            record: false,
             ..right()
         };
+        let mut judged_record = judged.clone();
+        judged_record.review = Some(Review {
+            questions: &["record"],
+            why: "a policy call",
+        });
         let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
-        grade(&judged, &actual, &mut tally, &mut mismatches);
+        grade(&judged_record, &actual, &mut tally, &mut mismatches);
         assert_eq!(mismatches.len(), 1);
         assert_eq!(mismatches[0].label_review.as_deref(), Some("a policy call"));
         let (_, plain) = graded(EXPECT, &actual);
         assert_eq!(plain[0].label_review, None);
-        // The doubt covers the to-do answer only: a wrong record is not it.
+        // The doubt covers its own question only: a wrong who is not it.
+        let wrong_who = Actual {
+            who: "person",
+            ..right()
+        };
+        let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
+        grade(&judged_record, &wrong_who, &mut tally, &mut mismatches);
+        assert_eq!(mismatches.len(), 1);
+        assert_eq!(mismatches[0].question, "who");
+        assert_eq!(mismatches[0].label_review, None);
+        // And a to-do doubt does not reach the accuracy questions.
         let wrong_record = Actual {
             record: false,
             ..right()
@@ -569,7 +665,7 @@ mod tests {
         };
         let (tally, mismatches) = graded(EXPECT, &actual);
         assert_eq!(tally.placed_live, 1);
-        assert_eq!(tally.evaluated, [1; 4], "its home is asked like any other");
+        assert_eq!(tally.evaluated, [1; 3], "its home is asked like any other");
         assert_eq!(mismatches.len(), 1);
         assert_eq!(mismatches[0].question, "home");
     }
@@ -610,6 +706,8 @@ mod tests {
             make("a", "demo-msg-9", "who"),
             make("a", "demo-msg-9", "record"),
             make("a", "demo-msg-10", "home"),
+            make("a", "demo-msg-10", "ask"),
+            make("a", "demo-msg-10", "reply"),
             make("b", "demo-msg-2", "who"),
         ];
         for rotation in 0..sorted.len() {
@@ -624,19 +722,26 @@ mod tests {
     #[test]
     fn accuracy_is_a_percentage_and_zero_when_nothing_was_asked() {
         let tally = Tally {
-            evaluated: [3, 0, 3, 3],
-            correct: [2, 0, 3, 0],
+            evaluated: [3, 0, 3],
+            correct: [2, 0, 0],
             ..Tally::default()
         };
-        let summary = summarise(ClassifyEvalSetData::Quick, 10, 3, 5, &tally);
+        let summary = summarise(ClassifyEvalSetData::Quick, 10, 3, 5, &tally, None);
         let accuracy: Vec<f64> = summary
             .questions
             .iter()
             .map(|q| q.accuracy_percent)
             .collect();
-        assert_eq!(accuracy, [66.7, 0.0, 100.0, 0.0]);
+        assert_eq!(accuracy, [66.7, 0.0, 0.0]);
         assert_eq!(summary.message, None);
-        let empty = summarise(ClassifyEvalSetData::Quick, 10, 0, 5, &Tally::default());
+        let empty = summarise(
+            ClassifyEvalSetData::Quick,
+            10,
+            0,
+            5,
+            &Tally::default(),
+            None,
+        );
         assert_eq!(empty.message.as_deref(), Some(NO_LABELLED_MAIL));
     }
 
@@ -656,14 +761,14 @@ mod tests {
         grade(&label(EXPECT), &right(), &mut tally, &mut mismatches);
 
         assert_eq!(tally.held_out_present, 1);
-        assert_eq!(tally.held_out_evaluated, [1; 4]);
-        assert_eq!(tally.held_out_correct, [1, 1, 1, 0]);
-        assert_eq!(tally.evaluated, [2; 4]);
-        assert_eq!(tally.correct, [2, 2, 2, 1]);
+        assert_eq!(tally.held_out_evaluated, [1; 3]);
+        assert_eq!(tally.held_out_correct, [1, 1, 0]);
+        assert_eq!(tally.evaluated, [2; 3]);
+        assert_eq!(tally.correct, [2, 2, 1]);
         assert_eq!(mismatches.len(), 1);
         assert!(mismatches[0].held_out);
 
-        let summary = summarise(ClassifyEvalSetData::Full, 2, 2, 0, &tally);
+        let summary = summarise(ClassifyEvalSetData::Full, 2, 2, 0, &tally, None);
         assert_eq!(summary.set, ClassifyEvalSetData::Full);
         assert_eq!(summary.held_out_present, 1);
         let held: Vec<f64> = summary
@@ -671,20 +776,20 @@ mod tests {
             .iter()
             .map(|q| q.accuracy_percent)
             .collect();
-        assert_eq!(held, [100.0, 100.0, 100.0, 0.0]);
+        assert_eq!(held, [100.0, 100.0, 0.0]);
         let all: Vec<f64> = summary
             .questions
             .iter()
             .map(|q| q.accuracy_percent)
             .collect();
-        assert_eq!(all, [100.0, 100.0, 100.0, 50.0]);
+        assert_eq!(all, [100.0, 100.0, 50.0]);
     }
 
     #[test]
     fn a_set_with_nothing_held_out_reports_no_held_out_line() {
         let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
         grade(&label(EXPECT), &right(), &mut tally, &mut mismatches);
-        let summary = summarise(ClassifyEvalSetData::Quick, 1, 1, 0, &tally);
+        let summary = summarise(ClassifyEvalSetData::Quick, 1, 1, 0, &tally, None);
         assert_eq!(summary.held_out_present, 0);
         assert!(summary.held_out_questions.is_empty());
     }

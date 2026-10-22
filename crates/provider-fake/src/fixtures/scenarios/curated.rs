@@ -6,7 +6,10 @@
 //! classified); a test in `mod.rs` fails if any inbound email is claimed by
 //! no spec.
 
-use super::{Expect, Home, Labelled, Review, Who, SELF_EMAIL};
+use super::{
+    locale_of, sender_kind, AskKind, Due, Expect, Home, Item, Labelled, Review, SenderKind, Who,
+    SELF_EMAIL,
+};
 use mxr_core::types::{Envelope, MessageBody};
 
 enum Subject {
@@ -31,30 +34,32 @@ struct Spec {
     from: &'static str,
     subject: Subject,
     expect: Expect,
+    /// What the email asks of you (or, for sent mail, what you promised).
+    items: Vec<Item>,
+    /// The email is mail you sent, labelled for its promise alone.
+    outbound: bool,
+    locale: Option<&'static str>,
     review: Option<Review>,
 }
 
-const fn expect(who: Who, home: Home, todo: bool, record: bool) -> Expect {
-    Expect {
-        who,
-        home,
-        todo,
-        record,
-    }
+const fn expect(who: Who, home: Home, record: bool) -> Expect {
+    Expect::new(who, home, record)
 }
 
 /// A machine's notice: Updates, nothing to do, nothing to keep.
-const NOTICE: Expect = expect(Who::Machine, Home::Updates, false, false);
+const NOTICE: Expect = expect(Who::Machine, Home::Updates, false);
 /// A machine's receipt, order, booking or bill: Updates, kept as a record.
-const FILED: Expect = expect(Who::Machine, Home::Updates, false, true);
-/// A machine's notice that asks you to act.
-const ACTION: Expect = expect(Who::Machine, Home::Updates, true, false);
+const FILED: Expect = expect(Who::Machine, Home::Updates, true);
+/// A machine's notice that asks you to act. Its items say what it asks.
+const ACTION: Expect = expect(Who::Machine, Home::Updates, false);
 /// A newsletter: Reading.
-const READING: Expect = expect(Who::List, Home::Reading, false, false);
+const READING: Expect = expect(Who::List, Home::Reading, false);
 /// A person's conversation with you.
-const CONVERSATION: Expect = expect(Who::Person, Home::Messages, false, false);
+const CONVERSATION: Expect = expect(Who::Person, Home::Messages, false);
+/// A person's message that asks a question or for an answer: your turn.
+const QUESTION: Expect = CONVERSATION.replying();
 /// A person's thread you were only copied on: Updates (the copied rule).
-const COPIED: Expect = expect(Who::Person, Home::Updates, false, false);
+const COPIED: Expect = expect(Who::Person, Home::Updates, false);
 
 fn spec(
     id: &'static str,
@@ -69,7 +74,32 @@ fn spec(
         from,
         subject,
         expect,
+        items: Vec::new(),
+        outbound: false,
+        locale: None,
         review: None,
+    }
+}
+
+/// The email asks this of you.
+fn asking(spec: Spec, items: Vec<Item>) -> Spec {
+    Spec { items, ..spec }
+}
+
+/// The email is in a locale its domain does not say.
+fn in_locale(spec: Spec, locale: &'static str) -> Spec {
+    Spec {
+        locale: Some(locale),
+        ..spec
+    }
+}
+
+/// The email is mail you sent, labelled for the promise it makes.
+fn outbound(spec: Spec, items: Vec<Item>) -> Spec {
+    Spec {
+        items,
+        outbound: true,
+        ..spec
     }
 }
 
@@ -126,24 +156,33 @@ fn specs() -> Vec<Spec> {
                 "A council tax statement that says there is nothing to do yet",
                 "council.tax@camden.gov.uk",
                 Exact("Your council tax statement"),
-                expect(Who::Machine, Home::Updates, false, true),
+                expect(Who::Machine, Home::Updates, true),
             ),
             &["record"],
             "Whether a statement with no amount or attachment is filed as a record is a policy call; labelled as a billing document worth keeping.",
         ),
-        spec(
-            "todo-bill-with-due-date",
-            "Council tax bill due in five days, with an invoice markup and a pay link: a to-do and a record",
-            "council.tax@camden.gov.uk",
-            Exact("Your council tax bill"),
-            expect(Who::Machine, Home::Updates, true, true),
+        asking(
+            spec(
+                "todo-bill-with-due-date",
+                "Council tax bill due in five days, with an invoice markup and a pay link: a to-do and a record",
+                "council.tax@camden.gov.uk",
+                Exact("Your council tax bill"),
+                expect(Who::Machine, Home::Updates, true),
+            ),
+            vec![Item::asks(AskKind::Pay, "Camden Council")
+                .amount(14_200, "GBP")
+                .due(Due::Stated)
+                .reference("4471 0092 18")],
         ),
-        spec(
-            "todo-failed-payment",
-            "Spotify could not charge the card: a to-do at once",
-            "no-reply@spotify.com",
-            Exact("We can't process your payment"),
-            ACTION,
+        asking(
+            spec(
+                "todo-failed-payment",
+                "Spotify could not charge the card: a to-do at once",
+                "no-reply@spotify.com",
+                Exact("We can't process your payment"),
+                ACTION,
+            ),
+            vec![Item::asks(AskKind::FixPayment, "Spotify").amount(1_199, "GBP")],
         ),
         judged(
             spec(
@@ -175,37 +214,65 @@ fn specs() -> Vec<Spec> {
             NOTICE,
         ),
         judged(
-            spec(
-                "todo-overdue-bill-reminder",
-                "A water bill reminder past its due date, with a pay link",
-                "billing@thameswater.co.uk",
-                Exact("Reminder: your water bill"),
-                ACTION,
+            asking(
+                spec(
+                    "todo-overdue-bill-reminder",
+                    "A water bill reminder past its due date, with a pay link",
+                    "billing@thameswater.co.uk",
+                    Exact("Reminder: your water bill"),
+                    ACTION,
+                ),
+                vec![Item::asks(AskKind::Pay, "Thames Water")
+                    .amount(4_820, "GBP")
+                    .due(Due::Stated)],
             ),
             &["record"],
             "A reminder about a bill is not the bill; labelled no record. The to-do waits in the catch-up rather than in Now, but it exists.",
         ),
-        spec(
-            "todo-document-to-sign",
-            "A DocuSign request to sign a tenancy renewal",
-            "dse@docusign.net",
-            Exact("Please DocuSign: Tenancy renewal"),
-            ACTION,
+        asking(
+            spec(
+                "todo-document-to-sign",
+                "A DocuSign request to sign a tenancy renewal",
+                "dse@docusign.net",
+                Exact("Please DocuSign: Tenancy renewal"),
+                ACTION,
+            ),
+            // "Foxtons via DocuSign": the requester is Foxtons.
+            vec![Item::asks(AskKind::Sign, "Foxtons")],
+        ),
+        // The promise in the owner's sent mail (todo_demo.rs).
+        outbound(
+            spec(
+                "todo-promise-to-send-a-form",
+                "You tell Priya you will send the signed engagement form",
+                SELF_EMAIL,
+                Exact("Re: Engagement form"),
+                NOTICE,
+            ),
+            vec![Item::promised(AskKind::Send, "Priya Shah")],
         ),
         // --- Modes (modes_demo.rs) ---
-        spec(
-            "modes-landlord-reply",
-            "The landlord answers a question you asked, sends the lease to sign by a date, and asks if you are free Thursday",
-            "sam@okafor-lettings.example",
-            Exact("Re: Lease renewal"),
-            expect(Who::Person, Home::Messages, true, false),
+        asking(
+            spec(
+                "modes-landlord-reply",
+                "The landlord answers a question you asked, sends the lease to sign by a date, and asks if you are free Thursday",
+                "sam@okafor-lettings.example",
+                Exact("Re: Lease renewal"),
+                QUESTION,
+            ),
+            // The Thursday question is Your turn, not a second item.
+            vec![Item::asks(AskKind::Sign, "Sam Okafor").due(Due::Stated)],
         ),
-        spec(
-            "modes-first-time-sender",
-            "Someone writes for the first time and asks for twenty minutes",
-            "noor@tidewater.example",
-            Exact("Introduction from Tidewater"),
-            CONVERSATION,
+        judged(
+            spec(
+                "modes-first-time-sender",
+                "Someone writes for the first time and asks for twenty minutes",
+                "noor@tidewater.example",
+                Exact("Introduction from Tidewater"),
+                QUESTION,
+            ),
+            &["todo"],
+            "\"Would you have twenty minutes next week?\" asks whether you are free, which is an answer to give, so it is Your turn and no item; if it is read as a request to meet it would be a `book` item.",
         ),
         judged(
             spec(
@@ -230,12 +297,16 @@ fn specs() -> Vec<Spec> {
             "The rules disagree and Now asks 'Not sure' (D119 U1); the home is still Updates under the copied rule. The not-sure mark is not one of the four questions.",
         ),
         // --- Messages (messages_demo.rs) ---
-        spec(
-            "messages-long-letter",
-            "A partner's long reply to your renewal draft, quoting you, with a request to reply",
-            "samir@launchpad.example",
-            Exact("Re: Contract renewal"),
-            CONVERSATION,
+        judged(
+            spec(
+                "messages-long-letter",
+                "A partner's long reply to your renewal draft, quoting you, with a request to reply",
+                "samir@launchpad.example",
+                Exact("Re: Contract renewal"),
+                QUESTION,
+            ),
+            &["todo"],
+            "The closing request is to review the redline and reply with the next step: the action is a reply, so it is Your turn and no item. \"Legal wants a signed copy before the 15th\" is the partner's schedule, not a request of you.",
         ),
         spec(
             "messages-group-thread-reply",
@@ -244,26 +315,37 @@ fn specs() -> Vec<Spec> {
             Exact("Re: Pricing copy"),
             CONVERSATION,
         ),
-        spec(
-            "messages-group-thread-ask",
-            "A colleague's reply in the same group thread, asking you to make a change",
-            "ruth@keystone.example",
-            Exact("Re: Pricing copy"),
-            CONVERSATION,
+        judged(
+            asking(
+                spec(
+                    "messages-group-thread-ask",
+                    "A colleague's reply in the same group thread, asking you to make a change",
+                    "ruth@keystone.example",
+                    Exact("Re: Pricing copy"),
+                    CONVERSATION,
+                ),
+                vec![Item::asks(AskKind::Other, "Ruth Vega")],
+            ),
+            &["todo"],
+            "\"Alex, can you make the change?\" names you and asks for an action other than a reply, so blueprint 37 makes it an item. The earlier label said no to-do because it has no date.",
         ),
         spec(
             "messages-one-line-question",
             "A one-line question from someone you wrote to",
             "jon@papertrail.example",
             Exact("Re: Pricing copy for the docs"),
-            CONVERSATION,
+            QUESTION,
         ),
-        spec(
-            "messages-answered-note",
-            "A colleague's note you already answered with 'Thanks, on it.'",
-            "iris@meridian.example",
-            Exact("Incident note"),
-            CONVERSATION,
+        judged(
+            spec(
+                "messages-answered-note",
+                "A colleague's note you already answered with 'Thanks, on it.'",
+                "iris@meridian.example",
+                Exact("Incident note"),
+                CONVERSATION,
+            ),
+            &["todo"],
+            "\"Ready for a read when you have a minute\" is an invitation with no deadline, and you answered it within two hours, so it is labelled as asking nothing now.",
         ),
         spec(
             "messages-copied-only",
@@ -406,12 +488,18 @@ fn specs() -> Vec<Spec> {
             "updates_demo.rs suggests a to-do ('t' makes it one). The mail itself says no action is needed if it was you, so it is labelled no to-do; Now's severity (not asked here) is where alerts rise.",
         ),
         judged(
-            spec(
-                "updates-payout-failed",
-                "A failed payout: the bank declined it and the details need updating",
-                "notifications@stripe.com",
-                Prefix("Payout of"),
-                ACTION,
+            in_locale(
+                asking(
+                    spec(
+                        "updates-payout-failed",
+                        "A failed payout: the bank declined it and the details need updating",
+                        "notifications@stripe.com",
+                        Prefix("Payout of"),
+                        ACTION,
+                    ),
+                    vec![Item::asks(AskKind::FixPayment, "Stripe").amount(421_000, "ZAR")],
+                ),
+                "en-ZA",
             ),
             &["todo"],
             "updates_demo.rs says suggested to-do; BK wants detected to-dos created automatically (memory: auto to-do creation) and a failed payment is a to-do under D119, so labelled a to-do.",
@@ -490,16 +578,17 @@ fn specs() -> Vec<Spec> {
     ]
 }
 
-/// The labels for the curated mail, skipping what the account sent.
+/// The labels for the curated mail. Mail the account sent is context and is
+/// labelled only when a spec claims it for the promise it makes.
 pub(super) fn label(messages: &[(Envelope, MessageBody)]) -> Vec<Labelled> {
     let specs = specs();
     messages
         .iter()
-        .filter(|(envelope, _)| !envelope.from.email.eq_ignore_ascii_case(SELF_EMAIL))
         .filter_map(|(envelope, _)| {
             let spec = specs.iter().find(|spec| {
                 spec.from.eq_ignore_ascii_case(&envelope.from.email)
                     && spec.subject.matches(&envelope.subject)
+                    && (spec.outbound || !spec.from.eq_ignore_ascii_case(SELF_EMAIL))
             })?;
             Some(Labelled {
                 provider_id: envelope.provider_id.clone(),
@@ -507,6 +596,18 @@ pub(super) fn label(messages: &[(Envelope, MessageBody)]) -> Vec<Labelled> {
                 scenario: spec.id,
                 description: spec.description,
                 expect: spec.expect,
+                items: spec.items.clone(),
+                outbound: spec.outbound,
+                sender: if spec.outbound {
+                    // The owner writes as a person.
+                    SenderKind::Person
+                } else {
+                    sender_kind(spec.expect.who, &envelope.from.email)
+                },
+                locale: spec
+                    .locale
+                    .unwrap_or_else(|| locale_of(&envelope.from.email)),
+                family: spec.id,
                 twin_of: None,
                 differs_by: "",
                 review: spec.review,

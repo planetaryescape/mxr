@@ -215,8 +215,8 @@ A large sweep runs in chunks and prints one undo id per chunk; run
 
 The keys for these places are the same in the web app and the TUI. They are
 in the keybindings reference, for the
-[web app](/reference/keybindings/#reading-and-paper-trail) and the
-[TUI](/reference/keybindings/#reading-and-paper-trail). Once a conversation
+[web app](/reference/keybindings/#reading-edition) and the
+[TUI](/reference/keybindings/#reading). Once a conversation
 is open, the reader's own keys apply. Before 0.6.41 the web app used other
 keys to open these places and to sweep; the reference's 0.6.41 note lists
 them.

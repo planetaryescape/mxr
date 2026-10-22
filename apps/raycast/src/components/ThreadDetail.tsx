@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Detail, Icon, Keyboard, Toast, showToast } from "@raycast/api";
+import { Action, ActionPanel, Detail, Icon, Toast, showToast } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useEffect, useRef } from "react";
 import { type Address, type Thread, getCodes, getThread, setRead } from "../bridge/mail";
@@ -7,6 +7,7 @@ import { message } from "./previewed";
 import { ReplyForm } from "./ReplyForm";
 import { fullDate } from "./time";
 import { useWebBase } from "./web";
+import { keyFor } from "./keys";
 
 /** As the web reader does when it has focus: read once it has been open this long. */
 const READ_AFTER_MS = 600;
@@ -118,7 +119,7 @@ export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
             <Action.Push
               title="Reply"
               icon={Icon.Reply}
-              shortcut={{ modifiers: ["cmd"], key: "r" }}
+              shortcut={keyFor("mail.reply")}
               target={
                 <ReplyForm
                   messageId={answer.messageId}
@@ -133,7 +134,7 @@ export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
             <Action.Push
               title="Reply All"
               icon={Icon.Reply}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
+              shortcut={keyFor("mail.reply-all")}
               target={
                 <ReplyForm
                   messageId={answer.messageId}
@@ -149,14 +150,14 @@ export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
             <Action.OpenInBrowser
               title="Open in mxr"
               url={`${webBase}${webPath}`}
-              shortcut={Keyboard.Shortcut.Common.Open}
+              shortcut={keyFor("list.open")}
             />
           )}
           {latest && (
             <Action
               title="Mark as Unread"
               icon={Icon.Dot}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "u" }}
+              shortcut={keyFor("mail.mark-unread")}
               onAction={markUnread}
             />
           )}

@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Color, Icon, List, Keyboard } from "@raycast/api";
+import { Action, ActionPanel, Color, Icon, List } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import { getMessages, markDone } from "./bridge/modes";
@@ -12,6 +12,7 @@ import { ReadAction } from "./components/ThreadDetail";
 import { itemErrors, runPreviewed } from "./components/previewed";
 import { arrival } from "./components/time";
 import { useWebBase, web } from "./components/web";
+import { keyFor } from "./components/keys";
 
 export default function Messages() {
   const [account, setAccount] = useState<string>();
@@ -68,7 +69,7 @@ export default function Messages() {
               <Action.Push
                 title="Reply"
                 icon={Icon.Reply}
-                shortcut={{ modifiers: ["cmd"], key: "r" }}
+                shortcut={keyFor("messages.reply")}
                 target={
                   <ReplyForm
                     messageId={topic.reply_to_message_id}
@@ -83,7 +84,7 @@ export default function Messages() {
               <Action.Push
                 title="Reply All"
                 icon={Icon.Reply}
-                shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
+                shortcut={keyFor("messages.reply-all")}
                 target={
                   <ReplyForm
                     messageId={topic.reply_to_message_id}
@@ -99,14 +100,14 @@ export default function Messages() {
               <Action.OpenInBrowser
                 title="Open in mxr"
                 url={`${webBase}${web.person(row.id, topic?.thread_id)}`}
-                shortcut={Keyboard.Shortcut.Common.Open}
+                shortcut={keyFor("messages.as-sent")}
               />
             )}
             {row.topics.length > 0 && (
               <Action
                 title="Done Here"
                 icon={Icon.Checkmark}
-                shortcut={Keyboard.Shortcut.Common.Edit}
+                shortcut={keyFor("messages.done")}
                 onAction={() => {
                   const threads = row.topics.map((t) => t.thread_id);
                   return runPreviewed({

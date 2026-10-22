@@ -1,114 +1,43 @@
 # Tracing model calls with a local Langfuse
 
-A developer build can record every model call mxr makes, with what it sent
-and what came back, in a [Langfuse](https://langfuse.com) running on your
-machine. Use it to see why a feature's answer was wrong, empty or slow.
+A build with the `langfuse` Cargo feature records every model call in a
+Langfuse on this machine. Setting it up, checking it and reading traces are
+in the docs site's
+[Trace model calls in a developer build](https://mxr.sh/guides/trace-model-calls/)
+(`site/src/content/docs/guides/trace-model-calls.md`). This page is for
+changing the code.
 
-It is behind the `langfuse` Cargo feature, which no shipped binary enables.
-Without it the tracing code and its OpenTelemetry crates aren't compiled, so
-release, Homebrew and `install.sh` builds can't trace at all.
+## Locked decisions
 
-## What a trace shows
+D150 in `docs/blueprint/15-decision-log.md`:
 
-Each feature call is a trace named by its config key (`summarize`,
-`commitments`, `assistant`, ...), the names `[llm.overrides.<key>]` and
-`mxr llm status` use. Under it, each request to a model is a generation with
-its messages, reply, thinking when the model returns it, token usage, model
-parameters, finish reason, endpoint and any error. A provider fallback, or
-the retry with `reasoning_effort: none` for a thinking model that spent its
-budget on reasoning, is its own generation. A call cut off by a timeout ends
-with a warning instead of an output.
-
-An assistant turn is one `assistant-turn` trace with its model calls and
-tool calls nested in order, and each conversation is a Langfuse session.
-Each tool call's metadata names the `tool_call_id` it answers, the id in the
-generation's `tool_calls` before it.
-
-Streamed replies from OpenAI-compatible servers (the assistant on Ollama)
-report token usage only when asked, so a `langfuse` build adds
-`stream_options: {"include_usage": true}` to streamed requests. It is the one
-change tracing makes to what a model server receives.
-
-## Traces go only to a Langfuse on this machine
-
-Traces hold whole prompts and replies, which means other people's mail. The
-daemon sends them only when `LANGFUSE_BASE_URL` is `localhost`, `127.x.x.x`
-or `::1`, never through a proxy and never after a redirect. Langfuse Cloud
-and LAN addresses are refused, and `mxr doctor` says why. With the variables
-unset, a `langfuse` build traces nothing.
-
-## Run Langfuse locally
-
-Clone [Langfuse](https://github.com/langfuse/langfuse) and put this override
-next to its `docker-compose.yml`. Langfuse publishes its web port and MinIO
-on every network interface and reports anonymous usage by default; the
-override binds everything to loopback, turns that off, and creates a project,
-its API keys and a login on first start, so there is nothing to set up in the
-UI. Fixed keys and a simple password are fine here because nothing outside
-this machine can reach it:
-
-```yaml
-# docker-compose.override.yml
-services:
-  langfuse-web:
-    ports: !override
-      - 127.0.0.1:3000:3000
-    environment:
-      TELEMETRY_ENABLED: "false"
-      LANGFUSE_INIT_ORG_ID: mxr
-      LANGFUSE_INIT_PROJECT_ID: mxr-local
-      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-mxr-local
-      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-mxr-local
-      LANGFUSE_INIT_USER_EMAIL: dev@mxr.local
-      LANGFUSE_INIT_USER_PASSWORD: mxr-local
-  langfuse-worker:
-    environment:
-      TELEMETRY_ENABLED: "false"
-  minio:
-    ports: !override
-      - 127.0.0.1:9090:9000
-      - 127.0.0.1:9091:9001
-```
-
-Start it with `docker compose up -d`. The UI is at `http://localhost:3000`,
-login `dev@mxr.local` / `mxr-local`. The init values apply only when the
-database is new; after changing them, recreate it with `docker compose down -v`.
-
-## Build and run mxr with tracing
-
-```bash
-cargo build -p mxr --features langfuse
-export LANGFUSE_BASE_URL=http://localhost:3000
-export LANGFUSE_PUBLIC_KEY=pk-lf-mxr-local
-export LANGFUSE_SECRET_KEY=sk-lf-mxr-local
-export LANGFUSE_TRACING_ENVIRONMENT=development   # optional
-target-cli/debug/mxr restart
-```
-
-Restart with the binary you just built: a daemon started by another `mxr`
-on your `PATH`, or by launchd, has neither the feature nor these variables.
-The daemon reads the variables when it starts, and `mxr doctor` lists
-`LLM tracing is on, to the Langfuse at ...`, or why it is off. Traces arrive within a
-few seconds; the daemon sends what is still queued when it stops.
-
-Read traces back from the terminal with the Langfuse CLI, which needs the
-same three variables:
-
-```bash
-npx langfuse-cli api observations list --fields core,basic,io,model,usage --json
-```
+- No shipped binary enables the feature. Without it the tracing code and the
+  OpenTelemetry crates aren't compiled; CI fails if `opentelemetry` enters
+  the release feature set's dependency tree.
+- Traces go only to a loopback Langfuse, through a client with no proxy and
+  no redirects, at an endpoint set in code.
+- Spans use the OpenTelemetry API, not `tracing`: the daemon's JSON log
+  layer writes span fields to its log files, so `tracing` spans would put
+  prompts in the logs.
 
 ## Code
 
 - `crates/llm/src/trace/`: the spans. `langfuse.rs` builds them with the
   OpenTelemetry API; `off.rs` is the same calls doing nothing, used without
-  the feature.
+  the feature. Functions whose callers are all `#[cfg(feature = "langfuse")]`
+  (`finish_completion_attempt`, `finish_chat_attempt`, `fail_attempt`) exist
+  only in `langfuse.rs`.
 - `crates/daemon/src/llm_tracing.rs`: reads the variables, refuses
   non-loopback URLs, runs the OTLP/HTTP exporter and reports its state to
   `mxr doctor`.
 - `crates/daemon/src/assistant/`: the `assistant-turn` span.
 - `crates/assistant/src/turn.rs`: the tool spans (`call_tool`).
-- `crates/llm/tests/trace_spans.rs`: the span tree and attributes, run with
-  `scripts/cargo-test -p mxr-llm --features langfuse --test trace_spans`;
-  the tool span's test runs with
-  `scripts/cargo-test -p mxr-assistant --features langfuse --lib`.
+
+## Verification
+
+```bash
+scripts/cargo-test -p mxr-llm --features langfuse --test trace_spans
+scripts/cargo-test -p mxr-assistant --features langfuse --lib
+scripts/cargo-test -p mxr --features langfuse --lib -- llm_tracing
+cargo tree -p mxr --features semantic-local,web-ui -e normal | grep -c opentelemetry   # 0
+```

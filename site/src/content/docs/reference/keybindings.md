@@ -742,7 +742,7 @@ One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out o
 
 | Key | Action | Note |
 |-----|--------|------|
-| `⌘ENTER / Ctrl+ENTER` | Send and next |  |
+| `⌘Enter / Ctrl+Enter` | Send and next |  |
 | `s` | Skip for now | Goes to the end of the queue |
 | `e` | Done, no reply needed | e on the desk in the TUI |
 | `Z` | Snooze… |  |
@@ -793,7 +793,7 @@ On a lit new sender, `1` to `4` answer its question; elsewhere they stay the num
 | `]` | Next topic |  |
 | `p` | Go to the person page |  |
 | `o`, `v` | Show the message as sent |  |
-| `⌘ENTER / Ctrl+ENTER` | Send, then the next person whose turn it is |  |
+| `⌘Enter / Ctrl+Enter` | Send, then the next person whose turn it is |  |
 | `Esc` | Dismiss the hint, or back to the people |  |
 | `1` | New sender: keep in Messages |  |
 | `2` | New sender: keep in Updates |  |
@@ -923,6 +923,37 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `t` | Make a to-do from this record |  |
 | `g f` | Filters… |  |
 | `Esc` | Close |  |
+
+### Arrivals
+
+The emails behind one of Now's arrival counts. `X` (in Mail actions) moves the email under the cursor.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `K` | Send everything from this sender to… |  |
+| `j`, `ArrowDown` | Next |  |
+| `k`, `ArrowUp` | Previous |  |
+| `Enter`, `o` | Open conversation |  |
+
+### Compose
+
+While writing a message. ⌘ and Ctrl both work, on every platform.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `⌘Enter / Ctrl+Enter` | Send |  |
+| `⌘⇧Enter / Ctrl+Shift+Enter` | Send and archive |  |
+| `⌘⇧L / Ctrl+Shift+L` | Send later… |  |
+| `⌘S / Ctrl+S` | Save draft |  |
+| `⌘⇧S / Ctrl+Shift+S` | Save to server draft |  |
+| `⌘⇧R / Ctrl+Shift+R` | Refresh from daemon |  |
+| `⌘Backspace / Ctrl+Backspace`, `⌘⇧Backspace / Ctrl+Shift+Backspace` | Discard draft |  |
+| `⌘⇧C / Ctrl+Shift+C` | Add Cc |  |
+| `⌘⇧B / Ctrl+Shift+B` | Add Bcc |  |
+| `⌘⇧A / Ctrl+Shift+A` | Attach files |  |
+| `⌘⇧G / Ctrl+Shift+G` | Insert signature |  |
+| `⌘; / Ctrl+;` | Insert snippet |  |
+| `⌘⇧F / Ctrl+Shift+F` | Toggle fullscreen |  |
 
 <!-- web-keys:end -->
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.149](https://github.com/planetaryescape/mxr/compare/v0.6.148...v0.6.149) (2026-10-22)
+
+
+### Features
+
+* give the Raycast extension the same keys as the TUI and the web app ([#655](https://github.com/planetaryescape/mxr/issues/655)) ([43bc64c](https://github.com/planetaryescape/mxr/commit/43bc64c5ce3987ff441f0c6eccdcbdc388b48bb2))
+* grade Draft for me on a labelled corpus with mxr draft eval --set quick ([#654](https://github.com/planetaryescape/mxr/issues/654)) ([0bcdbba](https://github.com/planetaryescape/mxr/commit/0bcdbba706557ccd3f8f4d6f9c3fd7381c4ac64f))
+
+
+### Bug Fixes
+
+* make TUI keys safe: Esc keeps the draft, q steps back, deletes ask, paste and Ctrl-z behave ([#656](https://github.com/planetaryescape/mxr/issues/656)) ([0a60db2](https://github.com/planetaryescape/mxr/commit/0a60db265159b586e3a78a09466cbba420046b83))
+* make web keys safe while typing, on any layout, and after menus close ([#652](https://github.com/planetaryescape/mxr/issues/652)) ([9636ffc](https://github.com/planetaryescape/mxr/commit/9636ffcf925057b4427153f5c3ce70a08eac4854))
+
+
+### Documentation
+
+* put tracing a developer build on the docs site ([#659](https://github.com/planetaryescape/mxr/issues/659)) ([d4810f3](https://github.com/planetaryescape/mxr/commit/d4810f3ee1f1108aca34678524b3cea4df736787))
+
 ## [0.6.148](https://github.com/planetaryescape/mxr/compare/v0.6.147...v0.6.148) (2026-10-22)
 
 

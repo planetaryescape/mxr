@@ -65,6 +65,50 @@ fn the_web_data_is_generated_from_the_definition() {
     );
 }
 
+/// The Raycast extension's keys. Regenerated with `UPDATE_KEYMAP=1` too.
+const RAYCAST_DATA: &str = "apps/raycast/src/keymap.generated.json";
+
+#[test]
+fn the_raycast_data_is_generated_from_the_definition() {
+    let path = repo_file(RAYCAST_DATA);
+    let fresh = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&defaults().raycast_keys()).expect("the keys serialise")
+    );
+    if std::env::var_os("UPDATE_KEYMAP").is_some() {
+        std::fs::write(&path, &fresh).expect("write the Raycast keymap data");
+        return;
+    }
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(
+        current == fresh,
+        "{RAYCAST_DATA} is stale; run `UPDATE_KEYMAP=1 cargo test -p mxr-keymap`"
+    );
+}
+
+#[test]
+fn raycast_keys_are_cmd_and_the_web_letter_unless_the_definition_says() {
+    let keymap = defaults();
+    let key = |id: &str| keymap.get(id).and_then(KeyAction::raycast_key);
+    assert_eq!(key("mail.reply").as_deref(), Some("Cmd+r"));
+    assert_eq!(key("mail.mark-unread").as_deref(), Some("Cmd+Shift+u"));
+    assert_eq!(
+        key("todo.done").as_deref(),
+        Some("Cmd+e"),
+        "the first letter key, after Space"
+    );
+    assert_eq!(key("mail.undo").as_deref(), Some("Cmd+z"));
+    assert_eq!(key("mail.reply-all").as_deref(), Some("Cmd+Shift+r"));
+    assert_eq!(key("list.up"), None, "Cmd+K is Raycast's action panel");
+    assert_eq!(
+        RaycastShortcut::parse("Cmd+Shift+e"),
+        Some(RaycastShortcut {
+            modifiers: vec!["cmd".into(), "shift".into()],
+            key: "e".into()
+        })
+    );
+}
+
 #[test]
 fn contexts_are_all_or_a_list() {
     let keymap = Keymap::parse(

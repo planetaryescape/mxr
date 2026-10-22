@@ -1,17 +1,20 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
 import { PageFrame } from "@/components/PageFrame";
 import { Button } from "@/components/ui/button";
 import { PageError, PageSkeleton } from "@/components/PageParts";
 import { useDelayedPending } from "@/hooks/useDelayedPending";
+import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { formatTime } from "@/lib/format";
+import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
 
 import { useArrivalList } from "./api";
 import { listTitle } from "./arrivalLine";
-import { answerPendingSenderAsk, openMovePicker } from "./moves";
+import { openMovePicker } from "./moves";
+import { moveCommands } from "./moveSubjects";
 import type { ArrivalBucket, ArrivalItem } from "./types";
 
 /**
@@ -78,45 +81,33 @@ function ArrivalRows({ items, total }: { items: ArrivalItem[]; total: number }) 
     if (row && listRef.current?.contains(document.activeElement)) row.focus();
   }, [at]);
 
-  const onKeyDown = (event: KeyboardEvent<HTMLLIElement>, item: ArrivalItem, index: number) => {
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
-    const act = (run: () => void) => {
-      event.preventDefault();
-      run();
-    };
-    switch (event.key) {
-      case "j":
-      case "ArrowDown":
-        return act(() => setCursor(Math.min(items.length - 1, index + 1)));
-      case "k":
-      case "ArrowUp":
-        return act(() => setCursor(Math.max(0, index - 1)));
-      case "Enter":
-      case "o":
-        return act(() => void navigate({ to: threadPath(item) }));
-      case "X":
-        return act(() => openMovePicker(subjectOf(item)));
-      case "K":
-        return act(() => {
-          if (!answerPendingSenderAsk()) openMovePicker(subjectOf(item), true);
-        });
-    }
-  };
+  // The page's keys (j, k, Enter, X, K) come from the key definition, so
+  // the global keys keep working beside them and `u` undoes an `X` move.
+  useShortcutScope("arrivals");
+  useScopeController("arrivals", {
+    down: () => setCursor(Math.min(items.length - 1, at + 1)),
+    up: () => setCursor(Math.max(0, at - 1)),
+    open: () => {
+      const item = items[at];
+      if (item) void navigate({ to: threadPath(item) });
+    },
+    ...moveCommands(() => {
+      const item = items[at];
+      return item ? subjectOf(item) : null;
+    }),
+  });
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto pb-6">
       <ul ref={listRef} aria-label="Emails" className="grid grid-cols-[minmax(0,1fr)]">
         {items.map((item, index) => (
-          // A row owns its keys: j, k, Enter, X and K act on it.
           <li
             key={item.message_id}
             data-index={index}
             data-testid="arrival-row"
-            data-keys-owner
             tabIndex={0}
             aria-current={index === at ? "true" : undefined}
             onFocus={() => setCursor(index)}
-            onKeyDown={(event) => onKeyDown(event, item, index)}
             className={cn(
               "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 border-b border-border/60 px-5 py-2 outline-none focus-visible:bg-accent/60",
               index === at && "bg-accent/40",

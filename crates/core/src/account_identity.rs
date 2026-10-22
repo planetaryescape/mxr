@@ -25,27 +25,27 @@ pub enum AccountColor {
 impl AccountColor {
     /// Every slot in assignment order. A new account takes the first one no
     /// other account holds.
-    pub const ALL: [AccountColor; 8] = [
-        AccountColor::Sky,
-        AccountColor::Amber,
-        AccountColor::Green,
-        AccountColor::Yellow,
-        AccountColor::Blue,
-        AccountColor::Vermilion,
-        AccountColor::Purple,
-        AccountColor::Slate,
+    pub const ALL: [Self; 8] = [
+        Self::Sky,
+        Self::Amber,
+        Self::Green,
+        Self::Yellow,
+        Self::Blue,
+        Self::Vermilion,
+        Self::Purple,
+        Self::Slate,
     ];
 
     pub fn as_str(self) -> &'static str {
         match self {
-            AccountColor::Sky => "sky",
-            AccountColor::Amber => "amber",
-            AccountColor::Green => "green",
-            AccountColor::Yellow => "yellow",
-            AccountColor::Blue => "blue",
-            AccountColor::Vermilion => "vermilion",
-            AccountColor::Purple => "purple",
-            AccountColor::Slate => "slate",
+            Self::Sky => "sky",
+            Self::Amber => "amber",
+            Self::Green => "green",
+            Self::Yellow => "yellow",
+            Self::Blue => "blue",
+            Self::Vermilion => "vermilion",
+            Self::Purple => "purple",
+            Self::Slate => "slate",
         }
     }
 }
@@ -74,7 +74,7 @@ impl FromStr for AccountColor {
     type Err = AccountColorError;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        AccountColor::ALL
+        Self::ALL
             .iter()
             .copied()
             .find(|color| color.as_str() == input)
@@ -139,12 +139,12 @@ pub fn derive_account_tag(
 ) -> Result<String, NoFreeAccountTag> {
     let letters: String = name
         .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
+        .filter(char::is_ascii_alphanumeric)
         .map(|c| c.to_ascii_uppercase())
         .collect();
     let initials: String = name
         .split_whitespace()
-        .filter_map(|word| word.chars().find(|c| c.is_ascii_alphanumeric()))
+        .filter_map(|word| word.chars().find(char::is_ascii_alphanumeric))
         .take(2)
         .map(|c| c.to_ascii_uppercase())
         .collect();
@@ -177,7 +177,7 @@ pub fn derive_account_tag(
 
     let hex: String = account_id
         .chars()
-        .filter(|c| c.is_ascii_hexdigit())
+        .filter(char::is_ascii_hexdigit)
         .map(|c| c.to_ascii_uppercase())
         .take(3)
         .collect();
@@ -271,7 +271,7 @@ mod tests {
     }
 
     fn taken_of(tags: &[&str]) -> std::collections::HashSet<String> {
-        tags.iter().map(|tag| tag.to_string()).collect()
+        tags.iter().map(std::string::ToString::to_string).collect()
     }
 
     #[test]
@@ -327,7 +327,7 @@ mod tests {
         let hex: String = id
             .as_str()
             .chars()
-            .filter(|c| c.is_ascii_hexdigit())
+            .filter(char::is_ascii_hexdigit)
             .map(|c| c.to_ascii_uppercase())
             .take(3)
             .collect();
@@ -335,6 +335,9 @@ mod tests {
         // has to move on to two characters, and "00" is the first free one.
         let mut taken = taken_of(&[hex.as_str()]);
         taken.extend((0..TAG_ALPHABET.len()).map(|i| tag_from_index(i, 1)));
-        assert_eq!(derive_account_tag("***", &taken, &id.as_str()).unwrap(), "00");
+        assert_eq!(
+            derive_account_tag("***", &taken, &id.as_str()).unwrap(),
+            "00"
+        );
     }
 }

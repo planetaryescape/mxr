@@ -395,6 +395,8 @@ Auto-format detection: TTY → table, piped → json. Override with explicit `--
 
 ## A005: Keybinding scheme — vim-native first, Gmail for email actions
 
+> Superseded by [chapter 35](35-keyboard.md): Gmail and vim keys stay frozen, and custom keys now follow its verb grammar (D163-D172).
+
 **Affects**: 08-tui.md, 12-config.md
 
 **The hierarchy**:

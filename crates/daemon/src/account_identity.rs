@@ -255,9 +255,7 @@ pub fn plan_identity_change(
     }
     let after = AccountIdentityData {
         color: color.unwrap_or(current.identity.color),
-        tag: tag
-            .map(str::to_string)
-            .unwrap_or_else(|| current.identity.tag.clone()),
+        tag: tag.map_or_else(|| current.identity.tag.clone(), str::to_string),
     };
     Ok((current.identity.clone(), after))
 }
@@ -327,7 +325,7 @@ pub async fn resolve_from_store(
         .iter()
         .filter(|(key, account)| !seen.contains(&crate::handler::config_account_id(key, account)))
         .collect();
-    unstored.sort_by(|(left, _), (right, _)| left.cmp(right));
+    unstored.sort_by_key(|(key, _)| *key);
     for (key, account) in unstored {
         inputs.push(IdentityInput {
             account_id: crate::handler::config_account_id(key, account),

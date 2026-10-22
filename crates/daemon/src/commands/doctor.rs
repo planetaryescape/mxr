@@ -1169,6 +1169,18 @@ fn format_duration(d: std::time::Duration) -> String {
     }
 }
 
+/// `None` means the daemon could not read its config, or predates the field.
+fn history_retention_label(days: Option<u32>) -> String {
+    match days {
+        Some(0) => "kept forever (automatic prune off)".to_string(),
+        Some(days) => format!(
+            "kept {days} days, pruned daily (sync keeps the newest {} rows per account)",
+            crate::sync_history::WINDOW
+        ),
+        None => "unknown (config unreadable or daemon predates this field)".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1199,17 +1211,5 @@ mod tests {
         assert_eq!(format_duration(Duration::from_millis(450)), "450ms");
         assert_eq!(format_duration(Duration::from_millis(1_200)), "1.2s");
         assert_eq!(format_duration(Duration::from_secs(75)), "1m 15s");
-    }
-}
-
-/// `None` means the daemon could not read its config, or predates the field.
-fn history_retention_label(days: Option<u32>) -> String {
-    match days {
-        Some(0) => "kept forever (automatic prune off)".to_string(),
-        Some(days) => format!(
-            "kept {days} days, pruned daily (sync keeps the newest {} rows per account)",
-            crate::sync_history::WINDOW
-        ),
-        None => "unknown (config unreadable or daemon predates this field)".to_string(),
     }
 }

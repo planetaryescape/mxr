@@ -1,0 +1,314 @@
+//! `mxr classify eval --set full` over generated demos: both demo accounts
+//! synced from the scenario families, run through the same post-sync
+//! classification a real sync runs (to-dos, records, deliveries, arrivals
+//! placement), then graded.
+//!
+//! * `the_full_set_is_graded_on_the_whole_demo` builds the whole
+//!   50,000-message demo, takes minutes and is `#[ignore]`d so the workspace
+//!   test jobs skip it. CI's "Classifier Eval" job runs it, and a change that
+//!   moves any answer shows up as a reviewed snapshot diff. Locally:
+//!   `scripts/cargo-test -p mxr --lib -- --ignored handler::tests::classify_eval_full`
+//!   (once; it is heavy).
+//! * The other tests run the same code over a demo of a few thousand, so the
+//!   set selection, the held-out accounting and the per-account scoping are
+//!   checked on every run.
+
+use super::*;
+use crate::handler::classify_eval::classify_eval;
+use mxr_core::id::AccountId;
+use mxr_core::types::{Account, BackendRef, ProviderKind};
+use mxr_protocol::{
+    ClassifyEvalMismatchData, ClassifyEvalSetData, ClassifyEvalSummaryData, ResponseData,
+};
+use mxr_provider_fake::fixtures::scenarios::{SELF_EMAIL, WORK_EMAIL};
+use mxr_provider_fake::FakeProvider;
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::time::Instant;
+
+/// The sync page the demo is fed through. The daemon pages a demo by the
+/// provider's own page size; a larger page only changes how much post-sync
+/// work one call batches, never what it concludes.
+const PAGE_SIZE: usize = 1000;
+
+fn account(email: &str, name: &str) -> Account {
+    Account {
+        id: AccountId::from_provider_id("fake", email),
+        name: name.to_string(),
+        email: email.to_string(),
+        sync_backend: Some(BackendRef {
+            provider_kind: ProviderKind::Fake,
+            config_key: "fake".to_string(),
+        }),
+        send_backend: None,
+        enabled: true,
+    }
+}
+
+/// Both demo accounts synced from a demo of `total` messages (split 55/45
+/// between them, as `mxr demo` does), with the post-sync classification the
+/// daemon runs after each page and a contacts refresh.
+///
+/// Only the classification half of the post-sync work runs (rules, deliveries,
+/// to-dos, records, Reading, Updates facts, arrivals). The semantic, contact
+/// and relationship indexing beside it decides nothing the eval grades and,
+/// measured on a 12,000-message demo, was three quarters of the time.
+async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
+    let personal = account(SELF_EMAIL, "Alex Demo");
+    let work = account(WORK_EMAIL, "Alex Work");
+    let personal_provider = Arc::new(
+        FakeProvider::with_demo_dataset(personal.id.clone(), total).with_page_size(PAGE_SIZE),
+    );
+    let state = Arc::new(
+        AppState::in_memory_with_sync_provider(personal.clone(), personal_provider.clone(), None)
+            .await
+            .unwrap(),
+    );
+    state.store.insert_account(&work).await.unwrap();
+    let work_provider =
+        Arc::new(FakeProvider::with_demo_dataset(work.id.clone(), total).with_page_size(PAGE_SIZE));
+    state.add_sync_provider_for_test(work_provider.clone());
+    for (id, provider) in [(&personal.id, personal_provider), (&work.id, work_provider)] {
+        let started = Instant::now();
+        let mut pages = 0;
+        loop {
+            let outcome = state
+                .sync_engine
+                .sync_account_with_outcome(provider.as_ref())
+                .await
+                .unwrap();
+            // As the daemon seeds a demo: every page but the last is part of
+            // the initial backfill, which leaves Reading's whole-account
+            // sweep to the last page. Run on every page it is quadratic and
+            // was over half of the time.
+            crate::loops::post_sync_classification(
+                &state,
+                id,
+                provider.as_ref(),
+                &outcome.upserted_message_ids,
+                outcome.has_more,
+            )
+            .await;
+            pages += 1;
+            // A line per few pages: a queued job that prints nothing for
+            // minutes is taken for stuck.
+            if pages % 5 == 0 {
+                eprintln!("  {id}: {pages} pages in {:?}", started.elapsed());
+            }
+            if !outcome.has_more {
+                break;
+            }
+        }
+        eprintln!("synced and classified {} in {:?}", id, started.elapsed());
+    }
+    state.store.refresh_contacts().await.unwrap();
+    (state, personal.id, work.id)
+}
+
+async fn eval(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    set: ClassifyEvalSetData,
+) -> (ClassifyEvalSummaryData, Vec<ClassifyEvalMismatchData>) {
+    let started = Instant::now();
+    let response = classify_eval(state, account_id, set).await.unwrap();
+    eprintln!("graded the {set:?} set in {:?}", started.elapsed());
+    match response {
+        ResponseData::ClassifyEval {
+            summary,
+            mismatches,
+        } => (summary, mismatches),
+        other => panic!("{other:?}"),
+    }
+}
+
+fn question_lines(questions: &[mxr_protocol::ClassifyEvalQuestionData]) -> String {
+    questions
+        .iter()
+        .map(|q| {
+            format!(
+                "{:<7} {:>6}/{:<6} {:>5.1}%\n",
+                q.question, q.correct, q.evaluated, q.accuracy_percent
+            )
+        })
+        .collect()
+}
+
+/// Scenario, question, expected and actual answer.
+type ClusterKey<'a> = (&'a str, &'a str, &'a str, &'a str);
+/// How many, how many of them held out, and whether any label is a judgement
+/// call.
+type Cluster = (u32, u32, bool);
+
+/// Counts, per-question accuracy, held-out accuracy and the mismatches
+/// grouped by what was expected and what was said. Never one line per email:
+/// a 50,000-email set is reviewed by cluster. Rule wording is left out so a
+/// reworded reason is not a diff but a changed answer is.
+fn report(summary: &ClassifyEvalSummaryData, mismatches: &[ClassifyEvalMismatchData]) -> String {
+    let mut out = format!(
+        "label schema v{}\n{} labelled emails graded, {} stored emails unlabelled, {} placed live, {} not placed\n\n",
+        summary.label_schema_version,
+        summary.present,
+        summary.unlabelled,
+        summary.placed_live,
+        summary.not_placed
+    );
+    out.push_str(&question_lines(&summary.questions));
+    out.push_str(&format!(
+        "\nheld-out phrasings: {} emails\n",
+        summary.held_out_present
+    ));
+    out.push_str(&question_lines(&summary.held_out_questions));
+
+    // (scenario, question, expected, actual) -> (all, held out, label to check)
+    let mut clusters: BTreeMap<ClusterKey, Cluster> = BTreeMap::new();
+    for m in mismatches {
+        let entry = clusters
+            .entry((
+                m.scenario.as_str(),
+                m.question.as_str(),
+                m.expected.as_str(),
+                m.actual.as_str(),
+            ))
+            .or_default();
+        entry.0 += 1;
+        entry.1 += u32::from(m.held_out);
+        entry.2 |= m.label_review.is_some();
+    }
+    out.push_str(&format!(
+        "\n{} mismatches in {} clusters\n",
+        mismatches.len(),
+        clusters.len()
+    ));
+    for ((scenario, question, expected, actual), (count, held_out, to_check)) in clusters {
+        out.push_str(&format!(
+            "{scenario} {question}: expected {expected}, got {actual}: {count} ({held_out} held out){}\n",
+            if to_check { " [label to check]" } else { "" }
+        ));
+    }
+    out
+}
+
+/// Grades all 50,000 emails of the demo. CI's "Classifier Eval" job runs it.
+/// The snapshot is the classifier's measured behaviour on the whole demo:
+/// any change to sorting shows up as a reviewed diff.
+#[tokio::test]
+#[ignore = "builds the whole 50,000-message demo; CI's Classifier Eval job runs it"]
+async fn the_full_set_is_graded_on_the_whole_demo() {
+    let started = Instant::now();
+    let (state, _, _) = demo_state(50_000).await;
+    let built = started.elapsed();
+    let (summary, mismatches) = eval(&state, None, ClassifyEvalSetData::Full).await;
+    eprintln!(
+        "full-set eval: built and classified the demo in {built:?}, graded in {:?}",
+        started.elapsed() - built
+    );
+    assert_eq!(summary.set, ClassifyEvalSetData::Full);
+    assert_eq!(summary.message, None);
+    // Everything the account did not send is labelled, so what is left
+    // unlabelled is the mail the demo's accounts wrote.
+    assert!(
+        summary.present > 30_000,
+        "only {} of the demo's emails are labelled",
+        summary.present
+    );
+    assert!(summary.held_out_present > 5_000);
+    insta::assert_snapshot!(report(&summary, &mismatches));
+}
+
+#[tokio::test]
+async fn the_full_set_grades_both_demo_accounts_and_reports_held_out_apart() {
+    let (state, personal, work) = demo_state(2_500).await;
+    let (summary, mismatches) = eval(&state, None, ClassifyEvalSetData::Full).await;
+    assert_eq!(summary.set, ClassifyEvalSetData::Full);
+    assert_eq!(summary.message, None);
+    assert_eq!(
+        summary.present, summary.labelled_in_set,
+        "the full set is whatever the store holds that is labelled"
+    );
+    assert!(summary.present > 1_000, "{}", summary.present);
+    // Mail the accounts wrote is context, not labelled.
+    assert!(summary.unlabelled > 100, "{}", summary.unlabelled);
+    assert_eq!(summary.not_placed, 0);
+
+    // Held-out phrasings are graded on their own line, per question, and
+    // their share is a fraction of all.
+    assert!(summary.held_out_present > 100);
+    assert!(summary.held_out_present < summary.present);
+    assert_eq!(summary.held_out_questions.len(), summary.questions.len());
+    for (held, all) in summary.held_out_questions.iter().zip(&summary.questions) {
+        assert_eq!(held.question, all.question);
+        assert!(held.evaluated > 0 && held.evaluated < all.evaluated);
+        assert!(held.correct <= all.correct);
+    }
+    // A mismatch on a held-out email is flagged, and the flags add up to the
+    // held-out tallies.
+    for (index, question) in summary.questions.iter().enumerate() {
+        let held_wrong = mismatches
+            .iter()
+            .filter(|m| m.question == question.question && m.held_out)
+            .count() as u32;
+        let held = &summary.held_out_questions[index];
+        assert_eq!(
+            held.evaluated - held.correct,
+            held_wrong,
+            "{}",
+            question.question
+        );
+    }
+
+    // Asked about one account, only that account's mail is graded; together
+    // they are the whole.
+    let (personal_only, _) = eval(&state, Some(&personal), ClassifyEvalSetData::Full).await;
+    let (work_only, _) = eval(&state, Some(&work), ClassifyEvalSetData::Full).await;
+    assert!(personal_only.present > 0 && work_only.present > 0);
+    assert_eq!(personal_only.present + work_only.present, summary.present);
+    assert_eq!(
+        personal_only.held_out_present + work_only.held_out_present,
+        summary.held_out_present
+    );
+}
+
+#[tokio::test]
+async fn the_quick_set_on_a_generated_demo_still_grades_only_the_curated_mail() {
+    let (state, _, _) = demo_state(1_500).await;
+    let (quick, quick_mismatches) = eval(&state, None, ClassifyEvalSetData::Quick).await;
+    let (full, _) = eval(&state, None, ClassifyEvalSetData::Full).await;
+    // The quick set is the hand-written mail of the personal account: the
+    // twins are not in a demo, and none of it is held out.
+    assert_eq!(quick.set, ClassifyEvalSetData::Quick);
+    assert!(quick.present > 90 && quick.present < full.present);
+    assert_eq!(quick.held_out_present, 0);
+    assert!(quick.held_out_questions.is_empty());
+    assert!(quick_mismatches.iter().all(|m| !m.held_out));
+    assert!(
+        quick.present < quick.labelled_in_set,
+        "twins are not in a demo"
+    );
+}
+
+#[tokio::test]
+async fn grading_the_full_set_twice_gives_the_same_answer() {
+    let (state, _, _) = demo_state(1_200).await;
+    let first = eval(&state, None, ClassifyEvalSetData::Full).await;
+    let second = eval(&state, None, ClassifyEvalSetData::Full).await;
+    assert_eq!(first, second, "no state carries over between runs");
+}
+
+#[tokio::test]
+async fn the_full_set_labels_the_curated_mail_with_the_quick_sets_labels() {
+    let (state, personal, _) = demo_state(1_200).await;
+    // Every mismatch the quick set finds on the curated mail is also found,
+    // with the same expected and actual answer, by the full set.
+    let (_, quick_mismatches) = eval(&state, Some(&personal), ClassifyEvalSetData::Quick).await;
+    let (_, full_mismatches) = eval(&state, Some(&personal), ClassifyEvalSetData::Full).await;
+    assert!(!quick_mismatches.is_empty());
+    for quick in &quick_mismatches {
+        assert!(
+            full_mismatches.iter().any(|full| full == quick),
+            "the full set missed {} {}",
+            quick.provider_id,
+            quick.question
+        );
+    }
+}

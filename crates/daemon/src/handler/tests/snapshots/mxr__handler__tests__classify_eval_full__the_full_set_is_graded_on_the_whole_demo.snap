@@ -1,0 +1,76 @@
+---
+source: crates/daemon/src/handler/tests/classify_eval_full.rs
+expression: "report(&summary, &mismatches)"
+---
+label schema v1
+38747 labelled emails graded, 11253 stored emails unlabelled, 34121 placed live, 0 not placed
+
+who      31100/38747   80.3%
+home     31980/38747   82.5%
+todo     38654/38747   99.8%
+record   35588/38747   91.8%
+
+held-out phrasings: 11115 emails
+who       8674/11115   78.0%
+home      8850/11115   79.6%
+todo     11099/11115   99.9%
+record    9483/11115   85.3%
+
+17666 mismatches in 57 clusters
+bulk-bill-issued record: expected yes, got no: 314 (164 held out)
+bulk-bill-issued todo: expected yes, got no: 44 (16 held out)
+bulk-bill-payment-received home: expected updates, got messages: 468 (164 held out)
+bulk-bill-payment-received record: expected yes, got no: 161 (82 held out)
+bulk-bill-payment-received who: expected machine, got person: 468 (164 held out)
+bulk-bill-price-change home: expected updates, got messages: 235 (81 held out)
+bulk-bill-price-change who: expected machine, got person: 235 (81 held out)
+bulk-bill-statement-ready home: expected updates, got messages: 352 (122 held out)
+bulk-bill-statement-ready record: expected no, got yes: 63 (0 held out) [label to check]
+bulk-bill-statement-ready who: expected machine, got person: 352 (122 held out)
+bulk-bill-survey home: expected updates, got messages: 118 (42 held out)
+bulk-bill-survey who: expected machine, got person: 118 (42 held out)
+bulk-dated-request-ask todo: expected yes, got no: 46 (0 held out) [label to check]
+bulk-order-confirmation record: expected yes, got no: 310 (152 held out)
+bulk-order-delivered home: expected updates, got messages: 233 (67 held out)
+bulk-order-delivered record: expected yes, got no: 703 (229 held out)
+bulk-order-delivered who: expected machine, got person: 233 (67 held out)
+bulk-order-invoice home: expected updates, got messages: 233 (67 held out)
+bulk-order-invoice todo: expected no, got yes: 2 (0 held out)
+bulk-order-invoice who: expected machine, got person: 233 (67 held out)
+bulk-order-shipped home: expected updates, got messages: 468 (143 held out)
+bulk-order-shipped record: expected yes, got no: 615 (305 held out)
+bulk-order-shipped who: expected machine, got person: 468 (143 held out)
+bulk-order-survey home: expected updates, got messages: 233 (67 held out)
+bulk-order-survey who: expected machine, got person: 233 (67 held out)
+bulk-phishing-in-inbox home: expected updates, got messages: 441 (87 held out) [label to check]
+bulk-phishing-in-inbox who: expected machine, got person: 441 (87 held out) [label to check]
+bulk-spam-in-spam-folder who: expected machine, got person: 880 (176 held out) [label to check]
+bulk-travel-booking home: expected updates, got messages: 461 (230 held out)
+bulk-travel-booking record: expected yes, got no: 465 (465 held out)
+bulk-travel-booking who: expected machine, got person: 461 (230 held out)
+bulk-travel-change home: expected updates, got messages: 704 (249 held out)
+bulk-travel-change record: expected no, got yes: 111 (0 held out) [label to check]
+bulk-travel-change who: expected machine, got person: 704 (249 held out)
+bulk-travel-payment home: expected updates, got messages: 1405 (465 held out)
+bulk-travel-payment record: expected yes, got no: 235 (235 held out)
+bulk-travel-payment who: expected machine, got person: 1405 (465 held out)
+bulk-travel-reminder home: expected updates, got messages: 1054 (357 held out)
+bulk-travel-reminder record: expected no, got yes: 178 (0 held out) [label to check]
+bulk-travel-reminder who: expected machine, got person: 1054 (357 held out)
+bulk-travel-survey home: expected updates, got messages: 352 (124 held out)
+bulk-travel-survey who: expected machine, got person: 352 (124 held out)
+records-event-tickets home: expected updates, got messages: 1 (0 held out)
+records-event-tickets who: expected machine, got person: 1 (0 held out)
+subscriptions-disney-cancellation home: expected updates, got messages: 1 (0 held out)
+subscriptions-disney-cancellation who: expected machine, got person: 1 (0 held out)
+subscriptions-disney-receipt home: expected updates, got messages: 3 (0 held out)
+subscriptions-disney-receipt who: expected machine, got person: 3 (0 held out)
+todo-bill-with-due-date home: expected updates, got messages: 1 (0 held out)
+todo-bill-with-due-date who: expected machine, got person: 1 (0 held out)
+todo-council-statement home: expected updates, got messages: 3 (0 held out)
+todo-council-statement record: expected yes, got no: 3 (0 held out) [label to check]
+todo-council-statement who: expected machine, got person: 3 (0 held out)
+todo-document-to-sign home: expected updates, got messages: 1 (0 held out)
+todo-document-to-sign who: expected machine, got person: 1 (0 held out)
+todo-statement-ready record: expected no, got yes: 1 (0 held out) [label to check]
+updates-payout-failed todo: expected yes, got no: 1 (0 held out) [label to check]

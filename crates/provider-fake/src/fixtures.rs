@@ -667,73 +667,6 @@ pub(crate) fn generate_demo_fixtures(
     (envelopes, bodies, stream.labels().to_vec())
 }
 
-const DEMO_PEOPLE: [(&str, &str); 12] = [
-    ("Maya Ortiz", "maya@orbit.example"),
-    ("Theo Nash", "theo@northstar.example"),
-    ("Priya Raman", "priya@atlas.example"),
-    ("Jon Bell", "jon@papertrail.example"),
-    ("Nora Kim", "nora@foundry.example"),
-    ("Samir Patel", "samir@launchpad.example"),
-    ("Elena Wood", "elena@harbor.example"),
-    ("Ari Stone", "ari@fieldkit.example"),
-    ("Ruth Vega", "ruth@keystone.example"),
-    ("Cal Brooks", "cal@signal.example"),
-    ("Iris Chen", "iris@meridian.example"),
-    ("Leo Park", "leo@workbench.example"),
-];
-const DEMO_NEWSLETTER_SENDERS: [(&str, &str); 4] = [
-    ("Terminal Dispatch", "dispatch@lists.demo.mxr.local"),
-    ("Local First Weekly", "weekly@lists.demo.mxr.local"),
-    ("SQLite Notes", "notes@lists.demo.mxr.local"),
-    ("Ops Digest", "ops@lists.demo.mxr.local"),
-];
-const DEMO_ALERT_SENDERS: [(&str, &str); 3] = [
-    ("Build Watch", "builds@alerts.demo.mxr.local"),
-    ("Uptime Robot", "uptime@alerts.demo.mxr.local"),
-    ("Pager Relay", "pager@alerts.demo.mxr.local"),
-];
-const DEMO_PROMO_SENDERS: [(&str, &str); 4] = [
-    ("Cloud Deals", "offers@promo.demo.mxr.local"),
-    ("Desk Gear Outlet", "gear@promo.demo.mxr.local"),
-    ("Flight Fare Drop", "fares@promo.demo.mxr.local"),
-    ("Conference Passes", "events@promo.demo.mxr.local"),
-];
-const DEMO_SPAM_SENDERS: [(&str, &str); 3] = [
-    (
-        "Account Verification",
-        "verify@security-mail.demo.mxr.local",
-    ),
-    ("Prize Desk", "winner@claim-now.demo.mxr.local"),
-    ("Payroll Notice", "payroll@notice-demo.mxr.local"),
-];
-/// Subjects only an account's security system sends.
-const DEMO_SECURITY_SUBJECTS: [&str; 2] = [
-    "Action required: unusual sign-in attempt",
-    "Urgent password reset notice",
-];
-const DEMO_SUBJECT_TEMPLATES: [&str; 20] = [
-    "Launch checklist for Project Aurora",
-    "Canary rollout notes",
-    "Customer feedback from the design partner call",
-    "Draft positioning for the CLI-first release",
-    "Security review follow-up",
-    "QBR prep and open questions",
-    "Contract renewal details",
-    "Interview panel for Staff Engineer candidate",
-    "Receipt for workspace subscription",
-    "Flight options for the Portland demo day",
-    "Incident review: delayed sync jobs",
-    "Weekly local-first reading list",
-    "Build failed on release branch",
-    "Pricing page copy review",
-    "API migration plan",
-    "Research notes: terminal workflows",
-    "Action required: unusual sign-in attempt",
-    "Spring upgrade offer for your workspace",
-    "Limited-time launch bundle",
-    "Urgent password reset notice",
-];
-
 /// Number of messages `delivery_demo_messages` injects at the head of the
 /// personal demo account.
 const DELIVERY_DEMO_MESSAGE_COUNT: usize = 5;
@@ -809,14 +742,7 @@ impl DemoFixtureStream {
         // message count is unchanged.
         let delivery_count = if profile.email == "alex@demo.mxr.local" && profile.target_count >= 16
         {
-            DELIVERY_DEMO_MESSAGE_COUNT
-                + todo_demo::TODO_DEMO_MESSAGE_COUNT
-                + modes_demo::MODES_DEMO_MESSAGE_COUNT
-                + messages_demo::MESSAGES_DEMO_MESSAGE_COUNT
-                + records_demo::RECORDS_DEMO_MESSAGE_COUNT
-                + reading_demo::READING_DEMO_MESSAGE_COUNT
-                + updates_demo::UPDATES_DEMO_MESSAGE_COUNT
-                + subscriptions_demo::SUBSCRIPTIONS_DEMO_MESSAGE_COUNT
+            curated_head_len()
         } else {
             0
         };
@@ -870,7 +796,7 @@ impl DemoFixtureStream {
             // `thread_len` drives dates and the "last message in thread"
             // rules, so the message builder always sees the thread's full
             // length even when the target count truncates the tail.
-            let thread_len = demo_thread_len(thread_num);
+            let thread_len = scenarios::bulk_thread_len(thread_num);
             let emitted = thread_len.min(self.profile.target_count - produced);
             for reply_idx in 0..emitted {
                 let index = produced + reply_idx;
@@ -908,6 +834,9 @@ impl DemoFixtureStream {
         curated_seed_messages(&self.account_id, &self.self_addr, self.now, &self.cuts)
     }
 
+    /// One message of the generated threads, from the scenario families in
+    /// `scenarios::bulk`: who writes, what they say and when are decided by
+    /// the thread number and the position alone.
     fn thread_message(
         &self,
         thread_num: usize,
@@ -915,121 +844,8 @@ impl DemoFixtureStream {
         thread_len: usize,
         index: usize,
     ) -> (Envelope, MessageBody) {
-        let category = thread_num % 13;
-        let root_subject = DEMO_SUBJECT_TEMPLATES[thread_num % DEMO_SUBJECT_TEMPLATES.len()];
-        let thread_offset_minutes = (thread_num as i64 * 37) % (365 * 24 * 60);
-
-        let sent = matches!(category, 0 | 1 | 5) && reply_idx % 3 == 1;
-        let (name, email) = match category {
-            2 => DEMO_NEWSLETTER_SENDERS[thread_num % DEMO_NEWSLETTER_SENDERS.len()],
-            7 => DEMO_ALERT_SENDERS[thread_num % DEMO_ALERT_SENDERS.len()],
-            10 | 12 => DEMO_SPAM_SENDERS[thread_num % DEMO_SPAM_SENDERS.len()],
-            11 => DEMO_PROMO_SENDERS[thread_num % DEMO_PROMO_SENDERS.len()],
-            // A security alert comes from a machine, never a colleague, so
-            // the demo never shows one as a person waiting on you.
-            _ if DEMO_SECURITY_SUBJECTS.contains(&root_subject) => DEMO_SPAM_SENDERS[0],
-            _ => DEMO_PEOPLE[(thread_num + reply_idx) % DEMO_PEOPLE.len()],
-        };
-        let peer = Address {
-            name: Some(name.to_string()),
-            email: email.to_string(),
-        };
-        let observer = DEMO_PEOPLE[(thread_num + reply_idx + 3) % DEMO_PEOPLE.len()];
-        let observer = Address {
-            name: Some(observer.0.to_string()),
-            email: observer.1.to_string(),
-        };
-        let cc = if matches!(category, 0 | 3 | 4 | 8) && observer.email != peer.email {
-            vec![observer]
-        } else {
-            Vec::new()
-        };
-        let (from, to) = if sent {
-            (self.self_addr.clone(), vec![peer.clone()])
-        } else {
-            (peer.clone(), vec![self.self_addr.clone()])
-        };
-
-        let subject = if reply_idx == 0 {
-            root_subject.to_string()
-        } else {
-            format!("Re: {root_subject}")
-        };
-        let date = self.now
-            - Duration::minutes(thread_offset_minutes + (thread_len - reply_idx) as i64 * 47);
-        let old_enough_to_read = thread_offset_minutes > 24 * 60;
-        let unread = !sent && !old_enough_to_read && reply_idx + 1 == thread_len;
-        let starred = thread_num.is_multiple_of(29) || root_subject.contains("Security");
-        let mut flags = if unread {
-            MessageFlags::empty()
-        } else {
-            MessageFlags::READ
-        };
-        if sent {
-            flags |= MessageFlags::SENT | MessageFlags::READ;
-        }
-        if starred {
-            flags |= MessageFlags::STARRED;
-        }
-        if category == 10 {
-            flags |= MessageFlags::SPAM;
-        }
-        if category == 9 && thread_num.is_multiple_of(11) {
-            flags |= MessageFlags::ARCHIVED;
-        }
-
-        let mut provider_labels = Vec::new();
-        if sent {
-            provider_labels.push("SENT".to_string());
-        } else if flags.contains(MessageFlags::SPAM) {
-            provider_labels.push("SPAM".to_string());
-        } else if flags.contains(MessageFlags::ARCHIVED) {
-            provider_labels.push("ARCHIVE".to_string());
-        } else {
-            provider_labels.push("INBOX".to_string());
-        }
-        if unread {
-            provider_labels.push("UNREAD".to_string());
-        }
-        if starred {
-            provider_labels.push("STARRED".to_string());
-        }
-        match category {
-            0 | 1 | 3 | 9 => provider_labels.push("work".to_string()),
-            4 => provider_labels.push("product".to_string()),
-            2 => provider_labels.push("newsletters".to_string()),
-            5 => provider_labels.push("receipts".to_string()),
-            6 => provider_labels.push("travel".to_string()),
-            7 => provider_labels.push("alerts".to_string()),
-            8 => provider_labels.push("hiring".to_string()),
-            10 => provider_labels.push("potential_spam".to_string()),
-            11 => provider_labels.push("promotions".to_string()),
-            12 => provider_labels.push("potential_spam".to_string()),
-            _ => {}
-        }
-        if matches!(category, 0 | 3 | 8) && !sent && reply_idx + 1 == thread_len {
-            provider_labels.push("waiting".to_string());
-        }
-
-        let unsubscribe = match category {
-            2 if thread_num.is_multiple_of(2) => UnsubscribeMethod::OneClick {
-                url: format!("https://lists.demo.mxr.local/unsubscribe/{thread_num}"),
-            },
-            2 => UnsubscribeMethod::Mailto {
-                address: "unsubscribe@lists.demo.mxr.local".to_string(),
-                subject: Some(format!("unsubscribe-{thread_num}")),
-            },
-            11 => UnsubscribeMethod::OneClick {
-                url: format!("https://promo.demo.mxr.local/unsubscribe/{thread_num}"),
-            },
-            _ => UnsubscribeMethod::None,
-        };
-        let has_attachments = matches!(category, 5 | 6 | 8)
-            || (matches!(category, 2 | 11) && thread_num.is_multiple_of(8))
-            || thread_num.is_multiple_of(41);
-        let snippet = demo_snippet(root_subject, category, reply_idx, sent);
-        let body_text = demo_body(root_subject, category, reply_idx, sent, &peer.email);
-
+        let rendered =
+            scenarios::render_bulk(&self.self_addr, self.now, thread_num, reply_idx, thread_len);
         // Messages of a thread occupy consecutive indices, so the parent
         // and root headers follow from this message's own index.
         let (in_reply_to, references) = if reply_idx == 0 {
@@ -1046,23 +862,36 @@ impl DemoFixtureStream {
             &self.account_id,
             &demo_thread_id(&self.account_id, thread_num),
             DemoMessage {
-                from,
-                to,
-                cc,
-                subject,
-                snippet,
-                body_text,
-                date,
-                flags,
-                has_attachments,
-                category,
-                unsubscribe,
-                label_provider_ids: provider_labels,
+                from: rendered.from,
+                to: rendered.to,
+                cc: rendered.cc,
+                subject: rendered.subject,
+                snippet: rendered.snippet,
+                body_text: rendered.body,
+                date: rendered.date,
+                flags: rendered.flags,
+                has_attachments: rendered.has_attachments,
+                category: rendered.style,
+                unsubscribe: rendered.unsubscribe,
+                label_provider_ids: rendered.provider_labels,
                 in_reply_to,
                 references,
             },
         )
     }
+}
+
+/// Messages the personal demo account carries ahead of its generated
+/// threads: [`curated_seed_messages`].
+pub(crate) const fn curated_head_len() -> usize {
+    DELIVERY_DEMO_MESSAGE_COUNT
+        + todo_demo::TODO_DEMO_MESSAGE_COUNT
+        + modes_demo::MODES_DEMO_MESSAGE_COUNT
+        + messages_demo::MESSAGES_DEMO_MESSAGE_COUNT
+        + records_demo::RECORDS_DEMO_MESSAGE_COUNT
+        + reading_demo::READING_DEMO_MESSAGE_COUNT
+        + updates_demo::UPDATES_DEMO_MESSAGE_COUNT
+        + subscriptions_demo::SUBSCRIPTIONS_DEMO_MESSAGE_COUNT
 }
 
 /// Shipping mail, then To do mail, then the modes' landlord and new
@@ -1149,16 +978,7 @@ pub(crate) fn demo_labels(account_id: &AccountId) -> Vec<Label> {
     ]
 }
 
-fn demo_thread_len(thread_num: usize) -> usize {
-    match thread_num % 13 {
-        1 | 4 => 5,
-        2 | 7 | 10 | 11 | 12 => 1,
-        8 => 3,
-        _ => 2 + (thread_num % 4),
-    }
-}
-
-fn demo_thread_id(account_id: &AccountId, thread_num: usize) -> ThreadId {
+pub(crate) fn demo_thread_id(account_id: &AccountId, thread_num: usize) -> ThreadId {
     ThreadId::from_scoped_provider_id(account_id, "fake", &format!("demo-thread-{thread_num}"))
 }
 
@@ -1495,19 +1315,6 @@ fn demo_account_profile(account_id: &AccountId, total_target: usize) -> DemoAcco
             email: "alex@demo.mxr.local",
             target_count: total_target,
         }
-    }
-}
-
-fn demo_snippet(subject: &str, category: usize, reply_idx: usize, sent: bool) -> String {
-    let action = if sent { "You replied" } else { "New update" };
-    match category {
-        2 => format!("{subject}: links, notes, and unsubscribe metadata"),
-        5 => format!("Receipt and invoice details for {subject}"),
-        7 => format!("Alert #{reply_idx}: status changed, investigate if this is still active"),
-        10 => format!("{subject}: quarantined as spam in the demo dataset"),
-        11 => format!("{subject}: promotional offer with unsubscribe metadata"),
-        12 => format!("{subject}: still in inbox, but suspicious enough to flag"),
-        _ => format!("{action} in thread: {subject}"),
     }
 }
 

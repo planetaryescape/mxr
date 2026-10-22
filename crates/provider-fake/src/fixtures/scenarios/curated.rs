@@ -510,6 +510,7 @@ pub(super) fn label(messages: &[(Envelope, MessageBody)]) -> Vec<Labelled> {
                 twin_of: None,
                 differs_by: "",
                 review: spec.review,
+                held_out: false,
             })
         })
         .collect()

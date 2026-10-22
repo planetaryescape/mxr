@@ -3,7 +3,7 @@
 //! scenarios"). `mxr classify eval` measures today's code against them.
 //!
 //! A scenario is a small typed template that produces mail and declares,
-//! per email, what the classifier should say. Two kinds exist:
+//! per email, what the classifier should say. Three kinds exist:
 //!
 //! * The curated demo fixtures (`*_demo.rs`) keep generating exactly the
 //!   mail they always did, so the demo looks the same. `curated` states
@@ -13,6 +13,11 @@
 //!   demo: they would shift its message numbering and the counts its tests
 //!   and the web e2e suite read. [`scenario_seed`] returns the curated mail
 //!   and the twins together, for the eval's tests.
+//! * The bulk of the generated demo (`bulk`) is made of scenario families:
+//!   kinds of mail with several phrasings and an expectation per message
+//!   position. Their labels are never held in memory: [`full_label_for`]
+//!   recomputes one from the message's index. Some phrasings are held out
+//!   (`held_out`) and the eval reports them on their own.
 //!
 //! Expectations state what the classifier SHOULD do, per blueprint 32, not
 //! what today's code does, so a gap shows up as a mismatch. A label that
@@ -23,21 +28,29 @@
 //! record. [`LABEL_SCHEMA_VERSION`] changes whenever they do, so old
 //! expectations are never silently reused.
 
+mod bulk;
 mod curated;
+#[cfg(test)]
+mod date_finder;
+mod held_out;
 mod twins;
 
-use super::{curated_seed_messages, DemoCuts};
+use super::{curated_head_len, curated_seed_messages, demo_thread_id, DemoCuts};
 use chrono::{DateTime, TimeZone, Utc};
-use mxr_core::id::AccountId;
+use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::{Address, Envelope, MessageBody};
 use std::collections::HashMap;
 use std::sync::OnceLock;
+
+pub(crate) use bulk::{render as render_bulk, thread_len as bulk_thread_len};
 
 /// Version of the questions an [`Expect`] answers.
 pub const LABEL_SCHEMA_VERSION: u32 = 1;
 
 /// The mailbox owner of the seeded personal demo account.
 pub const SELF_EMAIL: &str = "alex@demo.mxr.local";
+/// The mailbox owner of the seeded work demo account.
+pub const WORK_EMAIL: &str = "alex@work.demo.mxr.local";
 const SELF_NAME: &str = "Alex Demo";
 
 /// Who sent it.
@@ -119,6 +132,9 @@ pub struct Labelled {
     /// The one fact that differs from the twin; empty when not a twin.
     pub differs_by: &'static str,
     pub review: Option<Review>,
+    /// The email is worded in a held-out phrasing: the eval reports these
+    /// apart, to show whether a judge learned the generator.
+    pub held_out: bool,
 }
 
 /// Mail and the labels that go with it.
@@ -202,8 +218,89 @@ pub fn expectation_for(provider_id: &str) -> Option<&'static Labelled> {
         .map(|index| &set.labels[*index])
 }
 
+/// One of the two demo accounts the generated demo is split across.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DemoAccount {
+    /// Carries the hand-written demo mail ahead of its generated threads.
+    Personal,
+    /// Generated threads only.
+    Work,
+}
+
+/// Which demo account this is, if either.
+pub fn demo_account(id: &AccountId) -> Option<DemoAccount> {
+    if *id == account_id() {
+        Some(DemoAccount::Personal)
+    } else if *id == AccountId::from_provider_id("fake", WORK_EMAIL) {
+        Some(DemoAccount::Work)
+    } else {
+        None
+    }
+}
+
+/// The label for any stored email of a demo account: the curated mail and
+/// twins of the quick set, or an email of the generated bulk. The bulk is
+/// recomputed from the email's index, so the 50,000 labels are never held in
+/// memory.
+///
+/// Both demo accounts number their mail from 1 and reuse some of the same
+/// people, so an id and a sender alone can name another email. A bulk email
+/// is claimed only when its thread is the generator's thread for that
+/// position, which also rejects a smaller or hand-written demo that numbers
+/// its mail differently.
+pub fn full_label_for(
+    account: &AccountId,
+    provider_id: &str,
+    thread_id: &ThreadId,
+    from_email: &str,
+) -> Option<Labelled> {
+    let which = demo_account(account)?;
+    bulk_label_for(which, account, provider_id, thread_id, from_email).or_else(|| {
+        if which != DemoAccount::Personal {
+            return None;
+        }
+        expectation_for(provider_id)
+            .filter(|label| label.from_email.eq_ignore_ascii_case(from_email))
+            .cloned()
+    })
+}
+
+fn bulk_label_for(
+    which: DemoAccount,
+    account: &AccountId,
+    provider_id: &str,
+    thread_id: &ThreadId,
+    from_email: &str,
+) -> Option<Labelled> {
+    let number: usize = provider_id.strip_prefix("demo-msg-")?.parse().ok()?;
+    let head = match which {
+        DemoAccount::Personal => curated_head_len(),
+        DemoAccount::Work => 0,
+    };
+    let (thread_num, reply_idx) = bulk::locate(number.checked_sub(1)?.checked_sub(head)?);
+    if *thread_id != demo_thread_id(account, thread_num) {
+        return None;
+    }
+    let label = bulk::label(thread_num, reply_idx)?;
+    if !label.from_email.eq_ignore_ascii_case(from_email) {
+        return None;
+    }
+    Some(Labelled {
+        provider_id: provider_id.to_string(),
+        from_email: from_email.to_string(),
+        scenario: label.turn.scenario,
+        description: label.turn.description,
+        expect: label.expect,
+        twin_of: None,
+        differs_by: "",
+        review: label.turn.review,
+        held_out: label.held_out,
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    use super::date_finder::written_dates;
     use super::*;
 
     fn seed() -> ScenarioSeed {
@@ -277,87 +374,6 @@ mod tests {
         Utc.with_ymd_and_hms(year, month, day, hour, 0, 0)
             .single()
             .expect("a valid date")
-    }
-
-    const MONTHS: [&str; 12] = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ];
-
-    /// Every date written out in `text`, each as a short canonical token: an
-    /// ISO date ("2026-10-29"), a current-era year ("2026"), a day and month
-    /// ("3 November", also from "1st of December") or a month and day
-    /// ("October 14"). A bare month ("tenant news for October") is not a
-    /// date a detector can expire; nor are a copyright year or a year inside
-    /// a URL path.
-    fn written_dates(text: &str) -> Vec<String> {
-        let chars: Vec<char> = text.chars().collect();
-        let take = |at: usize, len: usize| -> String {
-            chars[at..(at + len).min(chars.len())].iter().collect()
-        };
-        let mut found = Vec::new();
-        for at in 0..chars.len() {
-            let before = at.checked_sub(1).map(|i| chars[i]);
-            if before.is_some_and(|c| c.is_ascii_digit()) {
-                continue;
-            }
-            if chars[at].is_ascii_digit() {
-                let digits: String = chars[at..]
-                    .iter()
-                    .take_while(|c| c.is_ascii_digit())
-                    .collect();
-                if digits.len() == 4
-                    && digits
-                        .parse::<u32>()
-                        .is_ok_and(|year| (2024..=2040).contains(&year))
-                    && before != Some('/')
-                    && !(before == Some(' ') && at >= 2 && chars[at - 2] == '©')
-                {
-                    let iso = take(at, 10);
-                    let is_iso = iso.len() == 10
-                        && iso.char_indices().all(|(i, c)| match i {
-                            4 | 7 => c == '-',
-                            _ => c.is_ascii_digit(),
-                        });
-                    found.push(if is_iso { iso } else { digits });
-                } else if digits.len() <= 2 {
-                    let mut rest: String = chars[at + digits.len()..].iter().take(16).collect();
-                    for suffix in ["st", "nd", "rd", "th"] {
-                        if let Some(stripped) = rest.strip_prefix(suffix) {
-                            rest = stripped.to_string();
-                            break;
-                        }
-                    }
-                    let rest = rest.trim_start_matches(" of").trim_start();
-                    if let Some(month) = MONTHS.iter().find(|m| rest.starts_with(**m)) {
-                        found.push(format!("{} {month}", digits.trim_start_matches('0')));
-                    }
-                }
-            } else if before.is_none_or(|c| !c.is_alphabetic()) {
-                for month in MONTHS {
-                    if take(at, month.len()) == month && chars.get(at + month.len()) == Some(&' ') {
-                        let day: String = chars[at + month.len() + 1..]
-                            .iter()
-                            .take_while(|c| c.is_ascii_digit())
-                            .collect();
-                        if !day.is_empty() {
-                            found.push(format!("{month} {day}"));
-                        }
-                    }
-                }
-            }
-        }
-        found
     }
 
     /// Everything about an email a detector can read a date from: its text,
@@ -577,6 +593,220 @@ mod tests {
                 label.scenario,
                 other.scenario
             );
+        }
+    }
+
+    fn work_account() -> AccountId {
+        AccountId::from_provider_id("fake", WORK_EMAIL)
+    }
+
+    /// The generated demo and the labels agree on every email of both
+    /// accounts: each email you did not send is labelled, and the label names
+    /// its sender. A demo the size of a few thousand covers every position of
+    /// every family; `bulk` proves the families are all reached.
+    #[test]
+    fn every_inbound_email_of_the_generated_demo_is_labelled() {
+        use crate::fixtures::generate_demo_fixtures;
+        for account in [account_id(), work_account()] {
+            let (envelopes, _, _) = generate_demo_fixtures(&account, 6_000);
+            let (mut labelled, mut sent) = (0, 0);
+            for envelope in &envelopes {
+                let is_sent = envelope.from.email.eq_ignore_ascii_case(SELF_EMAIL)
+                    || envelope.from.email.eq_ignore_ascii_case(WORK_EMAIL);
+                let label = full_label_for(
+                    &account,
+                    &envelope.provider_id,
+                    &envelope.thread_id,
+                    &envelope.from.email,
+                );
+                assert_eq!(
+                    label.is_some(),
+                    !is_sent,
+                    "{} ({}) from {}",
+                    envelope.provider_id,
+                    envelope.subject,
+                    envelope.from.email
+                );
+                labelled += usize::from(label.is_some());
+                sent += usize::from(is_sent);
+            }
+            assert!(
+                labelled > 2_000 && sent > 300,
+                "{labelled} labelled, {sent} sent"
+            );
+        }
+    }
+
+    #[test]
+    fn a_label_is_given_only_to_the_email_it_means() {
+        use crate::fixtures::generate_demo_fixtures;
+        let (envelopes, _, _) = generate_demo_fixtures(&account_id(), 600);
+        let bulk = envelopes
+            .iter()
+            .find(|e| e.provider_id == format!("demo-msg-{}", curated_head_len() + 1))
+            .expect("the first generated email");
+        let label = full_label_for(
+            &account_id(),
+            &bulk.provider_id,
+            &bulk.thread_id,
+            &bulk.from.email,
+        )
+        .expect("labelled");
+        assert!(label.scenario.starts_with("bulk-"));
+        // Another sender, another thread, the other account, a stranger.
+        assert!(full_label_for(
+            &account_id(),
+            &bulk.provider_id,
+            &bulk.thread_id,
+            "x@y.example"
+        )
+        .is_none());
+        let other_thread = envelopes.last().expect("a last email").thread_id.clone();
+        assert!(full_label_for(
+            &account_id(),
+            &bulk.provider_id,
+            &other_thread,
+            &bulk.from.email
+        )
+        .is_none());
+        assert!(full_label_for(
+            &work_account(),
+            &bulk.provider_id,
+            &bulk.thread_id,
+            &bulk.from.email
+        )
+        .is_none());
+        assert!(full_label_for(
+            &AccountId::new(),
+            &bulk.provider_id,
+            &bulk.thread_id,
+            &bulk.from.email
+        )
+        .is_none());
+        assert!(full_label_for(
+            &account_id(),
+            "not-a-demo-id",
+            &bulk.thread_id,
+            &bulk.from.email
+        )
+        .is_none());
+        assert!(full_label_for(
+            &account_id(),
+            "demo-msg-0",
+            &bulk.thread_id,
+            &bulk.from.email
+        )
+        .is_none());
+    }
+
+    /// The hand-written mail at the head of the personal account keeps the
+    /// labels the quick set gives it; the work account has none of it.
+    #[test]
+    fn the_curated_head_keeps_its_quick_set_labels() {
+        let seed = seed();
+        // The twins are numbered after the head and are not in the demo.
+        let in_head = |label: &Labelled| {
+            label
+                .provider_id
+                .strip_prefix("demo-msg-")
+                .and_then(|n| n.parse::<usize>().ok())
+                .is_some_and(|n| n <= curated_head_len())
+        };
+        let head: Vec<_> = seed.labels.iter().filter(|l| in_head(l)).collect();
+        assert!(head.len() > 90);
+        let (envelopes, _, _) = crate::fixtures::generate_demo_fixtures(&account_id(), 600);
+        for label in head {
+            let envelope = envelopes
+                .iter()
+                .find(|e| e.provider_id == label.provider_id)
+                .expect("the head is in the demo");
+            let full = full_label_for(
+                &account_id(),
+                &envelope.provider_id,
+                &envelope.thread_id,
+                &envelope.from.email,
+            )
+            .expect("labelled");
+            assert_eq!(full.scenario, label.scenario);
+            assert_eq!(full.expect, label.expect);
+            assert!(!full.held_out);
+        }
+    }
+
+    /// Labels recomputed from an index agree with the mail however the demo
+    /// was cut: a bigger demo only adds threads after the smaller one's.
+    #[test]
+    fn a_labelled_email_has_the_same_label_in_a_bigger_demo() {
+        use crate::fixtures::generate_demo_fixtures;
+        let label_of = |count: usize| {
+            let (envelopes, _, _) = generate_demo_fixtures(&work_account(), count);
+            envelopes
+                .iter()
+                .filter_map(|e| {
+                    full_label_for(&work_account(), &e.provider_id, &e.thread_id, &e.from.email)
+                        .map(|l| (l.provider_id, l.scenario, l.expect, l.held_out))
+                })
+                .collect::<Vec<_>>()
+        };
+        let small = label_of(1_000);
+        let big = label_of(3_000);
+        assert!(!small.is_empty());
+        assert_eq!(&big[..small.len() - 1], &small[..small.len() - 1]);
+    }
+
+    /// The generated demo's labels, read off the mail it serves, are the same
+    /// at every clock, and a live ask is dated to the clock it was built at.
+    /// This is the full-set sibling of `scenario_dates_follow_the_seed_clock`:
+    /// the post-sync work reads the real clock, so the set can only be graded
+    /// if no label depends on the seed's.
+    #[test]
+    fn bulk_labels_do_not_move_with_the_seed_clock() {
+        use crate::fixtures::DemoFixtureStream;
+        let base = at(2026, 10, 21, 12);
+        let clocks = [
+            base,
+            base + chrono::Duration::days(400),
+            at(2026, 10, 24, 12),
+            at(2026, 10, 26, 12),
+        ];
+        let labels_at = |clock: DateTime<Utc>| {
+            let stream =
+                DemoFixtureStream::with_clock(&work_account(), 6_000, clock, DemoCuts::default());
+            stream
+                .page(0, stream.len())
+                .into_iter()
+                .map(|(envelope, _)| {
+                    let label = full_label_for(
+                        &work_account(),
+                        &envelope.provider_id,
+                        &envelope.thread_id,
+                        &envelope.from.email,
+                    )
+                    .map(|l| (l.scenario, l.expect, l.held_out, l.review.is_some()));
+                    // A live ask is the mail that arrived in the last hours.
+                    let live_ask = label.as_ref().is_some_and(|(_, expect, ..)| expect.todo);
+                    if live_ask {
+                        assert!(
+                            clock - envelope.date < chrono::Duration::hours(11),
+                            "{} is a live ask dated {} at {clock}",
+                            envelope.provider_id,
+                            envelope.date
+                        );
+                    }
+                    (envelope.provider_id, envelope.thread_id, label)
+                })
+                .collect::<Vec<_>>()
+        };
+        let first = labels_at(clocks[0]);
+        assert!(first.iter().any(|(_, _, label)| label.is_some()));
+        assert!(
+            first
+                .iter()
+                .any(|(_, _, label)| label.as_ref().is_some_and(|(_, e, ..)| e.todo)),
+            "the sample holds no live ask, so the check saw little"
+        );
+        for clock in &clocks[1..] {
+            assert_eq!(labels_at(*clock), first, "labels moved at {clock}");
         }
     }
 }

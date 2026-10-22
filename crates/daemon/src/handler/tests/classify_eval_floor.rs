@@ -30,6 +30,10 @@ struct Floor {
     precision: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     recall: Option<f64>,
+    /// The raw count behind a measurement, never stored: the percentages are
+    /// rounded, and one false positive in two thousand rounds to 100.0%.
+    #[serde(skip)]
+    false_positives: Option<u32>,
 }
 
 type Floors = BTreeMap<String, BTreeMap<String, Floor>>;
@@ -44,6 +48,7 @@ fn measured(asks: &ClassifyEvalAsksData) -> BTreeMap<String, Floor> {
     let floor = |counts: &ClassifyEvalCountsData| Floor {
         precision: counts.precision_percent,
         recall: counts.recall_percent,
+        false_positives: Some(counts.false_positives),
     };
     let mut out = BTreeMap::new();
     out.insert("all".to_string(), floor(&asks.total));
@@ -67,10 +72,11 @@ fn shortfalls(floor: &BTreeMap<String, Floor>, now: &BTreeMap<String, Floor>) ->
     // wrong row may not.
     for (kind, got) in now {
         let baseline = floor.get(kind).and_then(|f| f.precision);
-        if baseline.is_none() && got.precision.is_some_and(|p| p + 1e-9 < 100.0) {
+        // Counted, not read from the rounded percentage.
+        if baseline.is_none() && got.false_positives.is_some_and(|n| n > 0) {
             out.push(format!(
-                "{kind} precision: {} where the floor had nothing found; a new kind may add true positives but no false ones",
-                got.precision.unwrap_or_default()
+                "{kind} precision: {} false positive(s) where the floor had nothing found; a new kind may add true positives but no false ones",
+                got.false_positives.unwrap_or_default()
             ));
         }
     }
@@ -115,6 +121,7 @@ pub(super) fn check(set: &str, asks: &ClassifyEvalAsksData) {
                 Floor {
                     precision: better(old.precision, got.precision),
                     recall: better(old.recall, got.recall),
+                    false_positives: None,
                 },
             );
         }
@@ -222,6 +229,7 @@ fn a_kind_below_its_floor_is_reported_and_one_at_it_is_not() {
         Floor {
             precision: Some(50.0),
             recall: Some(40.0),
+            ..Floor::default()
         },
     )]);
     let at = |p, r| {
@@ -230,6 +238,7 @@ fn a_kind_below_its_floor_is_reported_and_one_at_it_is_not() {
             Floor {
                 precision: p,
                 recall: r,
+                ..Floor::default()
             },
         )])
     };
@@ -249,57 +258,49 @@ fn a_kind_below_its_floor_is_reported_and_one_at_it_is_not() {
 }
 
 /// One pay false positive fewer and one new verify false positive leaves the
-/// total unchanged. The kind with no baseline precision must still fail.
+/// total unchanged. The kind with no baseline precision must still fail, also
+/// when the false positive is too rare to move the rounded percentage.
 #[test]
 fn a_false_positive_in_a_kind_with_no_baseline_is_a_shortfall() {
+    let at_floor = Floor {
+        precision: Some(50.0),
+        recall: Some(50.0),
+        ..Floor::default()
+    };
     let floor = BTreeMap::from([
-        (
-            "all".to_string(),
-            Floor {
-                precision: Some(50.0),
-                recall: Some(50.0),
-            },
-        ),
-        (
-            "pay".to_string(),
-            Floor {
-                precision: Some(50.0),
-                recall: Some(50.0),
-            },
-        ),
+        ("all".to_string(), at_floor.clone()),
+        ("pay".to_string(), at_floor),
         ("verify".to_string(), Floor::default()),
     ]);
-    let at = |all: f64, pay: f64, verify: Option<f64>| {
+    // `verify` is its precision and false-positive count.
+    let at = |all: f64, pay: f64, verify: Option<(f64, u32)>| {
+        let measured = |precision: f64| Floor {
+            precision: Some(precision),
+            recall: Some(50.0),
+            false_positives: Some(0),
+        };
         BTreeMap::from([
-            (
-                "all".to_string(),
-                Floor {
-                    precision: Some(all),
-                    recall: Some(50.0),
-                },
-            ),
-            (
-                "pay".to_string(),
-                Floor {
-                    precision: Some(pay),
-                    recall: Some(50.0),
-                },
-            ),
+            ("all".to_string(), measured(all)),
+            ("pay".to_string(), measured(pay)),
             (
                 "verify".to_string(),
                 Floor {
-                    precision: verify,
+                    precision: verify.map(|(precision, _)| precision),
                     recall: None,
+                    false_positives: Some(verify.map_or(0, |(_, fp)| fp)),
                 },
             ),
         ])
     };
     // pay improved, verify gained a false positive, the total did not move.
-    let swapped = shortfalls(&floor, &at(50.0, 100.0, Some(0.0)));
+    let swapped = shortfalls(&floor, &at(50.0, 100.0, Some((0.0, 1))));
     assert_eq!(swapped.len(), 1, "{swapped:?}");
     assert!(swapped[0].starts_with("verify precision"));
+    // 2,001 true positives and one false positive round to 100.0%; it fails.
+    let rare = shortfalls(&floor, &at(50.0, 50.0, Some((100.0, 1))));
+    assert_eq!(rare.len(), 1, "{rare:?}");
     // A true positive with no false one is fine, and so is staying silent.
-    assert!(shortfalls(&floor, &at(50.0, 50.0, Some(100.0))).is_empty());
+    assert!(shortfalls(&floor, &at(50.0, 50.0, Some((100.0, 0)))).is_empty());
     assert!(shortfalls(&floor, &at(50.0, 50.0, None)).is_empty());
 }
 

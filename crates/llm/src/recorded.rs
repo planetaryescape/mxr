@@ -10,7 +10,9 @@
 //! * Replay is the default. A call with no recording is a hard error naming
 //!   the key, never a silent live call.
 //! * Record is opt-in ([`RecordMode::from_env`], `MXR_LLM_RECORD=1`). It calls
-//!   the wrapped provider and writes the recording.
+//!   the wrapped provider and writes the recording. It is never on in CI: when
+//!   the `CI` environment variable is set, replay wins whatever
+//!   `MXR_LLM_RECORD` says.
 //!
 //! One file per key, named by the key's hash, in a fixed field order, so the
 //! same inputs always give the same files and a diff shows exactly the claims
@@ -36,10 +38,21 @@ pub enum RecordMode {
 }
 
 impl RecordMode {
-    /// Record only when `MXR_LLM_RECORD` is `1` or `true`; replay otherwise.
+    /// Record only when `MXR_LLM_RECORD` is `1` or `true` and `CI` is not set;
+    /// replay otherwise.
     pub fn from_env() -> Self {
-        match std::env::var(RECORD_ENV).as_deref() {
-            Ok("1" | "true") => Self::Record,
+        Self::mode_for(
+            std::env::var("CI").ok().as_deref(),
+            std::env::var(RECORD_ENV).ok().as_deref(),
+        )
+    }
+
+    /// The mode for the given values of `CI` and `MXR_LLM_RECORD`. A `CI`
+    /// that is set at all, even empty, forces replay: a recording run needs a
+    /// live model and a person to review the diff, never a CI job.
+    pub fn mode_for(ci: Option<&str>, record: Option<&str>) -> Self {
+        match (ci, record) {
+            (None, Some("1" | "true")) => Self::Record,
             _ => Self::Replay,
         }
     }
@@ -166,7 +179,7 @@ impl RecordedProvider {
         }
     }
 
-    /// Replay, or record when [`RECORD_ENV`] says so and `live` can build the
+    /// Replay, or record when [`RECORD_ENV`] says so (and `CI` is not set) and `live` can build the
     /// provider to call. `live` is not called in replay.
     pub fn from_env(
         dir: impl Into<PathBuf>,
@@ -373,6 +386,18 @@ mod tests {
             .collect();
         out.sort();
         out
+    }
+
+    #[test]
+    fn ci_always_replays_whatever_the_record_variable_says() {
+        let mode = RecordMode::mode_for;
+        assert_eq!(mode(None, Some("1")), RecordMode::Record);
+        assert_eq!(mode(None, Some("true")), RecordMode::Record);
+        assert_eq!(mode(None, None), RecordMode::Replay);
+        assert_eq!(mode(None, Some("0")), RecordMode::Replay);
+        assert_eq!(mode(Some("true"), Some("1")), RecordMode::Replay);
+        assert_eq!(mode(Some(""), Some("true")), RecordMode::Replay);
+        assert_eq!(mode(Some("1"), None), RecordMode::Replay);
     }
 
     #[tokio::test]

@@ -345,7 +345,9 @@ never builds it.
 - Replay is the default, and what CI always does. A call with no recording is an
   error that names the key (`no recording for model / prompt p / schema s /
   input hash`); it never reaches a live model.
-- Record is opt-in: set `MXR_LLM_RECORD=1` and build the provider with
+- Record is opt-in and never runs in CI: when the `CI` environment variable is
+  set, replay wins whatever `MXR_LLM_RECORD` says. Set `MXR_LLM_RECORD=1`
+  locally and build the provider with
   `RecordedProvider::from_env`, which then calls the live provider you give it
   and writes one file per key, in a fixed field order, into the recordings
   directory the test names. The same inputs give the same files.

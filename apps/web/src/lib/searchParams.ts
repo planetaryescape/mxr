@@ -16,3 +16,12 @@ export function optionalEnum<T extends string>(
     ? (value as T)
     : undefined;
 }
+
+/**
+ * A flag in the URL. TanStack parses `?unread=1` to the number 1 and
+ * `?unread=true` to a boolean, so all four spellings turn it on; anything else
+ * leaves it off.
+ */
+export function optionalFlag(value: unknown): true | undefined {
+  return value === true || value === 1 || value === "true" || value === "1" ? true : undefined;
+}

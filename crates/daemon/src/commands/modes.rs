@@ -328,7 +328,7 @@ mod tests {
 
     #[test]
     fn text_leads_with_the_job_and_prints_keys_with_their_verbs() {
-        let text = guide_text(&mxr_protocol::TODO_GUIDE.to_data(|_| None));
+        let text = guide_text(&mxr_protocol::TODO_GUIDE.to_data(|_| None, &mxr_keymap::guide_key));
         assert!(text.starts_with("To do: Things email asked you to do, ordered by when to act."));
         assert!(text.contains("Enter do it · e tick off · Z schedule"));
         assert!(text.contains("todo.runway (The first row): Press e to tick this off"));

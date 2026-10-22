@@ -26,7 +26,7 @@ async fn guides(state: &AppState, chosen: Vec<&'static ModeGuideCopy>) -> Handle
     Ok(ResponseData::ModeGuides {
         guides: chosen
             .into_iter()
-            .map(|guide| guide.to_data(|id| seen.get(id).copied()))
+            .map(|guide| guide.to_data(|id| seen.get(id).copied(), &mxr_keymap::guide_key))
             .collect(),
     })
 }

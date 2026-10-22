@@ -6,7 +6,16 @@
  * still counting down.
  */
 
-import { Check, Clock, MessageSquarePlus, Pin, Reply, ReplyAll, ThumbsUp } from "lucide-react";
+import {
+  Check,
+  Clock,
+  Filter,
+  MessageSquarePlus,
+  Pin,
+  Reply,
+  ReplyAll,
+  ThumbsUp,
+} from "lucide-react";
 
 import { newSenderActions } from "@/features/modes/newSenderActions";
 import type { ActionBehavior } from "@/lib/actions/types";
@@ -27,6 +36,7 @@ export const messagesActions: ActionBehavior[] = [
   { id: "messages.next-topic", command: "nextTopic" },
   { id: "messages.person-page", command: "personPage" },
   { id: "messages.as-sent", command: "asSent" },
+  { id: "messages.filter", command: "filter", icon: Filter },
   { id: "messages.send-next", command: "sendNext" },
   { id: "messages.escape", command: "escape" },
   // Last, so the status strip (first five live keys) keeps the page's own verbs.

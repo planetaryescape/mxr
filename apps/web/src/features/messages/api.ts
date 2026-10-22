@@ -12,6 +12,8 @@ import type { components } from "@/api/generated";
 import { getActiveQueryClient } from "@/lib/queryClient";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
+import { NO_FILTER, type MessagesFilter } from "./filters";
+
 type Schemas = components["schemas"];
 export type MessagesData = Schemas["MessagesData"];
 export type MessagesRow = Schemas["MessagesRowData"];
@@ -43,17 +45,40 @@ function query(params: Record<string, string | null | undefined>): string {
 
 export async function fetchMessages(
   account: string | null,
-  turn: MessagesTurn | null,
+  filter: MessagesFilter,
 ): Promise<MessagesData> {
-  const answer = await apiFetch<ListResponse>(`/api/v1/mail/people${query({ account, turn })}`);
+  const answer = await apiFetch<ListResponse>(
+    `/api/v1/mail/people${query({
+      account,
+      turn: filter.turn,
+      unread: filter.unread ? "true" : null,
+      pace: filter.pastPace ? "true" : null,
+    })}`,
+  );
   return answer.messages;
 }
 
-export function useMessagesQuery(turn: MessagesTurn | null = null) {
+/** Index of the account segment in a list key: `[...MESSAGES_KEY, "list", account, ...]`. */
+const LIST_ACCOUNT_AT = MESSAGES_KEY.length + 1;
+
+export function useMessagesQuery(filter: MessagesFilter = NO_FILTER) {
   const account = useUiPrefs((s) => s.accountScope);
+  const scope = account ?? "all";
   return useQuery({
-    queryKey: [...MESSAGES_KEY, "list", account ?? "all", turn ?? "all"],
-    queryFn: () => fetchMessages(account, turn),
+    queryKey: [
+      ...MESSAGES_KEY,
+      "list",
+      scope,
+      filter.turn ?? "all",
+      ...(filter.unread ? ["unread"] : []),
+      ...(filter.pastPace ? ["pace"] : []),
+    ],
+    queryFn: () => fetchMessages(account, filter),
+    // A filter change within one account keeps the list on screen until its
+    // answer lands, so the filter line under the cursor doesn't unmount. Another
+    // account's rows never stand in: that switch shows the skeleton as before.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[LIST_ACCOUNT_AT] === scope ? previous : undefined,
     staleTime: 15_000,
     refetchInterval: 60_000,
   });

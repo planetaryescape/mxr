@@ -63,6 +63,8 @@ const SCOPES: Record<ActionScope, true> = {
   archive: true,
   reading: true,
   "reading-reader": true,
+  compose: true,
+  arrivals: true,
 };
 
 /** The definition's web actions by id. Actions without "web" in `clients` are the TUI's alone. */
@@ -127,6 +129,13 @@ export function definedShortcut(id: string): string {
   const shortcut = webActions.get(id)?.keys?.[0];
   if (!shortcut) throw new Error(`Action "${id}" has no web key in crates/keymap/keymap.toml`);
   return shortcut;
+}
+
+/** Every web key an action has, primary first, for handlers outside the registry. */
+export function definedKeys(id: string): string[] {
+  const keys = webActions.get(id)?.keys;
+  if (!keys?.length) throw new Error(`Action "${id}" has no web key in crates/keymap/keymap.toml`);
+  return keys;
 }
 
 const strips = new Map(

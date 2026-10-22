@@ -44,7 +44,10 @@ fn reading_app() -> App {
     );
     app.set_reading_edition(
         edition(),
-        Some(mxr_protocol::READING_GUIDE.to_data(|_| Some(chrono::Utc::now()))),
+        Some(
+            mxr_protocol::READING_GUIDE
+                .to_data(|_| Some(chrono::Utc::now()), &mxr_keymap::guide_key),
+        ),
     );
     app
 }
@@ -536,7 +539,8 @@ fn shift_k_moves_the_items_sender() {
 /// Reading open with none of its hints dismissed yet.
 fn reading_app_with_hints() -> App {
     let mut app = reading_app();
-    app.mailbox.reading_page.guide = Some(mxr_protocol::READING_GUIDE.to_data(|_| None));
+    app.mailbox.reading_page.guide =
+        Some(mxr_protocol::READING_GUIDE.to_data(|_| None, &mxr_keymap::guide_key));
     app
 }
 

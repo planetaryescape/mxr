@@ -52,7 +52,11 @@ export type ActionScope =
   | "updates"
   | "archive"
   | "reading"
-  | "reading-reader";
+  | "reading-reader"
+  // Never pushed: compose owns the keyboard and runs these chords itself
+  // (`composeShortcuts.ts`), reading them from the definition by id.
+  | "compose"
+  | "arrivals";
 
 export interface ActionContext {
   path: string;

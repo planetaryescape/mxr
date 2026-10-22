@@ -35,6 +35,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -68,6 +69,7 @@
             "now",
             "messages",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -102,6 +104,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -161,6 +164,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -230,6 +234,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -269,6 +274,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -303,6 +309,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -360,6 +367,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         },
@@ -380,6 +388,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -413,6 +422,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -446,6 +456,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -481,6 +492,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         },
@@ -501,6 +513,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -534,6 +547,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -568,6 +582,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -601,6 +616,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -634,6 +650,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -667,6 +684,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -702,6 +720,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -771,6 +790,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -804,6 +824,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -838,6 +859,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -875,6 +897,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -918,6 +941,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -961,6 +985,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -994,6 +1019,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1027,6 +1053,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1060,6 +1087,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1093,6 +1121,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1127,6 +1156,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1160,6 +1190,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1194,6 +1225,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1228,6 +1260,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1262,6 +1295,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1296,6 +1330,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1330,6 +1365,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1364,6 +1400,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1398,6 +1435,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1432,6 +1470,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1466,6 +1505,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -1590,6 +1630,202 @@
         "global"
       ],
       "palette_only": true
+    },
+    {
+      "id": "compose.send",
+      "label": "Send",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Enter"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.send-and-archive",
+      "label": "Send and archive",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+Enter"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.send-later",
+      "label": "Send later…",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+l"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.save",
+      "label": "Save draft",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+s"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.save-to-server",
+      "label": "Save to server draft",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+s"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.refresh",
+      "label": "Refresh from daemon",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+r"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.discard",
+      "label": "Discard draft",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Backspace",
+        "Mod+Shift+Backspace"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.add-cc",
+      "label": "Add Cc",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+c"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.add-bcc",
+      "label": "Add Bcc",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+b"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.attach",
+      "label": "Attach files",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+a"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.signature",
+      "label": "Insert signature",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+g"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.snippets",
+      "label": "Insert snippet",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+;"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.fullscreen",
+      "label": "Toggle fullscreen",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+f"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
     },
     {
       "id": "mail.archive",
@@ -1916,8 +2152,8 @@
             "list",
             "reader",
             "place",
-            "now",
-            "reading"
+            "reading",
+            "reading-reader"
           ]
         }
       ]
@@ -2204,6 +2440,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -2238,6 +2475,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -2272,6 +2510,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -2306,6 +2545,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -2340,6 +2580,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -2374,6 +2615,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -2672,6 +2914,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -2707,6 +2950,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -2742,6 +2986,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -2777,6 +3022,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -3016,6 +3262,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -3050,6 +3297,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -3084,6 +3332,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -3118,6 +3367,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -3152,6 +3402,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -4176,7 +4427,8 @@
             "K"
           ],
           "contexts": [
-            "place"
+            "place",
+            "reading-reader"
           ]
         }
       ]
@@ -4239,6 +4491,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -5215,7 +5468,8 @@
             "Enter"
           ],
           "contexts": [
-            "reading"
+            "reading",
+            "reading-reader"
           ]
         }
       ]
@@ -5239,7 +5493,8 @@
             "L"
           ],
           "contexts": [
-            "reading"
+            "reading",
+            "reading-reader"
           ]
         }
       ]
@@ -5262,7 +5517,8 @@
             "b"
           ],
           "contexts": [
-            "reading"
+            "reading",
+            "reading-reader"
           ]
         }
       ]
@@ -5285,7 +5541,8 @@
             "e"
           ],
           "contexts": [
-            "reading"
+            "reading",
+            "reading-reader"
           ]
         }
       ]
@@ -5309,7 +5566,8 @@
             "D"
           ],
           "contexts": [
-            "reading"
+            "reading",
+            "reading-reader"
           ]
         }
       ]
@@ -5332,7 +5590,8 @@
             "R"
           ],
           "contexts": [
-            "reading"
+            "reading",
+            "reading-reader"
           ]
         }
       ]
@@ -5356,7 +5615,8 @@
             "A"
           ],
           "contexts": [
-            "reading"
+            "reading",
+            "reading-reader"
           ]
         }
       ]
@@ -5379,7 +5639,8 @@
             "o"
           ],
           "contexts": [
-            "reading"
+            "reading",
+            "reading-reader"
           ]
         }
       ]
@@ -5425,7 +5686,8 @@
             "B"
           ],
           "contexts": [
-            "reading"
+            "reading",
+            "reading-reader"
           ]
         }
       ]
@@ -5449,7 +5711,8 @@
             "M"
           ],
           "contexts": [
-            "reading"
+            "reading",
+            "reading-reader"
           ]
         }
       ]
@@ -5574,6 +5837,17 @@
       ],
       "keys": [
         "h"
+      ],
+      "tui": [
+        {
+          "name": "ReadingHighlight",
+          "keys": [
+            "h"
+          ],
+          "contexts": [
+            "reading-reader"
+          ]
+        }
       ]
     },
     {
@@ -5623,7 +5897,39 @@
       "keys": [
         "Escape"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "ReadingBack",
+          "keys": [
+            "ArrowLeft",
+            "Escape",
+            "q"
+          ],
+          "contexts": [
+            "reading-reader"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.reading-highlights",
+      "label": "Your highlights in this issue",
+      "group": "TUI",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ReadingHighlights",
+          "keys": [
+            "H"
+          ],
+          "contexts": [
+            "reading-reader"
+          ]
+        }
+      ]
     },
     {
       "id": "now.down",
@@ -5737,6 +6043,29 @@
           "name": "Reply",
           "keys": [
             "r"
+          ],
+          "contexts": [
+            "now"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "now.to-do",
+      "label": "Make it a to-do",
+      "short_label": "To-do",
+      "group": "Triage",
+      "scopes": [
+        "now"
+      ],
+      "keys": [
+        "t"
+      ],
+      "tui": [
+        {
+          "name": "CreateTodoFromMessage",
+          "keys": [
+            "t"
           ],
           "contexts": [
             "now"
@@ -6214,6 +6543,31 @@
       ]
     },
     {
+      "id": "messages.filter",
+      "label": "Filter the people list: turn, unread, past your pace",
+      "short_label": "Filter",
+      "group": "View",
+      "scopes": [
+        "messages"
+      ],
+      "keys": [
+        "g f"
+      ],
+      "note": "Ctrl+f in the TUI opens the same picker; the web filters with g f because Ctrl+f is the browser's Find",
+      "tui": [
+        {
+          "name": "MessagesFilter",
+          "keys": [
+            "Ctrl+f"
+          ],
+          "contexts": [
+            "messages"
+          ]
+        }
+      ],
+      "raycast_key": "Cmd+f"
+    },
+    {
       "id": "messages.send-next",
       "label": "Send, then the next person whose turn it is",
       "short_label": "Send, next",
@@ -6627,7 +6981,8 @@
         "list",
         "reader",
         "updates",
-        "reading"
+        "reading",
+        "arrivals"
       ],
       "keys": [
         "X"
@@ -6645,6 +7000,7 @@
             "now",
             "messages",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -6659,7 +7015,8 @@
       "scopes": [
         "now",
         "messages",
-        "list"
+        "list",
+        "arrivals"
       ],
       "keys": [
         "K"
@@ -6676,6 +7033,55 @@
             "messages"
           ]
         }
+      ]
+    },
+    {
+      "id": "arrivals.down",
+      "label": "Next",
+      "group": "Move",
+      "scopes": [
+        "arrivals"
+      ],
+      "keys": [
+        "j",
+        "ArrowDown"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "arrivals.up",
+      "label": "Previous",
+      "group": "Move",
+      "scopes": [
+        "arrivals"
+      ],
+      "keys": [
+        "k",
+        "ArrowUp"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "arrivals.open",
+      "label": "Open conversation",
+      "short_label": "Open",
+      "group": "Move",
+      "scopes": [
+        "arrivals"
+      ],
+      "keys": [
+        "Enter",
+        "o"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
       ]
     },
     {
@@ -6816,6 +7222,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -6846,6 +7253,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -6968,6 +7376,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }

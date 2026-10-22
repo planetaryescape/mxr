@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local, Utc};
 use mxr_core::AccountId;
-use mxr_protocol::{MessagesTurnData, Request, ResponseData};
+use mxr_protocol::{MessagesFilterData, Request, ResponseData};
 use parking_lot::Mutex;
 use tokio::sync::watch;
 
@@ -63,7 +63,9 @@ pub(crate) enum ModeView {
     },
     Messages {
         account_id: Option<AccountId>,
-        turn: Option<MessagesTurnData>,
+        /// The whole filter, the legacy top-level turn merged in: each
+        /// filter is its own cache entry.
+        filter: MessagesFilterData,
         limit: u32,
     },
     Updates {
@@ -91,10 +93,11 @@ impl ModeView {
             Request::ListMessages {
                 account_id,
                 turn,
+                filter,
                 limit,
             } => Self::Messages {
                 account_id: account_id.clone(),
-                turn: *turn,
+                filter: filter.with_legacy_turn(*turn),
                 limit: *limit,
             },
             Request::GetUpdatesDigest {
@@ -125,9 +128,9 @@ impl ModeView {
             }
             Self::Messages {
                 account_id,
-                turn,
+                filter,
                 limit,
-            } => messages::list_messages(state, account_id.as_ref(), *turn, *limit).await,
+            } => messages::list_messages(state, account_id.as_ref(), *filter, *limit).await,
             Self::Updates {
                 account_id,
                 cut,

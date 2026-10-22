@@ -132,6 +132,8 @@ pub(crate) fn populated() -> MessagesData {
         )],
         recent_total: 1,
         quiet_total: 12,
+        filter: Default::default(),
+        matched: 16,
         row_count: 16,
         thread_count: 20,
         empty_state: None,
@@ -230,7 +232,7 @@ pub(crate) fn samir_page() -> PersonPageData {
 pub(crate) fn page(data: MessagesData, hints_seen: bool) -> MessagesPageState {
     let mut state = MessagesPageState {
         messages: Some(data),
-        guide: Some(MESSAGES_GUIDE.to_data(|_| hints_seen.then(Utc::now))),
+        guide: Some(MESSAGES_GUIDE.to_data(|_| hints_seen.then(Utc::now), &mxr_keymap::guide_key)),
         ..MessagesPageState::default()
     };
     let samir = samir_page();

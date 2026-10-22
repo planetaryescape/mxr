@@ -724,6 +724,7 @@ async fn messages_requests_stay_in_the_agents_accounts() {
     assert_scoped(&s, |o| Request::ListMessages {
         account_id: Some(o.account.clone()),
         turn: None,
+        filter: Default::default(),
         limit: 10,
     })
     .await;
@@ -1019,6 +1020,7 @@ async fn requests_spanning_every_account_are_denied_and_unscoped_ones_allowed() 
         Request::ListMessages {
             account_id: None,
             turn: None,
+            filter: Default::default(),
             limit: 10,
         },
         Request::ListRules,

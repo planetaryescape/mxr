@@ -1078,6 +1078,8 @@ fn mail_mode_done() {}
     params(
         ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
         ("turn" = Option<String>, Query, description = "`mine` or `theirs`: only rows where it is that side's turn"),
+        ("unread" = Option<bool>, Query, description = "`true`: only rows with unread mail from them. Counts in the response are unchanged"),
+        ("pace" = Option<bool>, Query, description = "`true`: only rows where your turn has run past your usual pace. Counts in the response are unchanged"),
         ("limit" = Option<u32>, Query, description = "Rows in Recent and Quiet (default 50); totals count all"),
     ),
     responses(

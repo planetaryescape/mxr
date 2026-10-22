@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import "@/lib/actions/catalog";
+import keymap from "@/lib/actions/keymap.generated.json";
 import { getRegistry } from "@/lib/actions/registry";
 
 import { BROWSER_RESERVED, type Platform } from "./browserReserved";
@@ -12,11 +13,31 @@ import { parseChord } from "./chord";
  * new literal is caught only once it is added here.
  */
 const LITERAL_BINDINGS: { chord: string; source: string }[] = [
-  { chord: "Mod+Enter", source: "features/compose/codemirror/CodeMirrorComposeEditor.tsx:200" },
-  { chord: "Mod+Shift+f", source: "features/compose/ComposeHost.tsx:144" },
   { chord: "Ctrl+j", source: "features/search/SearchPalette.tsx:90" },
   { chord: "Ctrl+k", source: "features/search/SearchPalette.tsx:94" },
 ];
+
+/**
+ * Registry bindings that do use a reserved combo, kept because this rung of
+ * the keyboard plan changes no key (blueprint 35, K1). Each moves when the
+ * key map does (K3), and the list must then be empty.
+ */
+const KNOWN_CONFLICTS: { id: string; chord: string; reason: string }[] = [
+  {
+    id: "compose.save",
+    chord: "Mod+s",
+    reason: "Save draft has always been ⌘S in compose; the composer claims it before Save Page",
+  },
+  {
+    id: "compose.refresh",
+    chord: "Mod+Shift+r",
+    reason: "Refresh from daemon has always been ⇧⌘R in compose; it shadows hard reload there",
+  },
+];
+
+function isKnownConflict(id: string, chord: string): boolean {
+  return KNOWN_CONFLICTS.some((known) => known.id === id && known.chord === chord);
+}
 
 const ORDER = ["Cmd", "Ctrl", "Win", "Alt", "Shift"];
 
@@ -71,6 +92,7 @@ describe("browser-reserved shortcuts", () => {
   test("no registry binding uses a combo the browser keeps", () => {
     const problems: string[] = [];
     for (const binding of getRegistry().bindings()) {
+      if (isKnownConflict(binding.action.id, binding.chord)) continue;
       const hits = conflictsWith(binding.chord, binding.macOnly);
       if (hits.length > 0) {
         problems.push(
@@ -81,7 +103,31 @@ describe("browser-reserved shortcuts", () => {
     expect(problems).toEqual([]);
   });
 
-  test("no literal binding in compose or dialogs uses a reserved combo", () => {
+  test("each known conflict is a registry binding that still conflicts", () => {
+    const bindings = getRegistry().bindings();
+    const stale = KNOWN_CONFLICTS.filter(
+      (known) =>
+        !bindings.some((b) => b.action.id === known.id && b.chord === known.chord) ||
+        conflictsWith(known.chord).length === 0,
+    );
+    expect(stale).toEqual([]);
+  });
+
+  test("every compose key in the definition is a registry binding the check above sees", () => {
+    const bound = new Set(
+      getRegistry()
+        .bindings()
+        .filter((binding) => binding.scope === "compose")
+        .map((binding) => `${binding.action.id} ${binding.chord}`),
+    );
+    const defined = (keymap.action as { id: string; scopes?: string[]; keys?: string[] }[])
+      .filter((action) => action.scopes?.includes("compose"))
+      .flatMap((action) => (action.keys ?? []).map((chord) => `${action.id} ${chord}`));
+    expect(defined.length).toBeGreaterThan(0);
+    expect(defined.filter((entry) => !bound.has(entry))).toEqual([]);
+  });
+
+  test("no literal binding in dialogs uses a reserved combo", () => {
     const problems: string[] = [];
     for (const literal of LITERAL_BINDINGS) {
       const hits = conflictsWith(literal.chord);

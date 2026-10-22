@@ -176,7 +176,7 @@ async fn bare_greeting_attention_agrees_across_shared_surfaces_without_guessing_
         cached_content(&fx, &message, "", Some(text)).await;
         let ResponseData::Desk { owed, people_new, .. } = fx.desk(100).await else { panic!("desk"); };
         assert_eq!(owed.rows.iter().chain(&people_new.rows).any(|row| row.thread_id == message.thread_id), expected, "{recipient}: {text}");
-        let ResponseData::Messages { messages } = request(&fx, Request::ListMessages { account_id: None, turn: None, limit: 100 }).await else { panic!("Messages"); };
+        let ResponseData::Messages { messages } = request(&fx, Request::ListMessages { account_id: None, turn: None, filter: Default::default(), limit: 100 }).await else { panic!("Messages"); };
         assert_eq!(messages.your_turn.iter().flat_map(|row| &row.topics).any(|topic| topic.thread_id == message.thread_id), expected, "{recipient}: {text}");
         let now = crate::handler::now::now_at(&fx.state, None, Utc::now(), &Utc).await.unwrap();
         assert_eq!(now.people.total, u32::from(expected), "{recipient}: {text}");
@@ -491,6 +491,7 @@ async fn message_purpose_and_attention_agree_without_rewriting_history() {
         Request::ListMessages {
             account_id: None,
             turn: None,
+            filter: Default::default(),
             limit: 100,
         },
     )

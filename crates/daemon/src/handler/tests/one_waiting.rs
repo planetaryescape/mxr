@@ -123,6 +123,7 @@ async fn messages(fx: &Fixture, turn: Option<mxr_protocol::MessagesTurnData>) ->
         Request::ListMessages {
             account_id: None,
             turn,
+            filter: Default::default(),
             limit: 50,
         },
     )

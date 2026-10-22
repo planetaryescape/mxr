@@ -43,6 +43,7 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
         "MessagesAsSent" => Action::MessagesAsSent,
         "MessagesBack" => Action::MessagesBack,
         "MessagesDone" => Action::MessagesDone,
+        "MessagesFilter" => Action::MessagesFilter,
         "MessagesNewTopic" => Action::MessagesNewTopic,
         "MessagesNextTopic" => Action::MessagesNextTopic,
         "MessagesOpen" => Action::MessagesOpen,
@@ -199,6 +200,9 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
         "ViewportMiddle" => Action::ViewportMiddle,
         "ViewportTop" => Action::ViewportTop,
         "VisualLineMode" => Action::VisualLineMode,
+        "ReadingBack" => Action::ReadingBack,
+        "ReadingHighlight" => Action::ReadingHighlight,
+        "ReadingHighlights" => Action::ReadingHighlights,
         _ => return None,
     })
 }

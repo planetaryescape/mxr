@@ -327,8 +327,7 @@ async fn owed_on_a_store_copy() {
             .await
             .unwrap(),
     );
-    let addresses = state.store.list_all_account_addresses().await.unwrap();
-    state.account_addresses.replace(addresses);
+    state.refresh_account_addresses().await;
     let state = Arc::new(state);
     let call = |request: Request| {
         let state = state.clone();

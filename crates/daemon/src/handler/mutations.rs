@@ -4182,13 +4182,11 @@ async fn ingest_sent_message(
     // immediately rather than waiting on the LLM round-trip.
     if state.config_snapshot().llm.enabled {
         let summary_store = state.store.clone();
-        let summary_addresses = state.account_addresses.clone();
         let summary_llm = state.llm.clone();
         let summary_thread_id = thread_id.clone();
         tokio::spawn(async move {
             if let Err(error) = crate::handler::summarize::summarize_thread_cached(
                 summary_store,
-                summary_addresses,
                 summary_llm,
                 &summary_thread_id,
             )

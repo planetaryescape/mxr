@@ -827,19 +827,10 @@ impl AppState {
         let (contacts_refresh, contacts_refresh_worker) =
             ContactsRefreshHandle::start(store.clone(), background_db.clone());
         runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
+        // Empty until the registry is loaded below, after provider setup has
+        // inserted the configured accounts. Sync direction reads as Unknown
+        // until then.
         let account_addresses = Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new());
-        // Best-effort initial load. Empty result is fine — `is_loaded` stays
-        // false and direction classification falls back to Unknown until the
-        // first refresh after an account is configured.
-        match store.list_all_account_addresses().await {
-            Ok(addresses) if !addresses.is_empty() => {
-                account_addresses.replace(addresses);
-            }
-            Ok(_) => {}
-            Err(err) => {
-                tracing::warn!(error = %err, "failed initial account_addresses load");
-            }
-        }
         let sync_engine = Arc::new(SyncEngine::with_address_lookup(
             store.clone(),
             search.clone(),
@@ -847,6 +838,11 @@ impl AppState {
         ));
 
         let provider_setup = Self::create_providers_from_config(&config, &store).await?;
+        // Provider setup inserts the configured accounts, so the registry has
+        // to be built after it or the first sync misses their primaries.
+        if let Err(err) = load_account_address_registry(&store, &account_addresses).await {
+            tracing::warn!(error = %err, "failed initial account_addresses load");
+        }
 
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
@@ -910,30 +906,24 @@ impl AppState {
         })
     }
 
-    /// Reload the account-address cache from the store. Called after every
-    /// successful mutation through `account_addresses` so direction inference
-    /// stays current. Errors are logged but not surfaced — the next sync will
-    /// see at worst a slightly stale cache.
+    /// Rebuild sync's registry from the store after an address change. Only
+    /// sync direction reads the registry; sends and handler checks read the
+    /// store, so a failed refresh leaves them correct and sync direction stale
+    /// until the next refresh (docs/issues/account-address-registry-refresh-ordering.md).
     pub async fn refresh_account_addresses(&self) {
-        match self.store.list_all_account_addresses().await {
-            Ok(addresses) => {
-                self.account_addresses.replace(addresses);
-            }
-            Err(err) => {
-                tracing::warn!(error = %err, "failed to refresh account_addresses cache");
-            }
+        if let Err(err) = load_account_address_registry(&self.store, &self.account_addresses).await
+        {
+            tracing::warn!(error = %err, "failed to refresh account_addresses cache");
         }
     }
 
-    /// Every address the account answers to: the primary from the accounts row
-    /// (present even if its address row is missing) plus every registered alias
-    /// from the in-memory registry, which `refresh_account_addresses` keeps
-    /// current after each alias mutation.
+    /// Every address the account answers to, read from committed store data.
+    /// See `owned_addresses_for`.
     pub async fn owned_addresses(
         &self,
         account_id: &AccountId,
     ) -> std::result::Result<mxr_core::types::OwnedAddresses, sqlx::Error> {
-        owned_addresses_for(&self.store, &self.account_addresses, account_id).await
+        owned_addresses_for(&self.store, account_id).await
     }
 
     /// Load the lexical index structures used by an interactive search.
@@ -2632,22 +2622,38 @@ fn provider_kind_name(kind: ProviderKind) -> &'static str {
     }
 }
 
-/// The shared owned-address read, for callers that hold the store and the
-/// registry rather than the whole `AppState`. See `AppState::owned_addresses`.
+/// The one rule for an account's owned addresses: the `accounts` row's email
+/// is always primary, and every `account_addresses` row is an owned alias.
+/// Reads committed store data, so a send, a handler check and the sync
+/// registry (built by `load_account_address_registry` from this same rule)
+/// agree.
 pub(crate) async fn owned_addresses_for(
     store: &Store,
-    registry: &mxr_core::types::InMemoryAccountAddressLookup,
     account_id: &AccountId,
 ) -> std::result::Result<mxr_core::types::OwnedAddresses, sqlx::Error> {
     let primary = store
         .get_account(account_id)
         .await?
         .map(|account| account.email);
-    let aliases = registry.owned(account_id);
+    let aliases = store.list_account_addresses(account_id).await?;
     Ok(mxr_core::types::OwnedAddresses::new(
         primary.as_deref(),
-        aliases.iter(),
+        aliases.iter().map(|address| address.email.as_str()),
     ))
+}
+
+/// Replace sync's registry with every account's set from `owned_addresses_for`.
+pub(crate) async fn load_account_address_registry(
+    store: &Store,
+    registry: &mxr_core::types::InMemoryAccountAddressLookup,
+) -> std::result::Result<(), sqlx::Error> {
+    let mut sets = Vec::new();
+    for account in store.list_accounts().await? {
+        let owned = owned_addresses_for(store, &account.id).await?;
+        sets.push((account.id, owned));
+    }
+    registry.replace(sets);
+    Ok(())
 }
 
 #[cfg(test)]

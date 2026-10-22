@@ -1413,13 +1413,7 @@ pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> Handle
             let _ = populate_envelope_label_provider_ids(state, message, &labels).await;
         }
     }
-    let summary = super::summarize::valid_cached_summary(
-        &state.store,
-        &state.account_addresses,
-        thread_id,
-        &messages,
-    )
-    .await;
+    let summary = super::summarize::valid_cached_summary(&state.store, thread_id, &messages).await;
     Ok(ResponseData::Thread {
         thread,
         messages,

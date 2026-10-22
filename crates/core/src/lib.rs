@@ -99,12 +99,8 @@ mod tests {
         }
     }
 
-    fn address(account_id: &AccountId, email: &str, is_primary: bool) -> AccountAddress {
-        AccountAddress {
-            account_id: account_id.clone(),
-            email: email.to_string(),
-            is_primary,
-        }
+    fn owned(primary: &str, aliases: &[&str]) -> OwnedAddresses {
+        OwnedAddresses::new(Some(primary), aliases.iter().copied())
     }
 
     #[test]
@@ -130,6 +126,37 @@ mod tests {
     }
 
     #[test]
+    fn owned_addresses_fold_ascii_only_so_unicode_spellings_stay_distinct() {
+        // `From` validation and reply membership fold ASCII only. If the set
+        // folded Unicode, one spelling would be dropped and the other would
+        // stop validating as a sender.
+        let owned = owned(
+            "user@example.com",
+            &["user@BÜCHER.example", "user@bücher.example"],
+        );
+        assert_eq!(
+            owned.iter().collect::<Vec<_>>(),
+            vec![
+                "user@example.com",
+                "user@BÜCHER.example",
+                "user@bücher.example"
+            ]
+        );
+        assert_eq!(
+            owned.canonical("user@bücher.example"),
+            Some("user@bücher.example")
+        );
+        assert_eq!(
+            owned.canonical("USER@BÜCHER.EXAMPLE"),
+            Some("user@BÜCHER.example")
+        );
+        // ASCII folding only: the Ü stays as it is, so the uppercase ASCII
+        // spelling matches the stored one and the lowercase Unicode one does not.
+        assert!(owned.contains("user@BÜCHER.EXAMPLE"));
+        assert!(!owned.contains("user@bucher.example"));
+    }
+
+    #[test]
     fn owned_addresses_always_include_a_primary_passed_in() {
         let owned = OwnedAddresses::new(Some("me@example.com"), []);
         assert!(owned.contains("me@example.com"));
@@ -141,15 +168,15 @@ mod tests {
     fn registry_owned_set_follows_replace_for_each_account() {
         let account_a = AccountId::new();
         let lookup = InMemoryAccountAddressLookup::new();
-        lookup.replace([address(&account_a, "me@example.com", true)]);
+        lookup.replace([(account_a.clone(), owned("me@example.com", &[]))]);
         assert!(!lookup.owned(&account_a).contains("alias@example.com"));
 
         // An alias registered at runtime is visible on the next replace, with
         // no restart and no per-caller reload.
-        lookup.replace([
-            address(&account_a, "me@example.com", true),
-            address(&account_a, "alias@example.com", false),
-        ]);
+        lookup.replace([(
+            account_a.clone(),
+            owned("me@example.com", &["alias@example.com"]),
+        )]);
         assert!(lookup.owned(&account_a).contains("alias@example.com"));
         assert_eq!(lookup.owned(&account_a).primary(), Some("me@example.com"));
         assert!(lookup.owned(&AccountId::new()).is_empty());
@@ -165,9 +192,11 @@ mod tests {
         assert!(!lookup.is_account_address(&account_a, "anyone@example.com"));
 
         lookup.replace([
-            address(&account_a, " A@Example.com ", true),
-            address(&account_a, "alias@example.com", false),
-            address(&account_b, "b@other.com", true),
+            (
+                account_a.clone(),
+                owned(" A@Example.com ", &["alias@example.com"]),
+            ),
+            (account_b.clone(), owned("b@other.com", &[])),
         ]);
         assert!(lookup.is_loaded());
 
@@ -177,8 +206,8 @@ mod tests {
         assert!(lookup.is_account_address(&account_a, "alias@example.com"));
         assert!(lookup.is_account_address(&account_b, "b@other.com"));
 
-        // The fix: account B's address is NOT an owned address of account A,
-        // so a message received in A from B's address stays inbound.
+        // Account B's address is NOT an owned address of account A, so a
+        // message received in A from B's address stays inbound.
         assert!(!lookup.is_account_address(&account_a, "b@other.com"));
         assert!(!lookup.is_account_address(&account_b, "a@example.com"));
         // Outside every set.
@@ -187,7 +216,7 @@ mod tests {
         assert!(!lookup.is_account_address(&AccountId::new(), "a@example.com"));
 
         // Replacing with a different set discards the previous one.
-        lookup.replace([address(&account_a, "fresh@example.com", true)]);
+        lookup.replace([(account_a.clone(), owned("fresh@example.com", &[]))]);
         assert!(lookup.is_loaded());
         assert!(lookup.is_account_address(&account_a, "fresh@example.com"));
         assert!(!lookup.is_account_address(&account_a, "a@example.com"));

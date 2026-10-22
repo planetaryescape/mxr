@@ -5,7 +5,7 @@
 use super::{relationship_profile, HandlerResult};
 use crate::state::{owned_addresses_for, AppState};
 use mxr_core::id::ThreadId;
-use mxr_core::types::{Address, Envelope, InMemoryAccountAddressLookup, OwnedAddresses};
+use mxr_core::types::{Address, Envelope, OwnedAddresses};
 use mxr_llm::{
     guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
     LlmFeature, LlmRuntime,
@@ -80,13 +80,8 @@ The verdict line must stand alone and be machine-parseable: one token, one em
 dash, one clause. No hedging ("possibly", "might be"), no second sentence."#;
 
 pub(super) async fn summarize_thread(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
-    let summary = summarize_thread_cached(
-        state.store.clone(),
-        state.account_addresses.clone(),
-        state.llm.clone(),
-        thread_id,
-    )
-    .await?;
+    let summary =
+        summarize_thread_cached(state.store.clone(), state.llm.clone(), thread_id).await?;
     Ok(ResponseData::ThreadSummary {
         text: summary.text,
         model: summary.model,
@@ -95,13 +90,12 @@ pub(super) async fn summarize_thread(state: &AppState, thread_id: &ThreadId) -> 
 
 pub(crate) async fn valid_cached_summary(
     store: &Store,
-    registry: &InMemoryAccountAddressLookup,
     thread_id: &ThreadId,
     envelopes: &[Envelope],
 ) -> Option<ThreadSummaryData> {
     let relationship_hash = match envelopes.first() {
         Some(first) => {
-            let owned_addresses = owned_addresses_for(store, registry, &first.account_id)
+            let owned_addresses = owned_addresses_for(store, &first.account_id)
                 .await
                 .unwrap_or_default();
             relationship_context_for_summary(store, &first.account_id, &owned_addresses, envelopes)
@@ -124,11 +118,10 @@ pub(crate) async fn valid_cached_summary(
 
 pub(crate) async fn summarize_thread_cached(
     store: Arc<Store>,
-    registry: Arc<InMemoryAccountAddressLookup>,
     llm: Arc<LlmRuntime>,
     thread_id: &ThreadId,
 ) -> Result<ThreadSummaryData, String> {
-    let context = load_summary_context(&store, &registry, thread_id).await?;
+    let context = load_summary_context(&store, thread_id).await?;
     if let Some(record) = store
         .get_thread_summary(thread_id)
         .await
@@ -207,7 +200,6 @@ struct SummaryContext {
 
 async fn load_summary_context(
     store: &Store,
-    registry: &InMemoryAccountAddressLookup,
     thread_id: &ThreadId,
 ) -> Result<SummaryContext, String> {
     let thread = store
@@ -222,7 +214,7 @@ async fn load_summary_context(
     if envelopes.is_empty() {
         return Err(format!("Thread {thread_id} has no messages"));
     }
-    let owned_addresses = owned_addresses_for(store, registry, &thread.account_id)
+    let owned_addresses = owned_addresses_for(store, &thread.account_id)
         .await
         .unwrap_or_default();
 
@@ -700,14 +692,9 @@ mod tests {
             );
         }
         let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
-        assert!(valid_cached_summary(
-            &state.store,
-            &state.account_addresses,
-            &thread_id,
-            &envelopes
-        )
-        .await
-        .is_some());
+        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
+            .await
+            .is_some());
 
         state
             .store
@@ -723,14 +710,9 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(valid_cached_summary(
-            &state.store,
-            &state.account_addresses,
-            &thread_id,
-            &envelopes
-        )
-        .await
-        .is_none());
+        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
+            .await
+            .is_none());
 
         summarize_thread(&state, &thread_id).await.unwrap();
         let requests = llm.requests.lock().expect("requests");

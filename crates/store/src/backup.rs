@@ -26,10 +26,28 @@ pub struct BackupManifest {
     pub exclusions: Vec<String>,
 }
 
+/// Migration 093's backfill, reading the attached source's event_log. Keep the
+/// selection in step with `migrations/093_unsubscribe_receipts.sql`.
+const PRE_RECEIPT_BACKFILL: &str = "INSERT OR IGNORE INTO main.unsubscribe_receipts (message_id, account_id, method, sent_at)
+SELECT message_id, account_id, 'unknown', timestamp
+FROM (
+    SELECT e.message_id,
+           COALESCE(e.account_id, m.account_id) AS account_id,
+           e.timestamp,
+           ROW_NUMBER() OVER (PARTITION BY e.message_id ORDER BY e.timestamp ASC, e.id ASC) AS row_rank
+    FROM source.event_log e
+    INNER JOIN main.messages m ON m.id = e.message_id
+    WHERE e.category = 'mutation'
+      AND (e.summary LIKE 'Sent unsubscribe request for %'
+           OR e.summary LIKE 'Unsubscribed from %')
+)
+WHERE row_rank = 1";
+
 const TABLES: &[&str] = &[
     "accounts",
     "labels",
     "messages",
+    "unsubscribe_receipts",
     "message_labels",
     "bodies",
     "attachments",
@@ -208,7 +226,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=92).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=93).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -265,6 +283,11 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     .await?;
     validate(&mut db).await?;
     let expected = Store::in_memory().await?;
+    if manifest.schema_version < 93 {
+        sqlx::query("DROP TABLE unsubscribe_receipts")
+            .execute(expected.writer())
+            .await?;
+    }
     if manifest.schema_version < 92 {
         sqlx::query("DROP INDEX idx_messages_account_thread_date")
             .execute(expected.writer())
@@ -459,7 +482,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=92).contains(&version) {
+    if !(80..=93).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -524,6 +547,23 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
         };
         sqlx::query(AssertSqlSafe(format!("INSERT INTO main.\"{table}\" ({rowid}{columns}) SELECT {rowid}{columns} FROM source.\"{table}\""))).execute(&mut *connection).await.map_err(|e|format!("Copying durable table {table}: {e}"))?;
     }
+    let receipts_in_source: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM source.sqlite_schema WHERE type='table' AND name='unsubscribe_receipts')",
+    )
+    .fetch_one(&mut *connection)
+    .await?;
+    if !receipts_in_source {
+        // Schema 92 predates receipts. Rebuild them from its event_log with
+        // migration 093's rules, so a message unsubscribed before this backup
+        // stays protected after restore.
+        sqlx::query("DELETE FROM main.unsubscribe_receipts")
+            .execute(&mut *connection)
+            .await?;
+        sqlx::query(PRE_RECEIPT_BACKFILL)
+            .execute(&mut *connection)
+            .await
+            .map_err(|e| format!("Backfilling unsubscribe receipts: {e}"))?;
+    }
     sqlx::query("DETACH DATABASE source")
         .execute(&mut *connection)
         .await?;
@@ -541,7 +581,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:92, workspace_id,recovery_generation,files,
+    Ok(BackupManifest { format_version:1, schema_version:93, workspace_id,recovery_generation,files,
         exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into(),"assistant conversations (chat history that quotes mail; local only)".into()] })
 }
 

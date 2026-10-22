@@ -10,6 +10,9 @@ use mxr_core::types::UnsubscribeMethod;
 use reqwest::Client;
 
 /// Result of an unsubscribe attempt.
+///
+/// Failure text is written for the user and the logs. It never contains the
+/// unsubscribe URL or an address: those carry recipient ids and tokens.
 #[derive(Debug)]
 pub enum UnsubscribeResult {
     Success(String),
@@ -31,17 +34,23 @@ pub async fn execute_unsubscribe(method: &UnsubscribeMethod, client: &Client) ->
                 Ok(resp) if resp.status().is_success() => {
                     UnsubscribeResult::Success("Unsubscribed via one-click.".into())
                 }
-                Ok(resp) => {
-                    UnsubscribeResult::Failed(format!("One-click POST returned {}", resp.status()))
-                }
-                Err(e) => UnsubscribeResult::Failed(format!("One-click unsubscribe failed: {e}")),
+                Ok(resp) => UnsubscribeResult::Failed(format!(
+                    "the sender's server answered {}",
+                    resp.status()
+                )),
+                Err(error) => UnsubscribeResult::Failed(format!(
+                    "could not complete the request to the sender's server ({})",
+                    request_failure_kind(&error)
+                )),
             }
         }
 
         UnsubscribeMethod::HttpLink { url } | UnsubscribeMethod::BodyLink { url } => {
             match open_in_browser(url) {
                 Ok(()) => UnsubscribeResult::Success("Opened unsubscribe page in browser.".into()),
-                Err(e) => UnsubscribeResult::Failed(format!("Failed to open browser: {e}")),
+                Err(_) => UnsubscribeResult::Failed(
+                    "could not open the unsubscribe page in a browser".into(),
+                ),
             }
         }
 
@@ -52,6 +61,20 @@ pub async fn execute_unsubscribe(method: &UnsubscribeMethod, client: &Client) ->
         }
 
         UnsubscribeMethod::None => UnsubscribeResult::NoMethod,
+    }
+}
+
+/// The kind of a failed request, without the error's text. reqwest's Display
+/// includes the full URL.
+fn request_failure_kind(error: &reqwest::Error) -> &'static str {
+    if error.is_timeout() {
+        "timed out"
+    } else if error.is_connect() {
+        "could not connect"
+    } else if error.is_builder() {
+        "invalid request"
+    } else {
+        "request failed"
     }
 }
 
@@ -76,6 +99,62 @@ mod tests {
         let client = Client::new();
         let result = execute_unsubscribe(&UnsubscribeMethod::None, &client).await;
         assert!(matches!(result, UnsubscribeResult::NoMethod));
+    }
+
+    fn one_click(url: String) -> UnsubscribeMethod {
+        UnsubscribeMethod::OneClick { url }
+    }
+
+    #[tokio::test]
+    async fn failures_never_name_the_url() {
+        let url = "http://127.0.0.1:1/unsubscribe?recipient=secret-token-123";
+        let result = execute_unsubscribe(&one_click(url.into()), &Client::new()).await;
+        let UnsubscribeResult::Failed(message) = result else {
+            panic!("expected a failure, got {result:?}");
+        };
+        assert!(!message.contains("secret-token-123"), "{message}");
+        assert!(!message.contains("127.0.0.1"), "{message}");
+        assert!(message.contains("could not connect"), "{message}");
+    }
+
+    #[tokio::test]
+    async fn server_error_status_is_reported_without_the_url() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let result = execute_unsubscribe(
+            &one_click(format!("{}/unsubscribe", server.uri())),
+            &Client::new(),
+        )
+        .await;
+        let UnsubscribeResult::Failed(message) = result else {
+            panic!("expected a failure, got {result:?}");
+        };
+        assert!(message.contains("500"), "{message}");
+        assert!(!message.contains(&server.uri()), "{message}");
+    }
+
+    #[tokio::test]
+    async fn timeout_is_a_failure() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(204).set_delay(std::time::Duration::from_secs(3)),
+            )
+            .mount(&server)
+            .await;
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_millis(200))
+            .build()
+            .unwrap();
+        let result =
+            execute_unsubscribe(&one_click(format!("{}/unsubscribe", server.uri())), &client).await;
+        let UnsubscribeResult::Failed(message) = result else {
+            panic!("expected a failure, got {result:?}");
+        };
+        assert!(message.contains("timed out"), "{message}");
     }
 
     #[tokio::test]

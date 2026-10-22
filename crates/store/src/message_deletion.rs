@@ -58,6 +58,7 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
     ("desk_dismissals", MessageDeletionRule::ClearedWithMessages),
     ("mode_done", MessageDeletionRule::ClearedWithMessages),
     ("event_log", MessageDeletionRule::ClearedWithMessages),
+    ("unsubscribe_receipts", MessageDeletionRule::ClearedWithMessages),
     // Cleared for every person a delete touches, and with its contact.
     (
         "contact_relationship_summary",
@@ -234,6 +235,7 @@ impl super::Store {
             "DELETE FROM contact_commitments WHERE account_id = ?1
                AND evidence_msg_id IN (SELECT id FROM temp.mxr_deleting)",
             "DELETE FROM event_log WHERE message_id IN (SELECT id FROM temp.mxr_deleting)",
+            "DELETE FROM unsubscribe_receipts WHERE message_id IN (SELECT id FROM temp.mxr_deleting)",
             // A detected to-do goes with its email. One the user made or
             // edited is theirs and stays, without the words it copied from
             // the email; the foreign keys then clear its pointers to it.
@@ -652,6 +654,16 @@ mod tests {
             .await;
         }
 
+        for message in [&gone_s, &kept_s] {
+            exec(
+                &store,
+                "INSERT INTO unsubscribe_receipts (message_id, account_id, method, sent_at)
+                 VALUES (?, ?, 'mailto', 0)",
+                &[message, &acct],
+            )
+            .await;
+        }
+
         let deleted = store
             .delete_messages_and_derived(
                 &account.id,
@@ -726,6 +738,12 @@ mod tests {
         assert_eq!(
             ids(&store, "SELECT summary FROM event_log").await,
             set(&["kept"])
+        );
+        // A receipt is what stops a second unsubscribe. It goes with its
+        // message, and the kept message's receipt stays.
+        assert_eq!(
+            ids(&store, "SELECT message_id FROM unsubscribe_receipts").await,
+            set(&[&kept_s])
         );
         // Alice still has mail in thread A, but her summary drew on the
         // deleted message and is rebuilt; Dave's mail was untouched.

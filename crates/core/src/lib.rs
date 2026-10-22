@@ -231,17 +231,38 @@ mod tests {
         lookup.replace([(account.clone(), owned("a@example.com", &[]))]);
         assert!(lookup.is_account_address(&account, "a@example.com"));
 
-        // A failed rebuild keeps the old sets in memory, but sync must not use
-        // them: the lookup reads as not loaded, the same as before any load.
+        // A failed rebuild keeps the old sets in memory. The readiness gate
+        // reads false, so sync writes Unknown rather than a guess.
         lookup.mark_stale();
         assert!(lookup.is_stale());
         assert!(!lookup.is_loaded());
-        assert!(!lookup.is_account_address(&account, "a@example.com"));
+        assert!(
+            lookup.take_repair_owed(),
+            "a stale set owes a direction repair"
+        );
+        assert!(!lookup.take_repair_owed(), "the debt is taken once");
 
         lookup.replace([(account.clone(), owned("b@example.com", &[]))]);
         assert!(!lookup.is_stale());
         assert!(lookup.is_loaded());
         assert!(lookup.is_account_address(&account, "b@example.com"));
+    }
+
+    #[test]
+    fn stale_lookup_still_answers_from_the_held_set_for_a_pass_already_running() {
+        // A pass that started while the set was current keeps answering from
+        // that set. Only the readiness gate (`is_loaded`) reads staleness, so
+        // a pass that finds the gate closed writes Unknown rather than Inbound.
+        let account = AccountId::new();
+        let lookup = InMemoryAccountAddressLookup::new();
+        lookup.replace([(account.clone(), owned("a@example.com", &[]))]);
+
+        lookup.mark_stale();
+        assert!(!lookup.is_loaded());
+        assert!(
+            lookup.is_account_address(&account, "a@example.com"),
+            "an owned sender must not read as inbound after a failed rebuild"
+        );
     }
 
     #[test]

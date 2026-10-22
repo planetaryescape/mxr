@@ -213,6 +213,10 @@ pub struct InMemoryAccountAddressLookup {
     /// Set when a rebuild from the store failed. The sets still held are from
     /// before the failed change, so they must not classify direction.
     stale: std::sync::atomic::AtomicBool,
+    /// Set whenever the set goes stale, and cleared only once the daemon has
+    /// reclassified the directions written in the meantime. A recovery by any
+    /// path leaves the debt in place until that repair runs.
+    repair_owed: std::sync::atomic::AtomicBool,
 }
 
 impl InMemoryAccountAddressLookup {
@@ -237,9 +241,24 @@ impl InMemoryAccountAddressLookup {
     }
 
     /// Record that a rebuild failed. Until a later `replace` succeeds,
-    /// `is_loaded` reads false, so sync writes `Direction::Unknown`.
+    /// `is_loaded` reads false, so sync writes `Direction::Unknown`, and the
+    /// directions written meanwhile are owed a repair.
     pub fn mark_stale(&self) {
         self.stale.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.repair_owed
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Clears and returns the repair debt. Callers reclassify afterwards and
+    /// call `mark_repair_owed` again if that fails.
+    pub fn take_repair_owed(&self) -> bool {
+        self.repair_owed
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub fn mark_repair_owed(&self) {
+        self.repair_owed
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     pub fn is_stale(&self) -> bool {
@@ -261,8 +280,12 @@ impl InMemoryAccountAddressLookup {
 }
 
 impl AccountAddressLookup for InMemoryAccountAddressLookup {
+    /// Answers from the held sets whenever they were ever loaded, even while
+    /// stale. A pass or reclassify that started while the set was current
+    /// keeps a consistent answer; `is_loaded` is the gate that stops new work.
     fn is_account_address(&self, account_id: &AccountId, email: &str) -> bool {
-        self.is_loaded() && self.owned(account_id).contains(email)
+        self.loaded.load(std::sync::atomic::Ordering::SeqCst)
+            && self.owned(account_id).contains(email)
     }
 
     fn is_loaded(&self) -> bool {

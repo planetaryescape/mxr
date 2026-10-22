@@ -114,7 +114,7 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
           <time
             dateTime={message.date}
             title={message.date_full}
-            className="type-meta whitespace-nowrap text-text-2"
+            className="type-meta shrink-0 whitespace-nowrap text-text-2"
           >
             <Received value={message.date} />
           </time>
@@ -137,9 +137,12 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
       {focused ? (
         <span aria-hidden className="absolute inset-y-0 left-0 w-[3px] bg-signal" />
       ) : null}
-      <header className="flex items-start gap-3 px-5 pb-2 pt-4">
-        <Avatar name={name} size="lg" />
-        <div className="min-w-0 flex-1">
+      {/* Below sm the header is a grid: the arrival takes its own line under the
+          sender and address, so the name never shares a line with it. From sm up
+          it is one row, as before. */}
+      <header className="flex items-start gap-3 px-5 pb-2 pt-4 max-sm:grid max-sm:grid-cols-[auto_minmax(0,1fr)_auto] max-sm:gap-x-3 max-sm:gap-y-1">
+        <Avatar name={name} size="lg" className="max-sm:col-start-1 max-sm:row-start-1" />
+        <div className="min-w-0 flex-1 max-sm:col-start-2 max-sm:row-start-1">
           <button type="button" onClick={onToggle} aria-expanded className="block w-full text-left">
             <span className="flex flex-wrap items-baseline gap-x-2">
               <span className={cn("text-base", message.unread ? "font-semibold" : "font-medium")}>
@@ -152,14 +155,14 @@ export const MessageCard = forwardRef<HTMLElement, MessageCardProps>(function Me
           </button>
           <Recipients to={message.to} cc={message.cc} bcc={message.bcc} />
         </div>
-        <span className="flex shrink-0 items-center gap-1">
-          <time
-            dateTime={message.date}
-            title={formatLongDate(message.date)}
-            className="mr-1 whitespace-nowrap font-mono text-2xs text-text-2 tabular-nums"
-          >
-            <Received value={message.date} />
-          </time>
+        <time
+          dateTime={message.date}
+          title={formatLongDate(message.date)}
+          className="shrink-0 whitespace-nowrap font-mono text-2xs text-text-2 tabular-nums max-sm:col-start-2 max-sm:row-start-2 max-sm:justify-self-start sm:-mr-1"
+        >
+          <Received value={message.date} />
+        </time>
+        <span className="flex shrink-0 items-center gap-1 max-sm:col-start-3 max-sm:row-start-1">
           <Button
             variant="ghost"
             size="icon-xs"

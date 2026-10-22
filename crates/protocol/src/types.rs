@@ -5374,6 +5374,11 @@ pub struct DoctorReport {
     /// Active log plus rotated archives. `log_size_bytes` stays active-file only.
     #[serde(default)]
     pub log_total_bytes: u64,
+    /// `logging.event_retention_days` as the daemon reads the config file now.
+    /// `None` from a daemon that predates the field, or when the file cannot be
+    /// read or parsed.
+    #[serde(default)]
+    pub history_retention_days: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

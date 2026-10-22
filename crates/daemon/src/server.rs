@@ -86,6 +86,10 @@ pub async fn run_stdio() -> anyhow::Result<()> {
     #[cfg(feature = "langfuse")]
     let llm_tracing = crate::llm_tracing::start();
 
+    // Same history prune as the socket daemon. The stdio daemon exits on
+    // request_shutdown below, which ends the loop.
+    loops::spawn_history_prune_loop(state.clone());
+
     let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
     let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
     let event_rx = state.event_tx.subscribe();
@@ -335,6 +339,11 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
             let shutdown_rx = activity_prune_state.shutdown_receiver();
             loops::activity_prune_loop(activity_prune_state, shutdown_rx).await;
         });
+
+        // History prune: keeps event_log and sync_log to
+        // `logging.event_retention_days`. Same fire-and-forget shape as the
+        // activity prune; losing the last pass costs nothing.
+        loops::spawn_history_prune_loop(state.clone());
 
         // Mutation dedup + undo prune. 24h dedup TTL means rows older
         // than that are safe to drop; hourly cadence keeps the table

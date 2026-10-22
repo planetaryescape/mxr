@@ -143,7 +143,7 @@ pub use diagnostics::StoreRecordCounts;
 pub use draft::SentDraftReceipt;
 pub use draft_commitments::{new_candidate_id, DraftCommitmentCandidate};
 pub use draft_safety::{DraftSafetyOverrideRecord, DraftSafetyRunRecord};
-pub use event_log::{EventLogEntry, EventLogFilter, EventLogRefs};
+pub use event_log::{count_prunable_events, EventLogEntry, EventLogFilter, EventLogRefs};
 pub use got_it::{GotItClaim, GotItRecord};
 pub use message_deletion::{DeletedMessages, MAX_FORGET_ATTEMPTS};
 pub use message_flags::{DeskReplyLater, ReplyLaterState};
@@ -178,7 +178,7 @@ pub use sender_profile::{
 };
 pub use signatures::{Signature, SignatureDefault, SignatureKind, SignatureScope};
 pub use snippets::Snippet;
-pub use sync_log::{SyncLogEntry, SyncStatus};
+pub use sync_log::{count_prunable_sync_logs, SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 pub use sync_upsert::SyncUpsert;
 pub use todo_first_run::{PromiseForTodo, TodoRun, TodoScanRow};
@@ -353,6 +353,8 @@ pub(crate) const NON_SELF_ADDRESSED_MESSAGE_PREDICATE: &str = r#"NOT (
     )
 )"#;
 
+#[cfg(test)]
+mod history_prune_tests;
 #[cfg(test)]
 mod tests;
 

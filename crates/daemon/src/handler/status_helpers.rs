@@ -244,6 +244,9 @@ pub(super) async fn collect_doctor_report(
         index_lock_error: None,
         restart_required,
         repair_required,
+        history_retention_days: crate::loops::retention_days_on_disk(
+            &mxr_config::config_file_path(),
+        ),
         database_path: db_path.display().to_string(),
         database_size_bytes: file_size(state, db_path.clone()).await,
         index_path: index_path.display().to_string(),

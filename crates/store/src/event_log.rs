@@ -1,6 +1,35 @@
 use mxr_core::AccountId;
 use sqlx::Row;
 
+/// Rows per DELETE statement in a retention prune. Each batch is its own
+/// statement, so the writer is released between batches.
+pub(crate) const PRUNE_BATCH_ROWS: i64 = 5_000;
+
+/// Event rows a retention prune may delete, as a predicate on `event_log`
+/// with `?1` bound to the cutoff (unix seconds). The newest lexical-rebuild
+/// marker is kept: doctor and status read its timestamp for "lexical index
+/// last rebuilt", and no other row records that fact. `IS NOT` keeps the
+/// predicate true when no marker exists yet.
+pub(crate) const PRUNABLE_EVENTS: &str = "timestamp < ?1 AND id IS NOT (
+    SELECT id FROM event_log
+    WHERE category = 'search' AND summary LIKE 'Lexical index rebuilt%'
+    ORDER BY timestamp DESC, id DESC LIMIT 1)";
+
+/// Number of event rows a retention prune with this cutoff would delete.
+/// Takes a caller's connection so `mxr logs --purge --dry-run` can count on a
+/// read-only handle, using the same predicate as [`super::Store::prune_events_before`].
+pub async fn count_prunable_events(
+    conn: &mut sqlx::SqliteConnection,
+    cutoff_timestamp: i64,
+) -> Result<u64, sqlx::Error> {
+    let sql = format!("SELECT COUNT(*) FROM event_log WHERE {PRUNABLE_EVENTS}");
+    let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+        .bind(cutoff_timestamp)
+        .fetch_one(&mut *conn)
+        .await?;
+    Ok(u64::try_from(count).unwrap_or(0))
+}
+
 pub struct EventLogEntry {
     pub id: i64,
     pub timestamp: i64,
@@ -255,12 +284,28 @@ impl super::Store {
         query.fetch_one(self.reader()).await
     }
 
+    /// Deletes event rows older than `cutoff_timestamp` (unix seconds), in
+    /// batches of [`PRUNE_BATCH_ROWS`] so one prune never holds the writer for
+    /// long. The newest lexical-rebuild marker is never deleted; see
+    /// [`PRUNABLE_EVENTS`].
     pub async fn prune_events_before(&self, cutoff_timestamp: i64) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query("DELETE FROM event_log WHERE timestamp < ?")
-            .bind(cutoff_timestamp)
-            .execute(self.writer())
-            .await?;
-        Ok(result.rows_affected())
+        let sql = format!(
+            "DELETE FROM event_log WHERE rowid IN \
+             (SELECT rowid FROM event_log WHERE {PRUNABLE_EVENTS} LIMIT ?2)"
+        );
+        let mut total = 0;
+        loop {
+            let deleted = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(cutoff_timestamp)
+                .bind(PRUNE_BATCH_ROWS)
+                .execute(self.writer())
+                .await?
+                .rows_affected();
+            total += deleted;
+            if deleted < PRUNE_BATCH_ROWS as u64 {
+                return Ok(total);
+            }
+        }
     }
 
     /// Returns true when at least one event with this `category` exists

@@ -38,7 +38,67 @@ impl SyncStatus {
     }
 }
 
+/// Rows ranked newest-first within each account, in the order
+/// `list_recent_sync_logs` reads them, so ties resolve the same way for the
+/// prune as for doctor's history window.
+const RANKED_SYNC_LOGS: &str = "SELECT id, started_at, ROW_NUMBER() OVER (
+    PARTITION BY account_id ORDER BY started_at DESC, id DESC) AS rn
+    FROM sync_log";
+
+/// Rows a prune may delete: older than the cutoff and outside each account's
+/// newest `keep` rows. `?1` is the cutoff (unix seconds), `?2` is `keep`.
+const PRUNABLE_SYNC_LOGS: &str = "rn > ?2 AND started_at < ?1";
+
+/// Number of sync_log rows a prune with this cutoff and keep count would
+/// delete. Shares [`PRUNABLE_SYNC_LOGS`] with `Store::prune_sync_logs_before`.
+pub async fn count_prunable_sync_logs(
+    conn: &mut sqlx::SqliteConnection,
+    cutoff_timestamp: i64,
+    keep_newest_per_account: u32,
+) -> Result<u64, sqlx::Error> {
+    let sql = format!("SELECT COUNT(*) FROM ({RANKED_SYNC_LOGS}) WHERE {PRUNABLE_SYNC_LOGS}");
+    let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+        .bind(cutoff_timestamp)
+        .bind(i64::from(keep_newest_per_account))
+        .fetch_one(&mut *conn)
+        .await?;
+    Ok(u64::try_from(count).unwrap_or(0))
+}
+
 impl super::Store {
+    /// Deletes sync_log rows older than `cutoff_timestamp` (unix seconds)
+    /// except each account's newest `keep_newest_per_account` rows, which stay
+    /// regardless of age so a rarely syncing account keeps its history. Runs in
+    /// batches of [`crate::event_log::PRUNE_BATCH_ROWS`]. A sync that is
+    /// running while this runs is either outside the window (newest rows are
+    /// never prunable) or completes its own row by id, which is a no-op if
+    /// that row was already deleted.
+    pub async fn prune_sync_logs_before(
+        &self,
+        cutoff_timestamp: i64,
+        keep_newest_per_account: u32,
+    ) -> Result<u64, sqlx::Error> {
+        let sql = format!(
+            "DELETE FROM sync_log WHERE id IN \
+             (SELECT id FROM ({RANKED_SYNC_LOGS}) WHERE {PRUNABLE_SYNC_LOGS} LIMIT ?3)"
+        );
+        let batch = i64::from(crate::event_log::PRUNE_BATCH_ROWS);
+        let mut total = 0;
+        loop {
+            let deleted = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(cutoff_timestamp)
+                .bind(i64::from(keep_newest_per_account))
+                .bind(batch)
+                .execute(self.writer())
+                .await?
+                .rows_affected();
+            total += deleted;
+            if deleted < batch as u64 {
+                return Ok(total);
+            }
+        }
+    }
+
     pub async fn insert_sync_log(
         &self,
         account_id: &AccountId,

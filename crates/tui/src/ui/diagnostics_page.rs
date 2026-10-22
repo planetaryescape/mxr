@@ -988,6 +988,7 @@ mod tests {
             findings,
             sync_history: Vec::new(),
             log_total_bytes: 0,
+            history_retention_days: None,
         }
     }
 

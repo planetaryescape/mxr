@@ -2275,6 +2275,127 @@ pub async fn activity_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::R
     }
 }
 
+/// Starts the history prune loop. Both daemon entry points call this, so a
+/// new entry point gets pruning by calling it too.
+pub fn spawn_history_prune_loop(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
+    // Subscribe before spawning. A receiver made inside the task can miss a
+    // shutdown sent just before the task first runs, and then never exit.
+    let shutdown_rx = state.shutdown_receiver();
+    tokio::spawn(history_prune_loop(state, shutdown_rx))
+}
+
+/// Daily sweep that keeps operational history to `logging.event_retention_days`:
+/// `event_log` (behind `mxr history` and `mxr logs`) and `sync_log` (doctor's
+/// sync history). Unsubscribe receipts live in their own table and are never
+/// pruned here.
+async fn history_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
+    // First pass a minute after startup, then every 24 h.
+    let first_pass = tokio::time::Instant::now() + Duration::from_secs(60);
+    let mut ticker = tokio::time::interval_at(first_pass, Duration::from_secs(86_400));
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            changed = shutdown_rx.changed() => {
+                if changed.is_err() || *shutdown_rx.borrow_and_update() {
+                    tracing::info!("History prune loop exiting: shutdown requested");
+                    break;
+                }
+                continue;
+            }
+        }
+        match history_prune_pass(
+            &state.store,
+            &mxr_config::config_file_path(),
+            chrono::Utc::now(),
+        )
+        .await
+        {
+            Ok(HistoryPruneCounts {
+                events: 0,
+                sync_logs: 0,
+            }) => {}
+            Ok(counts) => tracing::info!(
+                events = counts.events,
+                sync_logs = counts.sync_logs,
+                "history prune deleted rows"
+            ),
+            Err(e) => tracing::warn!(error = %e, "history prune failed"),
+        }
+    }
+}
+
+/// Rows deleted by one history prune.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct HistoryPruneCounts {
+    pub events: u64,
+    pub sync_logs: u64,
+}
+
+/// Unix-seconds cutoff for `event_log.timestamp` and `sync_log.started_at`.
+/// Both columns store whole seconds, unlike activity rows (milliseconds).
+pub(crate) fn history_cutoff(now: chrono::DateTime<chrono::Utc>, retention_days: u32) -> i64 {
+    now.timestamp()
+        .saturating_sub(i64::from(retention_days).saturating_mul(86_400))
+}
+
+/// The retention setting as the config file says now. `config set` writes the
+/// file but not the daemon's cached snapshot, so a cached value must not decide
+/// what gets deleted. `None` when the file is missing, empty, whitespace-only or
+/// cannot be read or parsed. A missing or empty file loads as defaults, so
+/// reading it would prune on a value the user never set.
+///
+/// Takes the config writer's lock, so a save in progress is never half-read.
+pub(crate) fn retention_days_on_disk(config_path: &std::path::Path) -> Option<u32> {
+    // Held until the end of this function, across the read.
+    let _lock = mxr_config::lock_config_file_at(config_path).ok()?;
+    let contents = std::fs::read_to_string(config_path).ok()?;
+    if contents.trim().is_empty() {
+        return None;
+    }
+    // Errors are not logged here: a parse error quotes the offending line,
+    // which can be a credential. Callers say only that the setting is unknown.
+    mxr_config::load_config_from_str(&contents)
+        .ok()
+        .map(|config| config.logging.event_retention_days)
+}
+
+/// One pass, reading the retention from `config_path` as it is now. An
+/// unreadable or invalid config skips the pass: a stale or default value must
+/// never decide what gets deleted.
+pub(crate) async fn history_prune_pass(
+    store: &mxr_store::Store,
+    config_path: &std::path::Path,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<HistoryPruneCounts, sqlx::Error> {
+    let Some(days) = retention_days_on_disk(config_path) else {
+        tracing::warn!(
+            path = %config_path.display(),
+            "history prune skipped: config is missing, empty or unreadable"
+        );
+        return Ok(HistoryPruneCounts::default());
+    };
+    prune_history(store, days, now).await
+}
+
+/// Prunes history older than `retention_days` as of `now`. `0` keeps
+/// everything.
+pub(crate) async fn prune_history(
+    store: &mxr_store::Store,
+    retention_days: u32,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<HistoryPruneCounts, sqlx::Error> {
+    if retention_days == 0 {
+        return Ok(HistoryPruneCounts::default());
+    }
+    let cutoff = history_cutoff(now, retention_days);
+    Ok(HistoryPruneCounts {
+        events: store.prune_events_before(cutoff).await?,
+        sync_logs: store
+            .prune_sync_logs_before(cutoff, crate::sync_history::WINDOW)
+            .await?,
+    })
+}
+
 pub async fn mutation_dedup_prune_loop(
     state: Arc<AppState>,
     mut shutdown_rx: watch::Receiver<bool>,
@@ -3750,5 +3871,219 @@ mod tests {
             }) => assert_eq!(entries.len(), 1),
             other => panic!("expected rule history, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod history_prune_tests {
+    use super::*;
+    use chrono::{Duration as ChronoDuration, TimeZone};
+    use mxr_store::SyncStatus as StoreSyncStatus;
+    use std::time::Duration;
+
+    /// Rows written now are "old" when pruning as of a later instant, so the
+    /// tests move `now` instead of backdating rows or sleeping.
+    async fn seeded_state(events: u32, sync_rows: u32) -> (Arc<AppState>, AccountId) {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account_id = state.default_provider().account_id().clone();
+        for i in 0..events {
+            state
+                .store
+                .insert_event("info", "sync", &format!("Sync {i}"), None, None)
+                .await
+                .unwrap();
+        }
+        for _ in 0..sync_rows {
+            state
+                .store
+                .insert_sync_log(&account_id, &StoreSyncStatus::Success)
+                .await
+                .unwrap();
+        }
+        (state, account_id)
+    }
+
+    async fn remaining(state: &AppState, account_id: &AccountId) -> (i64, usize) {
+        let mut conn = state.store.reader().acquire().await.unwrap();
+        let events = mxr_store::count_prunable_events(&mut conn, i64::MAX)
+            .await
+            .unwrap();
+        drop(conn);
+        let sync = state
+            .store
+            .list_recent_sync_logs(account_id, 1_000)
+            .await
+            .unwrap()
+            .len();
+        (events as i64, sync)
+    }
+
+    #[test]
+    fn cutoff_is_retention_days_in_unix_seconds() {
+        let now = chrono::Utc
+            .with_ymd_and_hms(2026, 10, 22, 12, 0, 0)
+            .unwrap();
+        assert_eq!(
+            history_cutoff(now, 90),
+            (now - ChronoDuration::days(90)).timestamp()
+        );
+        // Huge retention must not overflow; the cutoff just lands far in the past.
+        assert!(history_cutoff(now, u32::MAX) < 0);
+    }
+
+    #[tokio::test]
+    async fn retention_zero_keeps_everything() {
+        let (state, account_id) = seeded_state(3, 55).await;
+        let later = chrono::Utc::now() + ChronoDuration::days(3650);
+
+        let counts = prune_history(&state.store, 0, later).await.unwrap();
+
+        assert_eq!(counts, HistoryPruneCounts::default());
+        assert_eq!(remaining(&state, &account_id).await, (3, 55));
+    }
+
+    #[tokio::test]
+    async fn ninety_days_deletes_only_rows_past_the_cutoff() {
+        let (state, account_id) = seeded_state(3, 55).await;
+        let now = chrono::Utc::now();
+
+        // 89 days on, every row is still inside the window.
+        let early = prune_history(&state.store, 90, now + ChronoDuration::days(89))
+            .await
+            .unwrap();
+        assert_eq!(early, HistoryPruneCounts::default());
+        assert_eq!(remaining(&state, &account_id).await, (3, 55));
+
+        // 91 days on, the events are past the cutoff. Sync keeps the newest 50
+        // per account, so 5 of the 55 go.
+        let late = prune_history(&state.store, 90, now + ChronoDuration::days(91))
+            .await
+            .unwrap();
+        assert_eq!(
+            late,
+            HistoryPruneCounts {
+                events: 3,
+                sync_logs: 5
+            }
+        );
+        assert_eq!(remaining(&state, &account_id).await, (0, 50));
+    }
+
+    #[tokio::test]
+    async fn huge_retention_deletes_nothing_and_does_not_overflow() {
+        let (state, account_id) = seeded_state(2, 2).await;
+        let later = chrono::Utc::now() + ChronoDuration::days(3650);
+
+        let counts = prune_history(&state.store, u32::MAX, later).await.unwrap();
+
+        assert_eq!(counts, HistoryPruneCounts::default());
+        assert_eq!(remaining(&state, &account_id).await, (2, 2));
+    }
+
+    /// A missing or empty file loads as defaults (retention 90). Pruning on
+    /// that would delete history the user never asked to drop.
+    #[tokio::test]
+    async fn pass_skips_a_missing_or_empty_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let later = chrono::Utc::now() + ChronoDuration::days(91);
+        let missing = dir.path().join("missing.toml");
+        let empty = dir.path().join("empty.toml");
+        std::fs::write(&empty, "  \n\t\n").unwrap();
+
+        for config in [&missing, &empty] {
+            let (state, account_id) = seeded_state(3, 55).await;
+            let counts = history_prune_pass(&state.store, config, later)
+                .await
+                .unwrap();
+            assert_eq!(
+                counts,
+                HistoryPruneCounts::default(),
+                "{}",
+                config.display()
+            );
+            assert_eq!(remaining(&state, &account_id).await, (3, 55));
+        }
+    }
+
+    fn write_config(path: &std::path::Path, retention_days: u32) {
+        std::fs::write(
+            path,
+            format!("[logging]\nevent_retention_days = {retention_days}\n"),
+        )
+        .unwrap();
+    }
+
+    /// `config set` rewrites the file while the daemon runs. The pass reads the
+    /// file, so setting 0 stops pruning and setting 90 again resumes it, with
+    /// no restart.
+    #[tokio::test]
+    async fn pass_follows_the_config_file_when_it_changes() {
+        let (state, account_id) = seeded_state(3, 55).await;
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config.toml");
+        let later = chrono::Utc::now() + ChronoDuration::days(91);
+
+        write_config(&config, 0);
+        let counts = history_prune_pass(&state.store, &config, later)
+            .await
+            .unwrap();
+        assert_eq!(counts, HistoryPruneCounts::default());
+        assert_eq!(remaining(&state, &account_id).await, (3, 55));
+
+        write_config(&config, 90);
+        let counts = history_prune_pass(&state.store, &config, later)
+            .await
+            .unwrap();
+        assert_eq!(
+            counts,
+            HistoryPruneCounts {
+                events: 3,
+                sync_logs: 5
+            }
+        );
+        assert_eq!(remaining(&state, &account_id).await, (0, 50));
+    }
+
+    /// A config that cannot be read or parsed must skip the pass. Pruning on a
+    /// default here would delete history the user has asked to keep.
+    #[tokio::test]
+    async fn pass_with_an_unreadable_config_deletes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let later = chrono::Utc::now() + ChronoDuration::days(91);
+
+        let invalid = dir.path().join("invalid.toml");
+        std::fs::write(&invalid, "[logging\nevent_retention_days = ").unwrap();
+        // A directory where the file should be is a read error, not "missing".
+        let not_a_file = dir.path().join("dir-config.toml");
+        std::fs::create_dir(&not_a_file).unwrap();
+
+        for config in [&invalid, &not_a_file] {
+            let (state, account_id) = seeded_state(3, 55).await;
+            let counts = history_prune_pass(&state.store, config, later)
+                .await
+                .unwrap();
+            assert_eq!(
+                counts,
+                HistoryPruneCounts::default(),
+                "{}",
+                config.display()
+            );
+            assert_eq!(remaining(&state, &account_id).await, (3, 55));
+        }
+    }
+
+    /// Both daemon entry points start the loop through this function, and it
+    /// stops when shutdown is requested.
+    #[tokio::test]
+    async fn the_shared_spawn_stops_on_shutdown() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let handle = spawn_history_prune_loop(state.clone());
+
+        state.request_shutdown();
+
+        tokio::time::timeout(Duration::from_secs(5), handle)
+            .await
+            .expect("history prune loop exits after shutdown")
+            .unwrap();
     }
 }

@@ -149,8 +149,9 @@ includes active `mxr.log`; zero is invalid. Records over 64 KiB become a small
 valid JSON diagnostic. Cross-process locking and reopen-on-write prevent stale
 daemon handles through rotation. Stderr is mirrored only when owned by an
 ordinary CLI or foreground daemon, never stdout/TUI/stdio/dial-stdio logging.
-`mxr logs --purge --dry-run` previews manual owned-archive/event cleanup;
-automatic operational-history retention is separate. See the
+`mxr logs --purge --dry-run` previews manual owned-archive, event and sync cleanup.
+The daemon also prunes event and sync history daily to `event_retention_days`
+(see chapter 18). See the
 [observability guide](../../site/src/content/docs/guides/observability.md) for
 exact filenames, restart, follow and failure semantics.
 

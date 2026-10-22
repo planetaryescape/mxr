@@ -433,7 +433,7 @@ Notes:
 | `max_size_mb` | `250` | Per-file cap in MiB, positive. Oversized records become bounded JSON diagnostics. |
 | `max_files` | `10` | Positive total number of owned text files, including active `mxr.log`. |
 | `stderr` | `true` | Mirror tracing JSON to stderr only when the CLI/foreground daemon owns that output; never protocol stdout or TUI output. |
-| `event_retention_days` | `90` | Age cutoff for manual `mxr logs --purge`, not automatic database retention. |
+| `event_retention_days` | `90` | Days of event and sync history to keep. The daemon prunes older rows once a day; `0` keeps everything. Sync history keeps the newest 50 rows per account. Unsubscribe receipts are never pruned. |
 
 Size/count/stderr changes are read on subsequent writes. Archives use
 `mxr.<20-digit sequence>.log`; the shared `.mxr-log.lock` is never purged.

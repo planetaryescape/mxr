@@ -142,6 +142,21 @@ When you want the file open in `$EDITOR`:
 mxr logs --no-follow --limit 1000 > /tmp/mxr.log && $EDITOR /tmp/mxr.log
 ```
 
+### Automatic history retention
+
+The daemon prunes `event_log` and `sync_log` once a day, starting about a minute
+after startup. It reads `logging.event_retention_days` (default 90) on each pass,
+so `mxr config set logging.event_retention_days <n>` applies without a restart.
+`0` keeps everything. Rows older than the cutoff are deleted, except:
+
+- the newest "Lexical index rebuilt" event, which `mxr doctor` reads for the
+  index's last rebuild time;
+- each account's newest 50 `sync_log` rows, so a rarely syncing account keeps
+  the history doctor shows.
+
+Unsubscribe receipts are in their own table and are never pruned. The daemon
+logs row counts only, not contents.
+
 ### Bound local text logs
 
 ```toml
@@ -194,21 +209,23 @@ mxr logs --purge --dry-run --format json
 mxr logs --purge --format json
 ```
 
-Preview reports `selected_log_files`, `event_cutoff`, `purged_log_files` and
-`purged_event_rows`, with `dry_run: true`; the counts are what would be removed.
+Preview reports `selected_log_files`, `event_cutoff`, `purged_log_files`,
+`purged_event_rows` and `purged_sync_log_rows`, with `dry_run: true`; the counts are what would be removed.
 Apply uses the same archive selection and event timestamp predicate. Both use
 `event_retention_days` (default 90). Time and data can change between invocations;
 check a fresh preview before applying. This is not an immutable preview token.
 
 Only old regular owned archives are selected. The active file, lock, unknown
 names, symlinks and recent archives are preserved. Preview does not delete files,
-create a missing database, migrate it or change event rows. Apply manually prunes
-old `event_log` rows as before; it does not prune `sync_log`, AI usage or activity.
+create a missing database, migrate it or change event rows. Apply prunes old `event_log`
+rows and old `sync_log` rows, keeping each account's newest 50 sync rows. It does
+not prune activity.
 Purging event rows does not let a second unsubscribe go out: receipts for sent
 unsubscribes live in their own table, which the purge never touches.
 Filesystem and database cleanup are not a single transaction: an I/O error can
-leave partial progress. Automatic operational-history retention is a separate
-follow-up, not part of text rotation. Activity's existing pruning is unchanged.
+leave partial progress. The daemon also prunes event and sync history automatically once a day; see
+[automatic history retention](#automatic-history-retention). Activity's existing
+pruning is unchanged.
 
 ## Inspect persisted events
 

@@ -12,7 +12,7 @@ Logs go to two places:
    Shipped defaults are 250 MiB per file and 10 files including active, not the
    original 50/5 sketch. Structured tracing output; level defaults to `info`.
 
-2. **event_log SQLite table**: Structured, queryable events (sync completions, errors, rule executions, snooze events). Manual purge uses a 90-day cutoff by default; automatic retention is not yet implemented.
+2. **event_log SQLite table**: Structured, queryable events (sync completions, errors, rule executions, snooze events). Kept 90 days by default: a daemon prune runs once a day and deletes older rows (`logging.event_retention_days`; `0` keeps everything).
 
 Both are on disk, both survive daemon restarts. The text log captures configured debug/trace events except raw `async_imap` TRACE traffic, which can contain passwords and full message bodies. The event_log captures significant events at info level and above in a structured, queryable format.
 
@@ -264,8 +264,8 @@ Users should understand how much disk space logs consume and how to manage them.
 | Storage | Default retention | Default max size |
 |---|---|---|
 | Text log files | 10 total including active | 250 MiB each (2,500 MiB named-file cap) |
-| event_log table | Manual purge at 90 days | No automatic size/age bound added by text rotation |
-| sync_log / ai_usage | Automatic retention remains a separate follow-up | Not pruned by `mxr logs --purge` |
+| event_log table | 90 days, pruned daily (`logging.event_retention_days`; `0` keeps forever) | Age-bounded only; no size cap |
+| sync_log | Same 90-day cutoff, pruned daily, except each account's newest 50 rows, which are always kept | Age-bounded only; no size cap |
 | unsubscribe_receipts | Kept until the message is deleted | One row per message an unsubscribe was confirmed for, or has in flight; a stale in-flight claim expires after 10 minutes; never pruned by `mxr logs --purge` |
 
 Purging event_log does not affect unsubscribe safety. mxr checks
@@ -280,15 +280,22 @@ so a retry after that can send again.
 
 ### Pruning
 
-Automatic operational-history pruning below is an original design proposal,
-not shipped by S4a. The existing manual event purge uses this predicate only
-for `event_log`; activity has its own existing startup/daily policy:
+The daemon prunes `event_log` and `sync_log` once a day, about a minute after
+startup and then every 24 hours, reading `logging.event_retention_days` on each
+pass. The cutoff is that many days before now, in Unix seconds. Both tables store
+seconds; the activity log is in milliseconds and has its own policy.
 
-```sql
-DELETE FROM event_log WHERE timestamp < strftime('%s', 'now', '-90 days');
-DELETE FROM sync_log WHERE started_at < strftime('%s', 'now', '-90 days');
-DELETE FROM ai_usage WHERE timestamp < strftime('%s', 'now', '-90 days');
-```
+- `event_log`: rows older than the cutoff go, except the newest "Lexical index
+  rebuilt" row. `mxr doctor` shows when the index was last rebuilt from that row,
+  and no other row records it.
+- `sync_log`: rows older than the cutoff go, except each account's newest 50 rows
+  (by start time, then id). Doctor's sync history reads that same window, so a
+  rarely syncing account keeps the history doctor needs.
+- Deletes run in batches of 5,000 rows, so the writer is released between them.
+- Unsubscribe receipts are in their own table and are never pruned.
+
+`mxr logs --purge` runs the same selection on demand. Its `--dry-run` counts the
+same rows without deleting.
 
 ### User control
 
@@ -308,7 +315,7 @@ mxr doctor --store-stats
 # Output includes: database_size_bytes, log_size_bytes (active mxr.log only),
 # log_total_bytes (active file plus rotated archives), and the account count
 
-# Preview, then manually purge owned archives and old event rows
+# Preview, then manually purge owned archives, old event rows and old sync rows
 mxr logs --purge --dry-run --format json
 mxr logs --purge --format json
 ```
@@ -337,8 +344,8 @@ startup behavior, output ownership and rotation-aware follow limits.
 
 **D074: Log retention defaults — shipped configuration supersedes the original sketch**
 
-**Current**: Preserve shipped 250 MiB/file, 10 total files, stderr=true and
-90-day manual event cutoff. The historical 50 MiB/five-file total and automatic
-operational-history pruning were design goals, not the current runtime contract.
+**Current**: Preserve shipped 250 MiB/file, 10 total files and stderr=true. The
+historical 50 MiB/five-file total is not the runtime contract. The 90-day cutoff
+for event and sync history is applied automatically each day (D151).
 
-**Why**: Preserve the shipped configuration while making its limits effective. The default named-file budget is 2,500 MiB; users with less disk space can reduce the file size or count. The separate 90-day manual event cutoff keeps recent diagnostics available without claiming automatic database cleanup.
+**Why**: Preserve the shipped configuration while making its limits effective. The default named-file budget is 2,500 MiB; users with less disk space can reduce the file size or count. Operational history is bounded by age so the database does not grow without limit.

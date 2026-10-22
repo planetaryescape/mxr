@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.150](https://github.com/planetaryescape/mxr/compare/v0.6.149...v0.6.150) (2026-10-22)
+
+
+### Features
+
+* filter Messages to unread, your turn, waiting on them or past your pace, in every client ([#658](https://github.com/planetaryescape/mxr/issues/658)) ([4379ce7](https://github.com/planetaryescape/mxr/commit/4379ce703a9385260703f91366c93d630957210a))
+* put the composer's and arrivals' keys in the key definition, and fail on stray key listeners ([#660](https://github.com/planetaryescape/mxr/issues/660)) ([faf4341](https://github.com/planetaryescape/mxr/commit/faf434132929aba364e8e453ecc45f0c6cc6e2f4))
+
+
+### Bug Fixes
+
+* run only the cross-engine WebKit subset on the Mac runner ([#662](https://github.com/planetaryescape/mxr/issues/662)) ([53b6b68](https://github.com/planetaryescape/mxr/commit/53b6b68f3af3e8cecf0739b3d59c842eb4086394))
+
 ## [0.6.149](https://github.com/planetaryescape/mxr/compare/v0.6.148...v0.6.149) (2026-10-22)
 
 

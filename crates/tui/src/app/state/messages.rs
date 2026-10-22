@@ -6,7 +6,8 @@
 
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
-    AckPlanData, MessagesData, MessagesRowData, ModeGuideData, PersonPageData, TopicStateData,
+    AckPlanData, MessagesData, MessagesFilterData, MessagesRowData, ModeGuideData, PersonPageData,
+    TopicStateData,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -38,6 +39,9 @@ pub struct AckCountdown {
 
 #[derive(Debug, Clone, Default)]
 pub struct MessagesPageState {
+    /// What the list keeps: the turn and the two toggles. Sent with every
+    /// `ListMessages`.
+    pub filter: MessagesFilterData,
     pub messages: Option<MessagesData>,
     pub guide: Option<ModeGuideData>,
     /// The page for `page_for` (a row id).

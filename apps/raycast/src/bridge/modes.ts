@@ -25,8 +25,22 @@ export async function getNow(account?: string): Promise<NowData> {
   return (await read<Reply<"Now">>("/api/v1/mail/now", account)).now;
 }
 
-export async function getMessages(account?: string): Promise<MessagesData> {
-  return (await read<Reply<"Messages">>("/api/v1/mail/people?limit=200", account)).messages;
+/** What Messages keeps: a turn and the two toggles, as the daemon names them. */
+export interface MessagesFilter {
+  turn?: "mine" | "theirs";
+  unread?: boolean;
+  pace?: boolean;
+}
+
+export async function getMessages(
+  account?: string,
+  filter: MessagesFilter = {},
+): Promise<MessagesData> {
+  const query = new URLSearchParams({ limit: "200" });
+  if (filter.turn) query.set("turn", filter.turn);
+  if (filter.unread) query.set("unread", "true");
+  if (filter.pace) query.set("pace", "true");
+  return (await read<Reply<"Messages">>(`/api/v1/mail/people?${query}`, account)).messages;
 }
 
 export async function getTodo(account?: string): Promise<TodoRunway> {

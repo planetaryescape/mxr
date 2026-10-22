@@ -188,6 +188,7 @@ async fn client_chosen_keys_keep_at_most_sixteen_views() {
             Request::ListMessages {
                 account_id: None,
                 turn: None,
+                filter: Default::default(),
                 limit,
             },
         )

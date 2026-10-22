@@ -762,6 +762,7 @@ On a lit new sender, `1` to `4` answer its question; elsewhere they stay the num
 | `Enter` | Open in its mode |  |
 | `e` | Done here |  |
 | `r` | Reply |  |
+| `t` | Make it a to-do |  |
 | `o` | Open the email |  |
 | `A` | Let go of the Updates digest… | Previews the daemon's dry run first; undo afterwards |
 | `Esc` | Dismiss the hint |  |
@@ -792,6 +793,7 @@ On a lit new sender, `1` to `4` answer its question; elsewhere they stay the num
 | `]` | Next topic |  |
 | `p` | Go to the person page |  |
 | `o`, `v` | Show the message as sent |  |
+| `g f` | Filter the people list: turn, unread, past your pace | Ctrl+f in the TUI opens the same picker; the web filters with g f because Ctrl+f is the browser's Find |
 | `⌘Enter / Ctrl+Enter` | Send, then the next person whose turn it is |  |
 | `Esc` | Dismiss the hint, or back to the people |  |
 | `1` | New sender: keep in Messages |  |

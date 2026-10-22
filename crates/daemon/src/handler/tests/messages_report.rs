@@ -40,11 +40,11 @@ async fn messages_report() {
     let at = Utc::now();
 
     // Warm the page cache once so timings are steady-state, as in use.
-    let _ = messages::messages_at(&state, None, None, 50, at)
+    let _ = messages::messages_at(&state, None, Default::default(), 50, at)
         .await
         .unwrap();
     let started = Instant::now();
-    let data = messages::messages_at(&state, None, None, 50, at)
+    let data = messages::messages_at(&state, None, Default::default(), 50, at)
         .await
         .unwrap();
     println!("ListMessages: {:.0} ms", ms(started));
@@ -90,7 +90,10 @@ async fn messages_report() {
     let mine = messages::messages_at(
         &state,
         None,
-        Some(mxr_protocol::MessagesTurnData::Mine),
+        mxr_protocol::MessagesFilterData {
+            turn: Some(mxr_protocol::MessagesTurnData::Mine),
+            ..Default::default()
+        },
         50,
         at,
     )

@@ -443,6 +443,10 @@ impl App {
             };
         }
 
+        if self.modals.messages_filter.is_some() {
+            self.messages_filter_picker_key(key);
+            return None;
+        }
         if self.modals.draft_options.visible {
             return self.handle_draft_options_key(key);
         }

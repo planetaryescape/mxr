@@ -74,7 +74,7 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_thread_previews`
 - `mxr_list_place`
 - `mxr_sweep_preview`
-- `mxr_messages`: people as rows in four bands, with topics and what they asked
+- `mxr_messages`: people as rows in four bands, with topics and what they asked. Takes `turn` (`mine` or `theirs`), and `unread` and `past_pace` to keep only unread rows or rows past the usual pace
 - `mxr_person`: one person's page, each message as its new text with `trimmed` flags
 - `mxr_got_it`: previews the acknowledgement and returns a `preview_token`; sends only with `confirm=true`, the previewed text as `expect_text` and that token, within a minute
 - `mxr_arrivals`: where every email that arrived since Now was last opened went, counted once each

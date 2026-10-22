@@ -57,3 +57,73 @@ fn action_data(action: &KeyAction) -> KeyActionData {
             .collect(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use mxr_keymap::Client;
+    use mxr_protocol::MODE_GUIDES;
+
+    /// A mode's own context and its sub-views, in both clients.
+    fn places(mode: &str) -> &'static [&'static str] {
+        match mode {
+            "todo" => &["todo", "catchup", "expired"],
+            "reading" => &["reading", "reading-reader"],
+            "now" => &["now"],
+            "messages" => &["messages"],
+            "updates" => &["updates"],
+            "archive" => &["archive"],
+            _ => &[],
+        }
+    }
+
+    /// Every action a mode's guide or hints name has a key, and that key
+    /// does that action in that mode in both clients, so `mxr modes
+    /// explain`, the `?` sheet and the hints can't advertise a key that does
+    /// something else.
+    #[test]
+    fn every_key_a_mode_guide_shows_does_that_action_there() {
+        let keymap = mxr_keymap::defaults();
+        let mut wrong = Vec::new();
+        for guide in MODE_GUIDES {
+            let named = guide
+                .keys
+                .iter()
+                .copied()
+                .chain(guide.hints.iter().map(|hint| hint.key));
+            for (id, verb) in named {
+                let (Some(action), Some(key)) = (keymap.get(id), mxr_keymap::guide_key(id)) else {
+                    wrong.push(format!("{}: {id} ({verb}) has no key", guide.mode));
+                    continue;
+                };
+                let places = places(guide.mode);
+                let tui = action.tui.iter().any(|binding| {
+                    binding.keys.contains(&key)
+                        && places.iter().any(|place| binding.contexts.includes(place))
+                });
+                if !tui {
+                    wrong.push(format!(
+                        "{}: `{key}` doesn't {verb} ({id}) in the TUI",
+                        guide.mode
+                    ));
+                }
+                let web = action.is_for(Client::Web)
+                    && action.keys.contains(&key)
+                    && action
+                        .web_scopes()
+                        .iter()
+                        .any(|scope| *scope == "global" || places.contains(scope));
+                if !web {
+                    wrong.push(format!(
+                        "{}: `{key}` doesn't {verb} ({id}) in the web app",
+                        guide.mode
+                    ));
+                }
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "mode guides name keys that don't work:\n{}",
+            wrong.join("\n")
+        );
+    }
+}

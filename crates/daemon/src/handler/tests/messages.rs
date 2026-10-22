@@ -9,11 +9,14 @@ use chrono::{Duration, Utc};
 use mxr_core::id::{MessageId, ThreadId};
 use mxr_core::types::{Address, Envelope, MessageBody, MessageDirection, MessageMetadata};
 use mxr_protocol::{
-    MessagesBandData, MessagesData, MessagesRowKindData, PersonPageData, TopicStateData,
+    MessagesBandData, MessagesData, MessagesFilterData, MessagesRowKindData, MessagesTurnData,
+    PersonPageData, TopicStateData,
 };
 
 const SAMIR: &str = "samir@launchpad.example";
 const RUTH: &str = "ruth@keystone.example";
+const MAYA: &str = "maya@orbit.example";
+const JON: &str = "jon@northstar.example";
 
 async fn list(fx: &Fixture) -> MessagesData {
     match request(
@@ -21,6 +24,7 @@ async fn list(fx: &Fixture) -> MessagesData {
         Request::ListMessages {
             account_id: None,
             turn: None,
+            filter: Default::default(),
             limit: 50,
         },
     )
@@ -1315,4 +1319,447 @@ async fn a_name_that_looks_like_markup_stays_text_in_both_parts() {
         }
         other => panic!("expected the previewed HTML and text, got {other:?}"),
     }
+}
+
+/// Maya: your turn, unread, past her usual pace. Samir: your turn, unread,
+/// no pace yet. Jon: waiting on him, nothing unread.
+async fn seed_filter_rows(fx: &Fixture) {
+    // Pace: you answered Maya within an hour, twice, long ago. Pace counts
+    // replies linked by In-Reply-To, so the reply names its parent.
+    for days in [40, 45] {
+        let old = ThreadId::new();
+        let asked = fx.message(&old, MAYA, ME, Duration::days(days), None).await;
+        fx.message(
+            &old,
+            ME,
+            MAYA,
+            Duration::days(days) - Duration::hours(1),
+            asked.message_id_header.as_deref(),
+        )
+        .await;
+    }
+    let owed = ThreadId::new();
+    mail(
+        fx,
+        &owed,
+        ("Maya Ortiz", MAYA),
+        &[ME],
+        &[],
+        "Offsite",
+        Duration::days(2),
+    )
+    .await;
+    let fresh = ThreadId::new();
+    mail(
+        fx,
+        &fresh,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Contract",
+        Duration::hours(3),
+    )
+    .await;
+    let waiting = ThreadId::new();
+    mail(
+        fx,
+        &waiting,
+        ("Me", ME),
+        &[JON],
+        &[],
+        "Lunch",
+        Duration::days(2),
+    )
+    .await;
+}
+
+async fn filtered(
+    fx: &Fixture,
+    turn: Option<MessagesTurnData>,
+    filter: MessagesFilterData,
+) -> MessagesData {
+    match request(
+        fx,
+        Request::ListMessages {
+            account_id: None,
+            turn,
+            filter,
+            limit: 50,
+        },
+    )
+    .await
+    {
+        ResponseData::Messages { messages } => messages,
+        other => panic!("expected messages, got {other:?}"),
+    }
+}
+
+/// Every row shown in any band, once each, sorted by id.
+fn shown_ids(messages: &MessagesData) -> Vec<String> {
+    let mut ids: Vec<String> = messages
+        .your_turn
+        .iter()
+        .chain(&messages.pinned)
+        .chain(&messages.recent)
+        .chain(&messages.quiet)
+        .map(|row| row.id.clone())
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+fn person_ids(people: &[&str]) -> Vec<String> {
+    let mut ids: Vec<String> = people.iter().map(|who| format!("person:{who}")).collect();
+    ids.sort();
+    ids
+}
+
+#[tokio::test]
+async fn each_filter_alone_and_combined_keeps_its_rows_and_not_the_counts() {
+    let fx = Fixture::new().await;
+    seed_filter_rows(&fx).await;
+    let everyone = person_ids(&[MAYA, SAMIR, JON]);
+    let unread = MessagesFilterData {
+        unread: true,
+        ..Default::default()
+    };
+    let past_pace = MessagesFilterData {
+        past_pace: true,
+        ..Default::default()
+    };
+    let both = MessagesFilterData {
+        unread: true,
+        past_pace: true,
+        turn: None,
+    };
+
+    let all = filtered(&fx, None, MessagesFilterData::default()).await;
+    assert_eq!(shown_ids(&all), everyone);
+    assert_eq!(all.row_count, 3);
+    assert_eq!(all.matched, 3, "no filter matches what row_count counts");
+    assert_eq!(all.filter, MessagesFilterData::default());
+
+    // Each filter below is read after the plain list, so a cache hit on
+    // the plain key would show up as unfiltered rows here.
+    let only_unread = filtered(&fx, None, unread).await;
+    assert_eq!(shown_ids(&only_unread), person_ids(&[MAYA, SAMIR]));
+    assert_eq!(only_unread.matched, 2);
+    assert_eq!(only_unread.filter, unread);
+
+    let only_past = filtered(&fx, None, past_pace).await;
+    assert_eq!(shown_ids(&only_past), person_ids(&[MAYA]));
+    assert_eq!(only_past.matched, 1);
+
+    let combined = filtered(&fx, None, both).await;
+    assert_eq!(shown_ids(&combined), person_ids(&[MAYA]));
+    assert_eq!(combined.matched, 1);
+
+    let mine_unread = filtered(
+        &fx,
+        None,
+        MessagesFilterData {
+            turn: Some(MessagesTurnData::Mine),
+            unread: true,
+            past_pace: false,
+        },
+    )
+    .await;
+    assert_eq!(shown_ids(&mine_unread), person_ids(&[MAYA, SAMIR]));
+
+    let theirs = filtered(
+        &fx,
+        None,
+        MessagesFilterData {
+            turn: Some(MessagesTurnData::Theirs),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_eq!(shown_ids(&theirs), person_ids(&[JON]));
+    assert!(theirs.empty_state.is_none());
+
+    // Waiting on them has nothing unread: the filtered empty copy, with
+    // the turn named and what is still in Your turn.
+    let theirs_unread = filtered(
+        &fx,
+        None,
+        MessagesFilterData {
+            turn: Some(MessagesTurnData::Theirs),
+            unread: true,
+            past_pace: false,
+        },
+    )
+    .await;
+    assert!(shown_ids(&theirs_unread).is_empty());
+    assert_eq!(theirs_unread.matched, 0);
+    assert_eq!(
+        theirs_unread.empty_state.as_deref(),
+        Some("In Waiting on them, no unread messages from people.\nYour turn still has 2 people.")
+    );
+
+    // The header counts ignore every filter.
+    for filtered in [
+        &only_unread,
+        &only_past,
+        &combined,
+        &mine_unread,
+        &theirs_unread,
+    ] {
+        assert_eq!(filtered.row_count, all.row_count);
+        assert_eq!(filtered.thread_count, all.thread_count);
+        assert_eq!(filtered.your_turn_split, all.your_turn_split);
+    }
+    assert!(combined.empty_state.is_none());
+}
+
+#[tokio::test]
+async fn an_empty_filtered_view_says_what_was_filtered_and_what_is_left() {
+    let fx = Fixture::new().await;
+    seed_filter_rows(&fx).await;
+    // Maya is past pace, but she is your turn, so no one waiting on you is.
+    let past_waiting = filtered(
+        &fx,
+        None,
+        MessagesFilterData {
+            turn: Some(MessagesTurnData::Theirs),
+            past_pace: true,
+            unread: false,
+        },
+    )
+    .await;
+    assert_eq!(
+        past_waiting.empty_state.as_deref(),
+        Some("In Waiting on them, nobody is past your usual pace.\nYour turn still has 2 people.")
+    );
+
+    let unfiltered_clear = filtered(&fx, Some(MessagesTurnData::Theirs), Default::default()).await;
+    assert!(unfiltered_clear.empty_state.is_none());
+    assert_eq!(shown_ids(&unfiltered_clear), person_ids(&[JON]));
+}
+
+#[tokio::test]
+async fn the_filter_wins_over_a_disagreeing_top_level_turn_and_the_top_level_turn_still_works() {
+    let fx = Fixture::new().await;
+    seed_filter_rows(&fx).await;
+    let old_style = match request(
+        &fx,
+        Request::ListMessages {
+            account_id: None,
+            turn: Some(MessagesTurnData::Theirs),
+            filter: Default::default(),
+            limit: 50,
+        },
+    )
+    .await
+    {
+        ResponseData::Messages { messages } => messages,
+        other => panic!("expected messages, got {other:?}"),
+    };
+    assert_eq!(shown_ids(&old_style), person_ids(&[JON]));
+    assert_eq!(old_style.filter.turn, Some(MessagesTurnData::Theirs));
+
+    let disagree = match request(
+        &fx,
+        Request::ListMessages {
+            account_id: None,
+            turn: Some(MessagesTurnData::Theirs),
+            filter: MessagesFilterData {
+                turn: Some(MessagesTurnData::Mine),
+                ..Default::default()
+            },
+            limit: 50,
+        },
+    )
+    .await
+    {
+        ResponseData::Messages { messages } => messages,
+        other => panic!("expected messages, got {other:?}"),
+    };
+    assert_eq!(shown_ids(&disagree), person_ids(&[MAYA, SAMIR]));
+    assert_eq!(disagree.filter.turn, Some(MessagesTurnData::Mine));
+}
+
+#[test]
+fn each_filter_is_its_own_mode_cache_entry() {
+    use crate::handler::mode_cache::ModeView;
+    let view = |filter: MessagesFilterData, turn: Option<MessagesTurnData>| {
+        ModeView::of(&Request::ListMessages {
+            account_id: None,
+            turn,
+            filter,
+            limit: 50,
+        })
+    };
+    let plain = view(Default::default(), None);
+    assert_ne!(
+        plain,
+        view(
+            MessagesFilterData {
+                unread: true,
+                ..Default::default()
+            },
+            None
+        )
+    );
+    assert_ne!(
+        plain,
+        view(
+            MessagesFilterData {
+                past_pace: true,
+                ..Default::default()
+            },
+            None
+        )
+    );
+    assert_ne!(
+        plain,
+        view(Default::default(), Some(MessagesTurnData::Mine))
+    );
+    assert_eq!(
+        view(
+            MessagesFilterData {
+                turn: Some(MessagesTurnData::Mine),
+                ..Default::default()
+            },
+            None
+        ),
+        view(Default::default(), Some(MessagesTurnData::Mine)),
+        "the legacy top-level turn and the filter's turn are the same view"
+    );
+}
+
+/// `who` wrote, then you replied, so they wait on you not and the row is
+/// waiting on them. The message they wrote is unread unless `read`.
+async fn waiting_on(fx: &Fixture, who: &str, unread: bool, reply_age: Duration) -> Envelope {
+    let thread = ThreadId::new();
+    let mut asked = fx
+        .message(&thread, who, ME, reply_age + Duration::hours(2), None)
+        .await;
+    if !unread {
+        asked.flags = mxr_core::MessageFlags::READ;
+        fx.store_envelope(&asked, MessageDirection::Inbound).await;
+    }
+    fx.message(
+        &thread,
+        ME,
+        who,
+        reply_age,
+        asked.message_id_header.as_deref(),
+    )
+    .await;
+    asked
+}
+
+/// Pinning a person in Messages is adding them to the cadence watchlist.
+async fn pin(fx: &Fixture, email: &str) {
+    match request(
+        fx,
+        Request::WatchCadence {
+            account_id: fx.account.clone(),
+            email: email.to_string(),
+            expected_days: None,
+            note: None,
+            allow_list_sender: false,
+        },
+    )
+    .await
+    {
+        ResponseData::Ack => {}
+        other => panic!("expected Ack, got {other:?}"),
+    }
+}
+
+fn pinned_ids(messages: &MessagesData) -> Vec<String> {
+    let mut ids: Vec<String> = messages.pinned.iter().map(|row| row.id.clone()).collect();
+    ids.sort();
+    ids
+}
+
+#[tokio::test]
+async fn a_pinned_unread_person_past_the_cap_shows_under_unread() {
+    let fx = Fixture::new().await;
+    // Ten pinned people, newest first: the tenth is past Pinned's nine, and
+    // the only one with unread mail from them.
+    let mut ids = Vec::new();
+    for n in 0..10 {
+        let who = format!("pinned{n}@cap.example");
+        waiting_on(&fx, &who, n == 9, Duration::hours(n + 1)).await;
+        pin(&fx, &who).await;
+        ids.push(format!("person:{who}"));
+    }
+    ids.sort();
+
+    let all = filtered(&fx, None, MessagesFilterData::default()).await;
+    assert_eq!(
+        pinned_ids(&all),
+        ids[..9].to_vec(),
+        "unfiltered Pinned keeps nine"
+    );
+    assert_eq!(all.row_count, 9);
+
+    let unread = filtered(
+        &fx,
+        None,
+        MessagesFilterData {
+            unread: true,
+            ..Default::default()
+        },
+    )
+    .await;
+    let tenth = "person:pinned9@cap.example".to_string();
+    assert!(!all.pinned.iter().any(|row| row.id == tenth));
+    assert_eq!(
+        pinned_ids(&unread),
+        vec![tenth],
+        "the filter sees every pinned person"
+    );
+    assert_eq!(unread.matched, 1);
+    assert!(
+        unread.empty_state.is_none(),
+        "a matching row is not an empty view"
+    );
+    assert_eq!(unread.row_count, 9, "header counts ignore the filter");
+}
+
+#[tokio::test]
+async fn one_correspondent_in_two_accounts_is_two_rows_and_matched_counts_both() {
+    let fx = Fixture::new().await;
+    let other = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Other".into(),
+        email: "other@example.com".into(),
+        sync_backend: None,
+        send_backend: None,
+        enabled: true,
+    };
+    fx.state
+        .store
+        .insert_account(&other)
+        .await
+        .expect("account");
+    let maya = "maya@orbit.example";
+    fx.message(&ThreadId::new(), ME, maya, Duration::hours(2), None)
+        .await;
+    let mut there = fx
+        .message(&ThreadId::new(), ME, maya, Duration::hours(3), None)
+        .await;
+    there.id = MessageId::new();
+    there.account_id = other.id.clone();
+    there.provider_id = format!("other-{}", there.id);
+    there.message_id_header = Some(format!("<{}@other>", there.id));
+    fx.store_envelope(&there, MessageDirection::Outbound).await;
+
+    let all = filtered(&fx, None, MessagesFilterData::default()).await;
+    let maya_rows = all
+        .recent
+        .iter()
+        .filter(|row| row.id == format!("person:{maya}"))
+        .count();
+    assert_eq!(maya_rows, 2, "one row per account");
+    assert_eq!(all.row_count, 2);
+    assert_eq!(
+        all.matched, 2,
+        "no filter matches every row, once per account"
+    );
 }

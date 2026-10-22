@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.149"
+    "version": "0.6.150"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -3850,6 +3850,24 @@
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "unread",
+            "in": "query",
+            "description": "`true`: only rows with unread mail from them. Counts in the response are unchanged",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "pace",
+            "in": "query",
+            "description": "`true`: only rows where your turn has run past your usual pace. Counts in the response are unchanged",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           },
           {
@@ -17669,6 +17687,10 @@
             ],
             "description": "Set when Your turn is empty: the clear line or the never-had-any\nline."
           },
+          "filter": {
+            "$ref": "#/components/schemas/MessagesFilterData",
+            "description": "The filter the rows were kept by, echoed back."
+          },
           "generated_at": {
             "type": "string",
             "format": "date-time"
@@ -17683,6 +17705,12 @@
               "$ref": "#/components/schemas/MessagesLapsedData"
             },
             "description": "Up to three people whose usual pace lapsed, under the clear line."
+          },
+          "matched": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Distinct rows left after the filter, every band, before the list\nlimit. Equals `row_count` when no filter is on.",
+            "minimum": 0
           },
           "merge_suggestion_count": {
             "type": "integer",
@@ -17716,13 +17744,13 @@
           "recent_total": {
             "type": "integer",
             "format": "int32",
-            "description": "Rows in each band before the list limit.",
+            "description": "Rows in each band before the list limit, after the filter.",
             "minimum": 0
           },
           "row_count": {
             "type": "integer",
             "format": "int32",
-            "description": "People and groups in Messages, every band.",
+            "description": "People and groups in Messages, every band, unfiltered.",
             "minimum": 0
           },
           "thread_count": {
@@ -17740,6 +17768,31 @@
           "your_turn_split": {
             "$ref": "#/components/schemas/PeopleSplitData",
             "description": "Your turn's people, split as Now and the rail count them. With\n`turn=theirs` Your turn is cleared but this still describes it."
+          }
+        }
+      },
+      "MessagesFilterData": {
+        "type": "object",
+        "description": "What Messages keeps. Toggles AND with the turn and with each other, and\nnone of them changes the header counts.",
+        "properties": {
+          "past_pace": {
+            "type": "boolean",
+            "description": "Only rows where your turn has run past your usual pace with them."
+          },
+          "turn": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessagesTurnData",
+                "description": "Only rows where it is this side's turn; `None` keeps every turn."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unread": {
+            "type": "boolean",
+            "description": "Only rows with a message from them you haven't read."
           }
         }
       },
@@ -30610,7 +30663,7 @@
           },
           {
             "type": "object",
-            "description": "Messages: people you talk with, one row each, in four bands (Your\nturn, Pinned, Recent, Quiet), each row with its topics, a preview\nof what they asked and your usual pace. Your turn shares the one\nowed rule with Now. `turn` keeps only rows where it is that side's\nturn; `limit` caps Recent and Quiet (totals count everything).\nLocal reads only. Returns `ResponseData::Messages`.",
+            "description": "Messages: people you talk with, one row each, in four bands (Your\nturn, Pinned, Recent, Quiet), each row with its topics, a preview\nof what they asked and your usual pace. Your turn shares the one\nowed rule with Now. `filter` keeps only rows matching its turn,\nunread and past-pace settings; `limit` caps Recent and Quiet\n(totals count everything). The top-level `turn` is the older\nspelling of `filter.turn`; when both are given, the filter's wins.\nLocal reads only. Returns `ResponseData::Messages`.",
             "required": [
               "cmd"
             ],
@@ -30630,6 +30683,9 @@
                 "enum": [
                   "ListMessages"
                 ]
+              },
+              "filter": {
+                "$ref": "#/components/schemas/MessagesFilterData"
               },
               "limit": {
                 "type": "integer",

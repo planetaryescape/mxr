@@ -284,6 +284,7 @@ async fn allowing_a_notification_sender_preserves_visibility_not_automatic_reply
         Request::ListMessages {
             account_id: None,
             turn: None,
+            filter: Default::default(),
             limit: 50,
         },
     )

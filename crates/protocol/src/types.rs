@@ -2248,14 +2248,18 @@ pub enum Request {
     /// Messages: people you talk with, one row each, in four bands (Your
     /// turn, Pinned, Recent, Quiet), each row with its topics, a preview
     /// of what they asked and your usual pace. Your turn shares the one
-    /// owed rule with Now. `turn` keeps only rows where it is that side's
-    /// turn; `limit` caps Recent and Quiet (totals count everything).
+    /// owed rule with Now. `filter` keeps only rows matching its turn,
+    /// unread and past-pace settings; `limit` caps Recent and Quiet
+    /// (totals count everything). The top-level `turn` is the older
+    /// spelling of `filter.turn`; when both are given, the filter's wins.
     /// Local reads only. Returns `ResponseData::Messages`.
     ListMessages {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         turn: Option<MessagesTurnData>,
+        #[serde(default)]
+        filter: MessagesFilterData,
         #[serde(default = "default_messages_limit")]
         limit: u32,
     },

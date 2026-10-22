@@ -1,6 +1,5 @@
 ---
 source: crates/daemon/tests/modes_cli.rs
-assertion_line: 183
 expression: "serde_json::to_string_pretty(&guides).unwrap()"
 ---
 [
@@ -63,7 +62,7 @@ expression: "serde_json::to_string_pretty(&guides).unwrap()"
       },
       {
         "key": "h",
-        "verb": "highlight"
+        "verb": "highlight, while reading"
       },
       {
         "key": "o",

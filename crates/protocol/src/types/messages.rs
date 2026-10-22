@@ -25,6 +25,63 @@ pub mod messages_copy {
     pub const ACK_COUNTDOWN_SECONDS: u32 = 5;
     /// How long a Got it preview's token can be sent with.
     pub const ACK_PREVIEW_TTL_SECONDS: i64 = 60;
+
+    /// The empty line of a view a filter narrowed to nothing. Two lines:
+    /// what the filter kept out, then what is still there, so every client
+    /// shows the same words. The turn names the view the filter sits in.
+    pub fn filtered_empty(filter: super::MessagesFilterData, your_turn_people: u32) -> String {
+        debug_assert!(
+            filter.narrows(),
+            "the filtered copy is for a filter that narrows"
+        );
+        let sentence = match (filter.unread, filter.past_pace) {
+            (true, true) => "No unread messages from people past your usual pace.",
+            (true, false) => "No unread messages from people.",
+            // Only past pace is on: the caller only asks when a toggle is on.
+            (false, _) => "Nobody is past your usual pace.",
+        };
+        let sentence = match filter.turn {
+            None => sentence.to_string(),
+            Some(turn) => format!("In {}, {}", turn_name(turn), lower_first(sentence)),
+        };
+        let still = match your_turn_people {
+            0 => "Your turn is clear.".to_string(),
+            1 => "Your turn still has 1 person.".to_string(),
+            n => format!("Your turn still has {n} people."),
+        };
+        format!("{sentence}\n{still}")
+    }
+
+    /// The filters on, as the words every client shows in its filter
+    /// line: "Your turn · Unread". `None` when no filter is on.
+    pub fn filter_label(filter: super::MessagesFilterData) -> Option<String> {
+        let mut parts = Vec::new();
+        if let Some(turn) = filter.turn {
+            parts.push(turn_name(turn));
+        }
+        if filter.unread {
+            parts.push("Unread");
+        }
+        if filter.past_pace {
+            parts.push("Past your pace");
+        }
+        (!parts.is_empty()).then(|| parts.join(" · "))
+    }
+
+    fn turn_name(turn: super::MessagesTurnData) -> &'static str {
+        match turn {
+            super::MessagesTurnData::Mine => "Your turn",
+            super::MessagesTurnData::Theirs => "Waiting on them",
+        }
+    }
+
+    fn lower_first(text: &str) -> String {
+        let mut chars = text.chars();
+        match chars.next() {
+            Some(first) => first.to_lowercase().chain(chars).collect(),
+            None => String::new(),
+        }
+    }
 }
 
 /// The bands, top to bottom.
@@ -266,10 +323,17 @@ pub struct MessagesData {
     pub pinned: Vec<MessagesRowData>,
     pub recent: Vec<MessagesRowData>,
     pub quiet: Vec<MessagesRowData>,
-    /// Rows in each band before the list limit.
+    /// Rows in each band before the list limit, after the filter.
     pub recent_total: u32,
     pub quiet_total: u32,
-    /// People and groups in Messages, every band.
+    /// The filter the rows were kept by, echoed back.
+    #[serde(default)]
+    pub filter: MessagesFilterData,
+    /// Distinct rows left after the filter, every band, before the list
+    /// limit. Equals `row_count` when no filter is on.
+    #[serde(default)]
+    pub matched: u32,
+    /// People and groups in Messages, every band, unfiltered.
     pub row_count: u32,
     /// Conversations behind them.
     pub thread_count: u32,
@@ -293,6 +357,39 @@ pub enum MessagesTurnData {
     Mine,
     /// Waiting on them.
     Theirs,
+}
+
+/// What Messages keeps. Toggles AND with the turn and with each other, and
+/// none of them changes the header counts.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MessagesFilterData {
+    /// Only rows where it is this side's turn; `None` keeps every turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn: Option<MessagesTurnData>,
+    /// Only rows with a message from them you haven't read.
+    #[serde(default)]
+    pub unread: bool,
+    /// Only rows where your turn has run past your usual pace with them.
+    #[serde(default)]
+    pub past_pace: bool,
+}
+
+impl MessagesFilterData {
+    /// Whether a toggle is on: the filter then narrows the list beyond the
+    /// turn, and an empty result gets the filtered copy.
+    pub const fn narrows(self) -> bool {
+        self.unread || self.past_pace
+    }
+
+    /// The filter a request means: its own turn, else the older top-level
+    /// `turn`. A filter that names a turn wins over one that disagrees.
+    pub fn with_legacy_turn(self, turn: Option<MessagesTurnData>) -> Self {
+        Self {
+            turn: self.turn.or(turn),
+            ..self
+        }
+    }
 }
 
 /// Short notes read like chat; longer ones are letters.
@@ -522,4 +619,71 @@ pub struct PersonMergeData {
     pub dry_run: bool,
     /// "Samir Patel is now one person with 2 addresses."
     pub summary: String,
+}
+
+#[cfg(test)]
+mod filter_tests {
+    use super::messages_copy::{filter_label, filtered_empty};
+    use super::{MessagesFilterData, MessagesTurnData};
+
+    fn filter(turn: Option<MessagesTurnData>, unread: bool, past_pace: bool) -> MessagesFilterData {
+        MessagesFilterData {
+            turn,
+            unread,
+            past_pace,
+        }
+    }
+
+    #[test]
+    fn the_empty_copy_names_the_toggles_and_what_is_left() {
+        assert_eq!(
+            filtered_empty(filter(None, true, false), 1),
+            "No unread messages from people.\nYour turn still has 1 person."
+        );
+        assert_eq!(
+            filtered_empty(filter(None, false, true), 0),
+            "Nobody is past your usual pace.\nYour turn is clear."
+        );
+        assert_eq!(
+            filtered_empty(filter(None, true, true), 4),
+            "No unread messages from people past your usual pace.\nYour turn still has 4 people."
+        );
+        assert_eq!(
+            filtered_empty(filter(Some(MessagesTurnData::Mine), true, false), 2),
+            "In Your turn, no unread messages from people.\nYour turn still has 2 people."
+        );
+        assert_eq!(
+            filtered_empty(filter(Some(MessagesTurnData::Theirs), false, true), 3),
+            "In Waiting on them, nobody is past your usual pace.\nYour turn still has 3 people."
+        );
+    }
+
+    #[test]
+    fn the_label_names_each_filter_that_is_on() {
+        assert_eq!(filter_label(MessagesFilterData::default()), None);
+        assert_eq!(
+            filter_label(filter(Some(MessagesTurnData::Mine), true, false)).as_deref(),
+            Some("Your turn · Unread")
+        );
+        assert_eq!(
+            filter_label(filter(None, false, true)).as_deref(),
+            Some("Past your pace")
+        );
+    }
+
+    #[test]
+    fn a_filters_turn_wins_over_the_legacy_top_level_turn() {
+        assert_eq!(
+            MessagesFilterData::default()
+                .with_legacy_turn(Some(MessagesTurnData::Theirs))
+                .turn,
+            Some(MessagesTurnData::Theirs)
+        );
+        assert_eq!(
+            filter(Some(MessagesTurnData::Mine), false, false)
+                .with_legacy_turn(Some(MessagesTurnData::Theirs))
+                .turn,
+            Some(MessagesTurnData::Mine)
+        );
+    }
 }

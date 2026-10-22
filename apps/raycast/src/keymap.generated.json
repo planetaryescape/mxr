@@ -57,6 +57,18 @@
     ],
     "key": "o"
   },
+  "arrivals.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "arrivals.open": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "o"
+  },
   "catchup.down": {
     "modifiers": [
       "cmd"
@@ -325,6 +337,12 @@
     ],
     "key": "j"
   },
+  "messages.filter": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "f"
+  },
   "messages.new-topic": {
     "modifiers": [
       "cmd"
@@ -412,6 +430,12 @@
       "cmd"
     ],
     "key": "r"
+  },
+  "now.to-do": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "t"
   },
   "reader.bottom": {
     "modifiers": [

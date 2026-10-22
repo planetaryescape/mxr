@@ -170,6 +170,7 @@ export const SAME_ACTION: Record<string, string[]> = {
   "now.open": ["NowOpen"],
   "now.done": ["NowDone"],
   "now.reply": ["Reply"],
+  "now.to-do": ["CreateTodoFromMessage"],
   "now.open-email": ["NowOpenEmail"],
   "now.let-go-digest": ["NowLetGoDigest"],
   "now.close-hint": ["DismissHint"],
@@ -340,6 +341,18 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     why: "Ctrl+f is the browser's Find off macOS, so the web also filters with g f",
   },
   {
+    context: "messages",
+    keys: ["g f"],
+    bound: "web",
+    why: "Ctrl+f is the browser's Find off macOS, so the web also opens the Messages filter with g f",
+  },
+  {
+    context: "messages",
+    keys: ["Ctrl+f"],
+    bound: "tui",
+    why: "The TUI opens the Messages filter picker with Ctrl-f, as its mail list does",
+  },
+  {
     context: "list",
     keys: ["w"],
     bound: "web",
@@ -454,12 +467,6 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     keys: ["i a", "i m", "i d", "i A", "i M", "i D"],
     bound: "tui",
     why: "The TUI lens passes invite answers through; the web answers an invite from the reader",
-  },
-  {
-    context: "now",
-    keys: ["t"],
-    bound: "tui",
-    why: "The TUI makes a to-do from a Now row; on the web, open the row and press t there",
   },
   {
     context: "now",

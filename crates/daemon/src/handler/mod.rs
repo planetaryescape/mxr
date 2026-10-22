@@ -1825,8 +1825,17 @@ async fn dispatch(
         Request::ListMessages {
             account_id,
             turn,
+            filter,
             limit,
-        } => messages::list_messages(state, account_id.as_ref(), *turn, *limit).await,
+        } => {
+            messages::list_messages(
+                state,
+                account_id.as_ref(),
+                filter.with_legacy_turn(*turn),
+                *limit,
+            )
+            .await
+        }
         Request::GetPerson {
             account_id,
             person,

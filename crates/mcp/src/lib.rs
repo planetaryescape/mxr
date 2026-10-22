@@ -1978,18 +1978,13 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_messages",
-        description = "Messages: people the user talks with, one row each, in four bands (your_turn, pinned, recent, quiet). Each row is a person merged across their addresses (or a group thread), with its topics (threads), whose turn it is, the user's usual pace, and a preview: the verbatim ask from a cached gist, else the latest new text (quotes and signature removed). turn: 'mine' or 'theirs'. Read-only."
+        description = "Messages: people the user talks with, one row each, in four bands (your_turn, pinned, recent, quiet). Each row is a person merged across their addresses (or a group thread), with its topics (threads), whose turn it is, the user's usual pace, and a preview: the verbatim ask from a cached gist, else the latest new text (quotes and signature removed). turn: 'mine' or 'theirs'. unread: only rows with unread mail from them. past_pace: only rows where your turn has run past the usual pace. Filters narrow the rows; counts stay unfiltered. Read-only."
     )]
     pub async fn messages(
         &self,
         Parameters(input): Parameters<MessagesInput>,
     ) -> Result<McpJson<Value>, ErrorData> {
-        self.daemon_json(Request::ListMessages {
-            account_id: parse_optional_id(input.account_id)?,
-            turn: input.turn.map(Into::into),
-            limit: input.limit.unwrap_or(50).min(200),
-        })
-        .await
+        self.daemon_json(messages_request(input)?).await
     }
 
     #[tool(
@@ -2583,6 +2578,12 @@ pub struct MessagesInput {
     /// Only rows where it is this side's turn: mine or theirs.
     #[serde(default)]
     pub turn: Option<TurnInput>,
+    /// Only rows with unread mail from them.
+    #[serde(default)]
+    pub unread: bool,
+    /// Only rows where your turn has run past your usual pace with them.
+    #[serde(default)]
+    pub past_pace: bool,
     /// Rows in recent and quiet (default 50); totals count all.
     #[serde(default)]
     pub limit: Option<u32>,
@@ -2593,6 +2594,21 @@ pub struct MessagesInput {
 pub enum TurnInput {
     Mine,
     Theirs,
+}
+
+/// The `ListMessages` the tool asks for: the turn and both toggles as one
+/// filter, so a turn-only call reads the same as before.
+fn messages_request(input: MessagesInput) -> Result<Request, ErrorData> {
+    Ok(Request::ListMessages {
+        account_id: parse_optional_id(input.account_id)?,
+        turn: None,
+        filter: mxr_protocol::MessagesFilterData {
+            turn: input.turn.map(Into::into),
+            unread: input.unread,
+            past_pace: input.past_pace,
+        },
+        limit: input.limit.unwrap_or(50).min(200),
+    })
 }
 
 impl From<TurnInput> for mxr_protocol::MessagesTurnData {
@@ -2747,6 +2763,44 @@ pub enum MutationAction {
 mod tests {
     use super::*;
     use std::sync::Mutex;
+
+    #[test]
+    #[expect(
+        clippy::unwrap_used,
+        clippy::panic,
+        reason = "tests unwrap fixtures and name the request they expect"
+    )]
+    fn messages_forwards_both_toggles_and_keeps_turn_only_calls() {
+        let input: MessagesInput =
+            serde_json::from_value(json!({ "turn": "mine", "unread": true, "past_pace": true }))
+                .unwrap();
+        let Ok(Request::ListMessages {
+            turn,
+            filter,
+            limit,
+            ..
+        }) = messages_request(input)
+        else {
+            panic!("expected a ListMessages request");
+        };
+        assert_eq!(turn, None);
+        assert_eq!(filter.turn, Some(mxr_protocol::MessagesTurnData::Mine));
+        assert!(filter.unread && filter.past_pace);
+        assert_eq!(limit, 50);
+
+        let input: MessagesInput = serde_json::from_value(json!({ "turn": "theirs" })).unwrap();
+        let Ok(Request::ListMessages { filter, .. }) = messages_request(input) else {
+            panic!("expected a ListMessages request");
+        };
+        assert_eq!(filter.turn, Some(mxr_protocol::MessagesTurnData::Theirs));
+        assert!(!filter.unread && !filter.past_pace);
+
+        let input: MessagesInput = serde_json::from_value(json!({})).unwrap();
+        let Ok(Request::ListMessages { filter, .. }) = messages_request(input) else {
+            panic!("expected a ListMessages request");
+        };
+        assert_eq!(filter, mxr_protocol::MessagesFilterData::default());
+    }
 
     #[test]
     fn sorting_tool_rejects_arbitrary_actions_and_preserves_existing_actions() {

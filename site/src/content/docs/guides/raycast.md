@@ -38,7 +38,7 @@ changes. They stay in Raycast after you stop it.
 | Now | People, Due Soon, Updates, Reading, Coming Up | Read, Reply, Done Here, Tick Off, Open in mxr |
 | Inbox | Every inbox conversation, newest first | Read, Reply, Open in mxr |
 | Copy Latest Code | No window | Copies the newest current one-time code |
-| Messages | Your Turn, Pinned, Recent, Quiet | Read, Reply, Reply All (groups), Done Here, Open in mxr |
+| Messages | Your Turn, Pinned, Recent, Quiet | Read, Reply, Reply All (groups), Done Here, Filter (⌘F), Open in mxr |
 | To Do | Now, each coming week, Whenever, Later | Tick Off, Read Source Email, Open in mxr, Open Source Email in mxr |
 | Updates | Needs a Look, Changed, Routine | Copy Code, Read, Done Here, Let Go of This Digest, Open Link, Open in mxr |
 | Reading | The edition's bands, then Later | Read, Read in mxr, Open Original, Save for Later, Let Go |

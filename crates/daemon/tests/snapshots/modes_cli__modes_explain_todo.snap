@@ -61,10 +61,6 @@ expression: "serde_json::to_string_pretty(&guides).unwrap()"
         "verb": "undo"
       },
       {
-        "key": "t",
-        "verb": "make a to-do from a conversation"
-      },
-      {
         "key": "C",
         "verb": "catch up"
       },

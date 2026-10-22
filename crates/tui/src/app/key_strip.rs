@@ -22,6 +22,12 @@ impl App {
                 TodoPanel::Expired => "expired",
             },
             MailboxView::Updates => "updates",
+            MailboxView::Reading
+                if self.mailbox.reading_page.reader_focused
+                    && self.mailbox.reading_page.reader.is_some() =>
+            {
+                "reading-reader"
+            }
             MailboxView::Reading => "reading",
             MailboxView::ArchiveMode => "archive",
             _ => return None,
@@ -66,22 +72,19 @@ impl App {
                     },
                 )
             }
+            "reading-reader" => ("reading-reader", Vec::new()),
             "reading" => {
                 let page = &self.mailbox.reading_page;
-                if page.reader_focused && page.reader.is_some() {
-                    ("reading-reader", Vec::new())
+                let offer = matches!(
+                    self.selected_reading_row()?,
+                    ReadingRow::Item(item) if item.unsubscribe_offer.is_some()
+                );
+                let omit = if offer && !page.later_shelf {
+                    Vec::new()
                 } else {
-                    let offer = matches!(
-                        self.selected_reading_row()?,
-                        ReadingRow::Item(item) if item.unsubscribe_offer.is_some()
-                    );
-                    let omit = if offer && !page.later_shelf {
-                        Vec::new()
-                    } else {
-                        vec!["reading.unsubscribe"]
-                    };
-                    ("reading", omit)
-                }
+                    vec!["reading.unsubscribe"]
+                };
+                ("reading", omit)
             }
             "archive" if self.mailbox.records_page.showing_subscriptions() => {
                 ("archive.subscriptions", Vec::new())
@@ -179,6 +182,7 @@ fn mode_title(context: &str) -> &'static str {
         "expired" => "To do: Expired",
         "updates" => "Updates",
         "reading" => "Reading",
+        "reading-reader" => "Reading: the issue",
         "archive" => "Archive",
         _ => "Mode",
     }

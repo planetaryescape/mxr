@@ -413,58 +413,6 @@
     ],
     "key": "r"
   },
-  "place.done": {
-    "modifiers": [
-      "cmd"
-    ],
-    "key": "e"
-  },
-  "place.down": {
-    "modifiers": [
-      "cmd"
-    ],
-    "key": "j"
-  },
-  "place.move-sender": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "k"
-  },
-  "place.open": {
-    "modifiers": [
-      "cmd"
-    ],
-    "key": "o"
-  },
-  "place.pin": {
-    "modifiers": [
-      "cmd"
-    ],
-    "key": "p"
-  },
-  "place.sweep-all": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "a"
-  },
-  "place.sweep-bundle": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "s"
-  },
-  "place.unsubscribe": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "d"
-  },
   "reader.bottom": {
     "modifiers": [
       "cmd",

@@ -1477,13 +1477,17 @@ impl App {
 
         // Remaps are authoritative only in mail panes, after all modal/text
         // owners. Explicit keys also beat lens-specific single-key defaults.
-        if matches!(
-            self.current_ui_context(),
-            UiContext::MailboxList
-                | UiContext::MailboxMessage
-                | UiContext::SearchResults
-                | UiContext::SearchPreview
-        ) {
+        // A mode takes its remaps from its own keys.toml section, so
+        // `[mail_list]` stays out of it.
+        if self.mode_key_context().is_none()
+            && matches!(
+                self.current_ui_context(),
+                UiContext::MailboxList
+                    | UiContext::MailboxMessage
+                    | UiContext::SearchResults
+                    | UiContext::SearchPreview
+            )
+        {
             if let Some(action) = self.configured_mail_key(key) {
                 return action;
             }

@@ -114,12 +114,17 @@ impl App {
             .filter(|id| !omit.contains(&id.as_str()))
             .filter_map(|id| {
                 let action = keymap.get(id)?;
-                let key = action
-                    .tui
-                    .iter()
-                    .find(|binding| binding.contexts.includes(context))?
-                    .keys
-                    .first()?;
+                let remaps = &self.keybindings.modes;
+                let key = match remaps.key_for(context, id) {
+                    Some(key) => key,
+                    None => action
+                        .tui
+                        .iter()
+                        .find(|binding| binding.contexts.includes(context))?
+                        .keys
+                        .iter()
+                        .find(|key| remaps.lookup(context, key).is_none())?,
+                };
                 let label = action.short_label.as_deref().unwrap_or(&action.label);
                 Some((key_display(key), label.to_string()))
             })

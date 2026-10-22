@@ -40,7 +40,7 @@ pub(crate) mod test_fixtures;
 pub mod unsubscribe;
 
 use clap::Parser;
-use cli::{unsupported_command_guidance, Cli, Command, DaemonAction, DemoAction};
+use cli::{unsupported_command_guidance, Cli, Command, DaemonAction, DemoAction, KeysAction};
 
 pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
     if let Some(guidance) = unsupported_command_guidance(&args) {
@@ -534,6 +534,11 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::arrivals::run_corrections(action, account, limit, format).await?;
         }
+        Some(Command::Keys {
+            action: Some(KeysAction::Check { file }),
+            format,
+            ..
+        }) => commands::keys::check(file, format)?,
         Some(Command::Keys {
             action,
             client,

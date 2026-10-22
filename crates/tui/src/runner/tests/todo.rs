@@ -1055,3 +1055,17 @@ fn the_hint_bar_offers_to_dos_verbs_for_a_lit_task() {
         ]
     );
 }
+
+#[test]
+fn the_hint_bar_names_the_key_the_person_moved_a_verb_to() {
+    let mut app = todo_app(true);
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("keys.toml"),
+        "[todo]\n\"x\" = \"todo.done\"\n",
+    )
+    .unwrap();
+    app.load_keybindings_from(dir.path());
+    let hints = app.mode_strip_hints().expect("a lit to-do has a strip");
+    assert_eq!(hints[0], ("x".to_string(), "Done".to_string()));
+}

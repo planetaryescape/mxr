@@ -42,10 +42,10 @@ pub(crate) async fn triage_search(
             continue;
         };
         let body_text = load_body_text(state, &envelope).await;
-        let owned = state
-            .owned_addresses(&envelope.account_id)
-            .await
-            .unwrap_or_default();
+        // One read feeds both the cache key and the prompt. A failed read fails
+        // the search like the envelope read above: an empty set would be cached
+        // and served as if the account owned nothing.
+        let owned = state.owned_addresses(&envelope.account_id).await?;
         let owned_revision = crate::state::owned_addresses_revision(&owned);
         let content_hash = triage_content_hash(&envelope, &body_text, &owned_revision);
         if let Some(cached) = state
@@ -61,6 +61,7 @@ pub(crate) async fn triage_search(
                 result,
                 envelope,
                 body_text,
+                owned,
                 content_hash,
             });
         }
@@ -87,11 +88,12 @@ struct TriageMiss {
     result: SearchResultItem,
     envelope: Envelope,
     body_text: String,
+    owned: mxr_core::types::OwnedAddresses,
     content_hash: String,
 }
 
 async fn generate_triage(state: &AppState, miss: &TriageMiss) -> Result<TriageMessageData, String> {
-    let prompt = build_triage_prompt(state, &miss.envelope, &miss.body_text).await;
+    let prompt = build_triage_prompt(&miss.owned, &miss.envelope, &miss.body_text);
     let request = CompletionRequest {
         messages: vec![
             ChatMessage::system(guarded_system_prompt(summarize::SYSTEM_PROMPT)),
@@ -150,11 +152,11 @@ async fn load_body_text(state: &AppState, envelope: &Envelope) -> String {
         .unwrap_or_else(|| envelope.snippet.clone())
 }
 
-async fn build_triage_prompt(state: &AppState, envelope: &Envelope, body_text: &str) -> String {
-    let owned_addresses = state
-        .owned_addresses(&envelope.account_id)
-        .await
-        .unwrap_or_default();
+fn build_triage_prompt(
+    owned_addresses: &mxr_core::types::OwnedAddresses,
+    envelope: &Envelope,
+    body_text: &str,
+) -> String {
     let mut prompt = String::new();
     prompt.push_str("Account owner addresses:\n");
     if owned_addresses.is_empty() {
@@ -328,6 +330,24 @@ fn format_address(address: &Address) -> String {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn triage_prompt_names_the_owner_snapshot_it_was_given() {
+        use crate::test_fixtures::TestEnvelopeBuilder;
+        use mxr_core::types::OwnedAddresses;
+        let state = AppState::in_memory().await.unwrap();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(state.default_account_id())
+            .provider_id("snapshot")
+            .build();
+        // The prompt uses the snapshot the caller hashed, not a fresh store read.
+        let snapshot = OwnedAddresses::new(Some("snapshot-owner@example.com"), []);
+        let prompt = build_triage_prompt(&snapshot, &envelope, "body");
+        assert!(
+            prompt.contains("- snapshot-owner@example.com (primary)"),
+            "{prompt}"
+        );
+    }
+
     #[test]
     fn triage_content_hash_changes_when_the_owned_set_changes() {
         use crate::test_fixtures::TestEnvelopeBuilder;
@@ -364,7 +384,8 @@ mod tests {
             .snippet("BODY-INJECTION-MARKER")
             .build();
 
-        let prompt = build_triage_prompt(&state, &envelope, "BODY-INJECTION-MARKER").await;
+        let owned = state.owned_addresses(&envelope.account_id).await.unwrap();
+        let prompt = build_triage_prompt(&owned, &envelope, "BODY-INJECTION-MARKER");
         let begin = prompt
             .find(mxr_llm::UNTRUSTED_MAIL_BEGIN)
             .expect("begin marker present");

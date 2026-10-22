@@ -32,27 +32,33 @@ fn purge_selection(dir: &Path, cutoff: SystemTime) -> anyhow::Result<Vec<PathBuf
         .collect())
 }
 
-async fn purge_events(cutoff: i64, dry_run: bool) -> anyhow::Result<u64> {
-    let db = mxr_config::data_dir().join("mxr.db");
+/// Counts (dry run) or deletes the history rows a retention prune selects.
+/// Both tables use the store's predicates, so the preview and the real pass
+/// select the same rows.
+async fn purge_history(db: &Path, cutoff: i64, dry_run: bool) -> anyhow::Result<(u64, u64)> {
     if !db.exists() {
-        return Ok(0);
+        return Ok((0, 0));
     }
     if dry_run {
         use sqlx::Connection;
         let options = sqlx::sqlite::SqliteConnectOptions::new()
-            .filename(&db)
+            .filename(db)
             .read_only(true)
             .create_if_missing(false);
         let mut conn = sqlx::SqliteConnection::connect_with(&options).await?;
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM event_log WHERE timestamp < ?")
-            .bind(cutoff)
-            .fetch_one(&mut conn)
-            .await?;
+        let events = mxr_store::count_prunable_events(&mut conn, cutoff).await?;
+        let sync_logs =
+            mxr_store::count_prunable_sync_logs(&mut conn, cutoff, crate::sync_history::WINDOW)
+                .await?;
         conn.close().await?;
-        Ok(u64::try_from(count)?)
+        Ok((events, sync_logs))
     } else {
-        let store = mxr_store::Store::new(&db).await?;
-        Ok(store.prune_events_before(cutoff).await?)
+        let store = mxr_store::Store::new(db).await?;
+        let events = store.prune_events_before(cutoff).await?;
+        let sync_logs = store
+            .prune_sync_logs_before(cutoff, crate::sync_history::WINDOW)
+            .await?;
+        Ok((events, sync_logs))
     }
 }
 
@@ -64,38 +70,49 @@ pub async fn run(options: LogRunOptions) -> anyhow::Result<()> {
     );
     if options.purge {
         let days = mxr_config::load_config()?.logging.event_retention_days;
-        // event_log stores whole Unix seconds. Use that same exact instant for
-        // archive selection and reported preview metadata as well.
-        let cutoff = DateTime::from_timestamp(Utc::now().timestamp() - i64::from(days) * 86_400, 0)
-            .ok_or_else(|| {
-                anyhow::anyhow!("logging.event_retention_days exceeds supported cutoff range")
-            })?;
-        // Database work can wait for a writer. Never hold the archive lock
-        // across that await: a database writer may itself need to trace.
-        let events = purge_events(cutoff.timestamp(), options.dry_run).await?;
-        let selected = {
-            // Preview opens an existing lock read-only, without creating logs.
-            let _lock = if dir.exists() {
-                logging::lock(&dir, !options.dry_run)?
-            } else {
-                None
-            };
-            let selected = purge_selection(&dir, SystemTime::from(cutoff))?;
-            if !options.dry_run {
-                for path in &selected {
-                    std::fs::remove_file(path)?;
+        // Same cutoff rule as the daily history prune. Event and sync rows
+        // store whole Unix seconds, so this exact instant also selects the
+        // archives and is reported back.
+        let cutoff_secs = crate::loops::history_cutoff(Utc::now(), days);
+        let cutoff = DateTime::from_timestamp(cutoff_secs, 0).ok_or_else(|| {
+            anyhow::anyhow!("logging.event_retention_days exceeds supported cutoff range")
+        })?;
+        // Retention 0 keeps everything, so a manual purge deletes nothing.
+        let (events, sync_logs, selected) = if days == 0 {
+            (0, 0, Vec::new())
+        } else {
+            // Database work can wait for a writer. Never hold the archive lock
+            // across that await: a database writer may itself need to trace.
+            let db = mxr_config::data_dir().join("mxr.db");
+            let (events, sync_logs) =
+                purge_history(&db, cutoff.timestamp(), options.dry_run).await?;
+            let selected = {
+                // Preview opens an existing lock read-only, without creating logs.
+                let _lock = if dir.exists() {
+                    logging::lock(&dir, !options.dry_run)?
+                } else {
+                    None
+                };
+                let selected = purge_selection(&dir, SystemTime::from(cutoff))?;
+                if !options.dry_run {
+                    for path in &selected {
+                        std::fs::remove_file(path)?;
+                    }
                 }
-            }
-            selected
+                selected
+            };
+            (events, sync_logs, selected)
         };
         if json_mode {
             println!(
                 "{}",
-                json!({"purged_log_files":selected.len(),"purged_event_rows":events,"dry_run":options.dry_run,"event_cutoff":cutoff.to_rfc3339(),"selected_log_files":selected})
+                json!({"purged_log_files":selected.len(),"purged_event_rows":events,"purged_sync_log_rows":sync_logs,"dry_run":options.dry_run,"retention_days":days,"event_cutoff":cutoff.to_rfc3339(),"selected_log_files":selected})
             );
+        } else if days == 0 {
+            println!("Retention is 0 (keep forever); nothing purged");
         } else {
             println!(
-                "{} {} owned archive(s) and {} event row(s) before {}",
+                "{} {} owned archive(s), {} event row(s), and {} sync row(s) before {} (sync keeps the newest {} rows per account)",
                 if options.dry_run {
                     "Would purge"
                 } else {
@@ -103,7 +120,9 @@ pub async fn run(options: LogRunOptions) -> anyhow::Result<()> {
                 },
                 selected.len(),
                 events,
-                cutoff.to_rfc3339()
+                sync_logs,
+                cutoff.to_rfc3339(),
+                crate::sync_history::WINDOW,
             );
         }
         return Ok(());
@@ -336,6 +355,62 @@ fn parse_relative_duration(value: &str) -> Option<chrono::Duration> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn purge_dry_run_counts_both_tables_and_deletes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("mxr.db");
+        let store = mxr_store::Store::new(&db).await.unwrap();
+        let account = mxr_core::Account {
+            id: mxr_core::AccountId::new(),
+            name: "Test".into(),
+            email: "test@example.com".into(),
+            sync_backend: None,
+            send_backend: None,
+            enabled: true,
+        };
+        store.insert_account(&account).await.unwrap();
+        for i in 0..3 {
+            store
+                .insert_event("info", "sync", &format!("Sync {i}"), None, None)
+                .await
+                .unwrap();
+        }
+        for _ in 0..55 {
+            store
+                .insert_sync_log(&account.id, &mxr_store::SyncStatus::Success)
+                .await
+                .unwrap();
+        }
+        drop(store);
+        // Rows were written now, so a cutoff 91 days ahead selects them all.
+        let cutoff = Utc::now().timestamp() + 91 * 86_400 - 90 * 86_400;
+
+        let preview = purge_history(&db, cutoff, true).await.unwrap();
+        let rows_after_preview = {
+            let store = mxr_store::Store::new(&db).await.unwrap();
+            (
+                store
+                    .list_recent_sync_logs(&account.id, 1_000)
+                    .await
+                    .unwrap()
+                    .len(),
+                store
+                    .latest_event_timestamp("sync", None)
+                    .await
+                    .unwrap()
+                    .is_some(),
+            )
+        };
+        let real = purge_history(&db, cutoff, false).await.unwrap();
+
+        assert_eq!(preview, (3, 5), "preview counts both tables");
+        assert_eq!(
+            real, preview,
+            "real pass deletes exactly what preview counted"
+        );
+        assert_eq!(rows_after_preview, (55, true), "preview deleted nothing");
+    }
+
     #[test]
     fn scan_follows_retained_rotation_without_repeating_old_lines_and_waits_for_partial_line() {
         use std::io::Write;

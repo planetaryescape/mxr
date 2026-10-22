@@ -2275,6 +2275,76 @@ pub async fn activity_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::R
     }
 }
 
+/// Daily sweep that keeps operational history to `logging.event_retention_days`:
+/// `event_log` (behind `mxr history` and `mxr logs`) and `sync_log` (doctor's
+/// sync history). The config is read on every pass, so `config set` takes
+/// effect without a restart. Unsubscribe receipts live in their own table and
+/// are never pruned here.
+pub async fn history_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
+    // First pass a minute after startup, then every 24 h.
+    let first_pass = tokio::time::Instant::now() + Duration::from_secs(60);
+    let mut ticker = tokio::time::interval_at(first_pass, Duration::from_secs(86_400));
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            changed = shutdown_rx.changed() => {
+                if changed.is_err() || *shutdown_rx.borrow_and_update() {
+                    tracing::info!("History prune loop exiting: shutdown requested");
+                    break;
+                }
+                continue;
+            }
+        }
+        let days = state.config_snapshot().logging.event_retention_days;
+        match prune_history(&state.store, days, chrono::Utc::now()).await {
+            Ok(HistoryPruneCounts {
+                events: 0,
+                sync_logs: 0,
+            }) => {}
+            Ok(counts) => tracing::info!(
+                events = counts.events,
+                sync_logs = counts.sync_logs,
+                retention_days = days,
+                "history prune deleted rows"
+            ),
+            Err(e) => tracing::warn!(error = %e, "history prune failed"),
+        }
+    }
+}
+
+/// Rows deleted by one history prune.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct HistoryPruneCounts {
+    pub events: u64,
+    pub sync_logs: u64,
+}
+
+/// Unix-seconds cutoff for `event_log.timestamp` and `sync_log.started_at`.
+/// Both columns store whole seconds, unlike activity rows (milliseconds).
+pub(crate) fn history_cutoff(now: chrono::DateTime<chrono::Utc>, retention_days: u32) -> i64 {
+    now.timestamp()
+        .saturating_sub(i64::from(retention_days).saturating_mul(86_400))
+}
+
+/// Prunes history older than `retention_days` as of `now`. `0` keeps
+/// everything. Shared by the daily loop and tests.
+pub(crate) async fn prune_history(
+    store: &mxr_store::Store,
+    retention_days: u32,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<HistoryPruneCounts, sqlx::Error> {
+    if retention_days == 0 {
+        return Ok(HistoryPruneCounts::default());
+    }
+    let cutoff = history_cutoff(now, retention_days);
+    Ok(HistoryPruneCounts {
+        events: store.prune_events_before(cutoff).await?,
+        sync_logs: store
+            .prune_sync_logs_before(cutoff, crate::sync_history::WINDOW)
+            .await?,
+    })
+}
+
 pub async fn mutation_dedup_prune_loop(
     state: Arc<AppState>,
     mut shutdown_rx: watch::Receiver<bool>,
@@ -3750,5 +3820,111 @@ mod tests {
             }) => assert_eq!(entries.len(), 1),
             other => panic!("expected rule history, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod history_prune_tests {
+    use super::*;
+    use chrono::{Duration as ChronoDuration, TimeZone};
+    use mxr_store::SyncStatus as StoreSyncStatus;
+
+    /// Rows written now are "old" when pruning as of a later instant, so the
+    /// tests move `now` instead of backdating rows or sleeping.
+    async fn seeded_state(events: u32, sync_rows: u32) -> (Arc<AppState>, AccountId) {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account_id = state.default_provider().account_id().clone();
+        for i in 0..events {
+            state
+                .store
+                .insert_event("info", "sync", &format!("Sync {i}"), None, None)
+                .await
+                .unwrap();
+        }
+        for _ in 0..sync_rows {
+            state
+                .store
+                .insert_sync_log(&account_id, &StoreSyncStatus::Success)
+                .await
+                .unwrap();
+        }
+        (state, account_id)
+    }
+
+    async fn remaining(state: &AppState, account_id: &AccountId) -> (i64, usize) {
+        let mut conn = state.store.reader().acquire().await.unwrap();
+        let events = mxr_store::count_prunable_events(&mut conn, i64::MAX)
+            .await
+            .unwrap();
+        drop(conn);
+        let sync = state
+            .store
+            .list_recent_sync_logs(account_id, 1_000)
+            .await
+            .unwrap()
+            .len();
+        (events as i64, sync)
+    }
+
+    #[test]
+    fn cutoff_is_retention_days_in_unix_seconds() {
+        let now = chrono::Utc
+            .with_ymd_and_hms(2026, 10, 22, 12, 0, 0)
+            .unwrap();
+        assert_eq!(
+            history_cutoff(now, 90),
+            (now - ChronoDuration::days(90)).timestamp()
+        );
+        // Huge retention must not overflow; the cutoff just lands far in the past.
+        assert!(history_cutoff(now, u32::MAX) < 0);
+    }
+
+    #[tokio::test]
+    async fn retention_zero_keeps_everything() {
+        let (state, account_id) = seeded_state(3, 55).await;
+        let later = chrono::Utc::now() + ChronoDuration::days(3650);
+
+        let counts = prune_history(&state.store, 0, later).await.unwrap();
+
+        assert_eq!(counts, HistoryPruneCounts::default());
+        assert_eq!(remaining(&state, &account_id).await, (3, 55));
+    }
+
+    #[tokio::test]
+    async fn ninety_days_deletes_only_rows_past_the_cutoff() {
+        let (state, account_id) = seeded_state(3, 55).await;
+        let now = chrono::Utc::now();
+
+        // 89 days on, every row is still inside the window.
+        let early = prune_history(&state.store, 90, now + ChronoDuration::days(89))
+            .await
+            .unwrap();
+        assert_eq!(early, HistoryPruneCounts::default());
+        assert_eq!(remaining(&state, &account_id).await, (3, 55));
+
+        // 91 days on, the events are past the cutoff. Sync keeps the newest 50
+        // per account, so 5 of the 55 go.
+        let late = prune_history(&state.store, 90, now + ChronoDuration::days(91))
+            .await
+            .unwrap();
+        assert_eq!(
+            late,
+            HistoryPruneCounts {
+                events: 3,
+                sync_logs: 5
+            }
+        );
+        assert_eq!(remaining(&state, &account_id).await, (0, 50));
+    }
+
+    #[tokio::test]
+    async fn huge_retention_deletes_nothing_and_does_not_overflow() {
+        let (state, account_id) = seeded_state(2, 2).await;
+        let later = chrono::Utc::now() + ChronoDuration::days(3650);
+
+        let counts = prune_history(&state.store, u32::MAX, later).await.unwrap();
+
+        assert_eq!(counts, HistoryPruneCounts::default());
+        assert_eq!(remaining(&state, &account_id).await, (2, 2));
     }
 }

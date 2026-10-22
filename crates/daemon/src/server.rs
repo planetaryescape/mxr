@@ -336,6 +336,15 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
             loops::activity_prune_loop(activity_prune_state, shutdown_rx).await;
         });
 
+        // History prune: keeps event_log and sync_log to
+        // `logging.event_retention_days`. Same fire-and-forget shape as the
+        // activity prune; losing the last pass costs nothing.
+        let history_prune_state = state.clone();
+        tokio::spawn(async move {
+            let shutdown_rx = history_prune_state.shutdown_receiver();
+            loops::history_prune_loop(history_prune_state, shutdown_rx).await;
+        });
+
         // Mutation dedup + undo prune. 24h dedup TTL means rows older
         // than that are safe to drop; hourly cadence keeps the table
         // bounded under heavy mutation traffic.

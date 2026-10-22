@@ -572,8 +572,9 @@ These shipped defaults supersede the old 50/5 sketch. `max_size_mb` is per-file
 MiB; `max_files` includes active `mxr.log`. The 20-digit numeric archive namespace,
 native cross-process lock, bounded record diagnostics and restart/follow/purge
 policy are described in the [observability guide](../../site/src/content/docs/guides/observability.md).
-Manual event pruning is implemented; automatic operational-history retention
-is a separate follow-up. This does not change activity retention.
+Event and sync history is pruned automatically once a day to
+`event_retention_days`; `0` keeps everything. Sync history keeps each account's
+newest 50 rows. This does not change activity retention.
 
 ### TUI status bar enhancement
 

@@ -268,6 +268,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
             "log_path": report.log_path,
             "log_size_bytes": report.log_size_bytes,
             "log_total_bytes": report.log_total_bytes,
+            "history_retention_days": history_retention_days(),
             "accounts": report.sync_statuses.len(),
         });
         print_contextual_json(stats, fmt, remote_target, &selected_target)?;
@@ -719,6 +720,7 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
                 "Logs:         {} ({} bytes active, {} bytes with archives)",
                 report.log_path, report.log_size_bytes, report.log_total_bytes
             );
+            println!("History:      {}", history_retention_label());
             println!(
                 "Daemon info:  version={} protocol={} build={}",
                 report.daemon_version.as_deref().unwrap_or("unknown"),
@@ -1191,5 +1193,23 @@ mod tests {
         assert_eq!(format_duration(Duration::from_millis(450)), "450ms");
         assert_eq!(format_duration(Duration::from_millis(1_200)), "1.2s");
         assert_eq!(format_duration(Duration::from_secs(75)), "1m 15s");
+    }
+}
+
+/// `None` when the config cannot be read, so doctor still prints its report.
+fn history_retention_days() -> Option<u32> {
+    mxr_config::load_config()
+        .ok()
+        .map(|config| config.logging.event_retention_days)
+}
+
+fn history_retention_label() -> String {
+    match history_retention_days() {
+        Some(0) => "kept forever (automatic prune off)".to_string(),
+        Some(days) => format!(
+            "kept {days} days, pruned daily (sync keeps the newest {} rows per account)",
+            crate::sync_history::WINDOW
+        ),
+        None => "unknown (config unreadable)".to_string(),
     }
 }

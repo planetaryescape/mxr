@@ -127,7 +127,13 @@ export function MessagesRoute({
           />
         </>
       ) : messages.data ? (
-        <MessagesBody data={messages.data} guide={guide.data} search={search} threadId={threadId} />
+        <MessagesBody
+          data={messages.data}
+          stale={messages.isPlaceholderData}
+          guide={guide.data}
+          search={search}
+          threadId={threadId}
+        />
       ) : null}
     </section>
   );
@@ -152,11 +158,14 @@ function firstThread(row: MessagesRow | undefined): string {
 
 function MessagesBody({
   data,
+  stale,
   guide,
   search,
   threadId,
 }: {
   data: MessagesData;
+  /** The list is the previous filter's or account's answer, still loading. */
+  stale: boolean;
   guide?: ModeGuide;
   search: MessagesSearch;
   threadId?: string;
@@ -669,13 +678,13 @@ function MessagesBody({
 
   // The daemon says when the view being shown is empty (Waiting on has its
   // own line), so Your turn's rows are not the test.
-  const empty = data.empty_state != null;
+  // A stale answer describes the previous filter, so its count and empty line wait.
+  const empty = !stale && data.empty_state != null;
   const filter = filterOf(search);
   const filterBar = (
     <MessagesFilterBar
       filter={filter}
-      matched={data.matched ?? data.row_count}
-      total={data.row_count}
+      counts={stale ? null : { matched: data.matched ?? data.row_count, total: data.row_count }}
       onChange={setFilter}
     />
   );

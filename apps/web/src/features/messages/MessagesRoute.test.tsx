@@ -16,6 +16,7 @@ import type { Conversation, MessagesData, MessagesRow, MessagesTopic, PersonPage
 import { setActiveQueryClient } from "@/lib/queryClient";
 import { useModeDone, type ModeDoneOutcome } from "@/features/modes/modeDone";
 import { useUndo } from "@/state/undoStore";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 import { optionalEnum, optionalFlag, optionalString } from "@/lib/searchParams";
 import { focusActivePane } from "@/lib/keys/focusPane";
 
@@ -60,7 +61,17 @@ vi.mock("@/features/mail-actions/verbFeedback", () => ({
   soundFor: () => null,
   toneFor: () => "success",
 }));
-vi.mock("./MessagesList", () => ({ MessagesList: () => null }));
+vi.mock("./MessagesList", () => ({
+  MessagesList: ({ data }: { data: MessagesData }) => (
+    <ul>
+      {data.your_turn.map((listed) => (
+        <li key={listed.id} data-testid="listed-row">
+          {listed.id}
+        </li>
+      ))}
+    </ul>
+  ),
+}));
 vi.mock("./PersonPane", () => ({
   PersonPane: ({ page, onDone }: { page: PersonPage; onDone: () => void }) => (
     <div>
@@ -512,4 +523,81 @@ test("an empty filtered view shows the daemon's sentence and Clear filters, not 
   expect(screen.getByText(/Your turn still has 2 people\./)).toBeTruthy();
   expect(screen.queryByText("Nobody is waiting on you.")).toBeNull();
   expect(screen.getByRole("button", { name: "Clear filters" })).toBeTruthy();
+});
+
+test("a filter change keeps the list but hides the count and empty line until its answer lands", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  client.setQueryData(listKey, listOf(a));
+  const pending = deferred<FixtureReply>();
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people") && url.searchParams.get("unread") === "true") {
+      return pending.promise;
+    }
+    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  await mountMessages("/messages?turn=mine");
+  expect(await screen.findByText("Showing 1 of 1")).toBeTruthy();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Unread" }));
+  await waitFor(() =>
+    expect(http.send.mock.calls.map(([path]) => path)).toContainEqual(
+      expect.stringMatching(/unread=true/),
+    ),
+  );
+  // The previous filter's rows stay, but no count or empty line describes them.
+  expect(screen.getByTestId("listed-row").textContent).toBe("person:a");
+  expect(screen.queryByText(/Showing/)).toBeNull();
+
+  await act(async () => {
+    pending.resolve({
+      messages: listWith({
+        your_turn: [],
+        row_count: 1,
+        matched: 0,
+        your_turn_split: { write_with: 1, others: 0 },
+        empty_state: "No unread messages from people.\nYour turn still has 1 person.",
+        filter: { turn: "mine", unread: true, past_pace: false },
+      }),
+    });
+  });
+  expect(await screen.findByText(/No unread messages from people\./)).toBeTruthy();
+  expect(screen.getByText("Showing 0 of 1")).toBeTruthy();
+});
+
+test("switching account never shows the previous account's rows", async () => {
+  const previousScope = useUiPrefs.getState().accountScope;
+  const a = row("person:a", [topic("a-live")]);
+  const b = row("person:b", [topic("b-live")]);
+  client.setQueryData(listKey, listOf(a));
+  const otherAccount = deferred<FixtureReply>();
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people") && url.searchParams.get("account") === "acc-2") {
+      return otherAccount.promise;
+    }
+    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  try {
+    await mountMessages("/messages?turn=mine");
+    expect(await screen.findByText("person:a")).toBeTruthy();
+
+    act(() => useUiPrefs.setState({ accountScope: "acc-2" }));
+    await waitFor(() =>
+      expect(http.send.mock.calls.map(([path]) => path)).toContainEqual(
+        expect.stringMatching(/account=acc-2/),
+      ),
+    );
+    expect(screen.queryByText("person:a")).toBeNull();
+    expect(screen.queryByTestId("listed-row")).toBeNull();
+
+    await act(async () => {
+      otherAccount.resolve({ messages: listOf(b) });
+    });
+    expect(await screen.findByText("person:b")).toBeTruthy();
+  } finally {
+    act(() => useUiPrefs.setState({ accountScope: previousScope }));
+  }
 });

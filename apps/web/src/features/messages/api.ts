@@ -5,7 +5,7 @@
  * /people because /messages is the per-message API.
  */
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
@@ -58,21 +58,27 @@ export async function fetchMessages(
   return answer.messages;
 }
 
+/** Index of the account segment in a list key: `[...MESSAGES_KEY, "list", account, ...]`. */
+const LIST_ACCOUNT_AT = MESSAGES_KEY.length + 1;
+
 export function useMessagesQuery(filter: MessagesFilter = NO_FILTER) {
   const account = useUiPrefs((s) => s.accountScope);
+  const scope = account ?? "all";
   return useQuery({
     queryKey: [
       ...MESSAGES_KEY,
       "list",
-      account ?? "all",
+      scope,
       filter.turn ?? "all",
       ...(filter.unread ? ["unread"] : []),
       ...(filter.pastPace ? ["pace"] : []),
     ],
     queryFn: () => fetchMessages(account, filter),
-    // A filter change keeps the list on screen until its answer lands, so the
-    // filter line under the cursor doesn't unmount.
-    placeholderData: keepPreviousData,
+    // A filter change within one account keeps the list on screen until its
+    // answer lands, so the filter line under the cursor doesn't unmount. Another
+    // account's rows never stand in: that switch shows the skeleton as before.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[LIST_ACCOUNT_AT] === scope ? previous : undefined,
     staleTime: 15_000,
     refetchInterval: 60_000,
   });

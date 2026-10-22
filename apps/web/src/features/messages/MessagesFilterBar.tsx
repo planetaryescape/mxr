@@ -18,23 +18,25 @@ export function focusFilterBar(): void {
   document.querySelector<HTMLElement>(`${FILTER_BAR} [role="radio"][tabindex="0"]`)?.focus();
 }
 
-const TURN_OPTIONS: readonly (readonly [string, string])[] = [
-  ["all", "All"],
-  ["mine", "Your turn"],
-  ["theirs", "Waiting on them"],
-];
+/** One row per segment: its id, its label and the turn it keeps. */
+const TURN_CHOICES = [
+  ["all", "All", null],
+  ["mine", "Your turn", "mine"],
+  ["theirs", "Waiting on them", "theirs"],
+] as const satisfies readonly (readonly [string, string, MessagesTurn | null])[];
 
 export function MessagesFilterBar({
   filter,
-  matched,
-  total,
+  counts,
   onChange,
 }: {
   filter: MessagesFilter;
-  /** Rows the filter kept, in every band. */
-  matched: number;
-  /** Every row in Messages, unfiltered. */
-  total: number;
+  /**
+   * Rows the filter kept (in every band) and every row in Messages. Null while
+   * the answer for this filter is still loading, so the line never describes
+   * the previous filter.
+   */
+  counts: { matched: number; total: number } | null;
   onChange: (next: MessagesFilter) => void;
 }) {
   const filtered = isFiltered(filter);
@@ -46,10 +48,11 @@ export function MessagesFilterBar({
       <Segmented
         label="Show"
         value={filter.turn ?? "all"}
-        options={TURN_OPTIONS}
-        onChange={(value) =>
-          onChange({ ...filter, turn: value === "all" ? null : (value as MessagesTurn) })
-        }
+        options={TURN_CHOICES.map(([id, label]) => [id, label] as const)}
+        onChange={(value) => {
+          const choice = TURN_CHOICES.find(([id]) => id === value);
+          if (choice) onChange({ ...filter, turn: choice[2] });
+        }}
       />
       <Toggle
         label="Unread"
@@ -63,10 +66,14 @@ export function MessagesFilterBar({
       />
       {filtered ? (
         <p className="type-body ml-auto flex items-center gap-2 text-text-2">
-          <span>
-            Showing {matched} of {total}
-          </span>
-          <span aria-hidden="true">·</span>
+          {counts ? (
+            <>
+              <span>
+                Showing {counts.matched} of {counts.total}
+              </span>
+              <span aria-hidden="true">·</span>
+            </>
+          ) : null}
           <button
             type="button"
             onClick={() => onChange(NO_FILTER)}

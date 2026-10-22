@@ -12,7 +12,7 @@ use super::{mutations, HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::Utc;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::{AccountAddressLookup, UnsubscribeMethod};
+use mxr_core::types::{OwnedAddresses, UnsubscribeMethod};
 use mxr_core::MessageFlags;
 use mxr_protocol::{
     KindRuleData, MailKindData, MailPlaceData, ModeKindData, MutationCommand, PlaceBundleData,
@@ -48,9 +48,7 @@ pub(super) struct AccountKinds {
     /// Emails the user moved (`X`) whose move is in force.
     moves: HashMap<MessageId, mail_kind::SenderKind>,
     treatments: HashMap<MessageId, (String, String)>,
-    addresses: Arc<mxr_core::types::InMemoryAccountAddressLookup>,
-    account_id: AccountId,
-    account_email: Option<String>,
+    owned: OwnedAddresses,
 }
 
 impl AccountKinds {
@@ -94,28 +92,19 @@ impl AccountKinds {
             .into_iter()
             .filter_map(|(id, mode)| Some((id, mail_kind::kind_for_stored_mode(&mode)?)))
             .collect();
-        let account_email = store
-            .get_account(account_id)
-            .await?
-            .map(|account| account.email.to_ascii_lowercase());
+        let owned = state.owned_addresses(account_id).await?;
         Ok(Self {
             decisions,
             contacts,
             written_to,
             moves,
             treatments: state.store.rule_treatments(account_id).await?,
-            addresses: state.account_addresses.clone(),
-            account_id: account_id.clone(),
-            account_email,
+            owned,
         })
     }
 
     pub(super) fn is_self(&self, email: &str) -> bool {
-        self.addresses.is_account_address(&self.account_id, email)
-            || self
-                .account_email
-                .as_deref()
-                .is_some_and(|own| own.eq_ignore_ascii_case(email))
+        self.owned.contains(email)
     }
 
     pub(super) fn signals<'a>(&'a self, message: &'a PlaceMessage) -> KindSignals<'a> {

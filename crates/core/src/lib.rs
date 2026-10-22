@@ -99,6 +99,62 @@ mod tests {
         }
     }
 
+    fn address(account_id: &AccountId, email: &str, is_primary: bool) -> AccountAddress {
+        AccountAddress {
+            account_id: account_id.clone(),
+            email: email.to_string(),
+            is_primary,
+        }
+    }
+
+    #[test]
+    fn owned_addresses_match_ignoring_case_and_whitespace_and_keep_primary_first() {
+        let owned = OwnedAddresses::new(
+            Some(" Me@Example.com "),
+            ["alias@example.com", "me@example.com", ""],
+        );
+        assert_eq!(owned.primary(), Some("Me@Example.com"));
+        assert!(owned.contains("me@example.com"));
+        assert!(owned.contains("  ME@EXAMPLE.COM "));
+        assert!(owned.contains("Alias@Example.com"));
+        assert!(!owned.contains("someone@example.com"));
+        assert!(!owned.contains(""));
+        assert_eq!(
+            owned.iter().collect::<Vec<_>>(),
+            vec!["Me@Example.com", "alias@example.com"]
+        );
+        assert_eq!(
+            owned.canonical("ALIAS@example.com"),
+            Some("alias@example.com")
+        );
+    }
+
+    #[test]
+    fn owned_addresses_always_include_a_primary_passed_in() {
+        let owned = OwnedAddresses::new(Some("me@example.com"), []);
+        assert!(owned.contains("me@example.com"));
+        assert_eq!(owned.primary(), Some("me@example.com"));
+        assert!(OwnedAddresses::new(None, []).is_empty());
+    }
+
+    #[test]
+    fn registry_owned_set_follows_replace_for_each_account() {
+        let account_a = AccountId::new();
+        let lookup = InMemoryAccountAddressLookup::new();
+        lookup.replace([address(&account_a, "me@example.com", true)]);
+        assert!(!lookup.owned(&account_a).contains("alias@example.com"));
+
+        // An alias registered at runtime is visible on the next replace, with
+        // no restart and no per-caller reload.
+        lookup.replace([
+            address(&account_a, "me@example.com", true),
+            address(&account_a, "alias@example.com", false),
+        ]);
+        assert!(lookup.owned(&account_a).contains("alias@example.com"));
+        assert_eq!(lookup.owned(&account_a).primary(), Some("me@example.com"));
+        assert!(lookup.owned(&AccountId::new()).is_empty());
+    }
+
     #[test]
     fn in_memory_account_address_lookup_classifies_correctly() {
         let account_a = AccountId::new();
@@ -109,9 +165,9 @@ mod tests {
         assert!(!lookup.is_account_address(&account_a, "anyone@example.com"));
 
         lookup.replace([
-            (account_a.clone(), "A@Example.com".to_string()),
-            (account_a.clone(), "alias@example.com".to_string()),
-            (account_b.clone(), "b@other.com".to_string()),
+            address(&account_a, " A@Example.com ", true),
+            address(&account_a, "alias@example.com", false),
+            address(&account_b, "b@other.com", true),
         ]);
         assert!(lookup.is_loaded());
 
@@ -131,7 +187,7 @@ mod tests {
         assert!(!lookup.is_account_address(&AccountId::new(), "a@example.com"));
 
         // Replacing with a different set discards the previous one.
-        lookup.replace([(account_a.clone(), "fresh@example.com".to_string())]);
+        lookup.replace([address(&account_a, "fresh@example.com", true)]);
         assert!(lookup.is_loaded());
         assert!(lookup.is_account_address(&account_a, "fresh@example.com"));
         assert!(!lookup.is_account_address(&account_a, "a@example.com"));

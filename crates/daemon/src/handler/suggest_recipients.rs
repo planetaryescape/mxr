@@ -113,16 +113,13 @@ fn topic_text(draft: &Draft) -> String {
 }
 
 async fn self_addresses_for(state: &AppState, account_id: &AccountId) -> HashSet<String> {
-    let mut set = HashSet::new();
-    if let Ok(Some(account)) = state.store.get_account(account_id).await {
-        set.insert(account.email.to_lowercase());
-    }
-    if let Ok(addrs) = state.store.list_account_addresses(account_id).await {
-        for addr in addrs {
-            set.insert(addr.email.to_lowercase());
-        }
-    }
-    set
+    state
+        .owned_addresses(account_id)
+        .await
+        .unwrap_or_default()
+        .iter()
+        .map(str::to_lowercase)
+        .collect()
 }
 
 /// Bcc safety: do NOT include bcc participants in the candidate set.

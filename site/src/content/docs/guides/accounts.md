@@ -56,7 +56,8 @@ mxr accounts test ACCOUNT
 
 An account owns its configured account email plus any aliases you register.
 mxr uses that set to classify mail as inbound vs outbound, and to let you send
-from any of them.
+from any of them. The current primary address cannot be removed; promote another
+address with `set-primary` first.
 
 ```bash
 mxr accounts addresses list --account work

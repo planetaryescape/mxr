@@ -833,7 +833,7 @@ impl AppState {
         // first refresh after an account is configured.
         match store.list_all_account_addresses().await {
             Ok(addresses) if !addresses.is_empty() => {
-                account_addresses.replace(addresses.into_iter().map(|a| (a.account_id, a.email)));
+                account_addresses.replace(addresses);
             }
             Ok(_) => {}
             Err(err) => {
@@ -917,13 +917,23 @@ impl AppState {
     pub async fn refresh_account_addresses(&self) {
         match self.store.list_all_account_addresses().await {
             Ok(addresses) => {
-                self.account_addresses
-                    .replace(addresses.into_iter().map(|a| (a.account_id, a.email)));
+                self.account_addresses.replace(addresses);
             }
             Err(err) => {
                 tracing::warn!(error = %err, "failed to refresh account_addresses cache");
             }
         }
+    }
+
+    /// Every address the account answers to: the primary from the accounts row
+    /// (present even if its address row is missing) plus every registered alias
+    /// from the in-memory registry, which `refresh_account_addresses` keeps
+    /// current after each alias mutation.
+    pub async fn owned_addresses(
+        &self,
+        account_id: &AccountId,
+    ) -> std::result::Result<mxr_core::types::OwnedAddresses, sqlx::Error> {
+        owned_addresses_for(&self.store, &self.account_addresses, account_id).await
     }
 
     /// Load the lexical index structures used by an interactive search.
@@ -2064,6 +2074,10 @@ impl AppState {
         self.sync_error_chimes
             .retain_accounts(&provider_setup.providers.keys().cloned().collect());
 
+        // Accounts added since startup are written to the store by the setup
+        // above; the registry must learn them too or sync and desk miss their
+        // primary.
+        self.refresh_account_addresses().await;
         {
             let mut runtime = self.runtime.write();
             *runtime = ProviderRuntime {
@@ -2616,6 +2630,24 @@ fn provider_kind_name(kind: ProviderKind) -> &'static str {
         ProviderKind::OutlookWork => "outlook-work",
         ProviderKind::Fake => "fake",
     }
+}
+
+/// The shared owned-address read, for callers that hold the store and the
+/// registry rather than the whole `AppState`. See `AppState::owned_addresses`.
+pub(crate) async fn owned_addresses_for(
+    store: &Store,
+    registry: &mxr_core::types::InMemoryAccountAddressLookup,
+    account_id: &AccountId,
+) -> std::result::Result<mxr_core::types::OwnedAddresses, sqlx::Error> {
+    let primary = store
+        .get_account(account_id)
+        .await?
+        .map(|account| account.email);
+    let aliases = registry.owned(account_id);
+    Ok(mxr_core::types::OwnedAddresses::new(
+        primary.as_deref(),
+        aliases.iter(),
+    ))
 }
 
 #[cfg(test)]

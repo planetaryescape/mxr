@@ -116,6 +116,70 @@ impl MessageDirection {
     }
 }
 
+/// Every address an account answers to: the primary first, then aliases in
+/// store order. Membership ignores case and surrounding whitespace; the
+/// stored spelling is kept for the `From:` and reply headers that are built
+/// from it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OwnedAddresses {
+    primary: Option<String>,
+    /// Stored spellings, primary first, one entry per normalised address.
+    addresses: Vec<String>,
+    keys: std::collections::HashSet<String>,
+}
+
+impl OwnedAddresses {
+    /// Blank and duplicate addresses are dropped, so the primary is never
+    /// listed twice when it also arrives as an alias row.
+    pub fn new<'a>(primary: Option<&str>, aliases: impl IntoIterator<Item = &'a str>) -> Self {
+        let mut owned = Self::default();
+        if let Some(primary) = primary {
+            owned.push(primary);
+            owned.primary = owned.addresses.first().cloned();
+        }
+        for alias in aliases {
+            owned.push(alias);
+        }
+        owned
+    }
+
+    fn push(&mut self, email: &str) {
+        let spelling = email.trim();
+        if spelling.is_empty() {
+            return;
+        }
+        if self.keys.insert(spelling.to_lowercase()) {
+            self.addresses.push(spelling.to_string());
+        }
+    }
+
+    pub fn primary(&self) -> Option<&str> {
+        self.primary.as_deref()
+    }
+
+    pub fn contains(&self, email: &str) -> bool {
+        self.keys.contains(&email.trim().to_lowercase())
+    }
+
+    /// The stored spelling of `email`, if the account owns it.
+    pub fn canonical(&self, email: &str) -> Option<&str> {
+        let key = email.trim().to_lowercase();
+        self.addresses
+            .iter()
+            .find(|owned| owned.to_lowercase() == key)
+            .map(String::as_str)
+    }
+
+    /// Stored spellings, primary first.
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
+        self.addresses.iter().map(String::as_str)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.addresses.is_empty()
+    }
+}
+
 /// Lookup interface used by sync engine to classify direction. Concrete
 /// impl lives in the daemon (cache backed by `account_addresses`); test
 /// code uses a stub.
@@ -138,8 +202,7 @@ pub trait AccountAddressLookup: Send + Sync {
 /// and passes a clone into `SyncEngine`.
 #[derive(Default)]
 pub struct InMemoryAccountAddressLookup {
-    inner:
-        std::sync::RwLock<std::collections::HashMap<AccountId, std::collections::HashSet<String>>>,
+    inner: std::sync::RwLock<std::collections::HashMap<AccountId, std::sync::Arc<OwnedAddresses>>>,
     loaded: std::sync::atomic::AtomicBool,
 }
 
@@ -148,22 +211,27 @@ impl InMemoryAccountAddressLookup {
         Self::default()
     }
 
-    /// Replace the entire per-account address map. Trims and lower-cases each
-    /// email on insert so lookups are case-insensitive without per-call
-    /// allocation on the hot path. Addresses are keyed by `account_id` so a
-    /// lookup only ever matches the receiving account's own addresses.
-    pub fn replace(&self, addresses: impl IntoIterator<Item = (AccountId, String)>) {
-        let mut normalized: std::collections::HashMap<
-            AccountId,
-            std::collections::HashSet<String>,
-        > = std::collections::HashMap::new();
-        for (account_id, email) in addresses {
-            let email = email.trim().to_lowercase();
-            if email.is_empty() {
-                continue;
-            }
-            normalized.entry(account_id).or_default().insert(email);
+    /// Replace the entire per-account address map from `account_addresses`
+    /// rows. Addresses are keyed by `account_id` so a lookup only ever matches
+    /// the receiving account's own addresses.
+    pub fn replace(&self, rows: impl IntoIterator<Item = AccountAddress>) {
+        let mut grouped: std::collections::HashMap<AccountId, Vec<AccountAddress>> =
+            std::collections::HashMap::new();
+        for row in rows {
+            grouped.entry(row.account_id.clone()).or_default().push(row);
         }
+        let normalized = grouped
+            .into_iter()
+            .map(|(account_id, mut rows)| {
+                rows.sort_by(|a, b| (!a.is_primary, &a.email).cmp(&(!b.is_primary, &b.email)));
+                let primary = rows
+                    .iter()
+                    .find(|row| row.is_primary)
+                    .map(|row| row.email.as_str());
+                let owned = OwnedAddresses::new(primary, rows.iter().map(|row| row.email.as_str()));
+                (account_id, std::sync::Arc::new(owned))
+            })
+            .collect();
         let mut guard = self
             .inner
             .write()
@@ -171,21 +239,24 @@ impl InMemoryAccountAddressLookup {
         *guard = normalized;
         self.loaded.store(true, std::sync::atomic::Ordering::SeqCst);
     }
-}
 
-impl AccountAddressLookup for InMemoryAccountAddressLookup {
-    fn is_account_address(&self, account_id: &AccountId, email: &str) -> bool {
-        if !self.is_loaded() {
-            return false;
-        }
-        let needle = email.trim().to_lowercase();
+    /// The addresses `account_id` owns right now. Empty for unknown accounts
+    /// and before the first `replace`.
+    pub fn owned(&self, account_id: &AccountId) -> std::sync::Arc<OwnedAddresses> {
         let guard = self
             .inner
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard
             .get(account_id)
-            .is_some_and(|set| set.contains(&needle))
+            .cloned()
+            .unwrap_or_else(|| std::sync::Arc::new(OwnedAddresses::default()))
+    }
+}
+
+impl AccountAddressLookup for InMemoryAccountAddressLookup {
+    fn is_account_address(&self, account_id: &AccountId, email: &str) -> bool {
+        self.is_loaded() && self.owned(account_id).contains(email)
     }
 
     fn is_loaded(&self) -> bool {

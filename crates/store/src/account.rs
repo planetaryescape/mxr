@@ -153,12 +153,28 @@ impl super::Store {
         Ok(())
     }
 
+    /// Removing the primary is refused: every owned-address reader treats the
+    /// primary row as the account's own identity, so a missing row silently
+    /// drops the account's own mail out of direction and reply defaults.
     pub async fn remove_account_address(
         &self,
         account_id: &AccountId,
         email: &str,
     ) -> Result<(), sqlx::Error> {
         let aid = account_id.as_str();
+        let is_primary = sqlx::query_scalar::<_, i64>(
+            "SELECT is_primary FROM account_addresses WHERE account_id = ? AND email = ?",
+        )
+        .bind(aid.as_str())
+        .bind(email)
+        .fetch_optional(self.writer())
+        .await?;
+        if is_primary == Some(1) {
+            return Err(sqlx::Error::Protocol(
+                "cannot remove the primary address; set another address as primary first"
+                    .to_string(),
+            ));
+        }
         sqlx::query!(
             "DELETE FROM account_addresses WHERE account_id = ? AND email = ?",
             aid,

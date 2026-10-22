@@ -147,8 +147,7 @@ async fn load_body_text(state: &AppState, envelope: &Envelope) -> String {
 
 async fn build_triage_prompt(state: &AppState, envelope: &Envelope, body_text: &str) -> String {
     let owned_addresses = state
-        .store
-        .list_account_addresses(&envelope.account_id)
+        .owned_addresses(&envelope.account_id)
         .await
         .unwrap_or_default();
     let mut prompt = String::new();
@@ -156,9 +155,13 @@ async fn build_triage_prompt(state: &AppState, envelope: &Envelope, body_text: &
     if owned_addresses.is_empty() {
         prompt.push_str("- unknown\n");
     } else {
-        for address in owned_addresses {
-            let primary = if address.is_primary { " (primary)" } else { "" };
-            prompt.push_str(&format!("- {}{}\n", address.email, primary));
+        for address in owned_addresses.iter() {
+            let primary = if owned_addresses.primary() == Some(address) {
+                " (primary)"
+            } else {
+                ""
+            };
+            prompt.push_str(&format!("- {address}{primary}\n"));
         }
     }
     let date = envelope

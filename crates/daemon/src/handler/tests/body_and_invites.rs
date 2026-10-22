@@ -171,6 +171,7 @@ async fn dispatch_respond_invite_matches_account_alias_attendee() {
         .add_account_address(&account_id, "alias@example.com", false)
         .await
         .unwrap();
+    state.refresh_account_addresses().await;
     let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
         .account_id(account_id)
         .provider_id("calendar-alias")
@@ -1871,6 +1872,7 @@ async fn send_rejects_inline_reply_whose_attendee_differs_from_the_send_from() {
         .add_account_address(&account_id, "hello@example.com", false)
         .await
         .unwrap();
+    state.refresh_account_addresses().await;
     let source =
         seed_request_invite(&state, &account_id, "tamper-attendee", "hello@example.com").await;
     let state = Arc::new(state);

@@ -684,7 +684,7 @@ which From addresses the account may use.
 mxr accounts addresses list --account <account>
 mxr accounts addresses add --account <account> <email>
 mxr accounts addresses add --account <account> <email> --primary
-mxr accounts addresses remove --account <account> <email>
+mxr accounts addresses remove --account <account> <email>   # refuses the primary; set-primary first
 mxr accounts addresses set-primary --account <account> <email>
 ```
 

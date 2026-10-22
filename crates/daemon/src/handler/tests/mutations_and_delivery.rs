@@ -2604,6 +2604,7 @@ async fn send_uses_registered_alias_from_override() {
         .add_account_address(&account_id, "hello@example.com", false)
         .await
         .unwrap();
+    state.refresh_account_addresses().await;
     let state = Arc::new(state);
 
     let draft = draft_from(account_id, Some("hello@example.com"));
@@ -2714,6 +2715,7 @@ async fn save_draft_to_server_validates_from_like_send() {
         .add_account_address(&account_id, "hello@example.com", false)
         .await
         .unwrap();
+    state.refresh_account_addresses().await;
     let state = Arc::new(state);
 
     // Unowned override: rejected before the provider save payload is built.
@@ -2868,6 +2870,7 @@ async fn resolve_send_from_previews_and_validates_like_send() {
         .add_account_address(&account_id, "hello@example.com", false)
         .await
         .unwrap();
+    state.refresh_account_addresses().await;
     let state = Arc::new(state);
 
     // None resolves to the account primary.
@@ -2937,6 +2940,7 @@ async fn prepare_reply_defaults_from_to_delivered_alias() {
         .add_account_address(&account_id, "hello@example.com", false)
         .await
         .unwrap();
+    state.refresh_account_addresses().await;
 
     // Message delivered to the alias -> reply defaults its From to the alias.
     let to_alias = crate::test_fixtures::TestEnvelopeBuilder::new()
@@ -3063,6 +3067,7 @@ async fn prepare_reply_selects_owned_alias_from_a_genuine_delivered_to() {
         .add_account_address(&account_id, "hello@example.com", false)
         .await
         .unwrap();
+    state.refresh_account_addresses().await;
     let message_id = seed_reply_source_with_raw_headers(
         &state,
         &account_id,
@@ -3094,6 +3099,7 @@ async fn prepare_reply_neutralizes_a_value_injected_delivered_to_and_defaults_to
         .add_account_address(&account_id, "hello@example.com", false)
         .await
         .unwrap();
+    state.refresh_account_addresses().await;
     let message_id = seed_reply_source_with_raw_headers(
         &state,
         &account_id,
@@ -3124,6 +3130,7 @@ async fn prepare_reply_ignores_a_synthesized_name_delivered_to_and_defaults_to_p
         .add_account_address(&account_id, "hello@example.com", false)
         .await
         .unwrap();
+    state.refresh_account_addresses().await;
     let message_id = seed_reply_source_with_raw_headers(
         &state,
         &account_id,

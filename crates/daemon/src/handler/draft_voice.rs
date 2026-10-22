@@ -57,18 +57,16 @@ impl Counterparty {
 }
 
 pub(crate) async fn me(state: &AppState, account_id: &AccountId) -> Me {
-    let mut emails: Vec<(bool, String)> = state
-        .store
-        .list_account_addresses(account_id)
+    let emails = state
+        .owned_addresses(account_id)
         .await
         .unwrap_or_default()
-        .into_iter()
-        .map(|address| (address.is_primary, address.email))
+        .iter()
+        .map(str::to_string)
         .collect();
-    emails.sort_by_key(|(primary, _)| !primary);
     Me {
         name: state.store.my_display_name(account_id).await.ok().flatten(),
-        emails: emails.into_iter().map(|(_, email)| email).collect(),
+        emails,
     }
 }
 

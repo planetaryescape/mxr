@@ -81,23 +81,13 @@ async fn check_draft_safety_with_context(
         return Ok(report);
     };
 
-    let mut self_addresses = HashSet::new();
-    if let Some(account) = state
-        .store
-        .get_account(&draft.account_id)
+    let self_addresses: HashSet<String> = state
+        .owned_addresses(&draft.account_id)
         .await
         .map_err(|e| e.to_string())?
-    {
-        self_addresses.insert(account.email.to_ascii_lowercase());
-    }
-    for address in state
-        .store
-        .list_account_addresses(&draft.account_id)
-        .await
-        .map_err(|e| e.to_string())?
-    {
-        self_addresses.insert(address.email.to_ascii_lowercase());
-    }
+        .iter()
+        .map(str::to_ascii_lowercase)
+        .collect();
 
     let actual_recipients = draft
         .to
@@ -235,23 +225,13 @@ async fn build_safety_context(
     draft: &Draft,
     context: &DraftSafetyContextData,
 ) -> Result<mxr_safety::SafetyContext, String> {
-    let mut self_addresses = Vec::new();
-    if let Some(account) = state
-        .store
-        .get_account(&draft.account_id)
+    let self_addresses: Vec<String> = state
+        .owned_addresses(&draft.account_id)
         .await
         .map_err(|e| e.to_string())?
-    {
-        self_addresses.push(account.email.to_ascii_lowercase());
-    }
-    for address in state
-        .store
-        .list_account_addresses(&draft.account_id)
-        .await
-        .map_err(|e| e.to_string())?
-    {
-        self_addresses.push(address.email.to_ascii_lowercase());
-    }
+        .iter()
+        .map(str::to_ascii_lowercase)
+        .collect();
 
     let known_contacts = state
         .store
@@ -3192,9 +3172,14 @@ pub(crate) async fn resolve_from_address(
     let account_name = account.as_ref().map(|a| a.name.clone());
 
     // Owned set = the account's primary address plus every registered alias.
-    let mut owned: Vec<String> = vec![primary_email.clone()];
-    for address in state.store.list_account_addresses(account_id).await? {
-        owned.push(address.email);
+    let mut owned: Vec<String> = state
+        .owned_addresses(account_id)
+        .await?
+        .iter()
+        .map(str::to_string)
+        .collect();
+    if owned.is_empty() {
+        owned.push(primary_email.clone());
     }
 
     resolve_owned_from(account_name.as_deref(), &primary_email, &owned, requested).map_err(
@@ -3368,24 +3353,11 @@ async fn account_owned_addresses(
     state: &AppState,
     account_id: &mxr_core::AccountId,
 ) -> (String, Vec<String>) {
-    let primary = state
-        .store
-        .get_account(account_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|account| account.email)
-        .unwrap_or_default();
-    let mut owned = Vec::new();
-    if !primary.is_empty() {
-        owned.push(primary.clone());
-    }
-    if let Ok(aliases) = state.store.list_account_addresses(account_id).await {
-        for alias in aliases {
-            owned.push(alias.email);
-        }
-    }
-    (primary, owned)
+    let owned = state.owned_addresses(account_id).await.unwrap_or_default();
+    (
+        owned.primary().unwrap_or_default().to_string(),
+        owned.iter().map(str::to_string).collect(),
+    )
 }
 
 /// IPC handler for `Request::ResolveSendFrom`: resolve (and ownership-validate)
@@ -4210,11 +4182,13 @@ async fn ingest_sent_message(
     // immediately rather than waiting on the LLM round-trip.
     if state.config_snapshot().llm.enabled {
         let summary_store = state.store.clone();
+        let summary_addresses = state.account_addresses.clone();
         let summary_llm = state.llm.clone();
         let summary_thread_id = thread_id.clone();
         tokio::spawn(async move {
             if let Err(error) = crate::handler::summarize::summarize_thread_cached(
                 summary_store,
+                summary_addresses,
                 summary_llm,
                 &summary_thread_id,
             )

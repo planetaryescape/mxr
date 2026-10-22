@@ -199,11 +199,10 @@ pub(super) async fn list_invites(
             Some(addresses) => addresses.clone(),
             None => {
                 let addresses = state
-                    .store
-                    .list_account_addresses(&invite.account_id)
+                    .owned_addresses(&invite.account_id)
                     .await?
-                    .into_iter()
-                    .map(|a| a.email)
+                    .iter()
+                    .map(str::to_string)
                     .collect::<Vec<_>>();
                 address_cache.insert(invite.account_id.clone(), addresses.clone());
                 addresses
@@ -557,20 +556,13 @@ async fn build_invite_response_preview(
     {
         return Err("Calendar invite has a newer update; answer the latest invite".to_string());
     }
-    let mut account_emails = state
-        .store
-        .list_account_addresses(&invite.account_id)
+    let account_emails = state
+        .owned_addresses(&invite.account_id)
         .await
         .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(|address| address.email)
-        .collect::<Vec<_>>();
-    if !account_emails
         .iter()
-        .any(|email| email.eq_ignore_ascii_case(&account.email))
-    {
-        account_emails.push(account.email.clone());
-    }
+        .map(str::to_string)
+        .collect::<Vec<_>>();
     let attendee = mxr_mail_parse::matching_attendee_strict(&calendar, &account_emails)
         .map_err(|err| err.to_string())?;
 
@@ -884,12 +876,11 @@ async fn enrich_calendar_viewer_fields(
     };
 
     let addresses = state
-        .store
-        .list_account_addresses(&envelope.account_id)
+        .owned_addresses(&envelope.account_id)
         .await
         .map_err(|err| err.to_string())?
-        .into_iter()
-        .map(|a| a.email)
+        .iter()
+        .map(str::to_string)
         .collect::<Vec<_>>();
 
     if let Some((email, partstat)) = mxr_mail_parse::matching_attendee_lenient(calendar, &addresses)
@@ -1422,7 +1413,13 @@ pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> Handle
             let _ = populate_envelope_label_provider_ids(state, message, &labels).await;
         }
     }
-    let summary = super::summarize::valid_cached_summary(&state.store, thread_id, &messages).await;
+    let summary = super::summarize::valid_cached_summary(
+        &state.store,
+        &state.account_addresses,
+        thread_id,
+        &messages,
+    )
+    .await;
     Ok(ResponseData::Thread {
         thread,
         messages,

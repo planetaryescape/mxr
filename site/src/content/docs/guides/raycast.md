@@ -54,12 +54,13 @@ synced shows without reopening the command. The Inbox pauses that once you
 scroll past its first page, since reloading starts it from the top again.
 
 The daemon keeps ready-made views of what you read recently, so those reads
-are usually instant; after a few idle minutes the first read builds again,
-which takes about a second on a large mailbox. Any change to stored mail,
-your own actions included, makes the next read build afresh. A view
-built while a sync was still writing is rebuilt two seconds after the writes
-stop, so it is never more than that behind what the daemon has stored. Reads never count as a
-Reading visit or mark Updates seen.
+are usually instant. Any change to stored mail, your own actions included,
+makes the next read build afresh, and a view built while a sync was still
+writing is replaced as soon as that write finishes, so a list never misses
+mail the daemon has stored. A view more than a minute old is also built
+afresh, which takes about a second on a large mailbox; the list shows its
+last copy meanwhile. Reads never count as a Reading visit or mark Updates
+seen.
 
 ## Read a conversation
 

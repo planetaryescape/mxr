@@ -2264,10 +2264,12 @@ mod tests {
                 .execute(store.writer())
                 .await
                 .unwrap();
-            // (id, by_when): a user's promise, a dated detected row, an
-            // undated detected row, and a dated row from a draft promotion.
+            // (id, by_when): a user's promise, a user's promise with no
+            // date, a dated detected row, an undated detected row, and a
+            // dated row from a draft promotion.
             for (id, by_when) in [
                 ("msg-1::promise::0190", Some(1_000_i64)),
+                ("msg-3::promise::undated", None),
                 ("commitment-dated", Some(2_000)),
                 ("commitment-undated", None),
                 ("msg-2::cand-1", Some(3_000)),
@@ -2303,6 +2305,7 @@ mod tests {
                 ("commitment-undated".to_string(), None),
                 ("msg-1::promise::0190".to_string(), Some("user".to_string())),
                 ("msg-2::cand-1".to_string(), Some("model_date".to_string())),
+                ("msg-3::promise::undated".to_string(), None),
             ]
         );
     }

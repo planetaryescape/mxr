@@ -8,7 +8,9 @@ use crate::handler::{now, todos};
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use mxr_core::id::ThreadId;
 use mxr_core::types::MessageDirection;
-use mxr_store::{ByWhenSource, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
+use mxr_store::{
+    ByWhenSource, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord, TodoState,
+};
 use std::collections::{BTreeSet, HashMap};
 
 const SOURCES: [Option<ByWhenSource>; 4] = [
@@ -195,4 +197,80 @@ async fn now_shows_a_promise_due_soon_only_when_its_date_is_not_a_models() {
         })
         .collect();
     assert_eq!(in_now, expected);
+}
+
+/// BK's upgrade path: promises mirrored while their dates counted, then the
+/// dates turn out to be a model's and a restarted daemon reruns the mirror.
+#[tokio::test]
+async fn a_mirrored_promise_loses_its_due_date_when_the_date_turns_out_to_be_a_models() {
+    let fx = Fixture::new().await;
+    let at = Utc::now();
+    let soon = at + Duration::hours(2);
+    let (open, touched) = ("c-untouched", "c-touched");
+    for id in [open, touched] {
+        seed(
+            &fx,
+            id,
+            soon,
+            Some(ByWhenSource::Words),
+            CommitmentDirection::Yours,
+            CommitmentStatus::Open,
+        )
+        .await;
+    }
+    run_todo_pass(&fx, at).await;
+    let promise_todos = || async {
+        let mut rows = fx
+            .state
+            .store
+            .list_promise_todos(&fx.account)
+            .await
+            .unwrap();
+        rows.sort_by(|a, b| a.commitment_id.cmp(&b.commitment_id));
+        rows
+    };
+    let before = promise_todos().await;
+    assert_eq!(before.len(), 2);
+    for todo in &before {
+        assert_eq!(
+            todo.due_at.map(|due| due.timestamp()),
+            Some(soon.timestamp())
+        );
+        assert_eq!(todo.state, TodoState::Open);
+    }
+
+    // The user edited one of them, so the mirror must leave it alone.
+    sqlx::query("UPDATE todos SET user_edited = 1 WHERE commitment_id = ?")
+        .bind(touched)
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    // The dates were really a model's, as on a database from before R0.
+    sqlx::query("UPDATE contact_commitments SET by_when_source = 'model_date'")
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+
+    // A fresh fingerprints map, as after a daemon restart.
+    run_todo_pass(&fx, at).await;
+    let after = promise_todos().await;
+
+    assert_eq!(after.len(), 2, "no promise to-do is duplicated or dropped");
+    let find = |rows: &[mxr_store::TodoRecord], id: &str| {
+        rows.iter()
+            .find(|todo| todo.commitment_id.as_deref() == Some(id))
+            .cloned()
+            .unwrap()
+    };
+    let untouched = find(&after, open);
+    assert_eq!(untouched.id, find(&before, open).id, "same to-do, updated");
+    assert_eq!(untouched.due_at, None);
+    assert_eq!(untouched.state, TodoState::Open);
+    let kept = find(&after, touched);
+    assert_eq!(
+        kept.due_at.map(|due| due.timestamp()),
+        Some(soon.timestamp()),
+        "a to-do the user edited keeps its date"
+    );
+    assert_eq!(kept.state, TodoState::Open);
 }

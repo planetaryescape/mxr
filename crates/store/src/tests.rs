@@ -339,6 +339,37 @@ async fn recording_your_own_promise_marks_the_date_as_yours_even_over_a_detected
     assert_eq!(stored.by_when, Some(second));
     assert_eq!(stored.by_when_source, Some(ByWhenSource::User));
     assert!(!stored.date_unverified());
+
+    // A repeat without a date clears the date, and with it the source: a
+    // source only describes a date. The mirror's fingerprint notices.
+    let dated = store.promise_fingerprint(&account.id).await.unwrap();
+    let mut undated = again.clone();
+    undated.by_when = None;
+    undated.by_when_source = None;
+    store.record_own_promise(&undated).await.unwrap();
+    let stored = store.get_contact_commitment(&kept).await.unwrap().unwrap();
+    assert_eq!(stored.by_when, None);
+    assert_eq!(stored.by_when_source, None);
+    assert_ne!(store.promise_fingerprint(&account.id).await.unwrap(), dated);
+
+    // And a repeat with a date makes it the user's again.
+    store.record_own_promise(&again).await.unwrap();
+    let stored = store.get_contact_commitment(&kept).await.unwrap().unwrap();
+    assert_eq!(stored.by_when, Some(second));
+    assert_eq!(stored.by_when_source, Some(ByWhenSource::User));
+    assert_eq!(store.promise_fingerprint(&account.id).await.unwrap(), dated);
+}
+
+#[tokio::test]
+async fn recording_an_undated_own_promise_stores_no_source() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let record = commitment_fixture(&store, &account, None, None, "msg::promise::undated").await;
+    let id = store.record_own_promise(&record).await.unwrap();
+    let stored = store.get_contact_commitment(&id).await.unwrap().unwrap();
+    assert_eq!(stored.by_when, None);
+    assert_eq!(stored.by_when_source, None);
 }
 
 #[tokio::test]

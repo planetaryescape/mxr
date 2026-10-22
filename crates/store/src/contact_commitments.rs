@@ -268,8 +268,9 @@ impl super::Store {
         .bind(&record.what)
         .bind(record.by_when.map(|value| value.timestamp()))
         // The user's latest answer wins, so a repeat over a detected row
-        // makes that row's date theirs, whoever wrote it first.
-        .bind(ByWhenSource::User.as_str())
+        // makes that row's date theirs, whoever wrote it first. A promise
+        // with no date has no source to record.
+        .bind(record.by_when.map(|_| ByWhenSource::User.as_str()))
         .bind(record.evidence_msg_id.as_str())
         .bind(record.extracted_at.timestamp())
         .fetch_one(self.writer())

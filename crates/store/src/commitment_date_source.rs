@@ -53,10 +53,11 @@ pub(crate) const ACTIONABLE_BY_WHEN_SQL: &str = "by_when_source IN ('words', 'us
 /// user recorded keeps its `::promise::` id, and every other dated row was
 /// written by a model. Run by migration 094 and again on rows a backup copies
 /// from an older schema, which leaves the column empty. Rows that already
-/// have a source are left alone.
+/// have a source are left alone, and a row with no date keeps none.
 pub(crate) const BACKFILL_BY_WHEN_SOURCE_SQL: &str = "\
 UPDATE contact_commitments SET by_when_source = 'user' \
-  WHERE by_when_source IS NULL AND instr(id, '::promise::') > 0; \
+  WHERE by_when_source IS NULL AND by_when IS NOT NULL \
+    AND instr(id, '::promise::') > 0; \
 UPDATE contact_commitments SET by_when_source = 'model_date' \
   WHERE by_when_source IS NULL AND by_when IS NOT NULL;";
 

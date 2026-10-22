@@ -42,7 +42,12 @@ pub(crate) async fn triage_search(
             continue;
         };
         let body_text = load_body_text(state, &envelope).await;
-        let content_hash = triage_content_hash(&envelope, &body_text);
+        let owned = state
+            .owned_addresses(&envelope.account_id)
+            .await
+            .unwrap_or_default();
+        let owned_revision = crate::state::owned_addresses_revision(&owned);
+        let content_hash = triage_content_hash(&envelope, &body_text, &owned_revision);
         if let Some(cached) = state
             .store
             .get_triage_cache(&envelope.id, TRIAGE_PROMPT_VERSION)
@@ -253,10 +258,14 @@ fn verdict_from_token(token: &str) -> Option<TriageVerdictData> {
     }
 }
 
-fn triage_content_hash(envelope: &Envelope, body_text: &str) -> String {
+/// `owned_revision` covers the owner's address block in the prompt, so an
+/// alias added or removed later misses the cache. Like the summary key, this
+/// changes the key rather than the prompt version: the wording did not change.
+fn triage_content_hash(envelope: &Envelope, body_text: &str, owned_revision: &str) -> String {
     let mut hasher = Sha256::new();
     hash_str(&mut hasher, summarize::SUMMARY_PROMPT_VERSION);
     hash_str(&mut hasher, TRIAGE_PROMPT_VERSION);
+    hash_str(&mut hasher, owned_revision);
     hash_str(&mut hasher, &envelope.id.as_str());
     hash_str(&mut hasher, &envelope.provider_id);
     hash_str(
@@ -318,6 +327,28 @@ fn format_address(address: &Address) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn triage_content_hash_changes_when_the_owned_set_changes() {
+        use crate::test_fixtures::TestEnvelopeBuilder;
+        use mxr_core::types::OwnedAddresses;
+        let envelope = TestEnvelopeBuilder::new()
+            .provider_id("triage-hash")
+            .build();
+        let before = crate::state::owned_addresses_revision(&OwnedAddresses::new(
+            Some("me@example.com"),
+            [],
+        ));
+        let after = crate::state::owned_addresses_revision(&OwnedAddresses::new(
+            Some("me@example.com"),
+            ["alias@example.com"],
+        ));
+        assert_ne!(
+            triage_content_hash(&envelope, "body", &before),
+            triage_content_hash(&envelope, "body", &after),
+            "a cached verdict must miss once the owner's addresses change"
+        );
+    }
 
     #[tokio::test]
     async fn triage_prompt_wraps_single_message_in_untrusted_markers() {

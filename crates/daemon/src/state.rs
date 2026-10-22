@@ -2661,6 +2661,28 @@ pub(crate) async fn owned_addresses_for(
     ))
 }
 
+/// A stable fingerprint of an account's owned set, for cache keys whose
+/// content depends on which addresses the account owns. Case and alias order
+/// do not matter; membership and the primary do. The prompts mark the primary,
+/// so a primary change must miss too.
+pub(crate) fn owned_addresses_revision(owned: &mxr_core::types::OwnedAddresses) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    let mut update = |value: &str| {
+        // Length-prefixed so no two sets hash the same bytes.
+        hasher.update(value.len().to_string().as_bytes());
+        hasher.update(b":");
+        hasher.update(value.as_bytes());
+    };
+    update(&owned.primary().unwrap_or_default().to_ascii_lowercase());
+    let mut addresses: Vec<String> = owned.iter().map(str::to_ascii_lowercase).collect();
+    addresses.sort();
+    for address in &addresses {
+        update(address);
+    }
+    base16ct::lower::encode_string(&hasher.finalize())
+}
+
 /// Serialises registry rebuilds. Without it, a rebuild that read the store
 /// before an address change could publish after the rebuild that change
 /// triggered, and sync would classify with the older set.
@@ -2687,6 +2709,35 @@ pub(crate) async fn load_account_address_registry(
 mod tests {
 
     use super::*;
+
+    #[test]
+    fn owned_addresses_revision_ignores_case_and_order_and_follows_the_set() {
+        use mxr_core::types::OwnedAddresses;
+        let base = OwnedAddresses::new(Some("Me@Example.com"), ["alias@example.com"]);
+        let reordered = OwnedAddresses::new(Some("ME@example.com"), ["alias@example.com"]);
+        assert_eq!(
+            owned_addresses_revision(&base),
+            owned_addresses_revision(&reordered)
+        );
+        let new_primary = OwnedAddresses::new(Some("alias@example.com"), ["Me@Example.com"]);
+        assert_ne!(
+            owned_addresses_revision(&base),
+            owned_addresses_revision(&new_primary),
+            "the prompts mark the primary, so moving it must miss the cache"
+        );
+        let grown = OwnedAddresses::new(
+            Some("Me@Example.com"),
+            ["alias@example.com", "second@example.com"],
+        );
+        assert_ne!(
+            owned_addresses_revision(&base),
+            owned_addresses_revision(&grown)
+        );
+        assert_ne!(
+            owned_addresses_revision(&base),
+            owned_addresses_revision(&OwnedAddresses::default())
+        );
+    }
 
     #[tokio::test]
     async fn failed_registry_rebuild_stops_sync_reading_the_set_from_before_it() {

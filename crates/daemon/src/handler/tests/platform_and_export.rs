@@ -189,6 +189,136 @@ async fn dispatch_unsubscribe_is_idempotent_via_event_log() {
     );
 }
 
+/// Purging the event log must not let a second unsubscribe go out: the
+/// receipt, not the log row, is what stops it.
+#[tokio::test]
+async fn dispatch_unsubscribe_stays_idempotent_after_event_log_is_purged() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    let state = Arc::new(state);
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+
+    let mailto_id = state
+        .store
+        .list_envelopes_by_account(&state.default_account_id(), 200, 0)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|envelope| matches!(envelope.unsubscribe, UnsubscribeMethod::Mailto { .. }))
+        .map(|envelope| envelope.id)
+        .expect("mailto fixture");
+
+    let request = || IpcMessage {
+        expected_workspace: None,
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::Unsubscribe {
+            message_id: mailto_id.clone(),
+        }),
+    };
+
+    handle_request(&state, &request()).await;
+    assert_eq!(fake.sent_drafts().len(), 1, "first call sends the mail");
+
+    state.store.prune_events_before(i64::MAX).await.unwrap();
+    assert!(
+        !state
+            .store
+            .has_event_for_message_with_summary(&mailto_id.as_str(), "mutation", "unsubscrib")
+            .await
+            .unwrap(),
+        "the purge removed the log row the old guard relied on"
+    );
+
+    let resp = handle_request(&state, &request()).await;
+    assert!(matches!(
+        resp.payload,
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack
+        })
+    ));
+    assert_eq!(
+        fake.sent_drafts().len(),
+        1,
+        "a purged log must not cause a second unsubscribe mail"
+    );
+}
+
+/// The HTTP one-click POST is the external effect; count what reaches the
+/// server across a purge.
+#[tokio::test]
+async fn dispatch_one_click_post_fires_once_after_event_log_is_purged() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let posts = Arc::new(AtomicUsize::new(0));
+    let counter = posts.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = [0u8; 4096];
+            let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await;
+            counter.fetch_add(1, Ordering::SeqCst);
+            let _ = tokio::io::AsyncWriteExt::write_all(
+                &mut stream,
+                b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )
+            .await;
+        }
+    });
+
+    let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+    let state = Arc::new(state);
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+
+    let mut envelope = state
+        .store
+        .list_envelopes_by_account(&state.default_account_id(), 200, 0)
+        .await
+        .unwrap()
+        .into_iter()
+        .next()
+        .expect("at least one fixture envelope");
+    envelope.unsubscribe = UnsubscribeMethod::OneClick {
+        url: format!("http://{addr}/unsubscribe"),
+    };
+    state
+        .store
+        .upsert_envelope_with_direction(&envelope, mxr_core::types::MessageDirection::Inbound)
+        .await
+        .unwrap();
+
+    let request = || IpcMessage {
+        expected_workspace: None,
+        id: 1,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::Unsubscribe {
+            message_id: envelope.id.clone(),
+        }),
+    };
+
+    handle_request(&state, &request()).await;
+    assert_eq!(posts.load(Ordering::SeqCst), 1);
+
+    state.store.prune_events_before(i64::MAX).await.unwrap();
+    handle_request(&state, &request()).await;
+    assert_eq!(
+        posts.load(Ordering::SeqCst),
+        1,
+        "a purged log must not cause a second one-click POST"
+    );
+}
+
 /// Phase 2.6: when the unsubscribe URL fails (network error,
 /// non-2xx), the handler must surface an Error response. Quietly
 /// returning Ack would mislead the user into thinking they were

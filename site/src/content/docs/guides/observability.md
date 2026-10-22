@@ -204,6 +204,8 @@ Only old regular owned archives are selected. The active file, lock, unknown
 names, symlinks and recent archives are preserved. Preview does not delete files,
 create a missing database, migrate it or change event rows. Apply manually prunes
 old `event_log` rows as before; it does not prune `sync_log`, AI usage or activity.
+Purging event rows does not let a second unsubscribe go out: receipts for sent
+unsubscribes live in their own table, which the purge never touches.
 Filesystem and database cleanup are not a single transaction: an I/O error can
 leave partial progress. Automatic operational-history retention is a separate
 follow-up, not part of text rotation. Activity's existing pruning is unchanged.

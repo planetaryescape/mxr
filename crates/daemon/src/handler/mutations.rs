@@ -487,6 +487,40 @@ async fn log_mutation(
         .map_err(|e| e.to_string())
 }
 
+/// Records that an unsubscribe was sent. This is the only memory that stops
+/// a second send, so a failed write is an error the caller sees, not a
+/// warning: the send happened, and a retry would send it again.
+async fn record_unsubscribe_receipt(
+    state: &AppState,
+    envelope: &Envelope,
+    method: &str,
+) -> Result<(), crate::handler::HandlerError> {
+    state
+        .store
+        .record_unsubscribe_receipt(
+            &envelope.id,
+            &envelope.account_id,
+            method,
+            chrono::Utc::now().timestamp(),
+        )
+        .await
+        .map_err(|error| {
+            crate::handler::HandlerError::Message(format!(
+                "The unsubscribe was sent, but mxr could not record it, so a retry would send it again: {error}"
+            ))
+        })
+}
+
+fn unsubscribe_method_label(method: &UnsubscribeMethod) -> &'static str {
+    match method {
+        UnsubscribeMethod::OneClick { .. } => "one_click",
+        UnsubscribeMethod::HttpLink { .. } => "http",
+        UnsubscribeMethod::BodyLink { .. } => "body_link",
+        UnsubscribeMethod::Mailto { .. } => "mailto",
+        UnsubscribeMethod::None => "none",
+    }
+}
+
 fn quoted_subject(subject: &str) -> String {
     if subject.is_empty() {
         "message".to_string()
@@ -4580,16 +4614,10 @@ pub(super) async fn unsubscribe(
 // changes its stored header while this external operation awaits.
 async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerResult {
     let message_id = &envelope.id;
-    // Idempotency: if we already logged a successful unsubscribe for
-    // this message, return Ack without re-firing the side effect. The
-    // event-log entries written by this same handler ("Unsubscribed
-    // from …" / "Sent unsubscribe request for …") both contain the
-    // substring "unsubscrib", which is what we match on.
-    if state
-        .store
-        .has_event_for_message_with_summary(&message_id.as_str(), "mutation", "unsubscrib")
-        .await?
-    {
+    // Idempotency: a receipt means an unsubscribe was already sent for this
+    // message, so return Ack without re-firing the side effect. Receipts are
+    // kept apart from event_log, so purging history cannot re-send one.
+    if state.store.has_unsubscribe_receipt(message_id).await? {
         return Ok(ResponseData::Ack);
     }
 
@@ -4634,6 +4662,7 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
             };
             let rfc2822_message_id = mxr_outbound::email::generate_message_id(&from);
             sender.send(&draft, &from, &rfc2822_message_id).await?;
+            record_unsubscribe_receipt(state, envelope, "mailto").await?;
             if let Err(error) = log_mutation(
                 state,
                 envelope,
@@ -4653,6 +4682,12 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
             let client = reqwest::Client::new();
             match crate::unsubscribe::execute_unsubscribe(&envelope.unsubscribe, &client).await {
                 crate::unsubscribe::UnsubscribeResult::Success(result) => {
+                    record_unsubscribe_receipt(
+                        state,
+                        envelope,
+                        unsubscribe_method_label(&envelope.unsubscribe),
+                    )
+                    .await?;
                     if let Err(error) = log_mutation(
                         state,
                         envelope,

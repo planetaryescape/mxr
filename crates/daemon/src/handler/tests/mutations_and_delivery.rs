@@ -3477,6 +3477,44 @@ async fn unsubscribe_keep_mail_with_an_empty_preview_token_is_refused() {
     assert!(fake.sent_drafts().is_empty());
 }
 
+/// A committed preview sends once. Purging the event log and previewing and
+/// committing the same sender again must not send a second time.
+#[tokio::test]
+async fn unsubscribe_purge_commit_sends_once_after_event_log_is_purged() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+    let state = Arc::new(state);
+    let initial = sender_unsubscribe_result(sender_unsubscribe(&state, true, false, None).await);
+    for id in &initial.message_ids {
+        let mut envelope = state.store.get_envelope(id).await.unwrap().unwrap();
+        envelope.unsubscribe = mxr_core::types::UnsubscribeMethod::Mailto {
+            address: "purged@example.test".into(),
+            subject: None,
+        };
+        state.store.upsert_envelope(&envelope).await.unwrap();
+    }
+
+    let preview = sender_unsubscribe_result(sender_unsubscribe(&state, true, false, None).await);
+    let token = preview.preview_token.clone().unwrap();
+    sender_unsubscribe(&state, false, false, Some(token)).await;
+    assert_eq!(fake.sent_drafts().len(), 1);
+
+    state.store.prune_events_before(i64::MAX).await.unwrap();
+
+    let preview = sender_unsubscribe_result(sender_unsubscribe(&state, true, false, None).await);
+    let token = preview.preview_token.clone().unwrap();
+    sender_unsubscribe(&state, false, false, Some(token)).await;
+    assert_eq!(
+        fake.sent_drafts().len(),
+        1,
+        "a purged log must not cause a second purge-path unsubscribe mail"
+    );
+}
+
 #[tokio::test]
 async fn unsubscribe_preview_token_allows_only_one_parallel_commit() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();

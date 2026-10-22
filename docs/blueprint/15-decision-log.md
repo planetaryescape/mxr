@@ -1167,6 +1167,16 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 **Trade-offs accepted**: Switching mid-conversation sends the old turns to the new provider rebuilt from text and tool calls, so Claude's thinking blocks are replayed only to Claude. A `gpt-<number>` id on the default Ollama or another server on this machine now goes to OpenAI instead of that server; a remote `llm.base_url` keeps it, and local names like `gpt-oss` never match. The default list names models that may not exist on a given account, so an unavailable or failing model shows as such rather than being hidden.
 
+## D146: Unsubscribe receipts are separate from history
+
+**Chosen**: Each sent unsubscribe writes a row to `unsubscribe_receipts` (message id, account, method, time) in the same step as the external effect. Before any send, the daemon checks that table and no longer checks event_log. Purging event_log never touches the table. Deleting a message deletes its receipt. Rows that existed before the migration are backfilled from the event_log entries the old check matched, with method `unknown`.
+
+**Considered**: Keep the event_log check and stop `mxr logs --purge` from deleting unsubscribe rows. Keep the receipt in the event_log row with a longer retention for that category.
+
+**Why**: Purging event_log made mxr send the same unsubscribe mail or POST a second time. The promise is that mxr sends an unsubscribe for a message once, whatever happens to logs and history. A purge that deletes history must not also delete the guard.
+
+**Trade-offs accepted**: A small table that is never pruned by purge, and grows by one row per unsubscribe. A receipt is removed with its message, so a message that is deleted and later synced back under the same id can be unsubscribed again. A failed receipt write after a sent unsubscribe is reported as an error, so the user sees that a retry would send it again.
+
 ## D147: Each account has one identity, a colour and a tag, owned by the daemon
 
 **Chosen**: Every account has a colour, one of eight named slots, and a tag of one to three characters. The daemon assigns the colour once, when the account is created, and keeps it; it derives the tag from the account's name. Both can be changed in config. Clients receive both on `AccountSummaryData.identity` and draw one mark, a coloured chip holding the tag, at the trail of every row (before the time), but only while the view mixes accounts. The reader header and compose From always show the account. The palette is reserved for accounts. Chapter 33 is the design.
@@ -1187,3 +1197,4 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 **Trade-offs accepted**: Message headers grow by about ten characters. The lit row's actions sit beside the time instead of over it, which leaves less room for actions on narrow screens; the overflow menu takes the rest.
 
+||||||| parent of 7eab2e71f (fix: never send an unsubscribe twice after logs are purged)

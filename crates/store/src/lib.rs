@@ -106,6 +106,7 @@ mod todo_resolution_queue;
 mod todos;
 mod triage;
 mod undo;
+mod unsubscribe_receipts;
 mod updates;
 mod user_activity;
 mod user_voice_profile;

@@ -1,0 +1,32 @@
+-- Receipts that an unsubscribe was sent for a message. Kept apart from
+-- event_log so purging history never lets a second unsubscribe go out. No
+-- subject, sender or URL: the row says only that it was sent, and how.
+CREATE TABLE IF NOT EXISTS unsubscribe_receipts (
+    message_id  TEXT PRIMARY KEY,
+    account_id  TEXT NOT NULL,
+    method      TEXT NOT NULL,
+    sent_at     INTEGER NOT NULL
+);
+
+-- Backfill what the old event_log guard already treated as sent. Matches the
+-- category, the summary substring and LIKE's case folding that
+-- `has_event_for_message_with_summary` used. Rows with no resolvable account
+-- are skipped; the earliest row per message wins.
+INSERT OR IGNORE INTO unsubscribe_receipts (message_id, account_id, method, sent_at)
+SELECT message_id, account_id, 'unknown', timestamp
+FROM (
+    SELECT e.message_id,
+           COALESCE(e.account_id, m.account_id) AS account_id,
+           e.timestamp,
+           ROW_NUMBER() OVER (
+               PARTITION BY e.message_id
+               ORDER BY e.timestamp ASC, e.id ASC
+           ) AS row_rank
+    FROM event_log e
+    LEFT JOIN messages m ON m.id = e.message_id
+    WHERE e.category = 'mutation'
+      AND e.message_id IS NOT NULL
+      AND e.summary LIKE '%unsubscrib%'
+      AND COALESCE(e.account_id, m.account_id) IS NOT NULL
+)
+WHERE row_rank = 1;

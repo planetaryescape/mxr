@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.141](https://github.com/planetaryescape/mxr/compare/v0.6.140...v0.6.141) (2026-10-22)
+
+
+### Features
+
+* act only on commitment dates read from the email's words or typed by the user ([#616](https://github.com/planetaryescape/mxr/issues/616)) ([e4898aa](https://github.com/planetaryescape/mxr/commit/e4898aa2cf033738f7dac441394cf868c6647b58))
+
+
+### Bug Fixes
+
+* run the web unit tests in one locale so CI formats dates like a British laptop ([#618](https://github.com/planetaryescape/mxr/issues/618)) ([cad87b3](https://github.com/planetaryescape/mxr/commit/cad87b396efad74831ddaa338545f93754ef0f8d))
+* satisfy clippy in the TUI arrival-time snapshot tests ([#621](https://github.com/planetaryescape/mxr/issues/621)) ([11d52fe](https://github.com/planetaryescape/mxr/commit/11d52fecc2e496b18f1d0b5f22158b2a8ba61ee5))
+
 ## [0.6.140](https://github.com/planetaryescape/mxr/compare/v0.6.139...v0.6.140) (2026-10-22)
 
 

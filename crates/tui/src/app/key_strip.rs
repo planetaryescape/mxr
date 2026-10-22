@@ -9,7 +9,7 @@ use super::*;
 impl App {
     /// The key definition's name for the mode the list is showing, when it
     /// is one with its own keys.
-    fn mode_key_context(&self) -> Option<&'static str> {
+    pub(crate) fn mode_key_context(&self) -> Option<&'static str> {
         if self.screen != Screen::Mailbox || self.mailbox.active_pane != ActivePane::MailList {
             return None;
         }

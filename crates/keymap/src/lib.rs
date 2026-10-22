@@ -213,6 +213,32 @@ impl Keymap {
         toml::from_str(text)
     }
 
+    /// The TUI binding a key or sequence (`e`, `g i`) triggers in `context`.
+    pub fn tui_binding(&self, context: &str, keys: &str) -> Option<(&KeyAction, &TuiBinding)> {
+        self.actions.iter().find_map(|action| {
+            action
+                .tui
+                .iter()
+                .find(|binding| {
+                    binding.contexts.includes(context) && binding.keys.iter().any(|k| k == keys)
+                })
+                .map(|binding| (action, binding))
+        })
+    }
+
+    /// True when `prefix` starts a longer TUI sequence in `context`, so the
+    /// TUI waits for the next key.
+    pub fn tui_starts_sequence(&self, context: &str, prefix: &str) -> bool {
+        let start = format!("{prefix} ");
+        self.actions
+            .iter()
+            .flat_map(|action| &action.tui)
+            .any(|binding| {
+                binding.contexts.includes(context)
+                    && binding.keys.iter().any(|k| k.starts_with(&start))
+            })
+    }
+
     pub fn strip(&self, id: &str) -> Option<&Strip> {
         self.strips.iter().find(|strip| strip.id == id)
     }

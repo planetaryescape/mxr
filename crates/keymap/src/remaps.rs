@@ -127,12 +127,20 @@ impl ModeRemaps {
 
     /// The key the person gave this action in `context`, if any.
     pub fn key_for(&self, context: &str, action_id: &str) -> Option<&str> {
+        self.keys_for(context, action_id).into_iter().next()
+    }
+
+    /// Every key the person gave this action in `context`.
+    pub fn keys_for(&self, context: &str, action_id: &str) -> Vec<&str> {
         self.by_context
-            .get(context)?
-            .iter()
-            .find_map(|(key, action)| {
-                (action.as_deref() == Some(action_id)).then_some(key.as_str())
+            .get(context)
+            .map(|keys| {
+                keys.iter()
+                    .filter(|(_, action)| action.as_deref() == Some(action_id))
+                    .map(|(key, _)| key.as_str())
+                    .collect()
             })
+            .unwrap_or_default()
     }
 
     /// True when the person moved this action to another key here, so its

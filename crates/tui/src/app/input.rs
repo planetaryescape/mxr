@@ -162,6 +162,8 @@ impl App {
             query: &self.modals.help_query,
             selected: self.modals.help_selected,
             mode_guide: self.help_mode_guide(),
+            mode_keys: self.mode_help_keys(),
+            mode_common: self.mode_strip_hints(),
             _marker: std::marker::PhantomData,
         }
     }

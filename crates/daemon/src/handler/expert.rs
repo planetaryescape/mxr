@@ -8,7 +8,6 @@
 
 use crate::state::AppState;
 use mxr_core::id::AccountId;
-use mxr_core::types::OwnedAddresses;
 use mxr_core::SortOrder;
 use mxr_protocol::{ExpertSuggestionData, ResponseData};
 use mxr_search::{MxrSchema, QueryBuilder};
@@ -31,7 +30,8 @@ pub(crate) async fn find(
         .search_ast(query, 50, 0, SortOrder::Relevance)
         .await?;
 
-    let self_addresses = self_addresses_for(state, account_id).await;
+    // A failed read fails the request: an empty set would list you as an expert.
+    let self_addresses = state.owned_addresses(account_id).await?;
 
     // Group hits by thread and walk in chronological order. Anyone
     // whose message came AFTER at least one earlier message in the
@@ -79,7 +79,7 @@ pub(crate) async fn find(
             if !include_self && self_addresses.contains(&env.from.email) {
                 continue;
             }
-            let email = env.from.email.to_lowercase();
+            let email = env.from.email.to_ascii_lowercase();
             // Only credit messages that came AFTER the first one in
             // the thread -- the first message is the question, every
             // later one is an answer.
@@ -121,10 +121,6 @@ struct Aggregate {
     threads: HashSet<String>,
     evidence_msg_ids: Vec<String>,
     display_name: Option<String>,
-}
-
-async fn self_addresses_for(state: &AppState, account_id: &AccountId) -> OwnedAddresses {
-    state.owned_addresses(account_id).await.unwrap_or_default()
 }
 
 #[cfg(test)]

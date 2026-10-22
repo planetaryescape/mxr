@@ -10,11 +10,13 @@
 use crate::auth::{AuthError, GmailAuth};
 use crate::error::GmailError;
 use crate::error_response::{read_error_response, ErrorResponse, RateLimitRefusal};
+use crate::rate_limit_gate::RateLimitGate;
 use crate::request_log::{RequestLog, RequestSummary};
 use crate::types::*;
 use async_trait::async_trait;
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
+use chrono::{TimeDelta, Utc};
 use mxr_core::{AccountId, ServerDraftSnapshot};
 use std::time::{Duration, Instant};
 use tracing::{debug, warn};
@@ -51,6 +53,7 @@ pub struct GmailClient {
     /// Named in the rate-limit warning. Set by `GmailProvider::new`.
     account: String,
     requests: RequestLog,
+    gate: RateLimitGate,
 }
 
 #[async_trait]
@@ -129,6 +132,7 @@ impl GmailClient {
             base_url: GMAIL_API_BASE.to_string(),
             account: "unknown".to_string(),
             requests: RequestLog::default(),
+            gate: RateLimitGate::default(),
         }
     }
 
@@ -164,15 +168,42 @@ impl GmailClient {
         Ok(format!("Bearer {token}"))
     }
 
-    /// Sends one Gmail API request and counts it against this account. The
-    /// endpoint label is a fixed name such as `messages.get`: no ids, no query.
+    /// Sends one Gmail API request for this account. While Gmail's rate-limit
+    /// wait is running, this returns that wait without touching the network,
+    /// the token endpoint or the request count. The endpoint label is a fixed
+    /// name such as `messages.get`: no ids, no query.
     async fn send(
         &self,
         endpoint: &'static str,
         request: reqwest::RequestBuilder,
-    ) -> Result<reqwest::Response, reqwest::Error> {
-        self.requests.record(endpoint, Instant::now());
-        request.send().await
+    ) -> Result<reqwest::Response, GmailError> {
+        let now = Instant::now();
+        if let Some(held) = self.gate.held(now) {
+            return Err(self.held_error(held));
+        }
+        let request = request.header("Authorization", self.auth_header().await?);
+        self.requests.record(endpoint, now);
+        Ok(request.send().await?)
+    }
+
+    /// The gate's error. Its retry is whole seconds, at least 1, so a caller
+    /// that sleeps on it never wakes before Gmail's wait has passed.
+    fn held_error(&self, held: crate::rate_limit_gate::Held) -> GmailError {
+        let remaining = held.remaining;
+        let secs = remaining.as_secs() + u64::from(remaining.subsec_nanos() > 0);
+        let resume = TimeDelta::try_seconds(i64::try_from(secs).unwrap_or(i64::MAX))
+            .and_then(|delta| Utc::now().checked_add_signed(delta));
+        let when = resume.map_or_else(
+            || "a later time".to_string(),
+            |at| format!("{} UTC", at.format("%H:%M:%S")),
+        );
+        let original = held
+            .detail
+            .unwrap_or_else(|| "Gmail rate limit".to_string());
+        GmailError::RateLimited {
+            retry_after_secs: secs.max(1),
+            detail: Some(format!("Gmail asked mxr to wait until {when}; {original}")),
+        }
     }
 
     async fn handle_error(&self, endpoint: &'static str, resp: reqwest::Response) -> GmailError {
@@ -186,8 +217,11 @@ impl GmailClient {
     /// detail (endpoint, Gmail's reason, the count) goes into the error text too,
     /// so sync status shows it without a log search.
     fn rate_limited(&self, endpoint: &'static str, refusal: RateLimitRefusal) -> GmailError {
-        let summary = self.requests.summary(Instant::now());
+        let now = Instant::now();
+        let summary = self.requests.summary(now);
         let detail = refused_detail(endpoint, &refusal, &summary);
+        self.gate
+            .refused(now, refusal.retry_after_secs, Some(detail.clone()));
         warn!(
             account = %self.account,
             endpoint,
@@ -220,14 +254,7 @@ impl GmailClient {
 
         debug!(url = %url, "listing messages");
 
-        let resp = self
-            .send(
-                "messages.list",
-                self.http
-                    .get(&url)
-                    .header("Authorization", self.auth_header().await?),
-            )
-            .await?;
+        let resp = self.send("messages.list", self.http.get(&url)).await?;
 
         if !resp.status().is_success() {
             return Err(self.handle_error("messages.list", resp).await);
@@ -247,14 +274,7 @@ impl GmailClient {
             format.as_str()
         );
 
-        let resp = self
-            .send(
-                "messages.get",
-                self.http
-                    .get(&url)
-                    .header("Authorization", self.auth_header().await?),
-            )
-            .await?;
+        let resp = self.send("messages.get", self.http.get(&url)).await?;
 
         if !resp.status().is_success() {
             return Err(self.handle_error("messages.get", resp).await);
@@ -308,14 +328,7 @@ impl GmailClient {
             url.push_str(&format!("&pageToken={pt}"));
         }
 
-        let resp = self
-            .send(
-                "history.list",
-                self.http
-                    .get(&url)
-                    .header("Authorization", self.auth_header().await?),
-            )
-            .await?;
+        let resp = self.send("history.list", self.http.get(&url)).await?;
 
         if !resp.status().is_success() {
             return Err(self.handle_error("history.list", resp).await);
@@ -339,13 +352,7 @@ impl GmailClient {
         });
 
         let resp = self
-            .send(
-                "messages.modify",
-                self.http
-                    .post(&url)
-                    .header("Authorization", self.auth_header().await?)
-                    .json(&body),
-            )
+            .send("messages.modify", self.http.post(&url).json(&body))
             .await?;
 
         if !resp.status().is_success() {
@@ -371,13 +378,7 @@ impl GmailClient {
         });
 
         let resp = self
-            .send(
-                "messages.batchModify",
-                self.http
-                    .post(&url)
-                    .header("Authorization", self.auth_header().await?)
-                    .json(&body),
-            )
+            .send("messages.batchModify", self.http.post(&url).json(&body))
             .await?;
 
         if !resp.status().is_success() {
@@ -396,7 +397,6 @@ impl GmailClient {
                 "messages.trash",
                 self.http
                     .post(&url)
-                    .header("Authorization", self.auth_header().await?)
                     .header(reqwest::header::CONTENT_LENGTH, "0")
                     .body(Vec::new()),
             )
@@ -421,13 +421,7 @@ impl GmailClient {
         let body = message_body(raw_base64url, thread_id);
 
         let resp = self
-            .send(
-                "messages.send",
-                self.http
-                    .post(&url)
-                    .header("Authorization", self.auth_header().await?)
-                    .json(&body),
-            )
+            .send("messages.send", self.http.post(&url).json(&body))
             .await?;
 
         if !resp.status().is_success() {
@@ -448,12 +442,7 @@ impl GmailClient {
         );
 
         let resp = self
-            .send(
-                "messages.attachments.get",
-                self.http
-                    .get(&url)
-                    .header("Authorization", self.auth_header().await?),
-            )
+            .send("messages.attachments.get", self.http.get(&url))
             .await?;
 
         if !resp.status().is_success() {
@@ -482,13 +471,7 @@ impl GmailClient {
         let body = draft_body(raw_base64url, thread_id);
 
         let resp = self
-            .send(
-                "drafts.create",
-                self.http
-                    .post(&url)
-                    .header("Authorization", self.auth_header().await?)
-                    .json(&body),
-            )
+            .send("drafts.create", self.http.post(&url).json(&body))
             .await?;
 
         if !resp.status().is_success() {
@@ -511,13 +494,7 @@ impl GmailClient {
         let body = draft_body(raw_base64url, thread_id);
 
         let resp = self
-            .send(
-                "drafts.update",
-                self.http
-                    .put(&url)
-                    .header("Authorization", self.auth_header().await?)
-                    .json(&body),
-            )
+            .send("drafts.update", self.http.put(&url).json(&body))
             .await?;
 
         if !resp.status().is_success() {
@@ -532,14 +509,7 @@ impl GmailClient {
         draft_id: &str,
     ) -> Result<Option<ServerDraftSnapshot>, GmailError> {
         let url = format!("{}/drafts/{draft_id}?format=raw", self.base_url);
-        let resp = self
-            .send(
-                "drafts.get",
-                self.http
-                    .get(&url)
-                    .header("Authorization", self.auth_header().await?),
-            )
-            .await?;
+        let resp = self.send("drafts.get", self.http.get(&url)).await?;
         if resp.status().as_u16() == 404 {
             return Ok(None);
         }
@@ -566,14 +536,7 @@ impl GmailClient {
 
     pub async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError> {
         let url = format!("{}/drafts/{draft_id}", self.base_url);
-        let resp = self
-            .send(
-                "drafts.delete",
-                self.http
-                    .delete(&url)
-                    .header("Authorization", self.auth_header().await?),
-            )
-            .await?;
+        let resp = self.send("drafts.delete", self.http.delete(&url)).await?;
 
         if !resp.status().is_success() {
             return Err(self.handle_error("drafts.delete", resp).await);
@@ -584,14 +547,7 @@ impl GmailClient {
     pub async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError> {
         let url = format!("{}/labels", self.base_url);
 
-        let resp = self
-            .send(
-                "labels.list",
-                self.http
-                    .get(&url)
-                    .header("Authorization", self.auth_header().await?),
-            )
-            .await?;
+        let resp = self.send("labels.list", self.http.get(&url)).await?;
 
         if !resp.status().is_success() {
             return Err(self.handle_error("labels.list", resp).await);
@@ -619,13 +575,7 @@ impl GmailClient {
         }
 
         let resp = self
-            .send(
-                "labels.create",
-                self.http
-                    .post(&url)
-                    .header("Authorization", self.auth_header().await?)
-                    .json(&body),
-            )
+            .send("labels.create", self.http.post(&url).json(&body))
             .await?;
 
         if !resp.status().is_success() {
@@ -646,13 +596,7 @@ impl GmailClient {
         });
 
         let resp = self
-            .send(
-                "labels.patch",
-                self.http
-                    .patch(&url)
-                    .header("Authorization", self.auth_header().await?)
-                    .json(&body),
-            )
+            .send("labels.patch", self.http.patch(&url).json(&body))
             .await?;
 
         if !resp.status().is_success() {
@@ -665,14 +609,7 @@ impl GmailClient {
     pub async fn delete_label(&self, label_id: &str) -> Result<(), GmailError> {
         let url = format!("{}/labels/{label_id}", self.base_url);
 
-        let resp = self
-            .send(
-                "labels.delete",
-                self.http
-                    .delete(&url)
-                    .header("Authorization", self.auth_header().await?),
-            )
-            .await?;
+        let resp = self.send("labels.delete", self.http.delete(&url)).await?;
 
         if !resp.status().is_success() {
             return Err(self.handle_error("labels.delete", resp).await);
@@ -1514,6 +1451,130 @@ mod tests {
         assert_eq!(
             all_ids,
             vec!["msg1", "msg2", "msg3", "msg4", "msg5", "msg6"]
+        );
+    }
+
+    /// A client on the real request path, with a fixed token. The test double
+    /// above skips `send()`, so the gate is only exercised through this.
+    fn gated_client(server: &MockServer) -> GmailClient {
+        GmailClient::new(crate::auth::GmailAuth::for_test_token("test-token"))
+            .with_base_url(server.uri())
+    }
+
+    async fn labels_refusal(server: &MockServer, retry_after: &str) {
+        Mock::given(method("GET"))
+            .and(path("/labels"))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("retry-after", retry_after)
+                    .set_body_string(
+                        r#"{"error":{"code":429,"message":"User-rate limit exceeded.","errors":[{"domain":"usageLimits","reason":"rateLimitExceeded"}]}}"#,
+                    ),
+            )
+            .up_to_n_times(1)
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn a_refusal_holds_every_later_call_without_a_request() {
+        let Some(server) = start_mock_server().await else {
+            return;
+        };
+        labels_refusal(&server, "900").await;
+        // Mounted only so a request that slips through is a 404 NotFound, not
+        // a silent pass. None of these may be reached.
+        Mock::given(method("GET"))
+            .and(path("/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .expect(0)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/messages/m1/trash"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(0)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/messages/send"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let client = gated_client(&server);
+        let first = client.list_labels().await.unwrap_err();
+        assert!(matches!(
+            first,
+            GmailError::RateLimited {
+                retry_after_secs: 900,
+                ..
+            }
+        ));
+
+        let held = client.list_messages(None, None, 10).await.unwrap_err();
+        let GmailError::RateLimited {
+            retry_after_secs,
+            detail,
+        } = held
+        else {
+            panic!("expected the gate's RateLimited, got {held:?}");
+        };
+        assert!(
+            (899..=900).contains(&retry_after_secs),
+            "{retry_after_secs}"
+        );
+        let detail = detail.unwrap();
+        assert!(
+            detail.contains("Gmail asked mxr to wait until "),
+            "{detail}"
+        );
+        assert!(detail.contains(" UTC; Gmail labels.list"), "{detail}");
+
+        let trash = client.trash_message("m1").await.unwrap_err();
+        assert!(matches!(trash, GmailError::RateLimited { .. }), "{trash:?}");
+        let send = client.send_message("ZmFrZQ", None).await.unwrap_err();
+        assert!(matches!(send, GmailError::RateLimited { .. }), "{send:?}");
+
+        assert_eq!(
+            client.requests.summary(Instant::now()).last_hour,
+            1,
+            "held calls are not counted as requests"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_call_after_the_wait_goes_out_and_a_new_refusal_extends_it() {
+        let Some(server) = start_mock_server().await else {
+            return;
+        };
+        let client = gated_client(&server);
+        // A wait that ended a second ago, as if Gmail had asked for it long ago.
+        let long_ago = Instant::now() - Duration::from_secs(60);
+        client.gate.refused(long_ago, 1, Some("old".into()));
+
+        Mock::given(method("GET"))
+            .and(path("/labels"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"labels":[]}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+        client.list_labels().await.unwrap();
+
+        server.reset().await;
+        labels_refusal(&server, "1200").await;
+        let refused = client.list_labels().await.unwrap_err();
+        assert!(matches!(refused, GmailError::RateLimited { .. }));
+
+        let held = client
+            .gate
+            .held(Instant::now())
+            .expect("the new refusal holds");
+        assert!(
+            held.remaining > Duration::from_secs(1100),
+            "{:?}",
+            held.remaining
         );
     }
 }

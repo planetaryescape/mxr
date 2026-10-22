@@ -225,6 +225,26 @@ mod tests {
     }
 
     #[test]
+    fn stale_account_address_lookup_reads_as_not_loaded_until_replaced() {
+        let account = AccountId::new();
+        let lookup = InMemoryAccountAddressLookup::new();
+        lookup.replace([(account.clone(), owned("a@example.com", &[]))]);
+        assert!(lookup.is_account_address(&account, "a@example.com"));
+
+        // A failed rebuild keeps the old sets in memory, but sync must not use
+        // them: the lookup reads as not loaded, the same as before any load.
+        lookup.mark_stale();
+        assert!(lookup.is_stale());
+        assert!(!lookup.is_loaded());
+        assert!(!lookup.is_account_address(&account, "a@example.com"));
+
+        lookup.replace([(account.clone(), owned("b@example.com", &[]))]);
+        assert!(!lookup.is_stale());
+        assert!(lookup.is_loaded());
+        assert!(lookup.is_account_address(&account, "b@example.com"));
+    }
+
+    #[test]
     fn message_flags_serde() {
         let flags = MessageFlags::READ | MessageFlags::STARRED;
         let json = serde_json::to_string(&flags).unwrap();

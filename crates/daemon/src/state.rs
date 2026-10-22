@@ -841,6 +841,7 @@ impl AppState {
         // Provider setup inserts the configured accounts, so the registry has
         // to be built after it or the first sync misses their primaries.
         if let Err(err) = load_account_address_registry(&store, &account_addresses).await {
+            account_addresses.mark_stale();
             tracing::warn!(error = %err, "failed initial account_addresses load");
         }
 
@@ -908,13 +909,29 @@ impl AppState {
 
     /// Rebuild sync's registry from the store after an address change. Only
     /// sync direction reads the registry; sends and handler checks read the
-    /// store, so a failed refresh leaves them correct and sync direction stale
-    /// until the next refresh (docs/issues/account-address-registry-refresh-ordering.md).
-    pub async fn refresh_account_addresses(&self) {
-        if let Err(err) = load_account_address_registry(&self.store, &self.account_addresses).await
-        {
-            tracing::warn!(error = %err, "failed to refresh account_addresses cache");
+    /// store, so a failed rebuild leaves them correct. The failure marks the
+    /// registry stale, which sync reads as not loaded (direction Unknown) until
+    /// `ensure_account_addresses_current` rebuilds it. Returns whether the
+    /// rebuild succeeded.
+    pub async fn refresh_account_addresses(&self) -> bool {
+        match load_account_address_registry(&self.store, &self.account_addresses).await {
+            Ok(()) => true,
+            Err(err) => {
+                self.account_addresses.mark_stale();
+                tracing::warn!(error = %err, "failed to refresh account_addresses cache");
+                false
+            }
         }
+    }
+
+    /// Before a sync pass or analytics repair: retry a rebuild that failed
+    /// earlier. Returns false when the registry is still not loaded, in which
+    /// case direction classification is skipped rather than run on stale data.
+    pub async fn ensure_account_addresses_current(&self) -> bool {
+        if self.account_addresses.is_loaded() {
+            return true;
+        }
+        self.refresh_account_addresses().await
     }
 
     /// Every address the account answers to, read from committed store data.
@@ -2670,6 +2687,35 @@ pub(crate) async fn load_account_address_registry(
 mod tests {
 
     use super::*;
+
+    #[tokio::test]
+    async fn failed_registry_rebuild_stops_sync_reading_the_set_from_before_it() {
+        let state = AppState::in_memory().await.unwrap();
+        state.refresh_account_addresses().await;
+        assert!(state.account_addresses.is_loaded());
+
+        // Make the read the rebuild performs fail while the accounts row stays
+        // readable.
+        sqlx::query("ALTER TABLE account_addresses RENAME TO account_addresses_off")
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+        state.refresh_account_addresses().await;
+        assert!(
+            !state.account_addresses.is_loaded(),
+            "sync must not classify direction with the set it held before the failed rebuild"
+        );
+
+        sqlx::query("ALTER TABLE account_addresses_off RENAME TO account_addresses")
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+
+        // The next sync pass retries the stale rebuild and classifies again.
+        assert!(state.ensure_account_addresses_current().await);
+        assert!(state.account_addresses.is_loaded());
+        assert!(!state.account_addresses.is_stale());
+    }
 
     #[tokio::test]
     async fn attachment_materialization_serializes_same_attachment_and_prunes_idle_keys() {

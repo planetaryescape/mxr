@@ -570,6 +570,9 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         search_worker_stopped: feature_health.as_ref().is_some_and(|health| {
             matches!(health.search, mxr_protocol::FeatureHealth::Degraded { .. })
         }),
+        // Only the daemon sees its address registry, so this client-side
+        // report cannot show the stale-cache finding.
+        address_cache_stale: false,
         data_stats: &data_stats,
     });
     let healthy = data_dir_exists

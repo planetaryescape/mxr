@@ -207,6 +207,7 @@ pub(super) async fn collect_doctor_report(
         restart_required,
         semantic_enabled,
         search_worker_stopped: search_worker_failed,
+        address_cache_stale: state.account_addresses.is_stale(),
         data_stats: &data_stats,
     });
 
@@ -419,6 +420,9 @@ pub(crate) struct DoctorFindingInputs<'a> {
     pub(crate) restart_required: bool,
     pub(crate) semantic_enabled: bool,
     pub(crate) search_worker_stopped: bool,
+    /// The daemon's address registry failed its last rebuild, so sync reads
+    /// direction as Unknown until the next sync pass retries it.
+    pub(crate) address_cache_stale: bool,
     pub(crate) data_stats: &'a mxr_protocol::DoctorDataStats,
 }
 
@@ -479,6 +483,14 @@ pub(crate) fn build_doctor_findings(
             severity: DoctorFindingSeverity::Error,
             message: "Daemon socket missing — daemon not running?".into(),
             remediation: vec!["mxr daemon --foreground".into(), "mxr status".into()],
+        });
+    }
+    if inputs.address_cache_stale {
+        findings.push(DoctorFinding {
+            category: DoctorFindingCategory::Sync,
+            severity: DoctorFindingSeverity::Warning,
+            message: "Account address cache is stale — new sync messages get Unknown direction until it rebuilds".into(),
+            remediation: vec!["mxr sync".into()],
         });
     }
     if inputs.restart_required {
@@ -1005,6 +1017,33 @@ mod tests {
     }
 
     #[test]
+    fn a_stale_address_cache_is_a_sync_warning_with_a_sync_remedy() {
+        let findings = build_doctor_findings(DoctorFindingInputs {
+            sync_statuses: &[],
+            recent_errors: &[],
+            data_dir_exists: true,
+            database_exists: true,
+            index_exists: true,
+            socket_exists: true,
+            repair_required: false,
+            restart_required: false,
+            semantic_enabled: false,
+            search_worker_stopped: false,
+            address_cache_stale: true,
+            data_stats: &mxr_protocol::DoctorDataStats::default(),
+        });
+
+        let stale: Vec<_> = findings
+            .iter()
+            .filter(|finding| finding.message.contains("address cache"))
+            .collect();
+        assert_eq!(stale.len(), 1, "{findings:?}");
+        assert_eq!(stale[0].category, DoctorFindingCategory::Sync);
+        assert_eq!(stale[0].severity, DoctorFindingSeverity::Warning);
+        assert_eq!(stale[0].remediation, vec!["mxr sync".to_string()]);
+    }
+
+    #[test]
     fn a_failure_is_reported_once_when_the_log_mirrors_sync_status() {
         let error = "Provider error: Auth error: Token refresh temporarily unavailable: token endpoint connection failed";
         let status = mxr_protocol::AccountSyncStatus {
@@ -1041,6 +1080,7 @@ mod tests {
             restart_required: false,
             semantic_enabled: false,
             search_worker_stopped: false,
+            address_cache_stale: false,
             data_stats: &mxr_protocol::DoctorDataStats::default(),
         });
 

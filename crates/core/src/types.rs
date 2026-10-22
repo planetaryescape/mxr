@@ -196,8 +196,9 @@ pub trait AccountAddressLookup: Send + Sync {
     /// outbound.
     fn is_account_address(&self, account_id: &AccountId, email: &str) -> bool;
 
-    /// Returns false until `replace` has been called at least once with a
-    /// non-empty set. While this returns false, sync writes `Direction::Unknown`
+    /// Returns false until `replace` has been called at least once, and again
+    /// after a failed rebuild marks the set stale until a later `replace`
+    /// succeeds. While this returns false, sync writes `Direction::Unknown`
     /// rather than misclassifying every message as inbound.
     fn is_loaded(&self) -> bool;
 }
@@ -209,6 +210,9 @@ pub trait AccountAddressLookup: Send + Sync {
 pub struct InMemoryAccountAddressLookup {
     inner: std::sync::RwLock<std::collections::HashMap<AccountId, std::sync::Arc<OwnedAddresses>>>,
     loaded: std::sync::atomic::AtomicBool,
+    /// Set when a rebuild from the store failed. The sets still held are from
+    /// before the failed change, so they must not classify direction.
+    stale: std::sync::atomic::AtomicBool,
 }
 
 impl InMemoryAccountAddressLookup {
@@ -228,7 +232,18 @@ impl InMemoryAccountAddressLookup {
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard = normalized;
+        self.stale.store(false, std::sync::atomic::Ordering::SeqCst);
         self.loaded.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Record that a rebuild failed. Until a later `replace` succeeds,
+    /// `is_loaded` reads false, so sync writes `Direction::Unknown`.
+    pub fn mark_stale(&self) {
+        self.stale.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn is_stale(&self) -> bool {
+        self.stale.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// The addresses `account_id` owns right now. Empty for unknown accounts
@@ -251,7 +266,7 @@ impl AccountAddressLookup for InMemoryAccountAddressLookup {
     }
 
     fn is_loaded(&self) -> bool {
-        self.loaded.load(std::sync::atomic::Ordering::SeqCst)
+        self.loaded.load(std::sync::atomic::Ordering::SeqCst) && !self.is_stale()
     }
 }
 

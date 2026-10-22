@@ -110,6 +110,14 @@ describe("useDaemonEventInvalidation", () => {
     expect(roots.filter((root) => !invalidates([root]))).toEqual([]);
   });
 
+  test("AccountAddressesChanged (an alias moved stored mail between sent and received) refreshes the same views as ModesChanged", () => {
+    const { emit, invalidates } = setup();
+    emit({ type: "AccountAddressesChanged", account_id: "acct-1" });
+
+    const roots = ["arrivals", "arrival-modes", "now", "place", "mailbox", "mode-membership"];
+    expect(roots.filter((root) => !invalidates([root]))).toEqual([]);
+  });
+
   test("MutationReconciliationFailed rolls back the affected surfaces and warns", () => {
     const { emit, invalidatedKeys } = setup();
     emit({

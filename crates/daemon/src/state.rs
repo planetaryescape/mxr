@@ -611,6 +611,12 @@ pub struct AppState {
     /// Both are per-run state that dies with the process, so neither belongs
     /// in the store.
     sync_runs: ParkingMutex<HashMap<AccountId, SyncRun>>,
+    /// Accounts whose stored directions must be reconciled with their committed
+    /// owned set after their next successful sync pass. An address change owes
+    /// it, and so does startup, so a batch prepared with an older set, or a
+    /// reclassify that failed, is repaired even after a restart. In memory: a
+    /// restart owes every account again, which is the safe direction.
+    direction_repair_owed: ParkingMutex<HashSet<AccountId>>,
     /// The id the next background-sync claim will take. A claim's cleanup
     /// must not clear a flag a *later* claim wrote, and the run entry a claim
     /// is stamped in is dropped the moment the account goes idle — so the
@@ -848,6 +854,15 @@ impl AppState {
         // pass reclassifies whatever Unknown rows are left.
         account_addresses.mark_repair_owed();
 
+        // A restart forgets which accounts had a direction change in flight.
+        // Every stored account owes a reconciliation, paid on its next pass.
+        let direction_repair_owed: HashSet<AccountId> = match store.list_all_accounts().await {
+            Ok(accounts) => accounts.into_iter().map(|account| account.id).collect(),
+            Err(err) => {
+                tracing::warn!(error = %err, "could not list accounts for direction repair");
+                HashSet::new()
+            }
+        };
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
@@ -906,6 +921,7 @@ impl AppState {
             config_write: Default::default(),
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
+            direction_repair_owed: ParkingMutex::new(direction_repair_owed),
             next_background_claim: std::sync::atomic::AtomicU64::new(1),
         })
     }
@@ -1375,6 +1391,12 @@ impl AppState {
         None
     }
 
+    /// Drop every cached `Wrapped` summary. A direction change moves the counts
+    /// they were computed from, so they must not be served until they expire.
+    pub(crate) fn wrapped_cache_clear(&self) {
+        self.wrapped_cache.lock().clear();
+    }
+
     /// Insert a freshly-computed `Wrapped` summary into the cache.
     pub(crate) fn wrapped_cache_put(
         &self,
@@ -1537,6 +1559,17 @@ impl AppState {
     }
 
     /// Note that a pass deferred the whole-table analytics repair.
+    /// Mark an account for a direction reconciliation after its next successful
+    /// sync pass.
+    pub(crate) fn owe_direction_repair(&self, account_id: &AccountId) {
+        self.direction_repair_owed.lock().insert(account_id.clone());
+    }
+
+    /// Clear and report whether the account owes a direction reconciliation.
+    pub(crate) fn take_direction_repair(&self, account_id: &AccountId) -> bool {
+        self.direction_repair_owed.lock().remove(account_id)
+    }
+
     pub(crate) fn owe_analytics_repair(&self, account_id: &AccountId) {
         self.sync_runs
             .lock()
@@ -2150,7 +2183,10 @@ impl AppState {
         // primary. Clients hear about address changes whether or not it rebuilds.
         self.refresh_account_addresses().await;
         for account_id in accounts_with_changed_addresses(&before, &after) {
-            match crate::handler::diagnostics_impl::reclassify_account_directions(self, &account_id)
+            // Owed before the reclassify, as for an address command: a batch
+            // prepared under the old set can still land after this.
+            self.owe_direction_repair(&account_id);
+            match crate::handler::diagnostics_impl::reconcile_account_directions(self, &account_id)
                 .await
             {
                 Ok(changes) => tracing::info!(
@@ -2315,6 +2351,7 @@ impl AppState {
             config_write: Default::default(),
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
+            direction_repair_owed: ParkingMutex::new(HashSet::new()),
             next_background_claim: std::sync::atomic::AtomicU64::new(1),
         })
     }
@@ -2408,6 +2445,7 @@ impl AppState {
             config_write: Default::default(),
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
+            direction_repair_owed: ParkingMutex::new(HashSet::new()),
             next_background_claim: std::sync::atomic::AtomicU64::new(1),
         })
     }
@@ -2527,6 +2565,7 @@ impl AppState {
                 config_write: Default::default(),
                 auth_sessions: ParkingMutex::new(HashMap::new()),
                 sync_runs: ParkingMutex::new(HashMap::new()),
+                direction_repair_owed: ParkingMutex::new(HashSet::new()),
                 next_background_claim: std::sync::atomic::AtomicU64::new(1),
             },
             fake,

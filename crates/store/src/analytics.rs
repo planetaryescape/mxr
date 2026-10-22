@@ -77,9 +77,10 @@ impl super::Store {
     /// callers are the address commands' dry run and the real change.
     ///
     /// With `apply: true`, inbound rows from an owned sender become outbound and
-    /// outbound rows from an unowned one become inbound. Their reply pairs and
-    /// unplaced arrivals move with them. It all runs in one writer transaction,
-    /// so sync cannot write between the read and the flip.
+    /// outbound rows from an unowned one become inbound. Their reply pairs move
+    /// with them. It all runs in one writer transaction, so sync cannot write between the
+    /// read and the flip. Arrivals are not touched: they record what arrived
+    /// when it arrived, and their corrections stay as they were.
     pub async fn reclassify_account_directions(
         &self,
         account_id: &AccountId,
@@ -103,17 +104,6 @@ impl super::Store {
                 .execute(&mut *tx)
                 .await?;
             Self::reseat_reply_pair_tx(&mut tx, id).await?;
-            if *direction == MessageDirection::Outbound {
-                // Mail the account sent is not an arrival. An arrival the user
-                // corrected keeps its record of where it went.
-                sqlx::query(
-                    "DELETE FROM arrivals
-                     WHERE message_id = ? AND now_mode IS NULL AND moved_at IS NULL",
-                )
-                .bind(id)
-                .execute(&mut *tx)
-                .await?;
-            }
         }
         tx.commit().await?;
         let changes = AccountDirectionChanges::from_flips(&flips);

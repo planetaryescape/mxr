@@ -116,6 +116,34 @@ impl super::Store {
             .bind(reply_id)
             .execute(&mut *tx)
             .await?;
+        // The rebuilt pair starts without business-hours latency, which the
+        // backfill would only fill later. Compute it now, as the backfill does.
+        let window: Option<(i64, i64)> = sqlx::query_as(
+            "SELECT parent_received_at, replied_at FROM reply_pairs WHERE reply_message_id = ?",
+        )
+        .bind(reply_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some((start, end)) = window {
+            sqlx::query(
+                "UPDATE reply_pairs SET business_hours_latency_seconds = ?
+                 WHERE reply_message_id = ?",
+            )
+            .bind(compute_business_hours_seconds(start, end))
+            .bind(reply_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        // A pending row is for a reply whose pair is still missing. Once the
+        // pair exists, the row is stale.
+        sqlx::query(
+            "DELETE FROM reply_pair_pending
+             WHERE reply_message_id = ?1
+               AND EXISTS (SELECT 1 FROM reply_pairs WHERE reply_message_id = ?1)",
+        )
+        .bind(reply_id)
+        .execute(&mut *tx)
+        .await?;
         sqlx::query(
             "INSERT OR IGNORE INTO reply_pair_pending
                 (reply_message_id, in_reply_to_header, account_id, created_at)

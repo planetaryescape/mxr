@@ -99,10 +99,18 @@ mxr accounts addresses remove --account work support@planetaryescape.xyz
 ```
 
 Adding or removing an address reclassifies the account's stored mail against
-the new set straight away. Mail from an address you now own reads as sent, and
-sent mail from an address you no longer own reads as received. Analytics, reply
-pairs follow at once, and the contacts view catches up within about ten seconds.
-The command reports how many messages changed:
+the new set in the same command. Mail from an address you now own reads as
+sent, and sent mail from an address you no longer own reads as received. Reply
+pairs follow in the same command, and the contacts view catches up within about
+ten seconds. A sync batch that was already downloaded when you made the change
+is reconciled after its pass finishes, so it cannot leave a message with the
+old direction.
+
+Arrival history is not rewritten. An arrival records what arrived when it
+arrived, and a correction you made stays as you made it. So mail you sent from
+a new alias may still appear in an old arrival count, and mail from an alias you
+removed is not added to arrival counts after the fact. The command reports how
+many messages changed:
 
 ```bash
 mxr accounts addresses add --account work support@planetaryescape.xyz
@@ -122,7 +130,9 @@ mxr accounts addresses remove --account work support@planetaryescape.xyz --dry-r
 ```
 
 `set-primary` has no dry run. It changes only the primary marker, so it never
-reclassifies anything.
+changes which addresses are owned. It still runs the account-wide
+reconciliation, so its counts can be non-zero when rows from an earlier change
+were stale.
 
 Once an address is registered it becomes a valid sender inside mxr for that
 account. A reply defaults its From to whichever owned address the original was

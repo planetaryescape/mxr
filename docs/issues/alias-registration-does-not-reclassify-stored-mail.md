@@ -2,9 +2,9 @@
 
 **Status:** fixed · **Found:** cross-model review of PR #631 (round 2) · **Severity:** should-fix
 
-Fixed on `fix/alias-reclassify-stored-mail`: see the `fix:` commit that adds
-`Store::reclassify_account_directions`. The address commands and the config
-reload now reclassify the account's stored mail against its committed owned set.
+Fixed on `fix/alias-reclassify-stored-mail` (PR #665). The address commands,
+the config reload and the sync loop now reclassify the account's stored mail
+against its committed owned set.
 
 ## What happened
 
@@ -18,28 +18,47 @@ from it Outbound.
 
 ## How it is fixed
 
-- `add`, `remove` and `set-primary` refresh the registry, then reclassify the
-  account from the committed store set. Inbound rows from an owned sender become
-  outbound, and outbound rows from an unowned sender become inbound. Unknown
-  rows are left to the existing repair.
-- In the same writer transaction, each flipped reply's `reply_pairs` row is
-  rebuilt from its new direction, and arrivals for mail now sent are dropped
-  unless the user corrected them.
-- The contacts table is queued for a refresh when any row changed.
-- The config reload path reclassifies each account whose owned set changed.
+- `add`, `remove` and `set-primary` take the account's sweep gate, write, then
+  reclassify the account from the committed store set. Inbound rows from an
+  owned sender become outbound, and outbound rows from an unowned sender become
+  inbound. Unknown rows are left to the existing repair.
+- The gate also makes an in-flight Reading or Paper trail sweep recheck its
+  selection after the change, so it does not archive mail that is now sent.
+- Each flipped reply's `reply_pairs` row is rebuilt from its new direction, with
+  its business-hours latency recomputed and any `reply_pair_pending` row cleared.
+- Arrival history is not touched. See the decision below.
+- The contacts refresh zeroes direction counters for contacts that the
+  aggregate no longer produces, so a stale outbound total does not survive.
+- Each address change owes its account a reconciliation. The owed set is in
+  memory, and every stored account starts owed after a restart. After the
+  account's next successful sync pass, the daemon reclassifies it again. That
+  catches a batch prepared with the old set, and a reclassify that failed.
+- The config reload path does the same for each changed account.
+- The Wrapped cache is cleared when a change applies. The web app and the TUI
+  refresh their mail and mode views on `AccountAddressesChanged`.
 - The response and CLI output report `to_outbound` and `to_inbound`. Add and
-  remove also take `dry_run`, and `--dry-run` previews the same counts.
-  `set-primary` never changes which addresses are owned, so its counts are zero.
+  remove take `dry_run`, and `--dry-run` previews the same counts without
+  writing anything.
+
+## Decision: arrival history is not rewritten
+
+`arrivals` records what arrived at sync time, and a user correction on an
+arrival must survive. An address change therefore does not delete or insert
+arrival rows. Consequences:
+
+- Mail the account sent from an alias before it was registered can still be
+  counted in an old arrival record.
+- Removing an alias creates no arrival for its recent mail, because the arrival
+  trigger fires only on insert. Those messages are missing from arrival counts.
 
 ## Residual risks
 
-- Add and remove take `--dry-run`. It runs the same selection against the owned
-  set the change would produce, and writes nothing. Set-primary has no dry run:
-  it never changes membership.
-- A sync pass that loaded the registry before the refresh can still write an
-  Inbound row for an alias after the reclassify. Nothing repairs that row until
-  the next alias change.
-- Removing an alias does not create arrivals for its recent mail. The arrivals
-  trigger fires only on insert, so those messages stay out of arrival counts.
-  Creating them needs a decision on how old mail should place.
-- A config reload that fails to reclassify logs a warning and is not retried.
+- Set-primary runs the same account-wide reconciliation. Its counts can be
+  non-zero when rows from an earlier change are stale.
+- Sync repairs a batch only after its pass finishes. A pass that is in flight
+  while the change applies is corrected at that point, not before.
+- Relationship profiles, resolution suggestions and some cached summaries are
+  not refreshed by an address change. See
+  `docs/issues/address-change-does-not-refresh-relationship-profiles-and-resolution-suggestions.md`.
+- A config reload that fails its reclassify is retried on the account's next
+  successful sync pass, not immediately.

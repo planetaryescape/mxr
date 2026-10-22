@@ -582,6 +582,7 @@ pub(crate) async fn finalize_sync_pass(
     if let Err(error) = crate::handler::reconcile_provider_drafts(&state, &account_id).await {
         tracing::warn!(account = %account_id, %error, "provider draft reconciliation failed");
     }
+    reconcile_pass_directions(&state, &account_id).await;
     let _ = state
         .store
         .insert_event(
@@ -1279,6 +1280,30 @@ async fn post_delete_fanout(
 /// because the steps filter the whole table: the run after the last page
 /// repairs every row the earlier pages left. `finalize_sync_pass` owns the
 /// decision of when that is.
+/// After a sync pass wrote its batch: if the account owes a direction
+/// reconciliation (an address change, or startup), reclassify its stored mail
+/// against the committed owned set. A batch prepared before the change can land
+/// after the change's own reclassify, and this is what corrects it. A failure
+/// leaves the account owed, so the next pass retries.
+pub(crate) async fn reconcile_pass_directions(state: &Arc<AppState>, account_id: &AccountId) {
+    if !state.take_direction_repair(account_id) {
+        return;
+    }
+    match crate::handler::diagnostics_impl::reconcile_account_directions(state, account_id).await {
+        Ok(changes) => tracing::info!(
+            account = %account_id,
+            to_outbound = changes.to_outbound,
+            to_inbound = changes.to_inbound,
+            "reconciled stored mail directions after a sync pass"
+        ),
+        Err(error) => tracing::warn!(
+            account = %account_id,
+            %error,
+            "could not reconcile stored mail directions after a sync pass; retrying on the next pass"
+        ),
+    }
+}
+
 pub(crate) async fn run_analytics_repair(state: &Arc<AppState>, account_id: &AccountId) {
     let backfill = crate::handler::diagnostics_impl::incremental_analytics_backfill(state).await;
     if backfill.did_work() || backfill.startup_repair_ran {

@@ -241,8 +241,42 @@ impl super::Store {
             })
             .collect::<Vec<_>>();
         self.prune_contacts_without_mail(&candidates).await?;
+        // The aggregate produces a contact only from inbound or outbound mail,
+        // so a candidate that survives the prune has none of either. Its
+        // direction counters must read zero, not the values from before the
+        // mail changed direction.
+        self.zero_direction_counters(&candidates).await?;
         trace_query("contacts.refresh", started_at, affected as usize);
         Ok(affected)
+    }
+
+    /// Resets the counters a refresh derives from direction on each candidate
+    /// the aggregate did not produce. A candidate that is still in `contacts`
+    /// has mail that names it, but not as sender or recipient in the direction
+    /// the counters count. The prune skips it, so the row keeps its old totals.
+    async fn zero_direction_counters(
+        &self,
+        candidates: &[(String, String)],
+    ) -> Result<(), sqlx::Error> {
+        if candidates.is_empty() {
+            return Ok(());
+        }
+        let mut tx = self.writer().begin().await?;
+        for (account_id, email) in candidates {
+            sqlx::query(
+                r#"UPDATE contacts
+                   SET total_inbound = 0, total_outbound = 0,
+                       last_inbound_at = NULL, last_outbound_at = NULL,
+                       replied_count = 0, cadence_days_p50 = NULL
+                   WHERE account_id = ?1 AND email = ?2"#,
+            )
+            .bind(account_id)
+            .bind(email)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
     }
 
     /// Deletes each candidate contact that has no mail at all, with what
@@ -553,3 +587,6 @@ fn _types_used(_: AccountId, _: ContactRow) {
     // Keeps `decode_id` re-exported even when query helpers don't pull it.
     let _ = decode_id::<AccountId>;
 }
+
+#[cfg(test)]
+mod tests;

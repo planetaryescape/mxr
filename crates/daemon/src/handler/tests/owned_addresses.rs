@@ -617,3 +617,38 @@ async fn dry_run_remove_refuses_the_primary_like_the_real_remove() {
         applied.unwrap_err().to_string()
     );
 }
+
+#[tokio::test]
+async fn a_batch_prepared_under_the_old_set_is_reconciled_by_the_post_pass() {
+    use mxr_core::types::MessageDirection;
+
+    let state = std::sync::Arc::new(AppState::in_memory().await.unwrap());
+    let account_id = state.default_account_id();
+    crate::handler::diagnostics_impl::add_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        false,
+        false,
+    )
+    .await
+    .unwrap();
+    // A sync batch prepared before the alias was owned lands after the change.
+    let late_batch = store_mail_from(
+        &state,
+        &account_id,
+        "alias@example.com",
+        MessageDirection::Inbound,
+        "late-batch",
+    )
+    .await;
+    assert_eq!(direction_of(&state, &late_batch).await, "inbound");
+
+    crate::loops::reconcile_pass_directions(&state, &account_id).await;
+
+    assert_eq!(direction_of(&state, &late_batch).await, "outbound");
+    assert!(
+        !state.take_direction_repair(&account_id),
+        "a successful pass clears the owed reconciliation"
+    );
+}

@@ -167,11 +167,30 @@ async fn reclassify_account_directions_moves_reply_pairs_with_the_reply() {
         .await
         .unwrap());
 
+    sqlx::query(
+        "INSERT INTO reply_pair_pending (reply_message_id, in_reply_to_header, account_id, created_at)
+         VALUES (?, '<parent@example.com>', ?, 0)",
+    )
+    .bind(reply.id.as_str())
+    .bind(account.id.as_str())
+    .execute(store.writer())
+    .await
+    .unwrap();
+
     let owned = OwnedAddresses::new(Some("me@example.com"), ["alias@example.com"]);
     store
         .reclassify_account_directions(&account.id, &owned, true)
         .await
         .unwrap();
+
+    let pending: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM reply_pair_pending WHERE reply_message_id = ?",
+    )
+    .bind(reply.id.as_str())
+    .fetch_one(store.reader())
+    .await
+    .unwrap();
+    assert_eq!(pending, 0, "a resolved reply leaves the pending queue");
 
     let (direction, counterparty): (String, String) = sqlx::query_as(
         "SELECT direction, counterparty_email FROM reply_pairs WHERE reply_message_id = ?",
@@ -182,10 +201,24 @@ async fn reclassify_account_directions_moves_reply_pairs_with_the_reply() {
     .unwrap();
     assert_eq!(direction, "i_replied");
     assert_eq!(counterparty, "bob@example.com");
+
+    let (latency, parent_at, replied_at): (Option<i64>, i64, i64) = sqlx::query_as(
+        "SELECT business_hours_latency_seconds, parent_received_at, replied_at
+         FROM reply_pairs WHERE reply_message_id = ?",
+    )
+    .bind(reply.id.as_str())
+    .fetch_one(store.reader())
+    .await
+    .unwrap();
+    assert_eq!(
+        latency,
+        Some(crate::reply_pairs::compute_business_hours_seconds(parent_at, replied_at)),
+        "a rebuilt pair carries its business-hours latency"
+    );
 }
 
 #[tokio::test]
-async fn reclassify_account_directions_drops_arrivals_for_mail_now_sent() {
+async fn reclassify_account_directions_leaves_arrival_history_alone() {
     let store = crate::Store::in_memory().await.unwrap();
     let account = test_account();
     store.insert_account(&account).await.unwrap();
@@ -197,14 +230,11 @@ async fn reclassify_account_directions_drops_arrivals_for_mail_now_sent() {
         Some(MessageDirection::Inbound),
     )
     .await;
-    let bob_mail = insert_message(
-        &store,
-        &account.id,
-        "bob-in",
-        "bob@example.com",
-        Some(MessageDirection::Inbound),
-    )
-    .await;
+    let arrivals_before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM arrivals")
+        .fetch_one(store.reader())
+        .await
+        .unwrap();
+    assert_eq!(arrivals_before, 1);
 
     let owned = OwnedAddresses::new(Some("me@example.com"), ["alias@example.com"]);
     store
@@ -212,18 +242,12 @@ async fn reclassify_account_directions_drops_arrivals_for_mail_now_sent() {
         .await
         .unwrap();
 
-    let arrived = |id: MessageId| {
-        let store = &store;
-        async move {
-            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM arrivals WHERE message_id = ?")
-                .bind(id.as_str())
-                .fetch_one(store.reader())
-                .await
-                .unwrap()
-        }
-    };
-    assert_eq!(arrived(alias_mail).await, 0);
-    assert_eq!(arrived(bob_mail).await, 1);
+    assert_eq!(direction_of(&store, &alias_mail).await, "outbound");
+    let arrivals_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM arrivals")
+        .fetch_one(store.reader())
+        .await
+        .unwrap();
+    assert_eq!(arrivals_after, arrivals_before);
 }
 
 #[tokio::test]

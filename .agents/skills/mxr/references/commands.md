@@ -690,11 +690,13 @@ mxr accounts addresses add --account <account> <email> --dry-run   # also valid 
 ```
 
 Add and remove reclassify the account's stored mail against the new owned set
-at once. Each prints the counts as `to_outbound` (inbound mail that now reads as
+in the same command. Arrival history is not rewritten. Each prints the counts as `to_outbound` (inbound mail that now reads as
 sent) and `to_inbound` (sent mail that now reads as received); `--format json`
 returns them with a `dry_run` field. `add` and `remove` take `--dry-run`, which
-reports the same counts and changes nothing. Set-primary has no dry run: it
-changes only the primary marker, so its counts are always zero.
+reports the same counts and changes nothing. Set-primary has no dry run. It
+changes only the primary marker, so it never changes which addresses are owned,
+but it runs the account-wide reconciliation, so its counts can be non-zero when
+rows from an earlier change were stale.
 
 `mxr compose --from <owned-address>` selects both the account and that sender
 identity. Replies and forwards also accept `--from <owned-address>`. Dry-run

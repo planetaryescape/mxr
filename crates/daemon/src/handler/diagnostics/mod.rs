@@ -802,12 +802,15 @@ pub(crate) async fn add_account_address(
             preview_account_directions(state, account_id, &owned).await?,
         ));
     }
+    // The gate covers the address write and the reclassify, so a sweep check
+    // cannot see the old set and archive after the change.
+    let _change = state.sweep_gate.change([account_id]).await;
     state
         .store
         .add_account_address(account_id, email, primary)
         .await?;
     state.refresh_account_addresses().await;
-    let changes = reclassify_account_directions(state, account_id).await?;
+    let changes = settle_address_change(state, account_id).await?;
     crate::chimes::emit_daemon_event(
         state,
         mxr_protocol::DaemonEvent::AccountAddressesChanged {
@@ -840,12 +843,13 @@ pub(crate) async fn remove_account_address(
             preview_account_directions(state, account_id, &owned).await?,
         ));
     }
+    let _change = state.sweep_gate.change([account_id]).await;
     state
         .store
         .remove_account_address(account_id, email)
         .await?;
     state.refresh_account_addresses().await;
-    let changes = reclassify_account_directions(state, account_id).await?;
+    let changes = settle_address_change(state, account_id).await?;
     crate::chimes::emit_daemon_event(
         state,
         mxr_protocol::DaemonEvent::AccountAddressesChanged {
@@ -860,9 +864,10 @@ pub(crate) async fn set_primary_account_address(
     account_id: &AccountId,
     email: &str,
 ) -> HandlerResult {
+    let _change = state.sweep_gate.change([account_id]).await;
     state.store.set_primary_address(account_id, email).await?;
     state.refresh_account_addresses().await;
-    let changes = reclassify_account_directions(state, account_id).await?;
+    let changes = settle_address_change(state, account_id).await?;
     crate::chimes::emit_daemon_event(
         state,
         mxr_protocol::DaemonEvent::AccountAddressesChanged {
@@ -892,6 +897,35 @@ async fn preview_account_directions(
         .await
 }
 
+/// After an address write, with the caller holding the account's sweep gate:
+/// owe the account a reconciliation after its next sync pass, then reclassify
+/// now for the response. The owed mark stays even when this succeeds, because a
+/// sync batch prepared before the write can still land after it.
+async fn settle_address_change(
+    state: &AppState,
+    account_id: &AccountId,
+) -> Result<AccountDirectionChanges, sqlx::Error> {
+    state.owe_direction_repair(account_id);
+    reclassify_account_directions(state, account_id).await
+}
+
+/// The post-pass reconciliation, and the reload path's repair: reclassify one
+/// account under its sweep gate. A failure leaves the account owed, so the next
+/// successful sync pass retries it.
+pub(crate) async fn reconcile_account_directions(
+    state: &AppState,
+    account_id: &AccountId,
+) -> Result<AccountDirectionChanges, sqlx::Error> {
+    let _change = state.sweep_gate.change([account_id]).await;
+    match reclassify_account_directions(state, account_id).await {
+        Ok(changes) => Ok(changes),
+        Err(error) => {
+            state.owe_direction_repair(account_id);
+            Err(error)
+        }
+    }
+}
+
 /// Make the account's stored mail agree with its committed owned set. Callers
 /// refresh the registry first, so sync passes that start now classify against
 /// the new set. The contacts table caches direction, so it is queued too.
@@ -905,6 +939,7 @@ pub(crate) async fn reclassify_account_directions(
         .reclassify_account_directions(account_id, &owned, true)
         .await?;
     if changes != AccountDirectionChanges::default() {
+        state.wrapped_cache_clear();
         if let Err(error) = state
             .contacts_refresh
             .enqueue_accounts(std::slice::from_ref(account_id))

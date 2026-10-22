@@ -222,8 +222,13 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
         // An email or sender moved in some client, or new mail was sorted:
         // Now's line, the mode on screen and Inbox's chips refetch.
         DaemonEvent::ModesChanged { .. } => app.modes_changed(),
-        // The owner's To/Cc for a reply may now differ from what was prewarmed.
-        DaemonEvent::AccountAddressesChanged { .. } => app.compose.invalidate_reply_contexts(),
+        // An address change moves stored mail between sent and received, so the
+        // mode views refresh as they do for a move. The owner's To/Cc for a
+        // reply may also now differ from what was prewarmed.
+        DaemonEvent::AccountAddressesChanged { .. } => {
+            app.modes_changed();
+            app.compose.invalidate_reply_contexts();
+        }
         DaemonEvent::AssistantUpdated {
             conversation_id,
             status,

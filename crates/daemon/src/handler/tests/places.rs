@@ -1223,3 +1223,54 @@ async fn sorting_to_messages_invalidates_a_running_reading_sweep() {
         "Sorting moved this mail out of Reading before the sweep rechecked it"
     );
 }
+
+#[tokio::test]
+async fn an_alias_registered_during_a_sweep_check_stops_that_check_allowing_the_message() {
+    // The check selected this as Reading mail, from a sender that is not yet
+    // owned. Registering the alias flips it to sent. The check's cached
+    // selection must not survive the change.
+    let fx = Fixture::new().await;
+    let alias = "alias@example.com";
+    let message = fx
+        .inbound(
+            &fx.account,
+            alias,
+            "Sent from an alias before it was registered",
+            Duration::hours(1),
+            true,
+        )
+        .await;
+    let scope = crate::handler::places::SweepScope {
+        place: MailPlaceData::Reading,
+        account_id: Some(fx.account.clone()),
+        sender_email: None,
+    };
+    let mut check = crate::handler::places::SweepCheck::start(
+        &fx.state,
+        &scope,
+        std::slice::from_ref(&message.id),
+    )
+    .await
+    .unwrap();
+    assert!(check.kept().contains(&message.id));
+
+    crate::handler::diagnostics_impl::add_account_address(
+        &fx.state,
+        &fx.account,
+        alias,
+        false,
+        false,
+    )
+    .await
+    .unwrap();
+
+    let generation = fx.state.sweep_gate.hold(&fx.account).await;
+    let allowed = check
+        .allows(&fx.state, &fx.account, *generation, &message.id)
+        .await
+        .unwrap();
+    assert!(
+        !allowed,
+        "the sweep check still allows mail that is now sent"
+    );
+}

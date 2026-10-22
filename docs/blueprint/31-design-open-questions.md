@@ -23,6 +23,9 @@ For each, record what was run, the result, the date and the conclusion here unde
 | Q4 | Does BK still want editor colour themes (catppuccin, gruvbox, nightfox, kanagawa, one), as he asked for the desktop app on 2026-04-22? The web app has Midnight, Eclipse, Paper and Light, and nobody revisited the request. | Open; blueprint assumes not now, and the generator (D139) makes them three values each if yes. |
 | Q5 | Should a proof let you drop single items before applying ("archive these 14, but not that one")? Today approval runs exactly the stored call (D122), so dropping items needs the daemon to accept a narrowed selection and record it as the user's edit. | Open; blueprint assumes whole-proof apply, or send back with a note. |
 | Q6 | Is square still BK's taste ("i'm not expecting to see rounded corners", 2026-03-22, for the desktop app)? D127 makes surfaces square and controls 3px. | Open; blueprint assumes yes. |
+| Q7 | BK's message of 2026-10-22 ended mid-sentence: "drafting should also understand all the things in /humanizer and". What came after "and"? | Open; blueprint assumes nothing more for the composer ([34](34-composer.md)). |
+| Q8 | When Draft for me finishes what you typed, should it keep your sentences word for word (changing one only for a typo or to join it to a new sentence), or may it smooth your wording too? Polish is the action that rewrites your words. | Open; blueprint assumes word for word (D153). |
+| Q9 | With `llm.allow_cloud_relationship_data` off, may you pick a cloud model for one draft? It would see only the conversation you're answering, not your past mail, and the picker would say "this conversation only". The assistant refuses cloud picks in that state (D145) because it reads across the mailbox. | Open; blueprint assumes yes, labelled (D156). |
 
 ## Spike results
 

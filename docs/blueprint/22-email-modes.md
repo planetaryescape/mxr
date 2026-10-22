@@ -630,6 +630,61 @@ the topic.
 then time; the preview is their ask; the subject is a topic label; the
 state is the turn, not read or unread.
 
+## Messages filters find rows; the row still shows the turn
+
+BK, 22 October 2026: "in messages, I want to be able to filter to see only
+unread messages only and any other useful filters. This applies to all
+clients including raycast, web, tui, desktop etc." (D162)
+
+Messages has one filter today, the turn (`ListMessages.turn`, applied in
+`crates/daemon/src/handler/messages.rs:551-569`), and Raycast and the TUI
+send none. The filter set comes from what every row already carries
+(`MessagesRowData`), so no filter needs a new query:
+
+| Filter | Shows rows where | Kind |
+|---|---|---|
+| All, Your turn, Waiting on them | the turn, as today | one choice |
+| Unread | a message from them in the Inbox is unread (`unread`) | toggle |
+| Past your pace | your turn has run past how fast you usually reply to them (`overdue`) | toggle |
+| Account | the row's account (`account_id`), as today | one choice |
+
+Toggles combine with the turn and with each other: Unread with Waiting on
+them shows people you're waiting on who also wrote something you haven't
+opened. Starred, attachments, people-only and groups-only were considered
+and left out: rows don't carry the first two cheaply, and nobody asked
+for the last two.
+
+**Unread is a filter, not the row's state.** The row still shows the turn
+("the state is the turn, not read or unread", above), and no count of
+unread appears anywhere, because D095 removed unread counts on purpose.
+The filter answers "what haven't I looked at" without turning unread back
+into a to-do flag.
+
+**One contract.** `ListMessages` gains `filter: MessagesFilterData { turn,
+unread, past_pace }`, with the top-level `turn` still accepted. The mode
+cache key (`ModeView::Messages` in `mode_cache.rs`) includes the whole
+filter. The response echoes the filter and adds `matched`, the rows left
+after it. `row_count` and `your_turn_split` stay unfiltered, so Now, the
+rail and the Messages header keep one count (D132). A filtered view with
+no rows has its own sentence ("No unread messages from people.", "Nobody
+is past your usual pace.") and a Clear filters action, never Your turn's
+clear line.
+
+**Every client draws the same filters:**
+
+- **Web and desktop.** The Messages header holds the shared square
+  segmented control for the turn (All, Your turn, Waiting on them), then
+  Unread and Past your pace as two toggles. The URL keeps them
+  (`?turn=&unread=1&pace=1`). `g f` moves focus to the filter bar.
+- **TUI.** `Ctrl-f`, the TUI's filter key everywhere (the web uses `g f`
+  because `Ctrl+f` is the browser's Find), opens the same facets as a picker. The active filters
+  show in the status line ("Unread · Your turn").
+- **Raycast.** The search bar's dropdown stays the account (`⌘P`). A
+  "Filter" submenu (`⌘F`) in the action panel holds the turn and the two
+  toggles with check marks, remembered per command. The section title
+  names the active filters ("Messages · Unread").
+- **CLI.** `mxr messages list [--turn mine|theirs] [--unread] [--past-pace] --json`.
+
 ## To do shows instructions on a runway, not emails with flags
 
 **Unit.** One row per thing to do, titled verb plus object ("Pay council

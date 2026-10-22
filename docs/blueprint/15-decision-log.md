@@ -1163,6 +1163,8 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 **Trade-offs accepted**: Switching mid-conversation sends the old turns to the new provider rebuilt from text and tool calls, so Claude's thinking blocks are replayed only to Claude. A `gpt-<number>` id on the default Ollama or another server on this machine now goes to OpenAI instead of that server; a remote `llm.base_url` keeps it, and local names like `gpt-oss` never match. The default list names models that may not exist on a given account, so an unavailable or failing model shows as such rather than being hidden.
 
+**Amended by**: D156 (2026-10-22): the list becomes `llm.models`, shared with drafting; the assistant keeps its own pick.
+
 ## D146: Unsubscribe receipts are separate from history
 
 **Chosen**: Each unsubscribe claims its message in `unsubscribe_receipts` before anything is sent: an insert with method `pending`. Only the attempt holding the claim sends. A send that succeeds is confirmed with its method and time, and the request is acknowledged. Any failure releases the claim and returns a retryable error that says the unsubscribe was not confirmed and a retry may send it again, because the first attempt may have reached the sender. If the release itself fails, the claim stays and the error is not retryable. A request that finds a confirmed receipt acknowledges without sending. A request that finds a live claim from another attempt returns a retryable "already in progress" error and never acknowledges, since that attempt may still fail. A claim older than 10 minutes is abandoned and taken over atomically. Failure text names neither the unsubscribe URL nor the recipient address. Purging event_log never touches the table. Deleting a message deletes its receipt, and the table references messages with ON DELETE CASCADE, so deleting an account removes its receipts too. Rows that existed before the migration are backfilled from the event_log success summaries the handler wrote, `Sent unsubscribe request for …` and `Unsubscribed from …`, in category `mutation`, for messages that still exist, with method `unknown`. Subjects are not matched: a mail titled "How to unsubscribe" gets no receipt. Backups from schema 92 get the same backfill from their event_log when restored.
@@ -1222,6 +1224,116 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 **Why**: The database grew without limit, because the only purge was the manual `mxr logs --purge`. Age is the rule people can predict. Unsubscribe safety does not depend on event history since v0.6.136 moved receipts to their own table, so history can be pruned without touching it.
 
 **Trade-offs accepted**: Event history older than 90 days is gone unless the user sets a longer retention or `0`. A rarely syncing account's sync history can be older than the cutoff, because the newest 50 rows are always kept. Deletes run in 5,000-row batches, so one prune takes several short writes, not one long one.
+
+## D152: The composer is one subsystem, with a pure core fed plain data
+
+**Chosen**: Writing mail is one subsystem with its own chapter, [34](34-composer.md). Drafting help is one request, `ComposeAssist`, answered in five stages: gather (the daemon handler `compose_assist.rs`), plan and check (pure, in a new crate `mxr-composer`), write and an optional repair (model calls). The prompt builder and output cleaner move from `draft_prompt.rs` and `draft_output.rs` into the crate. Every client draws the daemon's proposal, and none builds a prompt or hardcodes an instruction.
+
+**Considered**: Fixing each client in place (web replace, Raycast prepend, TUI display-only). Keeping the eleven handler files and adding a body field to `DraftCompose`.
+
+**Why**: BK, 2026-10-22: "in a very similar way to how the classifier is built as this comprehensive thing that is it's own thing, I think the composer might need to be architected in a similar way. so that it's not just a mess." Four clients doing four things with the same request is the mess. A pure core can be snapshot-tested without a model, which is what makes the corpus gate (D160) possible.
+
+**Trade-offs accepted**: One more crate. `DraftCompose`, `DraftRefine`, `mxr draft-assist` and `mxr draft refine` stay as aliases for one release, so both paths exist briefly.
+
+## D153: Draft for me starts from what you typed
+
+**Chosen**: The request carries your text (signature and forward header removed) and an optional selection. With no action given, the draft's state picks one: empty → Write, text → Finish, a selection → Edit selection. Polish is the one secondary action. Finish keeps every point and every sentence you wrote, adds what the email still needs, and marks what only you can decide as a gap; the proposal lists each of your sentences it changed (`yours_changed`). Your text goes inside the untrusted-mail markers. Tone and length chips (shorter, warmer, more formal, proofread) adjust any action and replace the register and length dropdowns and the refine buttons.
+
+**Considered**: A separate "Use my notes" toggle. Always rewriting into a fresh draft with your text as background. Gmail's Polish as the only path for typed text.
+
+**Why**: BK, 2026-10-22: "if I select draft for me while I already have something typed in the box, it should take what I have already drafted into account and not just give me a draft that ignores it entirely." Gmail, Superhuman, Front and Apple's Writing Tools all switch behaviour on the draft's state; none asks the user to say which. Readers judge heavily AI-helped messages as less sincere, most of all thanks, praise and feedback (Coman and Cardon, 1,100 professionals), so keeping your own words is the safer default.
+
+**Trade-offs accepted**: The kept check matches sentences, so a sentence the model merges with an added one shows as changed even when the words survive. Q8 asks whether word-for-word is what BK wants.
+
+## D154: Writing help returns a proof; only you put it in the draft
+
+**Chosen**: `ComposeAssist` returns a `ComposeProposalData` and changes nothing. The proposal holds the whole proposed text for your text region, the daemon's word diff from your text (`changes`), gaps, style marks, provenance and the hash of the text it was made from. The web editor and Raycast's form apply it themselves. The CLI, the TUI and agents use `ApplyComposeProposal`, which writes exactly the proposed text and refuses if the draft's text has changed since. Proposals live in daemon memory for 30 minutes. Accepting is one undo step. Model-written spans stay marked until edited (D136).
+
+**Considered**: Replacing the body (web today), prepending (Raycast today), inserting at the cursor, ghost text completion.
+
+**Why**: Every product in the research (Gmail, Superhuman, Apple, Notion, Grammarly) shows a result you accept, retry or undo, and Superhuman stops updating an AI draft once you edit it. AGENTS.md requires a preview path whose selection matches the real one; the hash makes applying write only what was previewed.
+
+**Trade-offs accepted**: One more step than a silent replace. A daemon restart loses unapplied proposals.
+
+## D155: The reply kind is explicit; recipients never decide reply or forward
+
+**Chosen**: `DraftTarget` is `Stored`, `Reply { message_id, all }`, `Forward { message_id, to }` or `New { account_id, to, subject }`. The daemon no longer turns a reply into a forward note because the first To isn't in the thread.
+
+**Considered**: Keeping the inference and having the web app stop sending To on replies.
+
+**Why**: `draft_compose.rs:67` makes a non-participant To mean forward, and the web app sends the first To (`useDraftAssist.ts:46`), so editing To on a reply silently changed what was drafted. Fastmail recalculates recipients when you switch reply kinds; the kind is the user's choice, not something read from the recipients.
+
+**Trade-offs accepted**: Clients must send the kind they already know.
+
+## D156: Drafting has one model setting, with a pick per draft
+
+**Chosen**: `[llm.compose] model`, shown in Settings > Compose, inheriting `[llm]` when unset. It replaces `llm.overrides.draft_assist`, `draft_new`, `draft_refine` and `humanize_rewrite`, which keep loading and warn once (as D144). The list is one catalogue shared with the assistant: `llm.assistant_models` becomes `llm.models` (the old key loads), and each entry is `ModelChoiceData`, generalised from `AssistantModelChoiceData` with `sees` ("this conversation and your past mail" or "this conversation only"). `ComposeAssist.model` overrides the setting for one request. The web help line's model mark, the TUI's `m`, Raycast's "Draft with Model" and `--model` pick it; the pick lasts for that draft. Repair uses the model that wrote. D114's tiers don't apply to drafting. Amends D145: the assistant keeps its own pick from the shared list.
+
+**Considered**: A remembered last pick (Missive). Per-feature defaults for write, finish and polish. A separate drafting list.
+
+**Why**: BK, 2026-10-22: "there's a default model that i can select in the settings but during drafting if I want I could choose a different one." Raycast, Zed and Notion set defaults per feature and override inside the AI surface. A pick that silently becomes the default is how the wrong model ends up reading mail, so it lasts one draft.
+
+**Trade-offs accepted**: Someone who always wants a cloud model for one person has to pick it each time or change the setting. Whether cloud models can be picked while history sharing is off is Q9; the blueprint assumes yes, labelled "this conversation only".
+
+## D157: The style rules are humanizer 3.1, measured against how you write
+
+**Chosen**: `crates/humanizer` becomes a catalogue of the skill's 26 patterns (groups A–F), each with a detector or `prompt_only`, a positive instruction, a strength (§1–§5 on one sighting, *weak alone* only with company) and whether it applies to email, versioned `3.1.0+mxr.1`, with a test against a vendored copy of the skill. The prompt's style block comes from it, replacing `writing_constraints()`. The check counts a pattern only above your own rate from your last 200 sent emails (`PatternRates`). Today's whole-draft rewrite becomes a repair of flagged sentences, at most once, by the same model, accepted only if the score improves and gaps, facts and your sentences are unchanged. The 24 existing categories map into the 26 as chapter 34's table shows; `FalseRange` and `Profanity` stay as mxr's own. Extends D092: scoring stays deterministic and local.
+
+**Considered**: Keeping the one-line constraint and updating its word list. A second model as judge. Running the whole skill as a rewrite prompt on every draft.
+
+**Why**: BK, 2026-10-22: "drafting should also understand all the things in /humanizer", and the updates "will need to be baked into the mxr composer". The skill's own rule is that the writer's sample outranks every pattern, dashes included, so a fixed ban list would fight the user's voice. A whole rewrite is where the user's sentences and the model's gaps get lost.
+
+**Trade-offs accepted**: Two patterns (§5, §26) can't be detected and are measured only by the eval's graders. The catalogue has to be bumped by hand when the skill changes; the test says when.
+
+## D158: One voice per draft, and what is shown is what was used
+
+**Chosen**: The composer builds one `Voice`: up to five of your sent emails (this person first), habits, usual length and register from stylometry, and your pattern rates. Usual length and register go into the task line unless a chip overrides them. Provenance names the examples, and each opens its email.
+
+**Considered**: Keeping the stylometry profile for the chip and the examples for the prompt.
+
+**Why**: Today the chip shows an inferred tone the prompt never receives (`draft_context.rs` against `draft_compose.rs:269-283`), and rebuilding the voice profile changes nothing a draft says. Few-shot examples of your own mail beat generated style descriptions in the research and in Shortwave's account of Ghostwriter.
+
+**Trade-offs accepted**: Pattern rates cost a scan of 200 sent emails when the voice is built; it is cached with the voice.
+
+## D159: A draft with an unfilled gap does not send
+
+**Chosen**: A seventh pre-send check, Unfilled gap, blocks a send whose body contains `[[?:`, naming each gap. A scheduled send with a gap keeps the draft, clears the schedule and emits the event, as every blocker does. In the web editor `Tab` moves to the next gap.
+
+**Considered**: A warning that can be confirmed. Stripping gaps at send.
+
+**Why**: Nobody means to send `[[?: the date]]`, and filling it is one edit. Superhuman warns at send time on its placeholders for the same reason.
+
+**Trade-offs accepted**: Someone who writes `[[?:` on purpose can't send it.
+
+## D160: The composer is measured on a labelled drafting corpus before it changes
+
+**Chosen**: A corpus of drafting cases in `crates/provider-fake/src/fixtures/compose/` (40 to start, in near-miss pairs, typed text the largest group), each saying what a proposal must keep, answer, leave as a gap, not invent, how long it may be and which style marks it may carry. A daemon test snapshots with insta every case's prompt and the check result for recorded model outputs, good and bad, with no model in CI. `mxr draft eval --set quick --model <id>` grades a real model on this machine; `--set mine` is today's replay of your own replies. `composer_version` (prompt and catalogue versions) goes into every proposal's provenance.
+
+**Considered**: Keeping the replay eval only. Grading with a model judge.
+
+**Why**: The classifier's rule ([32](32-classifier.md)): a change is a redesign checked against the corpus, not a patch. The replay eval needs the user's real mail and a model, so it can't gate a pull request.
+
+**Trade-offs accepted**: The recorded outputs go stale when models change; the live set is how that shows.
+
+## D161: The compose screen is your page under the lamp, and help comes back as a proof
+
+**Chosen**: The page and the proof, chapter 34's concept. On the web and desktop every reply opens inline under the message it answers, from every entry point, with a move to the sheet on today's `⇧⌘F`. A new message keeps the sheet; fullscreen is a toggle on it, and the floating window goes. One unsent reply per conversation: replying again resumes it, and Compose starts empty. The reader's separate "Draft a reply" panel goes. The editor toggle changes the current draft only. Recipients are one line until touched, From is the account chip, and a reply's subject is hidden. Help is one line under the page (`⌘J`): an instruction field naming the action the state picked, four chips, Polish and the model mark. The proof replaces the page in place, and you Accept (`↵`), Revise (`⌘J`), Try again with another model, or keep yours (`Esc`). Send is the one filled button, with later, archive and remind in its menu. Rich/Markdown, snippets and signatures move to `⋯`. The TUI's send review becomes "Send this reply?" with `r` running Draft for me, and shows the proof in the pane (`y`, `e`, `n`, `m`) and keeps `$EDITOR` (D009). Raycast pushes the proof as a Detail view from "Draft for Me" in the action panel, with no shortcut (chapter 35). Replaces 28's "Compose" mockup, including its sparkle (D141).
+
+**Considered**: Restyling the existing panel. A side panel for AI beside the editor. Separate compose windows for every reply (Mimestream, Apple Mail).
+
+**Why**: BK, 2026-10-22: "Is it possible to make the email replying UI and other composing views nicer and better and cleaner and more intentionally designed ... Right now, it just feels like a hodgepodge of stuff." The research's calm composers (Fastmail, Superhuman, HEY, Mimestream) reply inline, collapse recipients and show controls when needed; the move is taking controls away. Observed on v0.6.140 (chapter 34's table): three entry points opened replies in three layouts, the layout names didn't match what they did, two AI surfaces drafted the same reply differently, and badges and provenance showed twice.
+
+**Trade-offs accepted**: Inline replies make a long reply share the reader's width until popped out. Moving Rich/Markdown and the pickers behind `⋯` adds a step for people who use them often; their keys stay.
+
+## D162: Messages can be filtered to unread and past your pace, in every client
+
+**Chosen**: `ListMessages` takes `filter: MessagesFilterData { turn, unread, past_pace }` (the top-level `turn` still accepted). Unread keeps rows with an unread Inbox message from them; past pace keeps rows whose turn has run past your usual reply time. Toggles combine with the turn and each other. The mode cache key includes the filter; the response echoes it and adds `matched`, while `row_count` and `your_turn_split` stay unfiltered (D132). A filtered view with no rows has its own sentence and a Clear filters action. Web and desktop show the turn as the square segmented control plus two toggles, kept in the URL, with `g f`; the TUI opens the same facets with `Ctrl-f`; Raycast keeps the account dropdown (`⌘P`) and adds a Filter submenu (`⌘F`); the CLI takes `--turn`, `--unread` and `--past-pace`. Chapter 22, "Messages filters find rows", is the design.
+
+**Considered**: Unread as a row state or a count. Starred, attachments, people-only and groups-only filters. A Raycast dropdown holding both accounts and filters.
+
+**Why**: BK, 2026-10-22: "in messages, I want to be able to filter to see only unread messages only and any other useful filters. This applies to all clients including raycast, web, tui, desktop etc." Every row already carries `unread` and `overdue`, so neither needs a new query. Unread stays a filter, not a state or a count, because D095 removed unread counts and 22 says the row's state is the turn. Raycast allows one dropdown, and BK asked for accounts on `⌘P`.
+
+**Trade-offs accepted**: A person with several topics counts as unread when any topic has an unread message. Starred and attachment filters wait until rows carry them.
 
 ## D163: A key names a verb, and a verb has one key in every mail and mode context
 
@@ -1332,3 +1444,4 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 **Why**: Gmail's `b` snoozes, so a Gmail habit put mail on the wrong shelf; one verb with Later as its first option keeps both outcomes one or two keys away (BK, 2026-10-22).
 
 **Trade-offs accepted**: Snoozing takes a second key (`b` then a time) where `Z` used to open the same picker; `Z` habits are relearned.
+||||||| Stash base

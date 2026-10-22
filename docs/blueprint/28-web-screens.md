@@ -215,6 +215,8 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
 
 **Intent.** "compose page is about writing the email" (BK, 2026-05-11). The sheet sits on the overlay surface over a scrim, so writing and reading are clearly different states. The editor takes the height, and Send is the page's one filled button. The vim mode line appears only when vim mode is on. "Draft for me" is one quiet row with its key, and its output is marked as model text until edited.
 
+**Replaced by [34](34-composer.md) (D161, 2026-10-22)** for replies, Draft for me and the controls: a reply opens inline under the message, help is one line that returns a proof, and the sparkle above goes (D141). A new message keeps this sheet.
+
 **From today (`11-compose-new`):** the scrim is new; "NEW MESSAGE" in mono caps becomes the sheet's Title; Rich/Markdown uses the shared segmented control.
 
 ## Search, the palette and `?`

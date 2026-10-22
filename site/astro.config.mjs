@@ -148,6 +148,7 @@ export default defineConfig({
             { label: 'Adapter Development', slug: 'guides/adapter-development' },
             { label: 'AI Agent Skill', slug: 'guides/agent-skill' },
             { label: 'Public Rust crates', slug: 'guides/public-rust-crates' },
+            { label: 'Trace Model Calls', slug: 'guides/trace-model-calls' },
           ],
         },
         {

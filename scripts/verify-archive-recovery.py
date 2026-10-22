@@ -101,9 +101,20 @@ def start():
         assert daemon.poll() is None, (r / 'daemon.log').read_text()[-6000:]
         pid = r / 'data/daemon.pid'
         if Path(sock).exists() and pid.exists() and pid.read_text().strip() == str(daemon.pid):
-            return
+            break
         time.sleep(.1)
-    raise RuntimeError('Owned daemon did not publish its PID/socket')
+    else:
+        raise RuntimeError('Owned daemon did not publish its PID/socket')
+    # The bridge starts listening after the socket and PID exist; HTTP
+    # checks right after a restart raced it and got connection refused.
+    while time.monotonic() < deadline:
+        assert daemon.poll() is None, (r / 'daemon.log').read_text()[-6000:]
+        try:
+            socket.create_connection(('127.0.0.1', a.port), timeout=1).close()
+            return
+        except OSError:
+            time.sleep(.1)
+    raise RuntimeError('Owned daemon did not open its bridge port')
 
 
 def stop(crash=False):

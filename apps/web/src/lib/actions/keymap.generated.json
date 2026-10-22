@@ -6813,7 +6813,8 @@
         "list",
         "reader",
         "updates",
-        "reading"
+        "reading",
+        "arrivals"
       ],
       "keys": [
         "X"
@@ -6845,7 +6846,8 @@
       "scopes": [
         "now",
         "messages",
-        "list"
+        "list",
+        "arrivals"
       ],
       "keys": [
         "K"
@@ -6862,6 +6864,55 @@
             "messages"
           ]
         }
+      ]
+    },
+    {
+      "id": "arrivals.down",
+      "label": "Next",
+      "group": "Move",
+      "scopes": [
+        "arrivals"
+      ],
+      "keys": [
+        "j",
+        "ArrowDown"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "arrivals.up",
+      "label": "Previous",
+      "group": "Move",
+      "scopes": [
+        "arrivals"
+      ],
+      "keys": [
+        "k",
+        "ArrowUp"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "arrivals.open",
+      "label": "Open conversation",
+      "short_label": "Open",
+      "group": "Move",
+      "scopes": [
+        "arrivals"
+      ],
+      "keys": [
+        "Enter",
+        "o"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
       ]
     },
     {

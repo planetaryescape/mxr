@@ -3522,7 +3522,7 @@ label = "Move to…"
 short_label = "Move"
 description = "This email only: Messages, To do, Updates, Reading or Archive"
 group = "Triage"
-scopes = ["now", "messages", "list", "reader", "updates", "reading"]
+scopes = ["now", "messages", "list", "reader", "updates", "reading", "arrivals"]
 keys = ["X"]
 
 [[action.tui]]
@@ -3536,13 +3536,43 @@ label = "Send everything from this sender to…"
 short_label = "Move sender"
 description = "Messages, Updates or Reading, for their mail from now on"
 group = "Triage"
-scopes = ["now", "messages", "list"]
+scopes = ["now", "messages", "list", "arrivals"]
 keys = ["K"]
 
 [[action.tui]]
 name = "OpenSenderMoveMenu"
 keys = ["K"]
 contexts = ["list", "now", "messages"]
+
+# The emails behind one count of Now's arrivals line (/now/arrivals). The TUI
+# has no such page, so these are the web's alone; X and K above work there too.
+[[action]]
+id = "arrivals.down"
+label = "Next"
+group = "Move"
+scopes = ["arrivals"]
+keys = ["j", "ArrowDown"]
+hide_in_palette = true
+clients = ["web"]
+
+[[action]]
+id = "arrivals.up"
+label = "Previous"
+group = "Move"
+scopes = ["arrivals"]
+keys = ["k", "ArrowUp"]
+hide_in_palette = true
+clients = ["web"]
+
+[[action]]
+id = "arrivals.open"
+label = "Open conversation"
+short_label = "Open"
+group = "Move"
+scopes = ["arrivals"]
+keys = ["Enter", "o"]
+hide_in_palette = true
+clients = ["web"]
 
 [[action]]
 id = "semantic.backfill"

@@ -917,6 +917,17 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `g f` | Filters… |  |
 | `Esc` | Close |  |
 
+### Arrivals
+
+The emails behind one of Now's arrival counts. `X` (in Mail actions) moves the email under the cursor.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `K` | Send everything from this sender to… |  |
+| `j`, `ArrowDown` | Next |  |
+| `k`, `ArrowUp` | Previous |  |
+| `Enter`, `o` | Open conversation |  |
+
 ### Compose
 
 While writing a message. ⌘ and Ctrl both work, on every platform.

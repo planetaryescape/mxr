@@ -63,6 +63,7 @@ const SCOPES: Record<ActionScope, true> = {
   reading: true,
   "reading-reader": true,
   compose: true,
+  arrivals: true,
 };
 
 /** The definition's web actions by id. Actions without "web" in `clients` are the TUI's alone. */

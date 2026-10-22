@@ -45,6 +45,7 @@ const SCOPE_TITLE: Record<Exclude<ActionScope, "global">, string> = {
   reading: "Reading",
   "reading-reader": "Reading: the reader",
   compose: "Compose",
+  arrivals: "Arrivals",
 };
 
 const PANE_ORDER: readonly string[] = ["reader", "list", "sidebar", "screener", "focus"];

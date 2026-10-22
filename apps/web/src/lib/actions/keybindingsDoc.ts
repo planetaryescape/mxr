@@ -76,6 +76,12 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
   },
   { title: "Archive", intro: "", match: (action) => inScope(action, "archive") },
   {
+    title: "Arrivals",
+    intro:
+      "The emails behind one of Now's arrival counts. `X` (in Mail actions) moves the email under the cursor.",
+    match: (action) => inScope(action, "arrivals"),
+  },
+  {
     title: "Compose",
     intro: "While writing a message. ⌘ and Ctrl both work, on every platform.",
     match: (action) => inScope(action, "compose"),

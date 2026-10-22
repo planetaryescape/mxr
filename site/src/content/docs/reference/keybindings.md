@@ -274,6 +274,7 @@ People as rows with their topics inside (`gm`). See
 | `[` / `]` | Previous / next topic |
 | `p` | The person's page |
 | `o` / `v` | The selected message as sent |
+| `g f` (web) / `Ctrl-f` (TUI) | Filter the list: turn, unread, past your pace |
 
 ## To do
 

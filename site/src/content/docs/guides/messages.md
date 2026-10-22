@@ -12,6 +12,7 @@ is what they asked you.
 ```bash
 mxr messages            # the bands
 mxr messages list --turn mine
+mxr messages list --unread --past-pace
 mxr messages person samir@launchpad.example
 mxr messages ack THREAD_ID --dry-run
 ```
@@ -42,6 +43,28 @@ people you write with and others who wrote to you. The Waiting on view
 A turn nobody took goes quiet after three times your usual interval with
 that person, or a week when there's no history, and never stays longer
 than 30 days. Nothing in Messages expires; it only goes quiet.
+
+## Filter the list
+
+The list can show only some rows. A turn choice (All, Your turn, Waiting on
+them) sits beside two toggles: Unread keeps people with a message from them
+you haven't read, and Past your pace keeps the people whose turn has run
+longer than your usual reply time with them. The toggles and the turn
+choice combine, so Your turn with Unread shows only the unread people you
+owe a reply.
+
+The filter changes which rows show, never the counts. The header, the rail
+and Now still count everyone, and the filter line says how many rows it
+kept ("Showing 2 of 9") with Clear filters beside it while a filter is on.
+An empty filtered list says why: "No unread messages from people." and what
+is still waiting in Your turn.
+
+| Where | How |
+|---|---|
+| Web app | The filter line above the list. `g f` moves focus to it |
+| TUI | `Ctrl-f` opens a picker; `Enter` picks or toggles, `Esc` closes. The status bar names the filters on |
+| Raycast | `⌘F` opens a Filter menu. The choice is remembered for that command |
+| CLI | `mxr messages list --turn mine --unread --past-pace`; `--format json` echoes the filter and reports `matched` |
 
 ## Which threads land here
 
@@ -174,6 +197,7 @@ emoji reaction. Because it sends mail on one key, mxr guards it:
 | `[` / `]` | Previous / next topic |
 | `p` | The person's page |
 | `o` or `v` | The message as sent |
+| `g f` (web) or `Ctrl-f` (TUI) | Filter the list |
 | `u` | Undo |
 | `?` | What this mode is for, and its keys |
 

@@ -50,7 +50,7 @@ const RANKED_SYNC_LOGS: &str = "SELECT id, started_at, ROW_NUMBER() OVER (
 const PRUNABLE_SYNC_LOGS: &str = "rn > ?2 AND started_at < ?1";
 
 /// Number of sync_log rows a prune with this cutoff and keep count would
-/// delete. Shares [`PRUNABLE_SYNC_LOGS`] with `Store::prune_sync_logs_before`.
+/// delete. Shares `PRUNABLE_SYNC_LOGS` with `Store::prune_sync_logs_before`.
 pub async fn count_prunable_sync_logs(
     conn: &mut sqlx::SqliteConnection,
     cutoff_timestamp: i64,
@@ -69,7 +69,7 @@ impl super::Store {
     /// Deletes sync_log rows older than `cutoff_timestamp` (unix seconds)
     /// except each account's newest `keep_newest_per_account` rows, which stay
     /// regardless of age so a rarely syncing account keeps its history. Runs in
-    /// batches of [`crate::event_log::PRUNE_BATCH_ROWS`]. A sync that is
+    /// batches of `PRUNE_BATCH_ROWS`. A sync that is
     /// running while this runs is either outside the window (newest rows are
     /// never prunable) or completes its own row by id, which is a no-op if
     /// that row was already deleted.
@@ -82,7 +82,7 @@ impl super::Store {
             "DELETE FROM sync_log WHERE id IN \
              (SELECT id FROM ({RANKED_SYNC_LOGS}) WHERE {PRUNABLE_SYNC_LOGS} LIMIT ?3)"
         );
-        let batch = i64::from(crate::event_log::PRUNE_BATCH_ROWS);
+        let batch = crate::event_log::PRUNE_BATCH_ROWS;
         let mut total = 0;
         loop {
             let deleted = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))

@@ -688,6 +688,12 @@ mxr accounts addresses remove --account <account> <email>   # refuses the primar
 mxr accounts addresses set-primary --account <account> <email>
 ```
 
+Add, remove and set-primary reclassify the account's stored mail against the new
+owned set at once. Each prints the counts as `to_outbound` (inbound mail that
+now reads as sent) and `to_inbound` (sent mail that now reads as received);
+`--format json` returns them as JSON. Set-primary changes only the primary
+marker, so its counts are zero.
+
 `mxr compose --from <owned-address>` selects both the account and that sender
 identity. Replies and forwards also accept `--from <owned-address>`. Dry-run
 output reports the effective From that the real send path will use.

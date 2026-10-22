@@ -274,6 +274,10 @@ mxr accounts addresses set-primary alias@example.com   # demote previous primary
 mxr accounts addresses remove old@example.com
 ```
 
+Each add, remove or set-primary reclassifies the account's stored mail at once,
+so mail you sent from an alias stops counting as received, and the command
+prints how many messages changed (`--format json` for the counts).
+
 Exactly one address per account is `is_primary=true` (enforced by a
 partial unique index in SQLite). The address set is cached in memory by
 the daemon and refreshed after every mutation.

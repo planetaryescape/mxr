@@ -98,6 +98,19 @@ mxr accounts addresses set-primary --account work hello@planetaryescape.xyz
 mxr accounts addresses remove --account work support@planetaryescape.xyz
 ```
 
+Adding or removing an address reclassifies the account's stored mail against
+the new set straight away. Mail from an address you now own reads as sent, and
+sent mail from an address you no longer own reads as received. Analytics, reply
+pairs follow at once, and the contacts view catches up within about ten seconds.
+The command reports how many messages changed:
+
+```bash
+mxr accounts addresses add --account work support@planetaryescape.xyz
+# Added support@planetaryescape.xyz. Stored mail reclassified: 14 now sent, 0 now received.
+mxr accounts addresses add --account work support@planetaryescape.xyz --format json
+# {"email":"support@planetaryescape.xyz","to_outbound":14,"to_inbound":0}
+```
+
 Once an address is registered it becomes a valid sender inside mxr for that
 account. A reply defaults its From to whichever owned address the original was
 delivered to, and `--from` / the `from:` frontmatter field can send as any

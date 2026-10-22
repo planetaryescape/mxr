@@ -835,6 +835,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One-time codes from the last day's mail, newest first, each current or expired */
+        get: operations["mail_codes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/commitments": {
         parameters: {
             query?: never;
@@ -8345,6 +8362,32 @@ export interface components {
             /** @description The busiest three sources. */
             top_sources: components["schemas"]["NowUpdateSourceData"][];
         };
+        /** @description A one-time code a message gave, for `Request::ListOneTimeCodes`. */
+        OneTimeCodeData: {
+            account_id: components["schemas"]["AccountId"];
+            /** @description As the message wrote it: "482913", "G-123456", "739 204". */
+            code: string;
+            /**
+             * @description Whether it is still in its window: the lifetime the message states,
+             *     else ten minutes.
+             */
+            current: boolean;
+            /** Format: date-time */
+            expires_at: string;
+            message_id: components["schemas"]["MessageId"];
+            /** Format: date-time */
+            received_at: string;
+            sender_email: string;
+            /** @description "accounts.acme.example", from the address. */
+            sender_host: string;
+            /**
+             * @description "Acme", as Updates names the source. Shown with `sender_host`: the
+             *     name is the sender's choice, the host is where the mail came from.
+             */
+            sender_name: string;
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+        };
         OwedReplyHereData: {
             message_id: components["schemas"]["MessageId"];
             /** Format: date-time */
@@ -11850,6 +11893,13 @@ export interface components {
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
+                  cmd: "ListOneTimeCodes";
+                  /** Format: int32 */
+                  limit?: number | null;
+              }
+            | {
+                  account_id?: components["schemas"]["AccountId"] | null;
+                  /** @enum {string} */
                   cmd: "GetUpdatesDigest";
                   /** Format: date-time */
                   cut?: string | null;
@@ -12969,6 +13019,11 @@ export interface components {
                   /** @enum {string} */
                   kind: "Now";
                   now: components["schemas"]["NowData"];
+              }
+            | {
+                  codes: components["schemas"]["OneTimeCodeData"][];
+                  /** @enum {string} */
+                  kind: "OneTimeCodes";
               }
             | {
                   digest: components["schemas"]["UpdatesDigestData"];
@@ -14756,6 +14811,11 @@ export interface components {
          */
         UpdateLineData: {
             account_id: components["schemas"]["AccountId"];
+            /**
+             * @description The one-time code the newest message gives, to copy: "482913".
+             *     Only while the code is in its window; expired lines never show.
+             */
+            code?: string | null;
             /**
              * Format: int32
              * @description Messages the line folds.
@@ -17070,6 +17130,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_codes: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description Most codes returned; default 10, at most 50 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `OneTimeCodes` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

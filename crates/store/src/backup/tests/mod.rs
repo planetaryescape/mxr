@@ -635,7 +635,7 @@ async fn schema_92_source_backfills_receipts_from_its_event_log() {
             .unwrap();
     assert_eq!(
         rows,
-        vec![(envelope.id.as_str().to_string(), "unknown".to_string(), 5)],
+        vec![(envelope.id.as_str(), "unknown".to_string(), 5)],
         "the pre-093 unsubscribe must still block a second send, and a mail whose subject mentions unsubscribing must not"
     );
     staged.close().await.unwrap();

@@ -714,3 +714,25 @@ function receiptFromAnOlderEmail(): UpdateLine {
     numbers: [],
   });
 }
+
+describe("UpdateLineRow with a one-time code", () => {
+  test("the code shows on the line and a click copies it without opening the peek", async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const { row, handlers } = renderLine(
+      lineFixture({ source_name: "Acme", fact: "MFA Login Authentication", code: "882308" }),
+    );
+    const code = within(row).getByTestId("update-code");
+    expect(code).toHaveTextContent("882308");
+    fireEvent.click(code);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("882308"));
+    expect(handlers.onTogglePeek).not.toHaveBeenCalled();
+    // The code itself and the `y` verb beside the others.
+    expect(within(row).getAllByRole("button", { name: /copy code/i })).toHaveLength(2);
+  });
+
+  test("a line without a code offers no copy", () => {
+    const { row } = renderLine(lineFixture());
+    expect(within(row).queryByTestId("update-code")).toBeNull();
+  });
+});

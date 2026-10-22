@@ -172,8 +172,8 @@ mod tests {
         )
         .bind(timestamp)
         .bind(category)
-        .bind(account_id.map(|id| id.as_str()))
-        .bind(message_id.map(|id| id.as_str()))
+        .bind(account_id.map(AccountId::as_str))
+        .bind(message_id.map(MessageId::as_str))
         .bind(summary)
         .execute(store.writer())
         .await
@@ -324,17 +324,12 @@ mod tests {
             .unwrap();
 
         let mut expected = vec![
-            (plain.as_str(), acct.to_string(), "unknown".to_string(), 100),
-            (upper.as_str(), acct.to_string(), "unknown".to_string(), 110),
-            (
-                earliest.as_str(),
-                acct.to_string(),
-                "unknown".to_string(),
-                200,
-            ),
+            (plain.as_str(), acct.clone(), "unknown".to_string(), 100),
+            (upper.as_str(), acct.clone(), "unknown".to_string(), 110),
+            (earliest.as_str(), acct.clone(), "unknown".to_string(), 200),
             (
                 via_message.as_str(),
-                acct.to_string(),
+                acct.clone(),
                 "unknown".to_string(),
                 210,
             ),

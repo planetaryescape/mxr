@@ -227,6 +227,7 @@ export const SAME_ACTION: Record<string, string[]> = {
   "updates.tune": ["UpdatesTune"],
   "updates.link": ["UpdatesOpenLink"],
   "updates.open-email": ["UpdatesOpenEmail"],
+  "updates.copy-code": ["UpdatesCopyCode"],
   "updates.pin": ["TogglePin"],
   "updates.sweep": ["UpdatesSweep"],
   "updates.close-hint": ["UpdatesClose"],

@@ -691,10 +691,43 @@ window. `--format jsonl` prints one line per source line with `section` set
 to `needs_a_look`, `changed`, `routine`, `since` or `expired`. `--format ids`
 prints thread ids.
 
+A line from an email that gives a one-time code also carries `code`
+(`"482913"`), while the code is in its window.
+
 `mxr updates let-go --format json` returns `dry_run`, `line`,
 `message_count`, `source_count`, `hidden_count`, `in_todo_count`,
 `thread_ids`, `message_ids`, `selection_token`, one `items` outcome per
 thread (as `mxr modes done`) and `mutation_id` for `mxr undo`.
+
+## `mxr code`
+
+`mxr code --format json` prints the newest one-time code still in its
+window, from mail received in the last day in any folder but Trash and
+Spam:
+
+```json
+{
+  "code": "482913",
+  "current": true,
+  "expires_at": "2026-10-22T14:42:00Z",
+  "received_at": "2026-10-22T14:32:00Z",
+  "sender_name": "Acme",
+  "sender_host": "acme.example",
+  "sender_email": "no-reply@acme.example",
+  "subject": "Your verification code is 482913",
+  "account_id": "…",
+  "message_id": "…",
+  "thread_id": "…"
+}
+```
+
+`sender_name` is the name the sender chose; show `sender_host` beside it.
+`expires_at` is the code's own lifetime, not the email's Updates window.
+Mail dated more than five minutes ahead of this machine's clock is left
+out. `--all` prints an array of the last day's codes, newest first, with
+`current: false` on expired ones. `--format ids` prints the code alone.
+With no current code it exits non-zero. The bridge serves the same list
+at `GET /api/v1/mail/codes` (`account`, `limit`).
 
 ## To do resolution evidence
 

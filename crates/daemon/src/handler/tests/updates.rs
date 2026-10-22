@@ -1218,3 +1218,40 @@ async fn a_single_pinned_cut_keeps_the_seeded_digest_for_a_whole_e2e_run() {
         );
     }
 }
+
+/// A sign-in alert stays on its line for two days; the code it carried
+/// leaves the line when the code expires, so `y` never copies a dead one.
+#[tokio::test]
+async fn a_lines_code_leaves_with_its_expiry_while_the_alert_stays() {
+    let fx = Fixture::new().await;
+    let (cut, now) = clock();
+    let alert = update(
+        &fx,
+        &ThreadId::new(),
+        "no-reply@accounts.example",
+        "New sign-in to your account",
+        cut - Duration::minutes(30),
+    )
+    .await;
+    fx.state
+        .store
+        .insert_body(&mxr_core::types::MessageBody {
+            message_id: alert.id.clone(),
+            text_plain: Some(
+                "Someone signed in from Chrome.\n\nYour security code is 551204. It expires in 5 minutes."
+                    .into(),
+            ),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: alert.date,
+            metadata: mxr_core::types::MessageMetadata::default(),
+        })
+        .await
+        .unwrap();
+    let digest = digest(&fx, now).await;
+    let line = all_lines(&digest)
+        .into_iter()
+        .find(|line| line.message_ids.contains(&alert.id))
+        .expect("the alert's line");
+    assert_eq!(line.code, None, "the code expired long ago");
+}

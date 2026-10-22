@@ -2155,6 +2155,32 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if std::mem::take(&mut app.mailbox.updates_page.pending_latest_code) {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                AsyncResult::LatestCodes(
+                    match ipc_call(
+                        &bg,
+                        Request::ListOneTimeCodes {
+                            account_id: None,
+                            limit: Some(5),
+                        },
+                    )
+                    .await
+                    {
+                        Ok(Response::Ok {
+                            data: ResponseData::OneTimeCodes { codes },
+                        }) => Ok(codes),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Ok(_) => Err(MxrError::Ipc(
+                            "unexpected response to ListOneTimeCodes".into(),
+                        )),
+                        Err(error) => Err(error),
+                    },
+                )
+            });
+        }
+
         if std::mem::take(&mut app.mailbox.updates_page.pending_let_go_preview) {
             let cut = app
                 .mailbox
@@ -4435,6 +4461,10 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::UpdatesLetGoPreview(Ok(preview)) => {
                             app.show_updates_let_go_preview(preview);
+                        }
+                        AsyncResult::LatestCodes(Ok(codes)) => app.copy_latest_code(&codes),
+                        AsyncResult::LatestCodes(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't find a code: {e}"));
                         }
                         AsyncResult::NowDigestPreview(Err(e))
                         | AsyncResult::UpdatesLetGoPreview(Err(e)) => {

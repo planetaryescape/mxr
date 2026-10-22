@@ -8,11 +8,12 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use crate::code::one_time_code;
 use crate::numbers::{extract_numbers, Quoted};
 use crate::source::{source_key, source_name};
 use crate::template::{clean_subject, template_key};
 use crate::text::{capitalise, clip, first_informative_line, pick_link};
-use crate::window::{window, Window, WindowKind};
+use crate::window::{code_window, window, Window, WindowKind};
 use crate::Signal;
 
 /// Longest fact line, in characters.
@@ -144,6 +145,17 @@ pub struct Fact {
     pub base_signal: Option<Signal>,
     pub needs_you: Option<NeedsYou>,
     pub window: Option<Window>,
+    /// The one-time code the message gives, to copy: "482913".
+    #[serde(default)]
+    pub code: Option<String>,
+    /// When `code` stops working: the lifetime the message states, else ten
+    /// minutes. Apart from `window`, which a sign-in alert sets to two days.
+    #[serde(default)]
+    pub code_expires: Option<DateTime<Utc>>,
+    /// The body was there when this was derived. A fact derived from the
+    /// subject and snippet alone is derived again once the body arrives.
+    #[serde(default)]
+    pub body_read: bool,
     pub tracked: Option<Tracked>,
     /// The one place to go deeper. Never on a needs-you line or a link
     /// about money: those open the email.
@@ -277,12 +289,28 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
         Some(line) => format!("{cleaned}\n{line}"),
         None => cleaned.clone(),
     };
+    let code = one_time_code(input.subject, input.body.or(Some(input.snippet)));
     let window = window(
         &cleaned,
         body_line.as_deref().unwrap_or_default(),
         input.date,
         tz,
     );
+    // The code's own lifetime, from anywhere in the top of the message: the
+    // window above reads only the first informative line.
+    let code_life = code.as_ref().map(|_| {
+        let text = format!("{cleaned}\n{}", input.body.unwrap_or(input.snippet));
+        code_window(&text, input.date)
+    });
+    let code_expires = code_life.as_ref().map(|life| life.until);
+    // A message that gives a code lasts as long as the code: a code window
+    // read from the first line alone gives way to the whole top's reading.
+    // One with another window (a sign-in alert, a verify link) keeps it.
+    let window = match window {
+        Some(w) if w.kind == WindowKind::Code => code_life.or(Some(w)),
+        Some(w) => Some(w),
+        None => code_life,
+    };
     let needs_you = if PAYMENT_FAILED.is_match(&rule_text) {
         Some(NeedsYou::PaymentFailed)
     } else if window
@@ -328,6 +356,9 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
         base_signal,
         needs_you,
         window,
+        code,
+        code_expires,
+        body_read: input.body.is_some(),
         tracked,
         link,
         todo_title,
@@ -378,6 +409,45 @@ mod tests {
 
     fn derive_utc(input: &FactInput<'_>) -> Fact {
         derive(input, &FixedOffset::east_opt(0).unwrap())
+    }
+
+    #[test]
+    fn a_message_that_gives_a_code_carries_it_and_lasts_as_long_as_it() {
+        let fact = derive_utc(&input(
+            "security@bank.example",
+            Some("Bank"),
+            "MFA Login Authentication",
+            Some("Your one-time passcode is 882308. It is valid for 5 minutes."),
+        ));
+        assert_eq!(fact.code.as_deref(), Some("882308"));
+        assert!(fact.body_read);
+        assert_eq!(fact.code_expires, fact.window.as_ref().map(|w| w.until));
+        let window = fact.window.expect("a code window");
+        assert_eq!(window.kind, WindowKind::Code);
+        assert_eq!(window.source, "rule", "{}", window.evidence);
+
+        // A sign-in alert keeps its two days; its code lasts what it says,
+        // even when that is said below the first line.
+        let alert = derive_utc(&input(
+            "no-reply@accounts.example",
+            Some("Accounts"),
+            "New sign-in to your account",
+            Some("Someone signed in from Chrome.\n\nYour security code is 551204.\nIt expires in 5 minutes."),
+        ));
+        assert_eq!(alert.code.as_deref(), Some("551204"));
+        let alert_window = alert.window.expect("a sign-in window");
+        assert_eq!(alert_window.kind, WindowKind::SignIn);
+        let date = DateTime::UNIX_EPOCH + Duration::days(20_000);
+        assert_eq!(alert.code_expires, Some(date + Duration::minutes(5)));
+        assert_eq!(alert_window.until, date + Duration::days(2));
+
+        let none = derive_utc(&input(
+            "deals@shop.example",
+            Some("Shop"),
+            "Your promo code is SAVE20NOW",
+            None,
+        ));
+        assert_eq!(none.code, None);
     }
 
     #[test]

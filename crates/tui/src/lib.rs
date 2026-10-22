@@ -19,6 +19,7 @@ mod compose_persistence;
 mod daemon_events;
 mod editor;
 mod export_output;
+pub use export_output::copy_to_clipboard;
 pub mod input;
 mod ipc;
 pub mod keybindings;

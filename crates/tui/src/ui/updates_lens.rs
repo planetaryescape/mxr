@@ -28,6 +28,14 @@ pub struct UpdatesView<'a> {
 /// Code wrote every part of it.
 fn suffix(line: &UpdateLineData) -> String {
     let mut parts = Vec::new();
+    // A code the fact line does not already show ("MFA Login Authentication").
+    if let Some(code) = line
+        .code
+        .as_ref()
+        .filter(|code| !line.fact.contains(code.as_str()))
+    {
+        parts.push(format!("code {}", one_line(code)));
+    }
     if let Some(delta) = &line.delta {
         parts.push(one_line(&delta.text));
     }
@@ -493,6 +501,7 @@ pub(crate) mod tests {
             sender_email: format!("notifications@{}.example", source.to_lowercase()),
             fact: fact.into(),
             fact_source: "subject".into(),
+            code: None,
             numbers: Vec::new(),
             delta: None,
             signal: match section {

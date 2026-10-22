@@ -42,6 +42,10 @@ pub struct UpdatesPageState {
     /// The daemon's dry run: Enter lets go of exactly this selection.
     pub let_go_preview: Option<UpdatesLetGoData>,
     pub tune: Option<UpdatesTuneMenu>,
+    /// What `y` last copied, so tests can see it without the clipboard.
+    pub last_copied: Option<String>,
+    /// Ask the daemon for the latest one-time code (`y` on a line without one).
+    pub pending_latest_code: bool,
 }
 
 impl UpdatesPageState {

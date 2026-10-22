@@ -71,6 +71,10 @@ expression: "serde_json::to_string_pretty(&updates).unwrap()"
         "verb": "open the link"
       },
       {
+        "key": "y",
+        "verb": "copy the code"
+      },
+      {
         "key": "o",
         "verb": "open the email"
       },

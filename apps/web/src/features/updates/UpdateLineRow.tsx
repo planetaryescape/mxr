@@ -36,6 +36,7 @@ import {
   type TrailingItem,
 } from "./digestView";
 import { previewLines, previewSource } from "./emailPreview";
+import { copyCode, lineSender } from "./copyCode";
 import { useUpdatesHidden } from "./updatesVerbs";
 
 /**
@@ -164,6 +165,21 @@ export const UpdateLineRow = memo(function UpdateLineRow({
               </span>
             ) : null}
           </span>
+          {line.code ? (
+            <button
+              type="button"
+              data-testid="update-code"
+              aria-label={`Copy code ${line.code}`}
+              title="Copy the code (y)"
+              className="type-meta ml-3 rounded border border-border px-1.5 font-mono tracking-wider text-text-1 hover:bg-muted"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (line.code) copyCode(line.code, lineSender(name, line.sender_email));
+              }}
+            >
+              {line.code}
+            </button>
+          ) : null}
           <span
             data-testid="update-fact"
             data-gist={gist ? "true" : undefined}
@@ -211,6 +227,13 @@ export const UpdateLineRow = memo(function UpdateLineRow({
                 line.todo_suggestion ? `Add to To do: ${line.todo_title}` : "This needs me: to-do"
               }
               onClick={() => onNeedsMe(line)}
+            />
+          ) : null}
+          {line.code ? (
+            <RowVerb
+              keys="y"
+              label="copy code"
+              onClick={() => line.code && copyCode(line.code, lineSender(name, line.sender_email))}
             />
           ) : null}
           {line.latest_thread_id ? (

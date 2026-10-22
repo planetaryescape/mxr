@@ -220,6 +220,14 @@ fn render_digest(digest: &UpdatesDigestData, format: OutputFormat) -> anyhow::Re
 
 fn line_text(line: &UpdateLineData) -> String {
     let mut text = terminal_text(&line.fact).into_owned();
+    // A code the fact line does not already show ("MFA Login Authentication").
+    if let Some(code) = line
+        .code
+        .as_ref()
+        .filter(|code| !line.fact.contains(code.as_str()))
+    {
+        let _ = write!(text, " · code {}", terminal_text(code));
+    }
     if let Some(delta) = &line.delta {
         let _ = write!(text, "  {}", delta.text);
     }
@@ -433,6 +441,7 @@ mod tests {
             sender_email: String::new(),
             fact: evil.into(),
             fact_source: "subject".into(),
+            code: None,
             numbers: Vec::new(),
             delta: None,
             signal: UpdateSignalData::Routine,

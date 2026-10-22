@@ -70,6 +70,7 @@ pub(super) async fn facts_for<Tz: TimeZone>(
     let cached = state.store.update_facts_for(&ids).await?;
     let mut facts = HashMap::with_capacity(messages.len());
     let mut stale: Vec<&PlaceMessage> = Vec::new();
+    let mut bodiless: Vec<&PlaceMessage> = Vec::new();
     for message in messages {
         let fresh = cached
             .get(&message.id)
@@ -77,9 +78,24 @@ pub(super) async fn facts_for<Tz: TimeZone>(
             .and_then(|row| serde_json::from_str::<Fact>(&row.fact_json).ok());
         match fresh {
             Some(fact) => {
+                if !fact.body_read {
+                    bodiless.push(message);
+                }
                 facts.insert(message.id.clone(), fact);
             }
             None => stale.push(message),
+        }
+    }
+    // A fact derived before the body arrived misses what only the body says
+    // (a one-time code): derive it again once the body is there.
+    if !bodiless.is_empty() {
+        let ids: Vec<MessageId> = bodiless.iter().map(|m| m.id.clone()).collect();
+        let arrived = state.store.update_body_texts(&ids).await?;
+        for message in bodiless {
+            if arrived.contains_key(&message.id) {
+                facts.remove(&message.id);
+                stale.push(message);
+            }
         }
     }
     if stale.is_empty() {

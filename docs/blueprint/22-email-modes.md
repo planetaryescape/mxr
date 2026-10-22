@@ -923,6 +923,8 @@ phase (D113).
 
 ## One key map across Now and the modes
 
+> [Chapter 35](35-keyboard.md) keeps this table's verbs and moves some keys: let go of all to `E`, the sender menu to `P`, `T` into `X`, snooze and Later into one `b` picker, groups to `{` `}`, and Not-sure and new-sender answers into the `X` picker. Until K3 ships, this table still describes today's keys.
+
 Checked against `docs/reference/tui-keymap.json` and the web registry
 (`apps/web/src/lib/actions/`, `features/mail-actions/verbActions.ts`,
 `features/places/actions.ts`, `features/focus/actions.ts`) at `bdf997c4`.

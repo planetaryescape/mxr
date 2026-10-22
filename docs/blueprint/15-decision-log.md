@@ -1222,3 +1222,113 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 **Why**: The database grew without limit, because the only purge was the manual `mxr logs --purge`. Age is the rule people can predict. Unsubscribe safety does not depend on event history since v0.6.136 moved receipts to their own table, so history can be pruned without touching it.
 
 **Trade-offs accepted**: Event history older than 90 days is gone unless the user sets a longer retention or `0`. A rarely syncing account's sync history can be older than the cutoff, because the newest 50 rows are always kept. Deletes run in 5,000-row batches, so one prune takes several short writes, not one long one.
+
+## D163: A key names a verb, and a verb has one key in every mail and mode context
+
+**Chosen**: Each single key belongs to one verb (chapter 35's verb table). A mode decides what the verb means there, as `e` means archive, tick off or let go, but no context reuses the key for an unrelated verb. A key moves only when it breaks this or another chapter 35 rule; a key that is merely hard to remember stays.
+
+**Considered**: Keeping A005's "vim first, Gmail second, custom last" with no rule for custom keys; per-mode key maps tuned to each mode.
+
+**Why**: Custom keys were taken per feature, so `e` came to mean eight things and opening the email sat on `o`, `e` or `v` depending on the mode. lazygit's consistent `d`/`n`/`e` and its overloaded `c` show both outcomes; Raycast ships common shortcuts to protect muscle memory.
+
+**Trade-offs accepted**: Some mode keys move, and BK's muscle memory for them has to be relearned.
+
+## D164: Single keys are earned by frequency; the palette is the default home
+
+**Chosen**: A new action gets a palette entry. It takes a single key only with evidence that it is part of a daily flow, using one of the free letters or a rule-4 Shift form.
+
+**Considered**: Giving every visible action a key, as the mode PRs did.
+
+**Why**: Apple's HIG reserves custom shortcuts for the most frequent commands; Primer gives rare and destructive actions none; the palette shows every key, so nothing is lost.
+
+**Trade-offs accepted**: Rare actions (export, whois, Microsoft To Do sync, raw headers) need the palette.
+
+## D165: Shift means the same verb, further
+
+**Chosen**: A capital is one of four things: the same verb at a wider scope (`E` all in view, `O` outside mxr, `P` this sender always, `Y` copy everything, `V` select a range); another part of the open email (`A L R H M S Q F`); a frozen Gmail, vim or A005 key (`G J K N I U D`); or one of the two named mxr verbs `X` and `B`. Vim's viewport `H` `M` `L` retire; let go of all moves from `A` to `E`; the sender menu moves from `K` to `P`.
+
+**Considered**: `A` for "all" (its mnemonic and current muscle memory); keeping vim viewport keys.
+
+**Why**: Capitals were the overflow namespace, so `K` meant previous message in the reader and sender menu in the list. Apple's HIG: Shift complements a related shortcut.
+
+**Trade-offs accepted**: `A` and `K` habits in four modes change; viewport jumps go.
+
+## D166: `g` lowercase goes to mail places, `g` capital to tools; digits pick the Nth visible option
+
+**Chosen**: `g` plus lowercase opens modes and mail places, keeping Gmail's letters. `g` plus a capital opens tools (`g R` Rules, `g D` Diagnostics, `g P` Deliveries, `g A` Analytics, `g L` Logs, `g Y` Activity, `g C` Settings, `g S` Screener). Digits stop opening screens; they pick a mode's tab or the Nth option in a picker.
+
+**Considered**: Keeping the TUI's `1`–`7` screen tabs; HEY's digit sections for the modes.
+
+**Why**: Digits meant seven things (tabs, new-sender answers, screener choices, presets, question options, counts) with Paper trail and Block on opposite numbers in two adjacent pickers. Case pairs like `g e`/`g E` carried no meaning.
+
+**Trade-offs accepted**: `g c`, `g y` and the digit screens move; the overdue `g R` and `g P` aliases are reused.
+
+## D167: Contexts are one tree in both clients, modes inherit the list, and six keys are reserved
+
+**Chosen**: global, mail (list with mailbox, Now and the five modes, screener, invites; reader), sidebar, tool, compose, assistant, overlay. Text fields own keys except global chords; overlays own keys except `?`; then innermost outwards. `?` `/` `:` `g` `Esc` `u` keep their verb everywhere.
+
+**Considered**: The TUI's `UiContext` without modes and the web's ad hoc scope pushes.
+
+**Why**: Modes reported as the mailbox, so help and the hint bar described the wrong keys, and modes lacked motions, selection and key repeat. VS Code, Zed and aerc all scope with an explicit tree.
+
+**Trade-offs accepted**: The TUI dispatcher is rewritten around contexts.
+
+## D168: Overlays share one grammar, and `Esc` never destroys
+
+**Chosen**: `Esc` (and `q` where nothing is typed) closes without changing anything and returns focus; `Enter` runs the highlighted option and commits a shown preview; `y`/`n` mirror `Enter`/`Esc`; options print their letters; destination letters are the `g` letters everywhere; only an option naming its object destroys.
+
+**Considered**: Leaving each overlay its own keys.
+
+**Why**: Close, confirm and cancel had six variants, the TUI send confirm discarded a draft on `Esc`, and two adjacent pickers lettered the same destinations differently.
+
+**Trade-offs accepted**: Discarding a draft takes one more key.
+
+## D169: One key definition, dispatched by action id, served by the daemon
+
+**Chosen**: `crates/keymap` holds `keymap.toml` and its lint. The TUI and web dispatch keys to action ids from it; help, hints, palette, tooltips, docs and parity are generated from it. The daemon serves the effective map (defaults plus `keys.toml`) through `GetKeymap`, and `mxr keys` lists, checks and explains it. Every client (TUI, web, desktop, Raycast) binds the same key to the same action. A client differs only where it cannot deliver the key (no Cmd in a terminal, `Tab` kept for browser focus) or lacks the feature (TUI compose in `$EDITOR`), and the definition records which. Clients that need a modifier use `Mod` plus the verb's letter with its Shift (Raycast `⌘E` done here, `⌘⇧E` done for all), except where Raycast's own common shortcut exists for the same action (`⌘⇧C` copy, `⌘.` pin).
+
+**Considered**: Keeping two definitions with a probe-and-compare parity test (#252); a TypeScript source the TUI reads.
+
+**Why**: The TUI keymap did not drive dispatch, `keys.toml` did nothing for seven months, ~40 web handlers bypassed the registry, and parity needed ~60 hand-kept differences. Customisation is a capability, so it goes through the daemon and the CLI.
+
+**Trade-offs accepted**: A new crate and a generated web file; text widgets keep raw key handling.
+
+## D170: Single-key shortcuts can be turned off and remapped, and the platform rules are lint
+
+**Chosen**: A web off switch for single-character shortcuts (modifier chords and the palette keep working), remaps through the daemon in both clients, one typing guard (`isComposing`, `keyCode === 229`, editable targets), Option/AltGr characters matched as characters, symbol keys always with a palette path, TUI defaults free of terminal-unsafe keys, bracketed paste and keyboard enhancement where supported, and one reserved-key list.
+
+**Considered**: Focus-scoped shortcuts only; a per-user layout setting now.
+
+**Why**: WCAG 2.1.4 (Level A) fails today; `#` is unreachable on a UK Mac and `[ ] { }` on AltGr layouts; pasted text fires TUI keys.
+
+**Trade-offs accepted**: A layout setting waits for a layout remapping cannot fix.
+
+## D171: Retired keys show where their action went, and never run it
+
+**Chosen**: For two releases after a key moves, pressing the old key shows "Let go of all is now `E`" and does nothing else. An action run from the palette or by click shows "Next time: `e`" once per action and profile.
+
+**Considered**: Keeping old keys as working aliases (`retiredAliases`); silent removal.
+
+**Why**: Working aliases keep two keys per verb alive indefinitely (`g R` and `g P` outlived their 0.6.41 removal by a hundred releases). NN/g and Superhuman teach a key right after the action is done another way.
+
+**Trade-offs accepted**: An old habit costs one extra keystroke during the window.
+
+## D172: Keys move in four rungs, and the first two change no key
+
+**Chosen**: K1 one definition with today's keys; K2 safety and correctness fixes; K3 the target map with moved-key hints; K4 the off switch, web remapping, prefix popup and Tauri menu.
+
+**Considered**: Changing keys and architecture together.
+
+**Why**: With today's keys held constant, K1 proves the new dispatch against the existing tests and keymap JSON before any behaviour changes.
+
+**Trade-offs accepted**: The visible improvement comes in K3, after two rungs of plumbing.
+
+## D173: Not now is one verb on Gmail's `b`
+
+**Chosen**: `b` opens one picker everywhere: "Later (no time)" first, then times. It replaces reply later and read later on `b` and snooze and schedule on `Z`. In Messages it parks a reply on the Later shelf or snoozes it; in Reading it saves for later; in To do it schedules. `Z` is freed and, for two releases, shows that not now is `b`. Raycast uses `⌘B`.
+
+**Considered**: Keeping chapter 22's separate `b` (Later) and `Z` (snooze), with two not-now verbs in Messages.
+
+**Why**: Gmail's `b` snoozes, so a Gmail habit put mail on the wrong shelf; one verb with Later as its first option keeps both outcomes one or two keys away (BK, 2026-10-22).
+
+**Trade-offs accepted**: Snoozing takes a second key (`b` then a time) where `Z` used to open the same picker; `Z` habits are relearned.

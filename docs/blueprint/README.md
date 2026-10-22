@@ -45,6 +45,8 @@ It distinguishes missing code from historical designs and explicitly deferred wo
 | 31 | [Design open questions](31-design-open-questions.md) | Spikes S1-S4 and BK's product questions Q1-Q6 for the design work |
 | 32 | [Classifier and attention](32-classifier.md) | One design for understanding each email (five questions, one stored assessment, every email a home), Now as an attention scheduler across modes, teaching versus action rules, and the label, scenario-corpus and eval loop that improves both (draft, not built) |
 | 33 | [Account identity](33-account-identity.md) | One colour and tag per account, owned by the daemon and drawn the same way in every row of the web app, TUI and CLI while a view mixes accounts (D147) |
+| 35 | [Keyboard](35-keyboard.md) | Keys as one grammar of verbs: the verb table, Shift and `g` rules, one context tree for both clients, overlay grammar, one definition in `crates/keymap` served by `mxr keys`, accessibility and layout rules, and the K1-K4 rungs (D163-D173; draft, not built) |
+| 35r | Keyboard research | [How good shortcut systems are designed, and the audit of mxr's keys](../research/keyboard-shortcuts.md) |
 | 26r | Web design research | [Audit of every screen, 2026-10-16](../research/web-design/audit-2026-10-16.md) and [agent panels and the best mail apps](../research/web-design/agents-and-mail-apps.md) |
 |  | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
 |  | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |

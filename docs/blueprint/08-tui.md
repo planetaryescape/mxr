@@ -78,6 +78,8 @@ The diagnostics page should never fake "0" or "none" before the daemon replies. 
 
 ## Vim motions and keybindings
 
+> Superseded by [chapter 35](35-keyboard.md) (D163-D172) for the key map, multi-key sequences, configurable keybindings and action dispatch. The sections below are the original design and do not describe today's keys.
+
 ### What we need
 
 We need vim NAVIGATION in the TUI, not vim EDITING. Editing happens in $EDITOR. The TUI just needs list navigation, pane switching, and action dispatch.

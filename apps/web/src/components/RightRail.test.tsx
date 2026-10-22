@@ -165,4 +165,38 @@ describe("RightRail", () => {
     expect(screen.getByText("Reply with pricing")).toBeVisible();
     expect(screen.getByText(/sender@example.com/)).toBeVisible();
   });
+
+  test("marks a commitment date a model wrote as unverified", () => {
+    useModals.setState({
+      rightRail: {
+        kind: "commitments",
+        payload: {
+          commitments: [
+            {
+              id: "commitment-3",
+              email: "sender@example.com",
+              direction: "yours",
+              who_owes: "You",
+              what: "Send the deck",
+              by_when: "2026-05-13T10:00:00Z",
+              date_unverified: true,
+            },
+            {
+              id: "commitment-4",
+              email: "sender@example.com",
+              direction: "yours",
+              who_owes: "You",
+              what: "Send the notes",
+              by_when: "2026-05-14T10:00:00Z",
+              date_unverified: false,
+            },
+          ],
+        },
+      },
+    });
+
+    renderWithQueryClient(<RightRail />);
+
+    expect(screen.getAllByText(/\(date unverified\)/)).toHaveLength(1);
+  });
 });

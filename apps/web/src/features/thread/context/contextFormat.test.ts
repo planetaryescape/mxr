@@ -85,7 +85,10 @@ describe("context copy", () => {
     // A group thread: Maya is the main counterparty, but the promises are
     // Alice's and Bob's.
     const facts = context({
-      owed_reply: { message_id: "m1", since: new Date(2026, 8, 26, 8).toISOString() },
+      owed_reply: {
+        message_id: "m1",
+        since: new Date(2026, 8, 26, 8).toISOString(),
+      },
       promises: [
         {
           owner: "you",
@@ -112,6 +115,32 @@ describe("context copy", () => {
     ]);
   });
 
+  it("marks a promise date a model wrote as unverified", () => {
+    const promise = (date_unverified: boolean) => ({
+      owner: "you",
+      commitment: {
+        id: "c1",
+        account_id: "a1",
+        email: "maya@example.com",
+        thread_id: "t1",
+        direction: "yours" as const,
+        status: "open" as const,
+        who_owes: "me@example.com",
+        what: "send the runbook link",
+        by_when: new Date(2026, 8, 27, 17).toISOString(),
+        date_unverified,
+        evidence_msg_id: "m1",
+        extracted_at: NOW.toISOString(),
+      },
+    });
+    expect(promiseViews(context({ promises: [promise(true)] }), NOW)[0]?.text).toBe(
+      "You promised: send the runbook link, due today (date unverified)",
+    );
+    expect(promiseViews(context({ promises: [promise(false)] }), NOW)[0]?.text).toBe(
+      "You promised: send the runbook link, due today",
+    );
+  });
+
   it("says which model wrote the gist and what it read", () => {
     expect(
       provenanceLabel({ model: "qwen2.5", locality: "local", sources: ["this_thread"] }, "Maya"),
@@ -124,7 +153,11 @@ describe("context copy", () => {
     ).toBe("Cloud model gpt-4o-mini · from this thread only");
     expect(
       provenanceLabel(
-        { model: "qwen2.5", locality: "local", sources: ["this_thread", "relationship_history"] },
+        {
+          model: "qwen2.5",
+          locality: "local",
+          sources: ["this_thread", "relationship_history"],
+        },
         "Maya",
       ),
     ).toBe("Local model qwen2.5 · from this thread and your history with Maya");

@@ -165,6 +165,11 @@ pub struct CommitmentData {
     pub what: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by_when: Option<chrono::DateTime<chrono::Utc>>,
+    /// `by_when` is a date a model wrote before due words existed, so it
+    /// stays on the row but nothing acts on it (desk, to-dos). Clients show
+    /// it as "date unverified".
+    #[serde(default)]
+    pub date_unverified: bool,
     pub evidence_msg_id: MessageId,
     pub extracted_at: chrono::DateTime<chrono::Utc>,
 }

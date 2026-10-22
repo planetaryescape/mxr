@@ -5848,6 +5848,12 @@ export interface components {
             account_id: components["schemas"]["AccountId"];
             /** Format: date-time */
             by_when?: string | null;
+            /**
+             * @description `by_when` is a date a model wrote before due words existed, so it
+             *     stays on the row but nothing acts on it (desk, to-dos). Clients show
+             *     it as "date unverified".
+             */
+            date_unverified?: boolean;
             direction: components["schemas"]["CommitmentDirectionData"];
             email: string;
             evidence_msg_id: components["schemas"]["MessageId"];

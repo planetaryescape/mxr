@@ -27,10 +27,20 @@ export function useNextPromise(): DuePromise | null {
       queryFn: () => listCommitments({ accountId, status: "open" }),
     })),
   });
-  const now = Date.now();
+  return nextDuePromise(
+    lists.flatMap((list) => list.data?.commitments ?? []),
+    Date.now(),
+  );
+}
+
+/** The soonest open promise of yours with a date mxr acts on, from `now`. */
+export function nextDuePromise(commitments: Commitment[], now: number): DuePromise | null {
   const due: DuePromise[] = [];
-  for (const commitment of lists.flatMap((list) => list.data?.commitments ?? [])) {
-    if (commitment.direction !== "yours" || !commitment.by_when) continue;
+  for (const commitment of commitments) {
+    // A date a model wrote is not a deadline to point the user at.
+    if (commitment.direction !== "yours" || !commitment.by_when || commitment.date_unverified) {
+      continue;
+    }
     const at = Date.parse(commitment.by_when);
     if (at >= now) due.push({ commitment, due: at });
   }

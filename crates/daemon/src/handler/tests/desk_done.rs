@@ -400,6 +400,7 @@ fn promise_record(
         who_owes: "you".into(),
         what: format!("promise {id}"),
         by_when: Some(chrono::Utc::now() + Duration::days(1)),
+        by_when_source: Some(mxr_store::ByWhenSource::Words),
         evidence_msg_id: evidence.clone(),
         extracted_at: chrono::Utc::now(),
         resolved_at: None,

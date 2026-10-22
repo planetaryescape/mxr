@@ -150,6 +150,7 @@ async fn seed(fx: &Fixture, account: &mxr_core::AccountId, tag: &str) -> Owned {
             who_owes: "you".into(),
             what: "check the order".into(),
             by_when: Some(Utc::now() + Duration::days(2)),
+            by_when_source: Some(mxr_store::ByWhenSource::Words),
             evidence_msg_id: message.clone(),
             extracted_at: Utc::now(),
             resolved_at: None,

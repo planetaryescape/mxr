@@ -2,10 +2,12 @@
 //! scan, the domain check for the pay-link gate, promises you made and
 //! invites waiting for an answer. Rows themselves live in `todos.rs`.
 
+use crate::commitment_date_source::ACTIONABLE_BY_WHEN_SQL;
 use crate::todos::{row_to_todo, TodoRecord, COLUMNS};
 use crate::{decode_id, decode_optional_timestamp, decode_timestamp, in_list};
 use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
+use sha2::{Digest, Sha256};
 use sqlx::sqlite::SqliteRow;
 use sqlx::Row;
 
@@ -219,19 +221,23 @@ impl super::Store {
         &self,
         account_id: &AccountId,
     ) -> Result<Vec<PromiseForTodo>, sqlx::Error> {
-        let rows = sqlx::query(
+        // A date a model wrote before due words existed is not a due date:
+        // the promise is mirrored undated rather than nagging on it.
+        let sql = format!(
             "SELECT c.id, c.account_id, c.thread_id, c.evidence_msg_id, c.email, c.what,
-                    c.by_when, c.status, m.date AS evidence_date,
+                    CASE WHEN c.{ACTIONABLE_BY_WHEN_SQL} THEN c.by_when END AS by_when,
+                    c.status, m.date AS evidence_date,
                     (SELECT ct.display_name FROM contacts ct
                      WHERE ct.account_id = c.account_id AND ct.email = c.email) AS contact_name
              FROM contact_commitments c
              JOIN messages m ON m.id = c.evidence_msg_id
              WHERE c.account_id = ? AND c.direction = 'yours'
-               AND m.direction = 'outbound'",
-        )
-        .bind(account_id.as_str())
-        .fetch_all(self.reader())
-        .await?;
+               AND m.direction = 'outbound'"
+        );
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(account_id.as_str())
+            .fetch_all(self.reader())
+            .await?;
         rows.iter()
             .map(|row| {
                 Ok(PromiseForTodo {
@@ -267,26 +273,44 @@ impl super::Store {
             .collect()
     }
 
-    /// Changes whenever a promise you made is added, resolved or expired,
-    /// so the mirror only reruns when there is something to mirror.
+    /// Changes whenever a promise you made is added, resolved, expired or
+    /// moved to another date, so the mirror only reruns when there is
+    /// something to mirror. Hashed per row: a total over the dates misses two
+    /// promises that swap them.
     pub async fn promise_fingerprint(&self, account_id: &AccountId) -> Result<String, sqlx::Error> {
-        let row = sqlx::query(
-            "SELECT COUNT(*) AS total, COALESCE(MAX(extracted_at), 0) AS extracted,
-                    COALESCE(MAX(resolved_at), 0) AS resolved,
-                    COALESCE(SUM(status = 'open'), 0) AS open,
-                    COALESCE(SUM(by_when), 0) AS dates
-             FROM contact_commitments WHERE account_id = ? AND direction = 'yours'",
+        let rows = sqlx::query(
+            "SELECT id, status, by_when, by_when_source, resolved_at FROM contact_commitments
+             WHERE account_id = ? AND direction = 'yours' ORDER BY id",
         )
         .bind(account_id.as_str())
-        .fetch_one(self.reader())
+        .fetch_all(self.reader())
         .await?;
+        let mut hasher = Sha256::new();
+        for row in &rows {
+            hasher.update(row.try_get::<String, _>("id")?);
+            hasher.update(row.try_get::<String, _>("status")?);
+            hasher.update(
+                row.try_get::<Option<i64>, _>("by_when")?
+                    .unwrap_or(i64::MIN)
+                    .to_le_bytes(),
+            );
+            // A date turning from unverified to verified changes the mirror.
+            hasher.update(
+                row.try_get::<Option<String>, _>("by_when_source")?
+                    .unwrap_or_default(),
+            );
+            hasher.update([0]);
+            hasher.update(
+                row.try_get::<Option<i64>, _>("resolved_at")?
+                    .unwrap_or(i64::MIN)
+                    .to_le_bytes(),
+            );
+            hasher.update([0]);
+        }
         Ok(format!(
-            "{}:{}:{}:{}:{}",
-            row.try_get::<i64, _>("total")?,
-            row.try_get::<i64, _>("extracted")?,
-            row.try_get::<i64, _>("resolved")?,
-            row.try_get::<i64, _>("open")?,
-            row.try_get::<i64, _>("dates")?
+            "{}:{}",
+            rows.len(),
+            base16ct::lower::encode_string(&hasher.finalize())
         ))
     }
 
@@ -327,5 +351,51 @@ impl super::Store {
         .fetch_optional(self.reader())
         .await?;
         metadata.as_deref().map(crate::decode_json).transpose()
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "tests unwrap fixture setup for direct failures"
+)]
+mod tests {
+    use crate::test_fixtures::test_account;
+    use crate::Store;
+
+    #[tokio::test]
+    async fn the_promise_fingerprint_changes_when_two_promises_swap_dates() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        for (id, by_when) in [("commitment-a", 1_000), ("commitment-b", 2_000)] {
+            sqlx::query(
+                "INSERT INTO contact_commitments (id, account_id, email, thread_id, direction,
+                     status, who_owes, what, by_when, evidence_msg_id, extracted_at)
+                 VALUES (?, ?, 'a@example.com', 't', 'yours', 'open', 'me', ?, ?, 'm', 5)",
+            )
+            .bind(id)
+            .bind(account.id.as_str())
+            .bind(id)
+            .bind(by_when)
+            .execute(store.writer())
+            .await
+            .unwrap();
+        }
+        let before = store.promise_fingerprint(&account.id).await.unwrap();
+
+        sqlx::query(
+            "UPDATE contact_commitments SET by_when = 3000 - by_when
+             WHERE id IN ('commitment-a', 'commitment-b')",
+        )
+        .execute(store.writer())
+        .await
+        .unwrap();
+
+        // The dates add up to the same total, so only a per-row hash sees it.
+        assert_ne!(
+            store.promise_fingerprint(&account.id).await.unwrap(),
+            before
+        );
     }
 }

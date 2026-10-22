@@ -140,8 +140,8 @@ pub(crate) async fn extract_and_store(
         let by_when = match entry.due.as_deref() {
             Some(due) => due_words_in_zone(state, &cleaned, due, Some(now), None)
                 .map_err(|e| e.to_string())?
-                .and_then(|words| words.resolution)
-                .map(|resolution| resolution.at),
+                // One reading only: a guess stays undated, not a deadline.
+                .and_then(|words| words.unambiguous_at()),
             None => None,
         };
         let candidate = DraftCommitmentCandidate {
@@ -157,6 +157,8 @@ pub(crate) async fn extract_and_store(
             },
             what: what.to_string(),
             by_when,
+            // Dated only by `unambiguous_at` above, from the draft's words.
+            by_when_source: by_when.map(|_| mxr_store::ByWhenSource::Words),
             extracted_at: now,
         };
         state
@@ -228,6 +230,9 @@ pub(crate) async fn promote_after_send(
             who_owes: c.who_owes.clone(),
             what: c.what.clone(),
             by_when: c.by_when,
+            // The candidate's own provenance: one saved before due words
+            // existed has none, and its date stays unverified.
+            by_when_source: c.by_when.and(c.by_when_source),
             evidence_msg_id: sent_message_id.clone(),
             extracted_at: c.extracted_at,
             resolved_at: None,
@@ -422,24 +427,25 @@ mod tests {
 
     #[tokio::test]
     async fn due_words_from_the_draft_become_the_deadline_through_promotion() {
-        use chrono::{Datelike, Local, Weekday};
+        use chrono::Local;
+        // "tomorrow" has one reading on any day; "by Friday" typed on a
+        // Friday would not.
         let body = r#"{"commitments":[
-            {"who_owes":"me@example.com","what":"send the deck","due":"by Friday","direction":"yours"}
+            {"who_owes":"me@example.com","what":"send the deck","due":"tomorrow","direction":"yours"}
         ]}"#;
         let (state, account_id, _) = fixture(body).await;
-        let draft = draft_with_body(&account_id, "I'll send the deck by Friday. Thanks!");
+        let draft = draft_with_body(&account_id, "I'll send the deck tomorrow. Thanks!");
         let started = chrono::Utc::now();
         let stored = extract_and_store(&state, &draft).await.unwrap();
         let due = stored[0].by_when.expect("dated from the draft's words");
         let expected = mxr_core::natural_time::resolve_time(
-            "Friday",
+            "tomorrow",
             &started.with_timezone(&Local),
             &state.snooze_time_prefs(),
         )
         .unwrap()
         .at;
         assert_eq!(due, expected);
-        assert_eq!(due.with_timezone(&Local).weekday(), Weekday::Fri);
 
         promote_after_send(&state, &draft, &mxr_core::MessageId::new())
             .await
@@ -450,6 +456,40 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(promoted[0].by_when, Some(due));
+        assert_eq!(
+            promoted[0].by_when_source,
+            Some(mxr_store::ByWhenSource::Words)
+        );
+    }
+
+    #[tokio::test]
+    async fn due_words_with_more_than_one_reading_leave_the_draft_commitment_undated() {
+        // "fri 3" is 15:00 or 03:00, and "one week after Friday" reads only
+        // as "Friday": neither is a deadline to store.
+        let body = r#"{"commitments":[
+            {"who_owes":"me@example.com","what":"send the deck","due":"fri 3","direction":"yours"},
+            {"who_owes":"me@example.com","what":"send the notes","due":"one week after Friday","direction":"yours"}
+        ]}"#;
+        let (state, account_id, _) = fixture(body).await;
+        let draft = draft_with_body(
+            &account_id,
+            "I'll send the deck fri 3, and I'll send the notes one week after Friday.",
+        );
+        let stored = extract_and_store(&state, &draft).await.unwrap();
+        assert_eq!(stored.len(), 2, "the commitments are kept");
+        assert!(stored.iter().all(|candidate| candidate.by_when.is_none()));
+
+        promote_after_send(&state, &draft, &mxr_core::MessageId::new())
+            .await
+            .unwrap();
+        let promoted = state
+            .store
+            .list_contact_commitments(&account_id, Some("alice@example.com"), None)
+            .await
+            .unwrap();
+        assert!(promoted
+            .iter()
+            .all(|row| row.by_when.is_none() && row.by_when_source.is_none()));
     }
 
     #[tokio::test]

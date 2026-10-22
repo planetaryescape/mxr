@@ -36,6 +36,7 @@ mod categories;
 mod category_rules;
 mod change_feed;
 mod classify_eval;
+mod commitment_date_source;
 mod contact_commitments;
 mod contact_relationship_summary;
 mod contact_style;
@@ -128,6 +129,7 @@ pub use categories::{
 };
 pub use change_feed::ChangeFeed;
 pub use classify_eval::{EvalAspects, EvalCandidate};
+pub use commitment_date_source::{is_actionable_date, ByWhenSource};
 pub use contact_commitments::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
 pub use contact_relationship_summary::ContactRelationshipSummaryRecord;
 pub use contact_style::{ContactStyleRecord, RelationshipMessageSample};

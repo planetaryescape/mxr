@@ -81,6 +81,7 @@ export function RelationshipPanel({
                   <div className="mt-0.5 text-2xs text-muted-foreground">
                     {commitment.who_owes} · {commitment.direction}
                     {commitment.by_when ? ` · due ${formatShortDate(commitment.by_when)}` : ""}
+                    {commitment.by_when && commitment.date_unverified ? " (date unverified)" : ""}
                   </div>
                 </div>
                 <Button

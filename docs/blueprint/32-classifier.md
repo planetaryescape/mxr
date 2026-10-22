@@ -792,7 +792,7 @@ their own. The ladder, with status as of 21 October 2026:
 | Rung | After it ships, you can… | Builds | Status |
 |---|---|---|---|
 | R0 | trust that a promise's deadline came from the email's own words | the shared due-words check | shipped, v0.6.120 |
-| R0b | re-check dates the old extractors saved, with a preview and undo | `mxr commitments recheck-dates` | in progress |
+| R0b | see which stored deadlines came from the email's own words, and have mxr act only on those | `by_when_source` on commitments (D149), no new command | in progress |
 | R1 | see how well mxr sorts, per question, with every mismatch | scenario corpus (quick set), `mxr classify eval` | shipped, v0.6.122 |
 | R1b | have every one of the 50,000 demo emails graded in CI | scenario-first demo generator, held-out phrasings, full set | next |
 | R2 | see one home for every email everywhere, with the deciding reason | facts, judges for who and what-for, the resolver, the stored assessment, every projection reading it, fallback, `classify report` | planned |

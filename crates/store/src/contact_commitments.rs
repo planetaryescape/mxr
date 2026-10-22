@@ -1,3 +1,4 @@
+use crate::commitment_date_source::{is_actionable_date, ByWhenSource};
 use crate::{decode_id, decode_optional_timestamp, decode_timestamp};
 use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -63,9 +64,35 @@ pub struct ContactCommitmentRecord {
     pub who_owes: String,
     pub what: String,
     pub by_when: Option<DateTime<Utc>>,
+    /// Where `by_when` came from. `None` when there is no date, or when the
+    /// row predates provenance; either way the date is not acted on.
+    pub by_when_source: Option<ByWhenSource>,
     pub evidence_msg_id: MessageId,
     pub extracted_at: DateTime<Utc>,
     pub resolved_at: Option<DateTime<Utc>>,
+}
+
+impl ContactCommitmentRecord {
+    /// The date mxr may act on (desk due rows, to-do due dates): `by_when`
+    /// only when its source is the email's words or the user. This is the one
+    /// place the rule lives for code; queries use `ACTIONABLE_BY_WHEN_SQL`.
+    pub fn actionable_by_when(&self) -> Option<DateTime<Utc>> {
+        self.by_when
+            .filter(|_| is_actionable_date(self.by_when_source))
+    }
+
+    /// A date is on the row that mxr does not act on. Shown as "date
+    /// unverified" wherever the date is shown.
+    pub fn date_unverified(&self) -> bool {
+        self.by_when.is_some() && self.actionable_by_when().is_none()
+    }
+
+    /// The source as stored: a source without a date means nothing.
+    fn stored_source(&self) -> Option<&'static str> {
+        self.by_when
+            .and(self.by_when_source)
+            .map(ByWhenSource::as_str)
+    }
 }
 
 impl super::Store {
@@ -76,8 +103,8 @@ impl super::Store {
         sqlx::query(
             r#"INSERT INTO contact_commitments
                (id, account_id, email, thread_id, direction, status, who_owes, what,
-                by_when, evidence_msg_id, extracted_at, resolved_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                by_when, by_when_source, evidence_msg_id, extracted_at, resolved_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(account_id, email, thread_id, direction, what, evidence_msg_id)
                DO UPDATE SET status = excluded.status, resolved_at = excluded.resolved_at"#,
         )
@@ -90,6 +117,7 @@ impl super::Store {
         .bind(&record.who_owes)
         .bind(&record.what)
         .bind(record.by_when.map(|value| value.timestamp()))
+        .bind(record.stored_source())
         .bind(record.evidence_msg_id.as_str())
         .bind(record.extracted_at.timestamp())
         .bind(record.resolved_at.map(|value| value.timestamp()))
@@ -168,7 +196,7 @@ impl super::Store {
     ) -> Result<Vec<ContactCommitmentRecord>, sqlx::Error> {
         let mut sql = String::from(
             r#"SELECT id, account_id, email, thread_id, direction, status, who_owes, what,
-                      by_when, evidence_msg_id, extracted_at, resolved_at
+                      by_when, by_when_source, evidence_msg_id, extracted_at, resolved_at
                FROM contact_commitments WHERE account_id = ?"#,
         );
         if email.is_some() {
@@ -199,7 +227,7 @@ impl super::Store {
     ) -> Result<Vec<ContactCommitmentRecord>, sqlx::Error> {
         let rows = sqlx::query(
             r#"SELECT id, account_id, email, thread_id, direction, status, who_owes, what,
-                      by_when, evidence_msg_id, extracted_at, resolved_at
+                      by_when, by_when_source, evidence_msg_id, extracted_at, resolved_at
                FROM contact_commitments
                WHERE account_id = ? AND thread_id = ? AND status = 'open'
                ORDER BY by_when IS NULL, by_when ASC, extracted_at DESC"#,
@@ -222,10 +250,12 @@ impl super::Store {
         sqlx::query_scalar(
             r#"INSERT INTO contact_commitments
                (id, account_id, email, thread_id, direction, status, who_owes, what,
-                by_when, evidence_msg_id, extracted_at, resolved_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                by_when, by_when_source, evidence_msg_id, extracted_at, resolved_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                ON CONFLICT(account_id, email, thread_id, direction, what, evidence_msg_id)
-               DO UPDATE SET by_when = excluded.by_when, status = 'open', resolved_at = NULL
+               DO UPDATE SET by_when = excluded.by_when,
+                             by_when_source = excluded.by_when_source,
+                             status = 'open', resolved_at = NULL
                RETURNING id"#,
         )
         .bind(&record.id)
@@ -237,6 +267,10 @@ impl super::Store {
         .bind(&record.who_owes)
         .bind(&record.what)
         .bind(record.by_when.map(|value| value.timestamp()))
+        // The user's latest answer wins, so a repeat over a detected row
+        // makes that row's date theirs, whoever wrote it first. A promise
+        // with no date has no source to record.
+        .bind(record.by_when.map(|_| ByWhenSource::User.as_str()))
         .bind(record.evidence_msg_id.as_str())
         .bind(record.extracted_at.timestamp())
         .fetch_one(self.writer())
@@ -260,7 +294,7 @@ impl super::Store {
     ) -> Result<Option<ContactCommitmentRecord>, sqlx::Error> {
         let row = sqlx::query(
             r#"SELECT id, account_id, email, thread_id, direction, status, who_owes, what,
-                      by_when, evidence_msg_id, extracted_at, resolved_at
+                      by_when, by_when_source, evidence_msg_id, extracted_at, resolved_at
                FROM contact_commitments WHERE id = ?"#,
         )
         .bind(id)
@@ -317,6 +351,10 @@ fn row_to_commitment(row: sqlx::sqlite::SqliteRow) -> Result<ContactCommitmentRe
         who_owes: row.get("who_owes"),
         what: row.get("what"),
         by_when: decode_optional_timestamp(row.get("by_when"))?,
+        by_when_source: row
+            .get::<Option<String>, _>("by_when_source")
+            .as_deref()
+            .and_then(ByWhenSource::parse),
         evidence_msg_id: decode_id(row.get::<String, _>("evidence_msg_id").as_str())?,
         extracted_at: decode_timestamp(row.get("extracted_at"))?,
         resolved_at: decode_optional_timestamp(row.get("resolved_at"))?,

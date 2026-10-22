@@ -275,7 +275,7 @@ Messages is now its own mode: people as rows with their topics inside. See
 and shares Messages' rule for whose turn it is:
 
 - **You owe**: an unanswered directed request from someone you have written to, or an explicit reply-later reminder that returned.
-- **Due**: a promise you made is coming due.
+- **Due**: a promise you made is coming due, by a date from the email's words or one you typed. A date a model wrote does not count ([unverified dates](/guides/forgotten-work/#dates-mxr-shows-but-does-not-act-on)).
 - **Waiting on**: you wrote last and they have not answered.
 - **New from people**: a directed request from a possible person you have not written to before.
 

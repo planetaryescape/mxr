@@ -378,7 +378,9 @@ A conversation opens with its context before the messages:
 - **Whether you owe a reply**, and since when. Newsletters never count.
 - **Open promises** in this conversation, yours and theirs, with due dates.
   Each promise names its own owner, so in a group thread Alice's promise
-  never reads as Bob's. The check mark marks one done.
+  never reads as Bob's. The check mark marks one done. A date a model wrote
+  shows as "(date unverified)" and is not acted on; see
+  [dates mxr does not act on](/guides/forgotten-work/#dates-mxr-shows-but-does-not-act-on).
 
 With no model configured you get the facts only, and nothing asks you to set
 one up. The same context is in the TUI and in `mxr briefing context`

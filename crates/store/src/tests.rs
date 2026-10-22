@@ -192,6 +192,7 @@ async fn contact_commitments_dedup_and_expire_stale_threads_without_replies() {
                 who_owes: "Alice".to_string(),
                 what: "Send launch date".to_string(),
                 by_when: None,
+                by_when_source: None,
                 evidence_msg_id,
                 extracted_at: now,
                 resolved_at: None,
@@ -231,6 +232,144 @@ async fn contact_commitments_dedup_and_expire_stale_threads_without_replies() {
     assert!(commitments.iter().any(|commitment| {
         commitment.id == "stale-with-reply" && commitment.status == CommitmentStatus::Open
     }));
+}
+
+async fn commitment_fixture(
+    store: &Store,
+    account: &Account,
+    by_when: Option<DateTime<Utc>>,
+    source: Option<ByWhenSource>,
+    id: &str,
+) -> ContactCommitmentRecord {
+    let mut evidence = test_envelope(&account.id);
+    evidence.id = MessageId::new();
+    evidence.provider_id = format!("evidence-{id}");
+    store
+        .upsert_envelope_with_direction(&evidence, MessageDirection::Outbound)
+        .await
+        .unwrap();
+    ContactCommitmentRecord {
+        id: id.to_string(),
+        account_id: account.id.clone(),
+        email: "alice@example.com".to_string(),
+        thread_id: evidence.thread_id.clone(),
+        direction: CommitmentDirection::Yours,
+        status: CommitmentStatus::Open,
+        who_owes: "me".to_string(),
+        what: "Send the deck".to_string(),
+        by_when,
+        by_when_source: source,
+        evidence_msg_id: evidence.id.clone(),
+        extracted_at: Utc::now(),
+        resolved_at: None,
+    }
+}
+
+#[tokio::test]
+async fn a_commitments_date_source_round_trips_and_only_words_and_user_dates_act() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let due = Utc.with_ymd_and_hms(2026, 10, 2, 8, 0, 0).unwrap();
+
+    // (source, whether mxr may act on the date)
+    for (source, acts) in [
+        (Some(ByWhenSource::ModelDate), false),
+        (Some(ByWhenSource::Words), true),
+        (Some(ByWhenSource::User), true),
+        (None, false),
+    ] {
+        let id = format!("c-{source:?}");
+        let record = commitment_fixture(&store, &account, Some(due), source, &id).await;
+        store.upsert_contact_commitment(&record).await.unwrap();
+
+        let stored = store.get_contact_commitment(&id).await.unwrap().unwrap();
+        assert_eq!(stored.by_when_source, source, "{id}");
+        assert_eq!(stored.by_when, Some(due), "{id}");
+        assert_eq!(stored.actionable_by_when(), acts.then_some(due), "{id}");
+        assert_eq!(stored.date_unverified(), !acts, "{id}");
+    }
+}
+
+#[tokio::test]
+async fn an_undated_commitment_has_no_source_and_is_not_unverified() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    // A source with no date means nothing, so it is not stored.
+    let record = commitment_fixture(&store, &account, None, Some(ByWhenSource::Words), "u").await;
+    store.upsert_contact_commitment(&record).await.unwrap();
+
+    let stored = store.get_contact_commitment("u").await.unwrap().unwrap();
+    assert_eq!(stored.by_when_source, None);
+    assert!(!stored.date_unverified());
+}
+
+#[tokio::test]
+async fn recording_your_own_promise_marks_the_date_as_yours_even_over_a_detected_row() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let first = Utc.with_ymd_and_hms(2026, 10, 2, 8, 0, 0).unwrap();
+    let second = Utc.with_ymd_and_hms(2026, 10, 9, 8, 0, 0).unwrap();
+
+    // Insert: the source is the user's whatever the record carried.
+    let record = commitment_fixture(&store, &account, Some(first), None, "mine").await;
+    let id = store.record_own_promise(&record).await.unwrap();
+    let stored = store.get_contact_commitment(&id).await.unwrap().unwrap();
+    assert_eq!(stored.by_when_source, Some(ByWhenSource::User));
+
+    // Upsert over a detected row with a model-written date: the user's
+    // latest answer wins, so the date becomes theirs.
+    let detected = commitment_fixture(
+        &store,
+        &account,
+        Some(first),
+        Some(ByWhenSource::ModelDate),
+        "commitment-detected",
+    )
+    .await;
+    store.upsert_contact_commitment(&detected).await.unwrap();
+    let mut again = detected.clone();
+    again.id = "msg::promise::new".to_string();
+    again.by_when = Some(second);
+    let kept = store.record_own_promise(&again).await.unwrap();
+    assert_eq!(kept, "commitment-detected");
+    let stored = store.get_contact_commitment(&kept).await.unwrap().unwrap();
+    assert_eq!(stored.by_when, Some(second));
+    assert_eq!(stored.by_when_source, Some(ByWhenSource::User));
+    assert!(!stored.date_unverified());
+
+    // A repeat without a date clears the date, and with it the source: a
+    // source only describes a date. The mirror's fingerprint notices.
+    let dated = store.promise_fingerprint(&account.id).await.unwrap();
+    let mut undated = again.clone();
+    undated.by_when = None;
+    undated.by_when_source = None;
+    store.record_own_promise(&undated).await.unwrap();
+    let stored = store.get_contact_commitment(&kept).await.unwrap().unwrap();
+    assert_eq!(stored.by_when, None);
+    assert_eq!(stored.by_when_source, None);
+    assert_ne!(store.promise_fingerprint(&account.id).await.unwrap(), dated);
+
+    // And a repeat with a date makes it the user's again.
+    store.record_own_promise(&again).await.unwrap();
+    let stored = store.get_contact_commitment(&kept).await.unwrap().unwrap();
+    assert_eq!(stored.by_when, Some(second));
+    assert_eq!(stored.by_when_source, Some(ByWhenSource::User));
+    assert_eq!(store.promise_fingerprint(&account.id).await.unwrap(), dated);
+}
+
+#[tokio::test]
+async fn recording_an_undated_own_promise_stores_no_source() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let record = commitment_fixture(&store, &account, None, None, "msg::promise::undated").await;
+    let id = store.record_own_promise(&record).await.unwrap();
+    let stored = store.get_contact_commitment(&id).await.unwrap().unwrap();
+    assert_eq!(stored.by_when, None);
+    assert_eq!(stored.by_when_source, None);
 }
 
 #[tokio::test]

@@ -69,6 +69,17 @@ static NAMED_BEFORE: Lazy<Regex> = Lazy::new(|| {
     .expect("valid named-before regex")
 });
 
+/// Whether `before` ends in a label naming the next value as something else.
+/// "Account:" is a label; "verify your account:" is an instruction.
+fn named_before(before: &str) -> bool {
+    NAMED_BEFORE.find(before).is_some_and(|label| {
+        let lead = before[..label.start()].trim_end().to_ascii_lowercase();
+        !["your", "the", "this", "my", "our"]
+            .iter()
+            .any(|word| lead.ends_with(&format!(" {word}")) || lead == *word)
+    })
+}
+
 /// Code-shaped words: digits, groups like 123-456, or capitals with digits.
 static CANDIDATE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"\b(?:[A-Z]-)?(?:\d{3}[ -]\d{3}|[A-Z0-9]{3,5}-[A-Z0-9]{3,5}|[A-Z0-9]{4,10})\b")
@@ -116,7 +127,8 @@ fn alone_on_a_line(text: &str) -> Option<String> {
             .find(trimmed)
             .filter(|m| m.start() == 0 && m.end() == trimmed.len());
         if let Some(m) = whole {
-            if !NAMED_BEFORE.is_match(above)
+            if !named_before(above)
+                && !NOT_A_SIGN_IN.is_match(above)
                 && looks_like_a_code(text, start + m.start(), start + m.end(), Trust::Placed)
             {
                 return Some(m.as_str().to_string());
@@ -141,39 +153,38 @@ fn in_text(text: &str) -> Option<String> {
             let next = ceil_char_boundary(text, end + 1);
             end = next + sentence_end(&text[next..reach.max(next)]);
         }
-        // A value right after "is" or a colon wins over an earlier number
-        // ("code for card ending 4242 is 958361"). Only "is" or a colon
-        // straight after the words vouches for a year-shaped value ("Your
-        // code is 2024", "Code: 2024"); one further on ("…whose model is
-        // 2024 is 958361") still passes the year and named-number checks.
+        // The value after the last "is" or colon in the sentence is the code:
+        // that is where a sentence ends up naming it ("…for the card whose
+        // last four digits are 4242 is 958361", "…signing in: 2024"). A
+        // value named as something else ("Card ending: 4242") gives way to
+        // the marker before it. A trigger that ends in "is" or a colon is a
+        // marker itself ("Code: 2024").
         let ends_marked = trigger.as_str().trim_end().ends_with(':')
             || trigger
                 .as_str()
                 .trim_end()
                 .to_ascii_lowercase()
                 .ends_with(" is");
-        let immediate = std::iter::once((trigger.end(), true)).filter(|_| ends_marked);
-        let later = MARKER.find_iter(&text[trigger.end()..end]).map(|marker| {
-            let between = &text[trigger.end()..trigger.end() + marker.start()];
-            (trigger.end() + marker.end(), between.trim().is_empty())
-        });
-        let marked = immediate.chain(later).find_map(|(at, straight_after)| {
+        let mut markers: Vec<usize> = MARKER
+            .find_iter(&text[trigger.end()..end])
+            .map(|marker| trigger.end() + marker.end())
+            .collect();
+        if ends_marked {
+            markers.insert(0, trigger.end());
+        }
+        let marked = markers.into_iter().rev().find_map(|at| {
             let skipped = text[at..end]
                 .find(|c: char| !c.is_whitespace() && !('\u{2500}'..='\u{257F}').contains(&c))
                 .map_or(end, |i| at + i);
-            let trust = if straight_after {
-                Trust::Placed
-            } else {
-                Trust::Nearby
-            };
             CANDIDATE
                 .find_at(&text[..end], skipped)
                 .filter(|m| m.start() == skipped)
-                .filter(|m| looks_like_a_code(text, m.start(), m.end(), trust))
+                .filter(|m| looks_like_a_code(text, m.start(), m.end(), Trust::Placed))
         });
         let found = marked.or_else(|| candidates(text, trigger.end(), end).next());
         if let Some(code) = found {
-            if !spends(text, &trigger, code.end()) {
+            // The whole sentence: "Use this code SAVE2026 for a discount."
+            if !spends(text, &trigger, end.max(code.end())) {
                 return Some(code.as_str().to_string());
             }
         }
@@ -202,7 +213,7 @@ fn candidates(text: &str, from: usize, to: usize) -> impl Iterator<Item = regex:
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Trust {
     /// Right after "is" or a colon, or alone on its line: even a
-    /// year-shaped number is the code.
+    /// year-shaped number is the code (a named one still is not).
     Placed,
     /// Just near the words: a year or a named number is not.
     Nearby,
@@ -229,7 +240,7 @@ fn looks_like_a_code(text: &str, start: usize, end: usize, trust: Trust) -> bool
     // A number the words before it name as something else: "card ending
     // 4242", "order 55210", "GBP 5483".
     let lead = ceil_char_boundary(text, start.saturating_sub(32));
-    if trust == Trust::Nearby && NAMED_BEFORE.is_match(&text[lead..start]) {
+    if named_before(&text[lead..start]) {
         return false;
     }
     // Part of a longer word or number, money or a percentage: "ITMS-90683",
@@ -534,6 +545,50 @@ mod tests {
         );
         assert_eq!(code("Code: 2024", "").as_deref(), Some("2024"));
         assert_eq!(code("Code is 2024", "").as_deref(), Some("2024"));
+    }
+
+    #[test]
+    fn round_three_layouts() {
+        assert_eq!(
+            code(
+                "Hi",
+                "Your verification code for the card whose last four digits are 4242 is 958361."
+            )
+            .as_deref(),
+            Some("958361")
+        );
+        assert_eq!(code("Your code", "Discount code:\nSAVE20NOW"), None);
+        assert_eq!(
+            code("Your verification code", "Gift code:\n4821-9932"),
+            None
+        );
+        assert_eq!(
+            code("Welcome to Acme", "Use this code SAVE2026 for a discount."),
+            None
+        );
+        assert_eq!(
+            code(
+                "Your verification code",
+                "Use this code to verify your account:\n958361"
+            )
+            .as_deref(),
+            Some("958361")
+        );
+        assert_eq!(
+            code(
+                "Confirm it is you",
+                "Use this code to finish signing in: 2024"
+            )
+            .as_deref(),
+            Some("2024")
+        );
+        // A bare label still names what follows it.
+        assert_eq!(code("Your verification code", "Account:\n12345678"), None);
+        // The code first, a reference after: the reference gives way.
+        assert_eq!(
+            code("Hi", "Your code is 482913 (reference: 55210).").as_deref(),
+            Some("482913")
+        );
     }
 
     #[test]

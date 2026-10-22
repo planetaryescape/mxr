@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.142](https://github.com/planetaryescape/mxr/compare/v0.6.141...v0.6.142) (2026-10-22)
+
+
+### Features
+
+* thread previews as CSV and as an MCP tool for the assistant ([#622](https://github.com/planetaryescape/mxr/issues/622)) ([7184494](https://github.com/planetaryescape/mxr/commit/718449494330e1fad3f50d4fe44ae1f9f282f1c9))
+
+
+### Bug Fixes
+
+* one owned-address set for every daemon feature ([#624](https://github.com/planetaryescape/mxr/issues/624)) ([8cd1558](https://github.com/planetaryescape/mxr/commit/8cd1558c88ee304e8286ed5a1831a5eef194b3c9))
+
+
+### Documentation
+
+* remove merge leftovers from the decision log ([#623](https://github.com/planetaryescape/mxr/issues/623)) ([e06c409](https://github.com/planetaryescape/mxr/commit/e06c4094599d30809fdf57dc9e0aae164aa1e940))
+
 ## [0.6.141](https://github.com/planetaryescape/mxr/compare/v0.6.140...v0.6.141) (2026-10-22)
 
 

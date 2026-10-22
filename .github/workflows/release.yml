@@ -119,6 +119,25 @@ jobs:
       matrix: ${{ fromJson(needs.plan.outputs.build_matrix) }}
     steps:
       - uses: actions/checkout@v7
+      # The macOS build runs on a self-hosted runner on a developer's Mac. On that
+      # user's ~/.cargo, rust-cache's save step deletes ~/.cargo/bin/rustup (its
+      # cleanBin removes every file there when it started) and the unpacked
+      # crates, so each release broke the machine's own toolchain. The job gets a
+      # rustup and Cargo home of its own instead, kept between runs.
+      - name: Use the runner's own Rust home (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          home="${RUNNER_TOOL_CACHE}/mxr-rust"
+          export CARGO_HOME="$home/cargo" RUSTUP_HOME="$home/rustup"
+          if [ ! -x "$CARGO_HOME/bin/rustup" ]; then
+            curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused --location --silent --show-error --fail https://sh.rustup.rs \
+              | sh -s -- -y --no-modify-path --default-toolchain none
+          fi
+          {
+            echo "CARGO_HOME=$CARGO_HOME"
+            echo "RUSTUP_HOME=$RUSTUP_HOME"
+          } >> "$GITHUB_ENV"
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}

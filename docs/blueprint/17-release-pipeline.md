@@ -717,7 +717,7 @@ site.
 
 **Chosen**: Build Linux x86_64 natively on Linux runners and macOS Apple Silicon natively on macOS runners. Keep `cross` available only if future Linux ARM64 or musl targets return.
 
-**Why**: This matches `.github/workflows/release.yml`: the current matrix is `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`, both with `semantic-local,web-ui` enabled. The older musl/cross plan was useful launch thinking, but it is not the present release contract.
+**Why**: This matches `.github/workflows/release.yml`: the current matrix is `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`, both with `semantic-local,web-ui` enabled. The macOS build runs on a self-hosted runner (`mxr-builder`) on a developer's Mac, with a `CARGO_HOME` and `RUSTUP_HOME` of its own under the runner's tool cache: on the user's `~/.cargo`, rust-cache's save step deleted `~/.cargo/bin/rustup` and the unpacked crates after every release. The older musl/cross plan was useful launch thinking, but it is not the present release contract.
 
 **D068: Workspace publish via cargo-workspaces**
 

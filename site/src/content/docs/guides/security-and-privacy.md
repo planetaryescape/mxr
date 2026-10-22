@@ -57,6 +57,8 @@ mxr llm status --format json
 
 `enabled` and `base_url` say whether model features are on and where they go.
 
+Released mxr contains no tracing code. A developer can [build mxr with the `langfuse` feature](/guides/trace-model-calls/) to record each model call, prompt and reply included, in a Langfuse they run themselves. That build sends traces only to a Langfuse on the same machine and refuses any other address, Langfuse Cloud included.
+
 The [email modes](/guides/email-modes/) plan adds background classification of every incoming message. That work is planned, not shipped, and it will run on a loopback endpoint unless you point its tier at a cloud endpoint and set `allow_cloud_background_classification = true`. Running everything in the cloud with your own key will be supported, and turning it on will say that the text of every incoming message goes to that provider.
 
 ## Deleting an email removes most of what mxr derived from it

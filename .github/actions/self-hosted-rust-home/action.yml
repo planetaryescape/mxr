@@ -1,0 +1,26 @@
+name: Use the runner's own Rust home and sccache
+description: >-
+  The mxr-builder runner runs as the developer on their Mac. Left on their
+  ~/.cargo, ~/.rustup and sccache server, a job rewrote their toolchain, and
+  rust-cache's cleanup deleted their rustup and unpacked crates mid-build. This
+  gives the job a Rust home and sccache server of its own, kept between runs.
+  Run it before dtolnay/rust-toolchain; it does nothing on GitHub-hosted runners.
+runs:
+  using: composite
+  steps:
+    - if: runner.environment == 'self-hosted'
+      shell: bash
+      run: |
+        home="${RUNNER_TOOL_CACHE}/mxr-rust"
+        export CARGO_HOME="$home/cargo" RUSTUP_HOME="$home/rustup"
+        if [ ! -x "$CARGO_HOME/bin/rustup" ]; then
+          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused --location --silent --show-error --fail https://sh.rustup.rs \
+            | sh -s -- -y --no-modify-path --default-toolchain none
+        fi
+        {
+          echo "CARGO_HOME=$CARGO_HOME"
+          echo "RUSTUP_HOME=$RUSTUP_HOME"
+          # The developer's own sccache server listens on the default 4226.
+          echo "SCCACHE_SERVER_PORT=4227"
+        } >> "$GITHUB_ENV"
+        echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"

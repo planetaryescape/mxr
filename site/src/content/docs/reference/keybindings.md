@@ -469,7 +469,7 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 | `D` | Dry-run selected rule |
 | `H` | Show history |
 | `Ctrl-s` | Save rule form |
-| `#` | Delete rule |
+| `#` | Delete rule (asks first: `y`/`Enter` deletes, `n`/`Esc` keeps it) |
 
 ## Diagnostics screen
 

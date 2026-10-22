@@ -97,6 +97,37 @@ pub fn draw(
         },
         theme,
     );
+    if let Some((_, name)) = &state.delete_confirm {
+        draw_delete_confirm(frame, area, name, theme);
+    }
+}
+
+/// The same confirm the saved-search delete shows, naming the rule.
+fn draw_delete_confirm(frame: &mut Frame, area: Rect, name: &str, theme: &crate::theme::Theme) {
+    let popup = super::centered_rect(60, 22, area);
+    frame.render_widget(Clear, popup);
+    let block = Block::bordered()
+        .title(" Delete Rule ")
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.error))
+        .style(Style::default().bg(theme.modal_bg));
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(inner);
+    frame.render_widget(
+        Paragraph::new(format!("Delete rule '{name}'?"))
+            .style(Style::default().fg(theme.text_primary))
+            .wrap(Wrap { trim: false }),
+        chunks[0],
+    );
+    frame.render_widget(
+        Paragraph::new("[y / Enter] delete   [n / Esc] cancel")
+            .style(Style::default().fg(theme.text_secondary)),
+        chunks[1],
+    );
 }
 
 fn draw_rule_list(

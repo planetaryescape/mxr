@@ -2159,6 +2159,23 @@ impl App {
             return self.handle_rule_form_key(key);
         }
 
+        // Rule delete confirm: y/Enter deletes, n/Esc/q keeps the rule.
+        if let Some((rule_id, name)) = self.rules.page.delete_confirm.clone() {
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Enter => {
+                    self.rules.page.delete_confirm = None;
+                    self.rules.pending_delete = Some(rule_id);
+                    self.rules.page.status = Some(format!("Deleting {name}..."));
+                }
+                KeyCode::Char('n' | 'q') | KeyCode::Esc => {
+                    self.rules.page.delete_confirm = None;
+                    self.rules.page.status = Some(format!("Kept {name}"));
+                }
+                _ => {}
+            }
+            return None;
+        }
+
         match (key.code, key.modifiers) {
             (KeyCode::PageDown, _) if self.rules.page.panel == RulesPanel::DryRun => {
                 self.rules.page.dry_run_page = self

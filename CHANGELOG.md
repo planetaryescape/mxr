@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.144](https://github.com/planetaryescape/mxr/compare/v0.6.143...v0.6.144) (2026-10-22)
+
+
+### Bug Fixes
+
+* bump vitest to 4.1.12 to clear the two mocker advisories ([#634](https://github.com/planetaryescape/mxr/issues/634)) ([6e893ad](https://github.com/planetaryescape/mxr/commit/6e893adf0120a4fbd8d23c74d0a131cbed086cd3))
+
 ## [0.6.143](https://github.com/planetaryescape/mxr/compare/v0.6.142...v0.6.143) (2026-10-22)
 
 

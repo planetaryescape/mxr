@@ -540,25 +540,6 @@ pub struct DraftEvalSummaryData {
     pub model: String,
 }
 
-/// Which cases `Request::DraftEval` drafts. `Mine` replays the user's own
-/// recent replies; `Quick` drafts the labelled compose corpus and grades each
-/// draft against what its case required. Neither saves or sends anything.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum DraftEvalSet {
-    #[default]
-    Mine,
-    Quick,
-}
-
-impl DraftEvalSet {
-    /// The default is left off the wire, so an older client's request is unchanged.
-    pub fn is_mine(&self) -> bool {
-        matches!(self, Self::Mine)
-    }
-}
-
 /// One check on one draft: what it required and what the draft did.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

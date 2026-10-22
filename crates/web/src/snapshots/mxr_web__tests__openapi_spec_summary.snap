@@ -208,7 +208,6 @@ expression: summary
     "DraftEvalCheckData",
     "DraftEvalQuickCaseData",
     "DraftEvalQuickSummaryData",
-    "DraftEvalSet",
     "DraftEvalSummaryData",
     "DraftId",
     "DraftIntent",

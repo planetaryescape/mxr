@@ -46,41 +46,41 @@ pub async fn run(
                 .await?;
             print_draft_response(resp, fmt)
         }
-        Some(DraftAction::Eval { limit, set }) => {
-            let set = match set {
-                DraftEvalSetArg::Mine => DraftEvalSet::Mine,
-                DraftEvalSetArg::Quick => DraftEvalSet::Quick,
-            };
-            let account_id = match (set, account.as_deref()) {
-                (DraftEvalSet::Mine, Some(account)) => {
-                    Some(resolve_account(&mut client, Some(account)).await?)
+        Some(DraftAction::Eval { limit, set }) => match set {
+            DraftEvalSetArg::Mine => {
+                let account_id = match account.as_deref() {
+                    Some(account) => Some(resolve_account(&mut client, Some(account)).await?),
+                    None => None,
+                };
+                let resp = client
+                    .request(Request::DraftEval { account_id, limit })
+                    .await?;
+                match resp {
+                    Response::Ok {
+                        data: ResponseData::DraftEval { cases, summary },
+                    } => print_eval(&cases, &summary, fmt),
+                    Response::Ok { .. } => anyhow::bail!("Unexpected response"),
+                    Response::Error { message, .. } => anyhow::bail!(message),
                 }
-                _ => None,
-            };
-            let request = Request::DraftEval {
-                account_id,
-                limit,
-                set,
-            };
-            // Quick makes one model call per case, so the whole run can take
-            // minutes: it takes the no-deadline path that long operations use
-            // (`request_with_events`, which passes no timeout). Mine keeps the
-            // default deadline, as before.
-            let resp = match set {
-                DraftEvalSet::Quick => client.request_with_events(request, |_| {}).await?,
-                DraftEvalSet::Mine => client.request(request).await?,
-            };
-            match resp {
-                Response::Ok {
-                    data: ResponseData::DraftEval { cases, summary },
-                } => print_eval(&cases, &summary, fmt),
-                Response::Ok {
-                    data: ResponseData::DraftEvalQuick { cases, summary },
-                } => print_eval_quick(&cases, &summary, fmt),
-                Response::Ok { .. } => anyhow::bail!("Unexpected response"),
-                Response::Error { message, .. } => anyhow::bail!(message),
             }
-        }
+            DraftEvalSetArg::Quick => {
+                // Quick makes one model call per case, so the whole run can
+                // take minutes: it takes the no-deadline path that long
+                // operations use (`request_with_events`, which passes no
+                // timeout). It is its own request, so a daemon that predates it
+                // rejects it rather than replaying the user's mail.
+                let resp = client
+                    .request_with_events(Request::DraftEvalQuick, |_| {})
+                    .await?;
+                match resp {
+                    Response::Ok {
+                        data: ResponseData::DraftEvalQuick { cases, summary },
+                    } => print_eval_quick(&cases, &summary, fmt),
+                    Response::Ok { .. } => anyhow::bail!("Unexpected response"),
+                    Response::Error { message, .. } => anyhow::bail!(message),
+                }
+            }
+        },
         None => {
             let to = to.ok_or_else(|| anyhow::anyhow!("Pass --to for a new draft"))?;
             let purpose =

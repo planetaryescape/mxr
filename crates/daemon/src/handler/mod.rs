@@ -419,6 +419,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::DraftCompose { .. }
         | Request::DraftRefine { .. }
         | Request::DraftEval { .. }
+        | Request::DraftEvalQuick
         | Request::ExtractDraftCommitments { .. }
         | Request::ExplainEntity { .. }
         | Request::FindExpert { .. }
@@ -2091,14 +2092,10 @@ async fn dispatch(
             knobs,
             body,
         } => draft_refine::draft_refine(state, draft_id, knobs.clone(), body.as_deref()).await,
-        Request::DraftEval {
-            account_id,
-            limit,
-            set,
-        } => match set {
-            DraftEvalSet::Mine => draft_eval::draft_eval(state, account_id.as_ref(), *limit).await,
-            DraftEvalSet::Quick => compose_eval::quick(state).await,
-        },
+        Request::DraftEval { account_id, limit } => {
+            draft_eval::draft_eval(state, account_id.as_ref(), *limit).await
+        }
+        Request::DraftEvalQuick => compose_eval::quick(state).await,
         Request::ClassifyEval { account_id, set } => {
             classify_eval::classify_eval(state, account_id.as_ref(), *set).await
         }
@@ -2574,6 +2571,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::DraftCompose { .. }
         | Request::DraftRefine { .. }
         | Request::DraftEval { .. }
+        | Request::DraftEvalQuick
         | Request::PrepareReply { .. }
         | Request::PrepareForward { .. }
         | Request::ResolveSendFrom { .. }
@@ -3015,6 +3013,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::DraftCompose { .. } => "draft_compose",
         Request::DraftRefine { .. } => "draft_refine",
         Request::DraftEval { .. } => "draft_eval",
+        Request::DraftEvalQuick => "draft_eval_quick",
         Request::ClassifyEval { .. } => "classify_eval",
         Request::PrepareReply { .. } => "prepare_reply",
         Request::PrepareForward { .. } => "prepare_forward",

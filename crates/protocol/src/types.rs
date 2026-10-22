@@ -1562,19 +1562,20 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         body: Option<String>,
     },
-    /// Draft and grade cases with the configured LLM, once per case; nothing
-    /// is saved or sent. `set: mine` replays the user's most recent replies,
-    /// drafted from what was known just before they replied and compared with
-    /// what they sent. `set: quick` drafts the labelled compose corpus and
-    /// grades each draft against what its case required. `limit` applies to
-    /// `mine` only.
+    /// Replay the user's most recent replies: draft each one from what was
+    /// known just before they replied, and compare with what they sent.
+    /// Calls the configured LLM once per case; nothing is saved or sent.
     DraftEval {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,
         limit: u32,
-        #[serde(default, skip_serializing_if = "DraftEvalSet::is_mine")]
-        set: DraftEvalSet,
     },
+    /// Draft the labelled compose corpus with the configured LLM and grade
+    /// each draft against what its case required. Nothing is saved or sent.
+    /// A separate request, not a field on `DraftEval`: a daemon that predates
+    /// it rejects the unknown command, instead of ignoring a field and
+    /// replaying the user's own mail.
+    DraftEvalQuick,
     /// Measure today's classifier against labelled scenarios in the stored
     /// mail: who sent it, which mode it went to, and whether it made a
     /// to-do or a record. Local; nothing is changed or sent.
@@ -2958,6 +2959,7 @@ impl Request {
             | Self::DraftCompose { .. }
             | Self::DraftRefine { .. }
             | Self::DraftEval { .. }
+            | Self::DraftEvalQuick
             | Self::ClassifyEval { .. }
             | Self::PrepareReply { .. }
             | Self::PrepareForward { .. }

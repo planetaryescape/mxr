@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use mxr_llm::{
     ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime, OpenAiCompatibleConfig,
-    OpenAiCompatibleProvider,
+    OpenAiCompatibleProvider, ToolChatMessage, ToolChatRequest,
 };
 use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider, SpanData};
 use serde_json::{json, Value};
@@ -226,5 +226,119 @@ async fn a_call_cut_off_by_the_background_deadline_says_so() {
     assert_eq!(
         attribute(generation, "langfuse.observation.level").as_deref(),
         Some("WARNING")
+    );
+}
+
+fn chat_request() -> ToolChatRequest {
+    ToolChatRequest {
+        messages: vec![ToolChatMessage::User {
+            content: "Is Friday free?".to_string(),
+        }],
+        tools: Vec::new(),
+        max_tokens: Some(64),
+    }
+}
+
+/// The one generation under the feature span named `feature`.
+fn generation_of<'a>(spans: &'a [SpanData], feature: &str) -> &'a SpanData {
+    let parent = spans
+        .iter()
+        .find(|span| span.name == feature)
+        .unwrap_or_else(|| panic!("no {feature} span"));
+    let children: Vec<&SpanData> = spans
+        .iter()
+        .filter(|span| span.parent_span_id == parent.span_context.span_id())
+        .collect();
+    assert_eq!(children.len(), 1, "one request under {feature}");
+    children[0]
+}
+
+#[tokio::test]
+async fn a_streamed_chat_asks_for_usage_and_keeps_its_thinking() {
+    let exporter = exporter();
+    let server = MockServer::start().await;
+    let chunks = [
+        json!({"model": MODEL, "choices": [{"index": 0, "delta": {"role": "assistant", "reasoning": "Check the "}}]}),
+        json!({"model": MODEL, "choices": [{"index": 0, "delta": {"reasoning": "calendar."}}]}),
+        json!({"model": MODEL, "choices": [{"index": 0, "delta": {"content": "Friday is free."}, "finish_reason": "stop"}]}),
+        // Sent only because the request asked for it.
+        json!({"model": MODEL, "choices": [], "usage": {"prompt_tokens": 20, "completion_tokens": 5}}),
+    ];
+    let body: String = chunks
+        .iter()
+        .map(|chunk| format!("data: {chunk}\n\n"))
+        .chain(["data: [DONE]\n\n".to_string()])
+        .collect();
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(
+            json!({"stream": true, "stream_options": {"include_usage": true}}),
+        ))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let response = runtime(&server)
+        .for_feature(LlmFeature::Assistant)
+        .pin()
+        .chat_stream(chat_request(), &|_| {})
+        .await
+        .unwrap();
+    assert_eq!(response.text, "Friday is free.");
+
+    let spans = exporter.get_finished_spans().unwrap();
+    let generation = generation_of(&spans, "assistant");
+    assert_eq!(
+        json_attribute(generation, "langfuse.observation.usage_details"),
+        json!({"input": 20, "output": 5})
+    );
+    assert_eq!(
+        json_attribute(generation, "langfuse.observation.output"),
+        json!({
+            "role": "assistant",
+            "content": "Friday is free.",
+            "reasoning_content": "Check the calendar.",
+        })
+    );
+}
+
+#[tokio::test]
+async fn a_tool_chat_reply_keeps_its_thinking() {
+    let exporter = exporter();
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": MODEL,
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "Friday is free.",
+                    "reasoning_content": "Check the calendar.",
+                },
+                "finish_reason": "stop",
+            }],
+            "usage": {"prompt_tokens": 20, "completion_tokens": 5},
+        })))
+        .mount(&server)
+        .await;
+
+    runtime(&server)
+        .for_feature(LlmFeature::Briefing)
+        .pin()
+        .chat(chat_request())
+        .await
+        .unwrap();
+
+    let spans = exporter.get_finished_spans().unwrap();
+    let generation = generation_of(&spans, "briefing");
+    assert_eq!(
+        json_attribute(generation, "langfuse.observation.output")["reasoning_content"],
+        json!("Check the calendar.")
     );
 }

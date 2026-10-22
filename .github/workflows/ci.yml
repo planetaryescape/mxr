@@ -207,6 +207,7 @@ jobs:
       # LLM tracing is a developer build (`--features langfuse`): keep it
       # working, and keep it out of the feature set release.yml ships.
       - run: cargo test -p mxr-llm --features langfuse --test trace_spans --locked
+      - run: cargo test -p mxr-assistant --features langfuse --lib --locked -- a_tool_span
       - name: Release builds carry no tracing code
         # The tree goes through a variable so a failing `cargo tree` fails the
         # step instead of reading as "no opentelemetry".

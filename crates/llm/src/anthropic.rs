@@ -190,7 +190,8 @@ impl AnthropicClient {
                 interpret_tool_reply(reply, model)
             })
             .await;
-        trace::finish_chat_attempt(&span, &result);
+        #[cfg(feature = "langfuse")]
+        trace::finish_chat_attempt(&span, &result, None);
         result
     }
 
@@ -248,7 +249,8 @@ impl AnthropicClient {
                 interpret_tool_reply(reply, model)
             })
             .await;
-        trace::finish_chat_attempt(&span, &result);
+        #[cfg(feature = "langfuse")]
+        trace::finish_chat_attempt(&span, &result, None);
         result
     }
 

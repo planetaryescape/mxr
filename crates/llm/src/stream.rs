@@ -106,6 +106,8 @@ pub(crate) struct OpenAiStream {
     calls: Vec<(String, String, String)>,
     finish_reason: Option<String>,
     usage: Option<TokenUsage>,
+    #[cfg(feature = "langfuse")]
+    reasoning: String,
 }
 
 impl OpenAiStream {
@@ -135,6 +137,12 @@ impl OpenAiStream {
             self.finish_reason = Some(reason.to_string());
         }
         let delta = &choice["delta"];
+        #[cfg(feature = "langfuse")]
+        for key in ["reasoning", "reasoning_content"] {
+            if let Some(text) = delta[key].as_str() {
+                self.reasoning.push_str(text);
+            }
+        }
         if let Some(text) = delta["content"].as_str().filter(|text| !text.is_empty()) {
             self.text.push_str(text);
             on_text(&self.text);
@@ -159,6 +167,12 @@ impl OpenAiStream {
             }
         }
         Ok(())
+    }
+
+    /// The streamed thinking so far, for the trace.
+    #[cfg(feature = "langfuse")]
+    pub(crate) fn thinking(&self) -> Option<String> {
+        (!self.reasoning.trim().is_empty()).then(|| self.reasoning.clone())
     }
 
     pub(crate) fn finish(self, requested_model: &str) -> Result<ToolChatResponse, AttemptError> {

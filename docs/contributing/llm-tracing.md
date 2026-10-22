@@ -21,13 +21,20 @@ with a warning instead of an output.
 
 An assistant turn is one `assistant-turn` trace with its model calls and
 tool calls nested in order, and each conversation is a Langfuse session.
+Each tool call's metadata names the `tool_call_id` it answers, the id in the
+generation's `tool_calls` before it.
+
+Streamed replies from OpenAI-compatible servers (the assistant on Ollama)
+report token usage only when asked, so a `langfuse` build adds
+`stream_options: {"include_usage": true}` to streamed requests. It is the one
+change tracing makes to what a model server receives.
 
 ## Traces go only to a Langfuse on this machine
 
 Traces hold whole prompts and replies, which means other people's mail. The
 daemon sends them only when `LANGFUSE_BASE_URL` is `localhost`, `127.x.x.x`
 or `::1`, never through a proxy and never after a redirect. Langfuse Cloud
-and LAN addresses are refused, and `mxr logs` says why. With the variables
+and LAN addresses are refused, and `mxr doctor` says why. With the variables
 unset, a `langfuse` build traces nothing.
 
 ## Run Langfuse locally
@@ -80,8 +87,8 @@ target-cli/debug/mxr restart
 
 Restart with the binary you just built: a daemon started by another `mxr`
 on your `PATH`, or by launchd, has neither the feature nor these variables.
-The daemon reads the variables when it starts, and `mxr logs` shows
-`LLM tracing to the Langfuse at ...` when it is on. Traces arrive within a
+The daemon reads the variables when it starts, and `mxr doctor` lists
+`LLM tracing is on, to the Langfuse at ...`, or why it is off. Traces arrive within a
 few seconds; the daemon sends what is still queued when it stops.
 
 Read traces back from the terminal with the Langfuse CLI, which needs the
@@ -97,9 +104,11 @@ npx langfuse-cli api observations list --fields core,basic,io,model,usage --json
   OpenTelemetry API; `off.rs` is the same calls doing nothing, used without
   the feature.
 - `crates/daemon/src/llm_tracing.rs`: reads the variables, refuses
-  non-loopback URLs and runs the OTLP/HTTP exporter.
-- `crates/daemon/src/assistant/`: the `assistant-turn` and tool spans.
+  non-loopback URLs, runs the OTLP/HTTP exporter and reports its state to
+  `mxr doctor`.
+- `crates/daemon/src/assistant/`: the `assistant-turn` span.
+- `crates/assistant/src/turn.rs`: the tool spans (`call_tool`).
 - `crates/llm/tests/trace_spans.rs`: the span tree and attributes, run with
-  `scripts/cargo-test -p mxr-llm --features langfuse --test trace_spans`.
-
-Open gaps are in [`docs/issues/llm-tracing-followups.md`](../issues/llm-tracing-followups.md).
+  `scripts/cargo-test -p mxr-llm --features langfuse --test trace_spans`;
+  the tool span's test runs with
+  `scripts/cargo-test -p mxr-assistant --features langfuse --lib`.

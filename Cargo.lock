@@ -4494,6 +4494,8 @@ version = "0.6.146"
 dependencies = [
  "async-trait",
  "mxr-llm",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "serde",
  "serde_json",
  "tokio",

@@ -999,10 +999,16 @@ impl OpenAiCompatibleProvider {
     ) -> Result<ToolChatResponse, AttemptError> {
         let body = tool_chat::openai_body(&self.model, req, self.dialect);
         let span = self.chat_generation(&body);
+        #[cfg(feature = "langfuse")]
+        let mut thinking = None;
         let result = span
             .instrument(async {
                 let raw: tool_chat::OpenAiToolChatReply =
                     self.post(&body, api_key, timeout).await?;
+                #[cfg(feature = "langfuse")]
+                {
+                    thinking = raw.thinking();
+                }
                 let response = tool_chat::openai_reply(raw, &self.model)
                     .ok_or_else(|| AttemptError::request(LlmError::Empty))?;
                 if response.text.trim().is_empty() && response.tool_calls.is_empty() {
@@ -1011,7 +1017,8 @@ impl OpenAiCompatibleProvider {
                 Ok(response)
             })
             .await;
-        trace::finish_chat_attempt(&span, &result);
+        #[cfg(feature = "langfuse")]
+        trace::finish_chat_attempt(&span, &result, thinking.as_deref());
         result
     }
 
@@ -1025,16 +1032,27 @@ impl OpenAiCompatibleProvider {
     ) -> Result<ToolChatResponse, AttemptError> {
         let mut body = tool_chat::openai_body(&self.model, req, self.dialect);
         body.stream = true;
+        #[cfg(feature = "langfuse")]
+        {
+            body.stream_options = Some(serde_json::json!({"include_usage": true}));
+        }
         let span = self.chat_generation(&body);
+        #[cfg(feature = "langfuse")]
+        let mut thinking = None;
         let result = span
             .instrument(async {
                 let response = self.send_checked(&body, api_key, timeout).await?;
                 let mut folded = stream::OpenAiStream::default();
                 stream::read_events(response, |data| folded.fold(data, on_text)).await?;
+                #[cfg(feature = "langfuse")]
+                {
+                    thinking = folded.thinking();
+                }
                 folded.finish(&self.model)
             })
             .await;
-        trace::finish_chat_attempt(&span, &result);
+        #[cfg(feature = "langfuse")]
+        trace::finish_chat_attempt(&span, &result, thinking.as_deref());
         result
     }
 

@@ -17,6 +17,7 @@ import { setActiveQueryClient } from "@/lib/queryClient";
 import { useModeDone, type ModeDoneOutcome } from "@/features/modes/modeDone";
 import { useUndo } from "@/state/undoStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { runCommand } from "@/lib/keys/controllers";
 import { optionalEnum, optionalFlag, optionalString } from "@/lib/searchParams";
 import { focusActivePane } from "@/lib/keys/focusPane";
 
@@ -54,8 +55,10 @@ vi.mock("@/features/modes/api", async (original) => ({
   useModeGuide: () => ({}),
 }));
 vi.mock("@/features/modes/membership", () => ({ useThreadModesMap: () => ({}) }));
-vi.mock("@/features/low-tide/lowTideMemory", () => ({ useLowTide: () => false }));
-vi.mock("@/hooks/useMediaQuery", () => ({ useMediaQuery: () => true }));
+const lowTide = vi.hoisted(() => vi.fn((..._args: unknown[]) => false));
+const layout = vi.hoisted(() => ({ wide: true }));
+vi.mock("@/features/low-tide/lowTideMemory", () => ({ useLowTide: lowTide }));
+vi.mock("@/hooks/useMediaQuery", () => ({ useMediaQuery: () => layout.wide }));
 vi.mock("@/hooks/useSplitPane", () => ({ useSplitPane: () => ({}) }));
 vi.mock("@/features/mail-actions/verbFeedback", () => ({
   soundFor: () => null,
@@ -194,6 +197,8 @@ beforeEach(() => {
   setActiveQueryClient(client);
 });
 afterEach(() => {
+  layout.wide = true;
+  lowTide.mockClear();
   cleanup();
   client?.clear();
   http.send.mockReset();
@@ -600,4 +605,68 @@ test("switching account never shows the previous account's rows", async () => {
   } finally {
     act(() => useUiPrefs.setState({ accountScope: previousScope }));
   }
+});
+
+test("g f below the split reveals the people list before focusing the filter line", async () => {
+  layout.wide = false;
+  const a = row("person:a", [topic("a-live")]);
+  client.setQueryData(listKey, listOf(a));
+  cachePage(a, "a-live", "a-live");
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
+  // The person's page covers the list on a phone.
+  expect(await screen.findByTestId("shown-topic")).toBeTruthy();
+
+  act(() => {
+    runCommand("messages", "filter");
+  });
+  await waitFor(() => expect(screen.queryByTestId("shown-topic")).toBeNull());
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole("radio", { name: "Your turn", hidden: false }),
+    ),
+  );
+});
+
+test("an empty filtered view does not count as finishing Messages while Your turn is open", async () => {
+  // Four people still owe a reply; none is unread, so the filtered view is empty.
+  const empty = listWith({
+    your_turn: [],
+    row_count: 4,
+    matched: 0,
+    your_turn_split: { write_with: 4, others: 0 },
+    empty_state: "No unread messages from people.\nYour turn still has 4 people.",
+    filter: { turn: null, unread: true, past_pace: false },
+  });
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people")) return { messages: empty };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  await mountMessages("/messages?unread=true");
+  expect(await screen.findByText(/No unread messages from people\./)).toBeTruthy();
+  await waitFor(() => expect(lowTide.mock.calls.at(-1)?.[2]).toBe(true));
+});
+
+test("an empty filtered view finishes Messages when the unfiltered Your turn is clear", async () => {
+  const clear = listWith({
+    your_turn: [],
+    row_count: 1,
+    matched: 0,
+    your_turn_split: { write_with: 0, others: 0 },
+    empty_state: "No unread messages from people.",
+    filter: { turn: null, unread: true, past_pace: false },
+  });
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people")) return { messages: clear };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  await mountMessages("/messages?unread=true");
+  expect(await screen.findByText("No unread messages from people.")).toBeTruthy();
+  await waitFor(() => expect(lowTide.mock.calls.at(-1)?.[2]).toBe(false));
 });

@@ -167,6 +167,11 @@ function MessagesBody({
   const [quietOpen, setQuietOpen] = useState(false);
   // A phone shows the list or the person page, never both.
   const [pageOpen, setPageOpen] = useState(Boolean(search.person || threadId));
+  // `g f` counts up: each request focuses the filter line once it is on screen.
+  const [filterFocusRequest, setFilterFocusRequest] = useState(0);
+  useEffect(() => {
+    if (filterFocusRequest > 0) focusFilterBar();
+  }, [filterFocusRequest]);
   const [asSent, setAsSent] = useState<string | null>(null);
   const rows = useMemo(() => cursorRows(data, quietOpen), [data, quietOpen]);
   // "Also in To do: …" and a new sender's question on each shown row.
@@ -613,7 +618,12 @@ function MessagesBody({
   useScopeController("messages", {
     down: () => move(1),
     up: () => move(-1),
-    filter: () => focusFilterBar(),
+    // Below the split the filter line sits in the people list, which the
+    // person's page covers: reveal the list first.
+    filter: () => {
+      setPageOpen(false);
+      setFilterFocusRequest((request) => request + 1);
+    },
     open: () => selectedId && select(selectedId, { open: true }),
     personPage: () => {
       setPageOpen(true);
@@ -682,12 +692,14 @@ function MessagesBody({
     />
   );
   // Your turn is the work; Waiting on is a view of its own and has no finish.
-  const finished = useLowTide(
-    "messages",
-    search.turn === "theirs",
-    data.your_turn.length > 0 || !empty,
-    { daily: true },
-  );
+  // Completion follows Your turn as it is unfiltered. A toggle that narrows
+  // the list to nothing has not finished the work: the count it can't see is
+  // the desk's Your turn split.
+  const narrowed = filter.unread || filter.pastPace;
+  const yourTurnSplit = data.your_turn_split;
+  const yourTurnPeople = (yourTurnSplit?.write_with ?? 0) + (yourTurnSplit?.others ?? 0);
+  const hasWork = narrowed ? yourTurnPeople > 0 : data.your_turn.length > 0 || !empty;
+  const finished = useLowTide("messages", search.turn === "theirs", hasWork, { daily: true });
   const emptyState = data.empty_state ? (
     <PageEmpty
       framed={allRows.length === 0}

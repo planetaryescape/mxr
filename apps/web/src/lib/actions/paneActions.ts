@@ -5,7 +5,7 @@
  * sense and help lists exactly what the current pane supports.
  */
 
-import { Maximize2, SquareStack } from "lucide-react";
+import { Maximize2, Shuffle, SquareStack } from "lucide-react";
 
 import type { ActionBehavior } from "./types";
 
@@ -70,4 +70,5 @@ export const readerActions: ActionBehavior[] = [
   { id: "reader.open-original", command: "openOriginal" },
   { id: "reader.summary", command: "summarize" },
   { id: "reader.fullscreen", command: "fullscreen", icon: Maximize2 },
+  { id: "reader.move-sender", command: "moveSender", icon: Shuffle },
 ];

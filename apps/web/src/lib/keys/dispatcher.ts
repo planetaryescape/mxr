@@ -24,8 +24,6 @@ export const REPEATABLE_ACTION_IDS: ReadonlySet<string> = new Set([
   "list.page-up",
   "sidebar.down",
   "sidebar.up",
-  "place.down",
-  "place.up",
   "reader.scroll-down",
   "reader.scroll-up",
   "reader.page-down",

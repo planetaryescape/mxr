@@ -43,12 +43,69 @@ pub async fn run(
     let rows = match action {
         None => list(&keymap, client, context.as_deref()),
         Some(KeysAction::Explain { key }) => explain(&keymap, &key, client, context.as_deref()),
+        Some(KeysAction::Check { file }) => return check(file, format),
     };
     match resolve_format(format) {
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&rows)?),
         OutputFormat::Jsonl => println!("{}", jsonl(&rows)?),
         _ if rows.is_empty() => println!("No keys match."),
         _ => print!("{}", table(&rows)),
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct CheckReport {
+    file: std::path::PathBuf,
+    exists: bool,
+    problems: Vec<String>,
+}
+
+/// `mxr keys check`: everything in keys.toml mxr would ignore. Reads the
+/// file directly, so it works without a daemon.
+pub fn check(file: Option<std::path::PathBuf>, format: Option<OutputFormat>) -> anyhow::Result<()> {
+    let file = file.unwrap_or_else(|| {
+        mxr_config::config_file_path()
+            .parent()
+            .map_or_else(|| "keys.toml".into(), |dir| dir.join("keys.toml"))
+    });
+    let text = match std::fs::read_to_string(&file) {
+        Ok(text) => Some(text),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(anyhow::anyhow!("can't read {}: {error}", file.display())),
+    };
+    let report = CheckReport {
+        exists: text.is_some(),
+        problems: text
+            .as_deref()
+            .map(mxr_tui::keybindings::check_keys_toml)
+            .unwrap_or_default(),
+        file,
+    };
+    match resolve_format(format) {
+        OutputFormat::Json | OutputFormat::Jsonl => {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        _ if !report.exists => println!("No {}; every key is the default.", report.file.display()),
+        _ if report.problems.is_empty() => println!("{} is fine.", report.file.display()),
+        _ => {
+            println!("{}:", report.file.display());
+            for problem in &report.problems {
+                println!("  {problem}");
+            }
+        }
+    }
+    if !report.problems.is_empty() {
+        anyhow::bail!(
+            "{} {} in {}",
+            report.problems.len(),
+            if report.problems.len() == 1 {
+                "problem"
+            } else {
+                "problems"
+            },
+            report.file.display()
+        );
     }
     Ok(())
 }

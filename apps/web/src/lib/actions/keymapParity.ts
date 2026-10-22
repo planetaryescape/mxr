@@ -13,7 +13,6 @@ export type ParityContext =
   | "list"
   | "reader"
   | "sidebar"
-  | "place"
   | "screener"
   | "todo"
   | "now"
@@ -27,7 +26,6 @@ const CONTEXT_SCOPES: Record<ParityContext, ActionScope[]> = {
   list: ["list", "global"],
   reader: ["reader", "global"],
   sidebar: ["sidebar", "global"],
-  place: ["place", "global"],
   todo: ["todo", "global"],
   now: ["now", "global"],
   messages: ["messages", "global"],
@@ -154,16 +152,6 @@ export const SAME_ACTION: Record<string, string[]> = {
   "screener.paper-trail": ["ScreenerDisposePaperTrail"],
   "screener.down": ["ScreenerModalNext"],
   "screener.up": ["ScreenerModalPrev"],
-  "place.down": ["MoveDown"],
-  "place.up": ["MoveUp"],
-  "place.open": ["OpenSelected"],
-  "place.pin": ["TogglePin"],
-  "place.sweep-bundle": ["SweepBundle"],
-  "place.sweep-all": ["SweepPlace"],
-  "place.move-sender": ["OpenSenderKindMenu"],
-  "place.unsubscribe": ["Unsubscribe"],
-  // The TUI's place lens takes its Archive key as done here in the mode.
-  "place.done": ["Archive"],
   "nav.todo": ["OpenTodo"],
   "mail.make-todo": ["CreateTodoFromMessage"],
   "todo.down": ["MoveDown"],
@@ -420,27 +408,6 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     keys: ["c", "u"],
     bound: "web",
     why: "Compose and undo work everywhere on the web; the TUI sidebar takes only navigation",
-  },
-  // Reading and Paper trail.
-  {
-    context: "place",
-    // prettier-ignore
-    keys: ["!", "#", "B", "E", "F", "I", "L", "O", "R", "T", "U", "V", "W", "Z", "a", "b", "f", "l", "m", "r", "s", "t", "v", "x", "y", "i a", "i m", "i d", "i A", "i M", "i D"],
-    bound: "tui",
-    why: "Web rows here are bundles, and mail keys work once one is open in the reader; the TUI lens acts on the message under the cursor",
-  },
-  {
-    context: "place",
-    keys: ["+", ">"],
-    bound: "tui",
-    why: "The TUI loads more with + and >; the web loads as you scroll",
-  },
-  {
-    context: "place",
-    // prettier-ignore
-    keys: ["h", "ArrowLeft", "ArrowRight", "Escape", "G", "g g", "H", "M", "Ctrl+d", "Ctrl+u"],
-    bound: "tui",
-    why: "Web places move with j and k and open with Enter or o",
   },
   // To do.
   {

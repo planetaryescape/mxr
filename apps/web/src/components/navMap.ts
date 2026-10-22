@@ -32,6 +32,8 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 
+import { definedShortcut } from "@/lib/actions/definition";
+
 export type NavIcon = ComponentType<{ className?: string }>;
 
 export interface NavEntry {
@@ -62,14 +64,56 @@ export interface NavSection {
 }
 
 export const MAIL_ENTRIES: NavEntry[] = [
-  { key: "starred", to: "/m/starred", label: "Starred", Icon: Star, shortcut: "g s" },
-  { key: "sent", to: "/m/sent", label: "Sent", Icon: Send, shortcut: "g t" },
-  { key: "drafts", to: "/drafts", label: "Drafts", Icon: FileText, shortcut: "g d" },
-  { key: "snoozed", to: "/snoozed", label: "Snoozed", Icon: Clock, shortcut: "g n" },
-  { key: "reply-queue", to: "/reply-queue", label: "Reply later", Icon: Reply, shortcut: "g q" },
-  { key: "archive", to: "/m/archive", label: "All Mail", Icon: Layers, shortcut: "g a" },
-  { key: "spam", to: "/m/spam", label: "Spam", Icon: ShieldAlert, shortcut: "g !" },
-  { key: "trash", to: "/m/trash", label: "Trash", Icon: Trash2, shortcut: "g #" },
+  {
+    key: "starred",
+    to: "/m/starred",
+    label: "Starred",
+    Icon: Star,
+    shortcut: definedShortcut("nav.starred"),
+  },
+  { key: "sent", to: "/m/sent", label: "Sent", Icon: Send, shortcut: definedShortcut("nav.sent") },
+  {
+    key: "drafts",
+    to: "/drafts",
+    label: "Drafts",
+    Icon: FileText,
+    shortcut: definedShortcut("nav.drafts"),
+  },
+  {
+    key: "snoozed",
+    to: "/snoozed",
+    label: "Snoozed",
+    Icon: Clock,
+    shortcut: definedShortcut("nav.snoozed"),
+  },
+  {
+    key: "reply-queue",
+    to: "/reply-queue",
+    label: "Reply later",
+    Icon: Reply,
+    shortcut: definedShortcut("nav.reply-queue"),
+  },
+  {
+    key: "archive",
+    to: "/m/archive",
+    label: "All Mail",
+    Icon: Layers,
+    shortcut: definedShortcut("nav.archive"),
+  },
+  {
+    key: "spam",
+    to: "/m/spam",
+    label: "Spam",
+    Icon: ShieldAlert,
+    shortcut: definedShortcut("nav.spam"),
+  },
+  {
+    key: "trash",
+    to: "/m/trash",
+    label: "Trash",
+    Icon: Trash2,
+    shortcut: definedShortcut("nav.trash"),
+  },
 ];
 
 /** Waiting on and the Screener lead the views: the two that wait on someone. */
@@ -80,30 +124,90 @@ export const VIEW_ENTRIES: NavEntry[] = [
     search: { turn: "theirs" },
     label: "Waiting on",
     Icon: Timer,
-    shortcut: "g w",
+    shortcut: definedShortcut("nav.waiting"),
   },
-  { key: "owed", to: "/owed", label: "Owed replies", Icon: Hourglass, shortcut: "g o" },
-  { key: "screener", to: "/screener", label: "Screener", Icon: Shield, shortcut: "g S" },
+  {
+    key: "owed",
+    to: "/owed",
+    label: "Owed replies",
+    Icon: Hourglass,
+    shortcut: definedShortcut("nav.owed"),
+  },
+  {
+    key: "screener",
+    to: "/screener",
+    label: "Screener",
+    Icon: Shield,
+    shortcut: definedShortcut("nav.screener"),
+  },
   { key: "subscriptions", to: "/subscriptions", label: "Subscriptions", Icon: MailX },
-  { key: "invites", to: "/invites", label: "Invites", Icon: CalendarDays, shortcut: "g v" },
-  { key: "deliveries", to: "/deliveries", label: "Deliveries", Icon: Package, shortcut: "7" },
+  {
+    key: "invites",
+    to: "/invites",
+    label: "Invites",
+    Icon: CalendarDays,
+    shortcut: definedShortcut("nav.invites"),
+  },
+  {
+    key: "deliveries",
+    to: "/deliveries",
+    label: "Deliveries",
+    Icon: Package,
+    shortcut: definedShortcut("nav.deliveries"),
+  },
 ];
 
 export const TOOL_ENTRIES: NavEntry[] = [
-  { key: "search", to: "/search", label: "Search", Icon: Search, shortcut: "2" },
-  { key: "analytics", to: "/analytics", label: "Analytics", Icon: BarChart3, shortcut: "g A" },
-  { key: "rules", to: "/rules", label: "Rules", Icon: Workflow, shortcut: "3" },
-  { key: "accounts", to: "/accounts", label: "Accounts", Icon: Users, shortcut: "4" },
-  { key: "activity", to: "/activity", label: "Activity", Icon: History, shortcut: "g y" },
+  {
+    key: "search",
+    to: "/search",
+    label: "Search",
+    Icon: Search,
+    shortcut: definedShortcut("nav.search-page"),
+  },
+  {
+    key: "analytics",
+    to: "/analytics",
+    label: "Analytics",
+    Icon: BarChart3,
+    shortcut: definedShortcut("nav.analytics"),
+  },
+  {
+    key: "rules",
+    to: "/rules",
+    label: "Rules",
+    Icon: Workflow,
+    shortcut: definedShortcut("nav.rules"),
+  },
+  {
+    key: "accounts",
+    to: "/accounts",
+    label: "Accounts",
+    Icon: Users,
+    shortcut: definedShortcut("nav.accounts"),
+  },
+  {
+    key: "activity",
+    to: "/activity",
+    label: "Activity",
+    Icon: History,
+    shortcut: definedShortcut("nav.activity"),
+  },
   { key: "jobs", to: "/jobs", label: "Jobs", Icon: ListChecks },
   {
     key: "diagnostics",
     to: "/diagnostics",
     label: "Diagnostics",
     Icon: Stethoscope,
-    shortcut: "5",
+    shortcut: definedShortcut("nav.diagnostics"),
   },
-  { key: "settings", to: "/settings/all", label: "Settings", Icon: Settings, shortcut: "g c" },
+  {
+    key: "settings",
+    to: "/settings/all",
+    label: "Settings",
+    Icon: Settings,
+    shortcut: definedShortcut("nav.settings"),
+  },
 ];
 
 const under = (base: string, path: string) => path === base || path.startsWith(`${base}/`);

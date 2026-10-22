@@ -340,6 +340,18 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     why: "Ctrl+f is the browser's Find off macOS, so the web also filters with g f",
   },
   {
+    context: "messages",
+    keys: ["g f"],
+    bound: "web",
+    why: "Ctrl+f is the browser's Find off macOS, so the web also opens the Messages filter with g f",
+  },
+  {
+    context: "messages",
+    keys: ["Ctrl+f"],
+    bound: "tui",
+    why: "The TUI opens the Messages filter picker with Ctrl-f, as its mail list does",
+  },
+  {
     context: "list",
     keys: ["w"],
     bound: "web",

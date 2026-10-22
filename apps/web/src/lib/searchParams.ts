@@ -16,3 +16,8 @@ export function optionalEnum<T extends string>(
     ? (value as T)
     : undefined;
 }
+
+/** A flag in the URL: `true` or `1` turns it on; anything else leaves it off. */
+export function optionalFlag(value: unknown): true | undefined {
+  return value === true || value === "true" || value === "1" ? true : undefined;
+}

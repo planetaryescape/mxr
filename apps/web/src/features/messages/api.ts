@@ -5,12 +5,14 @@
  * /people because /messages is the per-message API.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/api/client";
 import type { components } from "@/api/generated";
 import { getActiveQueryClient } from "@/lib/queryClient";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+
+import { NO_FILTER, type MessagesFilter } from "./filters";
 
 type Schemas = components["schemas"];
 export type MessagesData = Schemas["MessagesData"];
@@ -43,17 +45,34 @@ function query(params: Record<string, string | null | undefined>): string {
 
 export async function fetchMessages(
   account: string | null,
-  turn: MessagesTurn | null,
+  filter: MessagesFilter,
 ): Promise<MessagesData> {
-  const answer = await apiFetch<ListResponse>(`/api/v1/mail/people${query({ account, turn })}`);
+  const answer = await apiFetch<ListResponse>(
+    `/api/v1/mail/people${query({
+      account,
+      turn: filter.turn,
+      unread: filter.unread ? "true" : null,
+      pace: filter.pastPace ? "true" : null,
+    })}`,
+  );
   return answer.messages;
 }
 
-export function useMessagesQuery(turn: MessagesTurn | null = null) {
+export function useMessagesQuery(filter: MessagesFilter = NO_FILTER) {
   const account = useUiPrefs((s) => s.accountScope);
   return useQuery({
-    queryKey: [...MESSAGES_KEY, "list", account ?? "all", turn ?? "all"],
-    queryFn: () => fetchMessages(account, turn),
+    queryKey: [
+      ...MESSAGES_KEY,
+      "list",
+      account ?? "all",
+      filter.turn ?? "all",
+      ...(filter.unread ? ["unread"] : []),
+      ...(filter.pastPace ? ["pace"] : []),
+    ],
+    queryFn: () => fetchMessages(account, filter),
+    // A filter change keeps the list on screen until its answer lands, so the
+    // filter line under the cursor doesn't unmount.
+    placeholderData: keepPreviousData,
     staleTime: 15_000,
     refetchInterval: 60_000,
   });

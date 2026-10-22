@@ -1,7 +1,7 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 
 import { MessagesRoute, type MessagesSearch } from "@/features/messages/MessagesRoute";
-import { optionalEnum, optionalString } from "@/lib/searchParams";
+import { optionalEnum, optionalFlag, optionalString } from "@/lib/searchParams";
 
 const TURNS = ["mine", "theirs"] as const;
 
@@ -12,6 +12,8 @@ export const Route = createFileRoute("/messages")({
     topic: optionalString(search.topic),
     // `lane=waiting` was Waiting on in the early version: it is turn=theirs.
     turn: optionalEnum(search.turn, TURNS) ?? (search.lane === "waiting" ? "theirs" : undefined),
+    unread: optionalFlag(search.unread),
+    pace: optionalFlag(search.pace),
   }),
   component: Messages,
 });

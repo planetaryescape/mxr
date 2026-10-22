@@ -48,6 +48,8 @@ import {
   type MessagesTurn,
   type PersonPage,
 } from "./api";
+import { focusFilterBar, MessagesFilterBar } from "./MessagesFilterBar";
+import { filterOf, searchOf, type MessagesFilter } from "./filters";
 import { MessagesList } from "./MessagesList";
 import {
   afterDone,
@@ -78,6 +80,10 @@ export interface MessagesSearch {
   topic?: string;
   /** Only rows where it is this side's turn. */
   turn?: MessagesTurn;
+  /** Only rows with unread mail from them. */
+  unread?: boolean;
+  /** Only rows where your turn has run past your usual pace. */
+  pace?: boolean;
 }
 
 /**
@@ -95,7 +101,7 @@ export function MessagesRoute({
   /** From /messages/$threadId: open the row holding this conversation. */
   threadId?: string;
 }) {
-  const messages = useMessagesQuery(search.turn ?? null);
+  const messages = useMessagesQuery(filterOf(search));
   const guide = useModeGuide("messages");
   const phase = useDelayedPending(messages.isLoading);
   return (
@@ -219,12 +225,23 @@ function MessagesBody({
     (id: string, options: { topic?: string; open?: boolean } = {}) => {
       void navigate({
         to: "/messages",
-        search: { ...(search.turn ? { turn: search.turn } : {}), person: id, topic: options.topic },
+        search: { ...searchOf(filterOf(search)), person: id, topic: options.topic },
         replace: true,
       });
       if (options.open) setPageOpen(true);
     },
-    [navigate, search.turn],
+    [navigate, search],
+  );
+  // The filter bar writes the filter into the URL and keeps the open person.
+  const setFilter = useCallback(
+    (next: MessagesFilter) => {
+      void navigate({
+        to: "/messages",
+        search: (prev) => ({ person: prev.person, topic: prev.topic, ...searchOf(next) }),
+        replace: true,
+      });
+    },
+    [navigate],
   );
 
   // A conversation Messages doesn't hold (archived, a newsletter) opens
@@ -273,10 +290,10 @@ function MessagesBody({
     setPageOpen(false);
     void navigate({
       to: "/messages",
-      search: search.turn ? { turn: search.turn } : {},
+      search: searchOf(filterOf(search)),
       replace: true,
     });
-  }, [navigate, search.turn]);
+  }, [navigate, search]);
 
   // A sync can close the displayed topic without removing the person. Move
   // only a topic that was open here: deliberately browsing history stays put.
@@ -594,6 +611,7 @@ function MessagesBody({
   useScopeController("messages", {
     down: () => move(1),
     up: () => move(-1),
+    filter: () => focusFilterBar(),
     open: () => selectedId && select(selectedId, { open: true }),
     personPage: () => {
       setPageOpen(true);
@@ -652,6 +670,15 @@ function MessagesBody({
   // The daemon says when the view being shown is empty (Waiting on has its
   // own line), so Your turn's rows are not the test.
   const empty = data.empty_state != null;
+  const filter = filterOf(search);
+  const filterBar = (
+    <MessagesFilterBar
+      filter={filter}
+      matched={data.matched ?? data.row_count}
+      total={data.row_count}
+      onChange={setFilter}
+    />
+  );
   // Your turn is the work; Waiting on is a view of its own and has no finish.
   const finished = useLowTide(
     "messages",
@@ -682,6 +709,7 @@ function MessagesBody({
     return (
       <>
         <MessagesHeader search={search} guide={guide} />
+        {filterBar}
         <div data-testid="messages-empty" className="min-h-0 flex-1 overflow-y-auto">
           {emptyState}
         </div>
@@ -699,6 +727,7 @@ function MessagesBody({
           elementRef={listRef}
         >
           <MessagesHeader search={search} guide={guide} />
+          {filterBar}
           <div ref={setScroller} className="min-h-0 flex-1 overflow-y-auto pb-6">
             {empty && emptyState ? (
               <div data-testid="messages-empty" className="mx-5 mt-6">

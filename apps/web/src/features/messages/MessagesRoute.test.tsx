@@ -16,7 +16,7 @@ import type { Conversation, MessagesData, MessagesRow, MessagesTopic, PersonPage
 import { setActiveQueryClient } from "@/lib/queryClient";
 import { useModeDone, type ModeDoneOutcome } from "@/features/modes/modeDone";
 import { useUndo } from "@/state/undoStore";
-import { optionalString } from "@/lib/searchParams";
+import { optionalEnum, optionalFlag, optionalString } from "@/lib/searchParams";
 import { focusActivePane } from "@/lib/keys/focusPane";
 
 type FixtureReply =
@@ -157,7 +157,9 @@ async function mountMessages(initial: string) {
     validateSearch: (search: Record<string, unknown>): MessagesSearch => ({
       person: optionalString(search.person),
       topic: optionalString(search.topic),
-      turn: "mine",
+      turn: optionalEnum(search.turn, ["mine", "theirs"] as const),
+      unread: optionalFlag(search.unread),
+      pace: optionalFlag(search.pace),
     }),
     component: () => <MessagesRoute search={route.useSearch()} />,
   });
@@ -448,4 +450,66 @@ test("rapid Done does not revisit settled topics while query-notification delive
     });
   }
   expect(await screen.findByText("All done.")).toBeInTheDocument();
+});
+
+function listWith(overrides: Partial<MessagesData>): MessagesData {
+  return { ...listOf(), ...overrides };
+}
+
+test("the filter toggles write the URL, ask the bridge with them, and Clear filters resets", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  client.setQueryData(listKey, listOf(a));
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  const router = await mountMessages("/messages?turn=mine");
+  fireEvent.click(await screen.findByRole("button", { name: "Unread" }));
+  await waitFor(() =>
+    expect(router.state.location.search).toEqual(
+      expect.objectContaining({ turn: "mine", unread: true }),
+    ),
+  );
+  await waitFor(() =>
+    expect(http.send.mock.calls.map(([path]) => path)).toContainEqual(
+      expect.stringMatching(/unread=true/),
+    ),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Past your pace" }));
+  await waitFor(() =>
+    expect(router.state.location.search).toEqual(
+      expect.objectContaining({ turn: "mine", unread: true, pace: true }),
+    ),
+  );
+  expect(screen.getByRole("button", { name: "Unread" }).getAttribute("aria-pressed")).toBe("true");
+  expect(await screen.findByText("Showing 1 of 1")).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty("unread"));
+  expect(router.state.location.search).not.toHaveProperty("pace");
+  expect(router.state.location.search).not.toHaveProperty("turn");
+  expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+});
+
+test("an empty filtered view shows the daemon's sentence and Clear filters, not Your turn's clear line", async () => {
+  const empty = listWith({
+    your_turn: [],
+    row_count: 2,
+    matched: 0,
+    your_turn_split: { write_with: 2, others: 0 },
+    empty_state: "No unread messages from people.\nYour turn still has 2 people.",
+    filter: { turn: null, unread: true, past_pace: false },
+  });
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people")) return { messages: empty };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  await mountMessages("/messages?unread=true");
+
+  expect(await screen.findByText(/No unread messages from people\./)).toBeTruthy();
+  expect(screen.getByText(/Your turn still has 2 people\./)).toBeTruthy();
+  expect(screen.queryByText("Nobody is waiting on you.")).toBeNull();
+  expect(screen.getByRole("button", { name: "Clear filters" })).toBeTruthy();
 });

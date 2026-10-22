@@ -4,9 +4,11 @@
 //! anything left waiting.
 
 use crate::cli::{AssistantAction, AssistantModelAction, OutputFormat};
+use crate::commands::progress::ProgressPrinter;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::*;
+use std::io::IsTerminal;
 use std::time::{Duration, Instant};
 
 /// How often a waiting command checks on the turn.
@@ -180,7 +182,7 @@ pub async fn run(action: AssistantAction, format: Option<OutputFormat>) -> anyho
                 })
                 .await?;
             let conversation = conversation_from(response)?;
-            let conversation = wait(&mut client, conversation).await?;
+            let conversation = wait(&mut client, conversation, &format).await?;
             print_conversation(&conversation, 0, format)
         }
         AssistantAction::List { limit } => {
@@ -278,27 +280,71 @@ async fn finish(
     let conversation = if no_wait {
         conversation
     } else {
-        wait(client, conversation).await?
+        wait(client, conversation, &format).await?
     };
     // A text reply shows what this turn added; JSON gets everything.
     print_conversation(&conversation, since, format)
 }
 
-/// Poll until the turn settles or the wait runs out.
+/// Poll until the turn settles or the wait runs out. Meanwhile stderr says
+/// what the turn is doing, the same words as the web and TUI live line, so
+/// a slow model doesn't look like a hung command.
 async fn wait(
     client: &mut IpcClient,
     mut conversation: AssistantConversationData,
+    format: &OutputFormat,
 ) -> anyhow::Result<AssistantConversationData> {
-    let deadline = Instant::now() + WAIT_AT_MOST;
+    if conversation.status != AssistantStatusData::Running {
+        return Ok(conversation);
+    }
+    let printer = ProgressPrinter::new(is_json(format));
+    // On a terminal the line is rewritten in place, so it can carry a
+    // ticking clock; piped, each change is a new line, so only the words.
+    let ticking = std::io::stderr().is_terminal() && !is_json(format);
+    let started = Instant::now();
+    let deadline = started + WAIT_AT_MOST;
+    let mut phrase = AssistantProgressData::Thinking { step: 1 }.live_line();
+    let mut shown = String::new();
     while conversation.status == AssistantStatusData::Running && Instant::now() < deadline {
+        let line = if ticking {
+            format!("{phrase} · {}s", started.elapsed().as_secs())
+        } else {
+            phrase.clone()
+        };
+        if line != shown {
+            printer.note(&line);
+            shown = line;
+        }
         tokio::time::sleep(POLL_EVERY).await;
+        // The daemon pushes progress as events on this connection; they
+        // queue while we sleep and arrive with the next poll's response.
+        let id = conversation.id.clone();
+        let mut latest = None;
         let response = client
-            .request(Request::GetAssistantConversation {
-                conversation_id: conversation.id.clone(),
-            })
+            .request_with_events(
+                Request::GetAssistantConversation {
+                    conversation_id: id.clone(),
+                },
+                |event| {
+                    if let DaemonEvent::AssistantUpdated {
+                        conversation_id,
+                        progress: Some(progress),
+                        ..
+                    } = event
+                    {
+                        if conversation_id == id {
+                            latest = Some(progress);
+                        }
+                    }
+                },
+            )
             .await?;
+        if let Some(progress) = latest {
+            phrase = progress.live_line();
+        }
         conversation = conversation_from(response)?;
     }
+    printer.finish();
     Ok(conversation)
 }
 

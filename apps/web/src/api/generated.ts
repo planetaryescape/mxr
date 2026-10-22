@@ -6122,6 +6122,17 @@ export interface components {
             msg_count_used_theirs: number;
             source_hash: string;
         };
+        /**
+         * @description One prefix-search hit. `name` is the sender's display name when the daemon
+         *     has a non-blank one; clients fall back to the address when it is `null`.
+         */
+        ContactSuggestion: {
+            email: string;
+            name?: string | null;
+        };
+        ContactsAutocompleteResponse: {
+            contacts: components["schemas"]["ContactSuggestion"][];
+        };
         ConversationAttachmentData: {
             attachment_id: components["schemas"]["AttachmentId"];
             filename: string;
@@ -18022,12 +18033,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Known senders matching the query */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ContactsAutocompleteResponse"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

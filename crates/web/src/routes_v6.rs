@@ -32,7 +32,7 @@ use mxr_protocol::{
     MutationCommand, Request, ResponseData, ScreenerDispositionData, SignatureContextData,
     VoiceRegisterData,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::str::FromStr;
 
@@ -1499,16 +1499,29 @@ fn default_autocomplete_limit() -> u32 {
     10
 }
 
+/// One prefix-search hit. `name` is the sender's display name when the daemon
+/// has a non-blank one; clients fall back to the address when it is `null`.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub(crate) struct ContactSuggestion {
+    pub name: Option<String>,
+    pub email: String,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub(crate) struct ContactsAutocompleteResponse {
+    pub contacts: Vec<ContactSuggestion>,
+}
+
 /// Filtered prefix-search over the user's known senders. Returns up to `limit`
 /// candidates whose email or display name contain the query (case-insensitive).
 async fn contacts_autocomplete(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<ContactsAutocompleteQuery>,
-) -> Result<Json<Value>, BridgeError> {
+) -> Result<Json<ContactsAutocompleteResponse>, BridgeError> {
     // Pull more than the requested limit so client-side filtering has headroom.
     let scan_limit = query.limit.saturating_mul(20).clamp(50, 500);
-    let response = dispatch(
+    let senders = match dispatch(
         &state,
         &headers,
         query.token.as_deref(),
@@ -1518,34 +1531,31 @@ async fn contacts_autocomplete(
             since_unix: None,
         },
     )
-    .await?;
+    .await?
+    {
+        ResponseData::Senders { senders } => senders,
+        _ => return Err(BridgeError::UnexpectedResponse),
+    };
     let q = query.q.unwrap_or_default().to_lowercase();
     let limit = query.limit as usize;
-    let raw = serde_json::to_value(response).unwrap_or(Value::Null);
-    let mut matches: Vec<Value> = Vec::new();
-    if let Some(senders) = raw.get("senders").and_then(|v| v.as_array()) {
-        for sender in senders {
-            let email = sender
-                .get("email")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            let name = sender
-                .get("display_name")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            if !q.is_empty()
-                && !email.to_lowercase().contains(&q)
-                && !name.to_lowercase().contains(&q)
-            {
-                continue;
-            }
-            matches.push(sender.clone());
-            if matches.len() >= limit {
-                break;
-            }
+    let mut contacts = Vec::new();
+    for sender in senders {
+        let name = sender.display_name.filter(|name| !name.trim().is_empty());
+        let name_matches = name
+            .as_deref()
+            .is_some_and(|name| name.to_lowercase().contains(&q));
+        if !q.is_empty() && !sender.sender_email.to_lowercase().contains(&q) && !name_matches {
+            continue;
+        }
+        contacts.push(ContactSuggestion {
+            name,
+            email: sender.sender_email,
+        });
+        if contacts.len() >= limit {
+            break;
         }
     }
-    Ok(Json(json!({ "contacts": matches })))
+    Ok(Json(ContactsAutocompleteResponse { contacts }))
 }
 
 #[derive(Debug, Deserialize)]

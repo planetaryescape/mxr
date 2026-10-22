@@ -2522,7 +2522,14 @@
         "operationId": "contacts_autocomplete",
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Known senders matching the query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactsAutocompleteResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -12707,6 +12714,38 @@
           },
           "source_hash": {
             "type": "string"
+          }
+        }
+      },
+      "ContactSuggestion": {
+        "type": "object",
+        "description": "One prefix-search hit. `name` is the sender's display name when the daemon\nhas a non-blank one; clients fall back to the address when it is `null`.",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ContactsAutocompleteResponse": {
+        "type": "object",
+        "required": [
+          "contacts"
+        ],
+        "properties": {
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactSuggestion"
+            }
           }
         }
       },

@@ -48,7 +48,7 @@ import {
   type PersonPage,
 } from "./api";
 import { focusFilterBar, MessagesFilterBar } from "./MessagesFilterBar";
-import { filterOf, searchOf, type FilterSearch, type MessagesFilter } from "./filters";
+import { filterOf, isFiltered, searchOf, type FilterSearch, type MessagesFilter } from "./filters";
 import { MessagesList } from "./MessagesList";
 import {
   afterDone,
@@ -196,6 +196,22 @@ function MessagesBody({
   const selectedId = search.person ?? linked?.id ?? null;
   const selected: MessagesRow | undefined = allRows.find((row) => row.id === selectedId);
   const topic = search.topic ?? (linked ? threadId : undefined) ?? null;
+  // The filter bar writes the filter into the URL and keeps the open
+  // conversation, whether it was named in the query or in the path.
+  const setFilter = useCallback(
+    (next: MessagesFilter) => {
+      void navigate({
+        to: "/messages",
+        search: (prev) => ({
+          person: prev.person ?? selectedId ?? undefined,
+          topic: prev.topic ?? topic ?? undefined,
+          ...searchOf(next),
+        }),
+        replace: true,
+      });
+    },
+    [navigate, selectedId, topic],
+  );
   const person = usePersonQuery(selectedId, topic);
   const page: PersonPage | undefined = selectedId ? person.data : undefined;
   const conversation = page?.conversation ?? null;
@@ -239,18 +255,6 @@ function MessagesBody({
     },
     [navigate, search],
   );
-  // The filter bar writes the filter into the URL and keeps the open person.
-  const setFilter = useCallback(
-    (next: MessagesFilter) => {
-      void navigate({
-        to: "/messages",
-        search: (prev) => ({ person: prev.person, topic: prev.topic, ...searchOf(next) }),
-        replace: true,
-      });
-    },
-    [navigate],
-  );
-
   // A conversation Messages doesn't hold (archived, a newsletter) opens
   // where every email can: All Mail.
   useEffect(() => {
@@ -719,7 +723,9 @@ function MessagesBody({
     />
   ) : null;
   // No rows at all: the empty state is the page, not a line in a narrow column beside a blank pane.
-  if (empty && allRows.length === 0) {
+  // A filter keeps the list's tree, so the filter line keeps its place (and
+  // focus) when it narrows to nothing; only an unfiltered empty view is the page.
+  if (empty && allRows.length === 0 && !isFiltered(filter)) {
     return (
       <>
         <MessagesHeader search={search} guide={guide} />

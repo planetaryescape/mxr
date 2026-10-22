@@ -163,22 +163,36 @@ function cachePage(person: MessagesRow, requested: string | null, shown: string)
     personPage(person, shown),
   );
 }
+/** The query the real `/messages` and `/messages/$threadId` routes validate. */
+function validateMessagesSearch(search: Record<string, unknown>): MessagesSearch {
+  return {
+    person: optionalString(search.person),
+    topic: optionalString(search.topic),
+    turn: optionalEnum(search.turn, ["mine", "theirs"] as const),
+    unread: optionalFlag(search.unread),
+    pace: optionalFlag(search.pace),
+  };
+}
+
 async function mountMessages(initial: string) {
   const root = createRootRoute();
   const route = createRoute({
     getParentRoute: () => root,
     path: "/messages",
-    validateSearch: (search: Record<string, unknown>): MessagesSearch => ({
-      person: optionalString(search.person),
-      topic: optionalString(search.topic),
-      turn: optionalEnum(search.turn, ["mine", "theirs"] as const),
-      unread: optionalFlag(search.unread),
-      pace: optionalFlag(search.pace),
-    }),
+    validateSearch: validateMessagesSearch,
     component: () => <MessagesRoute search={route.useSearch()} />,
   });
+  const threadRoute = createRoute({
+    getParentRoute: () => root,
+    path: "/messages/$threadId",
+    validateSearch: validateMessagesSearch,
+    component: () => {
+      const { threadId } = threadRoute.useParams();
+      return <MessagesRoute search={threadRoute.useSearch()} threadId={threadId} />;
+    },
+  });
   const router = createRouter({
-    routeTree: root.addChildren([route]),
+    routeTree: root.addChildren([route, threadRoute]),
     history: createMemoryHistory({ initialEntries: [initial] }),
   });
   await act(async () => {
@@ -669,4 +683,61 @@ test("an empty filtered view finishes Messages when the unfiltered Your turn is 
   await mountMessages("/messages?unread=true");
   expect(await screen.findByText("No unread messages from people.")).toBeTruthy();
   await waitFor(() => expect(lowTide.mock.calls.at(-1)?.[2]).toBe(false));
+});
+
+test("the filter line keeps its place and focus when a filter narrows to nothing", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  client.setQueryData(listKey, listOf(a));
+  const pending = deferred<FixtureReply>();
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people") && url.searchParams.get("unread") === "true") {
+      return pending.promise;
+    }
+    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  await mountMessages("/messages?turn=mine");
+  const unread = await screen.findByRole("button", { name: "Unread" });
+  fireEvent.click(unread);
+  await act(async () => {
+    pending.resolve({
+      messages: listWith({
+        your_turn: [],
+        row_count: 1,
+        matched: 0,
+        your_turn_split: { write_with: 1, others: 0 },
+        empty_state: "No unread messages from people.\nYour turn still has 1 person.",
+        filter: { turn: "mine", unread: true, past_pace: false },
+      }),
+    });
+  });
+  expect(await screen.findByText(/No unread messages from people\./)).toBeTruthy();
+  // The same node, still mounted: keyboard filtering after g f keeps working.
+  expect(unread.isConnected).toBe(true);
+  expect(screen.getByRole("button", { name: "Unread" })).toBe(unread);
+});
+
+test("filtering from a conversation's path keeps that conversation open", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  client.setQueryData(listKey, listOf(a));
+  cachePage(a, "a-live", "a-live");
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  const router = await mountMessages("/messages/a-live?turn=mine");
+  expect(await screen.findByTestId("shown-topic")).toBeTruthy();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Unread" }));
+  await waitFor(() =>
+    expect(router.state.location.search).toEqual(expect.objectContaining({ unread: true })),
+  );
+  expect(router.state.location.pathname).toBe("/messages");
+  expect(router.state.location.search).toEqual(
+    expect.objectContaining({ person: "person:a", topic: "a-live", turn: "mine" }),
+  );
+  // Once the filtered answer lands, the same conversation is open.
+  expect((await screen.findByTestId("shown-topic")).textContent).toBe("a-live");
 });

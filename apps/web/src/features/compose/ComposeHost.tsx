@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { ComposeEditorPanel } from "./ComposeEditorPanel";
 import { htmlDraftRefusal, HtmlDraftNotice } from "./HtmlDraftNotice";
 import { useComposeUi, type ComposeSurface } from "./composeUiStore";
+import { isComposeActionChord } from "./session/composeShortcuts";
 import { useComposeSession, type ComposeIntent } from "./useComposeSession";
 
 export function ComposeHost() {
@@ -146,7 +147,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
         inThread ? "max-h-[70vh] min-h-[320px] bg-background" : "h-full bg-ink-overlay shadow-2xl",
       )}
       onKeyDown={(event) => {
-        if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "f") {
+        if (isComposeActionChord(event, "compose.fullscreen")) {
           event.preventDefault();
           setSurface(surface === "fullscreen" ? "inline" : "fullscreen");
         }

@@ -57,6 +57,18 @@
     ],
     "key": "o"
   },
+  "arrivals.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "arrivals.open": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "o"
+  },
   "catchup.down": {
     "modifiers": [
       "cmd"

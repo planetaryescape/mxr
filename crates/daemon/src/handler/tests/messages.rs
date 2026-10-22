@@ -1707,7 +1707,7 @@ async fn a_pinned_unread_person_past_the_cap_shows_under_unread() {
         },
     )
     .await;
-    let tenth = format!("person:pinned9@cap.example");
+    let tenth = "person:pinned9@cap.example".to_string();
     assert!(!all.pinned.iter().any(|row| row.id == tenth));
     assert_eq!(
         pinned_ids(&unread),

@@ -2765,6 +2765,11 @@ mod tests {
     use std::sync::Mutex;
 
     #[test]
+    #[expect(
+        clippy::unwrap_used,
+        clippy::panic,
+        reason = "tests unwrap fixtures and name the request they expect"
+    )]
     fn messages_forwards_both_toggles_and_keeps_turn_only_calls() {
         let input: MessagesInput =
             serde_json::from_value(json!({ "turn": "mine", "unread": true, "past_pace": true }))

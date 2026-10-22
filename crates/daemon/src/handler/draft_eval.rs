@@ -10,7 +10,7 @@
 //! conversation never do.
 
 use super::draft_compose::{draft_in_thread, DraftRequest};
-use super::HandlerResult;
+use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use mxr_composer::check::invented_numbers;
 use mxr_core::id::AccountId;
@@ -19,6 +19,8 @@ use mxr_relationship::{analyse_habits, clean_for_voice};
 use mxr_store::MyReplySample;
 
 pub(crate) const MAX_EVAL_CASES: u32 = 50;
+const NO_ACCOUNT: &str =
+    "No account is set up. Add one with `mxr accounts add`, or pass --account once one exists.";
 
 pub(super) async fn draft_eval(
     state: &AppState,
@@ -27,7 +29,9 @@ pub(super) async fn draft_eval(
 ) -> HandlerResult {
     let account_id = match account_id {
         Some(id) => id.clone(),
-        None => state.default_account_id(),
+        None => state
+            .default_account_id_opt()
+            .ok_or_else(|| HandlerError::InvalidRequest(NO_ACCOUNT.to_string()))?,
     };
     let limit = limit.clamp(1, MAX_EVAL_CASES);
     // Ask for more than needed: very short or template replies are skipped.
@@ -315,6 +319,16 @@ mod tests {
         assert!(
             !prompts[0].contains("SECRET-ACTUAL-REPLY"),
             "the replayed reply leaked into its own prompt"
+        );
+    }
+
+    #[tokio::test]
+    async fn replaying_my_replies_with_no_account_is_a_clear_error() {
+        let state = AppState::in_memory_without_accounts().await.unwrap();
+        let error = draft_eval(&state, None, 5).await.unwrap_err();
+        assert!(
+            error.to_string().contains("No account is set up"),
+            "{error}"
         );
     }
 

@@ -501,7 +501,7 @@ fn duration_unit(word: &str) -> Option<DurationUnit> {
     }
 }
 
-fn weekday(word: &str) -> Option<Weekday> {
+pub(super) fn weekday(word: &str) -> Option<Weekday> {
     match word {
         "monday" | "mon" => Some(Weekday::Mon),
         "tuesday" | "tue" | "tues" => Some(Weekday::Tue),

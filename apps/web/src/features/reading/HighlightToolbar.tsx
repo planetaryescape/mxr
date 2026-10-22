@@ -256,7 +256,7 @@ export function NoteComposer({
         onKeyDown={(event) => {
           // The reader's single-letter keys must not fire while typing.
           event.stopPropagation();
-          if (event.key === "Escape") onCancel();
+          if (event.key === "Escape" && !isComposingKey(event)) onCancel();
           if (event.key === "Enter" && !event.shiftKey && !isComposingKey(event)) {
             event.preventDefault();
             void save();

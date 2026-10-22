@@ -8,7 +8,7 @@ Usage: mxr draft [OPTIONS] [COMMAND]
 
 Commands:
   refine  Refine an existing local draft
-  eval    Replay your most recent replies: draft each one from what was known just before you replied and compare it with what you sent (greeting, sign-off, length, invented numbers). Calls your LLM once per reply; nothing is saved or sent. Uses --account when given
+  eval    Measure drafting with your LLM. Nothing is saved or sent
   help    Print this message or the help of the given subcommand(s)
 
 Options:

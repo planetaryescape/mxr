@@ -712,6 +712,7 @@ mod classify_eval;
 mod classify_eval_full;
 mod codes;
 mod commitment_dates;
+mod compose_eval;
 mod deferral;
 mod desk;
 mod desk_done;

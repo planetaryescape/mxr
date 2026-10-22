@@ -191,6 +191,10 @@ mxr/
 │   │                             # Draft management, context block generation.
 │   │                             # Depends on: core, outbound
 │   │
+│   ├── composer/                 # The composer's check stage: graders that say whether
+│   │                             # a draft did what its case required. Pure: plain text in.
+│   │                             # Depends on: humanizer
+│   │
 │   ├── reader/                   # Reader mode: HTML→text, signature stripping,
 │   │                             # quote collapsing, boilerplate removal.
 │   │                             # Depends on: no mxr crates

@@ -30,6 +30,7 @@ import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 import { useRailQuery } from "@/features/modes/rail";
 import { labelColor } from "@/features/thread/LabelBadge";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
+import { definedShortcut } from "@/lib/actions/definition";
 import { plural } from "@/lib/format";
 import { formatChord } from "@/lib/keys/chord";
 import { useScopeController } from "@/lib/keys/controllers";
@@ -56,7 +57,7 @@ export function screenerEntry(desk: Desk): NavEntry | null {
     hint: desk.account_id
       ? undefined
       : `${plural(count, "new sender")} in the first account with any; pick an account to see its own`,
-    shortcut: "g S",
+    shortcut: definedShortcut("nav.screener"),
   };
 }
 

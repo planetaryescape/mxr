@@ -8,6 +8,9 @@
 //! must equal [`Keymap::tui_keymap`], and the web registry must equal the
 //! generated `apps/web/src/lib/actions/keymap.generated.json`.
 
+mod remaps;
+
+pub use remaps::{ModeRemaps, MODE_SECTIONS};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
@@ -23,14 +26,13 @@ pub const TUI_CONTEXTS: [&str; 13] = [
 ];
 
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).
-pub const WEB_SCOPES: [&str; 16] = [
+pub const WEB_SCOPES: [&str; 15] = [
     "global",
     "sidebar",
     "list",
     "reader",
     "screener",
     "focus",
-    "place",
     "todo",
     "catchup",
     "expired",

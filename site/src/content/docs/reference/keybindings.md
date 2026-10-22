@@ -3,8 +3,9 @@ title: Keybindings
 description: Default keybindings for the mxr TUI and web app.
 ---
 
-These tables show defaults. To remap TUI mail-pane actions, create
-[`keys.toml`](/reference/config/#custom-keybindings) and restart the TUI.
+These tables show defaults. To remap TUI keys in mail panes or in a mode,
+create [`keys.toml`](/reference/config/#custom-keybindings), run
+`mxr keys check`, and restart the TUI.
 Help and the command palette show your effective shortcuts in each mail view;
 the web app keeps its own defaults.
 
@@ -674,6 +675,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `* s` | Select starred |  |
 | `Esc` | Clear selection, then close |  |
 | `g f`, `Ctrl+F` | Filter this list | TUI Ctrl-f; Ctrl+F works on macOS only, where it is not the browser's Find |
+| `K` | Send everything from this sender to… |  |
 
 ### Reader
 
@@ -743,21 +745,114 @@ One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out o
 | `r` | Back to the reply |  |
 | `Esc` | Leave focus mode |  |
 
-### Reading and Paper trail
+### Now
 
-Bundles of mail that isn't from people. The reader keeps its own keys.
+On a lit new sender, `1` to `4` answer its question; elsewhere they stay the numbered tabs.
 
 | Key | Action | Note |
 |-----|--------|------|
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
-| `Enter`, `o` | Open, or expand a bundle |  |
-| `e` | Done here: let go of this in Updates or Reading |  |
-| `p` | Pin or unpin (a sweep leaves pins) |  |
-| `S` | Sweep this sender's bundle… | Previews the daemon's dry run first; undo afterwards |
-| `A` | Sweep the whole place… | Everything unpinned here; previews first and opens on Cancel (Tab, then Enter) |
-| `K` | Move sender to… | In the reader K is the previous message; use the palette or the line under the thread |
-| `D` | Unsubscribe… |  |
+| `Enter` | Open in its mode |  |
+| `e` | Done here |  |
+| `r` | Reply |  |
+| `o` | Open the email |  |
+| `A` | Let go of the Updates digest… | Previews the daemon's dry run first; undo afterwards |
+| `Esc` | Dismiss the hint |  |
+| `1` | New sender: keep in Messages |  |
+| `2` | New sender: keep in Updates |  |
+| `3` | New sender: keep in Reading |  |
+| `4` | New sender: block |  |
+| `K` | Send everything from this sender to… |  |
+
+### Messages
+
+On a lit new sender, `1` to `4` answer its question; elsewhere they stay the numbered tabs.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `j`, `ArrowDown` | Next person |  |
+| `k`, `ArrowUp` | Previous person |  |
+| `Enter` | Open the person |  |
+| `r` | Reply |  |
+| `a` | Reply all |  |
+| `.` | Got it: a short thanks, after a countdown | Shows the exact text and counts down; u cancels before it sends |
+| `e` | Done here |  |
+| `t` | Make it a to-do… |  |
+| `b` | Reply later… |  |
+| `s` | Pin or unpin this person |  |
+| `c` | New topic with this person |  |
+| `[` | Previous topic |  |
+| `]` | Next topic |  |
+| `p` | Go to the person page |  |
+| `o`, `v` | Show the message as sent |  |
+| `⌘ENTER / Ctrl+ENTER` | Send, then the next person whose turn it is |  |
+| `Esc` | Dismiss the hint, or back to the people |  |
+| `1` | New sender: keep in Messages |  |
+| `2` | New sender: keep in Updates |  |
+| `3` | New sender: keep in Reading |  |
+| `4` | New sender: block |  |
+| `K` | Send everything from this sender to… |  |
+
+### To do
+
+| Key | Action | Note |
+|-----|--------|------|
+| `j`, `ArrowDown` | Next |  |
+| `k`, `ArrowUp` | Previous |  |
+| `Enter` | Do it: what the row's button says | Opens a link only when the sender passed the check; otherwise the email |
+| `Space`, `e` | Done |  |
+| `Z` | Schedule… |  |
+| `,` | Edit what mxr read… |  |
+| `X` | Not a to-do |  |
+| `o` | Open the email it came from |  |
+| `v` | Why it is here and where each field came from |  |
+| `E` | Expired list |  |
+| `C` | Catch-up |  |
+| `Esc` | Dismiss the hint |  |
+
+### To do: catch-up
+
+The first run's older undated tasks: keep each one, or let it go to the Expired list. `C` on To do opens it.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `j`, `ArrowDown` | Next |  |
+| `k`, `ArrowUp` | Previous |  |
+| `Enter` | Keep: it still needs me |  |
+| `e` | Let go of this one |  |
+| `A` | Let go of all… | Previews the daemon's dry run first; undo afterwards |
+| `Esc` | Back to To do |  |
+
+### To do: Expired list
+
+Tasks that expired or were let go. `E` on To do opens it.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `j`, `ArrowDown` | Next |  |
+| `k`, `ArrowUp` | Previous |  |
+| `Enter` | Restore to To do |  |
+| `Esc` | Back to To do |  |
+
+### Updates
+
+| Key | Action | Note |
+|-----|--------|------|
+| `j`, `ArrowDown` | Next |  |
+| `k`, `ArrowUp` | Previous |  |
+| `Enter` | Show routine |  |
+| `A` | Let go of the digest… | Previews the daemon's dry run first; undo afterwards |
+| `e` | Let go of this source |  |
+| `t` | This needs me: make it a to-do |  |
+| `K` | Tune this source… |  |
+| `L` | Open the link |  |
+| `y` | Copy the one-time code |  |
+| `o` | Open the email |  |
+| `Space` | Peek at this update under its line |  |
+| `p` | Pin or unpin this source's latest email |  |
+| `S` | Sweep this sender out of Updates… | Previews the daemon's dry run first; undo afterwards |
+| `Esc` | Dismiss the hint |  |
 
 ### Reading edition
 
@@ -799,6 +894,28 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `o` | Open the email as sent |  |
 | `M` | Open in Marginalia |  |
 | `Esc` | Back to the edition |  |
+
+### Archive
+
+| Key | Action | Note |
+|-----|--------|------|
+| `j`, `ArrowDown` | Next record |  |
+| `k`, `ArrowUp` | Previous record |  |
+| `/` | Ask Archive |  |
+| `y` | Copy the reference |  |
+| `Y` | Copy the amount |  |
+| `Enter` | Open the document |  |
+| `o`, `e` | Open the email | Archive has no done: records stay, so e opens the email too |
+| `p` | This issuer's records |  |
+| `[` | Previous year |  |
+| `]` | Next year |  |
+| `,` | Fix a field… |  |
+| `v` | Mark checked |  |
+| `X` | Not a record |  |
+| `E` | Export… |  |
+| `t` | Make a to-do from this record |  |
+| `g f` | Filters… |  |
+| `Esc` | Close |  |
 
 <!-- web-keys:end -->
 

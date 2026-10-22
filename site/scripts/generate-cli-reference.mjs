@@ -317,6 +317,7 @@ const COMMAND_EXAMPLES = {
     examples: [
       'mxr keys --client tui --context list',
       'mxr keys explain e --context todo',
+      'mxr keys check',
       'mxr keys --client web --format json',
     ],
   },

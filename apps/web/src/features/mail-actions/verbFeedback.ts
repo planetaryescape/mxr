@@ -287,7 +287,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     undo: "send-window",
   },
   unsubscribe: {
-    actions: ["mail.unsubscribe", "place.unsubscribe"],
+    actions: ["mail.unsubscribe"],
     alsoFrom: "the reader's unsubscribe line",
     optimistic: "Nothing moves until the dialog is confirmed.",
     pastTense: "Unsubscribed from",
@@ -300,7 +300,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     confirm: "Always: the dialog names the sender and how they are asked.",
   },
   sweep: {
-    actions: ["place.sweep-bundle", "place.sweep-all", "updates.sweep"],
+    actions: ["updates.sweep"],
     alsoFrom: `the Sweep buttons in Reading and on an Updates line`,
     optimistic: "The daemon's dry run shows the count first; then the swept mail leaves.",
     pastTense: "Archived",
@@ -322,7 +322,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
   "mode-done": {
     // Done here, per mode (features/modes/modeDone): other modes keep the
     // thread, and the provider archive happens only when none does.
-    actions: ["now.done", "place.done", "messages.done"],
+    actions: ["now.done", "messages.done"],
     alsoFrom: "the check on a Now row, Done here on a Messages person page",
     optimistic: "The row leaves this mode at once; the toast says where it still is.",
     pastTense: "Done",
@@ -341,7 +341,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     confirm: "Previews the daemon's dry run: how many updates and which stay in To do",
   },
   pin: {
-    actions: ["place.pin", "updates.pin"],
+    actions: ["updates.pin"],
     alsoFrom: "the pin button on a Reading issue or an Updates line",
     optimistic: "The pin fills at once.",
     pastTense: "Pinned",
@@ -452,7 +452,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
     undo: "reverse-request",
   },
   "move-sender": {
-    actions: ["place.move-sender", "reader.move-sender"],
+    actions: ["reader.move-sender"],
     alsoFrom: "the line under a message in Reading or Paper trail",
     optimistic: "The sender's mail leaves this place at once.",
     pastTense: "Moved",

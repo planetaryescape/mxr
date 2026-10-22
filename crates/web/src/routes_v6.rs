@@ -34,6 +34,7 @@ use mxr_protocol::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::str::FromStr;
 
 // ---------------------------------------------------------------------------
@@ -1538,7 +1539,12 @@ async fn contacts_autocomplete(
     };
     let q = query.q.unwrap_or_default().to_lowercase();
     let limit = query.limit as usize;
-    let mut contacts = Vec::new();
+    // Senders come one row per account, so the same address can appear several
+    // times. Keep one suggestion per address (case-insensitive) and fill its name
+    // from the first row that has one. The scan continues past the limit so a
+    // later row can still supply a name for an address already listed.
+    let mut contacts: Vec<ContactSuggestion> = Vec::new();
+    let mut index_by_email: HashMap<String, usize> = HashMap::new();
     for sender in senders {
         let name = sender.display_name.filter(|name| !name.trim().is_empty());
         let name_matches = name
@@ -1547,13 +1553,22 @@ async fn contacts_autocomplete(
         if !q.is_empty() && !sender.sender_email.to_lowercase().contains(&q) && !name_matches {
             continue;
         }
+        let key = sender.sender_email.to_lowercase();
+        if let Some(&index) = index_by_email.get(&key) {
+            let existing = &mut contacts[index];
+            if existing.name.is_none() {
+                existing.name = name;
+            }
+            continue;
+        }
+        if contacts.len() >= limit {
+            continue;
+        }
+        index_by_email.insert(key, contacts.len());
         contacts.push(ContactSuggestion {
             name,
             email: sender.sender_email,
         });
-        if contacts.len() >= limit {
-            break;
-        }
     }
     Ok(Json(ContactsAutocompleteResponse { contacts }))
 }

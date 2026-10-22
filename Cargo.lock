@@ -4414,6 +4414,7 @@ dependencies = [
  "mxr-export",
  "mxr-humanizer",
  "mxr-keychain",
+ "mxr-keymap",
  "mxr-llm",
  "mxr-mail-parse",
  "mxr-mcp",
@@ -4663,6 +4664,15 @@ dependencies = [
  "security-framework-sys",
  "thiserror 2.0.21",
  "tracing",
+]
+
+[[package]]
+name = "mxr-keymap"
+version = "0.6.144"
+dependencies = [
+ "serde",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]

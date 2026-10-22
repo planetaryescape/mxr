@@ -16172,6 +16172,92 @@
           "failed"
         ]
       },
+      "KeyActionData": {
+        "type": "object",
+        "description": "One thing a key can do, and the keys each client binds it to.",
+        "required": [
+          "id",
+          "label",
+          "group",
+          "clients"
+        ],
+        "properties": {
+          "clients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`tui`, `web`, or both."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "group": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Web keys, primary first."
+          },
+          "label": {
+            "type": "string"
+          },
+          "mac_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Web keys bound on macOS only."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the clients' keys differ, when they do."
+          },
+          "palette_only": {
+            "type": "boolean"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Web scopes the web keys are live in."
+          },
+          "tui": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TuiKeysData"
+            }
+          }
+        }
+      },
+      "KeymapData": {
+        "type": "object",
+        "description": "Returned in `ResponseData::Keymap`.",
+        "required": [
+          "actions"
+        ],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KeyActionData"
+            }
+          }
+        }
+      },
       "KindRuleData": {
         "type": "string",
         "description": "Which rule decided a message's kind, most decisive first. `Decision`\nmeans the user moved the sender; everything else is automatic.",
@@ -29877,6 +29963,21 @@
           },
           {
             "type": "object",
+            "description": "Every keyboard shortcut in every client, from the one definition\n(blueprint chapter 35). Returns `ResponseData::Keymap`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetKeymap"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "How a mode explains itself: header, empty states, why template,\nkeys, the `?` explanation and its hints with whether each was\ndismissed. `mode: None` returns every shipped mode. Returns\n`ResponseData::ModeGuides`.",
             "required": [
               "cmd"
@@ -35623,6 +35724,25 @@
           },
           {
             "type": "object",
+            "description": "Returned by `Request::GetKeymap`.",
+            "required": [
+              "keymap",
+              "kind"
+            ],
+            "properties": {
+              "keymap": {
+                "$ref": "#/components/schemas/KeymapData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Keymap"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Returned by `Request::GetModeGuide` and `Request::SetHintSeen`.",
             "required": [
               "guides",
@@ -40927,6 +41047,33 @@
           },
           "signature": {
             "type": "boolean"
+          }
+        }
+      },
+      "TuiKeysData": {
+        "type": "object",
+        "description": "Keys the TUI binds to an action, and where.",
+        "required": [
+          "name",
+          "keys",
+          "contexts"
+        ],
+        "properties": {
+          "contexts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string",
+            "description": "The TUI action its dispatcher returns."
           }
         }
       },

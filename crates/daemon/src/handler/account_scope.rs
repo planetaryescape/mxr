@@ -586,6 +586,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::HumanizerRewrite { .. }
         | Request::ResolveTime { .. }
         | Request::GetModeGuide { .. }
+        | Request::GetKeymap
         | Request::SetHintSeen { .. } => Unscoped,
     }
 }

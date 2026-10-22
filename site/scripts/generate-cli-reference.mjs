@@ -312,6 +312,14 @@ const COMMAND_EXAMPLES = {
       'mxr corrections undo CORRECTION_ID',
     ],
   },
+  keys: {
+    use: 'List every keyboard shortcut in the TUI and the web app from mxr\'s one key definition, or ask what a key does in a place. See [keybindings](/reference/keybindings/).',
+    examples: [
+      'mxr keys --client tui --context list',
+      'mxr keys explain e --context todo',
+      'mxr keys --client web --format json',
+    ],
+  },
   modes: {
     use: 'Look up a mode\'s purpose, keys and hints, inspect overlapping membership, or preview finishing a conversation in one mode. See [email modes](/guides/email-modes/).',
     examples: [

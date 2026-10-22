@@ -62,6 +62,7 @@ Commands:
   todo                Things email asked you to do, ordered by when to act.
   records             Receipts, orders, bookings and documents. Ask for what you need.
   updates             Notifications gathered twice a day. Read the digest, then let go.
+  keys                Every keyboard shortcut in the TUI and the web app, from one definition
   modes               How each mode explains itself: its job, empty states, keys and hints
   deliveries          Track packages and deliveries detected in your mail
   signatures          Manage outgoing compose signatures

@@ -4580,7 +4580,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-composer"
-version = "0.6.147"
+version = "0.6.148"
 dependencies = [
  "mxr-humanizer",
 ]

@@ -291,6 +291,7 @@ expression: summary
     "MessageTextSourceData",
     "MessagesBandData",
     "MessagesData",
+    "MessagesFilterData",
     "MessagesLapsedData",
     "MessagesPreviewData",
     "MessagesPreviewKindData",

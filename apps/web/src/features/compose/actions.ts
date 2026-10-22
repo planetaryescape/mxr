@@ -1,5 +1,6 @@
 /*
- * Compose-related palette actions.
+ * Compose-related palette actions, plus the composer's own chords
+ * (`composeKeyActions`), which compose runs itself.
  */
 
 import { FileText, Mail } from "lucide-react";
@@ -9,6 +10,8 @@ import { listCommitments } from "@/features/mailbox/api";
 import { getActiveQueryClient } from "@/lib/queryClient";
 import type { ActionBehavior } from "@/lib/actions/types";
 import { useModals } from "@/state/modalStore";
+
+import { composeKeyActions } from "./session/composeShortcuts";
 
 interface AccountSnapshot {
   account_id: string;
@@ -58,4 +61,5 @@ export const composeActions: ActionBehavior[] = [
         );
     },
   },
+  ...composeKeyActions,
 ];

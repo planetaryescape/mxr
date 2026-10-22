@@ -37,6 +37,8 @@ describe("web keybindings reference", () => {
 
   test("renders modifier chords for both platforms", () => {
     expect(docChord("Mod+k")).toBe("⌘K / Ctrl+K");
+    expect(docChord("Mod+Shift+c")).toBe("⌘⇧C / Ctrl+Shift+C");
+    expect(docChord("Mod+Enter")).toBe("⌘Enter / Ctrl+Enter");
     expect(docChord("g i")).toBe("g i");
     expect(docChord("Escape")).toBe("Esc");
   });

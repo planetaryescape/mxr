@@ -6737,6 +6737,13 @@ export interface components {
             findings?: components["schemas"]["DoctorFinding"][];
             health_class?: components["schemas"]["DaemonHealthClass"];
             healthy: boolean;
+            /**
+             * Format: int32
+             * @description `logging.event_retention_days` as the daemon reads the config file now.
+             *     `None` from a daemon that predates the field, or when the file cannot be
+             *     read or parsed.
+             */
+            history_retention_days?: number | null;
             index_exists: boolean;
             index_lock_error?: string | null;
             index_lock_held: boolean;
@@ -10231,6 +10238,14 @@ export interface components {
                   account: components["schemas"]["AccountConfigData"];
                   /** @enum {string} */
                   cmd: "UpsertAccountConfig";
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "SetAccountIdentity";
+                  color?: components["schemas"]["AccountColor"] | null;
+                  dry_run: boolean;
+                  key: string;
+                  tag?: string | null;
               }
             | {
                   /** @enum {string} */

@@ -1326,6 +1326,26 @@ async fn dispatch_shutdown_acknowledges_without_exiting() {
 }
 
 #[tokio::test]
+async fn a_doctor_report_carries_the_daemon_address_cache_flag() {
+    // `mxr doctor` (local path) reads this flag from the daemon's report.
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    state.account_addresses.mark_stale();
+    let msg = IpcMessage {
+        expected_workspace: None,
+        id: 82,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetDoctorReport),
+    };
+    let resp = handle_request(&state, &msg).await;
+    match resp.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::DoctorReport { report },
+        }) => assert!(report.address_cache_stale),
+        other => panic!("Expected DoctorReport, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn dispatch_doctor_report() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
 

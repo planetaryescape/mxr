@@ -634,7 +634,7 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
     );
 
     // Refresh address cache so reclassification has the latest set.
-    state.refresh_account_addresses().await;
+    let address_cache_ready = state.refresh_account_addresses().await;
     let lookup = state.account_addresses.clone();
 
     let progress = |current: u32, message: String| DaemonEvent::OperationProgress {
@@ -653,6 +653,13 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         retryable,
     };
 
+    // Reclassifying against a set that failed to rebuild would move mail to
+    // the wrong direction, so this step fails retryably instead.
+    if !address_cache_ready {
+        let err = "account address cache could not be rebuilt; direction reclassification skipped";
+        emit_operation_event(state, fail(err, true));
+        return Err(crate::handler::HandlerError::Message(err.to_string()));
+    }
     emit_operation_event(
         state,
         progress(1, "Reclassifying unknown directions".into()),
@@ -791,6 +798,12 @@ pub(crate) async fn add_account_address(
         .add_account_address(account_id, email, primary)
         .await?;
     state.refresh_account_addresses().await;
+    crate::chimes::emit_daemon_event(
+        state,
+        mxr_protocol::DaemonEvent::AccountAddressesChanged {
+            account_id: account_id.clone(),
+        },
+    );
     Ok(ResponseData::Ack)
 }
 
@@ -804,6 +817,12 @@ pub(crate) async fn remove_account_address(
         .remove_account_address(account_id, email)
         .await?;
     state.refresh_account_addresses().await;
+    crate::chimes::emit_daemon_event(
+        state,
+        mxr_protocol::DaemonEvent::AccountAddressesChanged {
+            account_id: account_id.clone(),
+        },
+    );
     Ok(ResponseData::Ack)
 }
 
@@ -814,6 +833,12 @@ pub(crate) async fn set_primary_account_address(
 ) -> HandlerResult {
     state.store.set_primary_address(account_id, email).await?;
     state.refresh_account_addresses().await;
+    crate::chimes::emit_daemon_event(
+        state,
+        mxr_protocol::DaemonEvent::AccountAddressesChanged {
+            account_id: account_id.clone(),
+        },
+    );
     Ok(ResponseData::Ack)
 }
 
@@ -1633,17 +1658,20 @@ pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> Analytic
     // The 3 cheap delta steps. Each filters by NULL / 'unknown' so
     // is a no-op on healthy data. Refresh address cache once for the
     // direction reclassifier.
-    state.refresh_account_addresses().await;
-    let lookup = state.account_addresses.clone();
-    match state
-        .store
-        .reclassify_unknown_directions(|account_id, email| {
-            lookup.is_account_address(account_id, email)
-        })
-        .await
-    {
-        Ok(n) => report.directions_reclassified = n,
-        Err(e) => tracing::warn!("post-sync reclassify_unknown_directions: {e}"),
+    if !state.refresh_account_addresses().await {
+        tracing::warn!("post-sync reclassify skipped: account address cache is stale");
+    } else {
+        let lookup = state.account_addresses.clone();
+        match state
+            .store
+            .reclassify_unknown_directions(|account_id, email| {
+                lookup.is_account_address(account_id, email)
+            })
+            .await
+        {
+            Ok(n) => report.directions_reclassified = n,
+            Err(e) => tracing::warn!("post-sync reclassify_unknown_directions: {e}"),
+        }
     }
     tokio::task::yield_now().await;
     // One-shot historical repair: canonicalize cached List-Id and scan

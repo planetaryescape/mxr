@@ -146,8 +146,12 @@ pub struct ComposeState {
     pub compose_picker: ComposePicker,
     /// Reply contexts prewarmed when the user opens a message, so
     /// pressing `r`/`a` opens the editor without waiting on the daemon.
-    /// Bodies are immutable post-sync, so no invalidation is needed.
+    /// Dropped when the owner's addresses change (`invalidate_reply_contexts`);
+    /// the recipients a reply offers depend on them.
     pub reply_context_cache: HashMap<MessageId, ReplyContextPair>,
+    /// Bumped when the owned addresses change. A prewarm carries the generation
+    /// it started under, and its result is dropped when that generation is old.
+    pub reply_context_generation: u64,
     /// The message we last kicked off a prewarm for. Prevents firing
     /// duplicate prewarm tasks every tick while the viewing envelope
     /// stays the same.
@@ -156,4 +160,57 @@ pub struct ComposeState {
     /// for the same message. The `ReplyContextWarmed` handler drains
     /// this into `pending_compose` once the cache fills.
     pub deferred_compose: Option<DeferredCompose>,
+}
+
+impl ComposeState {
+    /// The owner's addresses changed, so every cached reply context may
+    /// name the wrong recipients. Prewarms still in flight are invalidated by
+    /// the generation bump.
+    pub fn invalidate_reply_contexts(&mut self) {
+        self.reply_context_cache.clear();
+        self.last_prewarmed_message_id = None;
+        self.reply_context_generation = self.reply_context_generation.wrapping_add(1);
+    }
+
+    /// Cache a prewarm result, unless it started under an older generation.
+    /// Returns whether it was cached.
+    pub fn cache_warmed_reply_context(
+        &mut self,
+        generation: u64,
+        message_id: MessageId,
+        pair: ReplyContextPair,
+    ) -> bool {
+        if generation != self.reply_context_generation {
+            return false;
+        }
+        self.reply_context_cache.insert(message_id, pair);
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_pair() -> ReplyContextPair {
+        ReplyContextPair {
+            reply: None,
+            reply_all: None,
+        }
+    }
+
+    #[test]
+    fn a_prewarm_started_before_an_address_change_is_not_cached() {
+        let mut compose = ComposeState::default();
+        let message = MessageId::new();
+
+        let started = compose.reply_context_generation;
+        compose.invalidate_reply_contexts();
+        assert!(!compose.cache_warmed_reply_context(started, message.clone(), empty_pair()));
+        assert!(!compose.reply_context_cache.contains_key(&message));
+
+        let started_after = compose.reply_context_generation;
+        assert!(compose.cache_warmed_reply_context(started_after, message.clone(), empty_pair()));
+        assert!(compose.reply_context_cache.contains_key(&message));
+    }
 }

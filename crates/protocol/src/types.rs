@@ -5402,6 +5402,11 @@ pub struct DoctorReport {
     /// read or parsed.
     #[serde(default)]
     pub history_retention_days: Option<u32>,
+    /// The daemon's account-address registry failed its last rebuild, so sync
+    /// writes Unknown direction until it recovers. False from a daemon that
+    /// predates the field, and from a report built without a running daemon.
+    #[serde(default)]
+    pub address_cache_stale: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -5864,6 +5869,12 @@ pub enum DaemonEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,
     },
+    /// An account's owned addresses changed: an alias was added or removed, or
+    /// the primary moved. Clients that cache anything built from the owned set
+    /// (such as prepared reply recipients) must drop it.
+    AccountAddressesChanged {
+        account_id: AccountId,
+    },
 }
 
 impl DaemonEvent {
@@ -5884,7 +5895,8 @@ impl DaemonEvent {
             | Self::EventsLagged { .. }
             | Self::ThreadGistReady { .. }
             | Self::ReplyLaterReturned { .. }
-            | Self::ModesChanged { .. } => IpcCategory::CoreMail,
+            | Self::ModesChanged { .. }
+            | Self::AccountAddressesChanged { .. } => IpcCategory::CoreMail,
             Self::AssistantUpdated { .. } => IpcCategory::MxrPlatform,
         }
     }

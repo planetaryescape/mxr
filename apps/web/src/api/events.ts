@@ -28,6 +28,8 @@ export type DaemonEvent =
   | { type: "LabelCountsUpdated"; event?: "LabelCountsUpdated"; counts: unknown[] }
   /** An email or sender was moved (or a move undone), or new arrivals were placed. */
   | { type: "ModesChanged"; event?: "ModesChanged"; account_id?: string | null }
+  /** An account's addresses changed (alias added or removed, or the primary moved). */
+  | { type: "AccountAddressesChanged"; event?: "AccountAddressesChanged"; account_id: string }
   | {
       type: "OperationStarted";
       event?: "OperationStarted";

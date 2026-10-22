@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.138](https://github.com/planetaryescape/mxr/compare/v0.6.137...v0.6.138) (2026-10-22)
+
+
+### Features
+
+* find the one-time code in sign-in mail and make it one key to copy ([#608](https://github.com/planetaryescape/mxr/issues/608)) ([d98b8ad](https://github.com/planetaryescape/mxr/commit/d98b8adfcc5415f7ad217dd1895c724500d10846))
+
 ## [0.6.137](https://github.com/planetaryescape/mxr/compare/v0.6.136...v0.6.137) (2026-10-22)
 
 

@@ -191,6 +191,7 @@ impl ModeCache {
     /// The view, from the cache when nothing it shows can have changed,
     /// otherwise built now.
     pub(crate) async fn read(&self, state: &AppState, view: ModeView) -> HandlerResult {
+        let arrived = Instant::now();
         let feed = state.store.change_feed();
         let lock = {
             let mut entries = self.entries.lock();
@@ -219,13 +220,21 @@ impl ModeCache {
             Arc::clone(&entry.building)
         };
         let _building = lock.lock().await;
-        // Another reader or the refresher may have built it meanwhile.
+        // Another reader or the refresher may have built it meanwhile. A
+        // build that started after this read arrived is as fresh as one this
+        // read would start, even one that could not wait out a write, so
+        // readers queued behind it take it instead of each building again.
         let fresh = {
             let entries = self.entries.lock();
-            entries
-                .iter()
-                .find(|e| e.view == view)
-                .and_then(|entry| self.servable(entry, feed.seq()))
+            entries.iter().find(|e| e.view == view).and_then(|entry| {
+                self.servable(entry, feed.seq()).or_else(|| {
+                    (entry.started >= arrived
+                        && entry.mutations == self.mutations.load(Ordering::Acquire)
+                        && entry.changes == feed.seq())
+                    .then(|| entry.data.clone())
+                    .flatten()
+                })
+            })
         };
         if let Some(data) = fresh {
             return Ok(data);

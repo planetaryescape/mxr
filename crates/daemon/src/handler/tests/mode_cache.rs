@@ -152,6 +152,19 @@ async fn a_view_built_during_a_write_in_flight_is_never_served_again() {
     );
 }
 
+/// Readers that arrive together during a long write share builds instead
+/// of each building again in turn: at most the build already running, and
+/// one that starts after they all arrived.
+#[tokio::test]
+async fn readers_queued_during_a_write_in_flight_share_a_build() {
+    let fx = Fixture::new().await;
+    fx.state.mode_cache.hold_write(true);
+    let reads = (0..6).map(|_| now_built_at(&fx));
+    let built: std::collections::BTreeSet<_> =
+        futures::future::join_all(reads).await.into_iter().collect();
+    assert!(built.len() <= 2, "{} builds for 6 readers", built.len());
+}
+
 #[tokio::test]
 async fn the_refresher_replaces_a_view_built_during_a_write_in_flight() {
     let fx = Fixture::new().await;

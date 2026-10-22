@@ -49,6 +49,9 @@ pub struct Store {
     changes: Arc<ChangeFeed>,
     resource_dir: std::path::PathBuf,
     reader: SqlitePool,
+    /// Reads and writes share the writer's one connection (in-memory and
+    /// backup stores), so dropping it would lose an in-memory database.
+    shared_connection: bool,
     /// Serialises the cleanup of a deleted message's files and index
     /// entries with sync storing messages, so a message id that comes back
     /// (an IMAP UID reused for a new message) is never cleaned up as the
@@ -112,6 +115,7 @@ impl Store {
             writer,
             changes,
             reader,
+            shared_connection: false,
             resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
@@ -140,6 +144,7 @@ impl Store {
             writer: pool.clone(),
             changes: Arc::new(ChangeFeed::default()),
             reader: pool,
+            shared_connection: true,
             resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
         };
@@ -165,6 +170,7 @@ impl Store {
             writer: pool.clone(),
             changes,
             reader: pool,
+            shared_connection: true,
             message_cleanup: tokio::sync::Mutex::new(()),
         };
         store.run_migrations().await?;
@@ -365,11 +371,19 @@ impl Store {
     /// has one connection, and sqlx hands it on only once its last holder is
     /// done with it, a cancelled or closing commit included. Holding it,
     /// nothing can be mid-commit, so every commit in the count is visible.
+    ///
+    /// A store whose one connection serves reads too waits without a limit:
+    /// sqlx drops a connection whose acquire is cancelled mid-ping, which
+    /// would lose an in-memory database.
     pub async fn changes_landed(&self, wait: Duration) -> Option<u64> {
-        let writer = tokio::time::timeout(wait, self.writer.acquire())
-            .await
-            .ok()?
-            .ok()?;
+        let writer = if self.shared_connection {
+            self.writer.acquire().await.ok()?
+        } else {
+            tokio::time::timeout(wait, self.writer.acquire())
+                .await
+                .ok()?
+                .ok()?
+        };
         let seq = self.changes.seq();
         drop(writer);
         Some(seq)
@@ -1480,6 +1494,7 @@ mod tests {
             writer: writer.clone(),
             changes: std::sync::Arc::new(crate::ChangeFeed::default()),
             reader: writer,
+            shared_connection: true,
             resource_dir: db_path.with_extension("draft-attachments"),
             message_cleanup: tokio::sync::Mutex::new(()),
         };

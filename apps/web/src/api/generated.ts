@@ -3090,6 +3090,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/threads/previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Headline facts for up to 100 threads with no bodies: subject, latest sender, date, snippet, counts, attachments */
+        post: operations["mail_thread_previews"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/threads/{thread_id}": {
         parameters: {
             query?: never;
@@ -11546,6 +11563,11 @@ export interface components {
                   thread_ids?: components["schemas"]["ThreadId"][];
               }
             | {
+                  /** @enum {string} */
+                  cmd: "GetThreadPreviews";
+                  thread_ids: components["schemas"]["ThreadId"][];
+              }
+            | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetArrivals";
@@ -13085,6 +13107,11 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  kind: "ThreadPreviews";
+                  previews: components["schemas"]["ThreadPreviewData"][];
+              }
+            | {
+                  /** @enum {string} */
                   kind: "RecordLedger";
                   ledger: components["schemas"]["RecordLedgerData"];
               }
@@ -14241,6 +14268,35 @@ export interface components {
             new_sender?: components["schemas"]["ScreenerQuestionData"] | null;
             subject: string;
             thread_id: components["schemas"]["ThreadId"];
+        };
+        /**
+         * @description One thread at a glance. Sender, date, snippet come from its latest
+         *     message; counts and the attachment flag cover the whole thread.
+         */
+        ThreadPreviewData: {
+            /** @description Any message in the thread carries an attachment. */
+            has_attachments?: boolean;
+            /**
+             * Format: int64
+             * @description When the latest message arrived: unix seconds.
+             */
+            latest_at: number;
+            /** Format: int32 */
+            message_count: number;
+            sender_email: string;
+            /** @description The latest message's sender name, when the message has one. */
+            sender_name?: string | null;
+            /** @description The start of the latest message's text, clipped. */
+            snippet: string;
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+            /** Format: int32 */
+            unread_count: number;
+        };
+        /** @description Body of `POST /api/v1/mail/threads/previews`. */
+        ThreadPreviewsBody: {
+            /** @description At most 100 threads, answered in this order; unknown ids are left out. */
+            thread_ids: string[];
         };
         /** @description An open promise in the thread and who made it. */
         ThreadPromiseData: {
@@ -21572,6 +21628,44 @@ export interface operations {
         responses: {
             /** @description OK */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_thread_previews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadPreviewsBody"];
+            };
+        };
+        responses: {
+            /** @description The `ThreadPreviews` variant, in request order; unknown ids are left out */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description No threads, a malformed thread id, or more than 100 */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

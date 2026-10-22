@@ -5904,6 +5904,41 @@
         }
       }
     },
+    "/api/v1/mail/threads/previews": {
+      "post": {
+        "tags": [],
+        "summary": "Headline facts for up to 100 threads with no bodies: subject, latest sender, date, snippet, counts, attachments",
+        "operationId": "mail_thread_previews",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadPreviewsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ThreadPreviews` variant, in request order; unknown ids are left out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No threads, a malformed thread id, or more than 100"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/threads/{thread_id}": {
       "get": {
         "tags": [],
@@ -29856,6 +29891,28 @@
           },
           {
             "type": "object",
+            "description": "One preview per thread in `thread_ids` (at most 100): subject, the\nlatest sender, date and snippet, counts and an attachment flag, with\nno bodies. Unknown ids are left out. Returns\n`ResponseData::ThreadPreviews`.",
+            "required": [
+              "thread_ids",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetThreadPreviews"
+                ]
+              },
+              "thread_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadId"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Now's arrivals line (D119): every inbound email first seen since Now\nwas last opened (at most 24 hours back), counted once by where it\nwent, plus \"Not sure\" questions and the weekly track record.\n`mark_seen` starts a visit: the window then runs from the visit\nbefore. `since` is the window start of the visit a client already\nhas open (the `since` it was answered): a read that doesn't mark\nthen keeps that window instead of working one out again, so a Now\nthat stays open polls the same window all visit. Returns\n`ResponseData::Arrivals`.",
             "required": [
               "cmd"
@@ -35729,6 +35786,28 @@
           },
           {
             "type": "object",
+            "description": "Returned by `Request::GetThreadPreviews`, one entry per thread found.",
+            "required": [
+              "previews",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ThreadPreviews"
+                ]
+              },
+              "previews": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadPreviewData"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Returned by `Request::SetModeDone`, one outcome per thread in\nrequest order. `mutation_id` undoes the whole run.\nReturned by `Request::ListRecords`.",
             "required": [
               "ledger",
@@ -39342,6 +39421,76 @@
           },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
+      "ThreadPreviewData": {
+        "type": "object",
+        "description": "One thread at a glance. Sender, date, snippet come from its latest\nmessage; counts and the attachment flag cover the whole thread.",
+        "required": [
+          "thread_id",
+          "subject",
+          "sender_email",
+          "latest_at",
+          "message_count",
+          "unread_count",
+          "snippet"
+        ],
+        "properties": {
+          "has_attachments": {
+            "type": "boolean",
+            "description": "Any message in the thread carries an attachment."
+          },
+          "latest_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the latest message arrived: unix seconds."
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "sender_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The latest message's sender name, when the message has one."
+          },
+          "snippet": {
+            "type": "string",
+            "description": "The start of the latest message's text, clipped."
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "unread_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ThreadPreviewsBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/threads/previews`.",
+        "required": [
+          "thread_ids"
+        ],
+        "properties": {
+          "thread_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "At most 100 threads, answered in this order; unknown ids are left out."
           }
         }
       },

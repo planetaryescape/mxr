@@ -91,7 +91,7 @@ use utoipa::{
         platform_voice_rebuild, mail_mutation_jobs, mail_owed, mail_desk, mail_desk_dismiss, mail_desk_restore, mail_desk_done, mail_desk_later, mail_whois,
         mail_send_time, mail_archive_ask, saved_searches_unread_counts,
         analytics_cadence_drift, cadence_watch_list, cadence_watch, cadence_unwatch,
-        mail_time_resolve, mail_thread_context, mail_thread_gist, mail_thread_gists,
+        mail_time_resolve, mail_thread_context, mail_thread_gist, mail_thread_gists, mail_thread_previews,
         compose_session_promises, mail_commitments_record,
         mail_place_list, mail_place_sweep, mail_message_kind, mail_messages_pin,
         mail_sender_kind, mail_todos_runway, mail_todos_create, mail_todos_in_state,
@@ -139,6 +139,7 @@ use utoipa::{
         crate::todo_routes::TodoCatchupBody,
         crate::mode_routes::HintSeenBody,
         crate::mode_routes::ModeMembershipBody,
+        crate::thread_context_routes::ThreadPreviewsBody,
         crate::mode_routes::ModeDoneBody,
         crate::messages_routes::AckBody,
         crate::messages_routes::MergeBody,
@@ -680,6 +681,24 @@ struct ThreadGistsBody {
 )]
 #[allow(dead_code)]
 fn mail_thread_gists() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/threads/previews",
+    summary = "Headline facts for up to 100 threads with no bodies: subject, latest sender, date, snippet, counts, attachments",
+    request_body = crate::thread_context_routes::ThreadPreviewsBody,
+    responses(
+        (
+            status = 200,
+            description = "The `ThreadPreviews` variant, in request order; unknown ids are left out",
+            body = ResponseData
+        ),
+        (status = 400, description = "No threads, a malformed thread id, or more than 100"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_thread_previews() {}
 
 #[utoipa::path(
     get,

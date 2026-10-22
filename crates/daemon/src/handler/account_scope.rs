@@ -344,6 +344,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::DismissDeskThreads { thread_ids, .. }
         | Request::RestoreDeskThreads { thread_ids }
         | Request::GetThreadGists { thread_ids, .. }
+        | Request::GetThreadPreviews { thread_ids }
         | Request::DeferThreads { thread_ids, .. } => threads(thread_ids),
         Request::ResolveDeskItems { items, .. } => Targets(
             items

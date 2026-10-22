@@ -737,6 +737,7 @@ mod routing_and_search;
 mod send_outcomes;
 mod stars;
 mod thread_gists;
+mod thread_previews;
 mod todo;
 mod updates;
 mod updates_report;

@@ -328,6 +328,15 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Headline facts for up to 100 threads with no bodies: subject, the
+    /// latest sender, date and snippet, message and unread counts, and
+    /// whether any message has an attachment. Unknown ids are left out.
+    ThreadPreview {
+        #[arg(required = true, num_args = 1..=100)]
+        thread_ids: Vec<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// List threads in date-descending order. Each returned thread
     /// includes its constituent message IDs (date-ascending). Filter
     /// by account or label; paginate with --limit/--offset.

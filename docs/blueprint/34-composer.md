@@ -478,22 +478,22 @@ the composer that wrote it.
 
 The snapshot layer is measured by `scripts/cargo-test -p mxr --lib -- handler::tests::compose_eval`.
 Its record is in `crates/daemon/src/handler/tests/snapshots/`: the prompt
-today's code builds for each of the 40 cases, and the grade table for 30
+today's code builds for each of the 40 cases, and the grade table for 32
 recorded model outputs. The corpus is `crates/provider-fake/src/fixtures/compose/`:
 40 cases in 20 near-miss pairs, 22 with typed text (two of them with a
 selection) and 18 without.
 
-The 30 outputs are good ones and recorded defects, so the counts show what
+The 32 outputs are good ones and recorded defects, so the counts show what
 the checks catch. They do not say how often a model writes the defect.
 
 | Check | Passed | Of |
 |---|---|---|
-| Kept: typed sentences survive, as whole sentences | 27 | 30 |
-| Answers: each question from the target is addressed, as whole words | 28 | 30 |
-| Gaps: facts nobody gave are left as gaps | 29 | 30 |
-| Invented: no number outside the inputs, compared as whole tokens | 27 | 30 |
-| Length: inside the case's word band | 29 | 30 |
-| Leftovers: no subject, preamble, repeated sign-off or copied run | 26 | 30 |
+| Kept: typed sentences survive, as whole sentences | 29 | 32 |
+| Answers: each question from the target is addressed, as whole words | 30 | 32 |
+| Gaps: facts nobody gave are left as gaps | 31 | 32 |
+| Invented: no number outside the inputs, compared as whole tokens | 29 | 32 |
+| Length: inside the case's word band | 31 | 32 |
+| Leftovers: no subject, preamble, repeated sign-off or copied run | 28 | 32 |
 
 Every good output passes all six checks. Every bad output fails the check it
 is recorded for: a dropped typed sentence and a typed sentence reversed inside
@@ -511,10 +511,14 @@ prefix fails `kept` as "changed", which is the strictest reading of "keep
 what I typed". A leftover is a run of eight words copied from the thread,
 which catches a recap that quotes the thread but not one written in the
 model's own words; length is the only check that catches that. A preamble is
-a line that names the draft ("draft", "reply", "email", "version",
-"response") and opens with a lead word such as "Sure" or "Here's", or ends in
-a colon. A repeated sign-off is the same short line appearing twice in the
-last four lines of the output.
+commentary about generating the reply: a line that opens with a lead word
+such as "Sure" or "Here's" and names the reply or its draft ("draft of your",
+"my reply", "drafted"). A line that only mentions a draft document is part of
+the email. A repeated sign-off is the same short line appearing twice in the
+last four lines of the output. Numbers are compared as whole tokens: a
+thousands comma, a `.00` cent part and a space before am or pm do not change
+the number, so "£1,200.00" matches "£1,200" and "3 pm" matches "3pm", while
+"2pm" and "12pm" stay apart.
 
 The live baseline runs `mxr draft eval --set quick` against a real model, on
 2026-10-22, with `gemma4:latest` through a local Ollama endpoint on this Mac.

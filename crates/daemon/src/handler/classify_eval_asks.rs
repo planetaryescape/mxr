@@ -660,6 +660,18 @@ fn verdict(field: &str, item: &Item, row: &Row, sent: DateTime<Utc>) -> Verdict 
     }
 }
 
+/// A day as its distance from the email's own date, so the text does not
+/// move with the clock the mail was seeded at.
+fn after_sent(day: NaiveDate, sent: DateTime<Utc>) -> String {
+    match (day - sent.date_naive()).num_days() {
+        0 => "the day it was sent".to_string(),
+        1 => "1 day after it was sent".to_string(),
+        -1 => "1 day before it was sent".to_string(),
+        days if days > 0 => format!("{days} days after it was sent"),
+        days => format!("{} days before it was sent", -days),
+    }
+}
+
 /// The expected and the actual value of a field, for the mismatch text.
 fn field_texts(field: &str, item: &Item, row: &Row, sent: DateTime<Utc>) -> (String, String) {
     let none = || "none".to_string();
@@ -672,8 +684,8 @@ fn field_texts(field: &str, item: &Item, row: &Row, sent: DateTime<Utc>) -> (Str
                 .map_or_else(none, |(minor, currency)| money(*minor, currency)),
         ),
         "due" => (
-            expected_day(item.due, sent).map_or_else(none, |day| day.to_string()),
-            row_day(row).map_or_else(none, |day| day.to_string()),
+            expected_day(item.due, sent).map_or_else(none, |day| after_sent(day, sent)),
+            row_day(row).map_or_else(none, |day| after_sent(day, sent)),
         ),
         _ => (
             item.counterparty.clone().unwrap_or_else(none),
@@ -1028,7 +1040,7 @@ mod tests {
         let m = mismatches.iter().find(|m| m.question == "due").unwrap();
         assert_eq!(
             (m.expected.as_str(), m.actual.as_str()),
-            ("2026-10-24", "2026-10-25")
+            ("3 days after it was sent", "4 days after it was sent")
         );
         // A date already past is a negative offset.
         assert_eq!(due(-48, -2).0.exact, 1);

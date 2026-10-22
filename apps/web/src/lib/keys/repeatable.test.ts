@@ -15,4 +15,13 @@ describe("repeatable keys", () => {
       expect(REPEATABLE_ACTION_IDS.has(id)).toBe(false);
     }
   });
+
+  it("holding j or k moves in every mode, not one row", () => {
+    const moves = getRegistry()
+      .all()
+      .map((action) => action.id)
+      .filter((id) => /\.(down|up)$/.test(id));
+    expect(moves).toEqual(expect.arrayContaining(["now.down", "messages.up", "screener.down"]));
+    expect(moves.filter((id) => !REPEATABLE_ACTION_IDS.has(id))).toEqual([]);
+  });
 });

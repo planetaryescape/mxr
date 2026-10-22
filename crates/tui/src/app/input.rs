@@ -350,9 +350,47 @@ impl App {
         }
         self.input_context = Some(context);
         self.input.begin_turn();
-        let action = self.handle_key_press(key);
+        let mut action = self.handle_key_press(key);
+        // `q` closes the innermost layer and quits only at the root
+        // (blueprint 35, "Back and quit"). Below the root it goes back one
+        // level, exactly as Esc does there.
+        if action == Some(Action::QuitView) && key.code == KeyCode::Char('q') && self.below_root() {
+            let esc = crossterm::event::KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+            action = self.handle_key_press(esc);
+        }
+        if let Some(keys) = self.input.take_dead_end() {
+            self.status_message = Some(format!("{keys} is not a shortcut"));
+        }
         self.input.end_turn();
         action
+    }
+
+    /// A layer under the root is open: a screen other than the mailbox, the
+    /// reader, or a mode's sub-view. Until an account exists the Accounts
+    /// screen is the root, so `q` can still leave first-run setup.
+    fn below_root(&self) -> bool {
+        if self.accounts.page.onboarding_required {
+            return false;
+        }
+        if self.screen != Screen::Mailbox {
+            return true;
+        }
+        let mailbox = &self.mailbox;
+        if mailbox.active_pane == ActivePane::MessageView {
+            return true;
+        }
+        match mailbox.mailbox_view {
+            MailboxView::People => mailbox.messages_page.focus == MessagesFocus::Person,
+            MailboxView::Todo => mailbox.todo_page.panel != TodoPanel::Runway,
+            MailboxView::Reading => {
+                let page = &mailbox.reading_page;
+                page.later_shelf || (page.reader_focused && page.reader.is_some())
+            }
+            MailboxView::ArchiveMode => {
+                mailbox.records_page.answer.is_some() || mailbox.records_page.card.is_some()
+            }
+            _ => false,
+        }
     }
 
     fn handle_key_press(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
@@ -362,6 +400,13 @@ impl App {
             && key.modifiers.contains(KeyModifiers::ALT)
         {
             return Some(Action::DumpActionTrace);
+        }
+
+        // Ctrl-z suspends the TUI, as in every terminal program (blueprint
+        // 35). A global modifier chord, so it wins over text fields too.
+        if cfg!(unix) && key.code == KeyCode::Char('z') && key.modifiers == KeyModifiers::CONTROL {
+            self.pending_suspend = true;
+            return None;
         }
 
         if self.modals.error.is_some() {
@@ -954,8 +999,11 @@ impl App {
                     }
                     return None;
                 }
-                (KeyCode::Char('e'), KeyModifiers::NONE) => {
-                    // Edit again — reopen editor
+                // Edit again: reopen the editor on the same file. `Esc` goes
+                // back to the draft the same way, because it must never
+                // destroy (blueprint 35, "Back and quit"); the file holds the
+                // only copy, so closing without reopening would strand it.
+                (KeyCode::Char('e'), KeyModifiers::NONE) | (KeyCode::Esc, _) => {
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
                         self.compose.pending_remind_at_input = None;
@@ -969,8 +1017,9 @@ impl App {
                 (KeyCode::Char('r'), KeyModifiers::NONE) => {
                     return Some(Action::RefinePendingDraft);
                 }
-                (KeyCode::Esc, _) => {
-                    // Discard
+                // Discard only on the option that names it, with the shared
+                // destroy key (blueprint 36's "# discard draft").
+                (KeyCode::Char('#'), _) => {
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
                         self.compose.pending_remind_at_input = None;
@@ -2159,6 +2208,23 @@ impl App {
     fn handle_rules_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         if self.rules.page.form.visible {
             return self.handle_rule_form_key(key);
+        }
+
+        // Rule delete confirm: y/Enter deletes, n/Esc/q keeps the rule.
+        if let Some((rule_id, name)) = self.rules.page.delete_confirm.clone() {
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Enter => {
+                    self.rules.page.delete_confirm = None;
+                    self.rules.pending_delete = Some(rule_id);
+                    self.rules.page.status = Some(format!("Deleting {name}..."));
+                }
+                KeyCode::Char('n' | 'q') | KeyCode::Esc => {
+                    self.rules.page.delete_confirm = None;
+                    self.rules.page.status = Some(format!("Kept {name}"));
+                }
+                _ => {}
+            }
+            return None;
         }
 
         match (key.code, key.modifiers) {

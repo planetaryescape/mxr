@@ -32,6 +32,7 @@ mod search_ipc;
 mod send_recovery;
 mod send_recovery_state;
 pub mod terminal_images;
+mod terminal_session;
 #[cfg(test)]
 mod test_fixtures;
 pub mod theme;

@@ -3594,7 +3594,8 @@
         {
           "name": "Back",
           "keys": [
-            "Escape"
+            "Escape",
+            "q"
           ],
           "contexts": [
             "reader"
@@ -4706,7 +4707,8 @@
         {
           "name": "TodoShowRunway",
           "keys": [
-            "Escape"
+            "Escape",
+            "q"
           ],
           "contexts": [
             "catchup"
@@ -4803,7 +4805,8 @@
         {
           "name": "TodoShowRunway",
           "keys": [
-            "Escape"
+            "Escape",
+            "q"
           ],
           "contexts": [
             "expired"
@@ -7056,12 +7059,9 @@
           ],
           "contexts": [
             "list",
-            "reader",
             "sidebar",
             "place",
             "todo",
-            "catchup",
-            "expired",
             "now",
             "messages",
             "archive",

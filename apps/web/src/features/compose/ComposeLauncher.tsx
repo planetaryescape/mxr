@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { fetchContactAsymmetry, fetchContactDecay } from "@/features/analytics/api";
+import { isComposingKey } from "@/lib/keys/composition";
 import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
 import { prefilledMessageIntent, useComposeUi } from "./composeUiStore";
@@ -123,7 +124,7 @@ export function ComposeLauncher() {
                   acceptRecipientSuggestion(firstSuggestion);
                   return;
                 }
-                if (event.key === "Enter") {
+                if (event.key === "Enter" && !isComposingKey(event)) {
                   event.preventDefault();
                   if (isToStep) continueFromTo();
                   else openCompose();

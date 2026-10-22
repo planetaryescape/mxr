@@ -46,6 +46,7 @@ export function tokenFromEvent(event: KeyboardEvent, mac = isMacPlatform()): Key
   const rawKey = event.key;
   if (!rawKey || MODIFIER_KEYS.has(rawKey)) return null;
   const key = rawKey === " " ? "Space" : rawKey;
+  if (isAltComposed(event, key, mac)) return key;
 
   const modifiers: string[] = [];
   const mod = mac ? event.metaKey : event.ctrlKey;
@@ -68,6 +69,18 @@ export function tokenFromEvent(event: KeyboardEvent, mac = isMacPlatform()): Key
     return [...modifiers, lower].join("+");
   }
   return key;
+}
+
+/**
+ * A character the layout made with Option (macOS) or AltGr (elsewhere,
+ * reported as Ctrl+Alt): `#` is Option-3 on a UK Mac, `[` and `{` need
+ * AltGr on German and French keyboards. The modifier picked the character,
+ * so the character is the key. A plain letter or digit with Alt is still a
+ * chord ("Alt+a"), and so is plain Alt off macOS, which is not AltGr.
+ */
+function isAltComposed(event: KeyboardEvent, key: string, mac: boolean): boolean {
+  if (!event.altKey || [...key].length !== 1 || /^[a-z0-9]$/i.test(key)) return false;
+  return mac ? !event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
 }
 
 export function parseChord(chord: string): KeyToken[] {

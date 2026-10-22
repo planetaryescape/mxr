@@ -160,7 +160,7 @@
     "j": "MoveDown",
     "k": "MoveUp",
     "o": "TodoOpenEmail",
-    "q": "QuitView",
+    "q": "TodoShowRunway",
     "u": "UndoLastMutation",
     "z z": "CenterCurrent"
   },
@@ -234,7 +234,7 @@
     "j": "MoveDown",
     "k": "MoveUp",
     "o": "TodoOpenEmail",
-    "q": "QuitView",
+    "q": "TodoShowRunway",
     "u": "TodoRestore",
     "z z": "CenterCurrent"
   },
@@ -740,7 +740,7 @@
     "n": "NextSearchResult",
     "o": "OpenInBrowser",
     "p": "OpenSenderView",
-    "q": "QuitView",
+    "q": "Back",
     "r": "Reply",
     "s": "Star",
     "t": "CreateTodoFromMessage",

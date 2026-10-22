@@ -6913,6 +6913,55 @@ export interface components {
             /** @description Both close the same way (or neither signs off). */
             sign_off_match: boolean;
         };
+        /** @description Passes and evaluations for one check across the set. */
+        DraftEvalCheckCountData: {
+            check: string;
+            /** Format: int32 */
+            evaluated: number;
+            /** Format: int32 */
+            passed: number;
+        };
+        /** @description One check on one draft: what it required and what the draft did. */
+        DraftEvalCheckData: {
+            /** @description `kept`, `answers`, `gaps`, `invented`, `length` or `leftovers`. */
+            check: string;
+            detail: string;
+            pass: boolean;
+            requirement: string;
+        };
+        /** @description One corpus case drafted by the configured model and graded. */
+        DraftEvalQuickCaseData: {
+            checks: components["schemas"]["DraftEvalCheckData"][];
+            description: string;
+            /** @description The draft the user would see, after clean-up. */
+            draft: string;
+            error?: string | null;
+            id: string;
+            /**
+             * Format: int32
+             * @description Humanizer score: 100 reads plain, lower reads more like a model wrote it.
+             *     Reported, not graded.
+             */
+            style_score: number;
+            /** Format: int32 */
+            words: number;
+        };
+        DraftEvalQuickSummaryData: {
+            /** Format: int32 */
+            cases: number;
+            checks: components["schemas"]["DraftEvalCheckCountData"][];
+            /**
+             * Format: int32
+             * @description Cases the model failed to draft; they are not graded.
+             */
+            errors: number;
+            model: string;
+            /**
+             * Format: double
+             * @description Mean style score over the drafted cases (0 when none drafted).
+             */
+            style_mean: number;
+        };
         DraftEvalSummaryData: {
             /** Format: int32 */
             cases: number;
@@ -7353,6 +7402,29 @@ export interface components {
         };
         /** @enum {string} */
         JobStatusData: "queued" | "running" | "succeeded" | "failed";
+        /** @description One thing a key can do, and the keys each client binds it to. */
+        KeyActionData: {
+            /** @description `tui`, `web`, or both. */
+            clients: string[];
+            description?: string | null;
+            group: string;
+            id: string;
+            /** @description Web keys, primary first. */
+            keys?: string[];
+            label: string;
+            /** @description Web keys bound on macOS only. */
+            mac_keys?: string[];
+            /** @description Why the clients' keys differ, when they do. */
+            note?: string | null;
+            palette_only?: boolean;
+            /** @description Web scopes the web keys are live in. */
+            scopes?: string[];
+            tui?: components["schemas"]["TuiKeysData"][];
+        };
+        /** @description Returned in `ResponseData::Keymap`. */
+        KeymapData: {
+            actions: components["schemas"]["KeyActionData"][];
+        };
         /**
          * @description Which rule decided a message's kind, most decisive first. `Decision`
          *     means the user moved the sender; everything else is automatic.
@@ -11148,6 +11220,10 @@ export interface components {
                   limit: number;
               }
             | {
+                  /** @enum {string} */
+                  cmd: "DraftEvalQuick";
+              }
+            | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "ClassifyEval";
@@ -11618,6 +11694,10 @@ export interface components {
                   cmd: "SetTodoCatchup";
                   decision: components["schemas"]["TodoCatchupDecisionData"];
                   dry_run?: boolean;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "GetKeymap";
               }
             | {
                   /** @enum {string} */
@@ -12570,6 +12650,12 @@ export interface components {
                   summary: components["schemas"]["DraftEvalSummaryData"];
               }
             | {
+                  cases: components["schemas"]["DraftEvalQuickCaseData"][];
+                  /** @enum {string} */
+                  kind: "DraftEvalQuick";
+                  summary: components["schemas"]["DraftEvalQuickSummaryData"];
+              }
+            | {
                   /** @enum {string} */
                   kind: "ClassifyEval";
                   mismatches: components["schemas"]["ClassifyEvalMismatchData"][];
@@ -13121,6 +13207,11 @@ export interface components {
                   catchup: components["schemas"]["TodoCatchupData"];
                   /** @enum {string} */
                   kind: "TodoCatchup";
+              }
+            | {
+                  keymap: components["schemas"]["KeymapData"];
+                  /** @enum {string} */
+                  kind: "Keymap";
               }
             | {
                   guides: components["schemas"]["ModeGuideData"][];
@@ -14874,6 +14965,13 @@ export interface components {
             footer?: boolean;
             quote: boolean;
             signature: boolean;
+        };
+        /** @description Keys the TUI binds to an action, and where. */
+        TuiKeysData: {
+            contexts: string[];
+            keys: string[];
+            /** @description The TUI action its dispatcher returns. */
+            name: string;
         };
         UnsubscribeMethod:
             | {

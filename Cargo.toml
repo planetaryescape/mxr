@@ -137,6 +137,7 @@ members = [
     "crates/assistant",
     "crates/client",
     "crates/compose",
+    "crates/composer",
     "crates/config",
     "crates/core",
     "crates/deliveries",
@@ -182,7 +183,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.6.147"
+version = "0.6.148"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.94"
@@ -216,6 +217,7 @@ significant_drop_in_scrutinee = "warn"
 [workspace.dependencies]
 mxr-client = { path = "crates/client", version = "0.6.0" }
 mxr-compose = { path = "crates/compose", version = "0.6.0" }
+mxr-composer = { path = "crates/composer", version = "0.6.0" }
 mxr-config = { path = "crates/config", version = "0.6.0" }
 mxr-core = { path = "crates/core", version = "0.6.0" }
 mxr-deliveries = { path = "crates/deliveries", version = "0.6.0" }
@@ -402,6 +404,7 @@ libc = "0.2"
 getrandom = "0.4"
 mxr-client = { workspace = true }
 mxr-compose = { workspace = true }
+mxr-composer = { workspace = true }
 mxr-config = { workspace = true }
 mxr-core = { workspace = true }
 mxr-deliveries = { workspace = true }

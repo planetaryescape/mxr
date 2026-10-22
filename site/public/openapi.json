@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.147"
+    "version": "0.6.148"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -15002,6 +15002,139 @@
           }
         }
       },
+      "DraftEvalCheckCountData": {
+        "type": "object",
+        "description": "Passes and evaluations for one check across the set.",
+        "required": [
+          "check",
+          "passed",
+          "evaluated"
+        ],
+        "properties": {
+          "check": {
+            "type": "string"
+          },
+          "evaluated": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "passed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "DraftEvalCheckData": {
+        "type": "object",
+        "description": "One check on one draft: what it required and what the draft did.",
+        "required": [
+          "check",
+          "pass",
+          "requirement",
+          "detail"
+        ],
+        "properties": {
+          "check": {
+            "type": "string",
+            "description": "`kept`, `answers`, `gaps`, `invented`, `length` or `leftovers`."
+          },
+          "detail": {
+            "type": "string"
+          },
+          "pass": {
+            "type": "boolean"
+          },
+          "requirement": {
+            "type": "string"
+          }
+        }
+      },
+      "DraftEvalQuickCaseData": {
+        "type": "object",
+        "description": "One corpus case drafted by the configured model and graded.",
+        "required": [
+          "id",
+          "description",
+          "draft",
+          "words",
+          "checks",
+          "style_score"
+        ],
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftEvalCheckData"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "draft": {
+            "type": "string",
+            "description": "The draft the user would see, after clean-up."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "style_score": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Humanizer score: 100 reads plain, lower reads more like a model wrote it.\nReported, not graded.",
+            "minimum": 0
+          },
+          "words": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "DraftEvalQuickSummaryData": {
+        "type": "object",
+        "required": [
+          "cases",
+          "errors",
+          "checks",
+          "style_mean",
+          "model"
+        ],
+        "properties": {
+          "cases": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftEvalCheckCountData"
+            }
+          },
+          "errors": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Cases the model failed to draft; they are not graded.",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string"
+          },
+          "style_mean": {
+            "type": "number",
+            "format": "double",
+            "description": "Mean style score over the drafted cases (0 when none drafted)."
+          }
+        }
+      },
       "DraftEvalSummaryData": {
         "type": "object",
         "required": [
@@ -28247,6 +28380,21 @@
           },
           {
             "type": "object",
+            "description": "Draft the labelled compose corpus with the configured LLM and grade\neach draft against what its case required. Nothing is saved or sent.\nA separate request, not a field on `DraftEval`: a daemon that predates\nit rejects the unknown command, instead of ignoring a field and\nreplaying the user's own mail.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DraftEvalQuick"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Measure today's classifier against labelled scenarios in the stored\nmail: who sent it, which mode it went to, and whether it made a\nto-do or a record. Local; nothing is changed or sent.",
             "required": [
               "cmd"
@@ -33693,6 +33841,32 @@
               },
               "summary": {
                 "$ref": "#/components/schemas/DraftEvalSummaryData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::DraftEvalQuick`: the labelled synthetic corpus\nonly, never the user's mail.",
+            "required": [
+              "cases",
+              "summary",
+              "kind"
+            ],
+            "properties": {
+              "cases": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DraftEvalQuickCaseData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "DraftEvalQuick"
+                ]
+              },
+              "summary": {
+                "$ref": "#/components/schemas/DraftEvalQuickSummaryData"
               }
             }
           },

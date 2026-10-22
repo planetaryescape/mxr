@@ -463,15 +463,85 @@ line, a recap of the thread, a dropped sentence of yours, an invented
 price, a duplicated signature. Every prompt or rule change then shows up
 as a reviewed diff, with no model in CI.
 
-`mxr draft eval --set quick --model <id>` runs the live layer on this
-machine. It drafts every case with a real model and grades it with the
-same checks, and is the number that goes in this chapter as the
-baseline. `--set mine` is today's replay of your own recent replies. It
-stays on this machine, and no longer calls the rewrite model unless asked.
+`mxr draft eval --set quick` runs the live layer on this machine with the
+drafting model you have configured. It drafts every case with a real model
+and grades it with the same checks, and its numbers are the live baseline.
+Choosing the model per run (`--model`) waits for rung C2. `--set mine` is
+today's replay of your own recent replies. It stays on this machine, and no
+longer calls the rewrite model unless asked.
 
 `composer_version` combines the prompt's version and the catalogue's, and
 goes into every proposal's provenance, so a bad draft can be traced to
 the composer that wrote it.
+
+### Baseline: today's drafting on the quick set
+
+The snapshot layer is measured by `scripts/cargo-test -p mxr --lib -- handler::tests::compose_eval`.
+Its record is in `crates/daemon/src/handler/tests/snapshots/`: the prompt
+today's code builds for each of the 40 cases, and the grade table for 32
+recorded model outputs. The corpus is `crates/provider-fake/src/fixtures/compose/`:
+40 cases in 20 near-miss pairs, 22 with typed text (two of them with a
+selection) and 18 without.
+
+The 32 outputs are good ones and recorded defects, so the counts show what
+the checks catch. They do not say how often a model writes the defect.
+
+| Check | Passed | Of |
+|---|---|---|
+| Kept: typed sentences survive, as whole sentences | 29 | 32 |
+| Answers: each question from the target is addressed, as whole words | 30 | 32 |
+| Gaps: facts nobody gave are left as gaps | 31 | 32 |
+| Invented: no number outside the inputs, compared as whole tokens | 29 | 32 |
+| Length: inside the case's word band | 31 | 32 |
+| Leftovers: no subject, preamble, repeated sign-off or copied run | 28 | 32 |
+
+Every good output passes all six checks. Every bad output fails the check it
+is recorded for: a dropped typed sentence and a typed sentence reversed inside
+a changed one (kept), an invented price (invented, and gaps or answers where
+the price was the answer), "now" standing in for "no" (answers), a subject
+line, a preamble, a recap of the thread and a repeated sign-off (leftovers).
+
+Today's request has no field for typed text or a selection, so neither
+reaches the prompt. Each typed case's prompt in the snapshot says so. That
+is the gap the next rung closes, and `kept` is the check it should move.
+
+Three rules are judgement calls. A typed sentence is kept only when the draft
+has it as a whole sentence, so a model that rewords it with a comma or a
+prefix fails `kept` as "changed", which is the strictest reading of "keep
+what I typed". A leftover is a run of eight words copied from the thread,
+which catches a recap that quotes the thread but not one written in the
+model's own words; length is the only check that catches that. A preamble is
+commentary about generating the reply: a line that opens with a lead word
+such as "Sure" or "Here's" and names the reply or its draft ("draft of your",
+"my reply", "drafted"). A line that only mentions a draft document is part of
+the email. A repeated sign-off is the same short line appearing twice in the
+last four lines of the output. Numbers are compared as whole tokens: a
+thousands comma, a `.00` cent part and a space before am or pm do not change
+the number, so "£1,200.00" matches "£1,200" and "3 pm" matches "3pm", while
+"2pm" and "12pm" stay apart.
+
+The live baseline runs `mxr draft eval --set quick` against a real model, on
+2026-10-22, with `gemma4:latest` through a local Ollama endpoint on this Mac.
+The current table is graded with the rules in this section:
+
+| Check | Passed | Of |
+|---|---|---|
+| Kept: typed sentences survive | 20 | 40 |
+| Answers: each question from the target is addressed | 29 | 40 |
+| Gaps: facts nobody gave are left as gaps | 38 | 40 |
+| Invented: no number outside the inputs | 40 | 40 |
+| Length: inside the case's word band | 40 | 40 |
+| Leftovers: no subject, preamble, repeated sign-off or copied run | 40 | 40 |
+
+An earlier run, graded before the whole-sentence, whole-word, exact-number and
+preamble rules, gave kept 20, answers 31, gaps 38, invented 40, length 40 and
+leftovers 39. Its outputs were not kept, so it cannot be graded again under the
+current rules. The difference in answers and leftovers mixes the rule change
+with run-to-run variation.
+
+Runs vary by up to four cases per check. `kept` fails for most typed cases
+because typed text is not sent yet; the 18 cases with nothing typed pass it by
+construction.
 
 ## The compose screen: your page under the lamp, help as a proof
 

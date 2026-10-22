@@ -3,6 +3,7 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use std::collections::HashMap;
 
+pub mod compose;
 mod messages_demo;
 mod modes_demo;
 mod reading_demo;

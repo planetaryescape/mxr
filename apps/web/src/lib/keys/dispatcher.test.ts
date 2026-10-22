@@ -34,6 +34,7 @@ let registry: ActionRegistry;
 let scopes: ActionScope[];
 let suspended: boolean;
 let pending: (string | null)[];
+let deadEnds: string[];
 let uninstall: () => void;
 
 function press(keyInit: KeyboardEventInit, target: Element = document.body): boolean {
@@ -46,10 +47,12 @@ beforeEach(() => {
   scopes = ["global"];
   suspended = false;
   pending = [];
+  deadEnds = [];
   uninstall = installKeyDispatcher(window, {
     registry,
     context: () => ctxWith(scopes),
     onPendingChange: (prefix) => pending.push(prefix),
+    onDeadEnd: (sequence) => deadEnds.push(sequence),
     isSuspended: () => suspended,
     mac: false,
   });
@@ -102,19 +105,25 @@ describe("installKeyDispatcher", () => {
     expect(inbox.run).not.toHaveBeenCalled();
   });
 
-  test("a dead-end sequence drops the prefix and runs the key on its own", () => {
+  test("a dead-end sequence cancels the prefix, runs nothing and says so", () => {
     const inbox = runAction("inbox", "g i");
-    const toggle = runAction("toggle", "x");
-    registry.defineMany([inbox.action, toggle.action]);
+    const unread = runAction("unread", "U");
+    registry.defineMany([inbox.action, unread.action]);
 
-    press({ key: "g" });
-    press({ key: "x" });
+    // A mistyped "g U" must not mark mail unread.
+    expect(press({ key: "g" })).toBe(false);
+    expect(press({ key: "U", shiftKey: true })).toBe(false);
 
-    expect(toggle.run).toHaveBeenCalledTimes(1);
+    expect(unread.run).not.toHaveBeenCalled();
     expect(inbox.run).not.toHaveBeenCalled();
+    expect(pending.at(-1)).toBeNull();
+    expect(deadEnds).toEqual(["g U"]);
+
+    press({ key: "U", shiftKey: true });
+    expect(unread.run).toHaveBeenCalledTimes(1);
   });
 
-  test("a dead end that is itself a prefix starts a new sequence", () => {
+  test("a dead end that is itself a prefix cancels too, and starts nothing", () => {
     const inbox = runAction("inbox", "g i");
     const selectAll = runAction("select-all", "* a");
     registry.defineMany([inbox.action, selectAll.action]);
@@ -123,8 +132,21 @@ describe("installKeyDispatcher", () => {
     press({ key: "*" });
     press({ key: "a" });
 
-    expect(selectAll.run).toHaveBeenCalledTimes(1);
+    expect(selectAll.run).not.toHaveBeenCalled();
     expect(inbox.run).not.toHaveBeenCalled();
+    expect(deadEnds).toEqual(["g *"]);
+  });
+
+  test("a modifier chord after a prefix still runs", () => {
+    const inbox = runAction("inbox", "g i");
+    const palette = runAction("palette", "Mod+k");
+    registry.defineMany([inbox.action, palette.action]);
+
+    press({ key: "g" });
+    press({ key: "k", ctrlKey: true });
+
+    expect(palette.run).toHaveBeenCalledTimes(1);
+    expect(deadEnds).toEqual([]);
   });
 
   test("a chord that is complete in one scope but a prefix in another runs after the timeout", () => {
@@ -189,6 +211,18 @@ describe("installKeyDispatcher", () => {
     });
   });
 
+  test("a key that is part of an IME composition is not a shortcut", () => {
+    const compose = runAction("compose", "c");
+    registry.define(compose.action);
+
+    // WebKit reports the composition's edge keystrokes with isComposing
+    // false and only keyCode 229 to tell them apart.
+    expect(press({ key: "c", isComposing: false, keyCode: 229 })).toBe(true);
+    expect(press({ key: "c", isComposing: true })).toBe(true);
+
+    expect(compose.run).not.toHaveBeenCalled();
+  });
+
   describe("text fields and overlays", () => {
     test("plain keys typed into an input are not actions", () => {
       const compose = runAction("compose", "c");
@@ -236,6 +270,26 @@ describe("installKeyDispatcher", () => {
 
       press({ key: "c" }, document.querySelector("span")!);
       expect(compose.run).toHaveBeenCalledTimes(1);
+    });
+
+    test("an open menu owns its keys", () => {
+      const undo = runAction("undo", "u");
+      registry.define(undo.action);
+      document.body.innerHTML = `<div data-radix-popper-content-wrapper><div role="menu" data-state="open"><div role="menuitem" tabindex="-1">Pin</div></div></div>`;
+
+      press({ key: "u" }, document.querySelector('[role="menuitem"]')!);
+      expect(undo.run).not.toHaveBeenCalled();
+    });
+
+    // docs/issues/menu-exit-swallows-keys.md: Radix keeps a menu mounted,
+    // with focus inside it, through its exit animation.
+    test("a menu animating closed does not swallow keys", () => {
+      const undo = runAction("undo", "u");
+      registry.define(undo.action);
+      document.body.innerHTML = `<div data-radix-popper-content-wrapper><div role="menu" data-state="closed"><div role="menuitem" tabindex="-1">Pin</div></div></div>`;
+
+      press({ key: "u" }, document.querySelector('[role="menuitem"]')!);
+      expect(undo.run).toHaveBeenCalledTimes(1);
     });
 
     test("Enter on a focused button keeps its native meaning", () => {

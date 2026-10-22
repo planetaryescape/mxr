@@ -177,3 +177,40 @@ fn category_rule_preview_pages_beyond_65k_effects() {
     assert_eq!(app.rules.page.dry_run[0]["token"], "large-token");
     assert!(app.rules.pending_category_apply.is_none());
 }
+
+/// `#` on a rule only asks, naming it; only the confirm deletes, and
+/// `n`/`Esc` keep it (blueprint 35: `#` previews everywhere).
+#[test]
+fn hash_asks_before_deleting_a_rule_and_only_the_confirm_deletes() {
+    let mut app = App::new();
+    app.screen = Screen::Rules;
+    app.rules.page.rules =
+        vec![serde_json::json!({"id":"rule-1", "name":"Newsletters", "action":"archive"})];
+    let press = |app: &mut App, code: KeyCode| {
+        if let Some(action) = app.handle_key(KeyEvent::new(code, KeyModifiers::NONE)) {
+            app.apply(action);
+        }
+    };
+
+    press(&mut app, KeyCode::Char('#'));
+    assert!(
+        app.rules.pending_delete.is_none(),
+        "# deleted without asking"
+    );
+    let shown = render_to_string(100, 30, |frame| app.draw(frame));
+    assert!(shown.contains("Delete rule 'Newsletters'?"), "{shown}");
+
+    press(&mut app, KeyCode::Esc);
+    assert!(app.rules.pending_delete.is_none());
+    assert!(app.rules.page.delete_confirm.is_none());
+    assert_eq!(app.screen, Screen::Rules, "Esc closes the confirm only");
+
+    press(&mut app, KeyCode::Char('#'));
+    press(&mut app, KeyCode::Char('n'));
+    assert!(app.rules.pending_delete.is_none());
+
+    press(&mut app, KeyCode::Char('#'));
+    press(&mut app, KeyCode::Char('y'));
+    assert_eq!(app.rules.pending_delete.as_deref(), Some("rule-1"));
+    assert!(app.rules.page.delete_confirm.is_none());
+}

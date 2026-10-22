@@ -249,7 +249,8 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
 
       <div
         ref={listRef}
-        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-2"
+        tabIndex={-1}
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 outline-none"
         data-active-pane={sidebarFocused ? "true" : undefined}
       >
         {sections.map((section) => {

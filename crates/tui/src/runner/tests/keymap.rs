@@ -313,9 +313,11 @@ async fn configured_retired_prefixes_are_bounded() {
     assert_eq!(press_char(&mut app, 'w'), None);
     assert_eq!(press_char(&mut app, 'w'), None);
     assert!(
-        app.input_pending(),
-        "a live repeated prefix starts a new chord"
+        !app.input_pending(),
+        "a repeated prefix completes nothing, so it cancels the chord"
     );
+    assert_eq!(app.status_message.as_deref(), Some("w w is not a shortcut"));
+    assert_eq!(press_char(&mut app, 'w'), None);
     assert_eq!(press_char(&mut app, 'q'), Some(Action::Archive));
 
     let mut app = remapped_app(
@@ -718,9 +720,11 @@ fn configured_chord_beats_mail_keys_and_retires_old_chord() {
     assert_eq!(press_char(&mut app, 'g'), None);
     assert_eq!(
         press_char(&mut app, ';'),
-        Some(Action::ReplyAll),
-        "invalid legacy chord recovers to remapped key"
+        None,
+        "a remapped key after a default prefix completes nothing and runs nothing"
     );
+    assert_eq!(app.status_message.as_deref(), Some("g ; is not a shortcut"));
+    assert_eq!(press_char(&mut app, ';'), Some(Action::ReplyAll));
 }
 
 #[test]
@@ -827,7 +831,8 @@ fn configured_uppercase_modifiers_unbinds_and_context_changes_are_safe() {
     );
     assert_eq!(press_char(&mut app, 'w'), None);
     app.mailbox.active_pane = ActivePane::MessageView;
-    assert_eq!(press_char(&mut app, 'q'), Some(Action::QuitView));
+    // q in the reader closes it (it sits below the root), not `w q`.
+    assert_eq!(press_char(&mut app, 'q'), Some(Action::Back));
     assert_eq!(
         press_char(&mut app, ';'),
         Some(Action::Compose),
@@ -1137,6 +1142,28 @@ fn shown_bindings_do_what_help_says() {
     }
     wrong.sort();
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+/// A prefix followed by a key that completes nothing is cancelled and says
+/// so (blueprint 35): a mistyped `g U` must not mark mail unread, in the
+/// mailbox or in a mode.
+#[test]
+fn a_dead_end_prefix_runs_nothing_and_names_the_keys() {
+    for context in ["list", "reader", "todo"] {
+        let mut app = app_in(context);
+        assert_eq!(press_char(&mut app, 'g'), None);
+        let unread = app.handle_key(KeyEvent::new(KeyCode::Char('U'), KeyModifiers::SHIFT));
+        assert_eq!(unread, None, "g U ran something in {context}");
+        assert!(
+            !app.input_pending(),
+            "g U left the prefix waiting in {context}"
+        );
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("g U is not a shortcut"),
+            "{context}"
+        );
+    }
 }
 
 #[test]

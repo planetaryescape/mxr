@@ -94,7 +94,9 @@ export function NowRoute() {
   return (
     <section
       aria-label="Now"
-      className="mode-page flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+      data-mode-pane=""
+      tabIndex={-1}
+      className="mode-page flex min-h-0 min-w-0 flex-1 flex-col bg-background outline-none"
     >
       <NowHeader now={now.data} guide={guide.data} />
       {now.data ? (

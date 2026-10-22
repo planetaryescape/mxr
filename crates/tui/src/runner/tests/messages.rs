@@ -806,8 +806,14 @@ fn clear_filters_resets_the_turn_and_both_toggles_at_once() {
         app.mailbox.messages_page.filter,
         mxr_protocol::MessagesFilterData::default()
     );
-    assert!(app.mailbox.messages_page.pending_refresh, "the list refetches unfiltered");
-    assert!(app.modals.messages_filter.is_some(), "the picker stays open, Esc still closes");
+    assert!(
+        app.mailbox.messages_page.pending_refresh,
+        "the list refetches unfiltered"
+    );
+    assert!(
+        app.modals.messages_filter.is_some(),
+        "the picker stays open, Esc still closes"
+    );
     press(&mut app, KeyCode::Esc);
     assert!(app.modals.messages_filter.is_none());
 }

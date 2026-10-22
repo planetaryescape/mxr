@@ -1477,18 +1477,13 @@ impl App {
 
         // Remaps are authoritative only in mail panes, after all modal/text
         // owners. Explicit keys also beat lens-specific single-key defaults.
-        // A mode that dispatches through the key definition resolves its
-        // own sequences, and `[mail_list]` remaps stay out of it.
-        let in_mode = self.defined_key_context().is_some();
-        if !in_mode
-            && matches!(
-                self.current_ui_context(),
-                UiContext::MailboxList
-                    | UiContext::MailboxMessage
-                    | UiContext::SearchResults
-                    | UiContext::SearchPreview
-            )
-        {
+        if matches!(
+            self.current_ui_context(),
+            UiContext::MailboxList
+                | UiContext::MailboxMessage
+                | UiContext::SearchResults
+                | UiContext::SearchPreview
+        ) {
             if let Some(action) = self.configured_mail_key(key) {
                 return action;
             }
@@ -1496,16 +1491,8 @@ impl App {
 
         // The second key of a chord (`g r`, `g a`, `i a`) completes it,
         // before any single-key binding such as `r` reply can claim it.
-        if self.input.is_pending() && !in_mode {
-            // Archive's `g f` steps through its kind chips.
-            if self.records_list_focused()
-                && self.input.pending_prefix() == Some('g')
-                && key.code == KeyCode::Char('f')
-                && key.modifiers == KeyModifiers::NONE
-            {
-                self.input.reset();
-                return Some(Action::RecordsNextKind);
-            }
+        // A mode completes its own sequences from the key definition.
+        if self.input.is_pending() && self.mode_key_context().is_none() {
             return self.contextual_input_action(key);
         }
 

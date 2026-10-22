@@ -3,7 +3,6 @@
 //! one source, hand a line to To do, tune a source, and open a line's link
 //! or email. The daemon owns the cut, the lines and every selection.
 
-use super::input::plain_or_shift;
 use super::*;
 use crate::app::state::{UpdatesRow, UpdatesTuneMenu};
 use mxr_protocol::{UpdateLineData, UpdateSignalData, UpdateSourceSettingData, UpdatesDigestData};
@@ -439,61 +438,7 @@ impl App {
                 _ => None,
             };
         }
-        let plain = key.modifiers == KeyModifiers::NONE;
-        let shifted = plain_or_shift(key.modifiers);
-        let action = match key.code {
-            KeyCode::Char('/') if plain => Some(Action::OpenGlobalSearch),
-            KeyCode::Char('h') | KeyCode::Left if plain => {
-                self.mailbox.active_pane = ActivePane::Sidebar;
-                return None;
-            }
-            KeyCode::Esc => Some(Action::UpdatesClose),
-            KeyCode::Enter => Some(Action::UpdatesOpen),
-            KeyCode::Char('o') if plain => Some(Action::UpdatesOpenEmail),
-            KeyCode::Char('e') if plain => Some(Action::UpdatesLetGoSource),
-            KeyCode::Char('t') if plain => Some(Action::UpdatesNeedsMe),
-            KeyCode::Char('A') if shifted => Some(Action::UpdatesLetGoAll),
-            KeyCode::Char('K') if shifted => Some(Action::UpdatesTune),
-            KeyCode::Char('p') if plain => Some(Action::TogglePin),
-            KeyCode::Char('S') if shifted => Some(Action::UpdatesSweep),
-            KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
-            KeyCode::Char('L') if shifted => Some(Action::UpdatesOpenLink),
-            KeyCode::Char('y') if plain => Some(Action::UpdatesCopyCode),
-            KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),
-            _ => None,
-        };
-        if action.is_some() {
-            return action;
-        }
-        self.contextual_input_action(key).filter(|action| {
-            !matches!(
-                action,
-                Action::OpenSelected
-                    | Action::ToggleSelect
-                    | Action::VisualLineMode
-                    | Action::AttachmentList
-                    | Action::ExportThread
-                    | Action::ToggleFullscreen
-                    | Action::FlagReplyLater
-                    | Action::NextSearchResult
-                    | Action::PrevSearchResult
-                    | Action::SwitchPane
-                    | Action::Back
-                    | Action::Archive
-                    | Action::MarkReadAndArchive
-                    | Action::Trash
-                    | Action::Spam
-                    | Action::Star
-                    | Action::MarkRead
-                    | Action::MarkUnread
-                    | Action::Reply
-                    | Action::ReplyAll
-                    | Action::Forward
-                    | Action::OpenLinks
-                    | Action::OpenSenderKindMenu
-                    | Action::RespondInvite(_)
-                    | Action::RespondInviteWithComment(_)
-            )
-        })
+        let defined = self.defined_key("updates", key);
+        self.run_defined_key(defined)
     }
 }

@@ -81,6 +81,15 @@ export default function Messages() {
     </ActionPanel.Submenu>
   );
 
+  // The local search can hide every loaded row; the Filter menu must stay
+  // reachable then, since it is the only action left on the screen.
+  const hiddenByText =
+    data !== undefined &&
+    data.row_count > 0 &&
+    !narrowedEmpty &&
+    [data.your_turn, data.pinned, data.recent, data.quiet].every(
+      (rows) => shown(rows).length === 0,
+    );
   const item = (row: MessagesRow, band: string) => {
     const topic = row.topics[0];
     const name = row.person?.name ?? row.title;
@@ -188,6 +197,17 @@ export default function Messages() {
       searchBarAccessory={<AccountDropdown onChange={setAccount} />}
       {...search.listProps}
     >
+      {hiddenByText && (
+        <List.EmptyView
+          icon={Icon.MagnifyingGlass}
+          title="No people match this search"
+          actions={
+            <ActionPanel>
+              <ActionPanel.Section>{filterMenu}</ActionPanel.Section>
+            </ActionPanel>
+          }
+        />
+      )}
       {data && (data.row_count === 0 || narrowedEmpty) && !search.searching && (
         <List.EmptyView
           icon={Icon.Message}

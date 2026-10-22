@@ -316,9 +316,12 @@ pub(crate) fn fail_attempt(
 }
 
 /// What one tool-calling request returned.
+/// `thinking` is the reply's reasoning when the provider sends it beside
+/// the reply; Claude's is read from the turn kept for replay instead.
 pub(crate) fn finish_chat_attempt(
     span: &Observation,
     result: &Result<ToolChatResponse, AttemptError>,
+    thinking: Option<&str>,
 ) {
     match result {
         Ok(response) => {
@@ -327,7 +330,13 @@ pub(crate) fn finish_chat_attempt(
                 span.usage(usage);
             }
             finish_reason(span, response.finish_reason.as_deref());
-            span.output(|| chat_message(response, anthropic_thinking(response).as_deref()));
+            span.output(|| {
+                let thinking = thinking
+                    .map(str::to_owned)
+                    .or_else(|| anthropic_thinking(response))
+                    .filter(|text| !text.trim().is_empty());
+                chat_message(response, thinking.as_deref())
+            });
         }
         Err(attempt) => span.fail(&attempt.error.to_string()),
     }

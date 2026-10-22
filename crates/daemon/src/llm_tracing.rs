@@ -12,13 +12,26 @@
 //! `LANGFUSE_SECRET_KEY`, and optionally `LANGFUSE_TRACING_ENVIRONMENT`.
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use mxr_protocol::{DoctorFinding, DoctorFindingCategory, DoctorFindingSeverity};
 use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
 use std::collections::HashMap;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// What [`start`] did, for `mxr doctor`: a refused URL is otherwise one line
+/// in a log nobody reads, and the trace just never shows up.
+static STATUS: OnceLock<Status> = OnceLock::new();
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Status {
+    Off,
+    Refused(String),
+    On(String),
+}
 
 /// The exporter while it runs. Call [`Self::shutdown`] on the way out, or
 /// the last few seconds of traces are lost.
@@ -41,11 +54,17 @@ enum Settings {
 /// Start exporting if Langfuse is configured for this machine. Logs why
 /// not when it is configured but refused.
 pub(crate) fn start() -> Option<LlmTracing> {
-    match settings(|name| std::env::var(name).ok()) {
-        Settings::Off => None,
+    let (tracing, status) = start_with(settings(|name| std::env::var(name).ok()));
+    let _ = STATUS.set(status);
+    tracing
+}
+
+fn start_with(settings: Settings) -> (Option<LlmTracing>, Status) {
+    match settings {
+        Settings::Off => (None, Status::Off),
         Settings::Refused(reason) => {
             tracing::warn!("LLM tracing is off: {reason}");
-            None
+            (None, Status::Refused(reason))
         }
         Settings::On {
             base_url,
@@ -64,13 +83,48 @@ pub(crate) fn start() -> Option<LlmTracing> {
                     env!("CARGO_PKG_VERSION").to_string(),
                 );
                 tracing::info!("LLM tracing to the Langfuse at {base_url}");
-                Some(LlmTracing { provider })
+                (Some(LlmTracing { provider }), Status::On(base_url))
             }
             Err(error) => {
-                tracing::warn!("LLM tracing is off: couldn't start the exporter: {error}");
-                None
+                let reason = format!("couldn't start the exporter: {error}");
+                tracing::warn!("LLM tracing is off: {reason}");
+                (None, Status::Refused(reason))
             }
         },
+    }
+}
+
+/// This build traces, so `mxr doctor` says whether it is and where to.
+/// `None` before [`start`] has run.
+pub(crate) fn doctor_finding() -> Option<DoctorFinding> {
+    STATUS.get().map(finding)
+}
+
+fn finding(status: &Status) -> DoctorFinding {
+    let (severity, message, remediation) = match status {
+        Status::On(base_url) => (
+            DoctorFindingSeverity::Info,
+            format!("LLM tracing is on, to the Langfuse at {base_url}"),
+            Vec::new(),
+        ),
+        Status::Off => (
+            DoctorFindingSeverity::Info,
+            "LLM tracing is off: this build can trace, but LANGFUSE_PUBLIC_KEY and \
+             LANGFUSE_SECRET_KEY weren't set when the daemon started"
+                .to_string(),
+            vec!["See docs/contributing/llm-tracing.md, then run `mxr restart`".to_string()],
+        ),
+        Status::Refused(reason) => (
+            DoctorFindingSeverity::Warning,
+            format!("LLM tracing is off: {reason}"),
+            vec!["Fix the LANGFUSE_* variables, then run `mxr restart`".to_string()],
+        ),
+    };
+    DoctorFinding {
+        category: DoctorFindingCategory::Daemon,
+        severity,
+        message,
+        remediation,
     }
 }
 
@@ -153,7 +207,8 @@ fn exporter(base_url: &str, public_key: &str, secret_key: &str) -> Result<SpanEx
 
 #[cfg(test)]
 mod tests {
-    use super::{settings, Settings};
+    use super::{finding, settings, start_with, Settings, Status};
+    use mxr_protocol::DoctorFindingSeverity;
 
     fn with(vars: &[(&str, &str)]) -> Settings {
         settings(|name| {
@@ -232,5 +287,43 @@ mod tests {
             with(&[("LANGFUSE_PUBLIC_KEY", "pk"), ("LANGFUSE_BASE_URL", "http://localhost:3000")]),
             Settings::Refused(reason) if reason.contains("both")
         ));
+    }
+
+    #[test]
+    fn doctor_warns_with_the_reason_a_url_was_refused() {
+        let vars = [
+            KEYS[0],
+            KEYS[1],
+            ("LANGFUSE_BASE_URL", "https://cloud.langfuse.com"),
+        ];
+        let (tracing, status) = start_with(with(&vars));
+        assert!(tracing.is_none());
+        let finding = finding(&status);
+        assert_eq!(finding.severity, DoctorFindingSeverity::Warning);
+        assert!(
+            finding
+                .message
+                .contains("https://cloud.langfuse.com isn't on this machine"),
+            "{}",
+            finding.message
+        );
+    }
+
+    #[test]
+    fn doctor_names_where_traces_go_when_on() {
+        let finding = finding(&Status::On("http://localhost:3000".to_string()));
+        assert_eq!(finding.severity, DoctorFindingSeverity::Info);
+        assert_eq!(
+            finding.message,
+            "LLM tracing is on, to the Langfuse at http://localhost:3000"
+        );
+    }
+
+    #[test]
+    fn doctor_says_an_unconfigured_tracing_build_is_off_without_warning() {
+        let (tracing, status) = start_with(with(&[]));
+        assert!(tracing.is_none());
+        assert_eq!(status, Status::Off);
+        assert_eq!(finding(&status).severity, DoctorFindingSeverity::Info);
     }
 }

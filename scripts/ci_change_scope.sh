@@ -16,10 +16,11 @@ web=false
 apps_web=false
 docs=false
 expensive=false
+classifier=false
 
 print_scope() {
-  printf 'rust=%s\nweb=%s\napps_web=%s\ndocs=%s\nexpensive=%s\n' \
-    "$rust" "$web" "$apps_web" "$docs" "$expensive"
+  printf 'rust=%s\nweb=%s\napps_web=%s\ndocs=%s\nexpensive=%s\nclassifier=%s\n' \
+    "$rust" "$web" "$apps_web" "$docs" "$expensive" "$classifier"
 }
 
 classify_path() {
@@ -35,6 +36,16 @@ classify_path() {
       ;;
     deny.toml|tests/*|benches/*|examples/*|scripts/test_quality_audit.sh|scripts/test_quality_audit_test.sh|scripts/check_architecture_boundaries.sh|scripts/s08c_headless_smoke.py)
       rust=true
+      ;;
+  esac
+
+  # The full-set classifier eval grades the 50,000-email demo through the
+  # crates that generate, sync, classify, place and grade mail, so it runs
+  # when any of them changes. UI, transport and provider crates cannot move
+  # an answer.
+  case "$path" in
+    crates/provider-fake/*|crates/daemon/*|crates/store/*|crates/protocol/*|crates/core/*|crates/todo/*|crates/records/*|crates/deliveries/*|crates/updates/*|crates/reading/*|crates/reader/*|crates/relationship/*|crates/rules/*|crates/safety/*|crates/sync/*|crates/mail-parse/*|crates/config/*|crates/llm/*|Cargo.toml|Cargo.lock|.sqlx/*)
+      classifier=true
       ;;
   esac
 
@@ -67,6 +78,7 @@ classify_path() {
       rust=true
       web=true
       docs=true
+      classifier=true
       ;;
   esac
 }
@@ -77,6 +89,7 @@ if [[ "$event_name" == "workflow_dispatch" ]]; then
   apps_web=true
   docs=true
   expensive=true
+  classifier=true
   print_scope
   exit 0
 fi
@@ -92,6 +105,7 @@ if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
   web=true
   apps_web=true
   docs=true
+  classifier=true
   print_scope
   exit 0
 fi

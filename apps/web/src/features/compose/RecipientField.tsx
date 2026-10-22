@@ -282,12 +282,12 @@ export function RecipientField({
                   }}
                   onMouseEnter={() => setHighlight(index)}
                 >
-                  <Avatar name={suggestion.display_name || suggestion.email} size="sm" />
+                  <Avatar name={suggestion.name || suggestion.email} size="sm" />
                   <span className="min-w-0">
                     <div className="truncate text-xs text-foreground">
-                      {suggestion.display_name || suggestion.email}
+                      {suggestion.name || suggestion.email}
                     </div>
-                    {suggestion.display_name ? (
+                    {suggestion.name ? (
                       <div className="truncate font-mono text-2xs text-muted-foreground">
                         {suggestion.email}
                       </div>

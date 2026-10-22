@@ -158,45 +158,106 @@ That wipes rebuildable local runtime state only. It does not delete `config.toml
 
 `mxr classify eval` grades how mxr sorts mail against labelled scenarios
 (blueprint 32). It is read-only and local, and changes no classification.
+There are two sets:
+
+| Set | Grades | Takes | Run it |
+|---|---|---|---|
+| `--set quick` (the default) | the 147 labelled emails of the hand-written demo mail and the near-miss twins | seconds | after every change to sorting |
+| `--set full` | every labelled email in the mailbox: on the 50,000-message demo, the hand-written mail plus all of the generated mail (about 38,700 emails across both accounts) | tens of seconds once the demo is seeded | before you open a PR that can move an answer; CI runs it |
 
 ```bash
 mxr demo
 mxr classify eval --set quick
-mxr classify eval --set quick --format json
+mxr classify eval --set full
+mxr classify eval --set full --format json    # every mismatch
 ```
 
 For every stored email that a scenario labels, it compares four answers with
 the label: who sent it (`person`, `list`, `machine`, `screened_out`), its home
 (`messages`, `updates`, `reading`, `spam`, `screened_out`), whether a to-do was
-made from it, and whether a record was. It prints the accuracy per question
-and lists every mismatch with the scenario id, provider id, expected answer,
-actual answer and the rule that decided it. Home is the arrivals line's
+made from it, and whether a record was. It prints the accuracy per question.
+The quick set lists every mismatch with the scenario id, provider id, expected
+answer, actual answer and the rule that decided it. The full set can be wrong
+thousands of times, so its table groups mismatches into clusters (same
+scenario, question, expected and actual answer), biggest first, with one
+example each; `--format json` has every one. Home is the arrivals line's
 destination under today's rules; mail with no arrivals row is placed live by
 the same rules. Labels state what mxr should do, not what it does today, so a
 gap shows up as a mismatch.
 
-The labels live in `crates/provider-fake/src/fixtures/scenarios/`. `curated.rs`
-states the outcome the demo fixtures describe in prose; `twins.rs` builds
-near-miss pairs that differ in the one fact that should change the answer.
-The twins are not in the 50,000-email demo, because they would shift its
-message numbering and the counts its tests read, so `mxr classify eval` on a
-demo reports the labelled demo mail and the twins are graded by the daemon
-test:
+The full set also reports held-out accuracy on its own line, per question.
+Each family of generated mail (below) keeps a fixed share of its phrasings out
+of the mail you read while changing a judge, in
+`crates/provider-fake/src/fixtures/scenarios/held_out.rs`. If held-out accuracy
+falls behind the overall figure, the change taught a judge the generator's
+wording, not the mail. Do not read `held_out.rs` while you change a judge, and
+do not tune against it.
+
+### Where the labels live
+
+They are in `crates/provider-fake/src/fixtures/scenarios/`:
+
+- `curated.rs` states the outcome the hand-written demo fixtures describe in
+  prose.
+- `twins.rs` builds near-miss pairs that differ in the one fact that should
+  change the answer. The twins are not in the 50,000-email demo, because they
+  would shift its message numbering and the counts its tests read, so the
+  daemon test grades them (below).
+- `bulk/` builds the rest of the generated demo from scenario families. A
+  family is a kind of mail (a colleague's thread, a thread you were only copied
+  on, an order, a bill, a booking, a newsletter, spam...). It says who writes
+  at each message position of its thread and what the answers are there, so one
+  thread can mix answers, and it has several phrasings of the same mail. Which
+  family and phrasing a thread uses is a function of its number alone, so a
+  page, a fetch and a label for any of the 50,000 emails are all recomputed
+  from the index and nothing is held in memory.
+
+Dated asks need care. A to-do is shown only while its deadline is open, so a
+family that asks for something by a date puts one thread in thirty in the last
+hours (the ask is live: a to-do) and the rest at least two months back (the
+deadline passed before the mail was found: no to-do, as
+`todo-event-already-over` says). The label follows the dating.
+
+### Tests
 
 ```bash
+scripts/cargo-test -p mxr-provider-fake --lib scenarios       # labels, families, seed clock
 scripts/cargo-test -p mxr --lib -- handler::tests::classify_eval
 ```
 
-That test syncs the whole scenario set, runs the post-sync work (to-dos,
-records, deliveries, arrivals placement) and snapshots the per-question counts
-and the sorted mismatch list. A change to sorting shows up as a snapshot diff:
-review it with `cargo insta review` and accept it only when every changed
-answer is intended. The demo instance also seeds screener decisions and rules,
-so its numbers can differ slightly from the snapshot.
+The second runs the quick-set snapshot and a few full-set checks on a small
+generated demo. It syncs the mail, runs the post-sync classification
+(to-dos, records, deliveries, arrivals placement) and snapshots the
+per-question counts and the sorted mismatch list. A change to sorting shows up
+as a snapshot diff: review it and accept it only when every changed answer is
+intended. The demo instance also seeds screener decisions and rules, so its
+numbers can differ slightly from the snapshot.
 
-When you add a scenario, state the answer a person would want, not today's
-answer, and put the reasoning in `review` if the label is a judgement call.
-Change `LABEL_SCHEMA_VERSION` when the questions themselves change.
+The whole 50,000-message demo is one more test, marked `#[ignore]` so the
+workspace test jobs skip it. CI runs it in the "Classifier Eval (full set)"
+job, on pull requests that touch the generator, the classifier or the eval and
+on every push to `main`, and snapshots the summary: per-question accuracy,
+held-out accuracy, counts and the mismatch clusters (never one line per
+email). Run it locally only when you need to, because it takes a few minutes
+and a lot of CPU:
+
+```bash
+agent-work run -- scripts/cargo-test -p mxr --lib -- --ignored \
+  handler::tests::classify_eval_full::the_full_set_is_graded_on_the_whole_demo --nocapture
+```
+
+Accept a changed snapshot with `INSTA_UPDATE=always` on that run, and read the
+diff first: it is the list of answers your change moved.
+
+### Adding a scenario
+
+State the answer a person would want, not today's answer, and never shape a
+label to match what the code does. Put the reasoning in a `Review` if the
+label is a judgement call. Change `LABEL_SCHEMA_VERSION` when the questions
+themselves change. A new family needs a phrasing for each message position,
+at least two held-out phrasings in `held_out.rs`, and no date written into its
+text: write `{date}` or `{due}`, which come from the email's own date, because
+`bulk_dates_follow_the_seed_clock` fails a date that stays fixed.
 
 ## Running the daemon
 

@@ -481,6 +481,95 @@ async fn one_route_per_bucket_dispatches() {
 }
 
 // --------------------------------------------------------------------------
+// suite: compose recipient autocomplete
+
+fn sender_summary(email: &str, display_name: Option<&str>) -> mxr_protocol::SenderSummaryData {
+    mxr_protocol::SenderSummaryData {
+        account_id: AccountId::new(),
+        display_name: display_name.map(str::to_owned),
+        sender_email: email.to_owned(),
+        message_count: 1,
+        unread_count: 0,
+        latest_subject: "hello".into(),
+        latest_at: chrono::Utc::now(),
+    }
+}
+
+#[tokio::test]
+async fn contacts_autocomplete_matches_addresses_and_returns_typed_suggestions() {
+    let temp = TempDir::new().unwrap();
+    let socket = temp.path().join("mxr.sock");
+    let _server = spawn_fake(
+        &socket,
+        |request| match request {
+            // The client probes daemon status before each request.
+            Request::GetStatus => Some(Response::Ok {
+                data: ResponseData::Status {
+                    workspace_owner_supported: false,
+                    draft_revision_supported: true,
+                    send_outcome_supported: true,
+                    archive_recovery_supported: true,
+                    recovery_supported: false,
+                    recovery: None,
+                    attachment_transfer_supported: true,
+                    draft_attachment_upload_supported: true,
+                    uptime_secs: 1,
+                    accounts: vec![],
+                    total_messages: 0,
+                    daemon_pid: None,
+                    sync_statuses: vec![],
+                    protocol_version: IPC_PROTOCOL_VERSION,
+                    daemon_version: Some("0.5.0".into()),
+                    daemon_build_id: None,
+                    repair_required: false,
+                    semantic_runtime: None,
+                    feature_health: None,
+                    degraded: false,
+                },
+            }),
+            Request::ListSenders { .. } => Some(Response::Ok {
+                data: ResponseData::Senders {
+                    senders: vec![
+                        sender_summary("nora@foundry.example", Some("Nora Okafor")),
+                        sender_summary("bob@example.com", Some("   ")),
+                    ],
+                },
+            }),
+            _ => None,
+        },
+        vec![],
+    );
+    let addr = boot_bridge(socket).await;
+    let client = reqwest::Client::new();
+    let autocomplete = |q: &'static str| {
+        client
+            .get(format!(
+                "http://{addr}/api/v1/mail/contacts/autocomplete?q={q}"
+            ))
+            .bearer_auth(TEST_TOKEN)
+            .send()
+    };
+
+    // The query matches only the address, not the display name.
+    let response = autocomplete("foundry").await.unwrap();
+    assert_eq!(response.status(), 200);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "contacts": [{ "name": "Nora Okafor", "email": "nora@foundry.example" }]
+        })
+    );
+
+    // A blank display name is reported as absent, not as an empty string.
+    let json: serde_json::Value = autocomplete("bob").await.unwrap().json().await.unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({ "contacts": [{ "name": null, "email": "bob@example.com" }] })
+    );
+}
+
+// --------------------------------------------------------------------------
 // suite: legacy migration
 
 #[tokio::test]

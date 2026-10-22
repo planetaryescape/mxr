@@ -28,6 +28,7 @@ jobs:
       apps_web: ${{ steps.filter.outputs.apps_web }}
       docs: ${{ steps.filter.outputs.docs }}
       expensive: ${{ steps.filter.outputs.expensive }}
+      classifier: ${{ steps.filter.outputs.classifier }}
       rust_version: ${{ steps.rust-version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
@@ -206,6 +207,7 @@ jobs:
       # LLM tracing is a developer build (`--features langfuse`): keep it
       # working, and keep it out of the feature set release.yml ships.
       - run: cargo test -p mxr-llm --features langfuse --test trace_spans --locked
+      - run: cargo test -p mxr-assistant --features langfuse --lib --locked -- a_tool_span
       - name: Release builds carry no tracing code
         # The tree goes through a variable so a failing `cargo tree` fails the
         # step instead of reading as "no opentelemetry".
@@ -250,6 +252,36 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: cargo nextest run --workspace --features semantic-local
+
+  # Grades every email of the 50,000-message demo (`mxr classify eval --set
+  # full`) through the same post-sync work the daemon runs, and compares the
+  # per-question accuracy, the held-out accuracy and the mismatch clusters with
+  # the recorded snapshot. The test is `#[ignore]`d so the workspace test jobs
+  # skip it. It runs when a classifier, fixture, demo or eval crate changes
+  # (see scripts/ci_change_scope.sh) and on every push to main. Like the other
+  # heavy jobs it waits for a PR to leave draft.
+  classifier-eval:
+    name: Classifier Eval (full set)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    if: (needs.changes.outputs.classifier == 'true' || github.event_name == 'push') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
+      - name: Grade the full set
+        run: |
+          set -o pipefail
+          cargo test -p mxr --lib -- --ignored --exact handler::tests::classify_eval_full::the_full_set_is_graded_on_the_whole_demo --nocapture 2>&1 | tee classify-eval-full.log
+      - name: Upload the grading log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: classify-eval-full-log
+          path: classify-eval-full.log
+          retention-days: 3
 
   test-quality-audit:
     name: Test Quality Audit (non-blocking)
@@ -438,11 +470,18 @@ jobs:
       github.event_name != 'pull_request' &&
       (needs.changes.outputs.apps_web == 'true' || needs.changes.outputs.expensive == 'true')
     timeout-minutes: 15
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: sccache
     defaults:
       run:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
+      # This runner is the developer's Mac; keep the job off their toolchain.
+      - uses: ./.github/actions/self-hosted-rust-home
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.11
       - uses: actions/setup-node@v7
         with:
           node-version: 24

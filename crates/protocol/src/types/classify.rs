@@ -4,14 +4,19 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Which labelled set to measure. `Full` and `Mine` arrive with the full
-/// generator and with corrections (blueprint 32, build order 1 and 5).
+/// Which labelled set to measure. `Mine` arrives with corrections
+/// (blueprint 32, build order 5).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ClassifyEvalSetData {
+    /// The hand-written demo mail and the near-miss twins: the fast loop to
+    /// run after every change.
     #[default]
     Quick,
+    /// Every labelled email in the stored mail: on a demo, the hand-written
+    /// mail and all of the generated bulk, which CI grades before merge.
+    Full,
 }
 
 /// Accuracy on one question about an email.
@@ -46,6 +51,10 @@ pub struct ClassifyEvalMismatchData {
     /// The scenario this one is a near-miss twin of.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub twin_of: Option<String>,
+    /// The email is worded in a phrasing held out of what agents see while
+    /// changing a judge.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub held_out: bool,
     /// Why the label itself is a judgement call, when it is: a mismatch
     /// here may be the label's fault, not the classifier's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -73,6 +82,15 @@ pub struct ClassifyEvalSummaryData {
     /// Stored emails in scope that no scenario labels.
     pub unlabelled: u32,
     pub questions: Vec<ClassifyEvalQuestionData>,
+    /// Of the present emails, the ones worded in a held-out phrasing. A
+    /// judge that learned the generator, not the mail, scores worse here
+    /// than overall.
+    #[serde(default)]
+    pub held_out_present: u32,
+    /// Accuracy on the held-out emails alone, per question. Empty when the
+    /// set has none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub held_out_questions: Vec<ClassifyEvalQuestionData>,
     /// What `home` reads: the arrivals line's current-policy destination.
     pub home_projection: String,
     /// A plain sentence when there is nothing to measure.

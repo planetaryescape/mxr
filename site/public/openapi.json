@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.145"
+    "version": "0.6.147"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -2522,7 +2522,14 @@
         "operationId": "contacts_autocomplete",
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Known senders matching the query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactsAutocompleteResponse"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -11708,6 +11715,10 @@
           "expected": {
             "type": "string"
           },
+          "held_out": {
+            "type": "boolean",
+            "description": "The email is worded in a phrasing held out of what agents see while\nchanging a judge."
+          },
           "label_review": {
             "type": [
               "string",
@@ -11771,9 +11782,10 @@
       },
       "ClassifyEvalSetData": {
         "type": "string",
-        "description": "Which labelled set to measure. `Full` and `Mine` arrive with the full\ngenerator and with corrections (blueprint 32, build order 1 and 5).",
+        "description": "Which labelled set to measure. `Mine` arrives with corrections\n(blueprint 32, build order 5).",
         "enum": [
-          "quick"
+          "quick",
+          "full"
         ]
       },
       "ClassifyEvalSummaryData": {
@@ -11790,6 +11802,19 @@
           "home_projection"
         ],
         "properties": {
+          "held_out_present": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Of the present emails, the ones worded in a held-out phrasing. A\njudge that learned the generator, not the mail, scores worse here\nthan overall.",
+            "minimum": 0
+          },
+          "held_out_questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClassifyEvalQuestionData"
+            },
+            "description": "Accuracy on the held-out emails alone, per question. Empty when the\nset has none."
+          },
           "home_projection": {
             "type": "string",
             "description": "What `home` reads: the arrivals line's current-policy destination."
@@ -12689,6 +12714,38 @@
           },
           "source_hash": {
             "type": "string"
+          }
+        }
+      },
+      "ContactSuggestion": {
+        "type": "object",
+        "description": "One prefix-search hit. `name` is the sender's display name when the daemon\nhas a non-blank one; clients fall back to the address when it is `null`.",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ContactsAutocompleteResponse": {
+        "type": "object",
+        "required": [
+          "contacts"
+        ],
+        "properties": {
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactSuggestion"
+            }
           }
         }
       },

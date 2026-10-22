@@ -71,7 +71,14 @@ test("each person is one row with topics, a group is its own row, a cc is not he
   // The group is its own row (in whichever band), and the thread you were
   // only copied on is in no row at all.
   const data = all(await messages(page));
-  const groups = data.filter((candidate) => candidate.title === "Samir, Ruth");
+  // The demo's generated mail has threads Samir writes with Ruth copied on
+  // every message, which are groups of the same two people, so the seeded
+  // group is found by its topic as well as its members.
+  const groups = data.filter(
+    (candidate) =>
+      candidate.title === "Samir, Ruth" &&
+      candidate.topics.some((topic) => topic.subject === "Pricing copy"),
+  );
   expect(groups).toHaveLength(1);
   expect(groups[0]!.kind).toBe("group");
   expect(groups[0]!.id).toMatch(/^group:/);

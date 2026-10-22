@@ -124,20 +124,19 @@ export function updateComposeSession(input: {
   });
 }
 
-export interface ContactSuggestion {
-  email: string;
-  display_name?: string | null;
-}
+export type ContactSuggestion = components["schemas"]["ContactSuggestion"];
 
 export async function fetchContactsAutocomplete(
   q: string,
   limit = 8,
 ): Promise<ContactSuggestion[]> {
   const params = new URLSearchParams({ q, limit: String(limit) });
-  const data = await composeFetch<{ contacts?: ContactSuggestion[] }>(
+  const data = await composeFetch<components["schemas"]["ContactsAutocompleteResponse"]>(
     `/api/v1/mail/contacts/autocomplete?${params.toString()}`,
   );
-  return data.contacts ?? [];
+  // Drop rows without an address here, at the boundary, so the dropdown only
+  // ever receives suggestions it can list and filter.
+  return (data.contacts ?? []).filter((contact) => typeof contact.email === "string");
 }
 
 export interface ComposeSendResponse {

@@ -288,6 +288,7 @@ impl Builder {
             twin_of: scenario.twin_of,
             differs_by: scenario.differs_by,
             review: scenario.review,
+            held_out: false,
         });
     }
 }

@@ -65,7 +65,7 @@
     "clsx": "^2.1.1",
     "cmdk": "*",
     "codemirror": "*",
-    "dompurify": "^3.4.1",
+    "dompurify": "^3.4.17",
     "email-addresses": "^5.0.0",
     "linkifyjs": "^4.3.2",
     "lucide-react": "^0.577.0",

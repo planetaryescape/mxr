@@ -1,7 +1,11 @@
 //! `mxr classify eval`: today's classifier measured against labelled
-//! scenarios (blueprint 32, build order 1). Stored mail whose provider id
-//! and sender a scenario names is read back the way the product reads it,
-//! and each of four answers is compared with the label:
+//! scenarios (blueprint 32, build order 1). Stored mail that a scenario
+//! labels is read back the way the product reads it, and each of four
+//! answers is compared with the label. The quick set is the hand-written
+//! demo mail and the near-miss twins, named by provider id and sender; the
+//! full set is every labelled email in the store, which on a demo adds the
+//! generated bulk, labelled by where the generator put each email.
+//!
 //!
 //! * who: the mail kind the shared `describe` path gives (what `GetMessageKind`
 //!   and the arrivals line read), over the same sender signals placement uses,
@@ -36,6 +40,8 @@ const HOME_PROJECTION: &str = "arrivals line: where each email goes under today'
 const NO_LABELLED_MAIL: &str = "No labelled mail here; run mxr demo";
 /// An email to place live: its id, thread and whether it is in Spam.
 type Wanted = (MessageId, ThreadId, bool);
+/// Stored emails with the labels that grade them.
+type Present = Vec<(EvalCandidate, Labelled)>;
 
 const QUESTIONS: [&str; 4] = ["who", "home", "todo", "record"];
 
@@ -62,6 +68,10 @@ struct Home {
 struct Tally {
     evaluated: [u32; 4],
     correct: [u32; 4],
+    /// The same counts over the emails worded in a held-out phrasing.
+    held_out_evaluated: [u32; 4],
+    held_out_correct: [u32; 4],
+    held_out_present: u32,
     placed_live: u32,
     not_placed: u32,
 }
@@ -97,10 +107,13 @@ fn grade(
     tally: &mut Tally,
     mismatches: &mut Vec<ClassifyEvalMismatchData>,
 ) {
+    tally.held_out_present += u32::from(label.held_out);
     let mut check = |question: usize, expected: &str, got: &str, reason: &str| {
         tally.evaluated[question] += 1;
+        tally.held_out_evaluated[question] += u32::from(label.held_out);
         if expected == got {
             tally.correct[question] += 1;
+            tally.held_out_correct[question] += u32::from(label.held_out);
         } else {
             mismatches.push(ClassifyEvalMismatchData {
                 scenario: label.scenario.to_string(),
@@ -110,6 +123,7 @@ fn grade(
                 actual: got.to_string(),
                 reason: reason.to_string(),
                 twin_of: label.twin_of.map(str::to_string),
+                held_out: label.held_out,
                 label_review: label
                     .review
                     .filter(|review| review.questions.contains(&QUESTIONS[question]))
@@ -154,14 +168,28 @@ fn sort_mismatches(mismatches: &mut [ClassifyEvalMismatchData]) {
     });
 }
 
+fn accuracy(question: &str, evaluated: u32, correct: u32) -> ClassifyEvalQuestionData {
+    ClassifyEvalQuestionData {
+        question: question.to_string(),
+        evaluated,
+        correct,
+        accuracy_percent: if evaluated == 0 {
+            0.0
+        } else {
+            (f64::from(correct) / f64::from(evaluated) * 1000.0).round() / 10.0
+        },
+    }
+}
+
 fn summarise(
+    set: ClassifyEvalSetData,
     labelled_in_set: u32,
     present: u32,
     unlabelled: u32,
     tally: &Tally,
 ) -> ClassifyEvalSummaryData {
     ClassifyEvalSummaryData {
-        set: ClassifyEvalSetData::Quick,
+        set,
         label_schema_version: LABEL_SCHEMA_VERSION,
         labelled_in_set,
         present,
@@ -172,21 +200,83 @@ fn summarise(
             .iter()
             .enumerate()
             .map(|(index, question)| {
-                let (evaluated, correct) = (tally.evaluated[index], tally.correct[index]);
-                ClassifyEvalQuestionData {
-                    question: (*question).to_string(),
-                    evaluated,
-                    correct,
-                    accuracy_percent: if evaluated == 0 {
-                        0.0
-                    } else {
-                        (f64::from(correct) / f64::from(evaluated) * 1000.0).round() / 10.0
-                    },
-                }
+                accuracy(question, tally.evaluated[index], tally.correct[index])
             })
             .collect(),
+        held_out_present: tally.held_out_present,
+        held_out_questions: if tally.held_out_present == 0 {
+            Vec::new()
+        } else {
+            QUESTIONS
+                .iter()
+                .enumerate()
+                .map(|(index, question)| {
+                    accuracy(
+                        question,
+                        tally.held_out_evaluated[index],
+                        tally.held_out_correct[index],
+                    )
+                })
+                .collect()
+        },
         home_projection: HOME_PROJECTION.to_string(),
         message: (present == 0).then(|| NO_LABELLED_MAIL.to_string()),
+    }
+}
+
+/// The stored emails a set labels, with their labels.
+async fn labelled_mail(
+    state: &AppState,
+    accounts: &[AccountId],
+    set: ClassifyEvalSetData,
+) -> Result<(Present, u32), HandlerError> {
+    match set {
+        ClassifyEvalSetData::Quick => {
+            let labels: Vec<&Labelled> = scenarios::quick_set().collect();
+            let provider_ids: Vec<&str> = labels.iter().map(|l| l.provider_id.as_str()).collect();
+            // Both demo accounts number their mail from 1 and reuse some of
+            // the same people, and a smaller demo numbers its fillers
+            // differently, so only the scenario account's email from the
+            // scenario's sender is the email the label means.
+            let scenario_account = scenarios::account_id();
+            let present = state
+                .store
+                .classify_eval_candidates(accounts, &provider_ids)
+                .await?
+                .into_iter()
+                .filter(|candidate| candidate.account_id == scenario_account)
+                .filter_map(|candidate| {
+                    let label = scenarios::expectation_for(&candidate.provider_id)?;
+                    label
+                        .from_email
+                        .eq_ignore_ascii_case(&candidate.from_email)
+                        .then(|| (candidate, label.clone()))
+                })
+                .collect();
+            Ok((present, u32::try_from(labels.len()).unwrap_or(u32::MAX)))
+        }
+        ClassifyEvalSetData::Full => {
+            // Every stored email of a demo account that the generator or the
+            // quick set labels. The set is whatever the store holds, so its
+            // size is the number found.
+            let present: Present = state
+                .store
+                .classify_eval_all_candidates(accounts)
+                .await?
+                .into_iter()
+                .filter_map(|candidate| {
+                    let label = scenarios::full_label_for(
+                        &candidate.account_id,
+                        &candidate.provider_id,
+                        &candidate.thread_id,
+                        &candidate.from_email,
+                    )?;
+                    Some((candidate, label))
+                })
+                .collect();
+            let labelled = u32::try_from(present.len()).unwrap_or(u32::MAX);
+            Ok((present, labelled))
+        }
     }
 }
 
@@ -195,35 +285,12 @@ pub(super) async fn classify_eval(
     account_id: Option<&AccountId>,
     set: ClassifyEvalSetData,
 ) -> HandlerResult {
-    let ClassifyEvalSetData::Quick = set;
     let accounts: Vec<AccountId> = account_id.cloned().into_iter().collect();
-    let labels: Vec<&Labelled> = scenarios::quick_set().collect();
-    let provider_ids: Vec<&str> = labels.iter().map(|l| l.provider_id.as_str()).collect();
-
-    // Both demo accounts number their mail from 1 and reuse some of the same
-    // people, and a smaller demo numbers its fillers differently, so only
-    // the scenario account's email from the scenario's sender is the email
-    // the label means.
-    let scenario_account = scenarios::account_id();
-    let present: Vec<_> = state
-        .store
-        .classify_eval_candidates(&accounts, &provider_ids)
-        .await?
-        .into_iter()
-        .filter(|candidate| candidate.account_id == scenario_account)
-        .filter_map(|candidate| {
-            let label = scenarios::expectation_for(&candidate.provider_id)?;
-            label
-                .from_email
-                .eq_ignore_ascii_case(&candidate.from_email)
-                .then_some((candidate, label))
-        })
-        .collect();
+    let (present, labelled_in_set) = labelled_mail(state, &accounts, set).await?;
     let total = state.store.classify_eval_message_count(&accounts).await?;
-    let labelled_in_set = u32::try_from(labels.len()).unwrap_or(u32::MAX);
     if present.is_empty() {
         return Ok(ResponseData::ClassifyEval {
-            summary: summarise(labelled_in_set, 0, total, &Tally::default()),
+            summary: summarise(set, labelled_in_set, 0, total, &Tally::default()),
             mismatches: Vec::new(),
         });
     }
@@ -259,7 +326,7 @@ pub(super) async fn classify_eval(
     }
     sort_mismatches(&mut mismatches);
     Ok(ResponseData::ClassifyEval {
-        summary: summarise(labelled_in_set, present_count, unlabelled, &tally),
+        summary: summarise(set, labelled_in_set, present_count, unlabelled, &tally),
         mismatches,
     })
 }
@@ -268,7 +335,7 @@ pub(super) async fn classify_eval(
 /// placement reads: the thread, the sender's history, your choices.
 async fn mail_kinds(
     state: &AppState,
-    present: &[(EvalCandidate, &Labelled)],
+    present: &[(EvalCandidate, Labelled)],
 ) -> Result<HashMap<MessageId, (SenderKindData, String)>, HandlerError> {
     let mut by_account: BTreeMap<String, (AccountId, Vec<&EvalCandidate>)> = BTreeMap::new();
     for (candidate, _) in present {
@@ -294,8 +361,11 @@ async fn mail_kinds(
         }
         let senders = Senders::load(state, &account_id, &messages).await?;
         let is_self = self_matcher(state, &account_id).await?;
+        // Looked up once per email: a scan per email is quadratic on a demo
+        // of tens of thousands.
+        let by_id: HashMap<&MessageId, _> = messages.iter().map(|m| (&m.id, m)).collect();
         for candidate in candidates {
-            let Some(message) = messages.iter().find(|m| m.id == candidate.message_id) else {
+            let Some(message) = by_id.get(&candidate.message_id) else {
                 continue;
             };
             let described = mail_kind::describe(&senders.signals(message, &is_self));
@@ -312,7 +382,7 @@ async fn mail_kinds(
 /// else placed live. An email whose home cannot be worked out is absent.
 async fn current_homes(
     state: &AppState,
-    present: &[(EvalCandidate, &Labelled)],
+    present: &[(EvalCandidate, Labelled)],
 ) -> Result<HashMap<MessageId, Home>, HandlerError> {
     // The same gate the arrivals line reads under, so a rule edit cannot
     // land between rows.
@@ -380,6 +450,7 @@ mod tests {
             twin_of: Some("t"),
             differs_by: "x",
             review: None,
+            held_out: false,
         }
     }
 
@@ -532,6 +603,7 @@ mod tests {
             actual: String::new(),
             reason: String::new(),
             twin_of: None,
+            held_out: false,
             label_review: None,
         };
         let sorted = vec![
@@ -556,7 +628,7 @@ mod tests {
             correct: [2, 0, 3, 0],
             ..Tally::default()
         };
-        let summary = summarise(10, 3, 5, &tally);
+        let summary = summarise(ClassifyEvalSetData::Quick, 10, 3, 5, &tally);
         let accuracy: Vec<f64> = summary
             .questions
             .iter()
@@ -564,8 +636,57 @@ mod tests {
             .collect();
         assert_eq!(accuracy, [66.7, 0.0, 100.0, 0.0]);
         assert_eq!(summary.message, None);
-        let empty = summarise(10, 0, 5, &Tally::default());
+        let empty = summarise(ClassifyEvalSetData::Quick, 10, 0, 5, &Tally::default());
         assert_eq!(empty.message.as_deref(), Some(NO_LABELLED_MAIL));
+    }
+
+    #[test]
+    fn a_held_out_email_is_counted_apart_and_its_mismatches_are_flagged() {
+        let held_out = Labelled {
+            held_out: true,
+            ..label(EXPECT)
+        };
+        let wrong_record = Actual {
+            record: false,
+            ..right()
+        };
+        let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
+        grade(&held_out, &wrong_record, &mut tally, &mut mismatches);
+        // An ordinary email beside it, answered right.
+        grade(&label(EXPECT), &right(), &mut tally, &mut mismatches);
+
+        assert_eq!(tally.held_out_present, 1);
+        assert_eq!(tally.held_out_evaluated, [1; 4]);
+        assert_eq!(tally.held_out_correct, [1, 1, 1, 0]);
+        assert_eq!(tally.evaluated, [2; 4]);
+        assert_eq!(tally.correct, [2, 2, 2, 1]);
+        assert_eq!(mismatches.len(), 1);
+        assert!(mismatches[0].held_out);
+
+        let summary = summarise(ClassifyEvalSetData::Full, 2, 2, 0, &tally);
+        assert_eq!(summary.set, ClassifyEvalSetData::Full);
+        assert_eq!(summary.held_out_present, 1);
+        let held: Vec<f64> = summary
+            .held_out_questions
+            .iter()
+            .map(|q| q.accuracy_percent)
+            .collect();
+        assert_eq!(held, [100.0, 100.0, 100.0, 0.0]);
+        let all: Vec<f64> = summary
+            .questions
+            .iter()
+            .map(|q| q.accuracy_percent)
+            .collect();
+        assert_eq!(all, [100.0, 100.0, 100.0, 50.0]);
+    }
+
+    #[test]
+    fn a_set_with_nothing_held_out_reports_no_held_out_line() {
+        let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
+        grade(&label(EXPECT), &right(), &mut tally, &mut mismatches);
+        let summary = summarise(ClassifyEvalSetData::Quick, 1, 1, 0, &tally);
+        assert_eq!(summary.held_out_present, 0);
+        assert!(summary.held_out_questions.is_empty());
     }
 
     #[test]

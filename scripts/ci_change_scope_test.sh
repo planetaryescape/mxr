@@ -20,10 +20,12 @@ reset_fixture() {
 assert_scope() {
   local event_name="$1" base="$2" head="$3"
   local expected_rust="$4" expected_web="$5" expected_apps_web="$6" expected_docs="$7" expected_expensive="$8"
+  local expected_classifier="${9:-false}"
   local expected actual
 
-  expected="$(printf 'rust=%s\nweb=%s\napps_web=%s\ndocs=%s\nexpensive=%s' \
-    "$expected_rust" "$expected_web" "$expected_apps_web" "$expected_docs" "$expected_expensive")"
+  expected="$(printf 'rust=%s\nweb=%s\napps_web=%s\ndocs=%s\nexpensive=%s\nclassifier=%s' \
+    "$expected_rust" "$expected_web" "$expected_apps_web" "$expected_docs" "$expected_expensive" \
+    "$expected_classifier")"
   actual="$(bash scripts/ci_change_scope.sh "$event_name" "$base" "$head")"
   if [[ "$actual" != "$expected" ]]; then
     printf 'unexpected scope for %s %s %s\nexpected:\n%s\nactual:\n%s\n' \
@@ -37,13 +39,15 @@ cd "$tmp/repo"
 git init -q
 git config user.email ci@example.test
 git config user.name 'CI test'
-mkdir -p scripts src apps/web/src crates/web/src crates/protocol/src site .github/workflows
+mkdir -p scripts src apps/web/src crates/web/src crates/protocol/src crates/provider-fake/src \
+  crates/daemon/src crates/tui/src crates/config/src crates/llm/src site .github/workflows
 cp "$root/scripts/ci_change_scope.sh" scripts/ci_change_scope.sh
 cp "$root/scripts/ci_change_scope_test.sh" scripts/ci_change_scope_test.sh
 cp "$root/scripts/ci_workflow_test.sh" scripts/ci_workflow_test.sh
 touch .github/workflows/ci.yml .github/workflows/openapi-conformance.yml \
   .github/workflows/release.yml src/main.rs apps/web/src/app.ts crates/web/src/lib.rs \
-  crates/protocol/src/lib.rs site/index.md
+  crates/protocol/src/lib.rs crates/provider-fake/src/lib.rs crates/daemon/src/lib.rs \
+  crates/tui/src/lib.rs crates/config/src/lib.rs crates/llm/src/lib.rs Cargo.toml site/index.md
 commit_all baseline
 baseline="$(git rev-parse HEAD)"
 
@@ -59,7 +63,28 @@ assert_scope push "$baseline" HEAD false true true false false
 reset_fixture
 echo protocol >crates/protocol/src/lib.rs
 commit_all 'protocol change'
-assert_scope pull_request "$baseline" HEAD true true false false false
+assert_scope pull_request "$baseline" HEAD true true false false false true
+
+# The full-set classifier eval runs for the crates that generate, classify
+# and grade mail, and not for a UI crate.
+for classifier_path in crates/provider-fake/src/lib.rs crates/daemon/src/lib.rs crates/config/src/lib.rs crates/llm/src/lib.rs; do
+  reset_fixture
+  echo change >"$classifier_path"
+  commit_all "classifier path $classifier_path"
+  assert_scope pull_request "$baseline" HEAD true false false false false true
+done
+
+# The root manifest is the daemon crate's and the workspace's dependency
+# manifest, so a dependency or feature change there can move an answer.
+reset_fixture
+echo change >Cargo.toml
+commit_all 'root manifest change'
+assert_scope pull_request "$baseline" HEAD true false false false false true
+
+reset_fixture
+echo tui >crates/tui/src/lib.rs
+commit_all 'tui change'
+assert_scope pull_request "$baseline" HEAD true false false false false false
 
 reset_fixture
 echo web >crates/web/src/lib.rs
@@ -100,18 +125,18 @@ for workflow_file in .github/workflows/ci.yml .github/workflows/openapi-conforma
   reset_fixture
   echo workflow >"$workflow_file"
   commit_all "workflow change $workflow_file"
-  assert_scope push "$baseline" HEAD true true false true false
+  assert_scope push "$baseline" HEAD true true false true false true
 done
 
 reset_fixture
-printf '\n# classifier change\n' >>scripts/ci_change_scope.sh
-commit_all 'classifier change'
-assert_scope push "$baseline" HEAD true true false true false
+printf '\n# scope script change\n' >>scripts/ci_change_scope.sh
+commit_all 'scope script change'
+assert_scope push "$baseline" HEAD true true false true false true
 
 reset_fixture
 printf '\n# workflow test change\n' >>scripts/ci_workflow_test.sh
 commit_all 'workflow test change'
-assert_scope push "$baseline" HEAD true true false true false
+assert_scope push "$baseline" HEAD true true false true false true
 
 reset_fixture
 echo rust >src/main.rs
@@ -140,9 +165,9 @@ commit_all 'path with spaces'
 assert_scope push "$baseline" HEAD false true true false false
 
 reset_fixture
-assert_scope push '' HEAD true true true true false
-assert_scope push 0000000000000000000000000000000000000000 HEAD true true true true false
-assert_scope workflow_dispatch '' '' true true true true true
+assert_scope push '' HEAD true true true true false true
+assert_scope push 0000000000000000000000000000000000000000 HEAD true true true true false true
+assert_scope workflow_dispatch '' '' true true true true true true
 
 if bash scripts/ci_change_scope.sh push invalid-ref HEAD >/dev/null 2>&1; then
   echo 'invalid base ref must fail' >&2

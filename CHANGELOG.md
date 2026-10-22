@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.6.147](https://github.com/planetaryescape/mxr/compare/v0.6.146...v0.6.147) (2026-10-22)
+
+
+### Bug Fixes
+
+* suggest contacts in To without crashing compose ([#641](https://github.com/planetaryescape/mxr/issues/641)) ([dc271b1](https://github.com/planetaryescape/mxr/commit/dc271b1b77743d4736c7c4cb5feaf168f1635d5e))
+
+## [0.6.146](https://github.com/planetaryescape/mxr/compare/v0.6.145...v0.6.146) (2026-10-22)
+
+
+### Features
+
+* grade all 50,000 demo emails with mxr classify eval --set full ([#638](https://github.com/planetaryescape/mxr/issues/638)) ([a258c9d](https://github.com/planetaryescape/mxr/commit/a258c9de7731c22ce70355f166e45a4b0aaa38b7))
+
+
+### Bug Fixes
+
+* keep CI's WebKit job on the Mac runner off the developer's toolchain ([#644](https://github.com/planetaryescape/mxr/issues/644)) ([36e3b47](https://github.com/planetaryescape/mxr/commit/36e3b47db68b1a84c8dd46dc83f78108183c4d15))
+* show each TUI mode's own verbs, and dispatch its keys from the key definition ([#639](https://github.com/planetaryescape/mxr/issues/639)) ([4a9e838](https://github.com/planetaryescape/mxr/commit/4a9e838a1bf85f8ced6e92dc3cc212324f457dac))
+
+
+### Refactoring
+
+* read web shortcuts from the key definition ([#633](https://github.com/planetaryescape/mxr/issues/633)) ([8cb0388](https://github.com/planetaryescape/mxr/commit/8cb038890090e2dc74bc63341f68167e31e1a363))
+
+
+### Documentation
+
+* design the What-it-asks judge as blueprint chapter 37 ([b1a208a](https://github.com/planetaryescape/mxr/commit/b1a208a20834b9e9f4f7ce552bc80f6bb2cf1db5))
+
 ## [0.6.145](https://github.com/planetaryescape/mxr/compare/v0.6.144...v0.6.145) (2026-10-22)
 
 

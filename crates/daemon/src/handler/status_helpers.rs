@@ -211,6 +211,12 @@ pub(super) async fn collect_doctor_report(
         data_stats: &data_stats,
     });
 
+    #[cfg(feature = "langfuse")]
+    let findings: Vec<_> = findings
+        .into_iter()
+        .chain(crate::llm_tracing::doctor_finding())
+        .collect();
+
     let healthy = data_dir_exists
         && database_exists
         && index_exists

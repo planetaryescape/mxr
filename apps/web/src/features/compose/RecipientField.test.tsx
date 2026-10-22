@@ -68,7 +68,7 @@ describe("RecipientField", () => {
   test("exposes combobox semantics with an active descendant while open", async () => {
     renderField();
     api.fetchContactsAutocomplete.mockResolvedValue([
-      { email: "suggested@example.com", display_name: "Suggested Person" },
+      { email: "suggested@example.com", name: "Suggested Person" },
     ]);
 
     const input = screen.getByRole("combobox", { name: "To" });
@@ -80,5 +80,37 @@ describe("RecipientField", () => {
     const option = await screen.findByRole("option", { name: /suggested person/i });
     expect(input).toHaveAttribute("aria-expanded", "true");
     expect(input).toHaveAttribute("aria-activedescendant", option.id);
+  });
+
+  test("picking a suggestion adds its address as a chip", async () => {
+    renderField();
+    api.fetchContactsAutocomplete.mockResolvedValue([
+      { email: "nora@foundry.example", name: "Nora Okafor" },
+    ]);
+
+    const input = screen.getByRole("combobox", { name: "To" });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "nor" } });
+
+    fireEvent.mouseDown(await screen.findByRole("option", { name: /nora okafor/i }));
+
+    expect(screen.getByText("nora@foundry.example")).toBeVisible();
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+  });
+
+  test("hides a suggestion whose address is already a chip", async () => {
+    renderField("nora@foundry.example");
+    api.fetchContactsAutocomplete.mockResolvedValue([
+      { email: "nora@foundry.example", name: "Nora Okafor" },
+      { email: "nora.bello@foundry.example", name: "Nora Bello" },
+    ]);
+
+    const input = screen.getByRole("combobox", { name: "To" });
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "nor" } });
+
+    const options = await screen.findAllByRole("option");
+    expect(options).toHaveLength(1);
+    expect(options[0]).toHaveTextContent("Nora Bello");
   });
 });

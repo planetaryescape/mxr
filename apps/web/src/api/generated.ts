@@ -5757,6 +5757,11 @@ export interface components {
             actual: string;
             expected: string;
             /**
+             * @description The email is worded in a phrasing held out of what agents see while
+             *     changing a judge.
+             */
+            held_out?: boolean;
+            /**
              * @description Why the label itself is a judgement call, when it is: a mismatch
              *     here may be the label's fault, not the classifier's.
              */
@@ -5792,12 +5797,24 @@ export interface components {
             question: string;
         };
         /**
-         * @description Which labelled set to measure. `Full` and `Mine` arrive with the full
-         *     generator and with corrections (blueprint 32, build order 1 and 5).
+         * @description Which labelled set to measure. `Mine` arrives with corrections
+         *     (blueprint 32, build order 5).
          * @enum {string}
          */
-        ClassifyEvalSetData: "quick";
+        ClassifyEvalSetData: "quick" | "full";
         ClassifyEvalSummaryData: {
+            /**
+             * Format: int32
+             * @description Of the present emails, the ones worded in a held-out phrasing. A
+             *     judge that learned the generator, not the mail, scores worse here
+             *     than overall.
+             */
+            held_out_present?: number;
+            /**
+             * @description Accuracy on the held-out emails alone, per question. Empty when the
+             *     set has none.
+             */
+            held_out_questions?: components["schemas"]["ClassifyEvalQuestionData"][];
             /** @description What `home` reads: the arrivals line's current-policy destination. */
             home_projection: string;
             /**
@@ -6104,6 +6121,17 @@ export interface components {
             /** Format: int32 */
             msg_count_used_theirs: number;
             source_hash: string;
+        };
+        /**
+         * @description One prefix-search hit. `name` is the sender's display name when the daemon
+         *     has a non-blank one; clients fall back to the address when it is `null`.
+         */
+        ContactSuggestion: {
+            email: string;
+            name?: string | null;
+        };
+        ContactsAutocompleteResponse: {
+            contacts: components["schemas"]["ContactSuggestion"][];
         };
         ConversationAttachmentData: {
             attachment_id: components["schemas"]["AttachmentId"];
@@ -18005,12 +18033,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Known senders matching the query */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ContactsAutocompleteResponse"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

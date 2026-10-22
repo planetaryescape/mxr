@@ -1,6 +1,6 @@
 # Typing a known contact in To crashes the web app
 
-**Status:** open · **Found:** 2026-10-22 on `origin/main` b3717dbf2
+**Status:** fixed in 6ed543b81 · **Found:** 2026-10-22 on `origin/main` b3717dbf2
 (v0.6.142), reproduced on the v0.6.140 release against the demo mailbox ·
 **Severity:** high: compose is unusable once a suggestion matches
 

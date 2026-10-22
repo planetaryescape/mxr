@@ -115,6 +115,12 @@ pub(crate) struct OpenAiToolChatBody<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<&'static str>,
     pub stream: bool,
+    /// Asks a stream to end with a usage chunk, which the trace records.
+    /// Only tracing builds send it, so a shipped build's request is as it
+    /// always was.
+    #[cfg(feature = "langfuse")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_options: Option<Value>,
 }
 
 /// How OpenAI's own API differs from other chat-completions servers.
@@ -200,6 +206,8 @@ pub(crate) fn openai_body<'a>(
         max_completion_tokens: req.max_tokens.filter(|_| completion_token_cap),
         reasoning_effort: dialect.no_reasoning.then_some("none"),
         stream: false,
+        #[cfg(feature = "langfuse")]
+        stream_options: None,
     }
 }
 
@@ -225,6 +233,26 @@ pub(crate) struct OpenAiToolMessage {
     pub content: Option<String>,
     #[serde(default)]
     pub tool_calls: Vec<OpenAiWireToolCall>,
+    #[cfg(feature = "langfuse")]
+    #[serde(default)]
+    pub reasoning: Option<String>,
+    #[cfg(feature = "langfuse")]
+    #[serde(default)]
+    pub reasoning_content: Option<String>,
+}
+
+#[cfg(feature = "langfuse")]
+impl OpenAiToolChatReply {
+    /// The reply's thinking, for the trace. Ollama calls it `reasoning`,
+    /// DeepSeek-style servers `reasoning_content`.
+    pub(crate) fn thinking(&self) -> Option<String> {
+        let message = &self.choices.first()?.message;
+        [&message.reasoning, &message.reasoning_content]
+            .into_iter()
+            .flatten()
+            .find(|text| !text.trim().is_empty())
+            .cloned()
+    }
 }
 
 #[derive(Deserialize)]

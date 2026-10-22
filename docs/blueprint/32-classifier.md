@@ -675,8 +675,8 @@ The quick set (about 2,000 emails: every near-miss twin, every attention
 timeline, and a seeded sample of ordinary cases) is what agents run after
 every change. The full set (all 50,000) runs in CI before merge. The demo
 stays at 50,000 for performance work. R1b built the full set and measured
-it: the demo's mail builds and is classified in about two and a half
-minutes in-process and grades in about twenty seconds. The quick set is
+it: the demo's mail builds and is classified in about two and a half to four
+minutes in-process and grades in twenty to thirty-five seconds. The quick set is
 still the 147 emails of the curated fixtures and the twins; growing it to
 about 2,000 is a follow-up
 ([docs/issues/classify-quick-set-expansion.md](../issues/classify-quick-set-expansion.md)).
@@ -891,37 +891,31 @@ is the record. It is deterministic: two runs gave identical figures.
 
 | Question | Right | Of | Accuracy | Held-out accuracy | Quick set |
 |---|---|---|---|---|---|
-| Who sent it | 31,100 | 38,747 | 80.3% | 78.0% (8,674 of 11,115) | 89.1% |
-| Home | 31,980 | 38,747 | 82.5% | 79.6% (8,850 of 11,115) | 89.8% |
+| Who sent it | 35,791 | 38,747 | 92.4% | 90.3% (10,032 of 11,115) | 89.1% |
+| Home | 36,671 | 38,747 | 94.6% | 91.8% (10,208 of 11,115) | 89.8% |
 | To-do aspect | 38,654 | 38,747 | 99.8% | 99.9% (11,099 of 11,115) | 98.0% |
 | Record aspect | 35,588 | 38,747 | 91.8% | 85.3% (9,483 of 11,115) | 96.6% |
 
-17,666 answers are wrong, in 57 clusters of the same scenario, question,
+8,284 answers are wrong, in 41 clusters of the same scenario, question,
 expected and actual answer. The biggest:
 
-- Machine mail read as a person: 7,647 emails wrong on who and 6,767 on home
-  (the other 880 are spam, whose home the provider's Spam folder decides).
-  Every home miss is Updates mail placed in Messages. Most are the later
-  emails of a machine's thread: a payment received, a statement ready, a
-  price change, a schedule change, a survey. The rule that decides them is
-  "authored reply in existing correspondence". The generator links each
-  follow-up to the email before it with `In-Reply-To`, and a store, biller or
-  airline rarely does. The first email of an order or a bill is right. On a
-  6,000-message demo (4,665 graded emails), a temporary change that dropped
-  that header from the machine families moved who from 80.5% to 91.9% and
-  home from 82.7% to 94.2%, so a large part of this cluster is the mail's
-  threading, not the sender. The rest (booking confirmations, spam, the
-  phishing lookalike) are "possible personal mail; no decisive list or
-  automation evidence", the quick set's gap again: a sender with no
-  automation cue in the address. The generated machine mail also carries no
-  headers beyond List-Unsubscribe (no Auto-Submitted, Precedence, List-Id or
-  Authentication-Results), so the classifier has little to go on.
 - Records not filed: 2,806 emails. Of 938 text-only order confirmations, 310
   are not filed; of 938 dispatch emails 615, and all 703 delivery emails. 465
   of 1,405 booking confirmations are missed, every one of them in a held-out
   phrasing, and 314 of 468 bills and 161 of 468 payments received. The
   generated mail has no schema.org markup, which the curated order
   confirmations do.
+- Machine mail read as a person: 2,956 emails wrong on who and 2,076 on home
+  (the other 880 are spam, whose home the provider's Spam folder decides).
+  Every home miss is Updates mail placed in Messages. All of it is "possible
+  personal mail; no decisive list or automation evidence": the travel
+  senders (1,625: bookings, payments, reminders, changes, surveys), the
+  phishing lookalike (441), spam (880) and a few curated senders such as
+  Disney+ and the council. The quick set's gap again: a sender with no
+  automation cue in the address. The generated machine mail carries only
+  List-Unsubscribe, where real mail carries more automation headers; that
+  is a classifier-signal decision of its own
+  ([docs/issues/generated-machine-mail-headers.md](../issues/generated-machine-mail-headers.md)).
 - Records filed that should not be: 353 emails, 289 of them trip reminders
   (178) and schedule changes (111) that name the booking. Whether those join
   a trip's record is a judgement call and the labels say so.
@@ -929,8 +923,13 @@ expected and actual answer. The biggest:
   requests with a date, 44 of 46 bills, and the failed payout). To-do
   accuracy is 99.8% because live asks are 0.3% of the set.
 
-The held-out phrasings score lower on who (78.0% against 80.3%), home
-(79.6% against 82.5%) and record (85.3% against 91.8%). The classifier was not
+The first full run, before the generator stopped linking machine follow-ups
+to the message before them with `In-Reply-To`, scored who 80.3% and home
+82.5%: today's classifier reads that header as an authored reply, and a
+receipt or booking sender does not send it. Everything else was identical.
+
+The held-out phrasings score lower on who (90.3% against 92.4%), home
+(91.8% against 94.6%) and record (85.3% against 91.8%). The classifier was not
 changed for any phrasing, so the gap is how much of today's recall depends
 on wording.
 

@@ -1,15 +1,26 @@
 import { Action, ActionPanel, Color, Icon, List, Keyboard } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
+import { useState } from "react";
 import { getUpdates, letGoDigest, markDone } from "./bridge/modes";
 import type { UpdateLine, UpdatesDigest } from "./bridge/types";
+import { AccountDropdown } from "./components/AccountDropdown";
+import { useAccountBadge } from "./components/accountBadge";
+import { useLiveRefresh } from "./components/live";
+import { SearchSection, useMailSearch } from "./components/MailRow";
+import { ReadAction } from "./components/ThreadDetail";
 import { itemErrors, runPreviewed } from "./components/previewed";
+import { arrival } from "./components/time";
 import { useWebBase, web } from "./components/web";
 
 export default function Updates() {
-  const { data, isLoading, revalidate } = useCachedPromise(getUpdates, [], {
+  const [account, setAccount] = useState<string>();
+  const { data, isLoading, revalidate } = useCachedPromise(getUpdates, [account], {
     keepPreviousData: true,
   });
   const webBase = useWebBase();
+  const search = useMailSearch(account);
+  const shown = (lines: UpdateLine[] | undefined) =>
+    (lines ?? []).filter((line) => search.keep(line.source_name, line.fact));
 
   const letGo = (digest: UpdatesDigest) =>
     runPreviewed({
@@ -31,11 +42,30 @@ export default function Updates() {
       title={line.source_name}
       subtitle={line.fact}
       accessories={[
+        ...(line.code
+          ? [{ tag: { value: line.code, color: Color.Green }, tooltip: "One-time code" }]
+          : []),
+        ...badge(line.account_id),
         ...(line.count > 1 ? [{ text: `${line.count}` }] : []),
-        { date: new Date(line.latest_at) },
+        arrival(line.latest_at),
       ]}
       actions={
         <ActionPanel>
+          {line.code && (
+            <Action.CopyToClipboard
+              title="Copy Code"
+              icon={Icon.Key}
+              content={line.code}
+              concealed
+            />
+          )}
+          {line.latest_thread_id && (
+            <ReadAction
+              threadId={line.latest_thread_id}
+              webPath={web.thread("updates", line.latest_thread_id)}
+              onChange={revalidate}
+            />
+          )}
           {webBase && (
             <Action.OpenInBrowser
               title="Open in mxr"
@@ -77,19 +107,30 @@ export default function Updates() {
       }
     />
   );
+  const badge = useAccountBadge(account);
+  useLiveRefresh(revalidate);
 
   return (
     <List
-      isLoading={isLoading}
+      isLoading={isLoading || search.isLoading}
       navigationTitle={data?.header ?? "Updates"}
-      searchBarPlaceholder="Filter updates"
+      searchBarPlaceholder="Filter updates and search all mail"
+      searchBarAccessory={<AccountDropdown onChange={setAccount} />}
+      {...search.listProps}
     >
-      {data?.empty_state && <List.EmptyView icon={Icon.Bell} title={data.empty_state} />}
+      {data?.empty_state && !search.searching && (
+        <List.EmptyView icon={Icon.Bell} title={data.empty_state} />
+      )}
       <List.Section title="Needs a Look" subtitle={data?.headline}>
-        {data?.needs_a_look.map((line) => item(line, true))}
+        {shown(data?.needs_a_look).map((line) => item(line, true))}
       </List.Section>
-      <List.Section title="Changed">{data?.changed.map((line) => item(line, false))}</List.Section>
-      <List.Section title="Routine">{data?.routine.map((line) => item(line, false))}</List.Section>
+      <List.Section title="Changed">
+        {shown(data?.changed).map((line) => item(line, false))}
+      </List.Section>
+      <List.Section title="Routine">
+        {shown(data?.routine).map((line) => item(line, false))}
+      </List.Section>
+      <SearchSection search={search} badge={badge} onChange={revalidate} />
     </List>
   );
 }

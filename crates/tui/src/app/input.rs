@@ -397,6 +397,13 @@ impl App {
             return Some(Action::DumpActionTrace);
         }
 
+        // Ctrl-z suspends the TUI, as in every terminal program (blueprint
+        // 35). A global modifier chord, so it wins over text fields too.
+        if cfg!(unix) && key.code == KeyCode::Char('z') && key.modifiers == KeyModifiers::CONTROL {
+            self.pending_suspend = true;
+            return None;
+        }
+
         if self.modals.error.is_some() {
             return match (key.code, key.modifiers) {
                 (KeyCode::Char('j') | KeyCode::Down, _) => {

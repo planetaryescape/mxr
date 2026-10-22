@@ -22,6 +22,17 @@ pub(crate) fn restore() {
     ratatui::restore();
 }
 
+/// Stop the process, as the shell's Ctrl-z would. Raw mode turns Ctrl-z
+/// into a key, so the TUI raises SIGTSTP itself; the call returns when the
+/// shell resumes the process with SIGCONT.
+#[cfg(unix)]
+pub(crate) fn suspend_process() {
+    let _ = nix::sys::signal::raise(nix::sys::signal::Signal::SIGTSTP);
+}
+
+#[cfg(not(unix))]
+pub(crate) fn suspend_process() {}
+
 /// Restores the terminal when dropped, so an error that ends the run
 /// early leaves the shell usable too.
 pub(crate) struct RestoreOnDrop;

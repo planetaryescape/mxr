@@ -464,6 +464,16 @@ pub async fn run() -> anyhow::Result<()> {
     loop {
         crate::local_io::submit_pending_work(&mut app, &local_io);
 
+        if std::mem::take(&mut app.pending_suspend) {
+            // Restores the terminal, stops until the shell resumes us, then
+            // takes the terminal back; the next draw repaints everything.
+            run_with_terminal_suspended(
+                &mut terminal,
+                &mut events,
+                crate::terminal_session::suspend_process,
+            );
+        }
+
         if app.diagnostics.pending_config_edit {
             app.diagnostics.pending_config_edit = false;
             let result = run_with_terminal_suspended(&mut terminal, &mut events, || {

@@ -5161,6 +5161,7 @@ dependencies = [
  "mxr-protocol",
  "mxr-reader",
  "mxr-test-support",
+ "nix 0.30.1",
  "nucleo",
  "open",
  "pretty_assertions",

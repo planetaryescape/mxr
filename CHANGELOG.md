@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.136](https://github.com/planetaryescape/mxr/compare/v0.6.135...v0.6.136) (2026-10-22)
+
+
+### Bug Fixes
+
+* never send an unsubscribe twice after logs are purged ([#606](https://github.com/planetaryescape/mxr/issues/606)) ([2053235](https://github.com/planetaryescape/mxr/commit/20532357545cecc15dac6ad6971fed4f75edb2c7))
+
 ## [0.6.135](https://github.com/planetaryescape/mxr/compare/v0.6.134...v0.6.135) (2026-10-22)
 
 

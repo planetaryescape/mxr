@@ -54,13 +54,41 @@ export function usePreviewOpen() {
   const openTimer = useRef<Timer>(null);
   const closeTimer = useRef<Timer>(null);
 
+  const escape = useRef<((event: globalThis.KeyboardEvent) => void) | null>(null);
+  const pressEnd = useRef<(() => void) | null>(null);
+
+  // While a card is pending or open, Esc anywhere on the page cancels it, even
+  // when focus is elsewhere (a hover opens cards without moving focus).
+  const syncEscape = () => {
+    const wanted = openTimer.current !== null || isOpen.current;
+    if (wanted && !escape.current) {
+      escape.current = (event) => {
+        if (event.key === "Escape") suppress();
+      };
+      document.addEventListener("keydown", escape.current);
+    } else if (!wanted && escape.current) {
+      document.removeEventListener("keydown", escape.current);
+      escape.current = null;
+    }
+  };
+  const endPress = () => {
+    pointerFocus.current = false;
+    if (pressEnd.current) {
+      document.removeEventListener("pointerup", pressEnd.current);
+      document.removeEventListener("pointercancel", pressEnd.current);
+      pressEnd.current = null;
+    }
+  };
+
   const setOpen = (next: boolean) => {
     isOpen.current = next;
     setOpenState(next);
+    syncEscape();
   };
   const clearOpen = () => {
     if (openTimer.current) clearTimeout(openTimer.current);
     openTimer.current = null;
+    syncEscape();
   };
   const clearClose = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -72,6 +100,7 @@ export function usePreviewOpen() {
     () => () => {
       clearOpen();
       clearClose();
+      endPress();
     },
     [],
   );
@@ -83,7 +112,9 @@ export function usePreviewOpen() {
     openTimer.current = setTimeout(() => {
       openTimer.current = null;
       if (!suppressed.current && (hoveredLink.current || focused.current)) setOpen(true);
+      else syncEscape();
     }, OPEN_DELAY_MS);
+    syncEscape();
   };
   const settle = () => {
     if (attended()) return;
@@ -118,21 +149,23 @@ export function usePreviewOpen() {
         startOpen();
       },
       onPointerLeave: (event: PointerEvent) => {
+        endPress();
         if (event.pointerType === "touch") return;
         hoveredLink.current = false;
         settle();
       },
       onPointerDown: () => {
+        // The flag lives only for this press: it ends on the focus the press
+        // causes, or on pointerup or pointercancel anywhere, or on leave.
+        endPress();
         pointerFocus.current = true;
+        pressEnd.current = endPress;
+        document.addEventListener("pointerup", endPress);
+        document.addEventListener("pointercancel", endPress);
         suppress();
       },
-      // Best effort: the press's focus arrives straight after pointerdown and
-      // consumes the flag; these only clear it when the press caused no focus.
-      onPointerUp: () => {
-        pointerFocus.current = false;
-      },
       onClick: () => {
-        pointerFocus.current = false;
+        endPress();
         suppress();
       },
       onFocus: () => {
@@ -145,12 +178,12 @@ export function usePreviewOpen() {
         startOpen();
       },
       onBlur: () => {
-        pointerFocus.current = false;
+        endPress();
         focused.current = false;
         settle();
       },
       onKeyDown: (event: KeyboardEvent) => {
-        if (event.key === "Enter" || event.key === " " || event.key === "Escape") suppress();
+        if (event.key === "Enter" || event.key === " ") suppress();
       },
     },
     cardProps: {
@@ -165,6 +198,8 @@ export function usePreviewOpen() {
         settle();
       },
       onEscapeKeyDown: (event: { preventDefault: () => void }) => {
+        // (The page-level listener above also suppresses; this one keeps the
+        // drawer open.)
         // Handled here so the narrow-screen drawer, which also closes on Esc,
         // stays open.
         event.preventDefault();

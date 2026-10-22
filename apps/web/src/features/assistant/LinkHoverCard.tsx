@@ -9,7 +9,7 @@
  */
 
 import { Paperclip } from "lucide-react";
-import type { ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
 
 import { Avatar } from "@/components/Avatar";
 import { MODE_GLYPHS } from "@/components/ModeMark";
@@ -40,11 +40,22 @@ export function LinkHoverCard({
 }) {
   const { open, dismiss, linkProps, cardProps } = usePreviewOpen();
   const { thread, person } = useLinkPreview(link, open);
+  const cardId = useId();
+  // The ref's type is the anchor's, though it holds the link; only `contains` is used.
+  const anchor = useRef<HTMLDivElement>(null);
   return (
     // Popover, not a hover library: when it opens is decided by usePreviewOpen.
     // The link is the anchor, not a trigger, so Radix adds no click handling.
     <Popover open={open} modal={false}>
-      <PopoverAnchor asChild {...linkProps}>
+      <PopoverAnchor
+        asChild
+        ref={anchor}
+        // The card adds to what the link says (sender, date, snippet), so while
+        // it is open it describes the link, as a tooltip does. Hidden from
+        // assistive tech instead, that detail would exist only for sighted users.
+        aria-describedby={open ? cardId : undefined}
+        {...linkProps}
+      >
         {children}
       </PopoverAnchor>
       <PopoverContent
@@ -54,10 +65,23 @@ export function LinkHoverCard({
         collisionPadding={8}
         className="w-80 p-3"
         data-testid="link-hover-card"
-        // Focus stays on the link.
+        id={cardId}
+        // Not a dialog: the card has no controls and repeats the link's target,
+        // so it is a description. Radix Popover wraps its content in a focus
+        // scope that makes it focusable (tabindex -1, so a click on its padding
+        // would trap Tab); unsetting tabIndex here keeps focus on the link.
+        role="tooltip"
+        tabIndex={undefined}
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
-        onInteractOutside={dismiss}
+        // Focus landing on the link that anchors the card is not "outside".
+        onInteractOutside={(event) => {
+          if (event.target instanceof Node && anchor.current?.contains(event.target)) {
+            event.preventDefault();
+            return;
+          }
+          dismiss();
+        }}
         {...cardProps}
       >
         {link.kind === "thread" ? (

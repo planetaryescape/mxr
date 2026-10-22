@@ -124,7 +124,11 @@ function reply(text = "See [Q1 report](mxr:thread/t-1234567).") {
 const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 
 /** A pointer event with a type, as the browser would send it. */
-function pointer(el: HTMLElement, kind: "Over" | "Out" | "Down" | "Up", pointerType: string) {
+function pointer(
+  el: HTMLElement,
+  kind: "Over" | "Out" | "Down" | "Up" | "Cancel",
+  pointerType: string,
+) {
   const event = createEvent[`pointer${kind}` as const](el);
   Object.defineProperty(event, "pointerType", { value: pointerType });
   fireEvent(el, event);
@@ -455,6 +459,77 @@ describe("the hover card on an email or person chip", () => {
     await wait(1000);
     expect(errors).not.toHaveBeenCalled();
     errors.mockRestore();
+  });
+
+  test("a touch scroll that starts on the link (down, cancel, leave) doesn't swallow the next keyboard focus", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointer(chip, "Down", "touch");
+    pointer(chip, "Cancel", "touch");
+    pointer(chip, "Out", "touch");
+    act(() => chip.focus());
+    await wait(450);
+    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+  });
+
+  test("a press that caused no focus and is released outside doesn't swallow the next keyboard focus", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointer(chip, "Down", "mouse");
+    pointer(chip, "Out", "mouse");
+    pointer(document.body, "Up", "mouse");
+    act(() => chip.focus());
+    await wait(450);
+    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+  });
+
+  test("Esc while the open timer is pending keeps the card from opening", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointer(chip, "Over", "mouse");
+    await wait(200);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await wait(1000);
+    expect(screen.queryByTestId("link-hover-card")).toBeNull();
+  });
+
+  test("Esc closes the open card and cancels another link's pending one", async () => {
+    reply("See [A](mxr:thread/t-a) and [B](mxr:thread/t-b).");
+    const a = screen.getByRole("link", { name: "A" });
+    const b = screen.getByRole("link", { name: "B" });
+    pointer(a, "Over", "mouse");
+    await wait(450);
+    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+    pointer(a, "Out", "mouse");
+    pointer(b, "Over", "mouse");
+    await wait(100);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await wait(1500);
+    expect(screen.queryByTestId("link-hover-card")).toBeNull();
+  });
+
+  test("Tab onto the link whose card is open keeps the card open", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointer(chip, "Over", "mouse");
+    await wait(450);
+    act(() => chip.focus());
+    pointer(chip, "Out", "mouse");
+    await wait(500);
+    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+  });
+
+  test("the card is a description of the link, not a dialog or a focus target", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    expect(chip).not.toHaveAttribute("aria-describedby");
+    pointer(chip, "Over", "mouse");
+    await wait(450);
+    const card = screen.getByTestId("link-hover-card");
+    expect(card).toHaveAttribute("role", "tooltip");
+    expect(card).not.toHaveAttribute("tabindex");
+    expect(card.getAttribute("id")).toBeTruthy();
+    expect(chip).toHaveAttribute("aria-describedby", card.getAttribute("id"));
   });
 
   test("in the drawer, Escape closes the card and leaves the assistant open", async () => {

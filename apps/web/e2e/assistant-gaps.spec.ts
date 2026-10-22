@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 import { mockAssistant } from "./helpers/assistant";
@@ -131,6 +132,11 @@ test("an email chip and its row in a reply show the glyph of the mode that holds
   await expect(card).toContainText("GitHub Actions <notifications@github.com>");
   await expect(card).toContainText("3 messages");
   await expect(card).toContainText("Run 4471 failed in build-linux");
+  // The card describes the link: no dialog, nothing to focus, no axe violations.
+  await expect(card).toHaveAttribute("role", "tooltip");
+  await expect(chip).toHaveAttribute("aria-describedby", (await card.getAttribute("id")) ?? "");
+  const axe = await new AxeBuilder({ page }).include('[data-testid="link-hover-card"]').analyze();
+  expect(axe.violations).toEqual([]);
   await page.keyboard.press("Escape");
   await expect(card).toBeHidden();
   await expect(chip).toHaveAttribute("href", "/m/archive/t-ci-1");

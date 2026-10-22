@@ -67,6 +67,8 @@ contexts = ["list", "reader", "place"]
 
 [[action]]
 id = "mail.undo"
+# Raycast: macOS undo; Cmd+U would be the web letter.
+raycast_key = "Cmd+z"
 label = "Undo last action"
 description = "Reverse the last archive, trash, move, label change or send (about 60 seconds)"
 group = "Mail"
@@ -878,6 +880,8 @@ contexts = ["list", "reader", "place"]
 
 [[action]]
 id = "mail.reply-all"
+# Raycast: Cmd+A selects the text in Raycast's search field.
+raycast_key = "Cmd+Shift+r"
 label = "Reply all"
 group = "Compose"
 scopes = ["list", "reader"]
@@ -2372,6 +2376,8 @@ contexts = ["archive"]
 
 [[action]]
 id = "archive.copy-reference"
+# Raycast: Raycast's own copy shortcut; Cmd+Y is its Quick Look.
+raycast_key = "Cmd+Shift+c"
 label = "Copy the reference"
 short_label = "Copy ref"
 group = "Triage"
@@ -3024,6 +3030,8 @@ contexts = ["messages"]
 
 [[action]]
 id = "messages.reply-all"
+# Raycast: Cmd+A selects the text in Raycast's search field.
+raycast_key = "Cmd+Shift+r"
 label = "Reply all"
 short_label = "Reply all"
 group = "Triage"
@@ -3090,6 +3098,8 @@ contexts = ["messages"]
 
 [[action]]
 id = "messages.pin"
+# Raycast: Raycast's own pin shortcut.
+raycast_key = "Cmd+."
 label = "Pin or unpin this person"
 short_label = "Pin"
 group = "Triage"
@@ -3323,6 +3333,8 @@ contexts = ["updates"]
 
 [[action]]
 id = "updates.copy-code"
+# Raycast: Raycast's own copy shortcut; Cmd+Y is its Quick Look.
+raycast_key = "Cmd+Shift+c"
 label = "Copy the one-time code"
 short_label = "Copy code"
 group = "Triage"
@@ -3357,6 +3369,8 @@ keys = ["Space"]
 
 [[action]]
 id = "updates.pin"
+# Raycast: Raycast's own pin shortcut.
+raycast_key = "Cmd+."
 label = "Pin or unpin this source's latest email"
 short_label = "Pin"
 group = "Triage"

@@ -3,6 +3,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { definedShortcut } from "@/lib/actions/definition";
+
 import type { ScreenerQuestion } from "./membership";
 import {
   NEW_SENDER_NOTE,
@@ -35,6 +37,12 @@ describe("new sender choice", () => {
     expect(NEW_SENDER_NOTE).toBe("New sender: 1 Messages · 2 Updates · 3 Reading · 4 Block");
   });
 
+  test("Messages answers on Now's keys, since the same chips show in both", () => {
+    for (const { slot, key } of SENDER_CHOICES) {
+      expect(definedShortcut(`messages.sender-${slot}`)).toBe(key);
+    }
+  });
+
   test("a chip answers with that sender kind, once, without lighting the row under it", () => {
     const onRow = vi.fn<() => void>();
     render(
@@ -55,7 +63,7 @@ describe("new sender choice", () => {
     expect(newSenderCommands(null, "Uma")).toEqual({});
     expect(newSenderCommands(undefined, "Uma")).toEqual({});
     const commands = newSenderCommands(question, "Uma");
-    expect(Object.keys(commands)).toEqual(SENDER_CHOICES.map(({ key }) => `senderChoice${key}`));
+    expect(Object.keys(commands)).toEqual(SENDER_CHOICES.map(({ slot }) => `senderChoice${slot}`));
     commands.senderChoice3?.();
     expect(correct).toHaveBeenCalledWith(expect.anything(), "reading");
   });

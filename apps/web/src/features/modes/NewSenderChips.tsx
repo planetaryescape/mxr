@@ -2,15 +2,24 @@ import { Ban, Bell, MessagesSquare, Newspaper, type LucideIcon } from "lucide-re
 
 import { correctSender } from "@/features/places/senderKind";
 import type { SenderKind } from "@/features/places/api";
+import { definedShortcut } from "@/lib/actions/definition";
 import { cn } from "@/lib/utils";
 
 import type { ScreenerQuestion } from "./membership";
 
 interface SenderChoice {
   kind: SenderKind;
+  /** N in `now.sender-N` and `messages.sender-N`, the actions that answer with it. */
+  slot: number;
   key: string;
   label: string;
   Glyph: LucideIcon;
+}
+
+// One set of chips serves Now and Messages, so Now's keys stand for both;
+// a test holds the two modes' keys equal.
+function keyFor(slot: number): string {
+  return definedShortcut(`now.sender-${slot}`);
 }
 
 /**
@@ -20,10 +29,10 @@ interface SenderChoice {
  * one answer that isn't a mode.
  */
 export const SENDER_CHOICES: readonly SenderChoice[] = [
-  { kind: "people", key: "1", label: "Messages", Glyph: MessagesSquare },
-  { kind: "paper_trail", key: "2", label: "Updates", Glyph: Bell },
-  { kind: "reading", key: "3", label: "Reading", Glyph: Newspaper },
-  { kind: "screened_out", key: "4", label: "Block", Glyph: Ban },
+  { kind: "people", slot: 1, key: keyFor(1), label: "Messages", Glyph: MessagesSquare },
+  { kind: "paper_trail", slot: 2, key: keyFor(2), label: "Updates", Glyph: Bell },
+  { kind: "reading", slot: 3, key: keyFor(3), label: "Reading", Glyph: Newspaper },
+  { kind: "screened_out", slot: 4, key: keyFor(4), label: "Block", Glyph: Ban },
 ];
 
 /** The status bar's wording for the lit new sender (docs/blueprint/27 "Rows"). */
@@ -95,8 +104,8 @@ export function newSenderCommands(
 ): Record<string, () => void> {
   if (!question) return {};
   return Object.fromEntries(
-    SENDER_CHOICES.map(({ kind, key }) => [
-      `senderChoice${key}`,
+    SENDER_CHOICES.map(({ kind, slot }) => [
+      `senderChoice${slot}`,
       () => void answerNewSender(question, label, kind),
     ]),
   );

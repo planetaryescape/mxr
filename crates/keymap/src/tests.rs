@@ -220,3 +220,67 @@ fn the_tui_lookup_finds_keys_and_sequences_in_their_context() {
     assert!(!keymap.tui_starts_sequence("todo", "e"));
     assert!(keymap.tui_binding("screener", "e").is_none());
 }
+
+fn remaps(text: &str) -> (ModeRemaps, Vec<String>) {
+    ModeRemaps::from_table(&text.parse().expect("toml"), defaults())
+}
+
+#[test]
+fn a_mode_section_remaps_keys_in_that_mode_only() {
+    let (remaps, problems) = remaps(
+        r#"
+        [todo]
+        "x" = "todo.done"
+        "Z" = ""
+        "#,
+    );
+    assert_eq!(problems, Vec::<String>::new());
+    assert_eq!(remaps.lookup("todo", "x"), Some(Some("todo.done")));
+    assert_eq!(remaps.lookup("todo", "Z"), Some(None));
+    assert_eq!(remaps.lookup("now", "x"), None);
+    assert!(remaps.retires("todo", "todo.done"));
+    assert!(!remaps.retires("now", "now.done"));
+    assert_eq!(remaps.key_for("todo", "todo.done"), Some("x"));
+}
+
+#[test]
+fn unusable_remaps_are_reported_and_left_out() {
+    let (remaps, problems) = remaps(
+        r#"
+        [todo]
+        "Ctrl+i" = "todo.done"
+        "q" = "todo.nope"
+        "Ctrl+Shift+d" = "todo.done"
+        "d" = "todo.done"
+        "d d" = "todo.edit"
+        [desk]
+        "e" = "todo.done"
+        "#,
+    );
+    assert_eq!(remaps.lookup("todo", "q"), None);
+    assert_eq!(remaps.lookup("todo", "Ctrl+i"), None);
+    let joined = problems.join("\n");
+    for expected in [
+        "`Ctrl+i`: terminals send this as Tab",
+        "no action todo.nope",
+        "Ctrl+Shift+ as plain Ctrl+",
+        "`d` is also the start of `d d`",
+        "[desk] is not a keys.toml section",
+    ] {
+        assert!(
+            joined.contains(expected),
+            "missing {expected:?} in:\n{joined}"
+        );
+    }
+}
+
+#[test]
+fn binding_a_sequence_prefix_alone_is_reported() {
+    let (_, problems) = remaps("[todo]\n\"g\" = \"todo.done\"\n");
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.contains("starts default sequences")),
+        "{problems:?}"
+    );
+}

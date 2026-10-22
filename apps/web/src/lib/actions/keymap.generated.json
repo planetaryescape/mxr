@@ -4020,14 +4020,9 @@
       "label": "Next",
       "short_label": "Next",
       "group": "Move",
-      "scopes": [
-        "place"
+      "clients": [
+        "tui"
       ],
-      "keys": [
-        "j",
-        "ArrowDown"
-      ],
-      "hide_in_palette": true,
       "tui": [
         {
           "name": "MoveDown",
@@ -4046,14 +4041,9 @@
       "label": "Previous",
       "short_label": "Previous",
       "group": "Move",
-      "scopes": [
-        "place"
+      "clients": [
+        "tui"
       ],
-      "keys": [
-        "k",
-        "ArrowUp"
-      ],
-      "hide_in_palette": true,
       "tui": [
         {
           "name": "MoveUp",
@@ -4072,14 +4062,9 @@
       "label": "Open, or expand a bundle",
       "short_label": "Open",
       "group": "Move",
-      "scopes": [
-        "place"
+      "clients": [
+        "tui"
       ],
-      "keys": [
-        "Enter",
-        "o"
-      ],
-      "hide_in_palette": true,
       "tui": [
         {
           "name": "OpenSelected",
@@ -4100,11 +4085,8 @@
       "short_label": "Done here",
       "description": "On a sender's row in Updates, every conversation of theirs, after a preview",
       "group": "Triage",
-      "scopes": [
-        "place"
-      ],
-      "keys": [
-        "e"
+      "clients": [
+        "tui"
       ],
       "tui": [
         {
@@ -4123,11 +4105,8 @@
       "label": "Pin or unpin (a sweep leaves pins)",
       "short_label": "Pin",
       "group": "Triage",
-      "scopes": [
-        "place"
-      ],
-      "keys": [
-        "p"
+      "clients": [
+        "tui"
       ],
       "tui": [
         {
@@ -4146,13 +4125,9 @@
       "label": "Sweep this sender's bundle…",
       "short_label": "Sweep sender",
       "group": "Triage",
-      "scopes": [
-        "place"
+      "clients": [
+        "tui"
       ],
-      "keys": [
-        "S"
-      ],
-      "note": "Previews the daemon's dry run first; undo afterwards",
       "tui": [
         {
           "name": "SweepBundle",
@@ -4170,13 +4145,9 @@
       "label": "Sweep the whole place…",
       "short_label": "Sweep all",
       "group": "Triage",
-      "scopes": [
-        "place"
+      "clients": [
+        "tui"
       ],
-      "keys": [
-        "A"
-      ],
-      "note": "Everything unpinned here; previews first and opens on Cancel (Tab, then Enter)",
       "tui": [
         {
           "name": "SweepPlace",
@@ -4194,13 +4165,9 @@
       "label": "Move sender to…",
       "description": "People, Reading, Paper trail, Screened out or automatic, for their future mail too",
       "group": "Triage",
-      "scopes": [
-        "place"
+      "clients": [
+        "tui"
       ],
-      "keys": [
-        "K"
-      ],
-      "note": "In the reader K is the previous message; use the palette or the line under the thread",
       "tui": [
         {
           "name": "OpenSenderKindMenu",
@@ -4217,11 +4184,8 @@
       "id": "place.unsubscribe",
       "label": "Unsubscribe…",
       "group": "Triage",
-      "scopes": [
-        "place"
-      ],
-      "keys": [
-        "D"
+      "clients": [
+        "tui"
       ],
       "tui": [
         {
@@ -6659,7 +6623,6 @@
         "messages",
         "list",
         "reader",
-        "place",
         "updates",
         "reading"
       ],

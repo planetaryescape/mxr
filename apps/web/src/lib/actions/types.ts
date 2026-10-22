@@ -44,7 +44,6 @@ export type ActionScope =
   | "reader"
   | "screener"
   | "focus"
-  | "place"
   | "todo"
   | "catchup"
   | "expired"

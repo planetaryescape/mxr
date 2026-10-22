@@ -8,6 +8,7 @@ import { Inbox, type LucideIcon } from "lucide-react";
 
 import { MODE_GLYPHS, type ModeGlyphId } from "@/components/ModeMark";
 import { RAIL_PATHS, railCount, type Rail, type RailEntry } from "@/features/modes/rail";
+import { definedShortcut } from "@/lib/actions/definition";
 
 export interface RailNavEntry {
   key: string;
@@ -28,13 +29,13 @@ export interface RailNavEntry {
 
 /** The rail before the daemon answers: same order, keys and paths. */
 const FALLBACK: Pick<RailEntry, "id" | "name" | "key" | "group">[] = [
-  { id: "now", name: "Now", key: "g h", group: "home" },
-  { id: "messages", name: "Messages", key: "g m", group: "modes" },
-  { id: "todo", name: "To do", key: "g x", group: "modes" },
-  { id: "updates", name: "Updates", key: "g u", group: "modes" },
-  { id: "reading", name: "Reading", key: "g r", group: "modes" },
-  { id: "archive", name: "Archive", key: "g e", group: "modes" },
-  { id: "inbox", name: "Inbox", key: "g i", group: "lens" },
+  { id: "now", name: "Now", key: definedShortcut("nav.now"), group: "home" },
+  { id: "messages", name: "Messages", key: definedShortcut("nav.messages"), group: "modes" },
+  { id: "todo", name: "To do", key: definedShortcut("nav.todo"), group: "modes" },
+  { id: "updates", name: "Updates", key: definedShortcut("nav.updates"), group: "modes" },
+  { id: "reading", name: "Reading", key: definedShortcut("nav.reading"), group: "modes" },
+  { id: "archive", name: "Archive", key: definedShortcut("nav.archive-mode"), group: "modes" },
+  { id: "inbox", name: "Inbox", key: definedShortcut("nav.inbox"), group: "lens" },
 ];
 
 export function railNavEntries(rail: Rail | undefined): RailNavEntry[] {

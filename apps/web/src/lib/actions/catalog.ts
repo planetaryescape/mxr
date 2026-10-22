@@ -22,7 +22,6 @@ import { lensesFromShell, savedSearchLenses } from "@/features/mailbox/lenses";
 import { messagesActions } from "@/features/messages/actions";
 import { nowActions } from "@/features/now/actions";
 import type { ShellResponse } from "@/features/mailbox/types";
-import { placeActions } from "@/features/places/actions";
 import { readingActions } from "@/features/reading/actions";
 import { rulesActions } from "@/features/rules/actions";
 import { screenerActions } from "@/features/screener/actions";
@@ -66,7 +65,6 @@ const featureActions: ActionBehavior[] = [
   ...readerActions,
   ...screenerActions,
   ...focusActions,
-  ...placeActions,
   ...todoActions,
   ...archiveActions,
   ...readingActions,

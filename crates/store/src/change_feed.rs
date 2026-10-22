@@ -44,11 +44,6 @@ fn ignored(table: &str) -> bool {
 #[derive(Debug)]
 pub struct ChangeFeed {
     seq: AtomicU64,
-    /// `seq` as of the last time the writer connection was handed back to
-    /// its pool (or replaced): every commit counted up to here is visible.
-    landed: AtomicU64,
-    /// Woken whenever `landed` may have moved.
-    landing: tokio::sync::Notify,
     /// Milliseconds after `started` of the latest counted commit.
     last_ms: AtomicU64,
     started: Instant,
@@ -58,8 +53,6 @@ impl Default for ChangeFeed {
     fn default() -> Self {
         Self {
             seq: AtomicU64::new(0),
-            landed: AtomicU64::new(0),
-            landing: tokio::sync::Notify::new(),
             last_ms: AtomicU64::new(0),
             started: Instant::now(),
         }
@@ -70,41 +63,6 @@ impl ChangeFeed {
     /// Moves on with every counted commit.
     pub fn seq(&self) -> u64 {
         self.seq.load(Ordering::Acquire)
-    }
-
-    /// The count of commits readers can already see.
-    ///
-    /// SQLite's commit hook runs before a commit lands, so `seq` can count a
-    /// commit no reader sees yet. The writer pool has one connection and a
-    /// commit holds it until it lands, so when the connection goes back to
-    /// the pool every commit counted so far is visible. `seq` only moves
-    /// while the connection is checked out.
-    pub fn landed(&self) -> u64 {
-        self.landed.load(Ordering::Acquire)
-    }
-
-    /// The writer connection is back in the pool, or a new one replaces it.
-    pub(crate) fn mark_landed(&self) {
-        self.landed.fetch_max(self.seq(), Ordering::AcqRel);
-        self.landing.notify_waiters();
-    }
-
-    /// Wait up to `limit` for every commit counted up to `seq` to land.
-    /// True once they have; false if one is still being written.
-    pub async fn wait_landed(&self, seq: u64, limit: Duration) -> bool {
-        let deadline = tokio::time::Instant::now() + limit;
-        loop {
-            let landing = self.landing.notified();
-            tokio::pin!(landing);
-            // Registered before the check, so a landing in between still wakes it.
-            landing.as_mut().enable();
-            if self.landed() >= seq {
-                return true;
-            }
-            if tokio::time::timeout_at(deadline, landing).await.is_err() {
-                return self.landed() >= seq;
-            }
-        }
     }
 
     /// Time since the latest counted commit (since start when none).
@@ -145,8 +103,6 @@ impl ChangeFeed {
             true
         });
         handle.set_rollback_hook(move || touched.store(false, Ordering::Release));
-        // A new connection means the one before it, and its commits, are done.
-        self.mark_landed();
         Ok(())
     }
 }
@@ -208,31 +164,38 @@ mod tests {
         );
     }
 
-    /// A commit counts as landed only once its connection is back in the
-    /// pool, never while its transaction still holds the writer.
+    /// A transaction holds the writer through its commit, so the landed
+    /// count waits for it, and then includes it. Needs a file-backed store:
+    /// the in-memory one shares a single connection for reads and writes.
     #[tokio::test]
-    async fn a_commit_lands_when_the_writer_goes_back_to_the_pool() {
-        let store = Store::in_memory().await.unwrap();
-        let feed = store.change_feed();
-        sqlx::query("CREATE TABLE scratch (x INTEGER)")
-            .execute(store.writer())
+    async fn the_landed_count_waits_for_a_commit_in_flight() {
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(&dir.path().join("store.db")).await.unwrap();
+        let before = store
+            .changes_landed(Duration::from_secs(5))
             .await
-            .unwrap();
-        let before = feed.seq();
+            .expect("an idle writer");
+
         let mut tx = store.writer().begin().await.unwrap();
-        sqlx::query("INSERT INTO scratch VALUES (1)")
+        sqlx::query("UPDATE accounts SET name = 'x' WHERE 0")
             .execute(&mut *tx)
             .await
             .unwrap();
-        tx.commit().await.unwrap();
-        for _ in 0..1000 {
-            if feed.landed() >= feed.seq() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-        }
-        assert!(feed.seq() > before, "the insert counts");
-        assert_eq!(feed.landed(), feed.seq(), "and has landed");
+        assert_eq!(
+            store.changes_landed(Duration::from_millis(50)).await,
+            None,
+            "a transaction holds the writer"
+        );
+        tx.rollback().await.unwrap();
+
+        store.insert_account(&test_account()).await.unwrap();
+        let after = store
+            .changes_landed(Duration::from_secs(5))
+            .await
+            .expect("the writer is free again");
+        assert!(after > before, "the committed insert is in the count");
     }
 
     #[tokio::test]

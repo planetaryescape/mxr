@@ -19,21 +19,6 @@ fn built_at(data: ResponseData) -> chrono::DateTime<chrono::Utc> {
     }
 }
 
-/// Let commits land again and wait until every counted one has: the test
-/// store marks them when its connection goes back to the pool, a moment
-/// after the query.
-async fn let_commits_land(fx: &Fixture) {
-    fx.state.mode_cache.hold_landing(&fx.state, false);
-    let feed = fx.state.store.change_feed();
-    for _ in 0..1000 {
-        if feed.landed() >= feed.seq() {
-            return;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-    }
-    panic!("counted commits never landed");
-}
-
 /// When the cached Now a read would get was built, without building one.
 fn cached_now_built_at(fx: &Fixture) -> Option<chrono::DateTime<chrono::Utc>> {
     fx.state
@@ -145,24 +130,21 @@ async fn store_new_mail(fx: &Fixture) {
     .await;
 }
 
-/// A build that counts a commit before it lands may miss it. It answers
-/// only until that commit lands; then the next read builds afresh, without
-/// waiting for the refresher, however long the commit took.
+/// A build that could not wait out a write in flight may have missed a
+/// commit, so no later read gets it: each builds afresh until a build
+/// reads the count with the writer free, and that one is served.
 #[tokio::test]
-async fn a_view_built_before_a_commit_landed_answers_only_until_it_lands() {
+async fn a_view_built_during_a_write_in_flight_is_never_served_again() {
     let fx = Fixture::new().await;
-    fx.state.mode_cache.hold_landing(&fx.state, true);
+    fx.state.mode_cache.hold_write(true);
     store_new_mail(&fx).await;
     let unsettled = now_built_at(&fx).await;
-    assert_eq!(
-        now_built_at(&fx).await,
-        unsettled,
-        "the commit has not landed"
-    );
+    assert_eq!(cached_now_built_at(&fx), None, "not served");
+    assert_ne!(now_built_at(&fx).await, unsettled, "the next read builds");
 
-    let_commits_land(&fx).await;
+    fx.state.mode_cache.hold_write(false);
     let settled = now_built_at(&fx).await;
-    assert_ne!(settled, unsettled);
+    assert_eq!(cached_now_built_at(&fx), Some(settled));
     assert_eq!(
         now_built_at(&fx).await,
         settled,
@@ -170,38 +152,18 @@ async fn a_view_built_before_a_commit_landed_answers_only_until_it_lands() {
     );
 }
 
-/// The writer going on to another transaction must not keep a view that
-/// missed an earlier, now landed, commit.
 #[tokio::test]
-async fn a_view_that_missed_a_landed_commit_is_not_served_during_the_next_write() {
+async fn the_refresher_replaces_a_view_built_during_a_write_in_flight() {
     let fx = Fixture::new().await;
-    fx.state.mode_cache.hold_landing(&fx.state, true);
-    store_new_mail(&fx).await;
-    let unsettled = now_built_at(&fx).await;
-    let_commits_land(&fx).await;
-    // The next transaction has the writer but has not committed.
-    let next = fx.state.store.writer().begin().await.unwrap();
-    assert_ne!(cached_now_built_at(&fx), Some(unsettled));
-    drop(next);
-}
-
-#[tokio::test]
-async fn the_refresher_replaces_a_view_built_before_a_commit_landed_once_it_lands() {
-    let fx = Fixture::new().await;
-    fx.state.mode_cache.hold_landing(&fx.state, true);
-    store_new_mail(&fx).await;
-    let unsettled = now_built_at(&fx).await;
+    fx.state.mode_cache.hold_write(true);
+    let _unsettled = now_built_at(&fx).await;
+    fx.state.mode_cache.hold_write(false);
+    fx.state.mode_cache.age(std::time::Duration::from_secs(6));
     fx.state.mode_cache.refresh(&fx.state).await;
-    assert_eq!(
-        cached_now_built_at(&fx),
-        Some(unsettled),
-        "nothing to gain yet"
+    assert!(
+        cached_now_built_at(&fx).is_some(),
+        "the refresher built one a read can get"
     );
-
-    let_commits_land(&fx).await;
-    fx.state.mode_cache.refresh(&fx.state).await;
-    let refreshed = cached_now_built_at(&fx).expect("the refresher rebuilt it");
-    assert_ne!(refreshed, unsettled);
 }
 
 #[tokio::test]

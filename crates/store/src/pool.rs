@@ -43,28 +43,6 @@ fn watch_changes(
     }
 }
 
-/// What a pool's `after_release` callback returns.
-type ReleaseFuture<'c> =
-    std::pin::Pin<Box<dyn std::future::Future<Output = Result<bool, sqlx::Error>> + Send + 'c>>;
-
-/// Mark every counted commit visible when the writer connection goes back
-/// to its pool: its transaction, commit included, has finished.
-fn note_landed(
-    changes: &Arc<ChangeFeed>,
-) -> impl for<'c> Fn(
-    &'c mut sqlx::SqliteConnection,
-    sqlx::pool::PoolConnectionMetadata,
-) -> ReleaseFuture<'c>
-       + Send
-       + Sync
-       + 'static {
-    let changes = Arc::clone(changes);
-    move |_, _| {
-        changes.mark_landed();
-        Box::pin(async { Ok(true) })
-    }
-}
-
 pub struct Store {
     writer: SqlitePool,
     /// Commits on `writer` that can change a mail view.
@@ -109,7 +87,6 @@ impl Store {
             .max_connections(1)
             .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
             .after_connect(watch_changes(&changes))
-            .after_release(note_landed(&changes))
             .connect_with(write_opts)
             .await?;
 
@@ -179,7 +156,6 @@ impl Store {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .after_connect(watch_changes(&changes))
-            .after_release(note_landed(&changes))
             .connect_with(opts)
             .await?;
 
@@ -379,6 +355,24 @@ impl Store {
 
     pub fn writer(&self) -> &SqlitePool {
         &self.writer
+    }
+
+    /// The change feed's count once no write is in flight, or `None` if the
+    /// writer stays busy for `wait`.
+    ///
+    /// SQLite's commit hook counts a commit before readers can see it, so the
+    /// count alone may include a commit a read would miss. The writer pool
+    /// has one connection, and sqlx hands it on only once its last holder is
+    /// done with it, a cancelled or closing commit included. Holding it,
+    /// nothing can be mid-commit, so every commit in the count is visible.
+    pub async fn changes_landed(&self, wait: Duration) -> Option<u64> {
+        let writer = tokio::time::timeout(wait, self.writer.acquire())
+            .await
+            .ok()?
+            .ok()?;
+        let seq = self.changes.seq();
+        drop(writer);
+        Some(seq)
     }
 
     pub fn reader(&self) -> &SqlitePool {

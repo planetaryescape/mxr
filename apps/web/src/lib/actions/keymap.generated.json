@@ -5704,7 +5704,8 @@
           "name": "ReadingBack",
           "keys": [
             "ArrowLeft",
-            "Escape"
+            "Escape",
+            "q"
           ],
           "contexts": [
             "reading-reader"
@@ -7066,7 +7067,6 @@
             "messages",
             "archive",
             "reading",
-            "reading-reader",
             "updates"
           ]
         }

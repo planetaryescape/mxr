@@ -2840,7 +2840,7 @@ hide_in_palette = true
 
 [[action.tui]]
 name = "ReadingBack"
-keys = ["ArrowLeft", "Escape"]
+keys = ["ArrowLeft", "Escape", "q"]
 contexts = ["reading-reader"]
 
 # The TUI's list of an issue's highlights; the web app shows them in the

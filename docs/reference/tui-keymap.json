@@ -909,7 +909,7 @@
     "i d": "RespondInvite(Decline)",
     "i m": "RespondInvite(Tentative)",
     "o": "ReadingOpenEmail",
-    "q": "QuitView",
+    "q": "ReadingBack",
     "t": "CreateTodoFromMessage",
     "u": "UndoLastMutation",
     "z z": "CenterCurrent"

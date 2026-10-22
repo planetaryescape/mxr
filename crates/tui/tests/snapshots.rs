@@ -734,6 +734,7 @@ fn diagnostics_page_snapshot() {
             sync_history: vec![],
             log_total_bytes: 512,
             history_retention_days: None,
+            address_cache_stale: false,
         }),
         events: vec![EventLogEntry {
             timestamp: 1710495000,

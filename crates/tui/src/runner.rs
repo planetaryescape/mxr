@@ -3356,6 +3356,7 @@ pub async fn run() -> anyhow::Result<()> {
                 let session = session.clone();
                 let result_tx_clone = result_tx.clone();
                 let message_id = env_id.clone();
+                let generation = app.compose.reply_context_generation;
                 tokio::spawn(async move {
                     let reply =
                         fetch_reply_context_dedicated(&session, message_id.clone(), false).await;
@@ -3363,6 +3364,7 @@ pub async fn run() -> anyhow::Result<()> {
                         fetch_reply_context_dedicated(&session, message_id.clone(), true).await;
                     let _ = result_tx_clone.send(AsyncResult::ReplyContextWarmed {
                         message_id,
+                        generation,
                         reply: Box::new(reply),
                         reply_all: Box::new(reply_all),
                     });
@@ -4298,12 +4300,16 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::ReplyContextWarmed {
                             message_id,
+                            generation,
                             reply,
                             reply_all,
                         } => {
                             let reply_ok = (*reply).ok();
                             let reply_all_ok = (*reply_all).ok();
-                            app.compose.reply_context_cache.insert(
+                            // A result from before an address change is stale: a
+                            // deferred action then takes the cold path below.
+                            let cached = app.compose.cache_warmed_reply_context(
+                                generation,
                                 message_id.clone(),
                                 crate::app::ReplyContextPair {
                                     reply: reply_ok.clone(),
@@ -4318,10 +4324,10 @@ pub async fn run() -> anyhow::Result<()> {
                             if let Some(deferred) = app.compose.deferred_compose.take() {
                                 if deferred.message_id == message_id {
                                     app.status_message = None;
-                                    let preloaded = if deferred.reply_all {
-                                        reply_all_ok
-                                    } else {
-                                        reply_ok
+                                    let preloaded = match (cached, deferred.reply_all) {
+                                        (false, _) => None,
+                                        (true, true) => reply_all_ok,
+                                        (true, false) => reply_ok,
                                     };
                                     app.compose.pending_compose = Some(
                                         if deferred.reply_all {

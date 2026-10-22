@@ -586,6 +586,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::HumanizerRewrite { .. }
         | Request::ResolveTime { .. }
         | Request::GetModeGuide { .. }
+        | Request::GetKeymap
         | Request::SetHintSeen { .. } => Unscoped,
     }
 }
@@ -1539,6 +1540,10 @@ pub(crate) async fn scope_event(
                 // An operation over every account, or one that didn't say.
                 None => false,
             };
+            keep_if(allowed, event)
+        }
+        DaemonEvent::AccountAddressesChanged { ref account_id } => {
+            let allowed = account_id_allowed(state, profile, account_id).await?;
             keep_if(allowed, event)
         }
         // Its summary can name another account's messages, and nothing

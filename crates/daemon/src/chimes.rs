@@ -159,6 +159,8 @@ pub(crate) fn event_for_daemon_event(event: &DaemonEvent) -> Option<ChimeEvent> 
         | DaemonEvent::ThreadGistReady { .. }
         // A move or newly sorted mail refreshes views; it is not news.
         | DaemonEvent::ModesChanged { .. }
+        // Clients drop cached reply recipients; nothing to announce.
+        | DaemonEvent::AccountAddressesChanged { .. }
         // The assistant's progress shows in its panel.
         | DaemonEvent::AssistantUpdated { .. } => None,
     }

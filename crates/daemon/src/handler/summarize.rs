@@ -3,7 +3,7 @@
 //! the configured LLM for a per-message conversation summary.
 
 use super::{relationship_profile, HandlerResult};
-use crate::state::{owned_addresses_for, AppState};
+use crate::state::{owned_addresses_for, owned_addresses_revision, AppState};
 use mxr_core::id::ThreadId;
 use mxr_core::types::{Address, Envelope, OwnedAddresses};
 use mxr_llm::{
@@ -93,19 +93,20 @@ pub(crate) async fn valid_cached_summary(
     thread_id: &ThreadId,
     envelopes: &[Envelope],
 ) -> Option<ThreadSummaryData> {
-    let relationship_hash = match envelopes.first() {
-        Some(first) => {
-            let owned_addresses = owned_addresses_for(store, &first.account_id)
-                .await
-                .unwrap_or_default();
-            relationship_context_for_summary(store, &first.account_id, &owned_addresses, envelopes)
-                .await
-                .1
-        }
-        None => String::new(),
-    };
+    // The writer summarizes for the thread's account, so the check must read the
+    // same one. A failed read is a miss, not an empty owner set.
+    let account_id = store.get_thread(thread_id).await.ok().flatten()?.account_id;
+    let owned_addresses = owned_addresses_for(store, &account_id).await.ok()?;
+    let relationship_hash =
+        relationship_context_for_summary(store, &account_id, &owned_addresses, envelopes)
+            .await
+            .1;
+    let owned_revision = owned_addresses_revision(&owned_addresses);
+    // The owner's addresses are in the prompt, so a new alias must miss. Rows
+    // written under the old key miss once and are replaced in place (one row per
+    // thread), so SUMMARY_PROMPT_VERSION stays: the wording did not change.
     let content_hash = format!(
-        "{}:{relationship_hash}:{SUMMARY_PROMPT_VERSION}",
+        "{}:{relationship_hash}:{owned_revision}:{SUMMARY_PROMPT_VERSION}",
         thread_summary_content_hash(envelopes)
     );
     let record = store.get_thread_summary(thread_id).await.ok().flatten()?;
@@ -216,7 +217,7 @@ async fn load_summary_context(
     }
     let owned_addresses = owned_addresses_for(store, &thread.account_id)
         .await
-        .unwrap_or_default();
+        .map_err(|e| e.to_string())?;
 
     let mut prompt = String::new();
     prompt.push_str(
@@ -298,8 +299,9 @@ async fn load_summary_context(
             .map(|envelope| envelope.id.clone())
             .collect(),
         content_hash: format!(
-            "{}:{relationship_hash}:{SUMMARY_PROMPT_VERSION}",
-            thread_summary_content_hash(&envelopes)
+            "{}:{relationship_hash}:{}:{SUMMARY_PROMPT_VERSION}",
+            thread_summary_content_hash(&envelopes),
+            owned_addresses_revision(&owned_addresses)
         ),
         message_count: envelopes.len().try_into().unwrap_or(u32::MAX),
         prompt,
@@ -720,5 +722,109 @@ mod tests {
         assert!(requests[1].messages[1]
             .content
             .contains("Alice now wants launch risks called out first."));
+    }
+
+    #[tokio::test]
+    async fn a_thread_spanning_two_accounts_validates_under_the_account_its_summary_names() {
+        use mxr_core::types::Account;
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+        let account_a = state.default_account_id();
+        let account_b = mxr_core::AccountId::new();
+        state
+            .store
+            .insert_account(&Account {
+                id: account_b.clone(),
+                name: "second".into(),
+                email: "second-owner@example.com".into(),
+                sync_backend: None,
+                send_backend: None,
+                enabled: true,
+            })
+            .await
+            .unwrap();
+        let thread_id = mxr_core::ThreadId::new();
+        // The older message is in A and the newer one in B.
+        let older = TestEnvelopeBuilder::new()
+            .account_id(account_a.clone())
+            .thread_id(thread_id.clone())
+            .provider_id("older")
+            .date(chrono::Utc::now() - chrono::Duration::days(2))
+            .build();
+        let newer = TestEnvelopeBuilder::new()
+            .account_id(account_b.clone())
+            .thread_id(thread_id.clone())
+            .provider_id("newer")
+            .date(chrono::Utc::now())
+            .build();
+        for envelope in [&older, &newer] {
+            state.store.upsert_envelope(envelope).await.unwrap();
+            state
+                .store
+                .insert_body(&body(envelope.id.clone(), "Shared thread text."))
+                .await
+                .unwrap();
+        }
+        assert_eq!(
+            state
+                .store
+                .get_thread(&thread_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .account_id,
+            account_b,
+            "the summary is written for the thread's account"
+        );
+
+        summarize_thread(&state, &thread_id).await.unwrap();
+        let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
+        assert!(
+            valid_cached_summary(&state.store, &thread_id, &envelopes)
+                .await
+                .is_some(),
+            "a summary must validate against the account it was written for"
+        );
+    }
+
+    #[tokio::test]
+    async fn summary_cache_misses_after_an_owned_alias_is_added() {
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+        let account_id = state.default_account_id();
+        let thread_id = mxr_core::ThreadId::new();
+        let message = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .thread_id(thread_id.clone())
+            .provider_id("first")
+            .sender_address("Alice", "alice@example.com")
+            .subject("Launch")
+            .snippet("Can you review the launch note?")
+            .build();
+        state.store.upsert_envelope(&message).await.unwrap();
+        state
+            .store
+            .insert_body(&body(message.id.clone(), "Can you review the launch note?"))
+            .await
+            .unwrap();
+
+        summarize_thread(&state, &thread_id).await.unwrap();
+        let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
+        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
+            .await
+            .is_some());
+
+        // The summary prompt names the owner's addresses, so a summary written
+        // before this alias existed may describe the wrong ownership.
+        state
+            .store
+            .add_account_address(&account_id, "new-alias@example.com", false)
+            .await
+            .unwrap();
+        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
+            .await
+            .is_none());
     }
 }

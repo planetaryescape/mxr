@@ -9,7 +9,7 @@ mxr is keyboard-native: "everything is fully navigable by keyboard, including an
 - the target key map;
 - the order in which today's keys move to it.
 
-Status: draft, not built. Written on 2026-10-22 against `origin/main` at `f14f0b0b3` (v0.6.142). It replaces A005's key map and chapter 08's "Default keybindings", "Multi-key sequences", "Configurable keybindings" and "Action dispatch system". It refines chapter 22's "One key map across Now and the modes", whose verbs it keeps (D163 to D173). The research behind it is in [keyboard-shortcuts.md](../research/keyboard-shortcuts.md).
+Status: K1a built (`crates/keymap`, `GetKeymap`, `mxr keys`); the rest is not built. Written on 2026-10-22 against `origin/main` at `f14f0b0b3` (v0.6.142). It replaces A005's key map and chapter 08's "Default keybindings", "Multi-key sequences", "Configurable keybindings" and "Action dispatch system". It refines chapter 22's "One key map across Now and the modes", whose verbs it keeps (D163 to D173). The research behind it is in [keyboard-shortcuts.md](../research/keyboard-shortcuts.md).
 
 ## Today's keys record collisions, not a design
 
@@ -423,6 +423,13 @@ A PR that adds or changes a key answers these in its description, and the defini
 ## Delivery is four rungs, and the first changes no key
 
 ### K1: One definition, same keys
+
+K1 lands in four pieces:
+- **K1a:** `crates/keymap/keymap.toml` holds today's keys for both clients. Tests hold it equal to the TUI's dispatcher probe and to the web registry. `GetKeymap` and `mxr keys` serve it.
+- **K1b:** the web registry reads its keys from the definition, and the parity test moves onto it.
+- **K1c:** the TUI dispatches by action id, with mode contexts, and gains mode-aware help and hints, `keys.toml` through the shared loader, and `mxr keys check`.
+- **K1d:** the web listeners outside the registry move in, the dead `place` scope goes, and Raycast reads the definition.
+
 
 - Create `crates/keymap` holding today's keys exactly as they are.
 - Port the TUI to dispatch by action id. The TUI modes become contexts.

@@ -980,6 +980,19 @@ pub enum Command {
         #[arg(long, global = true)]
         format: Option<OutputFormat>,
     },
+    /// Every keyboard shortcut in the TUI and the web app, from one definition
+    Keys {
+        #[command(subcommand)]
+        action: Option<KeysAction>,
+        /// Only this client's keys.
+        #[arg(long, global = true)]
+        client: Option<KeyClientArg>,
+        /// Only keys live in this place: a TUI context or web scope, such as todo.
+        #[arg(long, global = true)]
+        context: Option<String>,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
     /// How each mode explains itself: its job, empty states, keys and hints
     Modes {
         #[command(subcommand)]
@@ -2722,6 +2735,21 @@ pub enum MessagesAction {
         #[arg(long)]
         dry_run: bool,
     },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum KeysAction {
+    /// What a key does, in each client; with --context, what it does there.
+    Explain {
+        /// The key as mxr spells it, such as e, g i or Mod+k.
+        key: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum KeyClientArg {
+    Tui,
+    Web,
 }
 
 #[derive(Debug, Clone, Subcommand)]

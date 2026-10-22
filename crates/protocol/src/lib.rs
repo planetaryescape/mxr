@@ -1326,6 +1326,7 @@ mod tests {
                         sync_history: Vec::new(),
                         log_total_bytes: 0,
                         history_retention_days: None,
+                        address_cache_stale: false,
                     },
                 },
                 IpcCategory::AdminMaintenance,

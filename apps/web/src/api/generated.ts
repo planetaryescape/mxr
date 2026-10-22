@@ -6328,6 +6328,11 @@ export interface components {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   event: "ModesChanged";
+              }
+            | {
+                  account_id: components["schemas"]["AccountId"];
+                  /** @enum {string} */
+                  event: "AccountAddressesChanged";
               };
         /** @enum {string} */
         DaemonHealthClass:
@@ -6712,6 +6717,12 @@ export interface components {
          */
         DoctorFindingSeverity: "info" | "warning" | "error";
         DoctorReport: {
+            /**
+             * @description The daemon's account-address registry failed its last rebuild, so sync
+             *     writes Unknown direction until it recovers. False from a daemon that
+             *     predates the field, and from a report built without a running daemon.
+             */
+            address_cache_stale?: boolean;
             daemon_build_id?: string | null;
             /** Format: int32 */
             daemon_pid?: number | null;

@@ -8,6 +8,10 @@ These tables show defaults. To remap TUI mail-pane actions, create
 Help and the command palette show your effective shortcuts in each mail view;
 the web app keeps its own defaults.
 
+Every default in both clients comes from one definition. `mxr keys` lists
+it, and `mxr keys explain <key> --context <place>` says what a key does
+there, for example `mxr keys explain e --context todo`.
+
 :::tip[The 10 keys that get you 80% of mxr]
 If you only learn ten, learn these:
 

@@ -1085,6 +1085,9 @@ fn help_in_to_do_lists_to_dos_own_keys() {
         .iter()
         .map(ratatui::buffer::Cell::symbol)
         .collect();
-    assert!(text.contains("To do keys"), "help names the mode's key table");
+    assert!(
+        text.contains("To do keys"),
+        "help names the mode's key table"
+    );
     assert!(text.contains("Schedule"), "and lists To do's Z");
 }

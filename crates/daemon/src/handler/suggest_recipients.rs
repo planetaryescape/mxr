@@ -8,7 +8,6 @@
 //! recipients unless the current user is the original sender.
 
 use crate::state::AppState;
-use mxr_core::id::AccountId;
 use mxr_core::types::Draft;
 use mxr_core::SortOrder;
 use mxr_protocol::{ResponseData, SuggestedRecipientData};
@@ -30,13 +29,15 @@ pub(crate) async fn suggest(state: &AppState, draft: &Draft, limit: usize) -> su
         .search_ast(query, 50, 0, SortOrder::Relevance)
         .await?;
 
-    let self_addresses = self_addresses_for(state, &draft.account_id).await;
+    // A failed read fails the request: an empty set would suggest your own
+    // address, which the compose view can copy into Cc.
+    let self_addresses = state.owned_addresses(&draft.account_id).await?;
     let on_draft: HashSet<String> = draft
         .to
         .iter()
         .chain(draft.cc.iter())
         .chain(draft.bcc.iter())
-        .map(|a| a.email.to_lowercase())
+        .map(|a| a.email.to_ascii_lowercase())
         .collect();
 
     // Per-candidate aggregate: distinct thread_ids (for support) +
@@ -59,8 +60,8 @@ pub(crate) async fn suggest(state: &AppState, draft: &Draft, limit: usize) -> su
         }
         let participants = collect_participants_no_bcc(&env);
         for email in participants {
-            let key = email.to_lowercase();
-            if self_addresses.contains(&key) || on_draft.contains(&key) {
+            let key = email.to_ascii_lowercase();
+            if self_addresses.contains(&email) || on_draft.contains(&key) {
                 continue;
             }
             let agg = by_email.entry(key.clone()).or_default();
@@ -110,19 +111,6 @@ fn topic_text(draft: &Draft) -> String {
     let analysis_text = draft.content.analysis_text();
     let first_para = analysis_text.split("\n\n").next().unwrap_or("");
     format!("{} {first_para}", draft.subject)
-}
-
-async fn self_addresses_for(state: &AppState, account_id: &AccountId) -> HashSet<String> {
-    let mut set = HashSet::new();
-    if let Ok(Some(account)) = state.store.get_account(account_id).await {
-        set.insert(account.email.to_lowercase());
-    }
-    if let Ok(addrs) = state.store.list_account_addresses(account_id).await {
-        for addr in addrs {
-            set.insert(addr.email.to_lowercase());
-        }
-    }
-    set
 }
 
 /// Bcc safety: do NOT include bcc participants in the candidate set.
@@ -460,6 +448,50 @@ mod tests {
         assert!(
             suggestions.iter().all(|s| s.email != "bob@example.com"),
             "draft recipients must not be re-suggested: {suggestions:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_differently_cased_unicode_spelling_is_never_suggested_as_your_own_address() {
+        // Owned-address matching folds ASCII case only, so `user@BÜCHER.example`
+        // is not the owned `user@bücher.example`. A Unicode-folded candidate key
+        // would turn the first into the second and suggest your own address.
+        let (state, account) = fixture().await;
+        state
+            .store
+            .add_account_address(&account, "user@bücher.example", false)
+            .await
+            .unwrap();
+        for _ in 0..3 {
+            let thread = ThreadId::new();
+            let env = envelope(
+                &account,
+                &thread,
+                EnvelopeFixture {
+                    from: "alice@example.com",
+                    to: vec!["user@BÜCHER.example"],
+                    cc: vec![],
+                    bcc: vec![],
+                    subject: "rollout planning",
+                    body: "rollout planning details",
+                },
+            );
+            index(&state, &env, "rollout planning details").await;
+        }
+        let d = draft(
+            &account,
+            "rollout planning kick-off",
+            "starting rollout planning",
+            vec!["alice@example.com"],
+        );
+        let ResponseData::SuggestedCollaborators { suggestions } =
+            suggest(&state, &d, 5).await.unwrap()
+        else {
+            panic!("unexpected response");
+        };
+        assert!(
+            suggestions.iter().all(|s| s.email != "user@bücher.example"),
+            "your own address must not be suggested: {suggestions:?}"
         );
     }
 }

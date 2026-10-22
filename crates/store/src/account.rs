@@ -153,19 +153,40 @@ impl super::Store {
         Ok(())
     }
 
+    /// Removes an alias. A primary row is never deleted: the DELETE itself
+    /// excludes it, so a concurrent promotion cannot race the check. Each
+    /// owned-address reader treats the primary row as the account's own
+    /// identity, so a missing row drops the account's own mail out of direction
+    /// and reply defaults. Removing an address that is not registered is a
+    /// no-op.
     pub async fn remove_account_address(
         &self,
         account_id: &AccountId,
         email: &str,
     ) -> Result<(), sqlx::Error> {
         let aid = account_id.as_str();
-        sqlx::query!(
-            "DELETE FROM account_addresses WHERE account_id = ? AND email = ?",
-            aid,
-            email,
+        let removed = sqlx::query(
+            "DELETE FROM account_addresses WHERE account_id = ? AND email = ? AND is_primary = 0",
         )
+        .bind(aid.as_str())
+        .bind(email)
         .execute(self.writer())
         .await?;
+        if removed.rows_affected() == 0 {
+            let is_primary = sqlx::query_scalar::<_, i64>(
+                "SELECT 1 FROM account_addresses WHERE account_id = ? AND email = ? AND is_primary = 1",
+            )
+            .bind(aid.as_str())
+            .bind(email)
+            .fetch_optional(self.writer())
+            .await?;
+            if is_primary.is_some() {
+                return Err(sqlx::Error::Protocol(
+                    "cannot remove the primary address; set another address as primary first"
+                        .to_string(),
+                ));
+            }
+        }
         Ok(())
     }
 

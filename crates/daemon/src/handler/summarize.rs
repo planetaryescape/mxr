@@ -3,9 +3,9 @@
 //! the configured LLM for a per-message conversation summary.
 
 use super::{relationship_profile, HandlerResult};
-use crate::state::AppState;
+use crate::state::{owned_addresses_for, AppState};
 use mxr_core::id::ThreadId;
-use mxr_core::types::{AccountAddress, Address, Envelope};
+use mxr_core::types::{Address, Envelope, OwnedAddresses};
 use mxr_llm::{
     guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
     LlmFeature, LlmRuntime,
@@ -95,8 +95,7 @@ pub(crate) async fn valid_cached_summary(
 ) -> Option<ThreadSummaryData> {
     let relationship_hash = match envelopes.first() {
         Some(first) => {
-            let owned_addresses = store
-                .list_account_addresses(&first.account_id)
+            let owned_addresses = owned_addresses_for(store, &first.account_id)
                 .await
                 .unwrap_or_default();
             relationship_context_for_summary(store, &first.account_id, &owned_addresses, envelopes)
@@ -215,19 +214,28 @@ async fn load_summary_context(
     if envelopes.is_empty() {
         return Err(format!("Thread {thread_id} has no messages"));
     }
-    let owned_addresses = store
-        .list_account_addresses(&thread.account_id)
+    let owned_addresses = owned_addresses_for(store, &thread.account_id)
         .await
         .unwrap_or_default();
 
     let mut prompt = String::new();
-    prompt.push_str("Account owner addresses:\n");
+    prompt.push_str(
+        "Account owner addresses:
+",
+    );
     if owned_addresses.is_empty() {
-        prompt.push_str("- unknown\n");
+        prompt.push_str(
+            "- unknown
+",
+        );
     } else {
-        for address in &owned_addresses {
-            let primary = if address.is_primary { " (primary)" } else { "" };
-            prompt.push_str(&format!("- {}{}\n", address.email, primary));
+        for address in owned_addresses.iter() {
+            let primary = if owned_addresses.primary() == Some(address) {
+                " (primary)"
+            } else {
+                ""
+            };
+            prompt.push_str(&format!("- {address}{primary}\n"));
         }
     }
     // Thread id and message count are internal metadata (trusted); the
@@ -301,12 +309,12 @@ async fn load_summary_context(
 async fn relationship_context_for_summary(
     store: &Store,
     account_id: &mxr_core::AccountId,
-    owned_addresses: &[AccountAddress],
+    owned_addresses: &OwnedAddresses,
     envelopes: &[Envelope],
 ) -> (String, String) {
     let owned = owned_addresses
         .iter()
-        .map(|address| address.email.to_ascii_lowercase())
+        .map(str::to_ascii_lowercase)
         .collect::<BTreeSet<_>>();
     let mut contacts = BTreeSet::new();
     for envelope in envelopes {
@@ -391,14 +399,6 @@ fn format_address(address: &Address) -> String {
         Some(name) => format!("{name} <{}>", address.email),
         None => address.email.clone(),
     }
-}
-
-#[allow(dead_code)]
-fn _owned_address_emails(addresses: &[AccountAddress]) -> Vec<&str> {
-    addresses
-        .iter()
-        .map(|address| address.email.as_str())
-        .collect()
 }
 
 #[cfg(test)]

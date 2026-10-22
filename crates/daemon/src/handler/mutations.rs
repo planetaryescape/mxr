@@ -81,23 +81,13 @@ async fn check_draft_safety_with_context(
         return Ok(report);
     };
 
-    let mut self_addresses = HashSet::new();
-    if let Some(account) = state
-        .store
-        .get_account(&draft.account_id)
+    let self_addresses: HashSet<String> = state
+        .owned_addresses(&draft.account_id)
         .await
         .map_err(|e| e.to_string())?
-    {
-        self_addresses.insert(account.email.to_ascii_lowercase());
-    }
-    for address in state
-        .store
-        .list_account_addresses(&draft.account_id)
-        .await
-        .map_err(|e| e.to_string())?
-    {
-        self_addresses.insert(address.email.to_ascii_lowercase());
-    }
+        .iter()
+        .map(str::to_ascii_lowercase)
+        .collect();
 
     let actual_recipients = draft
         .to
@@ -235,23 +225,13 @@ async fn build_safety_context(
     draft: &Draft,
     context: &DraftSafetyContextData,
 ) -> Result<mxr_safety::SafetyContext, String> {
-    let mut self_addresses = Vec::new();
-    if let Some(account) = state
-        .store
-        .get_account(&draft.account_id)
+    let self_addresses: Vec<String> = state
+        .owned_addresses(&draft.account_id)
         .await
         .map_err(|e| e.to_string())?
-    {
-        self_addresses.push(account.email.to_ascii_lowercase());
-    }
-    for address in state
-        .store
-        .list_account_addresses(&draft.account_id)
-        .await
-        .map_err(|e| e.to_string())?
-    {
-        self_addresses.push(address.email.to_ascii_lowercase());
-    }
+        .iter()
+        .map(str::to_ascii_lowercase)
+        .collect();
 
     let known_contacts = state
         .store
@@ -3103,7 +3083,7 @@ pub(super) async fn prepare_reply(
 
     // Default the reply's From to the owned address the message was delivered
     // to, so a message that arrived at an alias is answered from that alias.
-    let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await;
+    let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await?;
     let from = reply_from_default(&owned, &primary_email, &envelope, body.as_ref());
 
     // Reply-To is captured into the body metadata at parse time. The rules for
@@ -3156,7 +3136,7 @@ pub(super) async fn prepare_forward(
 
     // Default the forward's From to the owned address the message was
     // delivered to (same rule as reply), falling back to the primary.
-    let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await;
+    let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await?;
     let from = reply_from_default(&owned, &primary_email, &envelope, body.as_ref());
 
     Ok(ResponseData::ForwardContext {
@@ -3192,9 +3172,14 @@ pub(crate) async fn resolve_from_address(
     let account_name = account.as_ref().map(|a| a.name.clone());
 
     // Owned set = the account's primary address plus every registered alias.
-    let mut owned: Vec<String> = vec![primary_email.clone()];
-    for address in state.store.list_account_addresses(account_id).await? {
-        owned.push(address.email);
+    let mut owned: Vec<String> = state
+        .owned_addresses(account_id)
+        .await?
+        .iter()
+        .map(str::to_string)
+        .collect();
+    if owned.is_empty() {
+        owned.push(primary_email.clone());
     }
 
     resolve_owned_from(account_name.as_deref(), &primary_email, &owned, requested).map_err(
@@ -3362,30 +3347,17 @@ fn reply_from_default(
 
 /// Load an account's primary email and the full set of owned emails
 /// (primary + registered aliases). Returns `(primary, owned)` where `owned`
-/// always leads with the primary. Best-effort: store errors yield empties so
-/// callers degrade to primary-only behaviour rather than failing a prepare.
+/// always leads with the primary. A store error fails the prepare: an empty
+/// owned set would address a reply to your own sent message back to you.
 async fn account_owned_addresses(
     state: &AppState,
     account_id: &mxr_core::AccountId,
-) -> (String, Vec<String>) {
-    let primary = state
-        .store
-        .get_account(account_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|account| account.email)
-        .unwrap_or_default();
-    let mut owned = Vec::new();
-    if !primary.is_empty() {
-        owned.push(primary.clone());
-    }
-    if let Ok(aliases) = state.store.list_account_addresses(account_id).await {
-        for alias in aliases {
-            owned.push(alias.email);
-        }
-    }
-    (primary, owned)
+) -> Result<(String, Vec<String>), sqlx::Error> {
+    let owned = state.owned_addresses(account_id).await?;
+    Ok((
+        owned.primary().unwrap_or_default().to_string(),
+        owned.iter().map(str::to_string).collect(),
+    ))
 }
 
 /// IPC handler for `Request::ResolveSendFrom`: resolve (and ownership-validate)

@@ -30,7 +30,8 @@ pub(crate) async fn find(
         .search_ast(query, 50, 0, SortOrder::Relevance)
         .await?;
 
-    let self_addresses = self_addresses_for(state, account_id).await;
+    // A failed read fails the request: an empty set would list you as an expert.
+    let self_addresses = state.owned_addresses(account_id).await?;
 
     // Group hits by thread and walk in chronological order. Anyone
     // whose message came AFTER at least one earlier message in the
@@ -75,10 +76,10 @@ pub(crate) async fn find(
         }
         let first_date = full[0].date;
         for env in &full {
-            let email = env.from.email.to_lowercase();
-            if !include_self && self_addresses.contains(&email) {
+            if !include_self && self_addresses.contains(&env.from.email) {
                 continue;
             }
+            let email = env.from.email.to_ascii_lowercase();
             // Only credit messages that came AFTER the first one in
             // the thread -- the first message is the question, every
             // later one is an answer.
@@ -120,19 +121,6 @@ struct Aggregate {
     threads: HashSet<String>,
     evidence_msg_ids: Vec<String>,
     display_name: Option<String>,
-}
-
-async fn self_addresses_for(state: &AppState, account_id: &AccountId) -> HashSet<String> {
-    let mut set = HashSet::new();
-    if let Ok(Some(account)) = state.store.get_account(account_id).await {
-        set.insert(account.email.to_lowercase());
-    }
-    if let Ok(addrs) = state.store.list_account_addresses(account_id).await {
-        for addr in addrs {
-            set.insert(addr.email.to_lowercase());
-        }
-    }
-    set
 }
 
 #[cfg(test)]

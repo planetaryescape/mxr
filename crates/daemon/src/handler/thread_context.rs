@@ -37,11 +37,10 @@ pub(super) async fn owned_addresses(
     account_id: &AccountId,
 ) -> Result<BTreeSet<String>, HandlerError> {
     Ok(state
-        .store
-        .list_account_addresses(account_id)
+        .owned_addresses(account_id)
         .await?
-        .into_iter()
-        .map(|address| address.email.to_ascii_lowercase())
+        .iter()
+        .map(str::to_ascii_lowercase)
         .collect())
 }
 

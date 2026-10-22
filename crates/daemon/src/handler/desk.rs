@@ -18,7 +18,7 @@ use super::HandlerResult;
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::{AccountAddressLookup, CalendarPartstat};
+use mxr_core::types::CalendarPartstat;
 use mxr_protocol::{DeskElsewhereData, DeskLaneData, DeskLaneKind, DeskRowData, ResponseData};
 use mxr_store::{
     CadenceDriftRow, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord,
@@ -215,19 +215,8 @@ pub(super) async fn self_matcher(
     state: &AppState,
     account_id: &AccountId,
 ) -> Result<impl Fn(&str) -> bool, super::HandlerError> {
-    let addresses = state.account_addresses.clone();
-    let account_email = state
-        .store
-        .get_account(account_id)
-        .await?
-        .map(|account| account.email.to_ascii_lowercase());
-    let account_id = account_id.clone();
-    Ok(move |email: &str| {
-        addresses.is_account_address(&account_id, email)
-            || account_email
-                .as_deref()
-                .is_some_and(|own| own.eq_ignore_ascii_case(email))
-    })
+    let owned = state.owned_addresses(account_id).await?;
+    Ok(move |email: &str| owned.contains(email))
 }
 
 /// Reads the recent history of every sender in `from` you have never

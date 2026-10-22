@@ -3802,6 +3802,46 @@ async fn account_addresses_roundtrip_with_primary_uniqueness() {
 }
 
 #[tokio::test]
+async fn remove_account_address_refuses_the_primary() {
+    // The primary is the account's own identity: direction inference and the
+    // daemon's owned-address set read the address table, so a primary row
+    // must survive removal. Promote another address first.
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    store
+        .add_account_address(&account.id, "alias@example.com", false)
+        .await
+        .unwrap();
+
+    let err = store
+        .remove_account_address(&account.id, &account.email)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, sqlx::Error::Protocol(_)), "got {err:?}");
+
+    let after = store.list_account_addresses(&account.id).await.unwrap();
+    assert!(after
+        .iter()
+        .any(|a| a.is_primary && a.email == account.email));
+    assert_eq!(after.len(), 2);
+}
+
+#[tokio::test]
+async fn remove_account_address_of_an_unregistered_address_is_a_no_op() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    store
+        .remove_account_address(&account.id, "ghost@example.com")
+        .await
+        .unwrap();
+    let after = store.list_account_addresses(&account.id).await.unwrap();
+    assert_eq!(after.len(), 1);
+}
+
+#[tokio::test]
 async fn list_subscriptions_computes_open_and_archive_counts_per_sender() {
     // Pins the new ROI fields on SubscriptionSummary. Three senders, each
     // with a distinct read/archive mix. Test asserts counts arithmetic;

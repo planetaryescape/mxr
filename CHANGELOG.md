@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.137](https://github.com/planetaryescape/mxr/compare/v0.6.136...v0.6.137) (2026-10-22)
+
+
+### Features
+
+* draw assistant email rows as compact cards ([#610](https://github.com/planetaryescape/mxr/issues/610)) ([b69a4e6](https://github.com/planetaryescape/mxr/commit/b69a4e6448ebedf0dcd05d4fa282f67284c13332))
+
 ## [0.6.136](https://github.com/planetaryescape/mxr/compare/v0.6.135...v0.6.136) (2026-10-22)
 
 

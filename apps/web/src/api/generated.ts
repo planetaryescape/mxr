@@ -12837,6 +12837,20 @@ export interface components {
                   kind: "AccountAddresses";
               }
             | {
+                  /** @enum {string} */
+                  kind: "AccountAddressChanged";
+                  /**
+                   * Format: int32
+                   * @description Outbound messages now read as inbound: their sender is no longer owned.
+                   */
+                  to_inbound: number;
+                  /**
+                   * Format: int32
+                   * @description Inbound messages now read as outbound: their sender is owned.
+                   */
+                  to_outbound: number;
+              }
+            | {
                   from: components["schemas"]["Address"];
                   /** @enum {string} */
                   kind: "ResolvedSendFrom";

@@ -118,6 +118,7 @@ pub mod workspace_lease;
 mod wrapped;
 
 pub use account::AccountIdentitySlot;
+pub use analytics::AccountDirectionChanges;
 pub use arrival_ledger::{
     ArrivalCounts, ArrivalPlacement, ArrivalRow, Correction, NewCorrection, PendingArrival,
 };

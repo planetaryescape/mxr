@@ -23,7 +23,7 @@ use mxr_protocol::{
     SearchExplainResult, SearchResultItem,
 };
 use mxr_search::{SearchPage, SearchResult};
-use mxr_store::SyncRuntimeStatusUpdate;
+use mxr_store::{AccountDirectionChanges, SyncRuntimeStatusUpdate};
 use std::collections::HashMap;
 
 #[cfg(not(test))]
@@ -798,13 +798,14 @@ pub(crate) async fn add_account_address(
         .add_account_address(account_id, email, primary)
         .await?;
     state.refresh_account_addresses().await;
+    let changes = reclassify_account_directions(state, account_id).await?;
     crate::chimes::emit_daemon_event(
         state,
         mxr_protocol::DaemonEvent::AccountAddressesChanged {
             account_id: account_id.clone(),
         },
     );
-    Ok(ResponseData::Ack)
+    Ok(address_changed(changes))
 }
 
 pub(crate) async fn remove_account_address(
@@ -817,13 +818,14 @@ pub(crate) async fn remove_account_address(
         .remove_account_address(account_id, email)
         .await?;
     state.refresh_account_addresses().await;
+    let changes = reclassify_account_directions(state, account_id).await?;
     crate::chimes::emit_daemon_event(
         state,
         mxr_protocol::DaemonEvent::AccountAddressesChanged {
             account_id: account_id.clone(),
         },
     );
-    Ok(ResponseData::Ack)
+    Ok(address_changed(changes))
 }
 
 pub(crate) async fn set_primary_account_address(
@@ -833,13 +835,45 @@ pub(crate) async fn set_primary_account_address(
 ) -> HandlerResult {
     state.store.set_primary_address(account_id, email).await?;
     state.refresh_account_addresses().await;
+    let changes = reclassify_account_directions(state, account_id).await?;
     crate::chimes::emit_daemon_event(
         state,
         mxr_protocol::DaemonEvent::AccountAddressesChanged {
             account_id: account_id.clone(),
         },
     );
-    Ok(ResponseData::Ack)
+    Ok(address_changed(changes))
+}
+
+fn address_changed(changes: AccountDirectionChanges) -> ResponseData {
+    ResponseData::AccountAddressChanged {
+        to_outbound: changes.to_outbound,
+        to_inbound: changes.to_inbound,
+    }
+}
+
+/// Make the account's stored mail agree with its committed owned set. Callers
+/// refresh the registry first, so sync passes that start now classify against
+/// the new set. The contacts table caches direction, so it is queued too.
+pub(crate) async fn reclassify_account_directions(
+    state: &AppState,
+    account_id: &AccountId,
+) -> Result<AccountDirectionChanges, sqlx::Error> {
+    let owned = state.owned_addresses(account_id).await?;
+    let changes = state
+        .store
+        .reclassify_account_directions(account_id, &owned)
+        .await?;
+    if changes != AccountDirectionChanges::default() {
+        if let Err(error) = state
+            .contacts_refresh
+            .enqueue_accounts(std::slice::from_ref(account_id))
+            .await
+        {
+            tracing::warn!(account = %account_id, %error, "contacts refresh not queued after direction change");
+        }
+    }
+    Ok(changes)
 }
 
 pub(crate) async fn semantic_status(state: &AppState) -> HandlerResult {

@@ -10,6 +10,90 @@ use std::time::Instant;
 /// in this codebase ever lands earlier.
 const EARLIEST_PLAUSIBLE_TS: i64 = 946_684_800;
 
+/// How many stored messages of one account an owned-set change flipped.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct AccountDirectionChanges {
+    /// Inbound rows whose sender is owned now.
+    pub to_outbound: u32,
+    /// Outbound rows whose sender is no longer owned.
+    pub to_inbound: u32,
+}
+
+/// The rows an owned set changes: inbound from an owned sender, or outbound
+/// from one that is not. Unknown rows belong to `reclassify_unknown_directions`.
+/// Rows are `(id, from_email, direction)`.
+fn direction_flips(
+    rows: &[(String, String, String)],
+    owned: &OwnedAddresses,
+) -> Vec<(String, MessageDirection)> {
+    rows.iter()
+        .filter_map(|(id, from_email, direction)| {
+            let owned_sender = owned.contains(from_email);
+            match direction.as_str() {
+                "inbound" if owned_sender => Some((id.clone(), MessageDirection::Outbound)),
+                "outbound" if !owned_sender => Some((id.clone(), MessageDirection::Inbound)),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+impl super::Store {
+    /// Reclassify one account's stored messages against its owned set, after
+    /// an address add, remove or primary change. Inbound rows from an owned
+    /// sender become outbound, and outbound rows from an unowned sender become
+    /// inbound. The derived rows that read direction move with them: their
+    /// reply pairs, and arrivals for mail now sent. Everything runs in one
+    /// writer transaction, so sync cannot write between the read and the flip.
+    pub async fn reclassify_account_directions(
+        &self,
+        account_id: &AccountId,
+        owned: &OwnedAddresses,
+    ) -> Result<AccountDirectionChanges, sqlx::Error> {
+        let started_at = Instant::now();
+        let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
+        let rows: Vec<(String, String, String)> = sqlx::query_as(
+            r#"SELECT id, from_email, direction
+               FROM messages
+               WHERE account_id = ? AND direction != 'unknown'"#,
+        )
+        .bind(account_id.as_str())
+        .fetch_all(&mut *tx)
+        .await?;
+
+        let mut changes = AccountDirectionChanges::default();
+        for (id, direction) in direction_flips(&rows, owned) {
+            sqlx::query("UPDATE messages SET direction = ? WHERE id = ?")
+                .bind(direction.as_db_str())
+                .bind(&id)
+                .execute(&mut *tx)
+                .await?;
+            Self::reseat_reply_pair_tx(&mut tx, &id).await?;
+            if direction == MessageDirection::Outbound {
+                // Mail the account sent is not an arrival. An arrival the user
+                // corrected keeps its record of where it went.
+                sqlx::query(
+                    "DELETE FROM arrivals
+                     WHERE message_id = ? AND now_mode IS NULL AND moved_at IS NULL",
+                )
+                .bind(&id)
+                .execute(&mut *tx)
+                .await?;
+                changes.to_outbound += 1;
+            } else {
+                changes.to_inbound += 1;
+            }
+        }
+        tx.commit().await?;
+        trace_query(
+            "analytics.reclassify_account_directions",
+            started_at,
+            (changes.to_outbound + changes.to_inbound) as usize,
+        );
+        Ok(changes)
+    }
+}
+
 /// Reclassify every `direction='unknown'` row using a closure that queries
 /// the account-address lookup. Returns the number of rows updated. Called
 /// by `mxr doctor --rebuild-analytics` (Slice 15).
@@ -410,3 +494,6 @@ impl super::Store {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod tests;

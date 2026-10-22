@@ -94,44 +94,41 @@ impl super::Store {
     /// `INSERT OR IGNORE`; called by `mxr doctor --rebuild-analytics`.
     /// Returns the number of new pairs.
     pub async fn backfill_reply_pairs_from_messages(&self) -> Result<u32, sqlx::Error> {
-        let result = sqlx::query(
-            r#"INSERT OR IGNORE INTO reply_pairs (
-                    reply_message_id, parent_message_id, account_id,
-                    counterparty_email, direction,
-                    parent_received_at, replied_at, latency_seconds,
-                    business_hours_latency_seconds, created_at
-                )
-                SELECT
-                    reply.id,
-                    parent.id,
-                    reply.account_id,
-                    CASE
-                        WHEN reply.direction = 'outbound' THEN parent.from_email
-                        ELSE COALESCE(json_extract(parent.to_addrs, '$[0].email'), '')
-                    END,
-                    CASE
-                        WHEN reply.direction = 'outbound' THEN 'i_replied'
-                        ELSE 'they_replied'
-                    END,
-                    parent.date,
-                    reply.date,
-                    MAX(reply.date - parent.date, 0),
-                    NULL,
-                    strftime('%s', 'now')
-                FROM messages reply
-                JOIN messages parent
-                    ON parent.account_id = reply.account_id
-                    AND parent.message_id_header = reply.in_reply_to
-                WHERE reply.in_reply_to IS NOT NULL
-                    AND reply.in_reply_to != ''
-                    AND reply.direction IN ('inbound', 'outbound')
-                    AND parent.message_id_header IS NOT NULL
-                    AND parent.message_id_header != ''
-                    AND reply.id != parent.id"#,
-        )
-        .execute(self.writer())
-        .await?;
+        let result = sqlx::query(PAIR_FROM_STORED_REPLY_SQL)
+            .bind(None::<&str>)
+            .execute(self.writer())
+            .await?;
         Ok(result.rows_affected() as u32)
+    }
+
+    /// Rebuild one stored reply's pair from its current direction, inside the
+    /// caller's transaction. A reply whose parent is not stored yet goes back
+    /// on the pending queue, as sync leaves it.
+    pub(crate) async fn reseat_reply_pair_tx(
+        tx: &mut sqlx::SqliteConnection,
+        reply_id: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM reply_pairs WHERE reply_message_id = ?")
+            .bind(reply_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(PAIR_FROM_STORED_REPLY_SQL)
+            .bind(reply_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "INSERT OR IGNORE INTO reply_pair_pending
+                (reply_message_id, in_reply_to_header, account_id, created_at)
+             SELECT id, in_reply_to, account_id, strftime('%s', 'now')
+             FROM messages
+             WHERE id = ?1 AND in_reply_to IS NOT NULL AND in_reply_to != ''
+               AND direction IN ('inbound', 'outbound')
+               AND NOT EXISTS (SELECT 1 FROM reply_pairs WHERE reply_message_id = ?1)",
+        )
+        .bind(reply_id)
+        .execute(&mut *tx)
+        .await?;
+        Ok(())
     }
 
     /// Park a reply for later resolution when the parent isn't available yet.
@@ -378,3 +375,40 @@ pub(crate) fn first_recipient_email(json: &str) -> Option<String> {
 
 #[allow(dead_code)]
 fn _types_used(_: AccountId, _: MessageId) {}
+
+/// Builds `reply_pairs` rows from stored replies, using their stored direction.
+/// `?1` restricts it to one reply; NULL means every reply.
+const PAIR_FROM_STORED_REPLY_SQL: &str = r#"INSERT OR IGNORE INTO reply_pairs (
+        reply_message_id, parent_message_id, account_id,
+        counterparty_email, direction,
+        parent_received_at, replied_at, latency_seconds,
+        business_hours_latency_seconds, created_at
+    )
+    SELECT
+        reply.id,
+        parent.id,
+        reply.account_id,
+        CASE
+            WHEN reply.direction = 'outbound' THEN parent.from_email
+            ELSE COALESCE(json_extract(parent.to_addrs, '$[0].email'), '')
+        END,
+        CASE
+            WHEN reply.direction = 'outbound' THEN 'i_replied'
+            ELSE 'they_replied'
+        END,
+        parent.date,
+        reply.date,
+        MAX(reply.date - parent.date, 0),
+        NULL,
+        strftime('%s', 'now')
+    FROM messages reply
+    JOIN messages parent
+        ON parent.account_id = reply.account_id
+        AND parent.message_id_header = reply.in_reply_to
+    WHERE reply.in_reply_to IS NOT NULL
+        AND reply.in_reply_to != ''
+        AND reply.direction IN ('inbound', 'outbound')
+        AND parent.message_id_header IS NOT NULL
+        AND parent.message_id_header != ''
+        AND reply.id != parent.id
+        AND (?1 IS NULL OR reply.id = ?1)"#;

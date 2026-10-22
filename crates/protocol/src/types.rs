@@ -3904,6 +3904,14 @@ pub enum ResponseData {
     AccountAddresses {
         addresses: Vec<mxr_core::types::AccountAddress>,
     },
+    /// Reply to an address add, remove or primary change: how many stored
+    /// messages of the account were reclassified to match the new owned set.
+    AccountAddressChanged {
+        /// Inbound messages now read as outbound: their sender is owned.
+        to_outbound: u32,
+        /// Outbound messages now read as inbound: their sender is no longer owned.
+        to_inbound: u32,
+    },
     /// Effective From address resolved (and ownership-validated) by
     /// `Request::ResolveSendFrom`.
     ResolvedSendFrom {
@@ -4731,6 +4739,7 @@ impl ResponseData {
             | Self::AnalyticsRebuildSummary { .. }
             | Self::ResponseTime { .. }
             | Self::AccountAddresses { .. }
+            | Self::AccountAddressChanged { .. }
             | Self::LlmStatus { .. }
             | Self::LlmConfig { .. }
             | Self::LlmKeyChange { .. }

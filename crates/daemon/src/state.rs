@@ -2150,6 +2150,21 @@ impl AppState {
         // primary. Clients hear about address changes whether or not it rebuilds.
         self.refresh_account_addresses().await;
         for account_id in accounts_with_changed_addresses(&before, &after) {
+            match crate::handler::diagnostics_impl::reclassify_account_directions(self, &account_id)
+                .await
+            {
+                Ok(changes) => tracing::info!(
+                    account = %account_id,
+                    to_outbound = changes.to_outbound,
+                    to_inbound = changes.to_inbound,
+                    "reclassified stored mail after a config address change"
+                ),
+                Err(error) => tracing::warn!(
+                    account = %account_id,
+                    %error,
+                    "could not reclassify stored mail after a config address change"
+                ),
+            }
             crate::chimes::emit_daemon_event(
                 self,
                 mxr_protocol::DaemonEvent::AccountAddressesChanged { account_id },

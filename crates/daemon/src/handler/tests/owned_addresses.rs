@@ -269,3 +269,152 @@ async fn adding_an_alias_tells_clients_that_cached_reply_contexts_may_be_stale()
         "address changes must reach every connected client"
     );
 }
+
+async fn store_mail_from(
+    state: &AppState,
+    account_id: &mxr_core::AccountId,
+    from: &str,
+    direction: mxr_core::types::MessageDirection,
+    provider_id: &str,
+) -> mxr_core::MessageId {
+    let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .account_id(account_id.clone())
+        .provider_id(provider_id)
+        .sender_address("Alias", from)
+        .build();
+    state
+        .store
+        .upsert_envelope_with_direction(&envelope, direction)
+        .await
+        .unwrap();
+    envelope.id
+}
+
+async fn direction_of(state: &AppState, id: &mxr_core::MessageId) -> String {
+    sqlx::query_scalar("SELECT direction FROM messages WHERE id = ?")
+        .bind(id.as_str())
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn adding_an_alias_reclassifies_stored_mail_from_it_and_reports_the_count() {
+    use mxr_core::types::MessageDirection;
+    use mxr_protocol::ResponseData;
+
+    let state = AppState::in_memory().await.unwrap();
+    let account_id = state.default_account_id();
+    let sent_before_registering = store_mail_from(
+        &state,
+        &account_id,
+        "Alias@Example.com",
+        MessageDirection::Inbound,
+        "alias-before",
+    )
+    .await;
+    let from_someone_else = store_mail_from(
+        &state,
+        &account_id,
+        "bob@example.com",
+        MessageDirection::Inbound,
+        "bob-before",
+    )
+    .await;
+
+    let response = crate::handler::diagnostics_impl::add_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        false,
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        response,
+        ResponseData::AccountAddressChanged {
+            to_outbound: 1,
+            to_inbound: 0
+        }
+    ));
+    assert_eq!(
+        direction_of(&state, &sent_before_registering).await,
+        "outbound"
+    );
+    assert_eq!(direction_of(&state, &from_someone_else).await, "inbound");
+}
+
+#[tokio::test]
+async fn removing_an_alias_reclassifies_its_stored_mail_back_to_inbound() {
+    use mxr_core::types::MessageDirection;
+    use mxr_protocol::ResponseData;
+
+    let state = AppState::in_memory().await.unwrap();
+    let account_id = state.default_account_id();
+    crate::handler::diagnostics_impl::add_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        false,
+    )
+    .await
+    .unwrap();
+    let sent_from_alias = store_mail_from(
+        &state,
+        &account_id,
+        "alias@example.com",
+        MessageDirection::Outbound,
+        "alias-out",
+    )
+    .await;
+
+    let response = crate::handler::diagnostics_impl::remove_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        response,
+        ResponseData::AccountAddressChanged {
+            to_outbound: 0,
+            to_inbound: 1
+        }
+    ));
+    assert_eq!(direction_of(&state, &sent_from_alias).await, "inbound");
+}
+
+#[tokio::test]
+async fn set_primary_leaves_the_owned_set_and_its_mail_unchanged() {
+    use mxr_protocol::ResponseData;
+
+    let state = AppState::in_memory().await.unwrap();
+    let account_id = state.default_account_id();
+    crate::handler::diagnostics_impl::add_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        false,
+    )
+    .await
+    .unwrap();
+
+    let response = crate::handler::diagnostics_impl::set_primary_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        response,
+        ResponseData::AccountAddressChanged {
+            to_outbound: 0,
+            to_inbound: 0
+        }
+    ));
+}

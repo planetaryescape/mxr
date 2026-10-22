@@ -348,9 +348,44 @@ impl App {
         }
         self.input_context = Some(context);
         self.input.begin_turn();
-        let action = self.handle_key_press(key);
+        let mut action = self.handle_key_press(key);
+        // `q` closes the innermost layer and quits only at the root
+        // (blueprint 35, "Back and quit"). Below the root it goes back one
+        // level, exactly as Esc does there.
+        if action == Some(Action::QuitView) && key.code == KeyCode::Char('q') && self.below_root() {
+            let esc = crossterm::event::KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+            action = self.handle_key_press(esc);
+        }
         self.input.end_turn();
         action
+    }
+
+    /// A layer under the root is open: a screen other than the mailbox, the
+    /// reader, or a mode's sub-view. Until an account exists the Accounts
+    /// screen is the root, so `q` can still leave first-run setup.
+    fn below_root(&self) -> bool {
+        if self.accounts.page.onboarding_required {
+            return false;
+        }
+        if self.screen != Screen::Mailbox {
+            return true;
+        }
+        let mailbox = &self.mailbox;
+        if mailbox.active_pane == ActivePane::MessageView {
+            return true;
+        }
+        match mailbox.mailbox_view {
+            MailboxView::People => mailbox.messages_page.focus == MessagesFocus::Person,
+            MailboxView::Todo => mailbox.todo_page.panel != TodoPanel::Runway,
+            MailboxView::Reading => {
+                let page = &mailbox.reading_page;
+                page.later_shelf || (page.reader_focused && page.reader.is_some())
+            }
+            MailboxView::ArchiveMode => {
+                mailbox.records_page.answer.is_some() || mailbox.records_page.card.is_some()
+            }
+            _ => false,
+        }
     }
 
     fn handle_key_press(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {

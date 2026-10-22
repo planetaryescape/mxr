@@ -1643,7 +1643,7 @@ hide_in_palette = true
 
 [[action.tui]]
 name = "Back"
-keys = ["Escape"]
+keys = ["Escape", "q"]
 contexts = ["reader"]
 
 [[action]]
@@ -2291,7 +2291,7 @@ hide_in_palette = true
 
 [[action.tui]]
 name = "TodoShowRunway"
-keys = ["Escape"]
+keys = ["Escape", "q"]
 contexts = ["catchup"]
 
 [[action]]
@@ -2343,7 +2343,7 @@ hide_in_palette = true
 
 [[action.tui]]
 name = "TodoShowRunway"
-keys = ["Escape"]
+keys = ["Escape", "q"]
 contexts = ["expired"]
 
 [[action]]
@@ -3592,7 +3592,7 @@ clients = ["tui"]
 [[action.tui]]
 name = "QuitView"
 keys = ["q"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "updates"]
+contexts = ["list", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
 
 [[action]]
 id = "tui.center-current"

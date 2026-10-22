@@ -43,7 +43,7 @@ help modal (`?`).
 | `gL` | Open logs |
 | `?` | Toggle help modal |
 | `Esc` | Back, close modal, dismiss pane, or clear selection |
-| `q` | Quit current view or exit |
+| `q` | Close the innermost layer (a menu, the reader, a sub-view, a screen); quit at the mailbox root |
 
 ## Mail list
 

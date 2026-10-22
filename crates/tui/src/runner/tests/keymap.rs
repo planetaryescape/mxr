@@ -798,7 +798,8 @@ fn configured_uppercase_modifiers_unbinds_and_context_changes_are_safe() {
     );
     assert_eq!(press_char(&mut app, 'w'), None);
     app.mailbox.active_pane = ActivePane::MessageView;
-    assert_eq!(press_char(&mut app, 'q'), Some(Action::QuitView));
+    // q in the reader closes it (it sits below the root), not `w q`.
+    assert_eq!(press_char(&mut app, 'q'), Some(Action::Back));
     assert_eq!(
         press_char(&mut app, ';'),
         Some(Action::Compose),

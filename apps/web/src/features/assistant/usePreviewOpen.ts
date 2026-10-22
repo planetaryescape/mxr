@@ -58,16 +58,18 @@ export function usePreviewOpen() {
   const pressEnd = useRef<(() => void) | null>(null);
 
   // While a card is pending or open, Esc anywhere on the page cancels it, even
-  // when focus is elsewhere (a hover opens cards without moving focus).
+  // when focus is elsewhere (a hover opens cards without moving focus). Capture
+  // phase: a field that handles its own Esc (the proof's reject note) stops
+  // propagation, and a bubble listener would miss it and let the card open.
   const syncEscape = () => {
     const wanted = openTimer.current !== null || isOpen.current;
     if (wanted && !escape.current) {
       escape.current = (event) => {
         if (event.key === "Escape") suppress();
       };
-      document.addEventListener("keydown", escape.current);
+      document.addEventListener("keydown", escape.current, true);
     } else if (!wanted && escape.current) {
-      document.removeEventListener("keydown", escape.current);
+      document.removeEventListener("keydown", escape.current, true);
       escape.current = null;
     }
   };
@@ -101,6 +103,10 @@ export function usePreviewOpen() {
       clearOpen();
       clearClose();
       endPress();
+      if (escape.current) {
+        document.removeEventListener("keydown", escape.current, true);
+        escape.current = null;
+      }
     },
     [],
   );

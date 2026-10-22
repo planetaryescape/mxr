@@ -493,6 +493,21 @@ describe("the hover card on an email or person chip", () => {
     expect(screen.queryByTestId("link-hover-card")).toBeNull();
   });
 
+  test("Esc that a field handles itself still keeps a pending card from opening", async () => {
+    // The proof's reject note stops Esc from bubbling; the card listens in capture.
+    reply();
+    const field = document.createElement("textarea");
+    field.addEventListener("keydown", (event) => event.stopPropagation());
+    document.body.append(field);
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointer(chip, "Over", "mouse");
+    await wait(200);
+    fireEvent.keyDown(field, { key: "Escape" });
+    await wait(1000);
+    expect(screen.queryByTestId("link-hover-card")).toBeNull();
+    field.remove();
+  });
+
   test("Esc closes the open card and cancels another link's pending one", async () => {
     reply("See [A](mxr:thread/t-a) and [B](mxr:thread/t-b).");
     const a = screen.getByRole("link", { name: "A" });

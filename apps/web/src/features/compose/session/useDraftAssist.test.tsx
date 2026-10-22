@@ -177,6 +177,34 @@ describe("useDraftAssist", () => {
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
+  test("a forward sends its recipients as address objects", async () => {
+    apiFetch.mockResolvedValue(proposal("FYI", [{ kind: "added", text: "FYI" }]));
+    const forward: ComposeIntent = { key: "f", title: "Forward", kind: "forward", messageId: "m2" };
+    const draft = draftWith("");
+    const { result } = renderHook(
+      () =>
+        useHarness(
+          {
+            ...draft,
+            frontmatter: { ...draft.frontmatter, to: "Pat Lee <pat@example.com>, sam@example.com" },
+          },
+          forward,
+        ),
+      { wrapper },
+    );
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
+    const [, init] = apiFetch.mock.calls[0] as [string, { body: Record<string, unknown> }];
+    expect(init.body.draft).toEqual({
+      kind: "forward",
+      message_id: "m2",
+      to: [
+        { name: "Pat Lee", email: "pat@example.com" },
+        { name: null, email: "sam@example.com" },
+      ],
+    });
+  });
+
   test("placeholder and the next action follow the selection", () => {
     const body = "Thursday works.";
     const { result } = renderHook(() => useHarness(draftWith(body)), { wrapper });

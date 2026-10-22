@@ -15,6 +15,7 @@ import { mapModelSpans } from "../assist/modelSpans";
 import { proofPieces } from "../assist/proof";
 import { joinTextRegion, splitTextRegion, utf8Offset } from "../assist/textRegion";
 import type {
+  ComposeAssistAddress,
   ComposeAssistAdjust,
   ComposeAssistAction,
   ComposeAssistDraft,
@@ -25,6 +26,7 @@ import type {
 import {
   errorMessage,
   firstAddress,
+  splitAddresses,
   type ComposeDraftState,
   type ComposeIntent,
 } from "./composeDraft";
@@ -73,11 +75,25 @@ const NO_ADJUST: ComposeAssistAdjust = {
   proofread: false,
 };
 
+/** "Name <a@b>" or "a@b" as the daemon's address shape. */
+function addressesOf(value: string): ComposeAssistAddress[] {
+  return splitAddresses(value).map((entry) => {
+    const match = entry.match(/^(.*?)\s*<([^>]+)>$/);
+    if (!match) return { name: null, email: entry };
+    const name = match[1]?.trim() ?? "";
+    return { name: name || null, email: (match[2] ?? "").trim() };
+  });
+}
+
 function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAssistDraft {
   if (draft.draftId) return { kind: "stored", draft_id: draft.draftId };
   if (intent.messageId) {
     if (intent.kind === "forward") {
-      return { kind: "forward", message_id: intent.messageId, to: draft.frontmatter.to };
+      return {
+        kind: "forward",
+        message_id: intent.messageId,
+        to: addressesOf(draft.frontmatter.to),
+      };
     }
     return {
       kind: "reply",
@@ -88,7 +104,7 @@ function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAs
   return {
     kind: "new",
     account_id: draft.accountId,
-    to: draft.frontmatter.to,
+    to: addressesOf(draft.frontmatter.to),
     subject: draft.frontmatter.subject,
   };
 }

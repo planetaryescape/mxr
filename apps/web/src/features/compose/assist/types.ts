@@ -1,18 +1,24 @@
 /*
  * The compose assist contract as the web app sees it: what "Draft for me"
- * sends and what comes back as a proof. Mirrors the daemon's ComposeAssist
- * and proposal shapes; once the generated bridge types land, these become
- * aliases of them. Offsets are UTF-8 bytes into the text region (the body
- * without its signature block and forward header).
+ * sends and what comes back as a proof. Mirrors the Rust shapes in
+ * crates/protocol/src/types/compose_assist.rs (commit 3635c6e64); the bridge
+ * route that carries them is not in the tree yet, so no generated type exists
+ * for them. Offsets are UTF-8 bytes into the text region (the body without
+ * its signature block and forward header).
  */
 
 import type { DraftProvenance } from "../draftProvenanceFormat";
 
+export interface ComposeAssistAddress {
+  name: string | null;
+  email: string;
+}
+
 export type ComposeAssistDraft =
   | { kind: "stored"; draft_id: string }
   | { kind: "reply"; message_id: string; all: boolean }
-  | { kind: "forward"; message_id: string; to: string }
-  | { kind: "new"; account_id: string; to: string; subject: string };
+  | { kind: "forward"; message_id: string; to: ComposeAssistAddress[] }
+  | { kind: "new"; account_id: string; to: ComposeAssistAddress[]; subject: string };
 
 export type ComposeAssistAction = "write" | "finish" | "polish" | "edit_selection";
 
@@ -53,7 +59,7 @@ export interface ComposeAssistGap {
 export interface ComposeAssistProposal {
   proposal_id: string;
   action: ComposeAssistAction;
-  /** Identifies the text the proof was made from. */
+  /** Hex SHA-256 of the request text the proof was written against. */
   base: string;
   /** The full text region the proof proposes. */
   text: string;
@@ -61,7 +67,7 @@ export interface ComposeAssistProposal {
   gaps: ComposeAssistGap[];
   provenance: DraftProvenance | null;
   yours_changed: number[];
-  composer_version: number;
+  composer_version: string;
 }
 
 export interface ComposeAssistResponse {

@@ -135,6 +135,9 @@ pub struct ModalsState {
     /// parameters in one form. Populated when the user presses `f`
     /// inside the Analytics screen; cleared on Esc/Enter.
     pub analytics_filter: Option<AnalyticsFilterModalState>,
+    /// Messages' filter picker (Ctrl-f). Its choices live on the Messages
+    /// page's `filter`; this only holds the cursor.
+    pub messages_filter: Option<MessagesFilterPicker>,
     /// Browser modal listing the user's compose snippets. Read-only:
     /// add/edit/delete still flow through `mxr snippets` CLI; the modal
     /// surfaces the list so users discover what's available without
@@ -1067,6 +1070,18 @@ impl WhoisModalState {
 /// fields per active view so the user can edit numeric inputs by
 /// typing; on submit, the analytics action handler parses them back
 /// into the typed `AnalyticsState` fields.
+/// The rows of the Messages filter picker, top to bottom: three turn
+/// choices (a radio group), then the two toggles.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MessagesFilterPicker {
+    pub cursor: usize,
+}
+
+impl MessagesFilterPicker {
+    /// The last row: Clear filters.
+    pub const LAST: usize = 5;
+}
+
 #[derive(Debug, Clone)]
 pub struct AnalyticsFilterModalState {
     pub view: crate::app::AnalyticsView,

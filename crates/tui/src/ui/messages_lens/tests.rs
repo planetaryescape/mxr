@@ -132,6 +132,8 @@ pub(crate) fn populated() -> MessagesData {
         )],
         recent_total: 1,
         quiet_total: 12,
+        filter: Default::default(),
+        matched: 16,
         row_count: 16,
         thread_count: 20,
         empty_state: None,

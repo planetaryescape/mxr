@@ -102,6 +102,8 @@ pub enum Action {
     MessagesAsSent,
     /// Esc on Messages' first-encounter card, or back to the list.
     MessagesBack,
+    /// Ctrl-f in Messages: the filter picker (turn, unread, past your pace).
+    MessagesFilter,
     /// Open Archive (`g e`): an early version that says what backs it.
     OpenArchiveMode,
     /// Enter on Now: open the row in its own mode.
@@ -660,6 +662,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | StepWrappedYear(_)
                 | AnalyticsRowDrillDown
                 | AnalyticsUnsubscribe
+                | MessagesFilter
                 | OpenAnalyticsFilterModal
                 | CloseAnalyticsFilterModal
                 | SubmitAnalyticsFilterModal

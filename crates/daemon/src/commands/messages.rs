@@ -10,8 +10,9 @@ use crate::output::{resolve_format, terminal_text};
 use chrono::{DateTime, Local, Utc};
 use mxr_core::id::ThreadId;
 use mxr_protocol::{
-    AckPlanData, MergeSuggestionData, MessageLayoutData, MessagesData, MessagesRowData,
-    MessagesTurnData, PersonMergeData, PersonPageData, Request, Response, ResponseData,
+    messages_copy, AckPlanData, MergeSuggestionData, MessageLayoutData, MessagesData,
+    MessagesFilterData, MessagesRowData, MessagesTurnData, PersonMergeData, PersonPageData,
+    Request, Response, ResponseData,
 };
 use std::fmt::Write as _;
 
@@ -24,18 +25,31 @@ pub async fn run(
     let format = resolve_format(format);
     match action.unwrap_or(MessagesAction::List {
         turn: None,
+        unread: false,
+        past_pace: false,
         limit: 50,
     }) {
-        MessagesAction::List { turn, limit } => {
+        MessagesAction::List {
+            turn,
+            unread,
+            past_pace,
+            limit,
+        } => {
             let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
+            let filter = MessagesFilterData {
+                turn: turn.map(|turn| match turn {
+                    MessagesTurnArg::Mine => MessagesTurnData::Mine,
+                    MessagesTurnArg::Theirs => MessagesTurnData::Theirs,
+                }),
+                unread,
+                past_pace,
+            };
             let messages = expect_response(
                 client
                     .request(Request::ListMessages {
                         account_id,
-                        turn: turn.map(|turn| match turn {
-                            MessagesTurnArg::Mine => MessagesTurnData::Mine,
-                            MessagesTurnArg::Theirs => MessagesTurnData::Theirs,
-                        }),
+                        turn: None,
+                        filter,
                         limit,
                     })
                     .await?,
@@ -297,6 +311,15 @@ fn render_list(
 fn list_table(messages: &MessagesData, marks: &AccountMarks) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "{}", terminal_text(&messages.header));
+    if let Some(label) = messages_copy::filter_label(messages.filter) {
+        let _ = writeln!(
+            out,
+            "Filtered: {} · {} of {} rows",
+            terminal_text(&label),
+            messages.matched,
+            messages.row_count
+        );
+    }
     if messages.your_turn.is_empty() {
         if let Some(empty) = &messages.empty_state {
             let _ = writeln!(out, "\n{}", terminal_text(empty));

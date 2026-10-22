@@ -206,6 +206,7 @@ impl App {
             | Action::MessagesNextTopic
             | Action::MessagesPersonPage
             | Action::MessagesAsSent
+            | Action::MessagesFilter
             | Action::MessagesBack => self.apply_messages_action(action),
             Action::OpenUpdates
             | Action::UpdatesOpen

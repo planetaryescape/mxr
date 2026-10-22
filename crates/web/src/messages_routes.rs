@@ -7,7 +7,7 @@ use super::place_routes::parse_optional_account;
 use super::routes_v6::{dispatch, passthrough};
 use super::*;
 use mxr_core::id::{AccountId, ThreadId};
-use mxr_protocol::MessagesTurnData;
+use mxr_protocol::{MessagesFilterData, MessagesTurnData};
 
 #[derive(Debug, Deserialize)]
 struct ListQuery {
@@ -18,6 +18,12 @@ struct ListQuery {
     account: Option<String>,
     #[serde(default)]
     turn: Option<MessagesTurnData>,
+    /// Only rows with unread mail from them.
+    #[serde(default)]
+    unread: bool,
+    /// Only rows where your turn has run past your usual pace.
+    #[serde(default)]
+    pace: bool,
     #[serde(default)]
     limit: Option<u32>,
 }
@@ -34,7 +40,12 @@ async fn list(
         query.token.as_deref(),
         Request::ListMessages {
             account_id,
-            turn: query.turn,
+            turn: None,
+            filter: MessagesFilterData {
+                turn: query.turn,
+                unread: query.unread,
+                past_pace: query.pace,
+            },
             limit: query.limit.unwrap_or(500).min(500),
         },
     )

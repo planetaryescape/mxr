@@ -2079,8 +2079,9 @@ pub async fn run() -> anyhow::Result<()> {
 
         if std::mem::take(&mut app.mailbox.messages_page.pending_refresh) {
             let bg = bg.clone();
+            let filter = app.mailbox.messages_page.filter;
             let _ = submit_task(&queued, async move {
-                AsyncResult::Messages(fetch_messages(&bg).await.map(Box::new))
+                AsyncResult::Messages(fetch_messages(&bg, filter).await.map(Box::new))
             });
         }
 
@@ -5043,10 +5044,22 @@ pub(crate) fn mode_done_outcome(
     (effect, undo)
 }
 
+/// The list Messages asks for: every account, the picker's filter, the
+/// default page size.
+pub(crate) fn list_messages_request(filter: mxr_protocol::MessagesFilterData) -> Request {
+    Request::ListMessages {
+        account_id: None,
+        turn: None,
+        filter,
+        limit: 50,
+    }
+}
+
 /// Messages' bands and its guide, fetched together so the header, the card
 /// and the rows arrive at once. A guide error leaves the rows on screen.
 async fn fetch_messages(
     bg: &mpsc::UnboundedSender<IpcRequest>,
+    filter: mxr_protocol::MessagesFilterData,
 ) -> Result<
     (
         mxr_protocol::MessagesData,
@@ -5055,14 +5068,7 @@ async fn fetch_messages(
     MxrError,
 > {
     let (messages, guide) = tokio::join!(
-        ipc_call(
-            bg,
-            Request::ListMessages {
-                account_id: None,
-                turn: None,
-                limit: 50,
-            },
-        ),
+        ipc_call(bg, list_messages_request(filter)),
         ipc_call(
             bg,
             Request::GetModeGuide {

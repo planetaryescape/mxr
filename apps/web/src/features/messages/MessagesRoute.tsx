@@ -45,9 +45,10 @@ import {
   usePersonQuery,
   type MessagesData,
   type MessagesRow,
-  type MessagesTurn,
   type PersonPage,
 } from "./api";
+import { focusFilterBar, MessagesFilterBar } from "./MessagesFilterBar";
+import { filterOf, isFiltered, searchOf, type FilterSearch, type MessagesFilter } from "./filters";
 import { MessagesList } from "./MessagesList";
 import {
   afterDone,
@@ -71,13 +72,11 @@ const PEOPLE_PANE_SIZE = { defaultSize: "22rem", minSize: "16rem", maxSize: "40r
 /** How long an arrival is marked; the glow itself is the scene duration. */
 const ARRIVAL_MS = 2_000;
 
-export interface MessagesSearch {
+export interface MessagesSearch extends FilterSearch {
   /** The selected row's id: `person:<email>` or `group:<thread>`. */
   person?: string;
   /** The selected topic's thread. */
   topic?: string;
-  /** Only rows where it is this side's turn. */
-  turn?: MessagesTurn;
 }
 
 /**
@@ -95,7 +94,7 @@ export function MessagesRoute({
   /** From /messages/$threadId: open the row holding this conversation. */
   threadId?: string;
 }) {
-  const messages = useMessagesQuery(search.turn ?? null);
+  const messages = useMessagesQuery(filterOf(search));
   const guide = useModeGuide("messages");
   const phase = useDelayedPending(messages.isLoading);
   return (
@@ -121,7 +120,13 @@ export function MessagesRoute({
           />
         </>
       ) : messages.data ? (
-        <MessagesBody data={messages.data} guide={guide.data} search={search} threadId={threadId} />
+        <MessagesBody
+          data={messages.data}
+          stale={messages.isPlaceholderData}
+          guide={guide.data}
+          search={search}
+          threadId={threadId}
+        />
       ) : null}
     </section>
   );
@@ -146,11 +151,14 @@ function firstThread(row: MessagesRow | undefined): string {
 
 function MessagesBody({
   data,
+  stale,
   guide,
   search,
   threadId,
 }: {
   data: MessagesData;
+  /** The list is the previous filter's or account's answer, still loading. */
+  stale: boolean;
   guide?: ModeGuide;
   search: MessagesSearch;
   threadId?: string;
@@ -159,6 +167,11 @@ function MessagesBody({
   const [quietOpen, setQuietOpen] = useState(false);
   // A phone shows the list or the person page, never both.
   const [pageOpen, setPageOpen] = useState(Boolean(search.person || threadId));
+  // `g f` counts up: each request focuses the filter line once it is on screen.
+  const [filterFocusRequest, setFilterFocusRequest] = useState(0);
+  useEffect(() => {
+    if (filterFocusRequest > 0) focusFilterBar();
+  }, [filterFocusRequest]);
   const [asSent, setAsSent] = useState<string | null>(null);
   const rows = useMemo(() => cursorRows(data, quietOpen), [data, quietOpen]);
   // "Also in To do: …" and a new sender's question on each shown row.
@@ -183,6 +196,22 @@ function MessagesBody({
   const selectedId = search.person ?? linked?.id ?? null;
   const selected: MessagesRow | undefined = allRows.find((row) => row.id === selectedId);
   const topic = search.topic ?? (linked ? threadId : undefined) ?? null;
+  // The filter bar writes the filter into the URL and keeps the open
+  // conversation, whether it was named in the query or in the path.
+  const setFilter = useCallback(
+    (next: MessagesFilter) => {
+      void navigate({
+        to: "/messages",
+        search: (prev) => ({
+          person: prev.person ?? selectedId ?? undefined,
+          topic: prev.topic ?? topic ?? undefined,
+          ...searchOf(next),
+        }),
+        replace: true,
+      });
+    },
+    [navigate, selectedId, topic],
+  );
   const person = usePersonQuery(selectedId, topic);
   const page: PersonPage | undefined = selectedId ? person.data : undefined;
   const conversation = page?.conversation ?? null;
@@ -219,14 +248,13 @@ function MessagesBody({
     (id: string, options: { topic?: string; open?: boolean } = {}) => {
       void navigate({
         to: "/messages",
-        search: { ...(search.turn ? { turn: search.turn } : {}), person: id, topic: options.topic },
+        search: { ...searchOf(filterOf(search)), person: id, topic: options.topic },
         replace: true,
       });
       if (options.open) setPageOpen(true);
     },
-    [navigate, search.turn],
+    [navigate, search],
   );
-
   // A conversation Messages doesn't hold (archived, a newsletter) opens
   // where every email can: All Mail.
   useEffect(() => {
@@ -273,10 +301,10 @@ function MessagesBody({
     setPageOpen(false);
     void navigate({
       to: "/messages",
-      search: search.turn ? { turn: search.turn } : {},
+      search: searchOf(filterOf(search)),
       replace: true,
     });
-  }, [navigate, search.turn]);
+  }, [navigate, search]);
 
   // A sync can close the displayed topic without removing the person. Move
   // only a topic that was open here: deliberately browsing history stays put.
@@ -594,6 +622,12 @@ function MessagesBody({
   useScopeController("messages", {
     down: () => move(1),
     up: () => move(-1),
+    // Below the split the filter line sits in the people list, which the
+    // person's page covers: reveal the list first.
+    filter: () => {
+      setPageOpen(false);
+      setFilterFocusRequest((request) => request + 1);
+    },
     open: () => selectedId && select(selectedId, { open: true }),
     personPage: () => {
       setPageOpen(true);
@@ -651,14 +685,25 @@ function MessagesBody({
 
   // The daemon says when the view being shown is empty (Waiting on has its
   // own line), so Your turn's rows are not the test.
-  const empty = data.empty_state != null;
-  // Your turn is the work; Waiting on is a view of its own and has no finish.
-  const finished = useLowTide(
-    "messages",
-    search.turn === "theirs",
-    data.your_turn.length > 0 || !empty,
-    { daily: true },
+  // A stale answer describes the previous filter, so its count and empty line wait.
+  const empty = !stale && data.empty_state != null;
+  const filter = filterOf(search);
+  const filterBar = (
+    <MessagesFilterBar
+      filter={filter}
+      counts={stale ? null : { matched: data.matched ?? data.row_count, total: data.row_count }}
+      onChange={setFilter}
+    />
   );
+  // Your turn is the work; Waiting on is a view of its own and has no finish.
+  // Completion follows Your turn as it is unfiltered. A toggle that narrows
+  // the list to nothing has not finished the work: the count it can't see is
+  // the desk's Your turn split.
+  const narrowed = filter.unread || filter.pastPace;
+  const yourTurnSplit = data.your_turn_split;
+  const yourTurnPeople = (yourTurnSplit?.write_with ?? 0) + (yourTurnSplit?.others ?? 0);
+  const hasWork = narrowed ? yourTurnPeople > 0 : data.your_turn.length > 0 || !empty;
+  const finished = useLowTide("messages", search.turn === "theirs", hasWork, { daily: true });
   const emptyState = data.empty_state ? (
     <PageEmpty
       framed={allRows.length === 0}
@@ -678,10 +723,13 @@ function MessagesBody({
     />
   ) : null;
   // No rows at all: the empty state is the page, not a line in a narrow column beside a blank pane.
-  if (empty && allRows.length === 0) {
+  // A filter keeps the list's tree, so the filter line keeps its place (and
+  // focus) when it narrows to nothing; only an unfiltered empty view is the page.
+  if (empty && allRows.length === 0 && !isFiltered(filter)) {
     return (
       <>
         <MessagesHeader search={search} guide={guide} />
+        {filterBar}
         <div data-testid="messages-empty" className="min-h-0 flex-1 overflow-y-auto">
           {emptyState}
         </div>
@@ -699,6 +747,7 @@ function MessagesBody({
           elementRef={listRef}
         >
           <MessagesHeader search={search} guide={guide} />
+          {filterBar}
           <div ref={setScroller} className="min-h-0 flex-1 overflow-y-auto pb-6">
             {empty && emptyState ? (
               <div data-testid="messages-empty" className="mx-5 mt-6">

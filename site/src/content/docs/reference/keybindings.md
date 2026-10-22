@@ -792,6 +792,7 @@ On a lit new sender, `1` to `4` answer its question; elsewhere they stay the num
 | `]` | Next topic |  |
 | `p` | Go to the person page |  |
 | `o`, `v` | Show the message as sent |  |
+| `g f` | Filter the people list: turn, unread, past your pace | Ctrl+f in the TUI opens the same picker; the web filters with g f because Ctrl+f is the browser's Find |
 | `⌘Enter / Ctrl+Enter` | Send, then the next person whose turn it is |  |
 | `Esc` | Dismiss the hint, or back to the people |  |
 | `1` | New sender: keep in Messages |  |

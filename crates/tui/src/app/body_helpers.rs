@@ -44,6 +44,15 @@ impl App {
     /// state still win.
     pub fn status_bar_state(&self) -> ui::status_bar::StatusBarState {
         let mut state = self.base_status_bar_state();
+        // Messages names the filters it is showing, so a narrowed list is never
+        // mistaken for the whole of Messages.
+        if self.mailbox.mailbox_view == MailboxView::People {
+            if let Some(label) =
+                mxr_protocol::messages_copy::filter_label(self.mailbox.messages_page.filter)
+            {
+                state.mailbox_name = format!("MESSAGES · {label}");
+            }
+        }
         let urgent = [
             self.connection_state_label(),
             self.current_user_warn(std::time::Instant::now()),

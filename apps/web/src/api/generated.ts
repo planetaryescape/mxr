@@ -7845,12 +7845,20 @@ export interface components {
              *     line.
              */
             empty_state?: string | null;
+            /** @description The filter the rows were kept by, echoed back. */
+            filter?: components["schemas"]["MessagesFilterData"];
             /** Format: date-time */
             generated_at: string;
             /** @description `messages_copy::HEADER`. */
             header: string;
             /** @description Up to three people whose usual pace lapsed, under the clear line. */
             lapsed?: components["schemas"]["MessagesLapsedData"][];
+            /**
+             * Format: int32
+             * @description Distinct rows left after the filter, every band, before the list
+             *     limit. Equals `row_count` when no filter is on.
+             */
+            matched?: number;
             /**
              * Format: int32
              * @description Merges mxr could suggest, for the hint on a person page.
@@ -7863,12 +7871,12 @@ export interface components {
             recent: components["schemas"]["MessagesRowData"][];
             /**
              * Format: int32
-             * @description Rows in each band before the list limit.
+             * @description Rows in each band before the list limit, after the filter.
              */
             recent_total: number;
             /**
              * Format: int32
-             * @description People and groups in Messages, every band.
+             * @description People and groups in Messages, every band, unfiltered.
              */
             row_count: number;
             /**
@@ -7882,6 +7890,17 @@ export interface components {
              *     `turn=theirs` Your turn is cleared but this still describes it.
              */
             your_turn_split?: components["schemas"]["PeopleSplitData"];
+        };
+        /**
+         * @description What Messages keeps. Toggles AND with the turn and with each other, and
+         *     none of them changes the header counts.
+         */
+        MessagesFilterData: {
+            /** @description Only rows where your turn has run past your usual pace with them. */
+            past_pace?: boolean;
+            turn?: components["schemas"]["MessagesTurnData"] | null;
+            /** @description Only rows with a message from them you haven't read. */
+            unread?: boolean;
         };
         /**
          * @description Someone whose usual pace lapsed, for the clear state: a fact, never a
@@ -11792,6 +11811,7 @@ export interface components {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "ListMessages";
+                  filter?: components["schemas"]["MessagesFilterData"];
                   /** Format: int32 */
                   limit?: number;
                   turn?: components["schemas"]["MessagesTurnData"] | null;
@@ -19724,6 +19744,10 @@ export interface operations {
                 account?: string;
                 /** @description `mine` or `theirs`: only rows where it is that side's turn */
                 turn?: string;
+                /** @description `true`: only rows with unread mail from them. Counts in the response are unchanged */
+                unread?: boolean;
+                /** @description `true`: only rows where your turn has run past your usual pace. Counts in the response are unchanged */
+                pace?: boolean;
                 /** @description Rows in Recent and Quiet (default 50); totals count all */
                 limit?: number;
             };

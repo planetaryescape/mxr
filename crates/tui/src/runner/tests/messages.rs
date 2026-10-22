@@ -5,6 +5,7 @@
 
 use super::*;
 use crate::app::{ComposeAction, MessagesFocus};
+use crate::runner::list_messages_request;
 use crate::ui::messages_lens::tests::{page, populated, samir_page};
 use mxr_protocol::{AckPlanData, ModeKindData};
 
@@ -683,4 +684,136 @@ fn another_modes_done_never_borrows_messages_words() {
             if msg.starts_with("Done: Contract renewal. Next: Launch checklist.")),
         "{named:?}"
     );
+}
+
+fn press_ctrl(app: &mut App, c: char) {
+    if let Some(action) = app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)) {
+        app.apply(action);
+    }
+}
+
+#[test]
+fn ctrl_f_picks_unread_and_the_list_request_carries_it() {
+    let mut app = messages_app(true);
+    press_ctrl(&mut app, 'f');
+    assert!(
+        app.modals.messages_filter.is_some(),
+        "Ctrl-f opens the picker"
+    );
+
+    // Rows: All, Your turn, Waiting on them, Unread, Past your pace.
+    for _ in 0..3 {
+        press(&mut app, KeyCode::Char('j'));
+    }
+    press(&mut app, KeyCode::Enter);
+    let filter = app.mailbox.messages_page.filter;
+    assert!(filter.unread && filter.turn.is_none() && !filter.past_pace);
+    assert!(
+        app.mailbox.messages_page.pending_refresh,
+        "the list refetches"
+    );
+    assert!(matches!(
+        list_messages_request(filter),
+        Request::ListMessages { turn: None, filter: sent, .. } if sent.unread && !sent.past_pace
+    ));
+
+    // Enter on the toggle again turns it off, and the picker stays open.
+    press(&mut app, KeyCode::Enter);
+    assert!(!app.mailbox.messages_page.filter.unread);
+    assert!(app.modals.messages_filter.is_some());
+
+    press(&mut app, KeyCode::Esc);
+    assert!(
+        app.modals.messages_filter.is_none(),
+        "Esc closes the picker"
+    );
+}
+
+#[test]
+fn the_picker_sets_the_turn_and_pace_without_leaving_messages() {
+    let mut app = messages_app(true);
+    press_ctrl(&mut app, 'f');
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(
+        app.mailbox.messages_page.filter.turn,
+        Some(mxr_protocol::MessagesTurnData::Mine)
+    );
+    for _ in 0..3 {
+        press(&mut app, KeyCode::Char('j'));
+    }
+    press(&mut app, KeyCode::Char(' '));
+    let filter = app.mailbox.messages_page.filter;
+    assert!(filter.past_pace, "Space toggles like Enter");
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::People);
+}
+
+#[test]
+fn opening_the_filter_picker_cancels_a_got_it_counting_down() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('.'));
+    app.mailbox.messages_page.pending_ack_preview = None;
+    let start = std::time::Instant::now();
+    app.show_messages_ack(plan(&app), start);
+    assert!(app.mailbox.messages_page.ack.is_some());
+
+    press_ctrl(&mut app, 'f');
+    assert!(app.modals.messages_filter.is_some());
+    assert!(
+        app.mailbox.messages_page.ack.is_none(),
+        "the picker cancels the countdown"
+    );
+    // `u` in the picker changes nothing and sends nothing.
+    press(&mut app, KeyCode::Char('u'));
+    app.tick_messages_ack(start + std::time::Duration::from_secs(10));
+    assert!(
+        queued(&app).is_empty(),
+        "an open picker never lets a Got it send"
+    );
+}
+
+#[test]
+fn a_preview_that_arrives_while_the_picker_is_open_starts_no_countdown() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('.'));
+    press_ctrl(&mut app, 'f');
+    let start = std::time::Instant::now();
+    app.show_messages_ack(plan(&app), start);
+    assert!(app.mailbox.messages_page.ack.is_none());
+    app.tick_messages_ack(start + std::time::Duration::from_secs(10));
+    assert!(queued(&app).is_empty());
+}
+
+#[test]
+fn clear_filters_resets_the_turn_and_both_toggles_at_once() {
+    let mut app = messages_app(true);
+    press_ctrl(&mut app, 'f');
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter); // Your turn
+    for _ in 0..2 {
+        press(&mut app, KeyCode::Char('j'));
+    }
+    press(&mut app, KeyCode::Enter); // Unread
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter); // Past your pace
+    let on = app.mailbox.messages_page.filter;
+    assert!(on.turn.is_some() && on.unread && on.past_pace);
+
+    app.mailbox.messages_page.pending_refresh = false;
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter); // Clear filters
+    assert_eq!(
+        app.mailbox.messages_page.filter,
+        mxr_protocol::MessagesFilterData::default()
+    );
+    assert!(
+        app.mailbox.messages_page.pending_refresh,
+        "the list refetches unfiltered"
+    );
+    assert!(
+        app.modals.messages_filter.is_some(),
+        "the picker stays open, Esc still closes"
+    );
+    press(&mut app, KeyCode::Esc);
+    assert!(app.modals.messages_filter.is_none());
 }

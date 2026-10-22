@@ -1064,6 +1064,9 @@ pub fn map_request(
                 "teaching copy and its seen state are not activity"
             );
         }
+        Request::GetKeymap => {
+            skip_activity!("keymap", "reading the key definition is not activity");
+        }
         Request::ResolveCommitment { .. }
         | Request::RecordPromise { .. }
         | Request::WatchCadence { .. }

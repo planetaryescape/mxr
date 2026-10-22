@@ -10,6 +10,7 @@ mod classify;
 mod desk;
 mod draft_provenance;
 mod freshness;
+mod keymap;
 mod llm_routes;
 mod messages;
 mod mode_guide;
@@ -31,6 +32,7 @@ pub use classify::*;
 pub use desk::*;
 pub use draft_provenance::*;
 pub use freshness::*;
+pub use keymap::*;
 pub use llm_routes::*;
 pub use messages::*;
 pub use mode_guide::*;
@@ -2084,6 +2086,10 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
+    // ----- Keys -----
+    /// Every keyboard shortcut in every client, from the one definition
+    /// (blueprint chapter 35). Returns `ResponseData::Keymap`.
+    GetKeymap,
     // ----- Teaching in place -----
     /// How a mode explains itself: header, empty states, why template,
     /// keys, the `?` explanation and its hints with whether each was
@@ -3127,7 +3133,8 @@ impl Request {
             | Self::DeleteSavedSearch { .. }
             | Self::UpdateSavedSearch { .. }
             | Self::RunSavedSearch { .. }
-            | Self::ResolveTime { .. } => IpcCategory::MxrPlatform,
+            | Self::ResolveTime { .. }
+            | Self::GetKeymap => IpcCategory::MxrPlatform,
             Self::PreviewDraft { .. }
             | Self::RemoteRead { .. }
             | Self::GetRemoteReady
@@ -4196,6 +4203,10 @@ pub enum ResponseData {
     TodoCatchup {
         catchup: TodoCatchupData,
     },
+    /// Returned by `Request::GetKeymap`.
+    Keymap {
+        keymap: KeymapData,
+    },
     /// Returned by `Request::GetModeGuide` and `Request::SetHintSeen`.
     ModeGuides {
         guides: Vec<ModeGuideData>,
@@ -4713,7 +4724,8 @@ impl ResponseData {
             | Self::NotificationChimePreview { .. }
             | Self::SemanticStatus { .. }
             | Self::SavedSearchData { .. }
-            | Self::ResolvedTime { .. } => IpcCategory::MxrPlatform,
+            | Self::ResolvedTime { .. }
+            | Self::Keymap { .. } => IpcCategory::MxrPlatform,
             Self::DraftPreview { .. }
             | Self::RemoteReady { .. }
             | Self::RemoteAuthority { .. }

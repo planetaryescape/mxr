@@ -3,7 +3,9 @@
 //! in `docs/reference/tui-keymap.json`. The web app's parity test reads
 //! that file, so the two clients cannot drift apart silently.
 //!
-//! Regenerate after changing a TUI key: `UPDATE_KEYMAP=1` on this test.
+//! Regenerate after changing a TUI key: `UPDATE_KEYMAP=1` on this test,
+//! then change the key in `crates/keymap/keymap.toml` to match;
+//! `cargo test -p mxr-keymap` fails until the two agree.
 
 use super::*;
 use crate::keybindings::{action_from_name, default_keybindings, KeyBinding};

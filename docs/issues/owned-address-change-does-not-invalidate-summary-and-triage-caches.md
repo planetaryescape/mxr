@@ -44,6 +44,8 @@ mark the primary, so a primary change must miss too. Test:
 `summary_cache_misses_after_an_owned_alias_is_added`,
 `triage_content_hash_changes_when_the_owned_set_changes`.
 
+Triage reads the owner's addresses once. The same snapshot feeds the hash and the prompt, and a failed read fails the search instead of hashing an empty set. The summary check reads the thread's account, the same one the writer uses, and a failed read is a cache miss. Test: `a_thread_spanning_two_accounts_validates_under_the_account_its_summary_names`.
+
 `SUMMARY_PROMPT_VERSION` is not bumped. The new key already misses every
 existing row, and the prompt wording did not change, so a bump would add
 nothing. Neither cache needs pruning: `thread_summaries` holds one row per

@@ -27,7 +27,7 @@ The daemon now sends `DaemonEvent::AccountAddressesChanged` after an alias is
 added, removed or made primary (`crates/daemon/src/handler/diagnostics/mod.rs`).
 The TUI clears `reply_context_cache` and bumps `reply_context_generation`
 (`ComposeState::invalidate_reply_contexts`, `crates/tui/src/app/state/compose.rs`).
-A prewarm carries the generation it started under, and a result from an older
+Event-gap recovery (`EventsLagged` and reconnect, `refresh_after_event_gap`) drops the cache too, since the missed events may include an address change. Test: `a_missed_address_change_is_recovered_by_dropping_cached_reply_contexts`. A prewarm carries the generation it started under, and a result from an older
 generation is not cached (`cache_warmed_reply_context`). A deferred reply
 then takes the cold path. Tests: `adding_an_alias_tells_clients_that_cached_reply_contexts_may_be_stale`,
 `an_account_address_change_drops_every_cached_reply_context`,

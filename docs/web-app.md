@@ -487,10 +487,11 @@ validators (`lib/searchParams.ts`) instead of zod. Budget: 70 kB gzipped.
   touches through `Input.dispatchTouchEvent`. WebKit has no clipboard
   permissions, so `helpers/clipboard.ts` records `writeText` calls there
   instead of reading the clipboard back, and `openApp` retries a `goto` that
-  WebKit rejects when the router redirects during load. CI runs the subset on
-  non-draft pull requests in the "Web E2E (WebKit)" job and the whole suite on
-  main and manual runs; it is a separate job because Web E2E already uses
-  most of its 60 minutes.
+  WebKit rejects when the router redirects during load. CI runs the subset in
+  the "Web E2E (WebKit / macOS)" job on the self-hosted Mac runner, on merges
+  to main that change the web app and on manual runs; pull requests run
+  Chromium only. The whole WebKit suite (554 tests at about 2 seconds each on
+  one worker) doesn't fit that job, so run `npm run e2e:webkit` locally.
 - Rust: `cargo test -p mxr-web`.
 
 ## Maintaining

@@ -463,13 +463,14 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64, mxr-builder]
     needs: [changes, check, test, web-tests]
     # Dropped from PR gates: PRs run Chromium only (~4.5m with sharding).
-    # Relegated to merges on main or manual dispatch, running natively on M3 Max
-    # only when apps/web/ changes.
+    # Runs on merges to main that change apps/web/ and on manual dispatch, on the
+    # self-hosted M3 Max. Only the cross-engine subset: the whole suite (554 tests
+    # at ~2s on one worker) never finished inside the limit on this runner.
     if: |
       !failure() && !cancelled() &&
       github.event_name != 'pull_request' &&
       (needs.changes.outputs.apps_web == 'true' || needs.changes.outputs.expensive == 'true')
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: sccache
@@ -495,7 +496,7 @@ jobs:
           cargo build -p mxr
           echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
       - name: Run the native WebKit suite
-        run: npm run e2e:webkit -- --workers=1
+        run: npm run e2e:webkit:engine -- --workers=1
       - name: Upload Playwright results
         if: failure()
         uses: actions/upload-artifact@v7

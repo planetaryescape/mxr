@@ -190,8 +190,9 @@ mod tests {
         .unwrap()
     }
 
-    /// The backfill must keep exactly the messages the old event_log guard
-    /// treated as sent, for messages that still exist.
+    /// The backfill keeps only the handler's success summaries, for messages
+    /// that still exist. A subject can contain any words, so matching on
+    /// them would create receipts for mail mxr never unsubscribed from.
     #[tokio::test]
     async fn backfill_records_exactly_what_the_event_log_guard_matched() {
         let store = Store::in_memory().await.unwrap();
@@ -207,12 +208,14 @@ mod tests {
         let earliest = MessageId::new();
         let via_message = MessageId::new();
         let deleted = MessageId::new();
+        let subject_only = MessageId::new();
         for id in [
             &plain,
             &upper,
             &wrong_category,
             &unrelated_summary,
             &earliest,
+            &subject_only,
         ] {
             insert_message(&store, &account.id, id).await;
         }
@@ -284,6 +287,17 @@ mod tests {
             "Unsubscribed from \"News\"",
         )
         .await;
+        // A mutation on a message whose subject contains the words. The
+        // subject sits after the action verb, so the prefix never reaches it.
+        insert_event(
+            &store,
+            240,
+            "mutation",
+            owner,
+            Some(&subject_only),
+            "Marked \"How to unsubscribe\" as read",
+        )
+        .await;
         // The message was deleted; its event row survives in history only.
         insert_event(
             &store,
@@ -327,25 +341,6 @@ mod tests {
         ];
         expected.sort();
         assert_eq!(receipts(&store).await, expected);
-
-        // Parity with the guard it replaces, for messages that still exist.
-        // `deleted` is excluded: the old guard matched it, but a receipt for a
-        // message that no longer exists could never be checked again.
-        for id in [
-            &plain,
-            &upper,
-            &wrong_category,
-            &unrelated_summary,
-            &earliest,
-            &via_message,
-        ] {
-            let old = store
-                .has_event_for_message_with_summary(&id.as_str(), "mutation", "unsubscrib")
-                .await
-                .unwrap();
-            let new = store.has_unsubscribe_receipt(id).await.unwrap();
-            assert_eq!(old, new, "guard parity for {}", id.as_str());
-        }
     }
 
     async fn fresh_message(store: &Store) -> (AccountId, MessageId) {

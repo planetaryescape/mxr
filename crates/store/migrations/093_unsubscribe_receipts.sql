@@ -32,6 +32,7 @@ FROM (
     FROM event_log e
     INNER JOIN messages m ON m.id = e.message_id
     WHERE e.category = 'mutation'
-      AND e.summary LIKE '%unsubscrib%'
+      AND (e.summary LIKE 'Sent unsubscribe request for %'
+           OR e.summary LIKE 'Unsubscribed from %')
 )
 WHERE row_rank = 1;

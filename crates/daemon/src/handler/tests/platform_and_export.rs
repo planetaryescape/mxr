@@ -458,7 +458,14 @@ async fn a_failed_send_releases_the_claim_and_a_retry_may_send_again() {
         "{response:?}"
     );
     let message = error_message(&response);
-    assert!(!message.contains(&address), "{message}");
+    assert!(
+        !message.contains(&address),
+        "the recipient must not reach the error: {message}"
+    );
+    assert!(
+        !message.contains("PROVIDER-TEXT"),
+        "provider text must not reach the error: {message}"
+    );
     assert!(!message.contains("mailto"), "{message}");
 
     let receipts: i64 =
@@ -559,6 +566,51 @@ async fn a_failed_send_whose_claim_cannot_be_released_is_not_retryable() {
         1,
         "the kept claim blocks a resend"
     );
+}
+
+/// A connection failure makes reqwest's own error text carry the request URL.
+/// The URL here carries a marker, and neither it nor the marker may reach the
+/// user-facing error.
+#[tokio::test]
+async fn a_connection_failure_never_names_the_url() {
+    let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = closed.local_addr().unwrap();
+    drop(closed);
+
+    let (state, _) = synced_state().await;
+    let mut envelope = state
+        .store
+        .list_envelopes_by_account(&state.default_account_id(), 200, 0)
+        .await
+        .unwrap()
+        .into_iter()
+        .next()
+        .expect("at least one fixture envelope");
+    envelope.unsubscribe = UnsubscribeMethod::OneClick {
+        url: format!("http://{addr}/PROVIDER-TEXT/unsubscribe?token=secret"),
+    };
+    state
+        .store
+        .upsert_envelope_with_direction(&envelope, mxr_core::types::MessageDirection::Inbound)
+        .await
+        .unwrap();
+
+    let response = unsubscribe_request(&state, &envelope.id).await;
+    assert_eq!(
+        expect_error(&response),
+        ("unsubscribe_not_confirmed", true),
+        "{response:?}"
+    );
+    let message = error_message(&response);
+    assert!(message.contains("could not connect"), "{message}");
+    for leaked in [
+        "PROVIDER-TEXT",
+        "unsubscribe?token",
+        "secret",
+        &addr.to_string(),
+    ] {
+        assert!(!message.contains(leaked), "{leaked} leaked into: {message}");
+    }
 }
 
 /// The server refuses the first POST with a 500, so the attempt is not

@@ -575,15 +575,31 @@ async fn schema_92_source_backfills_receipts_from_its_event_log() {
         .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
         .await
         .unwrap();
-    sqlx::query(
-        "INSERT INTO event_log (timestamp, level, category, account_id, message_id, summary)
-         VALUES (5, 'info', 'mutation', ?, ?, 'Unsubscribed via one-click')",
-    )
-    .bind(account.id.as_str())
-    .bind(envelope.id.as_str())
-    .execute(store.writer())
-    .await
-    .unwrap();
+    // A mail whose subject contains the words; its mutation row must not count.
+    let mut decoy = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    decoy.provider_id = "pre-093-decoy".into();
+    store
+        .upsert_envelope_with_direction(&decoy, MessageDirection::Inbound)
+        .await
+        .unwrap();
+    for (timestamp, message, summary) in [
+        (5, &envelope.id, "Sent unsubscribe request for \"News\""),
+        (6, &decoy.id, "Marked \"How to unsubscribe\" as read"),
+    ] {
+        sqlx::query(
+            "INSERT INTO event_log (timestamp, level, category, account_id, message_id, summary)
+             VALUES (?, 'info', 'mutation', ?, ?, ?)",
+        )
+        .bind(timestamp)
+        .bind(account.id.as_str())
+        .bind(message.as_str())
+        .bind(summary)
+        .execute(store.writer())
+        .await
+        .unwrap();
+    }
     store.writer().close().await;
 
     // Make the source look like schema 92: no receipts table at all.
@@ -620,7 +636,7 @@ async fn schema_92_source_backfills_receipts_from_its_event_log() {
     assert_eq!(
         rows,
         vec![(envelope.id.as_str().to_string(), "unknown".to_string(), 5)],
-        "the pre-093 unsubscribe must still block a second send after restore"
+        "the pre-093 unsubscribe must still block a second send, and a mail whose subject mentions unsubscribing must not"
     );
     staged.close().await.unwrap();
 }

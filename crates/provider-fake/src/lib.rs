@@ -816,9 +816,13 @@ impl MailSendProvider for FakeProvider {
                 .as_ref()
                 .is_some_and(spool::Spool::send_uncertain)
         {
-            return Err(MxrError::Provider(
-                "timed out waiting for the provider (fake)".to_string(),
-            ));
+            // Provider errors can echo the recipient. Tests use this to check
+            // that callers never surface it.
+            let recipients: Vec<&str> = draft.to.iter().map(|a| a.email.as_str()).collect();
+            return Err(MxrError::Provider(format!(
+                "timed out waiting for the provider (fake) PROVIDER-TEXT rejected {}",
+                recipients.join(", ")
+            )));
         }
         Ok(SendReceipt {
             provider_message_id: Some(format!("fake-sent-{}", uuid::Uuid::now_v7())),

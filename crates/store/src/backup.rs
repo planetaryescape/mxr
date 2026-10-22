@@ -37,7 +37,9 @@ FROM (
            ROW_NUMBER() OVER (PARTITION BY e.message_id ORDER BY e.timestamp ASC, e.id ASC) AS row_rank
     FROM source.event_log e
     INNER JOIN main.messages m ON m.id = e.message_id
-    WHERE e.category = 'mutation' AND e.summary LIKE '%unsubscrib%'
+    WHERE e.category = 'mutation'
+      AND (e.summary LIKE 'Sent unsubscribe request for %'
+           OR e.summary LIKE 'Unsubscribed from %')
 )
 WHERE row_rank = 1";
 

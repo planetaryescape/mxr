@@ -19132,6 +19132,7 @@
           "expires_at",
           "received_at",
           "sender_name",
+          "sender_host",
           "sender_email",
           "subject",
           "account_id",
@@ -19164,9 +19165,13 @@
           "sender_email": {
             "type": "string"
           },
+          "sender_host": {
+            "type": "string",
+            "description": "\"accounts.acme.example\", from the address."
+          },
           "sender_name": {
             "type": "string",
-            "description": "\"Acme\", as Updates names the source."
+            "description": "\"Acme\", as Updates names the source. Shown with `sender_host`: the\nname is the sender's choice, the host is where the mail came from."
           },
           "subject": {
             "type": "string"

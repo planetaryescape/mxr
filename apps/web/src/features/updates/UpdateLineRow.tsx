@@ -36,7 +36,7 @@ import {
   type TrailingItem,
 } from "./digestView";
 import { previewLines, previewSource } from "./emailPreview";
-import { copyCode } from "./copyCode";
+import { copyCode, lineSender } from "./copyCode";
 import { useUpdatesHidden } from "./updatesVerbs";
 
 /**
@@ -174,7 +174,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
               className="type-meta ml-3 rounded border border-border px-1.5 font-mono tracking-wider text-text-1 hover:bg-muted"
               onClick={(event) => {
                 event.stopPropagation();
-                if (line.code) copyCode(line.code, name);
+                if (line.code) copyCode(line.code, lineSender(name, line.sender_email));
               }}
             >
               {line.code}
@@ -233,7 +233,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
             <RowVerb
               keys="y"
               label="copy code"
-              onClick={() => line.code && copyCode(line.code, name)}
+              onClick={() => line.code && copyCode(line.code, lineSender(name, line.sender_email))}
             />
           ) : null}
           {line.latest_thread_id ? (

@@ -712,6 +712,7 @@ Spam:
   "expires_at": "2026-10-22T14:42:00Z",
   "received_at": "2026-10-22T14:32:00Z",
   "sender_name": "Acme",
+  "sender_host": "acme.example",
   "sender_email": "no-reply@acme.example",
   "subject": "Your verification code is 482913",
   "account_id": "…",
@@ -720,7 +721,10 @@ Spam:
 }
 ```
 
-`--all` prints an array of the last day's codes, newest first, with
+`sender_name` is the name the sender chose; show `sender_host` beside it.
+`expires_at` is the code's own lifetime, not the email's Updates window.
+Mail dated more than five minutes ahead of this machine's clock is left
+out. `--all` prints an array of the last day's codes, newest first, with
 `current: false` on expired ones. `--format ids` prints the code alone.
 With no current code it exits non-zero. The bridge serves the same list
 at `GET /api/v1/mail/codes` (`account`, `limit`).

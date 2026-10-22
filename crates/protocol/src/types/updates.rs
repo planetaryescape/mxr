@@ -279,8 +279,11 @@ pub struct OneTimeCodeData {
     pub current: bool,
     pub expires_at: chrono::DateTime<chrono::Utc>,
     pub received_at: chrono::DateTime<chrono::Utc>,
-    /// "Acme", as Updates names the source.
+    /// "Acme", as Updates names the source. Shown with `sender_host`: the
+    /// name is the sender's choice, the host is where the mail came from.
     pub sender_name: String,
+    /// "accounts.acme.example", from the address.
+    pub sender_host: String,
     pub sender_email: String,
     pub subject: String,
     pub account_id: AccountId,

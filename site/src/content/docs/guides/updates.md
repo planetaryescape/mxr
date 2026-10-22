@@ -202,14 +202,23 @@ The digest also says how many expired since you last opened Updates.
 
 ## Copy a one-time code
 
-When a sign-in, verification or two-factor email gives you a code, the
-line shows it, and `y` copies it (in the web app, so does clicking the
-code). mxr finds the code by rules in the subject and the top of the body,
-never by a model: "Your verification code is 482913", "G-123456 is your
-Google verification code", "Your login code is:" with the code on the line
-below. A promo, gift or discount code, a booking PIN or a bank's branch
-code is never one. A message that gives a code lasts as long as the code:
-the lifetime it states, else 10 minutes.
+A code you just asked for arrives between cuts, before any digest line
+shows it, so Updates puts the newest one still in its window at the top
+of the web app's briefing, with the sender's host beside its name ("Google
+(accounts.google.com)") so a borrowed brand shows before you paste. Click
+it, or press `y`: `y` copies the lit line's code, else that newest one. In
+the TUI, `y` does the same, asking the daemon for the newest code when the
+line has none.
+
+mxr finds the code by rules in the subject and the top of the body, never
+by a model: "Your verification code is 482913", "G-123456 is your Google
+verification code", "Your login code is:" with the code on the line below,
+or a subject that says "verification code" over a body that is the code. A
+promo, gift or discount code, a booking PIN, a bank's branch code or a
+card's last four digits is never one. A code lasts the lifetime its email
+states, else 10 minutes; a sign-in alert that carries one still stays two
+days in Updates. Mail dated in the future (a sender's clock or a trick) is
+not taken as the latest code.
 
 From the command line, `mxr code` prints the newest code still in its
 window, whichever folder the email is in:

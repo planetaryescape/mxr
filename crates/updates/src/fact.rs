@@ -148,6 +148,14 @@ pub struct Fact {
     /// The one-time code the message gives, to copy: "482913".
     #[serde(default)]
     pub code: Option<String>,
+    /// When `code` stops working: the lifetime the message states, else ten
+    /// minutes. Apart from `window`, which a sign-in alert sets to two days.
+    #[serde(default)]
+    pub code_expires: Option<DateTime<Utc>>,
+    /// The body was there when this was derived. A fact derived from the
+    /// subject and snippet alone is derived again once the body arrives.
+    #[serde(default)]
+    pub body_read: bool,
     pub tracked: Option<Tracked>,
     /// The one place to go deeper. Never on a needs-you line or a link
     /// about money: those open the email.
@@ -288,15 +296,20 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
         input.date,
         tz,
     );
-    // A message that gives a code lasts as long as the code, unless it is a
-    // sign-in alert, which keeps its two days.
-    let window = match (&code, window) {
-        (Some(_), Some(w)) if matches!(w.kind, WindowKind::Code | WindowKind::SignIn) => Some(w),
-        (Some(_), _) => Some(code_window(
-            &format!("{cleaned}\n{}", input.body.unwrap_or(input.snippet)),
-            input.date,
-        )),
-        (None, window) => window,
+    // The code's own lifetime, from anywhere in the top of the message: the
+    // window above reads only the first informative line.
+    let code_life = code.as_ref().map(|_| {
+        let text = format!("{cleaned}\n{}", input.body.unwrap_or(input.snippet));
+        code_window(&text, input.date)
+    });
+    let code_expires = code_life.as_ref().map(|life| life.until);
+    // A message that gives a code lasts as long as the code: a code window
+    // read from the first line alone gives way to the whole top's reading.
+    // One with another window (a sign-in alert, a verify link) keeps it.
+    let window = match window {
+        Some(w) if w.kind == WindowKind::Code => code_life.or(Some(w)),
+        Some(w) => Some(w),
+        None => code_life,
     };
     let needs_you = if PAYMENT_FAILED.is_match(&rule_text) {
         Some(NeedsYou::PaymentFailed)
@@ -344,6 +357,8 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
         needs_you,
         window,
         code,
+        code_expires,
+        body_read: input.body.is_some(),
         tracked,
         link,
         todo_title,
@@ -405,9 +420,26 @@ mod tests {
             Some("Your one-time passcode is 882308. It is valid for 5 minutes."),
         ));
         assert_eq!(fact.code.as_deref(), Some("882308"));
+        assert!(fact.body_read);
+        assert_eq!(fact.code_expires, fact.window.as_ref().map(|w| w.until));
         let window = fact.window.expect("a code window");
         assert_eq!(window.kind, WindowKind::Code);
         assert_eq!(window.source, "rule", "{}", window.evidence);
+
+        // A sign-in alert keeps its two days; its code lasts what it says,
+        // even when that is said below the first line.
+        let alert = derive_utc(&input(
+            "no-reply@accounts.example",
+            Some("Accounts"),
+            "New sign-in to your account",
+            Some("Someone signed in from Chrome.\n\nYour security code is 551204.\nIt expires in 5 minutes."),
+        ));
+        assert_eq!(alert.code.as_deref(), Some("551204"));
+        let alert_window = alert.window.expect("a sign-in window");
+        assert_eq!(alert_window.kind, WindowKind::SignIn);
+        let date = DateTime::UNIX_EPOCH + Duration::days(20_000);
+        assert_eq!(alert.code_expires, Some(date + Duration::minutes(5)));
+        assert_eq!(alert_window.until, date + Duration::days(2));
 
         let none = derive_utc(&input(
             "deals@shop.example",

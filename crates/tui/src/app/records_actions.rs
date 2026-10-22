@@ -14,7 +14,7 @@ pub(crate) const ARCHIVE_MODE: &str = mxr_protocol::ARCHIVE_GUIDE.mode;
 
 /// Copies to the system clipboard. Tests never touch the real one: what
 /// was copied is kept on the page either way.
-pub(super) fn copy_to_clipboard(text: &str) {
+fn copy_to_clipboard(text: &str) {
     #[cfg(all(not(test), target_os = "macos"))]
     {
         use std::io::Write;

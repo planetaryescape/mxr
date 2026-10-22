@@ -326,12 +326,7 @@ mod tests {
         let mut expected = vec![
             (plain.as_str(), acct.clone(), "unknown".to_string(), 100),
             (upper.as_str(), acct.clone(), "unknown".to_string(), 110),
-            (
-                earliest.as_str(),
-                acct.clone(),
-                "unknown".to_string(),
-                200,
-            ),
+            (earliest.as_str(), acct.clone(), "unknown".to_string(), 200),
             (
                 via_message.as_str(),
                 acct.clone(),

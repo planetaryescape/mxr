@@ -44,6 +44,8 @@ pub struct UpdatesPageState {
     pub tune: Option<UpdatesTuneMenu>,
     /// What `y` last copied, so tests can see it without the clipboard.
     pub last_copied: Option<String>,
+    /// Ask the daemon for the latest one-time code (`y` on a line without one).
+    pub pending_latest_code: bool,
 }
 
 impl UpdatesPageState {

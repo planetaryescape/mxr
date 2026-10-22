@@ -86,13 +86,16 @@ impl super::Store {
         Ok(messages)
     }
 
-    /// Mail received `since` or later, in any folder but Trash and Spam,
-    /// newest first, at most `limit`: where a one-time code you just asked
-    /// for has landed, whether or not a rule moved it out of the inbox.
+    /// Mail dated between `since` and `until`, in any folder but Trash and
+    /// Spam, newest first, at most `limit`: where a one-time code you just
+    /// asked for has landed, whether or not a rule moved it out of the inbox.
+    /// `until` keeps out mail a sender dated in the future, which would
+    /// otherwise always sort first.
     pub async fn recent_received(
         &self,
         account_id: Option<&AccountId>,
         since: DateTime<Utc>,
+        until: DateTime<Utc>,
         limit: u32,
     ) -> Result<Vec<PlaceMessage>, sqlx::Error> {
         let started_at = Instant::now();
@@ -103,7 +106,7 @@ impl super::Store {
                     WHERE iml.message_id = m.id AND il.provider_id = 'INBOX'
                 ) AS in_inbox
             FROM messages m
-            WHERE m.date >= ?3 AND (?1 IS NULL OR m.account_id = ?1)
+            WHERE m.date >= ?3 AND m.date <= ?5 AND (?1 IS NULL OR m.account_id = ?1)
               AND m.direction != 'outbound' AND {NOT_TRASHED}
             ORDER BY m.date DESC, m.id DESC
             LIMIT ?4"#
@@ -113,6 +116,7 @@ impl super::Store {
             .bind(hidden_flags())
             .bind(since.timestamp())
             .bind(i64::from(limit))
+            .bind(until.timestamp())
             .fetch_all(self.reader())
             .await?;
         let messages = rows

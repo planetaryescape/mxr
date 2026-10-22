@@ -740,7 +740,7 @@ pub enum Command {
         #[arg(long)]
         all: bool,
         /// Put the code on the clipboard as well (pbcopy, wl-copy or xclip).
-        #[arg(long)]
+        #[arg(long, conflicts_with = "all")]
         copy: bool,
         /// Limit to one account; the default covers every account.
         #[arg(long)]

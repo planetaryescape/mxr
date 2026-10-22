@@ -8378,7 +8378,12 @@ export interface components {
             /** Format: date-time */
             received_at: string;
             sender_email: string;
-            /** @description "Acme", as Updates names the source. */
+            /** @description "accounts.acme.example", from the address. */
+            sender_host: string;
+            /**
+             * @description "Acme", as Updates names the source. Shown with `sender_host`: the
+             *     name is the sender's choice, the host is where the mail came from.
+             */
             sender_name: string;
             subject: string;
             thread_id: components["schemas"]["ThreadId"];

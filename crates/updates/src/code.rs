@@ -40,7 +40,7 @@ static NOT_A_SIGN_IN: Lazy<Regex> = Lazy::new(|| {
         r"(?ix)
         \b(?:promo(?:tion(?:al)?)?|discount|coupon|voucher|referral|gift|redeem|reward|loyalty)\b
         | \d+\s?%\s+off\b
-        | \b(?:tracking|post|zip|area|dial(?:ling)?|sort|branch|bank|order|booking|reference|invoice|product|error|status|country)\s+code\b
+        | \b(?:tracking|post|zip|area|dial(?:ling)?|sort|branch|bank|order|booking|reference|invoice|product|error|status|country|offer|sale)\s+code\b
         | \bpostcode\b",
     )
     .expect("valid not-a-sign-in regex")
@@ -55,6 +55,20 @@ static OTHER_SUBJECT: Lazy<Regex> = Lazy::new(|| {
     .expect("valid other-subject regex")
 });
 
+/// "is" or a colon: what comes right after is the value, so it wins over a
+/// number earlier in the sentence ("code for card ending 4242 is 958361").
+static MARKER: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)\b(?:is|are)\b\s*:?|:").expect("valid marker regex"));
+
+/// What a number right after names it as something else: a card or account
+/// ending, an order or reference, an amount in a currency code.
+static NAMED_BEFORE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?:(?i:\b(?:ending(?:\s+in)?|ends\s+in|last\s+(?:4|four)(?:\s+digits)?|card|account|acct|order|ref(?:erence)?|number|no\.?|ticket|case))\s*[:#]?|\b(?:GBP|USD|EUR|ZAR|CAD|AUD|NZD|INR|JPY|CHF|SEK|NOK|DKK))\s*$",
+    )
+    .expect("valid named-before regex")
+});
+
 /// Code-shaped words: digits, groups like 123-456, or capitals with digits.
 static CANDIDATE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"\b(?:[A-Z]-)?(?:\d{3}[ -]\d{3}|[A-Z0-9]{3,5}-[A-Z0-9]{3,5}|[A-Z0-9]{4,10})\b")
@@ -66,12 +80,44 @@ pub fn one_time_code(subject: &str, body: Option<&str>) -> Option<String> {
     if let Some(code) = in_text(subject) {
         return Some(code);
     }
-    if OTHER_SUBJECT.is_match(subject) && !TRIGGER.is_match(subject) {
+    let subject_names_a_code = TRIGGER.is_match(subject);
+    if OTHER_SUBJECT.is_match(subject) && !subject_names_a_code {
         return None;
     }
     let body = body?;
     let end = floor_char_boundary(body, BODY_MAX);
-    in_text(&body[..end])
+    let body = &body[..end];
+    in_text(body).or_else(|| {
+        // The subject says what it is and the body is the code on a line of
+        // its own: "Your verification code" / "482913".
+        subject_names_a_code
+            .then(|| alone_on_a_line(&body[..floor_char_boundary(body, ALONE_MAX)]))
+            .flatten()
+    })
+}
+
+/// How far into the body a code alone on its line is looked for.
+const ALONE_MAX: usize = 1_500;
+
+fn alone_on_a_line(text: &str) -> Option<String> {
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim();
+        let start = offset + (line.len() - line.trim_start().len());
+        offset += line.len();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let whole = CANDIDATE
+            .find(trimmed)
+            .filter(|m| m.start() == 0 && m.end() == trimmed.len());
+        if let Some(m) = whole {
+            if looks_like_a_code(text, start + m.start(), start + m.end(), Trust::Placed) {
+                return Some(m.as_str().to_string());
+            }
+        }
+    }
+    None
 }
 
 fn in_text(text: &str) -> Option<String> {
@@ -88,7 +134,22 @@ fn in_text(text: &str) -> Option<String> {
             let next = ceil_char_boundary(text, end + 1);
             end = next + sentence_end(&text[next..reach.max(next)]);
         }
-        if let Some(code) = candidates(text, trigger.end(), end).next() {
+        // A value right after "is" or a colon wins; it may even look like a
+        // year ("Your code is 2024").
+        let marked = MARKER
+            .find_iter(&text[trigger.end()..end])
+            .find_map(|marker| {
+                let at = trigger.end() + marker.end();
+                let skipped = text[at..end]
+                    .find(|c: char| !c.is_whitespace() && !('\u{2500}'..='\u{257F}').contains(&c))
+                    .map_or(end, |i| at + i);
+                CANDIDATE
+                    .find_at(&text[..end], skipped)
+                    .filter(|m| m.start() == skipped)
+                    .filter(|m| looks_like_a_code(text, m.start(), m.end(), Trust::Placed))
+            });
+        let found = marked.or_else(|| candidates(text, trigger.end(), end).next());
+        if let Some(code) = found {
             if !spends(text, &trigger, code.end()) {
                 return Some(code.as_str().to_string());
             }
@@ -109,12 +170,22 @@ fn in_text(text: &str) -> Option<String> {
 
 /// Code-shaped whole words between `from` and `to` in `text`.
 fn candidates(text: &str, from: usize, to: usize) -> impl Iterator<Item = regex::Match<'_>> {
-    CANDIDATE
-        .find_iter(&text[..to])
-        .filter(move |m| m.start() >= from && looks_like_a_code(text, m.start(), m.end()))
+    CANDIDATE.find_iter(&text[..to]).filter(move |m| {
+        m.start() >= from && looks_like_a_code(text, m.start(), m.end(), Trust::Nearby)
+    })
 }
 
-fn looks_like_a_code(text: &str, start: usize, end: usize) -> bool {
+/// How sure the place a word sits in makes it a code.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Trust {
+    /// Right after "is" or a colon, or alone on its line: even a
+    /// year-shaped number is the code.
+    Placed,
+    /// Just near the words: a year or a named number is not.
+    Nearby,
+}
+
+fn looks_like_a_code(text: &str, start: usize, end: usize, trust: Trust) -> bool {
     let word = &text[start..end];
     let digits = word.chars().filter(char::is_ascii_digit).count();
     if digits == 0 {
@@ -125,7 +196,17 @@ fn looks_like_a_code(text: &str, start: usize, end: usize) -> bool {
         return false;
     }
     // A year in a footer or a date: "© 2026", "October 2026".
-    if plain.len() == 4 && digits == 4 && (plain.starts_with("19") || plain.starts_with("20")) {
+    if trust == Trust::Nearby
+        && plain.len() == 4
+        && digits == 4
+        && (plain.starts_with("19") || plain.starts_with("20"))
+    {
+        return false;
+    }
+    // A number the words before it name as something else: "card ending
+    // 4242", "order 55210", "GBP 5483".
+    let lead = ceil_char_boundary(text, start.saturating_sub(32));
+    if trust == Trust::Nearby && NAMED_BEFORE.is_match(&text[lead..start]) {
         return false;
     }
     // Part of a longer word or number, money or a percentage: "ITMS-90683",
@@ -135,8 +216,9 @@ fn looks_like_a_code(text: &str, start: usize, end: usize) -> bool {
     let after_next = text[end..].chars().nth(1);
     !(before.is_some_and(|c| {
         c.is_alphanumeric() || matches!(c, '-' | '$' | '£' | '€' | '#' | '.' | ',' | '/')
-    }) || after.is_some_and(|c| c.is_alphanumeric() || matches!(c, '%' | ',' | '/' | '-'))
-        || after == Some('.') && after_next.is_some_and(|c| c.is_ascii_digit()))
+    }) || after.is_some_and(|c| c.is_alphanumeric() || matches!(c, '%' | '/' | '-'))
+        // "1,234" and "12.50" continue a number; "482913, valid for…" ends one.
+        || matches!(after, Some(',' | '.')) && after_next.is_some_and(|c| c.is_ascii_digit()))
 }
 
 /// Whether the sentence around the words says the code is to spend or a
@@ -382,6 +464,53 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn the_value_after_is_wins_over_a_number_earlier_in_the_sentence() {
+        assert_eq!(
+            code(
+                "Hi",
+                "Your verification code for card ending 4242 is 958361."
+            )
+            .as_deref(),
+            Some("958361")
+        );
+        assert_eq!(
+            code(
+                "Hi",
+                "Your verification code for a GBP 5483 transaction is 092730"
+            )
+            .as_deref(),
+            Some("092730")
+        );
+        assert_eq!(
+            code("Your verification code is 2024", "").as_deref(),
+            Some("2024")
+        );
+        assert_eq!(code("Your offer code is SAVE20", ""), None);
+    }
+
+    #[test]
+    fn a_comma_after_the_code_ends_it() {
+        assert_eq!(
+            code("Hi", "Your code is 482913, valid for 10 minutes.").as_deref(),
+            Some("482913")
+        );
+        assert_eq!(
+            code("Weekly report", "Your code is ready: 1,234 visits."),
+            None
+        );
+    }
+
+    #[test]
+    fn a_code_alone_under_a_subject_that_names_it() {
+        assert_eq!(
+            code("Your verification code", "482913\n\nExpires in 5 minutes.").as_deref(),
+            Some("482913")
+        );
+        // Not without a subject saying so.
+        assert_eq!(code("Hello", "482913\n\nSee you soon."), None);
     }
 
     #[test]

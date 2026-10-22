@@ -20,10 +20,12 @@ export type UpdateSection = Schemas["UpdateSectionData"];
 export type UpdateSetting = Schemas["UpdateSourceSettingData"];
 export type UpdatesLetGo = Schemas["UpdatesLetGoData"];
 export type UpdateSourceChange = Schemas["UpdateSourceChangeData"];
+export type OneTimeCode = Schemas["OneTimeCodeData"];
 
 type Digest = Extract<Schemas["ResponseData"], { kind: "UpdatesDigest" }>;
 type LetGo = Extract<Schemas["ResponseData"], { kind: "UpdatesLetGo" }>;
 type Source = Extract<Schemas["ResponseData"], { kind: "UpdateSource" }>;
+type Codes = Extract<Schemas["ResponseData"], { kind: "OneTimeCodes" }>;
 
 /**
  * The bridge passes any daemon response through with a 200, so a reply of
@@ -71,6 +73,30 @@ export function useDigest() {
     },
     staleTime: 15_000,
     refetchInterval: 60_000,
+  });
+}
+
+export async function fetchCodes(account: string | null): Promise<OneTimeCode[]> {
+  const query = new URLSearchParams({ limit: "5" });
+  if (account) query.set("account", account);
+  const answer = await apiFetch<{ kind?: unknown }>(`/api/v1/mail/codes?${query}`);
+  return expectKind<Codes>(answer, "OneTimeCodes").codes;
+}
+
+/**
+ * The newest one-time code still in its window, for the account scope. A
+ * code arrives between cuts, where no digest line shows it yet, and lasts
+ * minutes, so it is asked for on its own and often.
+ */
+export function useLatestCode() {
+  const account = useUiPrefs((s) => s.accountScope);
+  return useQuery({
+    queryKey: [...UPDATES_KEY, "codes", account ?? "all"],
+    queryFn: () => fetchCodes(account),
+    staleTime: 5_000,
+    refetchInterval: 15_000,
+    select: (codes) =>
+      codes.find((code) => code.current && Date.parse(code.expires_at) > Date.now()) ?? null,
   });
 }
 

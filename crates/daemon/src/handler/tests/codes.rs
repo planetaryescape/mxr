@@ -4,30 +4,41 @@
 use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::{Duration, Utc};
-use mxr_core::id::ThreadId;
+use mxr_core::id::{MessageId, ThreadId};
 use mxr_core::types::{MessageBody, MessageDirection, MessageMetadata};
 use mxr_protocol::OneTimeCodeData;
 
-async fn mail(fx: &Fixture, from: &str, subject: &str, age: Duration, body: Option<&str>) {
+async fn mail(
+    fx: &Fixture,
+    from: &str,
+    subject: &str,
+    age: Duration,
+    body: Option<&str>,
+) -> MessageId {
     let mut envelope = fx.message(&ThreadId::new(), from, ME, age, None).await;
     envelope.subject = subject.to_string();
     envelope.date = Utc::now() - age;
     fx.store_envelope(&envelope, MessageDirection::Inbound)
         .await;
     if let Some(text) = body {
-        fx.state
-            .store
-            .insert_body(&MessageBody {
-                message_id: envelope.id.clone(),
-                text_plain: Some(text.to_string()),
-                text_html: None,
-                attachments: vec![],
-                fetched_at: envelope.date,
-                metadata: MessageMetadata::default(),
-            })
-            .await
-            .unwrap();
+        add_body(fx, &envelope.id, text).await;
     }
+    envelope.id
+}
+
+async fn add_body(fx: &Fixture, id: &MessageId, text: &str) {
+    fx.state
+        .store
+        .insert_body(&MessageBody {
+            message_id: id.clone(),
+            text_plain: Some(text.to_string()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: Utc::now(),
+            metadata: MessageMetadata::default(),
+        })
+        .await
+        .unwrap();
 }
 
 async fn codes(fx: &Fixture) -> Vec<OneTimeCodeData> {
@@ -96,6 +107,81 @@ async fn a_code_only_the_body_gives_is_found_and_a_promo_is_not() {
     assert_eq!(
         codes[0].expires_at - codes[0].received_at,
         Duration::minutes(5)
+    );
+}
+
+/// A sender's Date header is not believed into the future: a mail dated
+/// 2099 would otherwise be the latest code until 2099.
+#[tokio::test]
+async fn mail_dated_in_the_future_is_not_the_latest_code() {
+    let fx = Fixture::new().await;
+    mail(
+        &fx,
+        "otp@attacker.example",
+        "Your verification code is 999999",
+        Duration::days(-365),
+        None,
+    )
+    .await;
+    mail(
+        &fx,
+        "verify@x.example",
+        "222222 is your X verification code",
+        Duration::minutes(1),
+        None,
+    )
+    .await;
+    let codes = codes(&fx).await;
+    assert_eq!(
+        codes.iter().map(|c| c.code.as_str()).collect::<Vec<_>>(),
+        ["222222"]
+    );
+    assert_eq!(codes[0].sender_host, "x.example");
+}
+
+/// A sign-in alert stays two days in Updates; its code lasts what it says.
+#[tokio::test]
+async fn a_sign_in_alerts_code_expires_on_its_own_clock() {
+    let fx = Fixture::new().await;
+    mail(
+        &fx,
+        "no-reply@accounts.example",
+        "New sign-in to your account",
+        Duration::minutes(10),
+        Some("Someone signed in from Chrome.\n\nYour security code is 551204.\nIt expires in 5 minutes."),
+    )
+    .await;
+    let codes = codes(&fx).await;
+    assert_eq!(codes.len(), 1);
+    assert_eq!(codes[0].code, "551204");
+    assert!(!codes[0].current, "five minutes, not the alert's two days");
+}
+
+/// A code only the body gives shows once the body arrives, even after a
+/// read that found no body and cached what it could see.
+#[tokio::test]
+async fn a_code_shows_once_its_body_arrives() {
+    let fx = Fixture::new().await;
+    let id = mail(
+        &fx,
+        "security@bank.example",
+        "MFA Login Authentication",
+        Duration::minutes(1),
+        None,
+    )
+    .await;
+    // Synced with headers only, as IMAP can: no body yet.
+    sqlx::query("DELETE FROM bodies WHERE message_id = ?")
+        .bind(id.as_str())
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    assert!(codes(&fx).await.is_empty(), "no body, no code yet");
+    add_body(&fx, &id, "Your one-time passcode is 882308.").await;
+    let codes = codes(&fx).await;
+    assert_eq!(
+        codes.iter().map(|c| c.code.as_str()).collect::<Vec<_>>(),
+        ["882308"]
     );
 }
 

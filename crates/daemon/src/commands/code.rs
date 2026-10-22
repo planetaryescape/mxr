@@ -45,7 +45,7 @@ pub async fn run(
             .map(|code| {
                 format!(
                     " The last one, from {}, expired {}.",
-                    terminal_text(&code.sender_name),
+                    who(code),
                     clock(code.expires_at)
                 )
             })
@@ -60,7 +60,7 @@ pub async fn run(
         // Said on stderr, so stdout stays the code alone for scripts.
         eprintln!(
             "Copied the code from {}, expires {}.",
-            terminal_text(&latest.sender_name),
+            who(latest),
             clock(latest.expires_at)
         );
     }
@@ -90,14 +90,15 @@ fn render_all(codes: &[OneTimeCodeData], format: OutputFormat) -> anyhow::Result
             out
         }),
         OutputFormat::Csv => codes.iter().fold(
-            "code,current,sender,received_at,expires_at\n".to_string(),
+            "code,current,sender,host,received_at,expires_at\n".to_string(),
             |mut out, code| {
                 let _ = writeln!(
                     out,
-                    "{},{},{},{},{}",
+                    "{},{},{},{},{},{}",
                     csv(&code.code),
                     code.current,
                     csv(&code.sender_name),
+                    csv(&code.sender_host),
                     code.received_at.to_rfc3339(),
                     code.expires_at.to_rfc3339()
                 );
@@ -120,10 +121,20 @@ fn line(code: &OneTimeCodeData) -> String {
     format!(
         "{}  {} · arrived {} · {state} {}",
         terminal_text(&code.code),
-        terminal_text(&code.sender_name),
+        who(code),
         clock(code.received_at),
         clock(code.expires_at)
     )
+}
+
+/// "Google (accounts.google.com)": the name the sender chose beside the host
+/// the mail came from, so a borrowed brand shows before a code is pasted.
+fn who(code: &OneTimeCodeData) -> String {
+    terminal_text(&mxr_updates::fact::branded_name(
+        &code.sender_name,
+        &code.sender_host,
+    ))
+    .into_owned()
 }
 
 /// "14:42" today, "Mon 14:42" otherwise.
@@ -153,6 +164,7 @@ mod tests {
             expires_at: at,
             received_at: at,
             sender_name: "Acme\u{1b}[2J".into(),
+            sender_host: "attacker.example".into(),
             sender_email: "no-reply@acme.example".into(),
             subject: "Your code".into(),
             account_id: AccountId::new(),
@@ -173,6 +185,7 @@ mod tests {
     fn the_line_names_the_sender_without_its_control_codes() {
         let line = render_one(&code(true), OutputFormat::Table).unwrap();
         assert!(line.starts_with("482913  Acme"), "{line}");
+        assert!(line.contains("attacker.example"), "the host shows: {line}");
         assert!(!line.contains('\u{1b}'), "{line:?}");
         assert!(render_all(&[code(false)], OutputFormat::Table)
             .unwrap()

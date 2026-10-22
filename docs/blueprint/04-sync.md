@@ -254,8 +254,8 @@ ORDER BY started_at DESC
 LIMIT 20;
 ```
 
-`mxr doctor` reads this and reports:
+`mxr doctor` reads this and reports, per account, over the newest 50 rows:
 - Last successful sync per account
-- Any recurring errors
-- Sync duration trends
+- Recurring errors: failure messages with ids, numbers, timestamps, quoted values and addresses normalised, shown when seen at least twice (top five by count)
+- Sync duration trend: median of the newest 10 finished syncs against the 40 before them. "Slower" or "faster" needs a median move of at least 50% and at least 5 seconds; both windows need five finished syncs, otherwise no trend is shown. Unfinished rows are never counted as durations.
 - Cursor validity

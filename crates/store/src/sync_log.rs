@@ -1,6 +1,7 @@
 use crate::{decode_id, decode_optional_timestamp, decode_timestamp, trace_lookup};
 use chrono::{DateTime, Utc};
 use mxr_core::AccountId;
+use sqlx::Row;
 
 pub struct SyncLogEntry {
     pub id: i64,
@@ -79,6 +80,39 @@ impl super::Store {
         .await?;
 
         Ok(())
+    }
+
+    /// Newest-first sync rows for one account, for the doctor's duration and
+    /// error summary. Unchecked query (like `list_message_ids_by_account`) so
+    /// the `.sqlx` cache does not need regenerating for a diagnostics read.
+    pub async fn list_recent_sync_logs(
+        &self,
+        account_id: &AccountId,
+        limit: u32,
+    ) -> Result<Vec<SyncLogEntry>, sqlx::Error> {
+        let rows = sqlx::query(
+            "SELECT id, account_id, started_at, finished_at, status, messages_synced, error_message
+             FROM sync_log WHERE account_id = ?1
+             ORDER BY started_at DESC, id DESC LIMIT ?2",
+        )
+        .bind(account_id.as_str())
+        .bind(i64::from(limit))
+        .fetch_all(self.reader())
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(SyncLogEntry {
+                    id: row.try_get("id")?,
+                    account_id: decode_id(&row.try_get::<String, _>("account_id")?)?,
+                    started_at: decode_timestamp(row.try_get("started_at")?)?,
+                    finished_at: decode_optional_timestamp(row.try_get("finished_at")?)?,
+                    status: SyncStatus::from_str(&row.try_get::<String, _>("status")?),
+                    messages_synced: row.try_get::<i64, _>("messages_synced")? as u32,
+                    error_message: row.try_get("error_message")?,
+                })
+            })
+            .collect()
     }
 
     pub async fn get_last_sync(

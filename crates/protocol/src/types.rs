@@ -5224,6 +5224,50 @@ pub struct SignatureDefaultData {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// Direction of an account's recent sync durations, compared as the median of
+/// the newest finished syncs against the median of the ones before them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SyncDurationTrend {
+    Slower,
+    Faster,
+    Steady,
+}
+
+/// One normalised failure message that recurred within an account's recent
+/// sync history.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RecurringSyncError {
+    pub message: String,
+    pub count: u32,
+    pub last_seen_at: String,
+}
+
+/// Recent `sync_log` history for one account, as `mxr doctor` reports it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AccountSyncHistory {
+    pub account_id: AccountId,
+    pub account_name: String,
+    /// Rows read for this account, newest first.
+    pub recent_syncs: u32,
+    pub failed_syncs: u32,
+    /// Rows without `finished_at`: still running, or abandoned mid-run. They
+    /// never contribute to the duration fields.
+    pub unfinished_syncs: u32,
+    pub finished_syncs: u32,
+    /// Whole seconds, since `sync_log` timestamps are stored at second
+    /// resolution.
+    pub median_duration_secs: Option<u64>,
+    pub slowest_duration_secs: Option<u64>,
+    pub latest_duration_secs: Option<u64>,
+    /// `None` when either comparison window has fewer than five finished syncs.
+    pub trend: Option<SyncDurationTrend>,
+    pub recurring_errors: Vec<RecurringSyncError>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DoctorReport {
@@ -5285,6 +5329,12 @@ pub struct DoctorReport {
     /// freeform field is preserved for backwards-compatibility.
     #[serde(default)]
     pub findings: Vec<DoctorFinding>,
+    /// Per-account `sync_log` summary. Empty from a daemon that predates it.
+    #[serde(default)]
+    pub sync_history: Vec<AccountSyncHistory>,
+    /// Active log plus rotated archives. `log_size_bytes` stays active-file only.
+    #[serde(default)]
+    pub log_total_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

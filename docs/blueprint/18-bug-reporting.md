@@ -294,7 +294,8 @@ event_retention_days = 90
 ```bash
 # Check disk usage
 mxr doctor --store-stats
-# Output includes: log file sizes, event_log row count, total log disk usage
+# Output includes: database_size_bytes, log_size_bytes (active mxr.log only),
+# log_total_bytes (active file plus rotated archives), and the account count
 
 # Preview, then manually purge owned archives and old event rows
 mxr logs --purge --dry-run --format json

@@ -986,6 +986,8 @@ mod tests {
             recent_error_logs: vec![],
             recommended_next_steps: vec![],
             findings,
+            sync_history: Vec::new(),
+            log_total_bytes: 0,
         }
     }
 

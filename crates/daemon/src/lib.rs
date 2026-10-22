@@ -31,6 +31,7 @@ pub mod server;
 pub mod snooze;
 #[doc(hidden)]
 pub mod state;
+pub(crate) mod sync_history;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
 pub mod unsubscribe;

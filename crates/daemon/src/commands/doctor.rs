@@ -9,7 +9,7 @@ use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::{
     AccountSyncStatus, DaemonHealthClass, DoctorDataStats, DoctorReport, EventLogEntry,
-    FeatureHealth, FeatureHealthReport, Request, Response, ResponseData,
+    FeatureHealth, FeatureHealthReport, Request, Response, ResponseData, SyncDurationTrend,
 };
 use mxr_search::SearchIndex;
 use mxr_store::Store;
@@ -267,6 +267,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
             "database_size_bytes": report.database_size_bytes,
             "log_path": report.log_path,
             "log_size_bytes": report.log_size_bytes,
+            "log_total_bytes": report.log_total_bytes,
             "accounts": report.sync_statuses.len(),
         });
         print_contextual_json(stats, fmt, remote_target, &selected_target)?;
@@ -478,12 +479,19 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
     }
 
     let mut recent_sync_events = Vec::new();
+    let mut sync_history = Vec::new();
     let mut data_stats = DoctorDataStats::default();
     if database_exists {
         let store = Store::new(&db_path).await?;
         if sync_statuses.is_empty() {
             sync_statuses = collect_sync_statuses_from_store(&store).await?;
         }
+        sync_history = crate::sync_history::collect(&store)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "doctor could not summarise sync history");
+                Vec::new()
+            });
         data_stats = doctor_data_stats(store.collect_record_counts().await?);
         if semantic_active_profile.is_none() {
             let config = mxr_config::load_config().unwrap_or_default();
@@ -609,6 +617,8 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         recent_error_logs,
         recommended_next_steps,
         findings,
+        sync_history,
+        log_total_bytes: crate::logging::total_bytes(&data_dir.join("logs")),
     })
 }
 
@@ -706,8 +716,8 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
                 report.database_path, report.database_exists
             );
             println!(
-                "Logs:         {} ({} bytes)",
-                report.log_path, report.log_size_bytes
+                "Logs:         {} ({} bytes active, {} bytes with archives)",
+                report.log_path, report.log_size_bytes, report.log_total_bytes
             );
             println!(
                 "Daemon info:  version={} protocol={} build={}",
@@ -802,6 +812,53 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
                             sync.current_cursor_summary.as_deref().unwrap_or("-"),
                             sync.last_synced_count,
                         );
+                    }
+                }
+            }
+
+            if !report.sync_history.is_empty() {
+                println!(
+                    "\nSync history (newest {} syncs per account):",
+                    crate::sync_history::WINDOW
+                );
+                for history in &report.sync_history {
+                    println!(
+                        "  {}: {} syncs, {} failed, {} unfinished",
+                        history.account_name,
+                        history.recent_syncs,
+                        history.failed_syncs,
+                        history.unfinished_syncs,
+                    );
+                    if let (Some(median), Some(slowest), Some(latest)) = (
+                        history.median_duration_secs,
+                        history.slowest_duration_secs,
+                        history.latest_duration_secs,
+                    ) {
+                        let trend = match history.trend {
+                            Some(SyncDurationTrend::Slower) => ", trend slower",
+                            Some(SyncDurationTrend::Faster) => ", trend faster",
+                            Some(SyncDurationTrend::Steady) => ", trend steady",
+                            None => "",
+                        };
+                        println!(
+                            "    duration: median {}, slowest {}, latest {}{trend}",
+                            format_duration(std::time::Duration::from_secs(median)),
+                            format_duration(std::time::Duration::from_secs(slowest)),
+                            format_duration(std::time::Duration::from_secs(latest)),
+                        );
+                    } else {
+                        println!("    duration: no finished syncs");
+                    }
+                    if history.recurring_errors.is_empty() {
+                        println!("    recurring errors: none");
+                    } else {
+                        println!("    recurring errors:");
+                        for error in &history.recurring_errors {
+                            println!(
+                                "      {}x {} (last {})",
+                                error.count, error.message, error.last_seen_at
+                            );
+                        }
                     }
                 }
             }

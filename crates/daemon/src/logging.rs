@@ -84,6 +84,19 @@ pub(crate) fn archives(dir: &Path) -> io::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
+/// Active log plus every rotated archive: the disk the text logs use. An
+/// unreadable directory counts as zero, as `file_size_sync` does for a
+/// missing file, because this only feeds a diagnostic number.
+pub(crate) fn total_bytes(dir: &Path) -> u64 {
+    let size = |path: &Path| std::fs::metadata(path).map_or(0, |meta| meta.len());
+    let archived: u64 = archives(dir)
+        .unwrap_or_default()
+        .iter()
+        .map(|path| size(path))
+        .sum();
+    archived + size(&dir.join("mxr.log"))
+}
+
 pub(crate) fn files(dir: &Path) -> io::Result<Vec<PathBuf>> {
     let mut files = archives(dir)?;
     let active = dir.join("mxr.log");

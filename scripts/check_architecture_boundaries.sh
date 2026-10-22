@@ -56,6 +56,7 @@ ALLOW = {
         "mxr-compose",
         "mxr-config",
         "mxr-core",
+        "mxr-keymap",
         "mxr-mail-parse",
         "mxr-protocol",
         "mxr-reader",

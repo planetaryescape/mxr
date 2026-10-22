@@ -482,3 +482,26 @@ fn done_moves_the_cursor_to_the_next_row_and_at_the_end_to_the_previous() {
         "the previous row"
     );
 }
+
+#[test]
+fn the_hint_bar_offers_nows_verbs_for_a_lit_person_not_the_mailboxes() {
+    let mut app = now_app(true);
+    while !matches!(app.selected_now_row(), Some(crate::app::NowRow::Person(_))) {
+        press(&mut app, KeyCode::Char('j'));
+    }
+    let hints = app.mode_strip_hints().expect("a lit person has a strip");
+    let hints: Vec<(&str, &str)> = hints
+        .iter()
+        .map(|(k, l)| (k.as_str(), l.as_str()))
+        .collect();
+    assert_eq!(
+        hints,
+        vec![
+            ("Enter", "Open"),
+            ("r", "Reply"),
+            ("e", "Done here"),
+            ("o", "Email")
+        ],
+        "the same verbs as the web's now.person strip, with the TUI's keys"
+    );
+}

@@ -14,6 +14,7 @@ mod export_helpers;
 mod focus_run;
 mod hints;
 mod input;
+mod key_strip;
 mod list_advance;
 mod mailbox_actions;
 mod mailbox_helpers;

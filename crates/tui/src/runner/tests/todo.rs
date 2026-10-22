@@ -1035,3 +1035,23 @@ fn ticking_off_the_last_row_puts_the_cursor_on_the_one_before() {
         Some("todo_1")
     );
 }
+
+#[test]
+fn the_hint_bar_offers_to_dos_verbs_for_a_lit_task() {
+    let app = todo_app(true);
+    let hints = app.mode_strip_hints().expect("a lit to-do has a strip");
+    let hints: Vec<(&str, &str)> = hints
+        .iter()
+        .map(|(k, l)| (k.as_str(), l.as_str()))
+        .collect();
+    assert_eq!(
+        hints,
+        vec![
+            ("e", "Done"),
+            ("o", "Email"),
+            ("Z", "Schedule"),
+            ("X", "Not a to-do"),
+            (",", "Edit"),
+        ]
+    );
+}

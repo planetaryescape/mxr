@@ -5060,6 +5060,7 @@ async fn fetch_messages(
             Request::ListMessages {
                 account_id: None,
                 turn: None,
+                filter: Default::default(),
                 limit: 50,
             },
         ),

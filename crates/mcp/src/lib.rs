@@ -1987,6 +1987,7 @@ impl MxrMcpServer {
         self.daemon_json(Request::ListMessages {
             account_id: parse_optional_id(input.account_id)?,
             turn: input.turn.map(Into::into),
+            filter: Default::default(),
             limit: input.limit.unwrap_or(50).min(200),
         })
         .await

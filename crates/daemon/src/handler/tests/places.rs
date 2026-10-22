@@ -354,6 +354,7 @@ async fn correcting_a_sender_moves_its_mail_and_future_mail_follows() {
         .send(Request::ListMessages {
             account_id: None,
             turn: None,
+            filter: Default::default(),
             limit: 50,
         })
         .await

@@ -14,6 +14,12 @@ Options:
           - mine:   Your turn
           - theirs: Waiting on them
 
+      --unread
+          Only rows with a message from them you haven't read
+
+      --past-pace
+          Only rows where your turn has run past your usual pace with them
+
       --limit <LIMIT>
           Rows to list in Recent and Quiet; totals count them all
 

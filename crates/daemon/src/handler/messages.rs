@@ -31,7 +31,7 @@ use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     messages_copy, ClosenessData, ComposerData, ConversationAttachmentData, ConversationData,
     ConversationMessageData, DeskLaneKind, DeskRowData, MergeSuggestionData, MessageLayoutData,
-    MessagesBandData, MessagesData, MessagesLapsedData, MessagesPreviewData,
+    MessagesBandData, MessagesData, MessagesFilterData, MessagesLapsedData, MessagesPreviewData,
     MessagesPreviewKindData, MessagesRowData, MessagesRowKindData, MessagesTopicData,
     MessagesTurnData, PersonMergeData, PersonPageData, PersonRefData, ResponseData, TopicStateData,
     TrimmedData,
@@ -477,11 +477,11 @@ fn account_rows(gathered: &Gathered, now: DateTime<Utc>) -> Vec<(MessagesRowData
 pub(super) async fn list_messages(
     state: &AppState,
     account_id: Option<&AccountId>,
-    turn: Option<MessagesTurnData>,
+    filter: MessagesFilterData,
     limit: u32,
 ) -> HandlerResult {
     Ok(ResponseData::Messages {
-        messages: messages_at(state, account_id, turn, limit, Utc::now()).await?,
+        messages: messages_at(state, account_id, filter, limit, Utc::now()).await?,
     })
 }
 
@@ -489,7 +489,7 @@ pub(super) async fn list_messages(
 pub(super) async fn messages_at(
     state: &AppState,
     account_id: Option<&AccountId>,
-    turn: Option<MessagesTurnData>,
+    filter: MessagesFilterData,
     limit: u32,
     now: DateTime<Utc>,
 ) -> Result<MessagesData, HandlerError> {
@@ -548,7 +548,7 @@ pub(super) async fn messages_at(
     rank_by_recency(&mut quiet);
     let row_count = u32::try_from(your_turn.len() + recent.len() + quiet.len()).unwrap_or(u32::MAX)
         + u32::try_from(pinned.iter().filter(|r| !r.your_turn).count()).unwrap_or(0);
-    match turn {
+    match filter.turn {
         Some(MessagesTurnData::Mine) => {
             recent.clear();
             quiet.clear();
@@ -567,6 +567,18 @@ pub(super) async fn messages_at(
         }
         None => {}
     }
+    // Toggles narrow every band, so the counts a list is limited by are
+    // the filtered ones. Pinned has its own cap, applied above.
+    let keep = |row: &MessagesRowData| {
+        (!filter.unread || row.unread) && (!filter.past_pace || row.overdue)
+    };
+    if filter.narrows() {
+        your_turn.retain(keep);
+        pinned.retain(keep);
+        recent.retain(keep);
+        quiet.retain(keep);
+    }
+    let matched = distinct_rows(&[&your_turn, &pinned, &recent, &quiet]);
     let recent_total = u32::try_from(recent.len()).unwrap_or(u32::MAX);
     let quiet_total = u32::try_from(quiet.len()).unwrap_or(u32::MAX);
     recent.truncate(limit as usize);
@@ -576,15 +588,19 @@ pub(super) async fn messages_at(
         fill_previews(state, &gathered, band).await?;
     }
 
-    let waiting_view = turn == Some(MessagesTurnData::Theirs);
-    let lapsed = if your_turn.is_empty() && !waiting_view {
+    let waiting_view = filter.turn == Some(MessagesTurnData::Theirs);
+    // A toggle that empties the view is not the clear state: the lapsed
+    // people and Your turn's clear line would both be wrong under it.
+    let lapsed = if your_turn.is_empty() && !waiting_view && !filter.narrows() {
         lapsed(state, &accounts, now).await?
     } else {
         Vec::new()
     };
     // Judged on the view being shown: Waiting on is empty when no row
     // waits on them, whatever Your turn holds.
-    let view_empty = if waiting_view {
+    let view_empty = if filter.narrows() {
+        matched == 0
+    } else if waiting_view {
         pinned.is_empty() && recent_total == 0 && quiet_total == 0
     } else {
         your_turn.is_empty()
@@ -592,6 +608,8 @@ pub(super) async fn messages_at(
     let empty_state = view_empty.then(|| {
         if row_count == 0 {
             messages_copy::NEVER_HAD_ANY.to_string()
+        } else if filter.narrows() {
+            messages_copy::filtered_empty(filter, your_turn_split.total())
         } else if waiting_view {
             messages_copy::WAITING_CLEAR.to_string()
         } else {
@@ -620,12 +638,23 @@ pub(super) async fn messages_at(
         quiet,
         recent_total,
         quiet_total,
+        filter,
+        matched,
         row_count,
         thread_count,
         empty_state,
         lapsed,
         merge_suggestion_count,
     })
+}
+
+/// Rows across bands, once each: a pinned row also sits in its own band.
+fn distinct_rows(bands: &[&Vec<MessagesRowData>]) -> u32 {
+    let ids: HashSet<&str> = bands
+        .iter()
+        .flat_map(|band| band.iter().map(|row| row.id.as_str()))
+        .collect();
+    u32::try_from(ids.len()).unwrap_or(u32::MAX)
 }
 
 /// The line under each shown row: for Your turn, the ask from the

@@ -2690,6 +2690,12 @@ pub enum MessagesAction {
         /// Only rows where it is this side's turn.
         #[arg(long, value_enum)]
         turn: Option<MessagesTurnArg>,
+        /// Only rows with a message from them you haven't read.
+        #[arg(long)]
+        unread: bool,
+        /// Only rows where your turn has run past your usual pace with them.
+        #[arg(long)]
+        past_pace: bool,
         /// Rows to list in Recent and Quiet; totals count them all.
         #[arg(long, default_value_t = 50)]
         limit: u32,

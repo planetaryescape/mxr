@@ -35,6 +35,7 @@ async fn list(
         Request::ListMessages {
             account_id,
             turn: query.turn,
+            filter: Default::default(),
             limit: query.limit.unwrap_or(500).min(500),
         },
     )

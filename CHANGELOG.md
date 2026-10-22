@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.129](https://github.com/planetaryescape/mxr/compare/v0.6.128...v0.6.129) (2026-10-22)
+
+
+### Bug Fixes
+
+* show why Gmail rate-limits an account and wait what it asks ([#589](https://github.com/planetaryescape/mxr/issues/589)) ([d0be767](https://github.com/planetaryescape/mxr/commit/d0be76773ce695bf55f534bb3ddc711af7109983))
+
 ## [0.6.128](https://github.com/planetaryescape/mxr/compare/v0.6.127...v0.6.128) (2026-10-21)
 
 

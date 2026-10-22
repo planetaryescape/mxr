@@ -164,7 +164,8 @@
             "updates"
           ]
         }
-      ]
+      ],
+      "raycast_key": "Cmd+z"
     },
     {
       "id": "nav.now",
@@ -1996,7 +1997,8 @@
             "place"
           ]
         }
-      ]
+      ],
+      "raycast_key": "Cmd+Shift+r"
     },
     {
       "id": "mail.forward",
@@ -4885,7 +4887,8 @@
             "archive"
           ]
         }
-      ]
+      ],
+      "raycast_key": "Cmd+Shift+c"
     },
     {
       "id": "archive.copy-amount",
@@ -6009,7 +6012,8 @@
             "messages"
           ]
         }
-      ]
+      ],
+      "raycast_key": "Cmd+Shift+r"
     },
     {
       "id": "messages.got-it",
@@ -6125,7 +6129,8 @@
             "messages"
           ]
         }
-      ]
+      ],
+      "raycast_key": "Cmd+."
     },
     {
       "id": "messages.new-topic",
@@ -6534,7 +6539,8 @@
             "updates"
           ]
         }
-      ]
+      ],
+      "raycast_key": "Cmd+Shift+c"
     },
     {
       "id": "updates.open-email",
@@ -6592,7 +6598,8 @@
             "updates"
           ]
         }
-      ]
+      ],
+      "raycast_key": "Cmd+."
     },
     {
       "id": "updates.sweep",

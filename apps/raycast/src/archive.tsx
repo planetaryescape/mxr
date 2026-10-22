@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Icon, List, Keyboard } from "@raycast/api";
+import { Action, ActionPanel, Icon, List } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import { getRecords } from "./bridge/modes";
@@ -9,6 +9,7 @@ import { SearchSection, useMailSearch } from "./components/MailRow";
 import { ReadAction } from "./components/ThreadDetail";
 import { arrival } from "./components/time";
 import { useWebBase, web } from "./components/web";
+import { keyFor } from "./components/keys";
 
 export default function Archive() {
   const [account, setAccount] = useState<string>();
@@ -63,7 +64,7 @@ export default function Archive() {
                     <Action.OpenInBrowser
                       title="Open in mxr"
                       url={`${webBase}${web.mode("archive")}`}
-                      shortcut={Keyboard.Shortcut.Common.Open}
+                      shortcut={keyFor("archive.open-email")}
                     />
                   )}
                   {record.reference && (

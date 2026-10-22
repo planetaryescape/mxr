@@ -4,102 +4,25 @@
  * "The copy"). The trigger stays the plain link, so a click or Enter still
  * navigates; the card has no buttons. It opens at once with what the chip
  * knows (a subject or a name) and fills in as the data arrives, with no
- * spinner. Radix ignores touch, so a tap just follows the link. Everything
+ * spinner. Touch never opens it, so a tap just follows the link. Everything
  * here is mail or model text and is only ever set as text.
  */
 
 import { Paperclip } from "lucide-react";
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { Avatar } from "@/components/Avatar";
 import { MODE_GLYPHS } from "@/components/ModeMark";
 import { StatusDot } from "@/components/StatusDot";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { UnreadDot } from "@/components/UnreadDot";
 import { formatReceived } from "@/lib/format";
 import type { AssistantLink } from "./links";
 import type { ModesByThread } from "./threadGlyph";
 import { useLinkPreview, type PersonProfile, type ThreadPreview } from "./useLinkPreview";
+import { usePreviewOpen } from "./usePreviewOpen";
 
 import type { ThreadModes } from "@/features/modes/membership";
-
-const OPEN_DELAY_MS = 400;
-const CLOSE_DELAY_MS = 200;
-
-/**
- * The one timer that opens a card. A hover or a keyboard focus starts it
- * (restarting any pending one); it opens only if the link is still hovered or
- * focused and not suppressed. Touch never starts it.
- *
- * Activating the link (pointerdown, Enter, Space, click) clears the timer,
- * closes the card and suppresses opening until a new session: one that starts
- * after the pointer has left AND the link has blurred. "Ended" is derived from
- * the hovered and focused flags, which leave and blur always update, so
- * nothing waits on a pointerup or click that may never arrive (a press that is
- * released outside, or cancelled, still ends when the pointer leaves and the
- * link blurs). The focus a press causes comes after its pointerdown and before
- * any leave, so it never counts as a new session.
- */
-function useOpenSession(setOpen: (open: boolean) => void) {
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hovered = useRef(false);
-  const focused = useRef(false);
-  const suppressed = useRef(false);
-  const ended = useRef(false);
-  const stop = () => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-  };
-  useEffect(() => stop, []);
-
-  const begin = () => {
-    if (suppressed.current && ended.current) {
-      suppressed.current = false;
-      ended.current = false;
-    }
-    if (suppressed.current) return;
-    stop();
-    timer.current = setTimeout(() => {
-      timer.current = null;
-      if (!suppressed.current && (hovered.current || focused.current)) setOpen(true);
-    }, OPEN_DELAY_MS);
-  };
-  const leave = () => {
-    if (hovered.current || focused.current) return;
-    stop();
-    if (suppressed.current) ended.current = true;
-  };
-  const activate = () => {
-    stop();
-    setOpen(false);
-    suppressed.current = true;
-    ended.current = false;
-  };
-  return {
-    onPointerEnter: (event: PointerEvent) => {
-      if (event.pointerType === "touch") return;
-      hovered.current = true;
-      begin();
-    },
-    onPointerLeave: () => {
-      hovered.current = false;
-      leave();
-    },
-    onFocus: () => {
-      focused.current = true;
-      begin();
-    },
-    onBlur: () => {
-      focused.current = false;
-      leave();
-    },
-    onPointerDown: activate,
-    onClick: activate,
-    onKeyDown: (event: { key: string }) => {
-      if (event.key === "Enter" || event.key === " ") activate();
-    },
-  };
-}
 
 export function LinkHoverCard({
   link,
@@ -115,44 +38,35 @@ export function LinkHoverCard({
   /** The link itself: one element that takes a ref and props. */
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const { open, dismiss, linkProps, cardProps } = usePreviewOpen();
   const { thread, person } = useLinkPreview(link, open);
-  const session = useOpenSession(setOpen);
   return (
-    <HoverCard
-      open={open}
-      // Controlled, and only ever told to close: Radix runs a separate open
-      // timer for hover and for focus and can't cancel both, so opening is
-      // decided here (useOpenSession). Its close handling (leave grace, Esc,
-      // outside press) is kept.
-      onOpenChange={(next) => {
-        if (!next) setOpen(false);
-      }}
-      openDelay={OPEN_DELAY_MS}
-      closeDelay={CLOSE_DELAY_MS}
-    >
-      <HoverCardTrigger asChild {...session}>
+    // Popover, not a hover library: when it opens is decided by usePreviewOpen.
+    // The link is the anchor, not a trigger, so Radix adds no click handling.
+    <Popover open={open} modal={false}>
+      <PopoverAnchor asChild {...linkProps}>
         {children}
-      </HoverCardTrigger>
-      <HoverCardContent
+      </PopoverAnchor>
+      <PopoverContent
         side="left"
+        align="start"
+        sideOffset={8}
         collisionPadding={8}
+        className="w-80 p-3"
         data-testid="link-hover-card"
-        // Esc closes the card and nothing else: the event is marked handled so
-        // the narrow-screen drawer, which also closes on Esc, leaves the
-        // assistant open.
-        onEscapeKeyDown={(event) => {
-          event.preventDefault();
-          setOpen(false);
-        }}
+        // Focus stays on the link.
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        onInteractOutside={dismiss}
+        {...cardProps}
       >
         {link.kind === "thread" ? (
           <EmailCard title={title} preview={thread} held={modes?.get(link.thread_id)} />
         ) : (
           <PersonCard name={title} page={person} />
         )}
-      </HoverCardContent>
-    </HoverCard>
+      </PopoverContent>
+    </Popover>
   );
 }
 

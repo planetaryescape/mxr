@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
+  cleanup,
   createEvent,
   fireEvent,
   render as renderPlain,
@@ -121,6 +122,13 @@ function reply(text = "See [Q1 report](mxr:thread/t-1234567).") {
 
 /** Time passes for the hover card's timers and for the query that follows. */
 const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+
+/** A pointer event with a type, as the browser would send it. */
+function pointer(el: HTMLElement, kind: "Over" | "Out" | "Down" | "Up", pointerType: string) {
+  const event = createEvent[`pointer${kind}` as const](el);
+  Object.defineProperty(event, "pointerType", { value: pointerType });
+  fireEvent(el, event);
+}
 
 /** React turns a `pointerover` from outside the element into `onPointerEnter`. */
 function pointerEnter(chip: HTMLElement, pointerType: string) {
@@ -355,6 +363,98 @@ describe("the hover card on an email or person chip", () => {
     expect(screen.queryByTestId("link-hover-card")).toBeNull();
     await wait(300);
     expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+  });
+
+  /** Hover until the card is open, then put the pointer on the card. */
+  async function openAndEnterCard(chip: HTMLElement) {
+    pointer(chip, "Over", "mouse");
+    await wait(450);
+    const card = screen.getByTestId("link-hover-card");
+    pointer(chip, "Out", "mouse");
+    pointer(card, "Over", "mouse");
+    return card;
+  }
+
+  test("Esc after moving onto the card and back keeps it closed until a fresh hover", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    const card = await openAndEnterCard(chip);
+    pointer(card, "Out", "mouse");
+    pointer(chip, "Over", "mouse");
+    await wait(100);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await wait(1500);
+    expect(screen.queryByTestId("link-hover-card")).toBeNull();
+
+    pointer(chip, "Out", "mouse");
+    pointer(chip, "Over", "mouse");
+    await wait(450);
+    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+  });
+
+  test("after a touch tap in the order down, up, leave, click a mouse hover still opens it", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointer(chip, "Down", "touch");
+    pointer(chip, "Up", "touch");
+    pointer(chip, "Out", "touch");
+    fireEvent.click(chip);
+    expect(navigate).toHaveBeenCalledTimes(1);
+    await wait(1000);
+    expect(screen.queryByTestId("link-hover-card")).toBeNull();
+
+    pointer(chip, "Over", "mouse");
+    await wait(450);
+    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+  });
+
+  test("after a touch tap in the order down, up, leave, click keyboard focus still opens it", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointer(chip, "Down", "touch");
+    pointer(chip, "Up", "touch");
+    pointer(chip, "Out", "touch");
+    fireEvent.click(chip);
+    act(() => chip.blur());
+    act(() => chip.focus());
+    await wait(450);
+    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+  });
+
+  test("pressing inside the card, leaving it and releasing outside closes it after the grace", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    const card = await openAndEnterCard(chip);
+    pointer(card, "Down", "mouse");
+    pointer(card, "Out", "mouse"); // released outside: no pointerup or click here
+    await wait(150);
+    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+    await wait(100);
+    expect(screen.queryByTestId("link-hover-card")).toBeNull();
+  });
+
+  test("leaving the link closes the card after the grace, and moving onto the card keeps it", async () => {
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointer(chip, "Over", "mouse");
+    await wait(450);
+    pointer(chip, "Out", "mouse");
+    await wait(100);
+    pointer(screen.getByTestId("link-hover-card"), "Over", "mouse");
+    await wait(500);
+    expect(screen.getByTestId("link-hover-card")).toBeInTheDocument();
+  });
+
+  test("unmounting while a timer is pending updates nothing", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    reply();
+    const chip = screen.getByRole("link", { name: "Q1 report" });
+    pointer(chip, "Over", "mouse");
+    await wait(100);
+    cleanup();
+    await wait(1000);
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
   });
 
   test("in the drawer, Escape closes the card and leaves the assistant open", async () => {

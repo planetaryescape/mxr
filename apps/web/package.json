@@ -41,7 +41,6 @@
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "*",
     "@radix-ui/react-dropdown-menu": "*",
-    "@radix-ui/react-hover-card": "1.2.1",
     "@radix-ui/react-label": "*",
     "@radix-ui/react-popover": "*",
     "@radix-ui/react-scroll-area": "*",

@@ -851,7 +851,6 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 
 **Trade-offs accepted**: Several defaults (the badge bar, the 14-day catch-up, Sol) are judgement calls that later use may overturn; each is a config value or one line in the plan.
 
-
 ## D118: The app teaches itself in place, with no tour
 
 **Chosen**: mxr teaches the modes where each one is used and never with an onboarding tour. Every mode ships six surfaces: a header line under 12 words that names its job and verb; two empty states ("never had any" teaches what lands there, "clear for now" says when the next thing arrives); one first-encounter card of at most two sentences plus a key line, which closes on dismiss or on the mode's first verb and never returns, with seen state kept by the daemon per profile; a why line on every item with a what-next fragment; `?` leading with the mode's explanation before its keys; and keys shown with their verbs in the footer, tooltips and palette. Handoff toasts name where an item went, and always separate "Filed in Archive" from "Archived in Gmail". The first run is the one moment all five modes are shown together, as counts from the user's own mail with each mode's header line, followed by the catch-up. `mxr demo` and the glossary are offered, never pushed. The copy lives in one daemon table (`GetModeGuide`, `mxr modes explain --format json`) so every client and agent uses the same words. Each phase's definition of done includes its mode's surfaces and copy, and rubric v3 X13 grades them with a five-second check. The design and copy drafts are "The app teaches itself in place, with no tour" in [22-email-modes.md](22-email-modes.md).
@@ -867,7 +866,6 @@ Reply-later is cleared. A dismissal lasts until any new message is stored in the
 *Why*: BK, 2026-10-07: "Adding one big hint at the top of a page has essentially the same problem as a product tour: it front-loads information before the user needs it or even has enough context to understand where it applies... surface information at the moment of need, co-located with the UI element or action it relates to, rather than batching it upfront." The original evidence already pointed here: NN/g's help at the moment of need and Apple's context-specific tips. Audit A (ux-polish, 2026-10-07) found the TUI still opened a tour on first launch, which X13 fails outright.
 
 *Trade-offs*: A hint only teaches the user who reaches its element, so a mode's model is no longer stated in full on first visit; the header line states the job and `?` holds the full explanation. Hints need an anchor per element in each client, which is more wiring than one card per mode; the anchors are named in one table in [22-email-modes.md](22-email-modes.md) ("The hints").
-
 
 ## D119: Sorting shows its work: freshness, an arrivals line that sums, and mail that is never sorted away
 
@@ -1154,8 +1152,6 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 **Why**: BK decided on 2026-10-21 to retire these five settings rather than build them. The TUI already formats dates by age (`ui/messages_lens.rs`), sizes columns to the terminal, has no sidebar hide feature, and nothing produces summaries to humanize. Each setting that claims to work and does not is a broken promise, and building them adds maintenance with no user asking.
 
 **Trade-offs accepted**: Users who set a retired key get a warning, not a fix. A hide-sidebar or date-format request now starts from a new decision, not from these keys.
-||||||| parent of 65602220e (docs: document the assistant model picker and the OpenAI key (D144))
-||||||| parent of 53fad1ff6 (docs: document the assistant model picker and the OpenAI key (D143))
 
 ## D145: The assistant's model is one setting, picked from a list, local or hosted
 
@@ -1196,9 +1192,6 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 **Why**: BK, 2026-10-22: "sometimes I open an email and I really struggle to figure out when exactly an email was received because some views don't have a date/time shown clearly somewhere on the view. I think this is important information everytime for the way I use email. I'm not asking for it to be a huge text but I want to be able to see it somewhere easily, I don't want to click a button or do something, it should be there." An audit of origin/main 8c05bcb06 found no reader on either client that met that: the web reader showed "Mon" with the date in a tooltip, the Messages conversation never showed a date, Updates showed no time at all, and the TUI reader printed UTC.
 
 **Trade-offs accepted**: Message headers grow by about ten characters. The lit row's actions sit beside the time instead of over it, which leaves less room for actions on narrow screens; the overflow menu takes the rest.
-
-||||||| parent of 9ec5af92c (fix: release unsubscribe claims on failure and redact failure text)
-**Trade-offs accepted**: A small table that is never pruned by purge, and grows by one row per unsubscribe. A receipt is removed with its message, so a message that is deleted and later synced back under the same id can be unsubscribed again. An unsubscribe whose outcome mxr can't tell is never re-sent, so if the sender did not act, the user has to unsubscribe by other means; the error says so. A daemon that stops between the claim and the send leaves the claim in place, which reads as unknown and blocks a resend. If the receipt cannot be recorded after a send, the error is not retryable, and a retry acknowledges without sending.
 
 ## D149: A commitment's date records where it came from, and mxr acts only on dates from words or the user
 

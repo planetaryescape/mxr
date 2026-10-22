@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.136"
+    "version": "0.6.141"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -1761,6 +1761,50 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/codes": {
+      "get": {
+        "tags": [],
+        "summary": "One-time codes from the last day's mail, newest first, each current or expired",
+        "operationId": "mail_codes",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Most codes returned; default 10, at most 50",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `OneTimeCodes` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -3952,6 +3996,15 @@
             }
           },
           {
+            "name": "conversation",
+            "in": "query",
+            "description": "`false` returns the profile only, with no conversation or message text; default true",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "account",
             "in": "query",
             "description": "Account id; omitted searches every account",
@@ -5853,6 +5906,41 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/threads/previews": {
+      "post": {
+        "tags": [],
+        "summary": "Headline facts for up to 100 threads with no bodies: subject, latest sender, date, snippet, counts, attachments",
+        "operationId": "mail_thread_previews",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadPreviewsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `ThreadPreviews` variant, in request order; unknown ids are left out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No threads, a malformed thread id, or more than 100"
           },
           "401": {
             "description": "Missing or invalid bridge token"
@@ -10325,6 +10413,18 @@
           "title"
         ],
         "properties": {
+          "at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the email arrived or the person last wrote: unix seconds."
+          },
+          "attachment": {
+            "type": "boolean",
+            "description": "The email carries an attachment."
+          },
           "detail": {
             "type": [
               "string",
@@ -10341,8 +10441,26 @@
               }
             ]
           },
+          "sender": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who an email is from, apart from `detail`. Absent for people and\nfrom older daemons."
+          },
+          "snippet": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The start of an email's text, clipped."
+          },
           "title": {
             "type": "string"
+          },
+          "unread": {
+            "type": "boolean",
+            "description": "The email or the person's latest activity is unread."
           }
         }
       },
@@ -11748,6 +11866,10 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "date_unverified": {
+            "type": "boolean",
+            "description": "`by_when` is a date a model wrote before due words existed, so it\nstays on the row but nothing acts on it (desk, to-dos). Clients show\nit as \"date unverified\"."
           },
           "direction": {
             "$ref": "#/components/schemas/CommitmentDirectionData"
@@ -19046,6 +19168,64 @@
               "$ref": "#/components/schemas/NowUpdateSourceData"
             },
             "description": "The busiest three sources."
+          }
+        }
+      },
+      "OneTimeCodeData": {
+        "type": "object",
+        "description": "A one-time code a message gave, for `Request::ListOneTimeCodes`.",
+        "required": [
+          "code",
+          "current",
+          "expires_at",
+          "received_at",
+          "sender_name",
+          "sender_host",
+          "sender_email",
+          "subject",
+          "account_id",
+          "message_id",
+          "thread_id"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "code": {
+            "type": "string",
+            "description": "As the message wrote it: \"482913\", \"G-123456\", \"739 204\"."
+          },
+          "current": {
+            "type": "boolean",
+            "description": "Whether it is still in its window: the lifetime the message states,\nelse ten minutes."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "sender_host": {
+            "type": "string",
+            "description": "\"accounts.acme.example\", from the address."
+          },
+          "sender_name": {
+            "type": "string",
+            "description": "\"Acme\", as Updates names the source. Shown with `sender_host`: the\nname is the sender's choice, the host is where the mail came from."
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
           }
         }
       },
@@ -29724,6 +29904,28 @@
           },
           {
             "type": "object",
+            "description": "One preview per thread in `thread_ids` (at most 100): subject, the\nlatest sender, date and snippet, counts and an attachment flag, with\nno bodies. Unknown ids are left out. Returns\n`ResponseData::ThreadPreviews`.",
+            "required": [
+              "thread_ids",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetThreadPreviews"
+                ]
+              },
+              "thread_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadId"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Now's arrivals line (D119): every inbound email first seen since Now\nwas last opened (at most 24 hours back), counted once by where it\nwent, plus \"Not sure\" questions and the weekly track record.\n`mark_seen` starts a visit: the window then runs from the visit\nbefore. `since` is the window start of the visit a client already\nhas open (the `since` it was answered): a read that doesn't mark\nthen keeps that window instead of working one out again, so a Now\nthat stays open polls the same window all visit. Returns\n`ResponseData::Arrivals`.",
             "required": [
               "cmd"
@@ -30025,6 +30227,10 @@
                 "enum": [
                   "GetPerson"
                 ]
+              },
+              "conversation": {
+                "type": "boolean",
+                "description": "False returns only the profile (row, relationship line, topics):\nno conversation and no message text, as a hover card needs."
               },
               "person": {
                 "type": "string"
@@ -31059,6 +31265,39 @@
               },
               "dry_run": {
                 "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "One-time codes from mail received in the last day, at most `limit`\n(default 10): the current ones first, then expired ones, each newest\nfirst. Found by rules in the subject and body, any folder but\nTrash and Spam. Read only. Returns `ResponseData::OneTimeCodes`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListOneTimeCodes"
+                ]
+              },
+              "limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
               }
             }
           },
@@ -35318,6 +35557,28 @@
           },
           {
             "type": "object",
+            "description": "Returned by `Request::ListOneTimeCodes`.",
+            "required": [
+              "codes",
+              "kind"
+            ],
+            "properties": {
+              "codes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OneTimeCodeData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "OneTimeCodes"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Returned by `Request::GetUpdatesDigest`.",
             "required": [
               "digest",
@@ -35536,6 +35797,28 @@
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/ThreadModesData"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetThreadPreviews`, one entry per thread found.",
+            "required": [
+              "previews",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ThreadPreviews"
+                ]
+              },
+              "previews": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ThreadPreviewData"
                 }
               }
             }
@@ -39158,6 +39441,76 @@
           }
         }
       },
+      "ThreadPreviewData": {
+        "type": "object",
+        "description": "One thread at a glance. Sender, date, snippet come from its latest\nmessage; counts and the attachment flag cover the whole thread.",
+        "required": [
+          "thread_id",
+          "subject",
+          "sender_email",
+          "latest_at",
+          "message_count",
+          "unread_count",
+          "snippet"
+        ],
+        "properties": {
+          "has_attachments": {
+            "type": "boolean",
+            "description": "Any message in the thread carries an attachment."
+          },
+          "latest_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the latest message arrived: unix seconds."
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "sender_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The latest message's sender name, when the message has one."
+          },
+          "snippet": {
+            "type": "string",
+            "description": "The start of the latest message's text, clipped."
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "unread_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ThreadPreviewsBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/threads/previews`.",
+        "required": [
+          "thread_ids"
+        ],
+        "properties": {
+          "thread_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "At most 100 threads, answered in this order; unknown ids are left out."
+          }
+        }
+      },
       "ThreadPromiseData": {
         "type": "object",
         "description": "An open promise in the thread and who made it.",
@@ -40737,6 +41090,13 @@
         "properties": {
           "account_id": {
             "$ref": "#/components/schemas/AccountId"
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The one-time code the newest message gives, to copy: \"482913\".\nOnly while the code is in its window; expired lines never show."
           },
           "count": {
             "type": "integer",

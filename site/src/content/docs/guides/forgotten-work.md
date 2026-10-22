@@ -47,6 +47,10 @@ mxr commitments --status open --format json \
 
 What you get: one row per open commitment from the last 7 days, tab-separated, sorted by due date. Pipe into `column -t` or paste straight into a standup doc.
 
+### Dates mxr shows but does not act on
+
+Commitments saved before v0.6.120 carry a date a model wrote, not words from the email, and mxr cannot tell which of those are right. They stay on the row and show as "date unverified" in thread context, the relationship profile and `mxr commitments` (`"date_unverified": true` in JSON). The desk's Due lane, your to-dos and Now ignore them, so a wrong date never makes a promise look overdue. To make one count, record your own promise again with the date you want, `mxr commitments add MESSAGE_ID --what "..." --due "fri 9am"`, which marks the date as yours; `mxr commitments resolve COMMITMENT_ID` closes one that is done. A date that comes from words the email says, or that you typed, is acted on as usual. When a phrase has more than one reading, such as "fri 3" or a weekday named on that same weekday, the commitment is saved without a date.
+
 ### When the LLM is off
 
 The extractor's prefilter is pure regex on first-person commitment markers (`I'll`, `I will`, `I can`, `I'll send`, …) and due-phrases (weekday, date, `tomorrow`, `next week`, `by EOD`). When the LLM is disabled or unreachable, deterministic prefilter matches still surface as low-confidence candidates in the safety report; they just don't get promoted into the ledger automatically. Run with `--check` to see them and decide.

@@ -835,6 +835,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One-time codes from the last day's mail, newest first, each current or expired */
+        get: operations["mail_codes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/commitments": {
         parameters: {
             query?: never;
@@ -3073,6 +3090,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/threads/previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Headline facts for up to 100 threads with no bodies: subject, latest sender, date, snippet, counts, attachments */
+        post: operations["mail_thread_previews"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/threads/{thread_id}": {
         parameters: {
             query?: never;
@@ -4604,6 +4638,38 @@ export interface components {
                   /** @enum {string} */
                   type: "fake";
               };
+        /** @description Recent `sync_log` history for one account, as `mxr doctor` reports it. */
+        AccountSyncHistory: {
+            account_id: components["schemas"]["AccountId"];
+            account_name: string;
+            /** Format: int32 */
+            failed_syncs: number;
+            /** Format: int32 */
+            finished_syncs: number;
+            /** Format: int64 */
+            latest_duration_secs?: number | null;
+            /**
+             * Format: int64
+             * @description Whole seconds, since `sync_log` timestamps are stored at second
+             *     resolution.
+             */
+            median_duration_secs?: number | null;
+            /**
+             * Format: int32
+             * @description Rows read for this account, newest first.
+             */
+            recent_syncs: number;
+            recurring_errors: components["schemas"]["RecurringSyncError"][];
+            /** Format: int64 */
+            slowest_duration_secs?: number | null;
+            trend?: components["schemas"]["SyncDurationTrend"] | null;
+            /**
+             * Format: int32
+             * @description Rows without `finished_at`: still running, or abandoned mid-run. They
+             *     never contribute to the duration fields.
+             */
+            unfinished_syncs: number;
+        };
         AccountSyncStatus: {
             account_id: components["schemas"]["AccountId"];
             account_name: string;
@@ -5307,9 +5373,25 @@ export interface components {
         };
         /** @description One thing a result lists: an email, a person, a to-do. */
         AssistantReadoutRowData: {
+            /**
+             * Format: int64
+             * @description When the email arrived or the person last wrote: unix seconds.
+             */
+            at?: number | null;
+            /** @description The email carries an attachment. */
+            attachment?: boolean;
             detail?: string | null;
             link?: components["schemas"]["AssistantLinkData"] | null;
+            /**
+             * @description Who an email is from, apart from `detail`. Absent for people and
+             *     from older daemons.
+             */
+            sender?: string | null;
+            /** @description The start of an email's text, clipped. */
+            snippet?: string | null;
             title: string;
+            /** @description The email or the person's latest activity is unread. */
+            unread?: boolean;
         };
         /** @description Body of `POST /api/v1/mail/assistant/conversations`. */
         AssistantSendBody: {
@@ -5766,6 +5848,12 @@ export interface components {
             account_id: components["schemas"]["AccountId"];
             /** Format: date-time */
             by_when?: string | null;
+            /**
+             * @description `by_when` is a date a model wrote before due words existed, so it
+             *     stays on the row but nothing acts on it (desk, to-dos). Clients show
+             *     it as "date unverified".
+             */
+            date_unverified?: boolean;
             direction: components["schemas"]["CommitmentDirectionData"];
             email: string;
             evidence_msg_id: components["schemas"]["MessageId"];
@@ -6619,6 +6707,11 @@ export interface components {
             log_path: string;
             /** Format: int64 */
             log_size_bytes: number;
+            /**
+             * Format: int64
+             * @description Active log plus rotated archives. `log_size_bytes` stays active-file only.
+             */
+            log_total_bytes?: number;
             recent_error_logs: string[];
             recent_sync_events: components["schemas"]["EventLogEntry"][];
             recommended_next_steps: string[];
@@ -6631,6 +6724,8 @@ export interface components {
             socket_exists: boolean;
             socket_reachable: boolean;
             stale_socket: boolean;
+            /** @description Per-account `sync_log` summary. Empty from a daemon that predates it. */
+            sync_history?: components["schemas"]["AccountSyncHistory"][];
             sync_statuses: components["schemas"]["AccountSyncStatus"][];
         };
         Draft: components["schemas"]["DraftContentSchema"] & {
@@ -8290,6 +8385,32 @@ export interface components {
             /** @description The busiest three sources. */
             top_sources: components["schemas"]["NowUpdateSourceData"][];
         };
+        /** @description A one-time code a message gave, for `Request::ListOneTimeCodes`. */
+        OneTimeCodeData: {
+            account_id: components["schemas"]["AccountId"];
+            /** @description As the message wrote it: "482913", "G-123456", "739 204". */
+            code: string;
+            /**
+             * @description Whether it is still in its window: the lifetime the message states,
+             *     else ten minutes.
+             */
+            current: boolean;
+            /** Format: date-time */
+            expires_at: string;
+            message_id: components["schemas"]["MessageId"];
+            /** Format: date-time */
+            received_at: string;
+            sender_email: string;
+            /** @description "accounts.acme.example", from the address. */
+            sender_host: string;
+            /**
+             * @description "Acme", as Updates names the source. Shown with `sender_host`: the
+             *     name is the sender's choice, the host is where the mail came from.
+             */
+            sender_name: string;
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+        };
         OwedReplyHereData: {
             message_id: components["schemas"]["MessageId"];
             /** Format: date-time */
@@ -9582,6 +9703,16 @@ export interface components {
             retired_intentions: number;
             source_owner_stopped: boolean;
             workspace_id: string;
+        };
+        /**
+         * @description One normalised failure message that recurred within an account's recent
+         *     sync history.
+         */
+        RecurringSyncError: {
+            /** Format: int32 */
+            count: number;
+            last_seen_at: string;
+            message: string;
         };
         RegisteredClient: {
             capabilities: components["schemas"]["RemoteCapability"][];
@@ -11438,6 +11569,11 @@ export interface components {
                   thread_ids?: components["schemas"]["ThreadId"][];
               }
             | {
+                  /** @enum {string} */
+                  cmd: "GetThreadPreviews";
+                  thread_ids: components["schemas"]["ThreadId"][];
+              }
+            | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetArrivals";
@@ -11505,6 +11641,11 @@ export interface components {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetPerson";
+                  /**
+                   * @description False returns only the profile (row, relationship line, topics):
+                   *     no conversation and no message text, as a hover card needs.
+                   */
+                  conversation?: boolean;
                   person: string;
                   topic?: components["schemas"]["ThreadId"] | null;
               }
@@ -11781,6 +11922,13 @@ export interface components {
                   cmd: "DeleteAssistantConversation";
                   conversation_id: string;
                   dry_run?: boolean;
+              }
+            | {
+                  account_id?: components["schemas"]["AccountId"] | null;
+                  /** @enum {string} */
+                  cmd: "ListOneTimeCodes";
+                  /** Format: int32 */
+                  limit?: number | null;
               }
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
@@ -12906,6 +13054,11 @@ export interface components {
                   now: components["schemas"]["NowData"];
               }
             | {
+                  codes: components["schemas"]["OneTimeCodeData"][];
+                  /** @enum {string} */
+                  kind: "OneTimeCodes";
+              }
+            | {
                   digest: components["schemas"]["UpdatesDigestData"];
                   /** @enum {string} */
                   kind: "UpdatesDigest";
@@ -12962,6 +13115,11 @@ export interface components {
                   /** @enum {string} */
                   kind: "ModeMembership";
                   threads: components["schemas"]["ThreadModesData"][];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "ThreadPreviews";
+                  previews: components["schemas"]["ThreadPreviewData"][];
               }
             | {
                   /** @enum {string} */
@@ -13878,6 +14036,12 @@ export interface components {
          * @enum {string}
          */
         SyncAccountResultKind: "started" | "joined" | "failed";
+        /**
+         * @description Direction of an account's recent sync durations, compared as the median of
+         *     the newest finished syncs against the median of the ones before them.
+         * @enum {string}
+         */
+        SyncDurationTrend: "slower" | "faster" | "steady";
         /** @description The last sync failure of one account. */
         SyncErrorData: {
             /** Format: int32 */
@@ -14115,6 +14279,35 @@ export interface components {
             new_sender?: components["schemas"]["ScreenerQuestionData"] | null;
             subject: string;
             thread_id: components["schemas"]["ThreadId"];
+        };
+        /**
+         * @description One thread at a glance. Sender, date, snippet come from its latest
+         *     message; counts and the attachment flag cover the whole thread.
+         */
+        ThreadPreviewData: {
+            /** @description Any message in the thread carries an attachment. */
+            has_attachments?: boolean;
+            /**
+             * Format: int64
+             * @description When the latest message arrived: unix seconds.
+             */
+            latest_at: number;
+            /** Format: int32 */
+            message_count: number;
+            sender_email: string;
+            /** @description The latest message's sender name, when the message has one. */
+            sender_name?: string | null;
+            /** @description The start of the latest message's text, clipped. */
+            snippet: string;
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+            /** Format: int32 */
+            unread_count: number;
+        };
+        /** @description Body of `POST /api/v1/mail/threads/previews`. */
+        ThreadPreviewsBody: {
+            /** @description At most 100 threads, answered in this order; unknown ids are left out. */
+            thread_ids: string[];
         };
         /** @description An open promise in the thread and who made it. */
         ThreadPromiseData: {
@@ -14685,6 +14878,11 @@ export interface components {
          */
         UpdateLineData: {
             account_id: components["schemas"]["AccountId"];
+            /**
+             * @description The one-time code the newest message gives, to copy: "482913".
+             *     Only while the code is in its window; expired lines never show.
+             */
+            code?: string | null;
             /**
              * Format: int32
              * @description Messages the line folds.
@@ -16999,6 +17197,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_codes: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description Most codes returned; default 10, at most 50 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The `OneTimeCodes` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {
@@ -19441,6 +19671,8 @@ export interface operations {
                 person: string;
                 /** @description Thread id of the conversation to show */
                 topic?: string;
+                /** @description `false` returns the profile only, with no conversation or message text; default true */
+                conversation?: boolean;
                 /** @description Account id; omitted searches every account */
                 account?: string;
             };
@@ -21409,6 +21641,44 @@ export interface operations {
         responses: {
             /** @description OK */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_thread_previews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThreadPreviewsBody"];
+            };
+        };
+        responses: {
+            /** @description The `ThreadPreviews` variant, in request order; unknown ids are left out */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description No threads, a malformed thread id, or more than 100 */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

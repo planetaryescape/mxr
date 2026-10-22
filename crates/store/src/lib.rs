@@ -36,6 +36,7 @@ mod categories;
 mod category_rules;
 mod change_feed;
 mod classify_eval;
+mod commitment_date_source;
 mod contact_commitments;
 mod contact_relationship_summary;
 mod contact_style;
@@ -98,6 +99,7 @@ mod sync_upsert;
 mod test_fixtures;
 mod thread;
 mod thread_context;
+mod thread_preview;
 mod thread_summary;
 mod todo_first_run;
 mod todo_microsoft;
@@ -127,6 +129,7 @@ pub use categories::{
 };
 pub use change_feed::ChangeFeed;
 pub use classify_eval::{EvalAspects, EvalCandidate};
+pub use commitment_date_source::{is_actionable_date, ByWhenSource};
 pub use contact_commitments::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
 pub use contact_relationship_summary::ContactRelationshipSummaryRecord;
 pub use contact_style::{ContactStyleRecord, RelationshipMessageSample};
@@ -232,6 +235,7 @@ pub(crate) fn sources_json(sources: &[mxr_core::MessageId]) -> String {
     .unwrap_or_else(|_| "[]".into())
 }
 pub use thread_context::CounterpartyExchange;
+pub use thread_preview::ThreadPreviewRecord;
 pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use triage::TriageCacheRecord;
 pub use undo::{

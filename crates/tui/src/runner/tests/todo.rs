@@ -115,6 +115,10 @@ fn microsoft_sync_preview_must_be_rendered_on_the_runway_before_confirmation() {
                 frame,
                 ratatui::layout::Rect::new(0, 0, 120, height),
                 &crate::ui::todo_lens::TodoView {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
+                    now: chrono::Utc::now(),
                     page: &app.mailbox.todo_page,
                     selected_index: app.mailbox.selected_index,
                     active_pane: &crate::app::ActivePane::MailList,
@@ -196,6 +200,10 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
             frame,
             ratatui::layout::Rect::new(0, 0, 20, 5),
             &crate::ui::todo_lens::TodoView {
+                zone: crate::ui::received_label::DisplayZone::Fixed(
+                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                ),
+                now: chrono::Utc::now(),
                 page: &app.mailbox.todo_page,
                 selected_index: app.mailbox.selected_index,
                 active_pane: &crate::app::ActivePane::MailList,
@@ -210,6 +218,10 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
             frame,
             ratatui::layout::Rect::new(0, 0, 80, 12),
             &crate::ui::todo_lens::TodoView {
+                zone: crate::ui::received_label::DisplayZone::Fixed(
+                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                ),
+                now: chrono::Utc::now(),
                 page: &app.mailbox.todo_page,
                 selected_index: app.mailbox.selected_index,
                 active_pane: &crate::app::ActivePane::MailList,
@@ -276,6 +288,10 @@ fn microsoft_review_scrolls_without_moving_the_task_and_escape_discards_confirma
             frame,
             ratatui::layout::Rect::new(0, 0, 80, 10),
             &crate::ui::todo_lens::TodoView {
+                zone: crate::ui::received_label::DisplayZone::Fixed(
+                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                ),
+                now: chrono::Utc::now(),
                 page: &app.mailbox.todo_page,
                 selected_index: 0,
                 active_pane: &crate::app::ActivePane::MailList,

@@ -12,6 +12,11 @@ Status: open. Found while moving decision and delivery dates onto
 this; deliveries ask the model to split a window into `eta_from` and
 `eta_until`, but nothing in code stops a whole range reaching the helper.
 
+Since D149 the commitment extractors store a phrase like this undated: it
+drops words to find a reading (`DueWords::dropped_words`), so
+`unambiguous_at` returns `None`. The fix below is still needed for the
+decision and delivery extractors.
+
 Fix in `natural_time`: either parse "between X and Y" / "X–Y" as a span and
 expose both ends, or refuse a phrase whose kept suffix starts with a
 conjunction. Add tests for both forms and for "Thursday between 2pm and 4pm",

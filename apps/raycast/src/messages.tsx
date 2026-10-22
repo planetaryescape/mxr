@@ -1,16 +1,35 @@
 import { Action, ActionPanel, Color, Icon, List, Keyboard } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
+import { useState } from "react";
 import { getMessages, markDone } from "./bridge/modes";
 import type { MessagesRow } from "./bridge/types";
+import { AccountDropdown } from "./components/AccountDropdown";
+import { useAccountBadge } from "./components/accountBadge";
+import { useLiveRefresh } from "./components/live";
+import { SearchSection, useMailSearch } from "./components/MailRow";
 import { ReplyForm } from "./components/ReplyForm";
+import { ReadAction } from "./components/ThreadDetail";
 import { itemErrors, runPreviewed } from "./components/previewed";
+import { arrival } from "./components/time";
 import { useWebBase, web } from "./components/web";
 
 export default function Messages() {
-  const { data, isLoading, revalidate } = useCachedPromise(getMessages, [], {
+  const [account, setAccount] = useState<string>();
+  const { data, isLoading, revalidate } = useCachedPromise(getMessages, [account], {
     keepPreviousData: true,
   });
+  const badge = useAccountBadge(account);
+  useLiveRefresh(revalidate);
   const webBase = useWebBase();
+  const search = useMailSearch(account);
+  const shown = (rows: MessagesRow[] | undefined) =>
+    (rows ?? []).filter((row) =>
+      search.keep(
+        row.title,
+        ...(row.person?.addresses ?? []),
+        ...row.topics.map((topic) => topic.subject),
+      ),
+    );
 
   const item = (row: MessagesRow, band: string) => {
     const topic = row.topics[0];
@@ -28,18 +47,28 @@ export default function Messages() {
         title={row.title}
         subtitle={topic?.subject}
         accessories={[
+          ...badge(row.account_id),
           ...(row.unread
             ? [{ icon: { source: Icon.Dot, tintColor: Color.Blue }, tooltip: "Unread" }]
             : []),
           ...(row.pace_label ? [{ text: row.pace_label }] : []),
-          { date: new Date(row.last_at), tooltip: row.why },
+          arrival(row.last_at, row.why),
         ]}
         actions={
           <ActionPanel>
             {topic && (
+              <ReadAction
+                threadId={topic.thread_id}
+                webPath={web.person(row.id, topic.thread_id)}
+                replyTo={{ messageId: topic.reply_to_message_id, to: name }}
+                onChange={revalidate}
+              />
+            )}
+            {topic && (
               <Action.Push
                 title="Reply"
                 icon={Icon.Reply}
+                shortcut={{ modifiers: ["cmd"], key: "r" }}
                 target={
                   <ReplyForm
                     messageId={topic.reply_to_message_id}
@@ -102,23 +131,28 @@ export default function Messages() {
 
   return (
     <List
-      isLoading={isLoading}
+      isLoading={isLoading || search.isLoading}
       navigationTitle={data?.header ?? "Messages"}
-      searchBarPlaceholder="Filter people"
+      searchBarPlaceholder="Filter people and search all mail"
+      searchBarAccessory={<AccountDropdown onChange={setAccount} />}
+      {...search.listProps}
     >
-      {data && data.row_count === 0 && (
+      {data && data.row_count === 0 && !search.searching && (
         <List.EmptyView icon={Icon.Message} title={data.empty_state ?? "No conversations"} />
       )}
       <List.Section title="Your Turn">
-        {data?.your_turn.map((row) => item(row, "turn"))}
+        {shown(data?.your_turn).map((row) => item(row, "turn"))}
       </List.Section>
-      <List.Section title="Pinned">{data?.pinned.map((row) => item(row, "pinned"))}</List.Section>
+      <List.Section title="Pinned">
+        {shown(data?.pinned).map((row) => item(row, "pinned"))}
+      </List.Section>
       <List.Section title="Recent" subtitle={data ? String(data.recent_total) : undefined}>
-        {data?.recent.map((row) => item(row, "recent"))}
+        {shown(data?.recent).map((row) => item(row, "recent"))}
       </List.Section>
       <List.Section title="Quiet" subtitle={data ? String(data.quiet_total) : undefined}>
-        {data?.quiet.map((row) => item(row, "quiet"))}
+        {shown(data?.quiet).map((row) => item(row, "quiet"))}
       </List.Section>
+      <SearchSection search={search} badge={badge} onChange={revalidate} />
     </List>
   );
 }

@@ -74,6 +74,7 @@ interface Commitment {
   who_owes: string;
   what: string;
   by_when?: string | null;
+  date_unverified?: boolean;
 }
 
 interface RelationshipDrift {

@@ -7,13 +7,13 @@
  * becomes a chip drawn from its data (docs/blueprint/29 "The copy").
  */
 
-import { Mail } from "lucide-react";
-import { createElement, useMemo, type ReactNode } from "react";
+import { createElement, Fragment, useMemo, type ReactNode } from "react";
 
 import { APP_LINK_ATTRIBUTE, APP_LINK_ID_ATTRIBUTE, renderMarkdown } from "./markdown";
 import { Avatar } from "@/components/Avatar";
-import { MODE_GLYPHS } from "@/components/ModeMark";
-import { useThreadModesMap, type ThreadModes } from "@/features/modes/membership";
+import { useThreadModesMap } from "@/features/modes/membership";
+import { LinkHoverCard } from "./LinkHoverCard";
+import { threadGlyph, type ModesByThread } from "./threadGlyph";
 
 const TAGS = new Set([
   "p",
@@ -40,8 +40,6 @@ const TAGS = new Set([
   "del",
 ]);
 const VOID = new Set(["br", "hr"]);
-
-type ModesByThread = ReadonlyMap<string, ThreadModes> | undefined;
 
 export function MarkdownView({
   text,
@@ -86,17 +84,6 @@ function toNode(node: ChildNode, key: string, modes: ModesByThread): ReactNode {
   return VOID.has(tag) ? createElement(tag, { key }) : createElement(tag, { key }, children);
 }
 
-/**
- * The glyph of where an email lives: its first mode in rail order, else
- * Inbox when only the provider's inbox holds it. Mail while the lookup is
- * out or the thread is unknown (docs/blueprint/27 "Iconography").
- */
-function threadGlyph(threadId: string | null, modes: ModesByThread) {
-  const held = threadId ? modes?.get(threadId) : undefined;
-  const mode = held?.modes[0]?.mode ?? (held?.in_inbox ? "inbox" : null);
-  return mode ? MODE_GLYPHS[mode] : Mail;
-}
-
 function toLink(
   node: HTMLElement,
   key: string,
@@ -106,11 +93,11 @@ function toLink(
   const href = node.getAttribute("href") ?? "";
   const kind = node.getAttribute(APP_LINK_ATTRIBUTE);
   if (kind === "person" || kind === "thread") {
-    const Glyph = threadGlyph(node.getAttribute(APP_LINK_ID_ATTRIBUTE), modes);
+    const id = node.getAttribute(APP_LINK_ID_ATTRIBUTE);
+    const Glyph = threadGlyph(id, modes);
     const name = node.textContent ?? "";
-    return (
+    const chip = (
       <a
-        key={key}
         href={href}
         {...{ [APP_LINK_ATTRIBUTE]: kind }}
         className="assistant-chip type-body inline-flex max-w-full items-center gap-1 rounded-sm border border-rule px-1 align-baseline text-signal outline-none hover:bg-signal-soft focus-visible:border-signal"
@@ -122,6 +109,19 @@ function toLink(
         )}
         <span className="truncate">{children}</span>
       </a>
+    );
+    if (!id) return <Fragment key={key}>{chip}</Fragment>;
+    return (
+      <LinkHoverCard
+        key={key}
+        link={
+          kind === "person" ? { kind: "person", person_id: id } : { kind: "thread", thread_id: id }
+        }
+        title={name}
+        modes={modes}
+      >
+        {chip}
+      </LinkHoverCard>
     );
   }
   return (

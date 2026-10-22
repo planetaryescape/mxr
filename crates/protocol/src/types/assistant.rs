@@ -178,7 +178,7 @@ pub struct AssistantReadoutData {
 }
 
 /// One thing a result lists: an email, a person, a to-do.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AssistantReadoutRowData {
     pub title: String,
@@ -186,6 +186,26 @@ pub struct AssistantReadoutRowData {
     pub detail: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<AssistantLinkData>,
+    /// Who an email is from, apart from `detail`. Absent for people and
+    /// from older daemons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sender: Option<String>,
+    /// The start of an email's text, clipped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snippet: Option<String>,
+    /// When the email arrived or the person last wrote: unix seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<i64>,
+    /// The email carries an attachment.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub attachment: bool,
+    /// The email or the person's latest activity is unread.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub unread: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// A plain field of a result, such as "Archived: 3".
@@ -506,8 +526,7 @@ mod tests {
         let response = crate::ResponseData::AssistantStepRows {
             rows: vec![AssistantReadoutRowData {
                 title: "Quarterly report".into(),
-                detail: None,
-                link: None,
+                ..Default::default()
             }],
             listed: 1,
             total: Some(14),
@@ -520,6 +539,40 @@ mod tests {
             crate::ResponseData::AssistantStepRows { rows, listed: 1, total: Some(14) }
                 if rows.len() == 1
         ));
+    }
+
+    #[test]
+    fn a_row_carries_email_fields_and_reads_without_them() {
+        let row = AssistantReadoutRowData {
+            title: "Invoice 4471".into(),
+            detail: Some("Dana Ruiz".into()),
+            sender: Some("Dana Ruiz".into()),
+            snippet: Some("Please confirm payment".into()),
+            at: Some(1_760_000_000),
+            attachment: true,
+            unread: true,
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&row).unwrap();
+        assert_eq!(json["at"], 1_760_000_000);
+        assert_eq!(json["attachment"], true);
+        let back: AssistantReadoutRowData = serde_json::from_value(json).unwrap();
+        assert_eq!(back, row);
+
+        // Empty fields stay off the wire, so older clients see today's row.
+        let plain = serde_json::to_value(AssistantReadoutRowData {
+            title: "Invoice".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(plain, json!({"title": "Invoice"}));
+
+        // A row from an older daemon has none of them.
+        let old: AssistantReadoutRowData =
+            serde_json::from_value(json!({"title": "Invoice", "detail": "Dana"})).unwrap();
+        assert_eq!(old.sender, None);
+        assert_eq!(old.at, None);
+        assert!(!old.attachment && !old.unread);
     }
 
     #[test]

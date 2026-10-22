@@ -1,13 +1,25 @@
 import { Action, ActionPanel, Color, Icon, List, Keyboard } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
+import { useState } from "react";
 import { getTodo, tickOffTodo } from "./bridge/modes";
 import type { Todo } from "./bridge/types";
+import { AccountDropdown } from "./components/AccountDropdown";
+import { useAccountBadge } from "./components/accountBadge";
+import { useLiveRefresh } from "./components/live";
+import { SearchSection, useMailSearch } from "./components/MailRow";
+import { ReadAction } from "./components/ThreadDetail";
 import { runPreviewed } from "./components/previewed";
 import { useWebBase, web } from "./components/web";
 
 export default function TodoCommand() {
-  const { data, isLoading, revalidate } = useCachedPromise(getTodo, [], { keepPreviousData: true });
+  const [account, setAccount] = useState<string>();
+  const { data, isLoading, revalidate } = useCachedPromise(getTodo, [account], {
+    keepPreviousData: true,
+  });
   const webBase = useWebBase();
+  const search = useMailSearch(account);
+  const shown = (todos: Todo[] | undefined) =>
+    (todos ?? []).filter((todo) => search.keep(todo.title, todo.counterparty, todo.when_label));
 
   const item = (todo: Todo) => (
     <List.Item
@@ -15,7 +27,10 @@ export default function TodoCommand() {
       icon={todo.overdue ? { source: Icon.Alarm, tintColor: Color.Red } : Icon.Circle}
       title={todo.title}
       subtitle={todo.counterparty ?? undefined}
-      accessories={[{ text: todo.when_label ?? undefined, tooltip: todo.why ?? undefined }]}
+      accessories={[
+        ...badge(todo.account_id),
+        { text: todo.when_label ?? undefined, tooltip: todo.why ?? undefined },
+      ]}
       actions={
         <ActionPanel>
           <Action
@@ -43,6 +58,14 @@ export default function TodoCommand() {
               shortcut={Keyboard.Shortcut.Common.Open}
             />
           )}
+          {todo.thread_id && (
+            <ReadAction
+              title="Read Source Email"
+              threadId={todo.thread_id}
+              webPath={web.thread("todo", todo.thread_id)}
+              onChange={revalidate}
+            />
+          )}
           {webBase && todo.thread_id && (
             <Action.OpenInBrowser
               title="Open Source Email in mxr"
@@ -53,24 +76,31 @@ export default function TodoCommand() {
       }
     />
   );
+  const badge = useAccountBadge(account);
+  useLiveRefresh(revalidate);
 
   return (
     <List
-      isLoading={isLoading}
+      isLoading={isLoading || search.isLoading}
       navigationTitle={data?.header ?? "To Do"}
-      searchBarPlaceholder="Filter to-dos"
+      searchBarPlaceholder="Filter to-dos and search all mail"
+      searchBarAccessory={<AccountDropdown onChange={setAccount} />}
+      {...search.listProps}
     >
-      {data?.empty_state && <List.EmptyView icon={Icon.CheckCircle} title={data.empty_state} />}
+      {data?.empty_state && !search.searching && (
+        <List.EmptyView icon={Icon.CheckCircle} title={data.empty_state} />
+      )}
       <List.Section title="Now" subtitle={data?.headline}>
-        {data?.now.map(item)}
+        {shown(data?.now).map(item)}
       </List.Section>
       {data?.coming_up.map((week) => (
         <List.Section key={week.week_start} title={week.label}>
-          {week.todos.map(item)}
+          {shown(week.todos).map(item)}
         </List.Section>
       ))}
-      <List.Section title="Whenever">{data?.whenever.map(item)}</List.Section>
-      <List.Section title="Later">{data?.later.map(item)}</List.Section>
+      <List.Section title="Whenever">{shown(data?.whenever).map(item)}</List.Section>
+      <List.Section title="Later">{shown(data?.later).map(item)}</List.Section>
+      <SearchSection search={search} badge={badge} onChange={revalidate} />
     </List>
   );
 }

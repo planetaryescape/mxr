@@ -1,6 +1,6 @@
 # LLM tracing follow-ups
 
-Left open by tracing model calls to a local Langfuse (D149).
+Left open by tracing model calls to a local Langfuse (D150).
 
 - **Streamed replies from OpenAI-compatible servers carry no token usage.**
   The assistant's `chat` generations on Ollama show no usage: those servers

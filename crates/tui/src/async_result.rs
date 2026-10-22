@@ -165,6 +165,8 @@ pub(crate) enum AsyncResult {
     ReadingOriginal(Result<String, MxrError>),
     /// The dry run of letting go of the Updates digest.
     UpdatesLetGoPreview(Result<mxr_protocol::UpdatesLetGoData, MxrError>),
+    /// `y` on an Updates line without a code: the recent codes, newest first.
+    LatestCodes(Result<Vec<mxr_protocol::OneTimeCodeData>, MxrError>),
     /// To do's runway and, when the daemon served it, its guide.
     TodoRunway(
         Result<

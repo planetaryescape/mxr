@@ -1,15 +1,25 @@
 import { Action, ActionPanel, Icon, List, Keyboard } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
+import { useState } from "react";
 import { getReading, markDone, saveForLater } from "./bridge/modes";
 import type { ReadingItem } from "./bridge/types";
+import { AccountDropdown } from "./components/AccountDropdown";
+import { useAccountBadge } from "./components/accountBadge";
+import { useLiveRefresh } from "./components/live";
+import { SearchSection, useMailSearch } from "./components/MailRow";
+import { ReadAction } from "./components/ThreadDetail";
 import { itemErrors, runPreviewed } from "./components/previewed";
 import { useWebBase, web } from "./components/web";
 
 export default function Reading() {
-  const { data, isLoading, revalidate } = useCachedPromise(getReading, [], {
+  const [account, setAccount] = useState<string>();
+  const { data, isLoading, revalidate } = useCachedPromise(getReading, [account], {
     keepPreviousData: true,
   });
   const webBase = useWebBase();
+  const search = useMailSearch(account);
+  const shown = (items: ReadingItem[] | undefined) =>
+    (items ?? []).filter((entry) => search.keep(entry.title, entry.source));
 
   const item = (entry: ReadingItem, band: string) => (
     <List.Item
@@ -18,11 +28,17 @@ export default function Reading() {
       title={entry.title}
       subtitle={entry.source}
       accessories={[
+        ...badge(entry.account_id),
         ...(entry.fades ? [{ text: entry.fades }] : []),
         { text: `${entry.minutes} min`, tooltip: entry.why },
       ]}
       actions={
         <ActionPanel>
+          <ReadAction
+            threadId={entry.thread_id}
+            webPath={web.readingItem(entry.item_key)}
+            onChange={revalidate}
+          />
           {webBase && (
             <Action.OpenInBrowser
               title="Read in mxr"
@@ -72,22 +88,29 @@ export default function Reading() {
       }
     />
   );
+  const badge = useAccountBadge(account);
+  useLiveRefresh(revalidate);
 
   return (
     <List
-      isLoading={isLoading}
+      isLoading={isLoading || search.isLoading}
       navigationTitle={data?.header ?? "Reading"}
-      searchBarPlaceholder="Filter reading"
+      searchBarPlaceholder="Filter reading and search all mail"
+      searchBarAccessory={<AccountDropdown onChange={setAccount} />}
+      {...search.listProps}
     >
-      {data?.empty && <List.EmptyView icon={Icon.Book} title={data.empty.line} />}
+      {data?.empty && !search.searching && (
+        <List.EmptyView icon={Icon.Book} title={data.empty.line} />
+      )}
       {data?.bands.map((group) => (
         <List.Section key={group.band} title={group.label} subtitle={group.note ?? undefined}>
-          {group.items.map((entry) => item(entry, group.band))}
+          {shown(group.items).map((entry) => item(entry, group.band))}
         </List.Section>
       ))}
       <List.Section title="Later" subtitle={data ? String(data.later_count) : undefined}>
-        {data?.later.map((entry) => item(entry, "later"))}
+        {shown(data?.later).map((entry) => item(entry, "later"))}
       </List.Section>
+      <SearchSection search={search} badge={badge} onChange={revalidate} />
     </List>
   );
 }

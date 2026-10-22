@@ -94,9 +94,46 @@ async fn thread_gists(
     passthrough(response)
 }
 
+/// Body of `POST /api/v1/mail/threads/previews`.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct ThreadPreviewsBody {
+    /// At most 100 threads, answered in this order; unknown ids are left out.
+    #[schema(value_type = Vec<String>)]
+    thread_ids: Vec<String>,
+}
+
+/// Headline facts for many threads in one read, with no bodies: what a
+/// hover card needs.
+async fn thread_previews(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<TokenQuery>,
+    Json(body): Json<ThreadPreviewsBody>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    if body.thread_ids.is_empty() {
+        return Err(BridgeError::BadRequest(
+            "thread_ids must not be empty".into(),
+        ));
+    }
+    let thread_ids = body
+        .thread_ids
+        .iter()
+        .map(|id| parse_thread_id(id))
+        .collect::<Result<Vec<_>, _>>()?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::GetThreadPreviews { thread_ids },
+    )
+    .await?;
+    passthrough(response)
+}
+
 pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/threads/{thread_id}/context", get(thread_context))
         .route("/threads/{thread_id}/context/gist", get(thread_gist))
         .route("/gists", post(thread_gists))
+        .route("/threads/previews", post(thread_previews))
 }

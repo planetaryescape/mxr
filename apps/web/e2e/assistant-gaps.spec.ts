@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 import { mockAssistant } from "./helpers/assistant";
@@ -55,7 +56,29 @@ test("the model mark is a menu: five choices, an unavailable one says why, a pic
   );
 });
 
-test("an email chip in a reply shows the glyph of the mode that holds it", async ({ page }) => {
+test("an email chip and its row in a reply show the glyph of the mode that holds it, and hovering the chip shows the email", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/mail/threads/previews", (route) =>
+    route.fulfill({
+      json: {
+        kind: "ThreadPreviews",
+        previews: [
+          {
+            thread_id: "t-ci-1",
+            subject: "CI failed on main: build-linux",
+            sender_name: "GitHub Actions",
+            sender_email: "notifications@github.com",
+            latest_at: 1_760_000_000,
+            message_count: 3,
+            unread_count: 1,
+            snippet: "Run 4471 failed in build-linux",
+            has_attachments: true,
+          },
+        ],
+      },
+    }),
+  );
   await page.route("**/api/v1/mail/modes/membership", (route) =>
     route.fulfill({
       json: {
@@ -85,4 +108,36 @@ test("an email chip in a reply shows the glyph of the mode that holds it", async
   const chip = page.getByRole("link", { name: "CI failed on main: build-linux" }).first();
   await expect(chip.locator(".lucide-newspaper")).toBeVisible();
   await expect(chip.locator(".lucide-mail")).toHaveCount(0);
+
+  // The reply's row for the same email is a compact card: who and a clip under
+  // the subject, and the paperclip and mode glyph in the trail.
+  const row = page
+    .getByRole("list", { name: "The emails and people in this reply" })
+    .getByRole("listitem")
+    .first();
+  await expect(row).toContainText("GitHub Actions · Run 4471 failed in build-linux");
+  await expect(row.locator(".lucide-paperclip")).toBeVisible();
+  await expect(row.locator(".lucide-newspaper")).toBeVisible();
+  // An older row, with only a detail, has no marks.
+  const old = page
+    .getByRole("list", { name: "The emails and people in this reply" })
+    .getByRole("listitem")
+    .nth(1);
+  await expect(old.locator(".lucide-paperclip, .lucide-mail")).toHaveCount(0);
+
+  // Hovering the chip opens a card with the email's facts; Esc closes it, and
+  // the chip is still the link.
+  await chip.hover();
+  const card = page.getByTestId("link-hover-card");
+  await expect(card).toContainText("GitHub Actions <notifications@github.com>");
+  await expect(card).toContainText("3 messages");
+  await expect(card).toContainText("Run 4471 failed in build-linux");
+  // The card describes the link: no dialog, nothing to focus, no axe violations.
+  await expect(card).toHaveAttribute("role", "tooltip");
+  await expect(chip).toHaveAttribute("aria-describedby", (await card.getAttribute("id")) ?? "");
+  const axe = await new AxeBuilder({ page }).include('[data-testid="link-hover-card"]').analyze();
+  expect(axe.violations).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(card).toBeHidden();
+  await expect(chip).toHaveAttribute("href", "/m/archive/t-ci-1");
 });

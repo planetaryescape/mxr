@@ -5,7 +5,7 @@
  * while it has focus. `g u` opens Updates from anywhere.
  */
 
-import { Archive, BellOff, Check, ExternalLink, ListPlus, Mail, Pin } from "lucide-react";
+import { Archive, BellOff, Check, Copy, ExternalLink, ListPlus, Mail, Pin } from "lucide-react";
 
 import type { Action, CommandAction } from "@/lib/actions/types";
 
@@ -51,6 +51,10 @@ export const updatesActions: Action[] = [
     icon: BellOff,
   }),
   key("updates.link", "link", "Open the link", "L", { shortLabel: "Link", icon: ExternalLink }),
+  key("updates.copy-code", "copyCode", "Copy the one-time code", "y", {
+    shortLabel: "Copy code",
+    icon: Copy,
+  }),
   key("updates.open-email", "openEmail", "Open the email", "o", {
     shortLabel: "Email",
     icon: Mail,

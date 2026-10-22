@@ -5,12 +5,17 @@
  * set as text.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { Paperclip } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Row } from "@/components/Row";
 import { Avatar } from "@/components/Avatar";
+import { useThreadModesMap } from "@/features/modes/membership";
+import { formatWhen } from "@/lib/format";
 import { linkHref, type AssistantLink } from "./links";
+import { LinkHoverCard } from "./LinkHoverCard";
 import { APP_LINK_ATTRIBUTE } from "./markdown";
+import { threadGlyph, type ModesByThread } from "./threadGlyph";
 import type { AssistantItem, AssistantStepRows } from "./api";
 
 type ReplyItem = Extract<AssistantItem, { kind: "assistant" }>;
@@ -55,10 +60,19 @@ export function ReadoutRows({
       request.current += 1;
     };
   }, []);
-  if (rows.length === 0) return null;
-
   const open = rest === "open" && all !== null;
-  const shown = open ? all.rows : rows;
+  const shown = open && all ? all.rows : rows;
+  // One lookup for every email row shown. Rows from before the daemon sent
+  // the email fields draw as they did and ask for nothing.
+  const threadIds = useMemo(
+    () =>
+      shown.flatMap((row) =>
+        isRich(row) && row.link?.kind === "thread" ? [row.link.thread_id] : [],
+      ),
+    [shown],
+  );
+  const modes = useThreadModesMap(threadIds).data;
+  if (rows.length === 0) return null;
   const unloaded = all && all.total != null && all.total > all.listed ? all.total - all.listed : 0;
 
   const expand = () => {
@@ -93,7 +107,7 @@ export function ReadoutRows({
       <ul aria-label={label} style={COMPACT}>
         {shown.map((row, index) => (
           // oxlint-disable-next-line react/no-array-index-key -- rows have no id of their own and never reorder
-          <ReadoutLine key={index} row={row} />
+          <ReadoutLine key={index} row={row} modes={modes} />
         ))}
       </ul>
       {more > 0 && loadRest ? (
@@ -123,27 +137,50 @@ export function ReadoutRows({
   );
 }
 
-function ReadoutLine({ row }: { row: ReadoutRow }) {
+/** Whether the daemon sent the email fields; older rows carry only `detail`. */
+function isRich(row: ReadoutRow) {
+  return Boolean(row.sender || row.snippet || row.at != null || row.attachment || row.unread);
+}
+
+function ReadoutLine({ row, modes }: { row: ReadoutRow; modes: ModesByThread }) {
   const link = row.link ?? null;
+  const thread = link?.kind === "thread";
+  const rich = isRich(row);
   // A thread row's title is the subject and its detail the sender; a person's is the other way round.
-  const who = link?.kind === "thread" ? (row.detail ?? row.title) : row.title;
+  const who = thread ? (row.sender ?? row.detail ?? row.title) : row.title;
+  const under = [row.sender, row.snippet].filter(Boolean).join(" · ") || row.detail;
+  const Glyph = thread && rich ? threadGlyph(link.thread_id, modes) : null;
+  const marks =
+    row.attachment || Glyph ? (
+      <>
+        {row.attachment ? (
+          <Paperclip aria-label="Has an attachment" className="size-3.5" strokeWidth={1.75} />
+        ) : null}
+        {Glyph ? <Glyph aria-hidden className="size-3.5" strokeWidth={1.75} /> : null}
+      </>
+    ) : undefined;
   return (
     <Row
       lit={false}
       className="mx-0"
+      unread={row.unread}
       lead={<Avatar name={who} size="sm" />}
       primary={row.title}
-      secondary={row.detail ?? undefined}
+      secondary={under ?? undefined}
+      trail={marks}
+      time={row.at != null ? formatWhen(new Date(row.at * 1000)) : undefined}
       renderMain={
         link
           ? (content, className) => (
-              <a
-                href={linkHref(link satisfies AssistantLink)}
-                {...{ [APP_LINK_ATTRIBUTE]: "" }}
-                className={`${className} focus-visible:text-signal`}
-              >
-                {content}
-              </a>
+              <LinkHoverCard link={link} title={row.title} modes={modes}>
+                <a
+                  href={linkHref(link satisfies AssistantLink)}
+                  {...{ [APP_LINK_ATTRIBUTE]: "" }}
+                  className={`${className} focus-visible:text-signal`}
+                >
+                  {content}
+                </a>
+              </LinkHoverCard>
             )
           : undefined
       }

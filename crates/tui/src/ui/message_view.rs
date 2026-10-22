@@ -4,7 +4,9 @@ use crate::app::{
 };
 use crate::terminal_images::{HtmlImageEntry, HtmlImageRenderState};
 use crate::theme::Theme;
+use crate::ui::received_label::received_label;
 use crate::ui::sanitize::strip_control_chars;
+use chrono::{DateTime, Utc};
 use html2text::render::RichAnnotation;
 use mxr_core::id::MessageId;
 use mxr_core::types::{CalendarMetadata, Envelope, HtmlImageAssetStatus, HtmlImageSourceKind};
@@ -60,6 +62,11 @@ pub struct DrawOptions<'a> {
     pub active_pane: &'a ActivePane,
     pub theme: &'a Theme,
     pub html_images: &'a mut HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
+    /// "Now" for the "2h ago" on today's mail, passed in so the render
+    /// doesn't read the clock.
+    pub now: DateTime<Utc>,
+    /// The zone times show in: `Local` in the app, a fixed one in tests.
+    pub zone: crate::ui::received_label::DisplayZone,
 }
 
 /// Draws the thread/message reader. Returns the scroll offset actually used,
@@ -78,6 +85,8 @@ pub fn draw(
         active_pane,
         theme,
         html_images,
+        now,
+        zone,
     } = options;
     let is_focused = *active_pane == ActivePane::MessageView;
     let border_style = theme.border_style(is_focused);
@@ -153,7 +162,7 @@ pub fn draw(
         }
         text_lines.push(Line::from(vec![
             Span::styled(format!("{:<label_width$}", "Date:"), label_style),
-            Span::styled(env.date.format("%Y-%m-%d %H:%M").to_string(), value_style),
+            Span::styled(received_label(env.date, now, zone), value_style),
         ]));
         text_lines.push(Line::from(vec![
             Span::styled(format!("{:<label_width$}", "Subject:"), label_style),
@@ -1346,12 +1355,16 @@ mod tests {
                 Rect::new(0, 0, 70, 18),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1391,12 +1404,16 @@ mod tests {
                 Rect::new(0, 0, 70, 18),
                 std::slice::from_ref(&block),
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: u16::MAX,
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1438,6 +1455,9 @@ mod tests {
                 Rect::new(0, 0, 90, 20),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: Some(ThreadSummaryBlock {
                         text: Some("Summary:\n- Alice asked for launch approval.".into()),
@@ -1449,6 +1469,7 @@ mod tests {
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1491,12 +1512,16 @@ mod tests {
                 Rect::new(0, 0, 80, 18),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1546,12 +1571,16 @@ mod tests {
                 Rect::new(0, 0, 120, 30),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1596,12 +1625,16 @@ mod tests {
                 Rect::new(0, 0, 100, 18),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1653,12 +1686,16 @@ mod tests {
                 Rect::new(0, 0, 100, 24),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });
@@ -1713,12 +1750,16 @@ mod tests {
                 Rect::new(0, 0, 80, 10),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MessageView,
                     theme: &Theme::default(),
                     html_images: &mut html_images,
+                    now: chrono::Utc::now(),
                 },
             );
         });

@@ -190,6 +190,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ListArrivals { account_id, .. }
         | Request::ListCorrections { account_id, .. }
         | Request::GetRail { account_id }
+        | Request::ListOneTimeCodes { account_id, .. }
         | Request::GetUpdatesDigest { account_id, .. }
         | Request::LetGoDigest { account_id, .. }
         | Request::SetUpdateSource { account_id, .. }
@@ -343,6 +344,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::DismissDeskThreads { thread_ids, .. }
         | Request::RestoreDeskThreads { thread_ids }
         | Request::GetThreadGists { thread_ids, .. }
+        | Request::GetThreadPreviews { thread_ids }
         | Request::DeferThreads { thread_ids, .. } => threads(thread_ids),
         Request::ResolveDeskItems { items, .. } => Targets(
             items

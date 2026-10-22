@@ -18,13 +18,20 @@ use ratatui::widgets::*;
 use crate::app::{
     ActivePane, ReadingConfirm, ReadingPageState, ReadingRow, ReadingView, READING_LINKS_SHOWN,
 };
+use crate::ui::received_label::received_label;
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
+use chrono::{DateTime, Utc};
 
 pub struct ReadingLensView<'a> {
     pub page: &'a ReadingPageState,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
+    /// "Now" for relative and absolute arrival times, passed in so the render
+    /// doesn't read the clock.
+    pub now: chrono::DateTime<chrono::Utc>,
+    /// The zone times show in: `Local` in the app, a fixed one in tests.
+    pub zone: crate::ui::received_label::DisplayZone,
 }
 
 /// The reader's measure.
@@ -363,6 +370,8 @@ pub(crate) fn reader_lines(
     page: &ReadingPageState,
     width: usize,
     theme: &crate::theme::Theme,
+    now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
 ) -> (Vec<Line<'static>>, Vec<Option<usize>>) {
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut owners: Vec<Option<usize>> = Vec::new();
@@ -404,9 +413,7 @@ pub(crate) fn reader_lines(
                     "{}{}{}{}{left} min left",
                     one_line(&item.source),
                     dot(),
-                    item.arrived_at
-                        .with_timezone(&chrono::Local)
-                        .format("%a %-d %b"),
+                    received_label(item.arrived_at, now, zone),
                     dot()
                 ),
                 width,
@@ -501,8 +508,18 @@ pub(crate) fn reader_lines(
 }
 
 /// The paragraph at the top of the reader, for `h`.
-pub(crate) fn paragraph_at_top(page: &ReadingPageState) -> Option<String> {
-    let (_, owners) = reader_lines(page, READER_WIDTH, &crate::theme::Theme::default());
+pub(crate) fn paragraph_at_top(
+    page: &ReadingPageState,
+    now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
+) -> Option<String> {
+    let (_, owners) = reader_lines(
+        page,
+        READER_WIDTH,
+        &crate::theme::Theme::default(),
+        now,
+        zone,
+    );
     let paragraphs = reader_paragraphs(page);
     owners
         .iter()
@@ -513,8 +530,18 @@ pub(crate) fn paragraph_at_top(page: &ReadingPageState) -> Option<String> {
 }
 
 /// How many lines the reader holds, for progress.
-pub(crate) fn reader_line_count(page: &ReadingPageState) -> u16 {
-    let (lines, _) = reader_lines(page, READER_WIDTH, &crate::theme::Theme::default());
+pub(crate) fn reader_line_count(
+    page: &ReadingPageState,
+    now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
+) -> u16 {
+    let (lines, _) = reader_lines(
+        page,
+        READER_WIDTH,
+        &crate::theme::Theme::default(),
+        now,
+        zone,
+    );
     u16::try_from(lines.len()).unwrap_or(u16::MAX)
 }
 
@@ -540,6 +567,8 @@ fn draw_reader(
     page: &ReadingPageState,
     focused: bool,
     theme: &crate::theme::Theme,
+    now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
 ) {
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
@@ -547,7 +576,7 @@ fn draw_reader(
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let width = (inner.width as usize).saturating_sub(2).min(READER_WIDTH);
-    let (lines, _) = reader_lines(page, width, theme);
+    let (lines, _) = reader_lines(page, width, theme, now, zone);
     // Centre the measure in a wide pane.
     let pad = (inner.width as usize).saturating_sub(width) / 2;
     let column = Rect {
@@ -608,9 +637,9 @@ pub fn draw(
             .constraints([Constraint::Length(list_width), Constraint::Min(20)])
             .split(body_area);
         draw_list(frame, chunks[0], view, theme);
-        draw_reader(frame, chunks[1], page, reading, theme);
+        draw_reader(frame, chunks[1], page, reading, theme, view.now, view.zone);
     } else if reading {
-        draw_reader(frame, body_area, page, true, theme);
+        draw_reader(frame, body_area, page, true, theme, view.now, view.zone);
     } else {
         draw_list(frame, body_area, view, theme);
     }

@@ -1,6 +1,6 @@
 ---
 source: crates/tui/src/ui/records_lens/tests.rs
-assertion_line: 434
+assertion_line: 435
 expression: rendered
 ---
 "╭ Archive ─ Receipts, orders, bookings and documents. Ask f╮"
@@ -15,7 +15,7 @@ expression: rendered
 "│      │  Order        MSXK21               (schem… │      │"
 "│      │                                            │      │"
 "│      │From 1 emails                               │      │"
-"│      │28 Mar  receipt      Your receipt from App… │      │"
+"│      │Fri 28 Mar 2025 13:00  receipt      Your r… │      │"
 "│      │                                            │      │"
 "│      │Here because: "receipt" in the subject      │      │"
 "│      │(unchecked).                                │      │"

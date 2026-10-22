@@ -142,6 +142,7 @@ The keys:
 | `t` | This needs me: make a to-do from the line |
 | `K` | Tune this source |
 | `L` | Open the line's link (a tracker page, a build). Never a pay link |
+| `y` | Copy the line's one-time code |
 | `o` | Open the email itself |
 | `p` | Pin or unpin the latest email behind this line |
 | `S` | Preview a sweep of this sender in this account; unavailable for parcels |
@@ -199,6 +200,38 @@ mxr updates --expired
 
 The digest also says how many expired since you last opened Updates.
 
+## Copy a one-time code
+
+A code you just asked for arrives between cuts, before any digest line
+shows it, so Updates puts the newest one still in its window at the top
+of the web app's briefing, with the sender's host beside its name ("Google
+(accounts.google.com)") so a borrowed brand shows before you paste. Click
+it, or press `y`: `y` copies the lit line's code, else that newest one. In
+the TUI, `y` does the same, asking the daemon for the newest code when the
+line has none.
+
+mxr finds the code by rules in the subject and the top of the body, never
+by a model: "Your verification code is 482913", "G-123456 is your Google
+verification code", "Your login code is:" with the code on the line below,
+or a subject that says "verification code" over a body that is the code. A
+promo, gift or discount code, a booking PIN, a bank's branch code or a
+card's last four digits is never one. A code lasts the lifetime its email
+states, else 10 minutes; a sign-in alert that carries one still stays two
+days in Updates. Mail dated in the future (a sender's clock or a trick) is
+not taken as the latest code.
+
+From the command line, `mxr code` prints the newest code still in its
+window, whichever folder the email is in:
+
+```bash
+mxr code --copy                   # also put it on the clipboard
+mxr code --format ids | pbcopy    # the code alone
+mxr code --all                    # the last day's codes, expired ones marked
+```
+
+It exits with an error when no code is current, naming the last one that
+expired.
+
 ## Tune a source
 
 ```bash
@@ -246,4 +279,5 @@ with you.
   says how many updates tuning hid.
 - **A parcel vanished:** delivered parcels leave a day after delivery, and
   a parcel with no news goes quiet. See [Deliveries](/guides/deliveries/).
-- **A code isn't there:** it expired. `mxr updates --expired` lists it.
+- **A code isn't there:** it expired. `mxr updates --expired` lists it, and
+  `mxr code --all` lists the last day's codes.

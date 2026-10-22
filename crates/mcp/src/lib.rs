@@ -161,9 +161,9 @@ impl MxrMcpServer {
         response_to_json(response).map(McpJson)
     }
 
-    /// Search answers with ids and scores only. Add each result's subject
-    /// and sender so the model, and the rows the assistant shows, can name
-    /// the emails. Best effort: a result that can't be named stays as it was.
+    /// Search answers with ids and scores only. Add each result's subject,
+    /// sender, date, flags, snippet and attachment mark so the model, and
+    /// the rows the assistant shows, can name the emails. Best effort: a result that can't be named stays as it was.
     async fn name_search_results(&self, result: &mut Value) {
         let Some(items) = result.get_mut("results").and_then(Value::as_array_mut) else {
             return;
@@ -202,6 +202,12 @@ impl MxrMcpServer {
                     "from".into(),
                     json!({"name": envelope.from.name, "email": envelope.from.email}),
                 );
+                // The same keys, and values, `mxr_list_messages` returns, so
+                // the assistant's rows can show when, a clip and unread.
+                object.insert("date".into(), json!(envelope.date));
+                object.insert("flags".into(), json!(envelope.flags));
+                object.insert("snippet".into(), json!(envelope.snippet));
+                object.insert("has_attachments".into(), json!(envelope.has_attachments));
             }
         }
     }
@@ -1981,6 +1987,7 @@ impl MxrMcpServer {
             account_id: parse_optional_id(input.account_id)?,
             person: input.person,
             topic: parse_optional_id(input.topic)?,
+            conversation: true,
         })
         .await
     }
@@ -2956,6 +2963,9 @@ mod tests {
         let item = &result["results"][0];
         assert_eq!(item["subject"], "CI failed on main");
         assert_eq!(item["from"]["name"], "Quinn Dev");
+        assert_eq!(item["date"], "2026-10-01T09:00:00Z");
+        assert_eq!(item["flags"], "READ");
+        assert_eq!(item["has_attachments"], false);
         assert_eq!(item["message_id"], json!(message_id));
     }
 

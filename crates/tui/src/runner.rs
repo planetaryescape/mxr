@@ -279,7 +279,14 @@ fn format_platform_response(data: &ResponseData) -> String {
                 .map(|commitment| {
                     let due = commitment
                         .by_when
-                        .map(|date| format!(" due {}", date.format("%Y-%m-%d")))
+                        .map(|date| {
+                            let unverified = if commitment.date_unverified {
+                                " (date unverified)"
+                            } else {
+                                ""
+                            };
+                            format!(" due {}{unverified}", date.format("%Y-%m-%d"))
+                        })
                         .unwrap_or_default();
                     format!(
                         "- {:?} · {}{}\n  {}\n  id: {}",
@@ -2075,6 +2082,7 @@ pub async fn run() -> anyhow::Result<()> {
                         account_id: None,
                         person: row_id.clone(),
                         topic: topic.clone(),
+                        conversation: true,
                     },
                 )
                 .await;
@@ -2152,6 +2160,32 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 AsyncResult::Updates(fetch_updates(&bg).await.map(Box::new))
+            });
+        }
+
+        if std::mem::take(&mut app.mailbox.updates_page.pending_latest_code) {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                AsyncResult::LatestCodes(
+                    match ipc_call(
+                        &bg,
+                        Request::ListOneTimeCodes {
+                            account_id: None,
+                            limit: Some(5),
+                        },
+                    )
+                    .await
+                    {
+                        Ok(Response::Ok {
+                            data: ResponseData::OneTimeCodes { codes },
+                        }) => Ok(codes),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Ok(_) => Err(MxrError::Ipc(
+                            "unexpected response to ListOneTimeCodes".into(),
+                        )),
+                        Err(error) => Err(error),
+                    },
+                )
             });
         }
 
@@ -4435,6 +4469,10 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::UpdatesLetGoPreview(Ok(preview)) => {
                             app.show_updates_let_go_preview(preview);
+                        }
+                        AsyncResult::LatestCodes(Ok(codes)) => app.copy_latest_code(&codes),
+                        AsyncResult::LatestCodes(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't find a code: {e}"));
                         }
                         AsyncResult::NowDigestPreview(Err(e))
                         | AsyncResult::UpdatesLetGoPreview(Err(e)) => {

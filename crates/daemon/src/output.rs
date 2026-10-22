@@ -297,7 +297,9 @@ mod tests {
                     rows: vec![AssistantReadoutRowData {
                         title: hostile.into(),
                         detail: Some(hostile.into()),
-                        link: None,
+                        sender: Some(hostile.into()),
+                        snippet: Some(hostile.into()),
+                        ..Default::default()
                     }],
                     created_at: 0,
                 },

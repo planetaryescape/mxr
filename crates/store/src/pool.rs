@@ -1251,6 +1251,31 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 91, name: "todo_microsoft", kind: MigrationKind::Sql(include_str!("../migrations/091_todo_microsoft.sql")) },
     Migration { version: 92, name: "messages_account_thread_index", kind: MigrationKind::Sql(include_str!("../migrations/092_messages_account_thread_index.sql")) },
     Migration { version: 93, name: "unsubscribe_receipts", kind: MigrationKind::Sql(include_str!("../migrations/093_unsubscribe_receipts.sql")) },
+    Migration { version: 94, name: "commitment_date_source", kind: MigrationKind::Composite(COMMITMENT_DATE_SOURCE_STEPS) },
+    Migration { version: 95, name: "draft_candidate_date_source", kind: MigrationKind::Composite(DRAFT_CANDIDATE_DATE_SOURCE_STEPS) },
+];
+
+/// The same provenance on a draft's commitment candidates, which become
+/// commitments when the draft sends. Dated rows already there are legacy.
+const DRAFT_CANDIDATE_DATE_SOURCE_STEPS: &[MigrationStep] = &[
+    MigrationStep::AddColumn {
+        table: "draft_commitment_candidates",
+        column: "by_when_source",
+        sql: include_str!("../migrations/095_draft_candidate_date_source.sql"),
+    },
+    MigrationStep::Sql(crate::commitment_date_source::BACKFILL_DRAFT_CANDIDATE_SOURCE_SQL),
+];
+
+/// Where each commitment's date came from. Rows written before the column
+/// existed are backfilled from the only evidence they carry: a user's promise
+/// keeps its `::promise::` id, and every other dated row was model-written.
+const COMMITMENT_DATE_SOURCE_STEPS: &[MigrationStep] = &[
+    MigrationStep::AddColumn {
+        table: "contact_commitments",
+        column: "by_when_source",
+        sql: include_str!("../migrations/094_commitment_date_source.sql"),
+    },
+    MigrationStep::Sql(crate::commitment_date_source::BACKFILL_BY_WHEN_SOURCE_SQL),
 ];
 
 /// The user's choice to let reversible changes run without asking, and the
@@ -2056,7 +2081,7 @@ mod tests {
             .unwrap();
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
-                (83..=93).collect::<Vec<_>>(),
+                (83..=95).collect::<Vec<_>>(),
                 "from {from}"
             );
             assert!(test_table_exists(store.writer(), "reading_marginalia").await);
@@ -2239,5 +2264,103 @@ mod tests {
             "recovery must not leave the temp table after promotion"
         );
         assert!(store.is_migration_applied(34).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn commitment_date_source_migration_backfills_a_schema_93_database() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("version-93.db");
+        {
+            let store = store_at_version(&db_path, 93).await;
+            sqlx::query("PRAGMA foreign_keys = OFF")
+                .execute(store.writer())
+                .await
+                .unwrap();
+            // (id, by_when): a user's promise, a user's promise with no
+            // date, a dated detected row, an undated detected row, and a
+            // dated row from a draft promotion.
+            for (id, by_when) in [
+                ("msg-1::promise::0190", Some(1_000_i64)),
+                ("msg-3::promise::undated", None),
+                ("commitment-dated", Some(2_000)),
+                ("commitment-undated", None),
+                ("msg-2::cand-1", Some(3_000)),
+            ] {
+                sqlx::query(
+                    "INSERT INTO contact_commitments (id, account_id, email, thread_id, direction,
+                         status, who_owes, what, by_when, evidence_msg_id, extracted_at)
+                     VALUES (?, 'a', 'x@example.com', 't', 'yours', 'open', 'me', ?, ?, 'm', 5)",
+                )
+                .bind(id)
+                .bind(id)
+                .bind(by_when)
+                .execute(store.writer())
+                .await
+                .unwrap();
+            }
+            store.writer().close().await;
+        }
+
+        let store = Store::new(&db_path).await.unwrap();
+        let rows: Vec<(String, Option<String>)> =
+            sqlx::query_as("SELECT id, by_when_source FROM contact_commitments ORDER BY id")
+                .fetch_all(store.writer())
+                .await
+                .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    "commitment-dated".to_string(),
+                    Some("model_date".to_string())
+                ),
+                ("commitment-undated".to_string(), None),
+                ("msg-1::promise::0190".to_string(), Some("user".to_string())),
+                ("msg-2::cand-1".to_string(), Some("model_date".to_string())),
+                ("msg-3::promise::undated".to_string(), None),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn draft_candidate_date_source_migration_marks_dated_candidates_model_date() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("version-94.db");
+        {
+            let store = store_at_version(&db_path, 94).await;
+            sqlx::query("PRAGMA foreign_keys = OFF")
+                .execute(store.writer())
+                .await
+                .unwrap();
+            for (what, by_when) in [("dated", Some(1_000_i64)), ("undated", None)] {
+                sqlx::query(
+                    "INSERT INTO draft_commitment_candidates (id, draft_id, account_id, email,
+                         direction, who_owes, what, by_when, extracted_at)
+                     VALUES (?, 'd', 'a', 'x@example.com', 'yours', 'me', ?, ?, 5)",
+                )
+                .bind(what)
+                .bind(what)
+                .bind(by_when)
+                .execute(store.writer())
+                .await
+                .unwrap();
+            }
+            store.writer().close().await;
+        }
+
+        let store = Store::new(&db_path).await.unwrap();
+        let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT what, by_when_source FROM draft_commitment_candidates ORDER BY what",
+        )
+        .fetch_all(store.writer())
+        .await
+        .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                ("dated".to_string(), Some("model_date".to_string())),
+                ("undated".to_string(), None),
+            ]
+        );
     }
 }

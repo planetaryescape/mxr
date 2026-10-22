@@ -27,6 +27,35 @@ pub(crate) fn is_tracker_line(line: &UpdateLineData) -> bool {
     line.tracker.as_ref().is_some_and(|t| t.kind == "parcel")
 }
 
+/// "Google (accounts.google.com)": the name a sender chose beside the host
+/// the mail came from, so a borrowed brand shows before a code is pasted.
+fn named(name: &str, email: &str) -> String {
+    let name = crate::ui::sanitize::one_line(name);
+    match email
+        .rsplit_once('@')
+        .map(|(_, host)| host.to_ascii_lowercase())
+    {
+        Some(host) if !host.is_empty() && !name.eq_ignore_ascii_case(&host) => {
+            format!("{name} ({})", crate::ui::sanitize::one_line(&host))
+        }
+        _ => name,
+    }
+}
+
+/// The system clipboard, reporting a missing or failing tool. Tests never
+/// touch the real one; `last_copied` keeps what would have gone there.
+fn copy_code_to_clipboard(text: &str) -> Result<(), String> {
+    #[cfg(test)]
+    {
+        let _ = text;
+        Ok(())
+    }
+    #[cfg(not(test))]
+    {
+        crate::export_output::copy_to_clipboard(text)
+    }
+}
+
 impl App {
     pub(super) fn apply_updates_action(&mut self, action: Action) {
         match action {
@@ -41,6 +70,7 @@ impl App {
             Action::TogglePin => self.updates_toggle_pin(),
             Action::UpdatesTuneChoice(choice) => self.updates_tune_choice(choice),
             Action::UpdatesOpenLink => self.updates_open_link(),
+            Action::UpdatesCopyCode => self.updates_copy_code(),
             Action::UpdatesClose => self.updates_close(),
             _ => {}
         }
@@ -338,6 +368,45 @@ impl App {
         }
     }
 
+    /// `y`: the lit line's code, else the newest current code in your mail.
+    /// A fresh code arrives between cuts, where no line shows it yet.
+    fn updates_copy_code(&mut self) {
+        let line_code = self.selected_updates_line().and_then(|line| {
+            line.code
+                .clone()
+                .map(|code| (code, named(&line.source_name, &line.sender_email)))
+        });
+        match line_code {
+            Some((code, from)) => self.copy_code(code, &from),
+            None => {
+                self.mailbox.updates_page.pending_latest_code = true;
+                self.status_message = Some("Finding your latest one-time code…".into());
+            }
+        }
+    }
+
+    /// The daemon's recent codes arrived: copy the newest still current.
+    pub(crate) fn copy_latest_code(&mut self, codes: &[mxr_protocol::OneTimeCodeData]) {
+        match codes.iter().find(|code| code.current) {
+            Some(code) => {
+                let from = named(&code.sender_name, &code.sender_email);
+                self.copy_code(code.code.clone(), &from);
+            }
+            None => self.status_message = Some("No current one-time code in your mail".into()),
+        }
+    }
+
+    fn copy_code(&mut self, code: String, from: &str) {
+        let shown = crate::ui::sanitize::one_line(&code);
+        self.status_message = Some(match copy_code_to_clipboard(&code) {
+            Ok(()) => {
+                self.mailbox.updates_page.last_copied = Some(code);
+                format!("Code {shown} from {from} copied")
+            }
+            Err(error) => format!("Couldn't copy the code {shown}: {error}"),
+        });
+    }
+
     fn updates_close(&mut self) {
         let page = &mut self.mailbox.updates_page;
         if page.tune.take().is_some() {
@@ -389,6 +458,7 @@ impl App {
             KeyCode::Char('S') if shifted => Some(Action::UpdatesSweep),
             KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
             KeyCode::Char('L') if shifted => Some(Action::UpdatesOpenLink),
+            KeyCode::Char('y') if plain => Some(Action::UpdatesCopyCode),
             KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),
             _ => None,
         };

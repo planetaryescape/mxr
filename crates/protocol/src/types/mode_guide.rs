@@ -356,6 +356,7 @@ const UPDATES_KEYS: &[(&str, &str)] = &[
     ("t", "this needs me"),
     ("K", "tune a source"),
     ("L", "open the link"),
+    ("y", "copy the code"),
     ("o", "open the email"),
     ("u", "undo"),
     ("?", "what is this"),

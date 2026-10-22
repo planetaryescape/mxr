@@ -430,3 +430,73 @@ fn a_hint_shows_on_the_first_line_after_a_key_and_esc_dismisses_it_everywhere() 
         Some("updates")
     );
 }
+
+#[test]
+fn y_copies_the_lines_code_and_names_its_host() {
+    let mut app = updates_app();
+    let name = app
+        .mailbox
+        .updates_page
+        .rows()
+        .iter()
+        .find_map(|row| match row {
+            UpdatesRow::Line(line) => Some(line.source_name.clone()),
+            _ => None,
+        });
+    let name = name.expect("a line");
+    if let Some(digest) = app.mailbox.updates_page.digest.as_mut() {
+        for line in digest
+            .needs_a_look
+            .iter_mut()
+            .chain(digest.changed.iter_mut())
+            .chain(digest.routine.iter_mut())
+            .filter(|line| line.source_name == name)
+        {
+            line.code = Some("482913".into());
+            line.sender_email = "otp@attacker.example".into();
+        }
+    }
+    select_source(&mut app, &name);
+    press(&mut app, KeyCode::Char('y'));
+    assert_eq!(
+        app.mailbox.updates_page.last_copied.as_deref(),
+        Some("482913")
+    );
+    let status = app.status_message.clone().unwrap_or_default();
+    assert!(status.contains("attacker.example"), "{status}");
+}
+
+#[test]
+fn y_on_a_line_without_a_code_asks_for_the_latest_and_copies_a_current_one() {
+    let mut app = updates_app();
+    press(&mut app, KeyCode::Char('y'));
+    assert!(app.mailbox.updates_page.pending_latest_code);
+    assert_eq!(app.mailbox.updates_page.last_copied, None);
+
+    let at = chrono::Utc::now();
+    let code = |code: &str, current: bool| mxr_protocol::OneTimeCodeData {
+        code: code.into(),
+        current,
+        expires_at: at,
+        received_at: at,
+        sender_name: "Acme".into(),
+        sender_host: "acme.example".into(),
+        sender_email: "no-reply@acme.example".into(),
+        subject: "Your code".into(),
+        account_id: mxr_core::id::AccountId::new(),
+        message_id: mxr_core::id::MessageId::new(),
+        thread_id: mxr_core::id::ThreadId::new(),
+    };
+    app.copy_latest_code(&[code("111111", false), code("222222", true)]);
+    assert_eq!(
+        app.mailbox.updates_page.last_copied.as_deref(),
+        Some("222222")
+    );
+
+    app.mailbox.updates_page.last_copied = None;
+    app.copy_latest_code(&[code("111111", false)]);
+    assert_eq!(
+        app.mailbox.updates_page.last_copied, None,
+        "an expired code is not copied"
+    );
+}

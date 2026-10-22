@@ -1005,9 +1005,9 @@ dependencies = [
 
 [[package]]
 name = "calamine"
-version = "0.36.1"
+version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fa68281b1a76b54a62156474adb06bb380a67e07dd60656e3217152b42183f3"
+checksum = "c9ca341b94bc4b29e08970b1a03914fad2dfe177e2ecb67fcd6de9046004aafb"
 dependencies = [
  "atoi_simd",
  "byteorder",
@@ -1015,9 +1015,9 @@ dependencies = [
  "encoding_rs",
  "fast-float2",
  "log",
- "quick-xml 0.41.0",
+ "quick-xml",
  "serde",
- "zip 8.6.0",
+ "zip 9.0.5",
 ]
 
 [[package]]
@@ -3088,9 +3088,9 @@ checksum = "c9356095b4b41197bba32173600e1582792cda618f65d12f68e2e77d273413c5"
 
 [[package]]
 name = "html2text"
-version = "0.17.3"
+version = "0.17.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7475d5c5606bb86be8d7986962ba34b233490985cfa76a20d6a23e1eb9563b1c"
+checksum = "31e981cc9b710410461bf2e474b54da9ccb2fa3212936295bc5c02cb09f3d3f2"
 dependencies = [
  "html5ever 0.40.1",
  "tendril",
@@ -3284,9 +3284,9 @@ dependencies = [
 
 [[package]]
 name = "icalendar"
-version = "0.17.14"
+version = "0.17.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "785af055d3fda0cd975e77b358d8e5d20dd7dbcca6a61eefd197410b8a1cbfe7"
+checksum = "ef7e7ae829dee4463f049b1f2855a7b0ba7a255bef3c06a09ca22a7befa4e9e4"
 dependencies = [
  "chrono",
  "iso8601",
@@ -3876,9 +3876,9 @@ checksum = "34b357333733e8260735ba5894eb928c02ecc69c78715f01a8019e7fa7f2db4c"
 
 [[package]]
 name = "libc"
-version = "0.2.190"
+version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "libdbus-sys"
@@ -4033,9 +4033,9 @@ checksum = "e20f57f9918e5bd7bc58c22cdd70a6afc7375d4dd9683af5f2b34bd3d2bba619"
 
 [[package]]
 name = "lzma-rust2"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fde178a3caf126c440fa15628147772d8ee590a39477d711353fbe2e58a73a5b"
+checksum = "7277c9742229dc25243236d578b6471a798c554512c6f6a04365ec2e87c2a3bb"
 dependencies = [
  "sha2 0.11.1",
 ]
@@ -4274,9 +4274,9 @@ dependencies = [
 
 [[package]]
 name = "minijinja"
-version = "3.0.0"
+version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13345868cfa94eadafc067112ff29271380a820d5594d9ee6ba81a8d00ea5dc2"
+checksum = "789a6b737c4a13bec43cd3c1b982aa8a8a192ff4bf444e0fb1fd5a324f064fd1"
 
 [[package]]
 name = "minimal-lexical"
@@ -4369,7 +4369,7 @@ checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
 
 [[package]]
 name = "mxr"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4484,12 +4484,12 @@ dependencies = [
  "which",
  "wiremock",
  "yup-oauth2",
- "zip 9.0.3",
+ "zip 9.0.5",
 ]
 
 [[package]]
 name = "mxr-assistant"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "async-trait",
  "mxr-llm",
@@ -4525,7 +4525,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-client"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "base16ct",
  "base64 0.23.1",
@@ -4548,7 +4548,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-compose"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "chrono",
  "comrak",
@@ -4576,7 +4576,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-config"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "base16ct",
  "chrono",
@@ -4596,7 +4596,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-core"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "async-trait",
  "bitflags 2.13.2",
@@ -4613,7 +4613,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-deliveries"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4633,7 +4633,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-export"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "chrono",
  "insta",
@@ -4648,7 +4648,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-humanizer"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "mxr-core",
  "serde",
@@ -4656,7 +4656,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-keychain"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "keyring",
  "security-framework 3.7.0",
@@ -4667,7 +4667,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-llm"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "async-trait",
  "opentelemetry",
@@ -4684,7 +4684,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-mail-parse"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "chrono",
  "icalendar",
@@ -4700,7 +4700,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-mailmerge"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4715,7 +4715,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-mcp"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4737,7 +4737,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-outbound"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -4756,7 +4756,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-protocol"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "bytes",
  "chrono",
@@ -4771,7 +4771,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-fake"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4785,7 +4785,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-gmail"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4819,7 +4819,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-imap"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "anyhow",
  "async-native-tls",
@@ -4844,7 +4844,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-outlook"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4864,7 +4864,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-smtp"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4883,7 +4883,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-reader"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "data-url",
  "ego-tree",
@@ -4902,7 +4902,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-reading"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "chrono",
  "dom_smoothie",
@@ -4924,7 +4924,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-records"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4946,7 +4946,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-relationship"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4965,7 +4965,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-rules"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "chrono",
  "glob-match",
@@ -4982,7 +4982,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-safety"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "chrono",
  "mxr-core",
@@ -4999,7 +4999,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-search"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "chrono",
  "mail-query",
@@ -5015,7 +5015,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-semantic"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "anyhow",
  "base16ct",
@@ -5034,12 +5034,12 @@ dependencies = [
  "tracing",
  "undoc",
  "unpdf",
- "zip 9.0.3",
+ "zip 9.0.5",
 ]
 
 [[package]]
 name = "mxr-store"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "base16ct",
  "caseless",
@@ -5059,7 +5059,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-sync"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5077,7 +5077,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-test-support"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "assert_cmd",
  "dirs 7.0.0",
@@ -5089,7 +5089,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-todo"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5111,7 +5111,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-transport"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "async-trait",
  "futures",
@@ -5129,7 +5129,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-tui"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5171,7 +5171,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-updates"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "chrono",
  "once_cell",
@@ -5183,7 +5183,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-web"
-version = "0.6.136"
+version = "0.6.141"
 dependencies = [
  "axum",
  "base64 0.23.1",
@@ -6342,9 +6342,9 @@ checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 
 [[package]]
 name = "ppmd-rust"
-version = "1.4.0"
+version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efca4c95a19a79d1c98f791f10aebd5c1363b473244630bb7dbde1dc98455a24"
+checksum = "cd4acc8d264ea385db64ccfdcdfd5909ee9eda0975666723d59f3bfec80b3611"
 
 [[package]]
 name = "ppv-lite86"
@@ -6493,9 +6493,9 @@ dependencies = [
 
 [[package]]
 name = "psl"
-version = "2.1.241"
+version = "2.1.244"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7319b480e204d67e759cad7886178335d26324c7c8573c126cc9dfa7350d064"
+checksum = "bc3ac0c25b0c40554a755e56dfe268855c53f391bbb7922a1c1fe59b73b163a9"
 dependencies = [
  "psl-types",
 ]
@@ -6575,20 +6575,11 @@ checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
 
 [[package]]
 name = "quick-xml"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
-dependencies = [
- "encoding_rs",
- "memchr",
-]
-
-[[package]]
-name = "quick-xml"
 version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
 dependencies = [
+ "encoding_rs",
  "memchr",
 ]
 
@@ -9186,21 +9177,21 @@ checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
 
 [[package]]
 name = "undoc"
-version = "0.24.0"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49cc0551446aa47af7ee9aecb0472fa04d2f374df050964e28863cd9c2d386ae"
+checksum = "c36729e6aab0f2881c602e7fb26b12b21aa508e708f8a89cc73d27383d14a5d4"
 dependencies = [
  "cfb",
  "encoding_rs",
  "flate2",
- "quick-xml 0.42.0",
+ "quick-xml",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "unicode-normalization",
  "unicode-width",
  "unparser-shared",
- "zip 9.0.3",
+ "zip 9.0.5",
 ]
 
 [[package]]
@@ -9223,9 +9214,9 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "unicode-normalization"
-version = "0.1.25"
+version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fd4f6878c9cb28d874b009da9e8d183b5abc80117c40bbd187a1fde336be6e8"
+checksum = "75cd3fb03d5288b3ba9a1ee103ac7e9cbb59f0b03d64f8ddfcc04dd42758a85d"
 dependencies = [
  "tinyvec",
 ]
@@ -9282,9 +9273,9 @@ checksum = "81e544489bf3d8ef66c953931f56617f423cd4b5494be343d9b9d3dda037b9a3"
 
 [[package]]
 name = "unparser-shared"
-version = "0.9.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46c2f9a6bf9b703142cf01a01928498bcdd4f6dd2a2cd303155bee991a3fe86d"
+checksum = "e6c10cbfd80a3a0b11f39fc9b0c5b4cd4560114c50e643ddf115f1e23fbe865d"
 dependencies = [
  "pulldown-cmark",
  "pulldown-cmark-to-cmark",
@@ -10500,9 +10491,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.0.3"
+version = "9.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2d98561b612a84ae525331a7a094429ef8a5772514ed507ff6db5f54badc971"
+checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
 dependencies = [
  "aes 0.9.1",
  "bzip2",
@@ -10513,7 +10504,7 @@ dependencies = [
  "getrandom 0.4.3",
  "hmac 0.13.0",
  "indexmap",
- "lzma-rust2 0.21.0",
+ "lzma-rust2 0.22.0",
  "memchr",
  "nix 0.31.3",
  "pbkdf2",

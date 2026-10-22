@@ -28,7 +28,15 @@ import { useLitReason } from "@/state/litReasonStore";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
-import { useDigest, type UpdateLine, type UpdateSection, type UpdatesDigest } from "./api";
+import {
+  useDigest,
+  useLatestCode,
+  type UpdateLine,
+  type UpdateSection,
+  type UpdatesDigest,
+} from "./api";
+import { copyCode, lineSender } from "./copyCode";
+import { codeSender, LatestCode } from "./LatestCode";
 import { displaySourceName } from "./digestView";
 import {
   cutLabel,
@@ -132,6 +140,7 @@ function Briefing({ status }: { status: ReturnType<typeof useDigest> }) {
 }
 
 function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string }) {
+  const latestCode = useLatestCode().data ?? null;
   const account = useUiPrefs((s) => s.accountScope);
   const nav = useReaderNav();
   const params = useParams({ strict: false }) as { threadId?: string };
@@ -307,7 +316,13 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   // The status bar says why the lit line is here and which keys work on it.
   useLitReason(current?.why);
   // While the open email has focus these keys aren't live, so the strip doesn't offer them.
-  usePageKeys(current && (!params.threadId || activePane !== "reader") ? UPDATES_KEYS : []);
+  usePageKeys(
+    current && (!params.threadId || activePane !== "reader")
+      ? current.code || latestCode
+        ? ["updates.copy-code", ...UPDATES_KEYS]
+        : UPDATES_KEYS
+      : [],
+  );
   useShortcutScope("updates", !params.threadId || activePane !== "reader");
   useScopeController("updates", {
     down: () => move(1),
@@ -330,6 +345,17 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
       if (link) window.open(link.url, "_blank", "noopener,noreferrer");
     },
     openEmail: () => current && openEmail(current),
+    // The lit line's code, else the newest one, which may be on no line yet.
+    copyCode: current?.code
+      ? () =>
+          current.code &&
+          copyCode(
+            current.code,
+            lineSender(displaySourceName(current.source_name), current.sender_email),
+          )
+      : latestCode
+        ? () => copyCode(latestCode.code, codeSender(latestCode))
+        : undefined,
     peek: () => current && togglePeek(current),
     // `K` stays "tune this source"; only the email moves from here.
     moveToMode: moveCommands(() => (current ? updateMoveSubject(current) : null)).moveToMode,
@@ -430,6 +456,7 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
           <p data-testid="updates-cut" className="type-meta mx-5 mt-3 text-text-2">
             {cutLine(digest)}
           </p>
+          {latestCode ? <LatestCode code={latestCode} /> : null}
           {letGoHint.hint ? (
             <AnchoredHint className="mx-5" hint={letGoHint.hint} onDismiss={dismissLetGoHint} />
           ) : null}

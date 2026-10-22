@@ -753,6 +753,7 @@ pub fn map_request(
         | Request::SuggestCollaborators { .. }
         | Request::GetThreadBriefing { .. }
         | Request::GetThreadContext { .. }
+        | Request::GetThreadPreviews { .. }
         | Request::GetThreadGist { .. }
         | Request::GetThreadGists { .. }
         | Request::DetectPromises { .. }
@@ -906,6 +907,7 @@ pub fn map_request(
         | Request::GetFreshness { .. }
         | Request::GetModeMembership { .. }
         | Request::SetModeDone { .. }
+        | Request::ListOneTimeCodes { .. }
         | Request::GetUpdatesDigest { .. }
         | Request::LetGoDigest { .. }
         | Request::SetUpdateSource { .. }

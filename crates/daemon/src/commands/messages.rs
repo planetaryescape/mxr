@@ -59,6 +59,7 @@ pub async fn run(
                         account_id,
                         person,
                         topic,
+                        conversation: true,
                     })
                     .await?,
                 |response| match response {

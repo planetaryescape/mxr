@@ -222,6 +222,7 @@ pub(super) fn allowed_while_paused(request: &mxr_protocol::Request) -> bool {
             | GetRecord { .. }
             | GetReadingEdition { .. }
             | GetReadingItem { .. }
+            | ListOneTimeCodes { .. }
             | GetUpdatesDigest { .. }
             | GetPerson { .. }
             | ListInvites { .. }

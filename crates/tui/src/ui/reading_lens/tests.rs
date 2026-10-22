@@ -233,6 +233,10 @@ fn render(page: &ReadingPageState, selected: usize, width: u16) -> String {
             frame,
             Rect::new(0, 0, width, 36),
             &ReadingLensView {
+                zone: crate::ui::received_label::DisplayZone::Fixed(
+                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                ),
+                now: chrono::Utc::now(),
                 page,
                 selected_index: selected,
                 active_pane: &ActivePane::MailList,
@@ -362,15 +366,31 @@ fn minutes_left_and_the_highlight_follow_the_scroll() {
     assert_eq!(minutes_left(460, 1.0, 230), 0);
     let mut reading = page();
     reading.reader = Some(detail(false));
-    assert!(paragraph_at_top(&reading).is_some_and(|p| p.starts_with("We rebuilt")));
+    assert!(paragraph_at_top(
+        &reading,
+        chrono::Utc::now(),
+        crate::ui::received_label::DisplayZone::Fixed(chrono::FixedOffset::east_opt(3600).unwrap())
+    )
+    .is_some_and(|p| p.starts_with("We rebuilt")));
     // Past the first paragraph and the heading, the third one is on top.
-    let (_, owners) = reader_lines(&reading, READER_WIDTH, &crate::theme::Theme::default());
+    let (_, owners) = reader_lines(
+        &reading,
+        READER_WIDTH,
+        &crate::theme::Theme::default(),
+        chrono::Utc::now(),
+        crate::ui::received_label::DisplayZone::Fixed(chrono::FixedOffset::east_opt(3600).unwrap()),
+    );
     let third = owners
         .iter()
         .position(|owner| *owner == Some(2))
         .expect("third paragraph");
     reading.scroll = u16::try_from(third).expect("small");
-    assert!(paragraph_at_top(&reading).is_some_and(|p| p.starts_with("A delete is")));
+    assert!(paragraph_at_top(
+        &reading,
+        chrono::Utc::now(),
+        crate::ui::received_label::DisplayZone::Fixed(chrono::FixedOffset::east_opt(3600).unwrap())
+    )
+    .is_some_and(|p| p.starts_with("A delete is")));
 }
 
 #[test]

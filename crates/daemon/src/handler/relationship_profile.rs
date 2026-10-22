@@ -102,6 +102,7 @@ pub(crate) async fn load_relationship_profile_for_store(
 }
 
 pub(crate) fn commitment_data(record: ContactCommitmentRecord) -> CommitmentData {
+    let date_unverified = record.date_unverified();
     CommitmentData {
         id: record.id,
         account_id: record.account_id,
@@ -119,6 +120,7 @@ pub(crate) fn commitment_data(record: ContactCommitmentRecord) -> CommitmentData
         who_owes: record.who_owes,
         what: record.what,
         by_when: record.by_when,
+        date_unverified,
         evidence_msg_id: record.evidence_msg_id,
         extracted_at: record.extracted_at,
     }

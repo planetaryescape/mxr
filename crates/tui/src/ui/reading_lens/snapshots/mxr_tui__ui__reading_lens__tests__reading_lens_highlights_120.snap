@@ -1,11 +1,12 @@
 ---
 source: crates/tui/src/ui/reading_lens/tests.rs
+assertion_line: 451
 expression: rendered
 ---
 "╭ Reading ─ Newsletters you chose, as an edition. Read when you like. ──────────────────────────────────────── Later 2 ╮"
 "│                                               ╭─────────────────────────────────────────────────────────────────────╮│"
 "│  SINCE YOU WERE LAST HERE                     │ Shipping a sync engine in 2026                                      ││"
-"│  The quiet death of the three-pane layout     │ Platform Weekly · Tue 6 Oct · 2 min left                            ││"
+"│  The quiet death of the three-pane layout     │ Platform Weekly · Tue 6 Oct 08:00 · 2 min left                      ││"
 "│  Long Reads Weekly · 3 min · you read 8 of …  │ ░░░░░░░░░░░░░░░░░░░░ 0%                                             ││"
 "│  Six things worth your time                   │ [Issue]  Article                                                    ││"
 "│  Local-first Links · 1 min · 5 links          │                                                                     ││"

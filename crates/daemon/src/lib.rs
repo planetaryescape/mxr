@@ -401,6 +401,10 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::thread::run(thread_id, search, account, first, limit, format).await?;
         }
+        Some(Command::ThreadPreview { thread_ids, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::thread_preview::run(thread_ids, format).await?;
+        }
         Some(Command::Threads {
             account,
             label,
@@ -486,6 +490,15 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
         }) => {
             crate::server::ensure_daemon_running().await?;
             commands::updates::run(action, cut, expired, account, format).await?;
+        }
+        Some(Command::Code {
+            all,
+            copy,
+            account,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::code::run(account, all, copy, format).await?;
         }
         Some(Command::Now { account, format }) => {
             crate::server::ensure_daemon_running().await?;

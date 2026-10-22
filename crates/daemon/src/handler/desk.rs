@@ -584,7 +584,8 @@ async fn due_commitments(
         .await?
         .into_iter()
         .filter_map(|commitment| {
-            let by_when = commitment.by_when?;
+            // A date a model wrote is not a deadline the desk acts on.
+            let by_when = commitment.actionable_by_when()?;
             (commitment.direction == CommitmentDirection::Yours
                 && by_when <= horizon
                 && by_when >= floor)

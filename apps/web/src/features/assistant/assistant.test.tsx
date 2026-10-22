@@ -511,6 +511,85 @@ describe("transcript", () => {
     expect(navigate).toHaveBeenCalledWith({ href: "/messages?person=person%3An%40x.com" });
   });
 
+  describe("email rows", () => {
+    const replyWith = (rows: unknown[]) => ({ ...turn[2]!, rows }) as AssistantItem;
+    const list = () =>
+      within(screen.getByRole("list", { name: "The emails and people in this reply" }));
+    const rich = {
+      title: "Invoice 4471 overdue",
+      detail: "Dana Ruiz",
+      sender: "Dana Ruiz",
+      snippet: "Please confirm payment by Friday",
+      at: Math.floor(Date.now() / 1000) - 10 * 60,
+      attachment: true,
+      unread: true,
+      link: { kind: "thread", thread_id: "t-rich" },
+    };
+
+    test("show the sender, the start of the text, a clip, the mode glyph and the time", async () => {
+      answerLookups([
+        {
+          thread_id: "t-rich",
+          in_inbox: false,
+          modes: [{ mode: "reading", name: "Reading" }],
+          account_id: "a",
+          subject: "x",
+        },
+      ]);
+      render(
+        <Transcript items={[turn[0]!, replyWith([rich])]} running={false} conversationId="c1" />,
+      );
+      const row = list().getByRole("link", { name: /Invoice 4471 overdue/ });
+      expect(row).toHaveTextContent("Dana Ruiz · Please confirm payment by Friday");
+      const li = row.closest("li")!;
+      expect(li.querySelector(".lucide-paperclip")).not.toBeNull();
+      expect(li).toHaveTextContent("10m");
+      expect(li.dataset.unread).toBe("true");
+      await vi.waitFor(() => expect(li.querySelector(".lucide-newspaper")).not.toBeNull());
+      expect(lookups()).toEqual([["t-rich"]]);
+    });
+
+    test("a row with only a detail draws as before and asks for nothing", () => {
+      render(
+        <Transcript
+          items={[
+            turn[0]!,
+            replyWith([
+              { title: "Q1 report", detail: "Diana", link: { kind: "thread", thread_id: "t-9" } },
+            ]),
+          ]}
+          running={false}
+          conversationId="c1"
+        />,
+      );
+      const li = list()
+        .getByRole("link", { name: /Q1 report/ })
+        .closest("li")!;
+      expect(li).toHaveTextContent("Q1 report");
+      expect(li).toHaveTextContent("Diana");
+      expect(li.querySelector("svg.lucide-paperclip, svg.lucide-mail")).toBeNull();
+      expect(li.dataset.unread).toBeUndefined();
+      expect(lookups()).toEqual([]);
+    });
+
+    test("hostile mail text stays text", () => {
+      const hostile = '<img src=x onerror="alert(1)"><b>bold</b>';
+      render(
+        <Transcript
+          items={[
+            turn[0]!,
+            replyWith([{ ...rich, title: hostile, sender: hostile, snippet: hostile }]),
+          ]}
+          running={false}
+          conversationId="c1"
+        />,
+      );
+      const rows = screen.getByRole("list", { name: "The emails and people in this reply" });
+      expect(rows.querySelector("img, b")).toBeNull();
+      expect(rows).toHaveTextContent(hostile);
+    });
+  });
+
   test("shows steps as they happen while the turn runs", () => {
     render(<Transcript items={turn.slice(0, 2)} running conversationId="c1" />);
     expect(screen.getByRole("button", { name: /Searched your mail: 14 found/ })).toBeVisible();

@@ -136,6 +136,8 @@ pub enum Action {
     UpdatesTuneChoice(usize),
     /// `L` on Updates: open the line's link.
     UpdatesOpenLink,
+    /// `y` on Updates: copy the line's one-time code.
+    UpdatesCopyCode,
     /// Esc on Updates: close a menu or retire the first-encounter card.
     UpdatesClose,
     /// `X`: "Move to…" for the selected email: one key per mode

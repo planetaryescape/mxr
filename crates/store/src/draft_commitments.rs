@@ -3,6 +3,7 @@
 //! Per-draft commitment candidates extracted before send.
 //! Promoted to `contact_commitments` after the draft sends successfully.
 
+use crate::commitment_date_source::ByWhenSource;
 use crate::contact_commitments::CommitmentDirection;
 use chrono::{DateTime, Utc};
 use mxr_core::id::{AccountId, DraftId};
@@ -19,6 +20,9 @@ pub struct DraftCommitmentCandidate {
     pub who_owes: String,
     pub what: String,
     pub by_when: Option<DateTime<Utc>>,
+    /// Where `by_when` came from; promotion to a commitment carries it. A
+    /// candidate saved before provenance has none, so its date is unverified.
+    pub by_when_source: Option<ByWhenSource>,
     pub extracted_at: DateTime<Utc>,
 }
 
@@ -32,8 +36,9 @@ impl super::Store {
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"INSERT INTO draft_commitment_candidates
-               (id, draft_id, account_id, email, direction, who_owes, what, by_when, extracted_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               (id, draft_id, account_id, email, direction, who_owes, what, by_when,
+                by_when_source, extracted_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(draft_id, email, direction, what) DO NOTHING"#,
         )
         .bind(&candidate.id)
@@ -44,6 +49,13 @@ impl super::Store {
         .bind(&candidate.who_owes)
         .bind(&candidate.what)
         .bind(candidate.by_when.map(|v| v.timestamp()))
+        // A source only describes a date.
+        .bind(
+            candidate
+                .by_when
+                .and(candidate.by_when_source)
+                .map(ByWhenSource::as_str),
+        )
         .bind(candidate.extracted_at.timestamp())
         .execute(self.writer())
         .await?;
@@ -56,7 +68,7 @@ impl super::Store {
     ) -> Result<Vec<DraftCommitmentCandidate>, sqlx::Error> {
         let rows = sqlx::query(
             r#"SELECT id, draft_id, account_id, email, direction, who_owes, what,
-                      by_when, extracted_at
+                      by_when, by_when_source, extracted_at
                FROM draft_commitment_candidates
                WHERE draft_id = ?
                ORDER BY extracted_at ASC, id ASC"#,
@@ -80,6 +92,10 @@ impl super::Store {
                     who_owes: row.try_get("who_owes")?,
                     what: row.try_get("what")?,
                     by_when: crate::decode_optional_timestamp(row.try_get("by_when")?)?,
+                    by_when_source: row
+                        .try_get::<Option<String>, _>("by_when_source")?
+                        .as_deref()
+                        .and_then(ByWhenSource::parse),
                     extracted_at: crate::decode_timestamp(row.try_get("extracted_at")?)?,
                 })
             })
@@ -136,6 +152,7 @@ mod tests {
             who_owes: "me@example.com".into(),
             what: what.into(),
             by_when: None,
+            by_when_source: None,
             extracted_at: Utc::now(),
         }
     }
@@ -199,5 +216,36 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[tokio::test]
+    async fn a_candidates_date_source_round_trips_and_means_nothing_without_a_date() {
+        let (store, account_id, draft_id) = fixture().await;
+        let due = Utc::now();
+        let mut dated = candidate(&account_id, &draft_id, "send the deck");
+        dated.by_when = Some(due);
+        dated.by_when_source = Some(ByWhenSource::Words);
+        let mut undated = candidate(&account_id, &draft_id, "send the notes");
+        undated.by_when_source = Some(ByWhenSource::Words);
+        store
+            .upsert_draft_commitment_candidate(&dated)
+            .await
+            .unwrap();
+        store
+            .upsert_draft_commitment_candidate(&undated)
+            .await
+            .unwrap();
+
+        let rows = store
+            .list_draft_commitment_candidates(&draft_id)
+            .await
+            .unwrap();
+        let source = |what: &str| {
+            rows.iter()
+                .find(|row| row.what == what)
+                .map(|row| row.by_when_source)
+        };
+        assert_eq!(source("send the deck"), Some(Some(ByWhenSource::Words)));
+        assert_eq!(source("send the notes"), Some(None));
     }
 }

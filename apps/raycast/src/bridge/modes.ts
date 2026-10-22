@@ -14,28 +14,35 @@ import type {
 // the daemon's ready-made views and leave the web app's "since you were
 // last here" lines alone.
 
-export async function getNow(): Promise<NowData> {
-  return (await request<Reply<"Now">>("/api/v1/mail/now")).now;
+/** A mode read, scoped to one account when `account` is set. */
+function read<T>(path: string, account: string | undefined): Promise<T> {
+  if (!account) return request<T>(path);
+  const separator = path.includes("?") ? "&" : "?";
+  return request<T>(`${path}${separator}account=${encodeURIComponent(account)}`);
 }
 
-export async function getMessages(): Promise<MessagesData> {
-  return (await request<Reply<"Messages">>("/api/v1/mail/people?limit=200")).messages;
+export async function getNow(account?: string): Promise<NowData> {
+  return (await read<Reply<"Now">>("/api/v1/mail/now", account)).now;
 }
 
-export async function getTodo(): Promise<TodoRunway> {
-  return (await request<Reply<"TodoRunway">>("/api/v1/mail/todos")).runway;
+export async function getMessages(account?: string): Promise<MessagesData> {
+  return (await read<Reply<"Messages">>("/api/v1/mail/people?limit=200", account)).messages;
 }
 
-export async function getUpdates(): Promise<UpdatesDigest> {
-  return (await request<Reply<"UpdatesDigest">>("/api/v1/mail/updates")).digest;
+export async function getTodo(account?: string): Promise<TodoRunway> {
+  return (await read<Reply<"TodoRunway">>("/api/v1/mail/todos", account)).runway;
 }
 
-export async function getReading(): Promise<ReadingEdition> {
-  return (await request<Reply<"ReadingEdition">>("/api/v1/mail/reading")).edition;
+export async function getUpdates(account?: string): Promise<UpdatesDigest> {
+  return (await read<Reply<"UpdatesDigest">>("/api/v1/mail/updates", account)).digest;
 }
 
-export async function getRecords(): Promise<RecordLedger> {
-  return (await request<Reply<"RecordLedger">>("/api/v1/mail/records?limit=100")).ledger;
+export async function getReading(account?: string): Promise<ReadingEdition> {
+  return (await read<Reply<"ReadingEdition">>("/api/v1/mail/reading", account)).edition;
+}
+
+export async function getRecords(account?: string): Promise<RecordLedger> {
+  return (await read<Reply<"RecordLedger">>("/api/v1/mail/records?limit=100", account)).ledger;
 }
 
 /** The modes a conversation can be marked done in. */

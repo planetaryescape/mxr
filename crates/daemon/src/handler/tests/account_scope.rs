@@ -150,6 +150,7 @@ async fn seed(fx: &Fixture, account: &mxr_core::AccountId, tag: &str) -> Owned {
             who_owes: "you".into(),
             what: "check the order".into(),
             by_when: Some(Utc::now() + Duration::days(2)),
+            by_when_source: Some(mxr_store::ByWhenSource::Words),
             evidence_msg_id: message.clone(),
             extracted_at: Utc::now(),
             resolved_at: None,
@@ -730,6 +731,7 @@ async fn messages_requests_stay_in_the_agents_accounts() {
         account_id: Some(o.account.clone()),
         person: "orders@shop.example".into(),
         topic: None,
+        conversation: true,
     })
     .await;
     assert_scoped(&s, |o| Request::AckMessage {
@@ -763,6 +765,7 @@ async fn messages_requests_stay_in_the_agents_accounts() {
             account_id: Some(s.own.account.clone()),
             person: "orders@shop.example".into(),
             topic: Some(s.other.thread.clone()),
+            conversation: true,
         },
     )
     .await;

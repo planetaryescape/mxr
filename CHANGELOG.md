@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.6.141](https://github.com/planetaryescape/mxr/compare/v0.6.140...v0.6.141) (2026-10-22)
+
+
+### Features
+
+* act only on commitment dates read from the email's words or typed by the user ([#616](https://github.com/planetaryescape/mxr/issues/616)) ([e4898aa](https://github.com/planetaryescape/mxr/commit/e4898aa2cf033738f7dac441394cf868c6647b58))
+
+
+### Bug Fixes
+
+* run the web unit tests in one locale so CI formats dates like a British laptop ([#618](https://github.com/planetaryescape/mxr/issues/618)) ([cad87b3](https://github.com/planetaryescape/mxr/commit/cad87b396efad74831ddaa338545f93754ef0f8d))
+* satisfy clippy in the TUI arrival-time snapshot tests ([#621](https://github.com/planetaryescape/mxr/issues/621)) ([11d52fe](https://github.com/planetaryescape/mxr/commit/11d52fecc2e496b18f1d0b5f22158b2a8ba61ee5))
+
+## [0.6.140](https://github.com/planetaryescape/mxr/compare/v0.6.139...v0.6.140) (2026-10-22)
+
+
+### Features
+
+* show a card when hovering an email or person link in the assistant ([#613](https://github.com/planetaryescape/mxr/issues/613)) ([ac24399](https://github.com/planetaryescape/mxr/commit/ac243993327cbf462eca1eadd8d710893dc96059))
+
+
+### Bug Fixes
+
+* show when an email arrived in local time across the TUI ([#619](https://github.com/planetaryescape/mxr/issues/619)) ([4457c06](https://github.com/planetaryescape/mxr/commit/4457c06cdb61c2a623fa005e4ef287200574b85b))
+
+## [0.6.139](https://github.com/planetaryescape/mxr/compare/v0.6.138...v0.6.139) (2026-10-22)
+
+
+### Features
+
+* read, search and filter by account in the Raycast extension ([#594](https://github.com/planetaryescape/mxr/issues/594)) ([6851b2a](https://github.com/planetaryescape/mxr/commit/6851b2ab97a8a36e04b9b70f8e761cd480bb4ea7))
+
+## [0.6.138](https://github.com/planetaryescape/mxr/compare/v0.6.137...v0.6.138) (2026-10-22)
+
+
+### Features
+
+* find the one-time code in sign-in mail and make it one key to copy ([#608](https://github.com/planetaryescape/mxr/issues/608)) ([d98b8ad](https://github.com/planetaryescape/mxr/commit/d98b8adfcc5415f7ad217dd1895c724500d10846))
+
+## [0.6.137](https://github.com/planetaryescape/mxr/compare/v0.6.136...v0.6.137) (2026-10-22)
+
+
+### Features
+
+* draw assistant email rows as compact cards ([#610](https://github.com/planetaryescape/mxr/issues/610)) ([b69a4e6](https://github.com/planetaryescape/mxr/commit/b69a4e6448ebedf0dcd05d4fa282f67284c13332))
+
 ## [0.6.136](https://github.com/planetaryescape/mxr/compare/v0.6.135...v0.6.136) (2026-10-22)
 
 

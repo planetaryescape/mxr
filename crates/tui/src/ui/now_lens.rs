@@ -25,6 +25,9 @@ pub struct NowView<'a> {
     /// The Updates card's start in local time ("08:00"), formatted by the
     /// caller so the render stays independent of the machine's zone.
     pub updates_since: Option<String>,
+    /// "Now" for relative and absolute arrival times, passed in so the render
+    /// doesn't read the clock.
+    pub now: chrono::DateTime<chrono::Utc>,
 }
 
 /// "22h", "3d", "40m": how long a person has waited.
@@ -308,6 +311,7 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
                 false,
                 width.saturating_sub(2),
                 theme,
+                view.now,
             ));
         }
         body.text("  \u{21b5} open  A let go of this digest", muted);
@@ -678,6 +682,7 @@ pub(crate) mod tests {
                 frame,
                 Rect::new(0, 0, width, 34),
                 &NowView {
+                    now: chrono::Utc::now(),
                     page,
                     selected_index,
                     active_pane: &ActivePane::MailList,

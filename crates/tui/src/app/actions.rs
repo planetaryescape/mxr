@@ -217,6 +217,7 @@ impl App {
             | Action::UpdatesSweep
             | Action::UpdatesTuneChoice(_)
             | Action::UpdatesOpenLink
+            | Action::UpdatesCopyCode
             | Action::UpdatesClose => self.apply_updates_action(action),
             Action::OpenMailboxScreen
             | Action::OpenSearchScreen

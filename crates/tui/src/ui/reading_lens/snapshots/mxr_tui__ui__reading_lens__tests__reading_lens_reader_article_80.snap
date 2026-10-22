@@ -1,11 +1,12 @@
 ---
 source: crates/tui/src/ui/reading_lens/tests.rs
+assertion_line: 303
 expression: rendered
 ---
 "╭ Reading ─ Newsletters you chose, as an edition. Read when you like.  Later 2 ╮"
 "│╭────────────────────────────────────────────────────────────────────────────╮│"
 "││  Shipping a sync engine in 2026                                            ││"
-"││  Platform Weekly · Tue 6 Oct · 2 min left                                  ││"
+"││  Platform Weekly · Tue 6 Oct 08:00 · 2 min left                            ││"
 "││  ░░░░░░░░░░░░░░░░░░░░ 0%                                                   ││"
 "││  Issue  [Article] · fetched from platform.demo.mxr.local                   ││"
 "││                                                                            ││"

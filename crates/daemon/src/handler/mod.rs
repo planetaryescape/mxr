@@ -21,6 +21,7 @@ mod briefing;
 pub(crate) mod categories;
 pub(crate) mod category_rules;
 mod classify_eval;
+mod codes;
 mod commitments;
 mod commitments_extract;
 mod conversation_shape;
@@ -96,6 +97,7 @@ pub(crate) mod summarize;
 mod thread_context;
 mod thread_gist;
 pub(crate) mod thread_gists;
+mod thread_previews;
 mod time;
 mod todo_resolution;
 mod todo_view;
@@ -1585,6 +1587,9 @@ async fn dispatch(
         Request::GetThreadContext { thread_id } => {
             thread_context::get_thread_context(state, thread_id).await
         }
+        Request::GetThreadPreviews { thread_ids } => {
+            thread_previews::get_thread_previews(state, thread_ids).await
+        }
         Request::GetThreadGist { thread_id, refresh } => {
             thread_gist::get_thread_gist(state, thread_id, *refresh).await
         }
@@ -1800,7 +1805,17 @@ async fn dispatch(
             account_id,
             person,
             topic,
-        } => messages::get_person(state, account_id.as_ref(), person, topic.as_ref()).await,
+            conversation,
+        } => {
+            messages::get_person(
+                state,
+                account_id.as_ref(),
+                person,
+                topic.as_ref(),
+                *conversation,
+            )
+            .await
+        }
         Request::AckMessage {
             thread_id,
             dry_run,
@@ -1887,6 +1902,9 @@ async fn dispatch(
                 },
             ))
             .await
+        }
+        Request::ListOneTimeCodes { account_id, limit } => {
+            codes::list(state, account_id.as_ref(), *limit).await
         }
         Request::GetUpdatesDigest {
             account_id,
@@ -2508,6 +2526,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::SendReadingToMarginalia { dry_run: true, .. }
         | Request::UpdateHighlight { dry_run: true, .. }
         | Request::RemoveHighlight { dry_run: true, .. }
+        | Request::ListOneTimeCodes { .. }
         | Request::GetUpdatesDigest { .. }
         | Request::ListSignatures
         | Request::ListSignatureDefaults
@@ -2539,6 +2558,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::SendTimeRecommendation { .. }
         | Request::GetThreadBriefing { .. }
         | Request::GetThreadContext { .. }
+        | Request::GetThreadPreviews { .. }
         | Request::GetThreadGist { .. }
         | Request::GetThreadGists { .. }
         | Request::DetectPromises { .. }
@@ -2978,6 +2998,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SendTimeRecommendation { .. } => "send_time_recommendation",
         Request::GetThreadBriefing { .. } => "get_thread_briefing",
         Request::GetThreadContext { .. } => "get_thread_context",
+        Request::GetThreadPreviews { .. } => "get_thread_previews",
         Request::GetThreadGist { .. } => "get_thread_gist",
         Request::GetThreadGists { .. } => "get_thread_gists",
         Request::DetectPromises { .. } => "detect_promises",
@@ -3032,6 +3053,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetAssistantConversation { .. } => "get_assistant_conversation",
         Request::GetAssistantStepRows { .. } => "get_assistant_step_rows",
         Request::DeleteAssistantConversation { .. } => "delete_assistant_conversation",
+        Request::ListOneTimeCodes { .. } => "list_one_time_codes",
         Request::GetUpdatesDigest { .. } => "get_updates_digest",
         Request::LetGoDigest { .. } => "let_go_digest",
         Request::SetUpdateSource { .. } => "set_update_source",
@@ -3142,6 +3164,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListMergeSuggestions { account_id }
         | Request::GetReadingEdition { account_id, .. }
         | Request::ExportReadingHighlights { account_id }
+        | Request::ListOneTimeCodes { account_id, .. }
         | Request::GetUpdatesDigest { account_id, .. }
         | Request::LetGoDigest { account_id, .. }
         | Request::SetUpdateSource { account_id, .. }

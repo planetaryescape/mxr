@@ -17,6 +17,7 @@ Commands:
   count               Count matching messages
   cat                 Display a message. Pass a positional ID, pipe IDs on stdin, or resolve a list with `--search QUERY` (then `--first` for the most recent match or `--limit N` for the top N)
   thread              Display a thread. Pass a positional ID, pipe IDs on stdin, or resolve a list with `--search QUERY` (deduplicated by thread)
+  thread-preview      Headline facts for up to 100 threads with no bodies: subject, the latest sender, date and snippet, message and unread counts, and whether any message has an attachment. Unknown ids are left out
   threads             List threads in date-descending order. Each returned thread includes its constituent message IDs (date-ascending). Filter by account or label; paginate with --limit/--offset
   export              Export a thread or matching search results
   headers             Show message headers. Pass a positional ID, pipe IDs on stdin, or resolve a list with `--search QUERY`
@@ -42,6 +43,7 @@ Commands:
   ask                 Ask a question against the local archive. Returns a citation- validated answer; the daemon rejects LLM citations that point to messages outside the retrieved set
   owed                List the replies you owe: the desk's You owe lane (mail from people in your inbox, from someone you've written to), most overdue against your usual pace with them first
   messages            People you talk with, one row each. Reply or mark done.
+  code                The one-time code from your latest sign-in email, ready to paste
   now                 The few things that need you now, from every mode.
   arrivals            Where every email that arrived went, counted once each
   reclassify          Move one email to a mode (X), or with --sender all of its sender's mail (K). To do and Archive add the email there. Undo with `mxr corrections undo <id>`

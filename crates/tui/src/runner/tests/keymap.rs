@@ -14,8 +14,8 @@ use std::collections::BTreeMap;
 
 /// Mail contexts shared with the web app's shortcut scopes.
 const CONTEXTS: &[&str] = &[
-    "list", "reader", "sidebar", "place", "screener", "todo", "now", "messages", "archive",
-    "reading", "updates",
+    "list", "reader", "sidebar", "place", "screener", "todo", "catchup", "expired", "now",
+    "messages", "archive", "reading", "updates",
 ];
 
 /// A key a pane handles in place (scrolling, moving focus) without
@@ -168,6 +168,14 @@ fn app_in(context: &str) -> App {
         "sidebar" => app.mailbox.active_pane = ActivePane::Sidebar,
         "place" => app.mailbox.mailbox_view = MailboxView::Place(MailPlaceData::Reading),
         "todo" => app.mailbox.mailbox_view = MailboxView::Todo,
+        "catchup" | "expired" => {
+            app.mailbox.mailbox_view = MailboxView::Todo;
+            app.mailbox.todo_page.panel = if context == "catchup" {
+                crate::app::TodoPanel::Catchup
+            } else {
+                crate::app::TodoPanel::Expired
+            };
+        }
         "now" => app.mailbox.mailbox_view = MailboxView::Now,
         "messages" => app.mailbox.mailbox_view = MailboxView::People,
         "archive" => app.mailbox.mailbox_view = MailboxView::ArchiveMode,

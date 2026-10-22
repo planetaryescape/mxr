@@ -17,9 +17,9 @@ pub const DEFAULT_KEYMAP: &str = include_str!("../keymap.toml");
 
 /// The mail contexts the TUI's keymap probe covers. A TUI binding with
 /// `contexts = "all"` is live in every one of them.
-pub const TUI_CONTEXTS: [&str; 11] = [
-    "list", "reader", "sidebar", "place", "screener", "todo", "now", "messages", "archive",
-    "reading", "updates",
+pub const TUI_CONTEXTS: [&str; 13] = [
+    "list", "reader", "sidebar", "place", "screener", "todo", "catchup", "expired", "now",
+    "messages", "archive", "reading", "updates",
 ];
 
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).

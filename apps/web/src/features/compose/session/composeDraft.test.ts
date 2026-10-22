@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { replyWithBodyIntent } from "../composeUiStore";
-import { applyPrefill, type ComposeDraftState } from "./composeDraft";
+import { addressList, applyPrefill, type ComposeDraftState } from "./composeDraft";
 
 function draft(bodyMarkdown: string): ComposeDraftState {
   return {
@@ -34,5 +34,18 @@ describe("applyPrefill", () => {
 
   test("each AI reply gets its own session", () => {
     expect(replyWithBodyIntent("m-1", "a").key).toMatch(/^compose:reply:m-1:draft-/);
+  });
+});
+
+describe("addressList", () => {
+  test("splits names and bare addresses into the daemon's shape", () => {
+    expect(addressList("Pat Lee <pat@example.com>, sam@example.com")).toEqual([
+      { name: "Pat Lee", email: "pat@example.com" },
+      { name: null, email: "sam@example.com" },
+    ]);
+  });
+
+  test("an empty recipient field has no addresses", () => {
+    expect(addressList("")).toEqual([]);
   });
 });

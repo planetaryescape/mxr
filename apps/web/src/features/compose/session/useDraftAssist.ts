@@ -9,24 +9,22 @@ import { useMutation } from "@tanstack/react-query";
 import { useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { toast } from "sonner";
 
-import { apiFetch } from "@/api/client";
+import { addedSpans, mapModelSpans, NO_SPANS, type ModelSpan } from "../assist/modelSpans";
+import { requestComposeAssist } from "../assist/api";
 import { helpAction, helpPlaceholder, type HelpLineState } from "../assist/helpLine";
-import { mapModelSpans } from "../assist/modelSpans";
 import { proofPieces } from "../assist/proof";
-import { joinTextRegion, splitTextRegion, utf8Offset } from "../assist/textRegion";
+import { joinTextRegion, splitTextRegion, utf8Offset, type TextRegion } from "../assist/textRegion";
 import type {
-  ComposeAssistAddress,
-  ComposeAssistAdjust,
   ComposeAssistAction,
+  ComposeAssistAdjust,
   ComposeAssistDraft,
   ComposeAssistProposal,
   ComposeAssistRequest,
-  ComposeAssistResponse,
 } from "../assist/types";
 import {
+  addressList,
   errorMessage,
   firstAddress,
-  splitAddresses,
   type ComposeDraftState,
   type ComposeIntent,
 } from "./composeDraft";
@@ -50,7 +48,7 @@ export interface AssistVersion {
 /** What accepting replaced, so ⌘Z can put it back in one step. */
 interface AcceptUndo {
   before: string;
-  beforeSpans: ComposeDraftState["modelSpans"];
+  beforeSpans: readonly ModelSpan[] | undefined;
   after: string;
 }
 
@@ -75,16 +73,6 @@ const NO_ADJUST: ComposeAssistAdjust = {
   proofread: false,
 };
 
-/** "Name <a@b>" or "a@b" as the daemon's address shape. */
-function addressesOf(value: string): ComposeAssistAddress[] {
-  return splitAddresses(value).map((entry) => {
-    const match = entry.match(/^(.*?)\s*<([^>]+)>$/);
-    if (!match) return { name: null, email: entry };
-    const name = match[1]?.trim() ?? "";
-    return { name: name || null, email: (match[2] ?? "").trim() };
-  });
-}
-
 function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAssistDraft {
   if (draft.draftId) return { kind: "stored", draft_id: draft.draftId };
   if (intent.messageId) {
@@ -92,7 +80,7 @@ function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAs
       return {
         kind: "forward",
         message_id: intent.messageId,
-        to: addressesOf(draft.frontmatter.to),
+        to: addressList(draft.frontmatter.to),
       };
     }
     return {
@@ -104,8 +92,35 @@ function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAs
   return {
     kind: "new",
     account_id: draft.accountId,
-    to: addressesOf(draft.frontmatter.to),
+    to: addressList(draft.frontmatter.to),
     subject: draft.frontmatter.subject,
+  };
+}
+
+/**
+ * The editor's selection as a range inside the text region, or null when
+ * the selection is empty or lies in the prefix or signature.
+ */
+export function selectedRegionRange(
+  region: TextRegion | null,
+  selection: BodySelection | null,
+): BodySelection | null {
+  if (!region || !selection || selection.from === selection.to) return null;
+  const start = Math.min(selection.from, selection.to) - region.prefix.length;
+  const end = Math.max(selection.from, selection.to) - region.prefix.length;
+  if (start < 0 || end > region.text.length) return null;
+  return { from: start, to: end };
+}
+
+function helpStateOf(
+  region: TextRegion | null,
+  selection: BodySelection | null,
+  answersMessage: boolean,
+): HelpLineState {
+  return {
+    hasText: (region?.text ?? "") !== "",
+    hasSelection: selectedRegionRange(region, selection) !== null,
+    answersMessage,
   };
 }
 
@@ -121,64 +136,68 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
   const [proof, setProof] = useState<ProofState>(EMPTY_PROOF);
   const { versions, index: versionIndex, open: proofOpen } = proof;
   const [undo, setUndo] = useState<AcceptUndo | null>(null);
+  const answersMessage = Boolean(intent.messageId);
 
-  const draftState = (): HelpLineState => {
-    const draft = draftRef.current;
-    const region = draft ? splitTextRegion(draft.bodyMarkdown) : null;
-    return {
-      hasText: (region?.text ?? "") !== "",
-      hasSelection: selectedRegionRange(draft?.bodyMarkdown ?? "", selection) !== null,
-      answersMessage: Boolean(intent.messageId),
-    };
-  };
+  // The text region is split once per render; handlers split the live draft
+  // when they run, so a keystroke between renders is never missed.
+  const rendered = draftRef.current;
+  const region = rendered ? splitTextRegion(rendered.bodyMarkdown) : null;
+  const helpState = helpStateOf(region, selection, answersMessage);
+  const version = versions[versionIndex] ?? null;
+  const showingProof = proofOpen && version !== null;
+
+  function helpStateNow(): HelpLineState {
+    const current = draftRef.current;
+    return helpStateOf(
+      current ? splitTextRegion(current.bodyMarkdown) : null,
+      selection,
+      answersMessage,
+    );
+  }
 
   const ask = useMutation({
     mutationFn: async (input: { action: ComposeAssistAction; instruction: string }) => {
       const current = draftRef.current;
       if (!current) throw new Error("No draft is open");
-      const region = splitTextRegion(current.bodyMarkdown);
+      const live = splitTextRegion(current.bodyMarkdown);
       const to = firstAddress(current.frontmatter.to);
       if (!intent.messageId && !to) throw new Error("Add a recipient before drafting");
       const subject = current.frontmatter.subject.trim();
-      if (!intent.messageId && !region.text.trim() && !input.instruction.trim() && !subject) {
+      if (!intent.messageId && !live.text.trim() && !input.instruction.trim() && !subject) {
         throw new Error("Say what this email should do");
       }
-      const range = selectedRegionRange(current.bodyMarkdown, selection);
+      const range = selectedRegionRange(live, selection);
       const request: ComposeAssistRequest = {
         draft: assistDraft(intent, current),
-        text: region.text,
-        ...(range
-          ? {
-              selection: {
-                start: utf8Offset(region.text, range.from),
-                end: utf8Offset(region.text, range.to),
-              },
-            }
-          : {}),
+        text: live.text,
         action: input.action,
-        ...(input.instruction.trim() ? { instruction: input.instruction.trim() } : {}),
         adjust,
       };
-      const response = await apiFetch<ComposeAssistResponse>("/api/v1/mail/compose/assist", {
-        method: "POST",
-        body: request,
-      });
+      if (range) {
+        request.selection = {
+          start: utf8Offset(live.text, range.from),
+          end: utf8Offset(live.text, range.to),
+        };
+      }
+      const note = input.instruction.trim();
+      if (note) request.instruction = note;
+      const response = await requestComposeAssist(request);
       return {
         response,
-        sentText: region.text,
+        sentText: live.text,
         action: input.action,
         instruction: input.instruction,
       };
     },
     onSuccess: ({ response, sentText, action, instruction: asked }) => {
-      const version: AssistVersion = {
+      const next: AssistVersion = {
         proposal: response.proposal,
         sentText,
         action,
         instruction: asked,
       };
       setProof((current) => ({
-        versions: [...current.versions, version],
+        versions: [...current.versions, next],
         index: current.versions.length,
         open: true,
       }));
@@ -193,7 +212,7 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
 
   /** ↵ in the help line: finish, edit the selection, or write. */
   function submit() {
-    run(helpAction(draftState()), instruction);
+    run(helpAction(helpStateNow()), instruction);
   }
 
   /** The Polish word: the one action that may change the user's words. */
@@ -215,32 +234,26 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
    * the help line's current action; no note repeats the earlier request.
    */
   function again(note?: string) {
-    const version = versions[versionIndex];
     if (!version) return;
-    if (note?.trim()) run(helpAction(draftState()), note.trim());
+    const trimmed = note?.trim() ?? "";
+    if (trimmed) run(helpAction(helpStateNow()), trimmed);
     else run(version.action, version.instruction);
   }
 
   function accept() {
     const current = draftRef.current;
-    const version = versions[versionIndex];
     if (!current || !version) return;
-    const region = splitTextRegion(current.bodyMarkdown);
-    if (region.text !== version.sentText) return;
-    const { body, textStart } = joinTextRegion(region, version.proposal.text);
-    const spans = mapModelSpans(current.modelSpans ?? [], current.bodyMarkdown, body);
-    // Only the words the model added are marked; the user's own are not.
-    let offset = 0;
-    for (const piece of proofPieces(version.proposal.changes, version.proposal.gaps)) {
-      if (piece.kind === "removed") continue;
-      const length = piece.text.length;
-      if (piece.kind === "added") {
-        spans.push({ start: textStart + offset, end: textStart + offset + length });
-      }
-      offset += length;
-    }
+    const live = splitTextRegion(current.bodyMarkdown);
+    if (live.text !== version.sentText) return;
+    const { body, textStart } = joinTextRegion(live, version.proposal.text);
+    const spans = mapModelSpans(current.modelSpans ?? NO_SPANS, current.bodyMarkdown, body);
+    const added = addedSpans(
+      proofPieces(version.proposal.changes, version.proposal.gaps),
+      textStart,
+    );
+    const modelSpans = added.length > 0 ? [...spans, ...added] : spans;
     setUndo({ before: current.bodyMarkdown, beforeSpans: current.modelSpans, after: body });
-    setDraft((draft) => (draft ? { ...draft, bodyMarkdown: body, modelSpans: spans } : draft));
+    setDraft((draft) => (draft ? { ...draft, bodyMarkdown: body, modelSpans } : draft));
     setDirty(true);
     setProof(EMPTY_PROOF);
   }
@@ -270,9 +283,6 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     });
   }
 
-  const version = versions[versionIndex] ?? null;
-  const currentText = draftRef.current ? splitTextRegion(draftRef.current.bodyMarkdown).text : "";
-  const showingProof = proofOpen && version !== null;
   return {
     helpOpen,
     openHelp,
@@ -287,7 +297,7 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     setSelection,
     placeholder: showingProof
       ? "Say what to change, or press ↵ to try again"
-      : helpPlaceholder(draftState()),
+      : helpPlaceholder(helpState),
     submit,
     polish,
     again,
@@ -297,26 +307,10 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     versionIndex,
     stepVersion,
     proofOpen: showingProof,
-    stale: version !== null && version.sentText !== currentText,
+    stale: version !== null && version.sentText !== (region?.text ?? ""),
     accept,
     keepMine,
     canUndoAccept: undo !== null && draftRef.current?.bodyMarkdown === undo.after,
     undoAccept,
   };
-}
-
-/**
- * The editor's selection as a range inside the text region, or null when
- * the selection is empty or lies in the prefix or signature.
- */
-export function selectedRegionRange(
-  body: string,
-  selection: BodySelection | null,
-): BodySelection | null {
-  if (!selection || selection.from === selection.to) return null;
-  const region = splitTextRegion(body);
-  const start = Math.min(selection.from, selection.to) - region.prefix.length;
-  const end = Math.max(selection.from, selection.to) - region.prefix.length;
-  if (start < 0 || end > region.text.length) return null;
-  return { from: start, to: end };
 }

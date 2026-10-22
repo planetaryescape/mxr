@@ -14,12 +14,12 @@ import { DraftProvenanceLine } from "./DraftProvenanceLine";
 import type { ProofPiece } from "./assist/proof";
 import type { DraftProvenance } from "./draftProvenanceFormat";
 
-const PIECE_CLASS: Record<ProofPiece["kind"], string> = {
+const PIECE_CLASS = {
   kept: "text-foreground",
   added: "text-foreground underline decoration-signal decoration-1 underline-offset-4",
   removed: "text-text-3 line-through decoration-1",
   gap: "text-cue",
-};
+} satisfies Record<ProofPiece["kind"], string>;
 
 interface DraftProofProps {
   pieces: ProofPiece[];
@@ -63,7 +63,14 @@ export function DraftProof({
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (isComposingKey(event)) return;
+    // Enter and Tab belong to the proof only while it or one of its gaps has
+    // focus; on a focused button they keep their own meaning (activate, move).
+    const target = event.target;
+    const onProofSurface =
+      target === containerRef.current ||
+      (target instanceof HTMLElement && target.dataset.gap !== undefined);
     if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+      if (!onProofSurface) return;
       event.preventDefault();
       if (stale) onAgain();
       else onAccept();
@@ -76,12 +83,13 @@ export function DraftProof({
     } else if (event.key === "ArrowRight" && versionCount > 1) {
       event.preventDefault();
       onStep(1);
-    } else if (event.key === "Tab" && gapCount > 0) {
+    } else if (event.key === "Tab" && gapCount > 0 && onProofSurface) {
       // Tab moves gap to gap; with no gap it is ordinary focus movement.
       const gaps = Array.from(
         containerRef.current?.querySelectorAll<HTMLElement>("[data-gap]") ?? [],
       );
-      const current = gaps.indexOf(document.activeElement as HTMLElement);
+      const focused = document.activeElement;
+      const current = gaps.findIndex((gap) => gap === focused);
       const next =
         current === -1
           ? gaps[event.shiftKey ? gaps.length - 1 : 0]

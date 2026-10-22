@@ -28,10 +28,10 @@ interface CodeMirrorComposeEditorProps {
   /** The selection in the body (UTF-16), or null when there is none. */
   onSelectionChange?: (selection: { from: number; to: number } | null) => void;
   /** Ranges the model wrote that the user has not edited; drawn with a hairline. */
-  modelSpans?: ModelSpan[];
+  modelSpans?: readonly ModelSpan[];
 }
 
-const setModelSpans = StateEffect.define<ModelSpan[]>();
+const setModelSpans = StateEffect.define<readonly ModelSpan[]>();
 
 /**
  * Hairline marks under model-written text. The spans are owned by the
@@ -130,6 +130,16 @@ export function CodeMirrorComposeEditor({
 
   useEffect(() => {
     if (!hostRef.current) return;
+    // Only a real selection is reported; a caret moving is not a change the
+    // compose surface acts on, and reporting it re-renders the whole panel.
+    let lastSelection: { from: number; to: number } | null = null;
+    const reportSelection = (state: EditorState) => {
+      const main = state.selection.main;
+      const next = main.empty ? null : { from: main.from, to: main.to };
+      if (next?.from === lastSelection?.from && next?.to === lastSelection?.to) return;
+      lastSelection = next;
+      callbacksRef.current.onSelectionChange?.(next);
+    };
     // Ex commands live in a global vim registry; redefining on mount keeps
     // them routed at the latest callbacks via callbacksRef.
     Vim.defineEx("write", "w", () => {
@@ -202,12 +212,7 @@ export function CodeMirrorComposeEditor({
           ),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) callbacksRef.current.onChange(update.state.doc.toString());
-            if (update.docChanged || update.selectionSet) {
-              const main = update.state.selection.main;
-              callbacksRef.current.onSelectionChange?.(
-                main.empty ? null : { from: main.from, to: main.to },
-              );
-            }
+            if (update.docChanged || update.selectionSet) reportSelection(update.state);
           }),
         ],
       }),

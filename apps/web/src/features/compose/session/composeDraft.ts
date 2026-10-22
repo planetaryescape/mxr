@@ -27,7 +27,7 @@ export interface ComposeDraftState {
   frontmatter: ComposeFrontmatter;
   bodyMarkdown: string;
   /** Ranges of the body the model wrote and the user has not edited since. */
-  modelSpans?: ModelSpan[];
+  modelSpans?: readonly ModelSpan[];
   issues: ComposeIssue[];
   accountId: string;
   kind: string;
@@ -187,6 +187,16 @@ export function splitAddresses(value: string): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+/** "Name <a@b>" or "a@b", in the daemon's address shape. */
+export function addressList(value: string): { name: string | null; email: string }[] {
+  return splitAddresses(value).map((entry) => {
+    const match = entry.match(/^(.*?)\s*<([^>]+)>$/);
+    if (!match) return { name: null, email: entry };
+    const name = match[1]?.trim() ?? "";
+    return { name: name || null, email: (match[2] ?? "").trim() };
+  });
 }
 
 export function firstAddress(value: string): string | undefined {

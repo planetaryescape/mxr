@@ -77,6 +77,41 @@ describe("joinTextRegion", () => {
   });
 });
 
+describe("accepting keeps the user's spacing byte for byte", () => {
+  const accept = (body: string, proposal: string) => {
+    const region = splitTextRegion(body);
+    return joinTextRegion(region, proposal);
+  };
+
+  test("a single newline before the signature is not widened to a blank line", () => {
+    expect(accept("Hi\n-- \nBK", "Hi there").body).toBe("Hi there\n-- \nBK");
+  });
+
+  test("the signature and the spacing after the text come back exactly", () => {
+    const body = "Thursday works.  \n\n\n-- \nBK\n";
+    const { body: next } = accept(body, "Thursday works. Friday too.");
+    expect(next).toBe("Thursday works. Friday too.  \n\n\n-- \nBK\n");
+  });
+
+  test("a leading space in the proof is kept verbatim, so marks stay on the words", () => {
+    const { body, textStart } = accept("Hi\n\n-- \nBK", " Hi there");
+    expect(body).toBe(" Hi there\n\n-- \nBK");
+    expect(body.slice(textStart, textStart + " Hi there".length)).toBe(" Hi there");
+  });
+
+  test("a signature-only body gets a break before the new text", () => {
+    const { body, textStart } = accept("-- \nBK", "Hi");
+    expect(body).toBe("Hi\n\n-- \nBK");
+    expect(textStart).toBe(0);
+  });
+
+  test("an empty proof leaves the prefix and signature joined by one break", () => {
+    expect(joinTextRegion({ prefix: "Hi", text: "", suffix: "-- \nBK" }, "").body).toBe(
+      "Hi\n\n-- \nBK",
+    );
+  });
+});
+
 describe("UTF-8 offsets", () => {
   test("a selection after a multi-byte character is counted in bytes", () => {
     const text = "café au lait";

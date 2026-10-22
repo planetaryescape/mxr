@@ -68,23 +68,36 @@ export function splitTextRegion(body: string): TextRegion {
   };
 }
 
+export interface JoinedRegion {
+  body: string;
+  /** UTF-16 index where `text` starts in `body`. */
+  textStart: number;
+}
+
+/** A break is needed where two non-blank pieces meet with no whitespace between. */
+function needsBreak(left: string, right: string): boolean {
+  return left !== "" && right !== "" && !/\s$/.test(left) && !/^\s/.test(right);
+}
+
 /**
- * Put a new text back between the prefix and suffix. The separators are
- * re-created as blank lines, so a round trip through an unchanged region is
- * exact only when the body already used blank lines there. `textStart` is
- * where the text begins in the returned body, in UTF-16 units.
+ * Put a new text back between the prefix and suffix, byte for byte. The
+ * prefix and suffix keep their own whitespace; a blank-line break is added
+ * only where two pieces would otherwise run together. The text is inserted
+ * as the proof has it, so `textStart` is exact for the offsets of its runs.
  */
-export function joinTextRegion(
-  region: TextRegion,
-  text: string,
-): { body: string; textStart: number } {
-  const parts = [region.prefix.trimEnd(), text.trim(), region.suffix.trimStart()];
-  const kept = parts.map((part, index) => ({ part, index })).filter(({ part }) => part !== "");
-  const body = kept.map(({ part }) => part).join("\n\n");
-  const before = kept.find(({ index }) => index === 1);
-  const prefixPart = kept.find(({ index }) => index === 0);
-  const textStart = before ? (prefixPart ? prefixPart.part.length + 2 : 0) : -1;
-  return { body, textStart };
+export function joinTextRegion(region: TextRegion, text: string): JoinedRegion {
+  const { prefix, suffix } = region;
+  if (text === "") {
+    const separator = needsBreak(prefix, suffix) ? "\n\n" : "";
+    return { body: prefix + separator + suffix, textStart: prefix.length };
+  }
+  const beforeText = needsBreak(prefix, text) ? "\n\n" : "";
+  const afterText = needsBreak(text, suffix) ? "\n\n" : "";
+  const textStart = prefix.length + beforeText.length;
+  return {
+    body: prefix + beforeText + text + afterText + suffix,
+    textStart,
+  };
 }
 
 /** UTF-8 byte offset of a UTF-16 index into `text`. */

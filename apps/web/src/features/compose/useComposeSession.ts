@@ -41,7 +41,7 @@ import { useComposeAutofocus } from "./session/useComposeAutofocus";
 import { useComposeAutosave } from "./session/useComposeAutosave";
 import { useComposeSend, type ComposeSessionOptions } from "./session/useComposeSend";
 import { useDraftAssist } from "./session/useDraftAssist";
-import { mapModelSpans } from "./assist/modelSpans";
+import { mapModelSpans, NO_SPANS } from "./assist/modelSpans";
 import { useDraftSaveActions } from "./session/useDraftSaveActions";
 import { useSenderAccounts } from "./session/useSenderAccounts";
 
@@ -256,7 +256,11 @@ export function useComposeSession(
         ? {
             ...current,
             bodyMarkdown: expanded,
-            modelSpans: mapModelSpans(current.modelSpans ?? [], current.bodyMarkdown, expanded),
+            modelSpans: mapModelSpans(
+              current.modelSpans ?? NO_SPANS,
+              current.bodyMarkdown,
+              expanded,
+            ),
           }
         : current,
     );

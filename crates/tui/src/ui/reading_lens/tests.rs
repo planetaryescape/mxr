@@ -180,7 +180,7 @@ pub(crate) fn edition() -> ReadingEditionData {
 fn page() -> ReadingPageState {
     ReadingPageState {
         edition: Some(edition()),
-        guide: Some(READING_GUIDE.to_data(|_| None)),
+        guide: Some(READING_GUIDE.to_data(|_| None, &mxr_keymap::guide_key)),
         ..ReadingPageState::default()
     }
 }

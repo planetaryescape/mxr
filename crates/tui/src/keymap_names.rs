@@ -199,6 +199,9 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
         "ViewportMiddle" => Action::ViewportMiddle,
         "ViewportTop" => Action::ViewportTop,
         "VisualLineMode" => Action::VisualLineMode,
+        "ReadingBack" => Action::ReadingBack,
+        "ReadingHighlight" => Action::ReadingHighlight,
+        "ReadingHighlights" => Action::ReadingHighlights,
         _ => return None,
     })
 }

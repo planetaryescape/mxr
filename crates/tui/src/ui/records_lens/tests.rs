@@ -217,7 +217,7 @@ pub(crate) fn ledger(records: Vec<RecordData>) -> RecordLedgerData {
 pub(crate) fn page(records: Vec<RecordData>, hints_seen: bool) -> RecordsPageState {
     RecordsPageState {
         ledger: Some(ledger(records)),
-        guide: Some(ARCHIVE_GUIDE.to_data(|_| hints_seen.then(Utc::now))),
+        guide: Some(ARCHIVE_GUIDE.to_data(|_| hints_seen.then(Utc::now), &mxr_keymap::guide_key)),
         ..RecordsPageState::default()
     }
 }

@@ -230,7 +230,7 @@ pub(crate) fn samir_page() -> PersonPageData {
 pub(crate) fn page(data: MessagesData, hints_seen: bool) -> MessagesPageState {
     let mut state = MessagesPageState {
         messages: Some(data),
-        guide: Some(MESSAGES_GUIDE.to_data(|_| hints_seen.then(Utc::now))),
+        guide: Some(MESSAGES_GUIDE.to_data(|_| hints_seen.then(Utc::now), &mxr_keymap::guide_key)),
         ..MessagesPageState::default()
     };
     let samir = samir_page();

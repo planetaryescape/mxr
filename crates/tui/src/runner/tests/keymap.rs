@@ -14,8 +14,20 @@ use std::collections::BTreeMap;
 
 /// Mail contexts shared with the web app's shortcut scopes.
 const CONTEXTS: &[&str] = &[
-    "list", "reader", "sidebar", "place", "screener", "todo", "catchup", "expired", "now",
-    "messages", "archive", "reading", "updates",
+    "list",
+    "reader",
+    "sidebar",
+    "place",
+    "screener",
+    "todo",
+    "catchup",
+    "expired",
+    "now",
+    "messages",
+    "archive",
+    "reading",
+    "reading-reader",
+    "updates",
 ];
 
 /// A key a pane handles in place (scrolling, moving focus) without
@@ -180,6 +192,29 @@ fn app_in(context: &str) -> App {
         "messages" => app.mailbox.mailbox_view = MailboxView::People,
         "archive" => app.mailbox.mailbox_view = MailboxView::ArchiveMode,
         "reading" => app.mailbox.mailbox_view = MailboxView::Reading,
+        "reading-reader" => {
+            app.mailbox.mailbox_view = MailboxView::Reading;
+            let edition = crate::ui::reading_lens::tests::edition();
+            let item = edition.bands[0].items[0].clone();
+            let source = edition.sources[0].clone();
+            app.set_reading_edition(edition, None);
+            app.set_reading_item(
+                &item.item_key.clone(),
+                mxr_protocol::ReadingItemDetailData {
+                    source_data: source,
+                    paragraphs: Vec::new(),
+                    html: None,
+                    article: None,
+                    article_error: None,
+                    highlights: Vec::new(),
+                    marginalia: None,
+                    minutes_left: 1,
+                    pace_wpm: 230,
+                    item,
+                },
+            );
+            app.mailbox.reading_page.reader_focused = true;
+        }
         "updates" => app.mailbox.mailbox_view = MailboxView::Updates,
         "screener" => app.modals.screener.visible = true,
         other => panic!("unknown context {other}"),

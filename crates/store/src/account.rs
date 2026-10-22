@@ -12,6 +12,9 @@ pub struct AccountIdentitySlot {
     pub tag: Option<String>,
 }
 
+/// `id, name, created_at, identity_color, identity_tag` from `accounts`.
+type IdentitySlotRow = (String, String, i64, Option<String>, Option<String>);
+
 impl super::Store {
     pub async fn insert_account(&self, account: &Account) -> Result<(), sqlx::Error> {
         self.insert_account_reserving(account, &[]).await
@@ -332,7 +335,7 @@ impl super::Store {
         &self,
     ) -> Result<Vec<AccountIdentitySlot>, sqlx::Error> {
         let started_at = std::time::Instant::now();
-        let rows: Vec<(String, String, i64, Option<String>, Option<String>)> = sqlx::query_as(
+        let rows: Vec<IdentitySlotRow> = sqlx::query_as(
             "SELECT id, name, created_at, identity_color, identity_tag FROM accounts ORDER BY created_at, id",
         )
         .fetch_all(self.reader())

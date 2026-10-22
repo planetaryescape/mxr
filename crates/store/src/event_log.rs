@@ -285,9 +285,9 @@ impl super::Store {
     }
 
     /// Deletes event rows older than `cutoff_timestamp` (unix seconds), in
-    /// batches of [`PRUNE_BATCH_ROWS`] so one prune never holds the writer for
+    /// batches of `PRUNE_BATCH_ROWS` so one prune never holds the writer for
     /// long. The newest lexical-rebuild marker is never deleted; see
-    /// [`PRUNABLE_EVENTS`].
+    /// `PRUNABLE_EVENTS`.
     pub async fn prune_events_before(&self, cutoff_timestamp: i64) -> Result<u64, sqlx::Error> {
         let sql = format!(
             "DELETE FROM event_log WHERE rowid IN \

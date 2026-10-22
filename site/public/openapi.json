@@ -14426,6 +14426,15 @@
           "healthy": {
             "type": "boolean"
           },
+          "history_retention_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "`logging.event_retention_days` as the daemon reads the config file now.\n`None` from a daemon that predates the field, or when the file cannot be\nread or parsed.",
+            "minimum": 0
+          },
           "index_exists": {
             "type": "boolean"
           },
@@ -24704,6 +24713,45 @@
                 "type": "string",
                 "enum": [
                   "UpsertAccountConfig"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Writes only `[accounts.<key>] color/tag`. Unlike `UpsertAccountConfig`\nit never changes `default_account` or the account's other fields.\n`dry_run` computes the same plan and writes nothing.",
+            "required": [
+              "key",
+              "dry_run",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetAccountIdentity"
+                ]
+              },
+              "color": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountColor"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "key": {
+                "type": "string"
+              },
+              "tag": {
+                "type": [
+                  "string",
+                  "null"
                 ]
               }
             }

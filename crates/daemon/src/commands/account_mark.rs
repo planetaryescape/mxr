@@ -96,11 +96,6 @@ impl AccountMarks {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
-    )]
-
     use super::*;
     use mxr_core::AccountColor;
     use mxr_protocol::{AccountEditModeData, AccountIdentityData, AccountSourceData};

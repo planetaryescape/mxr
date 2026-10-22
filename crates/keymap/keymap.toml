@@ -1922,9 +1922,7 @@ id = "place.down"
 label = "Next"
 short_label = "Next"
 group = "Move"
-scopes = ["place"]
-keys = ["j", "ArrowDown"]
-hide_in_palette = true
+clients = ["tui"]
 
 [[action.tui]]
 name = "MoveDown"
@@ -1936,9 +1934,7 @@ id = "place.up"
 label = "Previous"
 short_label = "Previous"
 group = "Move"
-scopes = ["place"]
-keys = ["k", "ArrowUp"]
-hide_in_palette = true
+clients = ["tui"]
 
 [[action.tui]]
 name = "MoveUp"
@@ -1950,9 +1946,7 @@ id = "place.open"
 label = "Open, or expand a bundle"
 short_label = "Open"
 group = "Move"
-scopes = ["place"]
-keys = ["Enter", "o"]
-hide_in_palette = true
+clients = ["tui"]
 
 [[action.tui]]
 name = "OpenSelected"
@@ -1965,8 +1959,7 @@ label = "Done here: let go of this in Updates or Reading"
 short_label = "Done here"
 description = "On a sender's row in Updates, every conversation of theirs, after a preview"
 group = "Triage"
-scopes = ["place"]
-keys = ["e"]
+clients = ["tui"]
 
 [[action.tui]]
 name = "Archive"
@@ -1978,23 +1971,19 @@ id = "place.pin"
 label = "Pin or unpin (a sweep leaves pins)"
 short_label = "Pin"
 group = "Triage"
-scopes = ["place"]
-keys = ["p"]
+clients = ["tui"]
 
 [[action.tui]]
 name = "TogglePin"
 keys = ["p"]
 contexts = ["place"]
 
-# S and A, as in the TUI: s means star in every mail list.
 [[action]]
 id = "place.sweep-bundle"
 label = "Sweep this sender's bundle…"
 short_label = "Sweep sender"
 group = "Triage"
-scopes = ["place"]
-keys = ["S"]
-note = "Previews the daemon's dry run first; undo afterwards"
+clients = ["tui"]
 
 [[action.tui]]
 name = "SweepBundle"
@@ -2006,9 +1995,7 @@ id = "place.sweep-all"
 label = "Sweep the whole place…"
 short_label = "Sweep all"
 group = "Triage"
-scopes = ["place"]
-keys = ["A"]
-note = "Everything unpinned here; previews first and opens on Cancel (Tab, then Enter)"
+clients = ["tui"]
 
 [[action.tui]]
 name = "SweepPlace"
@@ -2020,9 +2007,7 @@ id = "place.move-sender"
 label = "Move sender to…"
 description = "People, Reading, Paper trail, Screened out or automatic, for their future mail too"
 group = "Triage"
-scopes = ["place"]
-keys = ["K"]
-note = "In the reader K is the previous message; use the palette or the line under the thread"
+clients = ["tui"]
 
 [[action.tui]]
 name = "OpenSenderKindMenu"
@@ -2033,8 +2018,7 @@ contexts = ["place"]
 id = "place.unsubscribe"
 label = "Unsubscribe…"
 group = "Triage"
-scopes = ["place"]
-keys = ["D"]
+clients = ["tui"]
 
 [[action.tui]]
 name = "Unsubscribe"
@@ -3417,7 +3401,7 @@ label = "Move to…"
 short_label = "Move"
 description = "This email only: Messages, To do, Updates, Reading or Archive"
 group = "Triage"
-scopes = ["now", "messages", "list", "reader", "place", "updates", "reading"]
+scopes = ["now", "messages", "list", "reader", "updates", "reading"]
 keys = ["X"]
 
 [[action.tui]]

@@ -12,8 +12,8 @@ import { SENDER_CHOICES } from "./NewSenderChips";
 export function newSenderActions(
   scope: Extract<ActionScope, "now" | "messages">,
 ): ActionBehavior[] {
-  return SENDER_CHOICES.map(({ key }) => ({
-    id: `${scope}.sender-${key}`,
-    command: `senderChoice${key}`,
+  return SENDER_CHOICES.map(({ slot }) => ({
+    id: `${scope}.sender-${slot}`,
+    command: `senderChoice${slot}`,
   }));
 }

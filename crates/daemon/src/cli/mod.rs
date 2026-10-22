@@ -2759,6 +2759,11 @@ pub enum KeysAction {
         /// The key as mxr spells it, such as e, g i or Mod+k.
         key: String,
     },
+    /// Check keys.toml and name everything mxr would ignore in it.
+    Check {
+        /// The file to check; defaults to keys.toml beside your config.
+        file: Option<std::path::PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

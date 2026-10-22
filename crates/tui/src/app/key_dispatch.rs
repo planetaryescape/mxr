@@ -46,8 +46,8 @@ fn spelling(key: KeyEvent) -> Option<String> {
 
 impl App {
     /// What `key` does in `context`, completing a waiting sequence first.
-    /// A second key that completes nothing is read on its own, as the
-    /// built-in chords read it.
+    /// A second key that completes nothing cancels the sequence and runs
+    /// nothing, as the built-in chords do.
     pub(crate) fn defined_key(&mut self, context: &str, key: KeyEvent) -> DefinedKey {
         let keymap = mxr_keymap::defaults();
         let Some(chord) = spelling(key) else {
@@ -58,6 +58,8 @@ impl App {
             if let Some((_, binding)) = keymap.tui_binding(context, &format!("{first} {chord}")) {
                 return resolved(&binding.name);
             }
+            self.input.cancel_prefix(first, key);
+            return DefinedKey::Unbound;
         }
         if let Some((_, binding)) = keymap.tui_binding(context, &chord) {
             return resolved(&binding.name);

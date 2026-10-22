@@ -356,6 +356,9 @@ impl App {
             let esc = crossterm::event::KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
             action = self.handle_key_press(esc);
         }
+        if let Some(keys) = self.input.take_dead_end() {
+            self.status_message = Some(format!("{keys} is not a shortcut"));
+        }
         self.input.end_turn();
         action
     }

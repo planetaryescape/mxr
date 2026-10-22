@@ -7,6 +7,7 @@
 //! daemon, and the header line, card and keys from Updates' mode guide.
 //! Pure render; wiring lives in `app/updates_actions.rs`.
 
+use chrono::{DateTime, Utc};
 use mxr_protocol::{
     UpdateLineData, UpdateSectionData, UpdatesDigestData, UpdatesLetGoData, UPDATES_GUIDE,
 };
@@ -15,6 +16,7 @@ use ratatui::widgets::*;
 
 use super::now_lens::{marker, section, Body};
 use crate::app::{ActivePane, UpdatesPageState, UpdatesRow, UpdatesTuneMenu};
+use crate::ui::mail_list::format_date_relative;
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
 
@@ -22,6 +24,9 @@ pub struct UpdatesView<'a> {
     pub page: &'a UpdatesPageState,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
+    /// "Now" for relative and absolute arrival times, passed in so the render
+    /// doesn't read the clock.
+    pub now: chrono::DateTime<chrono::Utc>,
 }
 
 /// What follows the fact: a delta, estimate, identity, time and "in To do".
@@ -85,12 +90,14 @@ fn suffix(line: &UpdateLineData) -> String {
 }
 
 /// One source line: a mark for its section, the source, the fact and
-/// what code says about it, and the count for a folded routine line.
+/// what code says about it, the compact time of its latest email, and the
+/// count for a folded routine line.
 pub(crate) fn line_row(
     line: &UpdateLineData,
     selected: bool,
     width: usize,
     theme: &crate::theme::Theme,
+    now: DateTime<Utc>,
 ) -> Line<'static> {
     let (mark, mark_style) = match line.section {
         UpdateSectionData::NeedsALook => ("! ", Style::default().fg(theme.warning)),
@@ -102,7 +109,8 @@ pub(crate) fn line_row(
     } else {
         String::new()
     };
-    let avail = width.saturating_sub(2 + 2 + count.chars().count());
+    let when = format!("  {}", format_date_relative(&line.latest_at, &now));
+    let avail = width.saturating_sub(2 + 2 + count.chars().count() + when.chars().count());
     let source_width = (avail / 4).clamp(8, 18).min(avail);
     let rest = avail.saturating_sub(source_width + 2);
     let fact = one_line(&line.fact);
@@ -126,6 +134,7 @@ pub(crate) fn line_row(
             format!("{:<rest$}", truncate(&text, rest)),
             Style::default().fg(theme.text_secondary),
         ),
+        Span::styled(when, Style::default().fg(theme.text_muted)),
         Span::styled(count, Style::default().fg(theme.text_muted)),
     ])
 }
@@ -219,7 +228,7 @@ fn body_for(
                     body.blank();
                     body.lines.push(section(title, None, width, theme));
                 }
-                body.select(line_row(line, selected, width, theme), selected);
+                body.select(line_row(line, selected, width, theme, view.now), selected);
                 if let Some(suggested) = &line.todo_suggestion {
                     for text in wrap(&one_line(suggested), width.saturating_sub(8)) {
                         body.text(
@@ -674,6 +683,7 @@ pub(crate) mod tests {
                 frame,
                 Rect::new(0, 0, width, 30),
                 &UpdatesView {
+                    now: chrono::Utc::now(),
                     page,
                     selected_index: 0,
                     active_pane: &ActivePane::MailList,

@@ -105,6 +105,9 @@ fn result_list_renders_first_batch_before_query_completes() {
             frame,
             Rect::new(0, 0, 160, 24),
             SearchPageView {
+                zone: mxr_tui::ui::received_label::DisplayZone::Fixed(
+                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                ),
                 state: &state,
                 rows: &rows,
                 selected_set: &selected_set,
@@ -112,6 +115,7 @@ fn result_list_renders_first_batch_before_query_completes() {
                 preview_messages: &[],
                 preview_scroll: 0,
                 html_images: &mut html_images,
+                now: chrono::Utc::now(),
             },
             &mxr_tui::theme::Theme::default(),
         );

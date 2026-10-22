@@ -47,6 +47,22 @@ async fn context_and_gist_routes_forward_to_the_daemon() {
                         skipped: vec![],
                     },
                 },
+                Request::GetThreadPreviews { thread_ids } => ResponseData::ThreadPreviews {
+                    previews: thread_ids
+                        .into_iter()
+                        .map(|thread_id| mxr_protocol::ThreadPreviewData {
+                            thread_id,
+                            subject: "Invoice".into(),
+                            sender_name: None,
+                            sender_email: "dana@example.com".into(),
+                            latest_at: 1_760_000_000,
+                            message_count: 2,
+                            unread_count: 1,
+                            snippet: "Please confirm".into(),
+                            has_attachments: false,
+                        })
+                        .collect(),
+                },
                 _ => return Some(Response::error("unexpected request")),
             };
             Some(Response::Ok { data })
@@ -129,6 +145,34 @@ async fn context_and_gist_routes_forward_to_the_daemon() {
         .unwrap();
     assert_eq!(bad_batch.status(), reqwest::StatusCode::BAD_REQUEST);
 
+    let previews: serde_json::Value = client
+        .post(format!("http://{addr}/api/v1/mail/threads/previews"))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "thread_ids": [other.to_string()] }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(previews["kind"], "ThreadPreviews");
+    assert_eq!(previews["previews"][0]["thread_id"], other.to_string());
+    assert!(previews["previews"][0].get("body").is_none());
+
+    for body in [
+        serde_json::json!({ "thread_ids": [] }),
+        serde_json::json!({ "thread_ids": ["nope"] }),
+    ] {
+        let bad = client
+            .post(format!("http://{addr}/api/v1/mail/threads/previews"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), reqwest::StatusCode::BAD_REQUEST);
+    }
+
     let seen = seen.lock().unwrap();
     assert!(matches!(&seen[0], Request::GetThreadContext { thread_id: id } if *id == thread_id));
     assert!(matches!(
@@ -139,5 +183,13 @@ async fn context_and_gist_routes_forward_to_the_daemon() {
         &seen[2],
         Request::GetThreadGists { thread_ids, generate: true, automated: true } if thread_ids == &vec![thread_id.clone(), other.clone()]
     ));
-    assert_eq!(seen.len(), 3, "a bad id never reaches the daemon");
+    assert!(matches!(
+        &seen[3],
+        Request::GetThreadPreviews { thread_ids } if thread_ids == &vec![other.clone()]
+    ));
+    assert_eq!(
+        seen.len(),
+        4,
+        "a bad or empty batch never reaches the daemon"
+    );
 }

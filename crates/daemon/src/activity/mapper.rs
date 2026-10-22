@@ -753,6 +753,7 @@ pub fn map_request(
         | Request::SuggestCollaborators { .. }
         | Request::GetThreadBriefing { .. }
         | Request::GetThreadContext { .. }
+        | Request::GetThreadPreviews { .. }
         | Request::GetThreadGist { .. }
         | Request::GetThreadGists { .. }
         | Request::DetectPromises { .. }

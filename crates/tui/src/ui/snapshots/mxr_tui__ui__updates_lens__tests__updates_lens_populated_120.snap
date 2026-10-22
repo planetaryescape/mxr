@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/updates_lens.rs
+assertion_line: 702
 expression: rendered
 ---
 "╭ Updates ─ Notifications gathered twice a day. Read the digest, then let go. ─────────────────────────────────────────╮"
@@ -7,19 +8,19 @@ expression: rendered
 "│  2 need a look, 2 changed. 22 routine from 6 sources.                                                                │"
 "│                                                                                                                      │"
 "│ ── Needs a look ──────────────────────────────────────────────────────────────────────────────────────────────────── │"
-"│▌ ! Google              Security alert: New sign-in from Chrome on Windows · 06:12 · (already in To do)               │"
-"│  ! Stripe (stripe.co…  Payout of R 4,210.00 failed: bank declined                                                    │"
+"│▌ ! Google              Security alert: New sign-in from Chrome on Windows · 06:12 · (already in To do)          Oct 7│"
+"│  ! Stripe (stripe.co…  Payout of R 4,210.00 failed: bank declined                                               Oct 7│"
 "│      Suggested to-do: failed payment from Stripe (stripe.com) (rule). t adds it.                                     │"
 "│                                                                                                                      │"
 "│ ── Changed ───────────────────────────────────────────────────────────────────────────────────────────────────────── │"
-"│  ◆ Bookshop            Parcel out for delivery · Expected by Thu 8 Oct · DHL · Notebook · Reference TRACK-123        │"
-"│  ◆ Strava              Your week in running: 21.3 km over 3 runs · up 12% on last week                               │"
+"│  ◆ Bookshop            Parcel out for delivery · Expected by Thu 8 Oct · DHL · Notebook · Reference TRACK-123   Oct 7│"
+"│  ◆ Strava              Your week in running: 21.3 km over 3 runs · up 12% on last week                          Oct 7│"
 "│                                                                                                                      │"
 "│ ── Routine ───────────────────────────────────────────────────────────────────────────────────────────────────────── │"
-"│    Vercel              Deployment succeeded for acme-web                                                            7│"
-"│    Uptime Robot        All monitors up                                                                              6│"
-"│    Linear              3 issues moved to Done                                                                       5│"
-"│    Plausible           Weekly report: 998 visitors                                                                   │"
+"│    Vercel              Deployment succeeded for acme-web                                                      Oct 7 7│"
+"│    Uptime Robot        All monitors up                                                                        Oct 7 6│"
+"│    Linear              3 issues moved to Done                                                                 Oct 7 5│"
+"│    Plausible           Weekly report: 998 visitors                                                              Oct 7│"
 "│  > 2 quieter sources · 3 updates                                                                                     │"
 "│                                                                                                                      │"
 "│  4 updates from muted sources not shown.                                                                             │"

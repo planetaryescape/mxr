@@ -14,13 +14,20 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{ActivePane, RecordsPageState, RECORD_KIND_CHIPS};
+use crate::ui::received_label::received_label;
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
+use chrono::{DateTime, Utc};
 
 pub struct RecordsView<'a> {
     pub page: &'a RecordsPageState,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
+    /// "Now" for relative and absolute arrival times, passed in so the render
+    /// doesn't read the clock.
+    pub now: chrono::DateTime<chrono::Utc>,
+    /// The zone times show in: `Local` in the app, a fixed one in tests.
+    pub zone: crate::ui::received_label::DisplayZone,
 }
 
 /// "03 Mar". Record days are stored at midday UTC, so UTC reads the same
@@ -251,6 +258,8 @@ fn answer_lines(
     page: &RecordsPageState,
     width: usize,
     theme: &crate::theme::Theme,
+    now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
 ) {
     let Some(answer) = &page.answer else {
         return;
@@ -376,7 +385,11 @@ fn answer_lines(
             for citation in found.citations.iter().take(3) {
                 body.text(
                     truncate(
-                        &format!("{}  {}", day(citation.date), one_line(&citation.subject)),
+                        &format!(
+                            "{}  {}",
+                            received_label(citation.date, now, zone),
+                            one_line(&citation.subject)
+                        ),
                         width.saturating_sub(4),
                     ),
                     muted,
@@ -439,7 +452,7 @@ fn ledger_body(view: &RecordsView<'_>, width: usize, theme: &crate::theme::Theme
         body.text(one_line(&first_run.line), muted);
     }
     body.lines.push(Line::from(""));
-    answer_lines(&mut body, page, width, theme);
+    answer_lines(&mut body, page, width, theme, view.now, view.zone);
     // A list answer stands in for the ledger: the kind chips and the
     // issuer filter don't narrow it.
     if let Some(list) = page.listed_matches() {
@@ -670,7 +683,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &RecordsView<'_>, theme: &crate
     );
 
     if let Some(record) = &view.page.card {
-        draw_card(frame, area, record, theme);
+        draw_card(frame, area, record, theme, view.now, view.zone);
     }
     if view.page.subscription_open && view.page.showing_subscriptions() {
         if let Some(subscription) = view.page.subscription_rows().get(view.selected_index) {
@@ -684,7 +697,12 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &RecordsView<'_>, theme: &crate
 
 /// The record card: every field with where it came from, its documents
 /// and the emails it was built from.
-pub(crate) fn card_text(record: &RecordData, width: usize) -> Vec<(String, bool)> {
+pub(crate) fn card_text(
+    record: &RecordData,
+    width: usize,
+    now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
+) -> Vec<(String, bool)> {
     let mut lines = vec![(
         format!(
             "{} \u{b7} {}",
@@ -766,7 +784,7 @@ pub(crate) fn card_text(record: &RecordData, width: usize) -> Vec<(String, bool)
                 truncate(
                     &format!(
                         "{}  {:<12} {}",
-                        day(source.date),
+                        received_label(source.date, now, zone),
                         source.stage,
                         one_line(&source.subject)
                     ),
@@ -792,7 +810,14 @@ pub(crate) fn card_text(record: &RecordData, width: usize) -> Vec<(String, bool)
     lines
 }
 
-fn draw_card(frame: &mut Frame, area: Rect, record: &RecordData, theme: &crate::theme::Theme) {
+fn draw_card(
+    frame: &mut Frame,
+    area: Rect,
+    record: &RecordData,
+    theme: &crate::theme::Theme,
+    now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
+) {
     let popup = super::centered_rect(76, 80, area);
     frame.render_widget(Clear, popup);
     let block = Block::bordered()
@@ -805,7 +830,7 @@ fn draw_card(frame: &mut Frame, area: Rect, record: &RecordData, theme: &crate::
         .style(Style::default().bg(theme.modal_bg));
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
-    let lines: Vec<Line> = card_text(record, inner.width.saturating_sub(1) as usize)
+    let lines: Vec<Line> = card_text(record, inner.width.saturating_sub(1) as usize, now, zone)
         .into_iter()
         .map(|(text, strong)| {
             Line::from(Span::styled(
@@ -864,6 +889,8 @@ pub fn draw_overlays(
     area: Rect,
     page: &RecordsPageState,
     theme: &crate::theme::Theme,
+    now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
 ) {
     if let Some(prompt) = &page.prompt {
         let popup = super::centered_rect(60, 40, area);
@@ -944,7 +971,7 @@ pub fn draw_overlays(
                 )));
                 if let Some(record) = preview.records.first() {
                     lines.push(Line::from(""));
-                    for (text, _) in card_text(record, width).into_iter().take(12) {
+                    for (text, _) in card_text(record, width, now, zone).into_iter().take(12) {
                         lines.push(Line::from(Span::styled(
                             text,
                             Style::default().fg(theme.text_secondary),

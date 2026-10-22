@@ -731,6 +731,7 @@ async fn messages_requests_stay_in_the_agents_accounts() {
         account_id: Some(o.account.clone()),
         person: "orders@shop.example".into(),
         topic: None,
+        conversation: true,
     })
     .await;
     assert_scoped(&s, |o| Request::AckMessage {
@@ -764,6 +765,7 @@ async fn messages_requests_stay_in_the_agents_accounts() {
             account_id: Some(s.own.account.clone()),
             person: "orders@shop.example".into(),
             topic: Some(s.other.thread.clone()),
+            conversation: true,
         },
     )
     .await;

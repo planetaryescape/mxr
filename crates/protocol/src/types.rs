@@ -21,6 +21,7 @@ mod reading;
 mod record_subscriptions;
 mod records;
 mod thread_context;
+mod thread_preview;
 mod todos;
 mod updates;
 pub use arrivals::*;
@@ -41,6 +42,7 @@ pub use reading::*;
 pub use record_subscriptions::*;
 pub use records::*;
 pub use thread_context::*;
+pub use thread_preview::*;
 pub use todos::*;
 pub use updates::*;
 
@@ -120,6 +122,10 @@ fn default_arrivals_limit() -> u32 {
 
 fn default_corrections_limit() -> u32 {
     50
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 fn default_true() -> bool {
@@ -2114,6 +2120,13 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         thread_ids: Vec<ThreadId>,
     },
+    /// One preview per thread in `thread_ids` (at most 100): subject, the
+    /// latest sender, date and snippet, counts and an attachment flag, with
+    /// no bodies. Unknown ids are left out. Returns
+    /// `ResponseData::ThreadPreviews`.
+    GetThreadPreviews {
+        thread_ids: Vec<ThreadId>,
+    },
     /// Now's arrivals line (D119): every inbound email first seen since Now
     /// was last opened (at most 24 hours back), counted once by where it
     /// went, plus "Not sure" questions and the weekly track record.
@@ -2229,6 +2242,10 @@ pub enum Request {
         person: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         topic: Option<ThreadId>,
+        /// False returns only the profile (row, relationship line, topics):
+        /// no conversation and no message text, as a hover card needs.
+        #[serde(default = "default_true", skip_serializing_if = "is_true")]
+        conversation: bool,
     },
     /// Got it: a short acknowledgement on `thread_id`, in your usual
     /// greeting and sign-off for that person, built from a template with
@@ -2973,6 +2990,7 @@ impl Request {
             | Self::GetNow { .. }
             | Self::GetRail { .. }
             | Self::GetModeMembership { .. }
+            | Self::GetThreadPreviews { .. }
             | Self::SetModeDone { .. }
             | Self::GetArrivals { .. }
             | Self::ListArrivals { .. }
@@ -4227,6 +4245,10 @@ pub enum ResponseData {
     ModeMembership {
         threads: Vec<ThreadModesData>,
     },
+    /// Returned by `Request::GetThreadPreviews`, one entry per thread found.
+    ThreadPreviews {
+        previews: Vec<ThreadPreviewData>,
+    },
     /// Returned by `Request::SetModeDone`, one outcome per thread in
     /// request order. `mutation_id` undoes the whole run.
     /// Returned by `Request::ListRecords`.
@@ -4610,6 +4632,7 @@ impl ResponseData {
             | Self::Corrections { .. }
             | Self::Rail { .. }
             | Self::ModeMembership { .. }
+            | Self::ThreadPreviews { .. }
             | Self::ModeDone { .. }
             | Self::Messages { .. }
             | Self::PersonPage { .. }

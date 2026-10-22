@@ -7,11 +7,12 @@
  * becomes a chip drawn from its data (docs/blueprint/29 "The copy").
  */
 
-import { createElement, useMemo, type ReactNode } from "react";
+import { createElement, Fragment, useMemo, type ReactNode } from "react";
 
 import { APP_LINK_ATTRIBUTE, APP_LINK_ID_ATTRIBUTE, renderMarkdown } from "./markdown";
 import { Avatar } from "@/components/Avatar";
 import { useThreadModesMap } from "@/features/modes/membership";
+import { LinkHoverCard } from "./LinkHoverCard";
 import { threadGlyph, type ModesByThread } from "./threadGlyph";
 
 const TAGS = new Set([
@@ -92,11 +93,11 @@ function toLink(
   const href = node.getAttribute("href") ?? "";
   const kind = node.getAttribute(APP_LINK_ATTRIBUTE);
   if (kind === "person" || kind === "thread") {
-    const Glyph = threadGlyph(node.getAttribute(APP_LINK_ID_ATTRIBUTE), modes);
+    const id = node.getAttribute(APP_LINK_ID_ATTRIBUTE);
+    const Glyph = threadGlyph(id, modes);
     const name = node.textContent ?? "";
-    return (
+    const chip = (
       <a
-        key={key}
         href={href}
         {...{ [APP_LINK_ATTRIBUTE]: kind }}
         className="assistant-chip type-body inline-flex max-w-full items-center gap-1 rounded-sm border border-rule px-1 align-baseline text-signal outline-none hover:bg-signal-soft focus-visible:border-signal"
@@ -108,6 +109,19 @@ function toLink(
         )}
         <span className="truncate">{children}</span>
       </a>
+    );
+    if (!id) return <Fragment key={key}>{chip}</Fragment>;
+    return (
+      <LinkHoverCard
+        key={key}
+        link={
+          kind === "person" ? { kind: "person", person_id: id } : { kind: "thread", thread_id: id }
+        }
+        title={name}
+        modes={modes}
+      >
+        {chip}
+      </LinkHoverCard>
     );
   }
   return (

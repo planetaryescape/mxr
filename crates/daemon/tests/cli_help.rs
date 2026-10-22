@@ -186,6 +186,7 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_count", &["count", "--help"]),
         ("cli_help_cat", &["cat", "--help"]),
         ("cli_help_thread", &["thread", "--help"]),
+        ("cli_help_thread_preview", &["thread-preview", "--help"]),
         ("cli_help_compose", &["compose", "--help"]),
         ("cli_help_export", &["export", "--help"]),
         ("cli_help_headers", &["headers", "--help"]),

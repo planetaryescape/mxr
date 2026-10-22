@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Headline facts for up to 100 threads with no bodies: subject, the latest sender, date and snippet, message and unread counts, and whether any message has an attachment. Unknown ids are left out
+
+Usage: mxr thread-preview [OPTIONS] <THREAD_IDS>...
+
+Arguments:
+  <THREAD_IDS>...
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

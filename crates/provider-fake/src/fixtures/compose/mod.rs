@@ -21,7 +21,7 @@ pub const ME_EMAIL: &str = "alex@demo.mxr.local";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Message {
     pub from_me: bool,
-    /// "Name <address>" of the person the message is from, or of the user.
+    /// `"Name <address>"` of the person the message is from, or of the user.
     pub who: &'static str,
     pub when: &'static str,
     pub text: &'static str,

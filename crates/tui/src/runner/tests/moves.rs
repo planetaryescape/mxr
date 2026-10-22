@@ -506,3 +506,27 @@ fn inbox_rows_carry_their_mode_and_a_move_anywhere_refreshes_them() {
     );
     assert!(app.mailbox.now_page.pending_refresh);
 }
+
+#[test]
+fn an_account_address_change_drops_every_cached_reply_context() {
+    let mut app = inbox_app();
+    let message = app.mailbox.envelopes[0].id.clone();
+    app.compose.reply_context_cache.insert(
+        message.clone(),
+        crate::app::ReplyContextPair {
+            reply: None,
+            reply_all: None,
+        },
+    );
+
+    handle_daemon_event(
+        &mut app,
+        DaemonEvent::AccountAddressesChanged {
+            account_id: mxr_core::AccountId::new(),
+        },
+    );
+    assert!(
+        !app.compose.reply_context_cache.contains_key(&message),
+        "a reply cached before the alias existed would still offer the old To line"
+    );
+}

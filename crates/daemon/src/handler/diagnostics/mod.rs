@@ -798,6 +798,12 @@ pub(crate) async fn add_account_address(
         .add_account_address(account_id, email, primary)
         .await?;
     state.refresh_account_addresses().await;
+    crate::chimes::emit_daemon_event(
+        state,
+        mxr_protocol::DaemonEvent::AccountAddressesChanged {
+            account_id: account_id.clone(),
+        },
+    );
     Ok(ResponseData::Ack)
 }
 
@@ -811,6 +817,12 @@ pub(crate) async fn remove_account_address(
         .remove_account_address(account_id, email)
         .await?;
     state.refresh_account_addresses().await;
+    crate::chimes::emit_daemon_event(
+        state,
+        mxr_protocol::DaemonEvent::AccountAddressesChanged {
+            account_id: account_id.clone(),
+        },
+    );
     Ok(ResponseData::Ack)
 }
 
@@ -821,6 +833,12 @@ pub(crate) async fn set_primary_account_address(
 ) -> HandlerResult {
     state.store.set_primary_address(account_id, email).await?;
     state.refresh_account_addresses().await;
+    crate::chimes::emit_daemon_event(
+        state,
+        mxr_protocol::DaemonEvent::AccountAddressesChanged {
+            account_id: account_id.clone(),
+        },
+    );
     Ok(ResponseData::Ack)
 }
 

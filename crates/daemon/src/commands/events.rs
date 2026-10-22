@@ -144,6 +144,9 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
                     .as_ref()
                     .map_or_else(|| "all".to_string(), ToString::to_string)
             ),
+            DaemonEvent::AccountAddressesChanged { account_id } => {
+                format!("account addresses changed account={account_id}")
+            }
             DaemonEvent::AssistantUpdated {
                 conversation_id,
                 status,

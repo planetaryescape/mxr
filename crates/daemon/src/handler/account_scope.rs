@@ -1541,6 +1541,10 @@ pub(crate) async fn scope_event(
             };
             keep_if(allowed, event)
         }
+        DaemonEvent::AccountAddressesChanged { ref account_id } => {
+            let allowed = account_id_allowed(state, profile, account_id).await?;
+            keep_if(allowed, event)
+        }
         // Its summary can name another account's messages, and nothing
         // ties it to an account.
         DaemonEvent::MutationReconciliationFailed { .. } => None,

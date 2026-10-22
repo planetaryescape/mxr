@@ -5852,6 +5852,12 @@ pub enum DaemonEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,
     },
+    /// An account's owned addresses changed: an alias was added or removed, or
+    /// the primary moved. Clients that cache anything built from the owned set
+    /// (such as prepared reply recipients) must drop it.
+    AccountAddressesChanged {
+        account_id: AccountId,
+    },
 }
 
 impl DaemonEvent {
@@ -5872,7 +5878,8 @@ impl DaemonEvent {
             | Self::EventsLagged { .. }
             | Self::ThreadGistReady { .. }
             | Self::ReplyLaterReturned { .. }
-            | Self::ModesChanged { .. } => IpcCategory::CoreMail,
+            | Self::ModesChanged { .. }
+            | Self::AccountAddressesChanged { .. } => IpcCategory::CoreMail,
             Self::AssistantUpdated { .. } => IpcCategory::MxrPlatform,
         }
     }

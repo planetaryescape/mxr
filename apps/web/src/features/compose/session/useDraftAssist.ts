@@ -6,7 +6,7 @@
  */
 
 import { useMutation } from "@tanstack/react-query";
-import { useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { toast } from "sonner";
 
 import { addedSpans, mapModelSpans, NO_SPANS, type ModelSpan } from "../assist/modelSpans";
@@ -155,6 +155,7 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     );
   }
 
+  const inFlight = useRef(false);
   const ask = useMutation({
     mutationFn: async (input: { action: ComposeAssistAction; instruction: string }) => {
       const current = draftRef.current;
@@ -206,8 +207,11 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
   });
 
   function run(action: ComposeAssistAction, note: string) {
-    if (ask.isPending) return;
-    ask.mutate({ action, instruction: note });
+    // A ref, not `ask.isPending`: two presses before the next render both see
+    // "idle" in the closure, and only the ref is set synchronously.
+    if (inFlight.current) return;
+    inFlight.current = true;
+    ask.mutate({ action, instruction: note }, { onSettled: () => (inFlight.current = false) });
   }
 
   /** ↵ in the help line: finish, edit the selection, or write. */

@@ -177,6 +177,17 @@ describe("useDraftAssist", () => {
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
+  test("two presses before the first answer send one request", async () => {
+    apiFetch.mockReturnValue(new Promise(() => undefined));
+    const { result } = renderHook(() => useHarness(draftWith("Thursday works.")), { wrapper });
+    act(() => {
+      result.current.assist.submit();
+      result.current.assist.submit();
+    });
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
+
   test("a forward sends its recipients as address objects", async () => {
     apiFetch.mockResolvedValue(proposal("FYI", [{ kind: "added", text: "FYI" }]));
     const forward: ComposeIntent = { key: "f", title: "Forward", kind: "forward", messageId: "m2" };

@@ -20,10 +20,10 @@ const BEFORE: usize = 16;
 static TRIGGER: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?ix)
-        \b(?:verification|security|login|log-?in|sign-?in|one-?time|single-?use|confirmation
-           |access|authentication|auth|2fa|two-factor|mfa|otp|account|device|identity|\d-digit)
+        \b(?:verification|security|login|log-?in|sign-?in|one(?:-|\s)?time|single-?use|confirmation
+           |access|authentication|auth|2fa|two-factor|mfa|otp|account|device|identity|guard|\d-digit)
           \s+(?:code|pin|passcode)\b
-        | \bone-?time\s+pass(?:word|code)\b
+        | \bone(?:-|\s)?time\s+pass(?:word|code)\b
         | \b(?:otp|passcode)\b
         | \byour\s+(?:\S+\s+){0,3}?code\b
         | \bcode\s*(?:is|:)
@@ -80,6 +80,11 @@ fn named_before(before: &str) -> bool {
     })
 }
 
+/// The one sender that mails codes of letters alone ("ABCDE"): Steam
+/// Guard. Anywhere else a line of capitals is a heading ("WELCOME").
+static GUARD: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)\bguard\s+code\b").expect("valid guard regex"));
+
 /// Code-shaped words: digits, groups like 123-456, or capitals with digits.
 static CANDIDATE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"\b(?:[A-Z]-)?(?:\d{3}[ -]\d{3}|[A-Z0-9]{3,5}-[A-Z0-9]{3,5}|[A-Z0-9]{4,10})\b")
@@ -112,29 +117,34 @@ pub fn one_time_code(subject: &str, body: Option<&str>) -> Option<String> {
 const ALONE_MAX: usize = 1_500;
 
 fn alone_on_a_line(text: &str) -> Option<String> {
+    // Each line with words, and where it starts.
+    let mut lines = Vec::new();
     let mut offset = 0;
-    // The last line with words, which may name the value below it
-    // ("Order number:" over "55210").
-    let mut above = "";
     for line in text.split_inclusive('\n') {
-        let trimmed = line.trim();
         let start = offset + (line.len() - line.trim_start().len());
         offset += line.len();
-        if trimmed.is_empty() {
-            continue;
+        if !line.trim().is_empty() {
+            lines.push((start, line.trim()));
         }
-        let whole = CANDIDATE
+    }
+    for (i, &(start, trimmed)) in lines.iter().enumerate() {
+        let Some(m) = CANDIDATE
             .find(trimmed)
-            .filter(|m| m.start() == 0 && m.end() == trimmed.len());
-        if let Some(m) = whole {
-            if !named_before(above)
-                && !NOT_A_SIGN_IN.is_match(above)
-                && looks_like_a_code(text, start + m.start(), start + m.end(), Trust::Placed)
-            {
-                return Some(m.as_str().to_string());
-            }
+            .filter(|m| m.start() == 0 && m.end() == trimmed.len())
+        else {
+            continue;
+        };
+        // The lines around a value say what it is: "Order number:" over
+        // "55210", "Get 20% off" under "SAVE20NOW".
+        let above = i.checked_sub(1).map_or("", |j| lines[j].1);
+        let below = lines.get(i + 1).map_or("", |line| line.1);
+        if !named_before(above)
+            && !NOT_A_SIGN_IN.is_match(above)
+            && !NOT_A_SIGN_IN.is_match(below)
+            && looks_like_a_code(text, start + m.start(), start + m.end(), Trust::Placed)
+        {
+            return Some(m.as_str().to_string());
         }
-        above = trimmed;
     }
     None
 }
@@ -222,7 +232,22 @@ enum Trust {
 fn looks_like_a_code(text: &str, start: usize, end: usize, trust: Trust) -> bool {
     let word = &text[start..end];
     let digits = word.chars().filter(char::is_ascii_digit).count();
-    if digits == 0 {
+    // Letters only count from Steam Guard, where the place vouches for them
+    // and the code is a line of its own ("ABCDE"). Elsewhere a word in
+    // capitals is a word ("Your code is READY", "WELCOME").
+    let lead = text[..start].trim_end_matches([' ', '\t']);
+    let own_line = (lead.is_empty() || lead.ends_with('\n'))
+        && text[end..]
+            .trim_start_matches([' ', '\t', '\r'])
+            .chars()
+            .next()
+            .is_none_or(|c| c == '\n');
+    let letters_code = trust == Trust::Placed
+        && own_line
+        && GUARD.is_match(text)
+        && (5..=8).contains(&word.len())
+        && word.chars().all(|c| c.is_ascii_uppercase());
+    if digits == 0 && !letters_code {
         return false;
     }
     let plain: String = word.chars().filter(char::is_ascii_alphanumeric).collect();
@@ -589,6 +614,45 @@ mod tests {
             code("Hi", "Your code is 482913 (reference: 55210).").as_deref(),
             Some("482913")
         );
+    }
+
+    #[test]
+    fn round_four_layouts() {
+        assert_eq!(
+            code(
+                "Your code is here",
+                "Use this code:\nSAVE20NOW\nGet 20% off your next purchase."
+            ),
+            None
+        );
+        assert_eq!(
+            code(
+                "One Time Password Request",
+                "Your temporary One Time Password is :782867"
+            )
+            .as_deref(),
+            Some("782867")
+        );
+        assert_eq!(
+            code(
+                "Your Steam account: Access from new computer",
+                "Here is the Steam Guard code you need to login to account bk:\nA2CDE"
+            )
+            .as_deref(),
+            Some("A2CDE")
+        );
+        assert_eq!(
+            code("Your Steam Guard code", "Your Steam Guard code is:\nABCDE").as_deref(),
+            Some("ABCDE")
+        );
+        // A heading in capitals under a code subject is not one.
+        assert_eq!(
+            code("Your verification code", "WELCOME\n\nSee you soon."),
+            None
+        );
+        // Capitals elsewhere are words, not codes.
+        assert_eq!(code("Hi", "Your code expires SOON so use it."), None);
+        assert_eq!(code("Hi", "Your code is READY to use."), None);
     }
 
     #[test]

@@ -485,6 +485,15 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::updates::run(action, cut, expired, account, format).await?;
         }
+        Some(Command::Code {
+            all,
+            copy,
+            account,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::code::run(account, all, copy, format).await?;
+        }
         Some(Command::Now { account, format }) => {
             crate::server::ensure_daemon_running().await?;
             commands::now::run(account, format).await?;

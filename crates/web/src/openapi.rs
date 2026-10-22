@@ -98,7 +98,7 @@ use utoipa::{
         mail_todo_get, mail_todos_state, mail_todo_resolve, mail_todo_schedule, mail_todo_edit,
         mail_microsoft_todo_status, mail_microsoft_todo_link, mail_microsoft_todo_sync,
         mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_hint_seen,
-        mail_now, mail_rail, mail_freshness, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done,
+        mail_now, mail_rail, mail_codes, mail_freshness, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done,
         mail_people, mail_people_page, mail_people_ack, mail_people_merge, mail_people_split,
         mail_people_merge_suggestions,
         mail_records_ledger, mail_records_answer, mail_records_subscriptions, mail_record_get, mail_record_field,
@@ -943,6 +943,22 @@ fn mail_move_undo() {}
 )]
 #[allow(dead_code)]
 fn mail_corrections() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/codes",
+    summary = "One-time codes from the last day's mail, newest first, each current or expired",
+    params(
+        ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("limit" = Option<u32>, Query, description = "Most codes returned; default 10, at most 50")
+    ),
+    responses(
+        (status = 200, description = "The `OneTimeCodes` variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_codes() {}
 
 #[utoipa::path(
     get,

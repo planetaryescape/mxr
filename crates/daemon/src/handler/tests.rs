@@ -709,6 +709,7 @@ mod body_and_invites;
 mod categories;
 mod category_rules;
 mod classify_eval;
+mod codes;
 mod deferral;
 mod desk;
 mod desk_done;

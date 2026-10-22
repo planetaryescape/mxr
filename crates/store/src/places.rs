@@ -86,6 +86,43 @@ impl super::Store {
         Ok(messages)
     }
 
+    /// Mail received `since` or later, in any folder but Trash and Spam,
+    /// newest first, at most `limit`: where a one-time code you just asked
+    /// for has landed, whether or not a rule moved it out of the inbox.
+    pub async fn recent_received(
+        &self,
+        account_id: Option<&AccountId>,
+        since: DateTime<Utc>,
+        limit: u32,
+    ) -> Result<Vec<PlaceMessage>, sqlx::Error> {
+        let started_at = Instant::now();
+        let sql = format!(
+            r#"SELECT {PLACE_COLUMNS},
+                EXISTS (
+                    SELECT 1 FROM message_labels iml JOIN labels il ON il.id = iml.label_id
+                    WHERE iml.message_id = m.id AND il.provider_id = 'INBOX'
+                ) AS in_inbox
+            FROM messages m
+            WHERE m.date >= ?3 AND (?1 IS NULL OR m.account_id = ?1)
+              AND m.direction != 'outbound' AND {NOT_TRASHED}
+            ORDER BY m.date DESC, m.id DESC
+            LIMIT ?4"#
+        );
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(account_id.map(AccountId::as_str))
+            .bind(hidden_flags())
+            .bind(since.timestamp())
+            .bind(i64::from(limit))
+            .fetch_all(self.reader())
+            .await?;
+        let messages = rows
+            .iter()
+            .map(decode_place_message)
+            .collect::<Result<Vec<_>, _>>()?;
+        trace_query("places.recent_received", started_at, messages.len());
+        Ok(messages)
+    }
+
     /// One message in the same shape, wherever it is (for "why is this
     /// here" on any message).
     pub async fn place_message(

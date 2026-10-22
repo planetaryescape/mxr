@@ -8,11 +8,12 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use crate::code::one_time_code;
 use crate::numbers::{extract_numbers, Quoted};
 use crate::source::{source_key, source_name};
 use crate::template::{clean_subject, template_key};
 use crate::text::{capitalise, clip, first_informative_line, pick_link};
-use crate::window::{window, Window, WindowKind};
+use crate::window::{code_window, window, Window, WindowKind};
 use crate::Signal;
 
 /// Longest fact line, in characters.
@@ -144,6 +145,9 @@ pub struct Fact {
     pub base_signal: Option<Signal>,
     pub needs_you: Option<NeedsYou>,
     pub window: Option<Window>,
+    /// The one-time code the message gives, to copy: "482913".
+    #[serde(default)]
+    pub code: Option<String>,
     pub tracked: Option<Tracked>,
     /// The one place to go deeper. Never on a needs-you line or a link
     /// about money: those open the email.
@@ -277,12 +281,23 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
         Some(line) => format!("{cleaned}\n{line}"),
         None => cleaned.clone(),
     };
+    let code = one_time_code(input.subject, input.body.or(Some(input.snippet)));
     let window = window(
         &cleaned,
         body_line.as_deref().unwrap_or_default(),
         input.date,
         tz,
     );
+    // A message that gives a code lasts as long as the code, unless it is a
+    // sign-in alert, which keeps its two days.
+    let window = match (&code, window) {
+        (Some(_), Some(w)) if matches!(w.kind, WindowKind::Code | WindowKind::SignIn) => Some(w),
+        (Some(_), _) => Some(code_window(
+            &format!("{cleaned}\n{}", input.body.unwrap_or(input.snippet)),
+            input.date,
+        )),
+        (None, window) => window,
+    };
     let needs_you = if PAYMENT_FAILED.is_match(&rule_text) {
         Some(NeedsYou::PaymentFailed)
     } else if window
@@ -328,6 +343,7 @@ pub fn derive<Tz: TimeZone>(input: &FactInput<'_>, tz: &Tz) -> Fact {
         base_signal,
         needs_you,
         window,
+        code,
         tracked,
         link,
         todo_title,
@@ -378,6 +394,28 @@ mod tests {
 
     fn derive_utc(input: &FactInput<'_>) -> Fact {
         derive(input, &FixedOffset::east_opt(0).unwrap())
+    }
+
+    #[test]
+    fn a_message_that_gives_a_code_carries_it_and_lasts_as_long_as_it() {
+        let fact = derive_utc(&input(
+            "security@bank.example",
+            Some("Bank"),
+            "MFA Login Authentication",
+            Some("Your one-time passcode is 882308. It is valid for 5 minutes."),
+        ));
+        assert_eq!(fact.code.as_deref(), Some("882308"));
+        let window = fact.window.expect("a code window");
+        assert_eq!(window.kind, WindowKind::Code);
+        assert_eq!(window.source, "rule", "{}", window.evidence);
+
+        let none = derive_utc(&input(
+            "deals@shop.example",
+            Some("Shop"),
+            "Your promo code is SAVE20NOW",
+            None,
+        ));
+        assert_eq!(none.code, None);
     }
 
     #[test]

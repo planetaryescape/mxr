@@ -14,6 +14,7 @@
 //! the clock into stable sets. The daemon reads the store and the clock and
 //! hands plain data in.
 
+pub mod code;
 pub mod cuts;
 pub mod fact;
 pub mod numbers;
@@ -22,6 +23,7 @@ pub mod template;
 pub mod text;
 pub mod window;
 
+pub use code::one_time_code;
 pub use cuts::{digest_title, time_label, CutError, CutWindow, Cuts};
 pub use fact::{
     derive, Fact, FactInput, FactSource, NeedsYou, Tracked, TrackedKind, TrackedOutcome,
@@ -35,7 +37,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped when a rule changes what a message derives to, so cached facts
 /// are recomputed.
-pub const RULES_VERSION: i64 = 2;
+pub const RULES_VERSION: i64 = 3;
 
 /// How much a message asks of you, strongest last. The digest puts a
 /// source in the section of its strongest signal.

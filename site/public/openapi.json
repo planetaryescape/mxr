@@ -1768,6 +1768,50 @@
         }
       }
     },
+    "/api/v1/mail/codes": {
+      "get": {
+        "tags": [],
+        "summary": "One-time codes from the last day's mail, newest first, each current or expired",
+        "operationId": "mail_codes",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Most codes returned; default 10, at most 50",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The `OneTimeCodes` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/commitments": {
       "get": {
         "tags": [],
@@ -19079,6 +19123,59 @@
           }
         }
       },
+      "OneTimeCodeData": {
+        "type": "object",
+        "description": "A one-time code a message gave, for `Request::ListOneTimeCodes`.",
+        "required": [
+          "code",
+          "current",
+          "expires_at",
+          "received_at",
+          "sender_name",
+          "sender_email",
+          "subject",
+          "account_id",
+          "message_id",
+          "thread_id"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "code": {
+            "type": "string",
+            "description": "As the message wrote it: \"482913\", \"G-123456\", \"739 204\"."
+          },
+          "current": {
+            "type": "boolean",
+            "description": "Whether it is still in its window: the lifetime the message states,\nelse ten minutes."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sender_email": {
+            "type": "string"
+          },
+          "sender_name": {
+            "type": "string",
+            "description": "\"Acme\", as Updates names the source."
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
       "OwedReplyHereData": {
         "type": "object",
         "required": [
@@ -31094,6 +31191,39 @@
           },
           {
             "type": "object",
+            "description": "One-time codes from mail received in the last day, newest first,\nat most `limit` (default 10), each with whether it is still in its\nwindow. Found by rules in the subject and body, any folder but\nTrash and Spam. Read only. Returns `ResponseData::OneTimeCodes`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListOneTimeCodes"
+                ]
+              },
+              "limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "The Updates briefing (blueprint 22, phase 4): everything that\narrived by the cut (`cut`, else the latest one) and wasn't let go,\none line per source in Needs a look, Changed and Routine, plus what\narrived since. Rules only; deltas are computed, never written by a\nmodel. `mark_seen` records that Updates was opened, so the expired\ncount starts again and the mute question counts as asked;\n`expired` lists every update past its window. Returns\n`ResponseData::UpdatesDigest`.",
             "required": [
               "cmd"
@@ -35343,6 +35473,28 @@
               },
               "now": {
                 "$ref": "#/components/schemas/NowData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ListOneTimeCodes`.",
+            "required": [
+              "codes",
+              "kind"
+            ],
+            "properties": {
+              "codes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OneTimeCodeData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "OneTimeCodes"
+                ]
               }
             }
           },
@@ -40767,6 +40919,13 @@
         "properties": {
           "account_id": {
             "$ref": "#/components/schemas/AccountId"
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The one-time code the newest message gives, to copy: \"482913\".\nOnly while the code is in its window; expired lines never show."
           },
           "count": {
             "type": "integer",

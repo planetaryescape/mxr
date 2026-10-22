@@ -142,6 +142,7 @@ The keys:
 | `t` | This needs me: make a to-do from the line |
 | `K` | Tune this source |
 | `L` | Open the line's link (a tracker page, a build). Never a pay link |
+| `y` | Copy the line's one-time code |
 | `o` | Open the email itself |
 | `p` | Pin or unpin the latest email behind this line |
 | `S` | Preview a sweep of this sender in this account; unavailable for parcels |
@@ -199,6 +200,29 @@ mxr updates --expired
 
 The digest also says how many expired since you last opened Updates.
 
+## Copy a one-time code
+
+When a sign-in, verification or two-factor email gives you a code, the
+line shows it, and `y` copies it (in the web app, so does clicking the
+code). mxr finds the code by rules in the subject and the top of the body,
+never by a model: "Your verification code is 482913", "G-123456 is your
+Google verification code", "Your login code is:" with the code on the line
+below. A promo, gift or discount code, a booking PIN or a bank's branch
+code is never one. A message that gives a code lasts as long as the code:
+the lifetime it states, else 10 minutes.
+
+From the command line, `mxr code` prints the newest code still in its
+window, whichever folder the email is in:
+
+```bash
+mxr code --copy                   # also put it on the clipboard
+mxr code --format ids | pbcopy    # the code alone
+mxr code --all                    # the last day's codes, expired ones marked
+```
+
+It exits with an error when no code is current, naming the last one that
+expired.
+
 ## Tune a source
 
 ```bash
@@ -246,4 +270,5 @@ with you.
   says how many updates tuning hid.
 - **A parcel vanished:** delivered parcels leave a day after delivery, and
   a parcel with no news goes quiet. See [Deliveries](/guides/deliveries/).
-- **A code isn't there:** it expired. `mxr updates --expired` lists it.
+- **A code isn't there:** it expired. `mxr updates --expired` lists it, and
+  `mxr code --all` lists the last day's codes.

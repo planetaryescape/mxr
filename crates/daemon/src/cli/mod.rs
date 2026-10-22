@@ -731,6 +731,23 @@ pub enum Command {
         #[arg(long, global = true)]
         format: Option<OutputFormat>,
     },
+    #[command(
+        about = "The one-time code from your latest sign-in email, ready to paste",
+        long_about = CODE_LONG_ABOUT
+    )]
+    Code {
+        /// List recent codes, expired ones too, instead of only the latest.
+        #[arg(long)]
+        all: bool,
+        /// Put the code on the clipboard as well (pbcopy, wl-copy or xclip).
+        #[arg(long)]
+        copy: bool,
+        /// Limit to one account; the default covers every account.
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     #[command(about = mxr_protocol::now_copy::HEADER, long_about = NOW_LONG_ABOUT)]
     Now {
         /// Limit to one account; the default covers every account.
@@ -2612,6 +2629,17 @@ const ARRIVALS_LONG_ABOUT: &str = "Where every email that arrived went, counted 
 The same line as Now: every inbound email first seen since Now was last opened (at most 24 hours back), counted by the mode it is in. The counts sum to the total; To do and Archive are \"also\" and never added. `mxr arrivals list --mode reading` lists the emails behind a count. Reading the line here never starts a visit to Now.
 
 People you've written to always reach Messages when the mail is addressed to you, whatever list it came through.";
+
+const CODE_LONG_ABOUT: &str = "The one-time code from your latest sign-in email, ready to paste.
+
+mxr reads the codes that verification, login and two-factor emails give you (\"Your verification code is 482913\", \"G-123456 is your Google code\") by rules, never by a model, in any folder but Trash and Spam. A code counts as current for the lifetime the email states, else ten minutes. Promo, gift, booking and branch codes are never one-time codes.
+
+By default it prints the newest current code. --copy also puts it on the clipboard, saying so on stderr so stdout stays the code. --all lists the codes from the last day, expired ones marked. When stdout is not a terminal the output is JSON; --format ids prints the code alone.
+
+Examples:
+  mxr code --copy
+  mxr code --format ids | pbcopy
+  mxr code --all";
 
 const NOW_LONG_ABOUT: &str = "The few things that need you now, from every mode.
 

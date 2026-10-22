@@ -128,7 +128,9 @@ pub fn write_export_file(path: &Path, content: &str, overwrite_ok: bool) -> Resu
     })
 }
 
-fn copy_to_clipboard(content: &str) -> Result<(), String> {
+/// Put `content` on the system clipboard (pbcopy, wl-copy or xclip). Blocks
+/// until the program exits.
+pub fn copy_to_clipboard(content: &str) -> Result<(), String> {
     let (program, args) = clipboard_command()?;
     run_clipboard_command(program, args, content)
 }

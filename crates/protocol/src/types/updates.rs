@@ -206,6 +206,10 @@ pub struct UpdateLineData {
     pub fact: String,
     /// "subject" or "body".
     pub fact_source: String,
+    /// The one-time code the newest message gives, to copy: "482913".
+    /// Only while the code is in its window; expired lines never show.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub numbers: Vec<UpdateNumberData>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -262,6 +266,26 @@ pub struct UpdateLineData {
     pub suggestion: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub provenance: Vec<UpdateProvenanceData>,
+}
+
+/// A one-time code a message gave, for `Request::ListOneTimeCodes`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OneTimeCodeData {
+    /// As the message wrote it: "482913", "G-123456", "739 204".
+    pub code: String,
+    /// Whether it is still in its window: the lifetime the message states,
+    /// else ten minutes.
+    pub current: bool,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    pub received_at: chrono::DateTime<chrono::Utc>,
+    /// "Acme", as Updates names the source.
+    pub sender_name: String,
+    pub sender_email: String,
+    pub subject: String,
+    pub account_id: AccountId,
+    pub message_id: MessageId,
+    pub thread_id: ThreadId,
 }
 
 /// The cut a digest shows.

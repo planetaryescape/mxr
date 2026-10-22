@@ -461,6 +461,7 @@ where
         sender_email: message.from_email.to_ascii_lowercase(),
         fact: fact.text.clone(),
         fact_source: fact.fact_source.as_str().to_string(),
+        code: newest.item.fact.code.clone(),
         numbers: numbers_data(&fact.numbers),
         delta: lead.delta.as_ref().map(delta_data),
         signal: signal_data(strongest),
@@ -872,6 +873,7 @@ where
         sender_email: String::new(),
         fact,
         fact_source: "rule".to_string(),
+        code: None,
         numbers: Vec::new(),
         delta: None,
         signal: if section == UpdateSectionData::NeedsALook {

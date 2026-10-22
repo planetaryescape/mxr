@@ -11,6 +11,7 @@ pub mod cat;
 pub mod categories;
 pub mod chimes;
 pub mod classify;
+pub mod code;
 pub mod commitments;
 pub mod completions;
 pub mod config;

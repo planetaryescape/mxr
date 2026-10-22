@@ -1,0 +1,396 @@
+//! The one-time code a message gives you: "Your verification code is
+//! 482913", "G-123456 is your Google verification code". Found by words
+//! and shape, never by a model, so the same mail always gives the same
+//! code. A promo, gift or discount code is never one.
+
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+/// How much of the body is read. Codes sit at the top of the mail; a long
+/// newsletter footer only adds chances of a wrong match.
+const BODY_MAX: usize = 4_000;
+/// How much text after the words a code may sit ("Your code is: 482913").
+/// Counted in visible characters: mail laid out as a box pads every line
+/// with spaces and draws rules in box characters, and neither uses it up.
+const AFTER: usize = 120;
+/// How close before the words a code must end: "482913 is your code".
+const BEFORE: usize = 16;
+
+/// The words that say a code follows or precedes.
+static TRIGGER: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?ix)
+        \b(?:verification|security|login|log-?in|sign-?in|one-?time|single-?use|confirmation
+           |access|authentication|auth|2fa|two-factor|mfa|otp|account|device|identity|\d-digit)
+          \s+(?:code|pin|passcode)\b
+        | \bone-?time\s+pass(?:word|code)\b
+        | \b(?:otp|passcode)\b
+        | \byour\s+(?:\S+\s+){0,3}?code\b
+        | \bcode\s*(?:is|:)
+        | \benter\s+(?:this|the)(?:\s+following)?\s+(?:\S+\s+){0,3}?code\b
+        | \buse\s+(?:this\s+)?code\b",
+    )
+    .expect("valid code trigger regex")
+});
+
+/// A code to spend or a number to quote, not one to sign in with: promo
+/// words anywhere in the sentence, or a kind of number named with "code".
+static NOT_A_SIGN_IN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?ix)
+        \b(?:promo(?:tion(?:al)?)?|discount|coupon|voucher|referral|gift|redeem|reward|loyalty)\b
+        | \d+\s?%\s+off\b
+        | \b(?:tracking|post|zip|area|dial(?:ling)?|sort|branch|bank|order|booking|reference|invoice|product|error|status|country)\s+code\b
+        | \bpostcode\b",
+    )
+    .expect("valid not-a-sign-in regex")
+});
+
+/// Subjects about something other than signing in. Their bodies quote
+/// booking PINs and branch codes, so only a code the subject names counts.
+static OTHER_SUBJECT: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)\b(?:booking|booked|reservation|order|receipt|invoice|statement|discount|sale|offer|deal|reminder|newsletter|digest|shipped|delivery|last\s+chance)\b|\d+\s?%\s+off\b",
+    )
+    .expect("valid other-subject regex")
+});
+
+/// Code-shaped words: digits, groups like 123-456, or capitals with digits.
+static CANDIDATE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\b(?:[A-Z]-)?(?:\d{3}[ -]\d{3}|[A-Z0-9]{3,5}-[A-Z0-9]{3,5}|[A-Z0-9]{4,10})\b")
+        .expect("valid code candidate regex")
+});
+
+/// The one-time code in a message, if it gives one.
+pub fn one_time_code(subject: &str, body: Option<&str>) -> Option<String> {
+    if let Some(code) = in_text(subject) {
+        return Some(code);
+    }
+    if OTHER_SUBJECT.is_match(subject) && !TRIGGER.is_match(subject) {
+        return None;
+    }
+    let body = body?;
+    let end = floor_char_boundary(body, BODY_MAX);
+    in_text(&body[..end])
+}
+
+fn in_text(text: &str) -> Option<String> {
+    for trigger in TRIGGER.find_iter(text) {
+        // After the words, in their sentence ("…code is 482913. Order 5521…"),
+        // or the next one when they point there ("…the code below. 911110").
+        let reach = text[trigger.end()..]
+            .char_indices()
+            .filter(|&(_, c)| !c.is_whitespace() && !('\u{2500}'..='\u{257F}').contains(&c))
+            .nth(AFTER)
+            .map_or(text.len(), |(i, _)| trigger.end() + i);
+        let mut end = trigger.end() + sentence_end(&text[trigger.end()..reach]);
+        if text[trigger.end()..end].trim_end().ends_with("below") {
+            let next = ceil_char_boundary(text, end + 1);
+            end = next + sentence_end(&text[next..reach.max(next)]);
+        }
+        if let Some(code) = candidates(text, trigger.end(), end).next() {
+            if !spends(text, &trigger, code.end()) {
+                return Some(code.as_str().to_string());
+            }
+        }
+        // Right before them: "482913 is your verification code".
+        let from = ceil_char_boundary(text, trigger.start().saturating_sub(BEFORE));
+        if let Some(code) = candidates(text, from, trigger.start())
+            .filter(|code| !text[code.end()..trigger.start()].contains(['.', '!', '?', '\n']))
+            .last()
+        {
+            if !spends(text, &trigger, trigger.end()) {
+                return Some(code.as_str().to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Code-shaped whole words between `from` and `to` in `text`.
+fn candidates(text: &str, from: usize, to: usize) -> impl Iterator<Item = regex::Match<'_>> {
+    CANDIDATE
+        .find_iter(&text[..to])
+        .filter(move |m| m.start() >= from && looks_like_a_code(text, m.start(), m.end()))
+}
+
+fn looks_like_a_code(text: &str, start: usize, end: usize) -> bool {
+    let word = &text[start..end];
+    let digits = word.chars().filter(char::is_ascii_digit).count();
+    if digits == 0 {
+        return false;
+    }
+    let plain: String = word.chars().filter(char::is_ascii_alphanumeric).collect();
+    if plain.len() < 4 || plain.len() > 10 {
+        return false;
+    }
+    // A year in a footer or a date: "© 2026", "October 2026".
+    if plain.len() == 4 && digits == 4 && (plain.starts_with("19") || plain.starts_with("20")) {
+        return false;
+    }
+    // Part of a longer word or number, money or a percentage: "ITMS-90683",
+    // "$1234", "1234%", "1,234", "12.50".
+    let before = text[..start].chars().next_back();
+    let after = text[end..].chars().next();
+    let after_next = text[end..].chars().nth(1);
+    !(before.is_some_and(|c| {
+        c.is_alphanumeric() || matches!(c, '-' | '$' | '£' | '€' | '#' | '.' | ',' | '/')
+    }) || after.is_some_and(|c| c.is_alphanumeric() || matches!(c, '%' | ',' | '/' | '-'))
+        || after == Some('.') && after_next.is_some_and(|c| c.is_ascii_digit()))
+}
+
+/// Whether the sentence around the words says the code is to spend or a
+/// number to quote.
+fn spends(text: &str, trigger: &regex::Match<'_>, to: usize) -> bool {
+    let from = sentence_start(&text[..trigger.start()]);
+    let to = floor_char_boundary(text, to);
+    NOT_A_SIGN_IN.is_match(&text[from..to])
+}
+
+/// Bytes from the start of `text` to the end of its first sentence. Not a
+/// blank line: a code often sits on its own line below "Your code is:".
+fn sentence_end(text: &str) -> usize {
+    text.char_indices()
+        .find(|&(i, c)| {
+            matches!(c, '.' | '!' | '?') && text[i + 1..].starts_with(|n: char| n.is_whitespace())
+        })
+        .map_or(text.len(), |(i, _)| i)
+}
+
+/// Where the last sentence in `text` starts.
+fn sentence_start(text: &str) -> usize {
+    text.char_indices()
+        .rev()
+        .find(|&(i, c)| {
+            matches!(c, '.' | '!' | '?' | '\n')
+                && text[i + c.len_utf8()..].starts_with(|n: char| n.is_whitespace())
+        })
+        .map_or(0, |(i, c)| i + c.len_utf8())
+}
+
+fn floor_char_boundary(text: &str, at: usize) -> usize {
+    let mut at = at.min(text.len());
+    while !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    at
+}
+
+fn ceil_char_boundary(text: &str, at: usize) -> usize {
+    let mut at = at.min(text.len());
+    while !text.is_char_boundary(at) {
+        at += 1;
+    }
+    at
+}
+
+#[cfg(test)]
+mod tests {
+    use super::one_time_code;
+
+    fn code(subject: &str, body: &str) -> Option<String> {
+        one_time_code(subject, Some(body))
+    }
+
+    #[test]
+    fn finds_the_code_in_the_subject() {
+        assert_eq!(
+            code("Your verification code is 482913", "").as_deref(),
+            Some("482913")
+        );
+        assert_eq!(
+            code("G-123456 is your Google verification code", "").as_deref(),
+            Some("G-123456")
+        );
+        assert_eq!(
+            code("123456 is your Instagram code", "").as_deref(),
+            Some("123456")
+        );
+        assert_eq!(
+            code("Slack confirmation code: ABC-DEF4", "").as_deref(),
+            Some("ABC-DEF4")
+        );
+    }
+
+    #[test]
+    fn finds_the_code_in_the_body_when_the_subject_has_none() {
+        assert_eq!(
+            code(
+                "Sign in to Acme",
+                "Hi Ada,\n\nYour login code is:\n\n739 204\n\nIt expires in 10 minutes."
+            )
+            .as_deref(),
+            Some("739 204")
+        );
+        assert_eq!(
+            code(
+                "Confirm it's you",
+                "Use this code to finish signing in: 5F3K9Q\nIf this wasn't you, ignore this email."
+            )
+            .as_deref(),
+            Some("5F3K9Q")
+        );
+        assert_eq!(
+            code(
+                "Your one-time passcode",
+                "Enter the following code: 0042817"
+            )
+            .as_deref(),
+            Some("0042817")
+        );
+    }
+
+    #[test]
+    fn a_promo_or_gift_code_is_not_one() {
+        assert_eq!(code("Your promo code is SAVE20NOW", ""), None);
+        assert_eq!(code("20% off: use code SPRING2026 at checkout", ""), None);
+        assert_eq!(
+            code("Your gift card code", "Redeem code 4821-9932 at checkout."),
+            None
+        );
+    }
+
+    #[test]
+    fn an_account_or_reference_number_is_not_one() {
+        assert_eq!(
+            code("Your statement", "Account number 12345678 is now open."),
+            None
+        );
+        assert_eq!(code("Your order", "Your order code is 55210."), None);
+    }
+
+    #[test]
+    fn numbers_that_are_not_codes_are_skipped() {
+        assert_eq!(code("Your code is ready", "© 2026 Acme Inc."), None);
+        assert_eq!(
+            code(
+                "Your account summary",
+                "Your balance is $1234.56 this month."
+            ),
+            None
+        );
+        assert_eq!(code("Weekly report", "Visitors up 1234% this week."), None);
+        assert_eq!(code("Hello", "No code here, just 482913 apples."), None);
+    }
+
+    #[test]
+    fn the_code_in_the_same_sentence_wins_over_a_later_number() {
+        assert_eq!(
+            code(
+                "Verify your sign-in",
+                "Your security code is 918273. Order 55210 shipped yesterday."
+            )
+            .as_deref(),
+            Some("918273")
+        );
+    }
+
+    #[test]
+    fn real_layouts_from_a_mailbox() {
+        // The code on the line after "below".
+        assert_eq!(
+            code(
+                "Your app verification code",
+                "Please enter the verification code below.\n\n911110\n\nNote: it expires in 24 hours."
+            )
+            .as_deref(),
+            Some("911110")
+        );
+        assert_eq!(
+            code(
+                "DigitalOcean Verification Code",
+                "Enter this 6 digit code on the sign in page to confirm your identity: 405742 If you receive"
+            )
+            .as_deref(),
+            Some("405742")
+        );
+        // A card check for a purchase is a sign-in code, whatever it buys.
+        assert_eq!(
+            code(
+                "Your SafeKey Verification Code",
+                "Your verification code for a £548.43 transaction at Booking.com is: 092730 Here's what"
+            )
+            .as_deref(),
+            Some("092730")
+        );
+        assert_eq!(
+            code("Your single-use code", "Your single-use code is: 933871").as_deref(),
+            Some("933871")
+        );
+        assert_eq!(
+            code("WhatsApp Verification Code: 659-964", "").as_deref(),
+            Some("659-964")
+        );
+    }
+
+    #[test]
+    fn a_rule_of_box_characters_between_the_words_and_the_code_is_skipped() {
+        let body = format!(
+            "Your verification code for a £548.43 transaction at Booking.com\nis:\n{}\n092730",
+            "─".repeat(70)
+        );
+        assert_eq!(
+            code("Your SafeKey Verification Code", &body).as_deref(),
+            Some("092730")
+        );
+    }
+
+    #[test]
+    fn padding_in_a_boxed_layout_does_not_use_up_the_reach() {
+        let pad = " ".repeat(80);
+        let body = format!(
+            "Below is your SafeKey Verification Code{pad}\nYour verification code for a £548.43 transaction at Booking.com{pad}\nis:{pad}\n{}{pad}\n092730",
+            "─".repeat(71)
+        );
+        assert_eq!(
+            code("Your SafeKey Verification Code", &body).as_deref(),
+            Some("092730")
+        );
+    }
+
+    #[test]
+    fn a_sale_subject_keeps_its_codes_to_itself() {
+        assert_eq!(
+            code(
+                "30% off Coconut - last chance today!",
+                "Use code SEPT30 at checkout."
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn quoted_numbers_in_other_mail_are_not_codes() {
+        assert_eq!(
+            code(
+                "Thanks! Your booking is confirmed at Roslin Beach Hotel",
+                "Confirmation number: 5921760267 PIN code: 1391"
+            ),
+            None
+        );
+        assert_eq!(
+            code(
+                "Truworths acc - Discount Reminder",
+                "Branch Code: 020909 Account Number: 060551151"
+            ),
+            None
+        );
+        assert_eq!(
+            code(
+                "Action needed: the uploaded build has issues",
+                "ITMS-90683: Missing purpose string in Info.plist - Your app's code references APIs."
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn multibyte_text_near_the_limits_does_not_panic() {
+        let long = format!("{}Your code is 123456", "é".repeat(3_000));
+        assert_eq!(code("Hi", &long), None, "past the part of the body read");
+        assert_eq!(
+            code("Ваш код: 123456 — your code: 654321", "").as_deref(),
+            Some("654321")
+        );
+    }
+}

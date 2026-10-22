@@ -154,6 +154,26 @@ pub fn window<Tz: TimeZone>(
     })
 }
 
+/// The window of a message that gives a one-time code, whatever else
+/// its words say: its stated lifetime, else the code default.
+pub fn code_window(text: &str, arrived: DateTime<Utc>) -> Window {
+    let kind = WindowKind::Code;
+    match lifetime(text, arrived) {
+        Some((until, evidence)) => Window {
+            kind,
+            until,
+            source: "rule".to_string(),
+            evidence,
+        },
+        None => Window {
+            kind,
+            until: arrived + kind.default_length(),
+            source: "default".to_string(),
+            evidence: format!("{} default", kind.label()),
+        },
+    }
+}
+
 fn lifetime(text: &str, arrived: DateTime<Utc>) -> Option<(DateTime<Utc>, String)> {
     let caps = LIFETIME.captures(text)?;
     let amount: i64 = caps.get(1)?.as_str().parse().ok()?;

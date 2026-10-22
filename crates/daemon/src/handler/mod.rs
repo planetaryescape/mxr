@@ -21,6 +21,7 @@ mod briefing;
 pub(crate) mod categories;
 pub(crate) mod category_rules;
 mod classify_eval;
+mod codes;
 mod commitments;
 mod commitments_extract;
 mod conversation_shape;
@@ -1888,6 +1889,9 @@ async fn dispatch(
             ))
             .await
         }
+        Request::ListOneTimeCodes { account_id, limit } => {
+            codes::list(state, account_id.as_ref(), *limit).await
+        }
         Request::GetUpdatesDigest {
             account_id,
             cut,
@@ -2508,6 +2512,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::SendReadingToMarginalia { dry_run: true, .. }
         | Request::UpdateHighlight { dry_run: true, .. }
         | Request::RemoveHighlight { dry_run: true, .. }
+        | Request::ListOneTimeCodes { .. }
         | Request::GetUpdatesDigest { .. }
         | Request::ListSignatures
         | Request::ListSignatureDefaults
@@ -3032,6 +3037,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetAssistantConversation { .. } => "get_assistant_conversation",
         Request::GetAssistantStepRows { .. } => "get_assistant_step_rows",
         Request::DeleteAssistantConversation { .. } => "delete_assistant_conversation",
+        Request::ListOneTimeCodes { .. } => "list_one_time_codes",
         Request::GetUpdatesDigest { .. } => "get_updates_digest",
         Request::LetGoDigest { .. } => "let_go_digest",
         Request::SetUpdateSource { .. } => "set_update_source",
@@ -3142,6 +3148,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListMergeSuggestions { account_id }
         | Request::GetReadingEdition { account_id, .. }
         | Request::ExportReadingHighlights { account_id }
+        | Request::ListOneTimeCodes { account_id, .. }
         | Request::GetUpdatesDigest { account_id, .. }
         | Request::LetGoDigest { account_id, .. }
         | Request::SetUpdateSource { account_id, .. }

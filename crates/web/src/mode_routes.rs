@@ -1,6 +1,6 @@
-//! The modes over the bridge: Now, the rail, which modes hold a thread,
-//! done here per mode, how each mode explains itself and which of its
-//! hints are dismissed. Thin passthroughs to the daemon,
+//! The modes over the bridge: Now, the rail, recent one-time codes, which
+//! modes hold a thread, done here per mode, how each mode explains itself
+//! and which of its hints are dismissed. Thin passthroughs to the daemon,
 //! which owns the caps, the copy and every preview's selection.
 
 use super::place_routes::parse_optional_account;
@@ -45,6 +45,38 @@ async fn get_rail(
         &headers,
         query.token.as_deref(),
         Request::GetRail { account_id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct CodesQuery {
+    #[serde(default)]
+    token: Option<String>,
+    /// Omitted: every account.
+    #[serde(default, alias = "account_id")]
+    account: Option<String>,
+    #[serde(default)]
+    limit: Option<u32>,
+}
+
+/// One-time codes from the last day's mail, newest first, each marked
+/// current or expired.
+async fn get_codes(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<CodesQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let account_id = parse_optional_account(query.account.as_deref())?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::ListOneTimeCodes {
+            account_id,
+            limit: query.limit,
+        },
     )
     .await?;
     passthrough(response)
@@ -229,6 +261,7 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
     router
         .route("/now", get(get_now))
         .route("/rail", get(get_rail))
+        .route("/codes", get(get_codes))
         .route("/modes/guide", get(get_guide))
         .route(
             "/modes/membership",

@@ -503,6 +503,7 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_modes_rail", &["modes", "rail", "--help"]),
         ("cli_help_modes_why", &["modes", "why", "--help"]),
         ("cli_help_modes_done", &["modes", "done", "--help"]),
+        ("cli_help_code", &["code", "--help"]),
         ("cli_help_now", &["now", "--help"]),
         ("cli_help_messages", &["messages", "--help"]),
         ("cli_help_messages_list", &["messages", "list", "--help"]),

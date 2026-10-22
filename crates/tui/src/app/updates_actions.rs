@@ -41,6 +41,7 @@ impl App {
             Action::TogglePin => self.updates_toggle_pin(),
             Action::UpdatesTuneChoice(choice) => self.updates_tune_choice(choice),
             Action::UpdatesOpenLink => self.updates_open_link(),
+            Action::UpdatesCopyCode => self.updates_copy_code(),
             Action::UpdatesClose => self.updates_close(),
             _ => {}
         }
@@ -338,6 +339,22 @@ impl App {
         }
     }
 
+    fn updates_copy_code(&mut self) {
+        let Some(code) = self
+            .selected_updates_line()
+            .and_then(|line| line.code.clone())
+        else {
+            self.status_message = Some("No one-time code on this line".into());
+            return;
+        };
+        super::records_actions::copy_to_clipboard(&code);
+        self.status_message = Some(format!(
+            "Code {} copied",
+            crate::ui::sanitize::one_line(&code)
+        ));
+        self.mailbox.updates_page.last_copied = Some(code);
+    }
+
     fn updates_close(&mut self) {
         let page = &mut self.mailbox.updates_page;
         if page.tune.take().is_some() {
@@ -389,6 +406,7 @@ impl App {
             KeyCode::Char('S') if shifted => Some(Action::UpdatesSweep),
             KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
             KeyCode::Char('L') if shifted => Some(Action::UpdatesOpenLink),
+            KeyCode::Char('y') if plain => Some(Action::UpdatesCopyCode),
             KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),
             _ => None,
         };

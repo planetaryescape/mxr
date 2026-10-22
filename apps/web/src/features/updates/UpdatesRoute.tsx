@@ -29,6 +29,7 @@ import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import { useDigest, type UpdateLine, type UpdateSection, type UpdatesDigest } from "./api";
+import { copyCode } from "./copyCode";
 import { displaySourceName } from "./digestView";
 import {
   cutLabel,
@@ -307,7 +308,13 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   // The status bar says why the lit line is here and which keys work on it.
   useLitReason(current?.why);
   // While the open email has focus these keys aren't live, so the strip doesn't offer them.
-  usePageKeys(current && (!params.threadId || activePane !== "reader") ? UPDATES_KEYS : []);
+  usePageKeys(
+    current && (!params.threadId || activePane !== "reader")
+      ? current.code
+        ? ["updates.copy-code", ...UPDATES_KEYS]
+        : UPDATES_KEYS
+      : [],
+  );
   useShortcutScope("updates", !params.threadId || activePane !== "reader");
   useScopeController("updates", {
     down: () => move(1),
@@ -330,6 +337,9 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
       if (link) window.open(link.url, "_blank", "noopener,noreferrer");
     },
     openEmail: () => current && openEmail(current),
+    copyCode: current?.code
+      ? () => current.code && copyCode(current.code, displaySourceName(current.source_name))
+      : undefined,
     peek: () => current && togglePeek(current),
     // `K` stays "tune this source"; only the email moves from here.
     moveToMode: moveCommands(() => (current ? updateMoveSubject(current) : null)).moveToMode,

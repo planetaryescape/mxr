@@ -2600,6 +2600,16 @@ pub enum Request {
         dry_run: bool,
     },
     // ----- Updates -----
+    /// One-time codes from mail received in the last day, newest first,
+    /// at most `limit` (default 10), each with whether it is still in its
+    /// window. Found by rules in the subject and body, any folder but
+    /// Trash and Spam. Read only. Returns `ResponseData::OneTimeCodes`.
+    ListOneTimeCodes {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_id: Option<AccountId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u32>,
+    },
     /// The Updates briefing (blueprint 22, phase 4): everything that
     /// arrived by the cut (`cut`, else the latest one) and wasn't let go,
     /// one line per source in Needs a look, Changed and Routine, plus what
@@ -3010,6 +3020,7 @@ impl Request {
             | Self::GetAssistantConversation { .. }
             | Self::GetAssistantStepRows { .. }
             | Self::DeleteAssistantConversation { .. }
+            | Self::ListOneTimeCodes { .. }
             | Self::GetUpdatesDigest { .. }
             | Self::LetGoDigest { .. }
             | Self::SetUpdateSource { .. }
@@ -4164,6 +4175,10 @@ pub enum ResponseData {
     Now {
         now: NowData,
     },
+    /// Returned by `Request::ListOneTimeCodes`.
+    OneTimeCodes {
+        codes: Vec<OneTimeCodeData>,
+    },
     /// Returned by `Request::GetUpdatesDigest`.
     UpdatesDigest {
         digest: UpdatesDigestData,
@@ -4625,6 +4640,7 @@ impl ResponseData {
             | Self::AssistantConversations { .. }
             | Self::AssistantStepRows { .. }
             | Self::AssistantDelete { .. }
+            | Self::OneTimeCodes { .. }
             | Self::UpdatesDigest { .. }
             | Self::UpdatesLetGo { .. }
             | Self::UpdateSource { .. }

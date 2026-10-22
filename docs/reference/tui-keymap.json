@@ -945,6 +945,7 @@
     "q": "QuitView",
     "t": "UpdatesNeedsMe",
     "u": "UndoLastMutation",
+    "y": "UpdatesCopyCode",
     "z z": "CenterCurrent"
   }
 }

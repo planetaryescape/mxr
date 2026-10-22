@@ -226,10 +226,11 @@ const EDITING_CHORDS = new Set([
  */
 export function ownsKeyboard(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
-  // A dialog animating closed (Radix keeps it mounted with data-state
-  // "closed") no longer owns anything; keys typed then belong to the page.
+  // A dialog or menu animating closed (Radix keeps it mounted, focus
+  // inside, with data-state "closed") no longer owns anything; keys typed
+  // then belong to the page.
   const closing = target.closest(
-    '[data-state="closed"][role="dialog"], [data-state="closed"][role="alertdialog"]',
+    '[data-state="closed"][role="dialog"], [data-state="closed"][role="alertdialog"], [data-state="closed"][role="menu"]',
   );
   if (closing) return false;
   if (target instanceof HTMLElement && target.isContentEditable) return true;

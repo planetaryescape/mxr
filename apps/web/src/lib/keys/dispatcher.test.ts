@@ -250,6 +250,26 @@ describe("installKeyDispatcher", () => {
       expect(compose.run).toHaveBeenCalledTimes(1);
     });
 
+    test("an open menu owns its keys", () => {
+      const undo = runAction("undo", "u");
+      registry.define(undo.action);
+      document.body.innerHTML = `<div data-radix-popper-content-wrapper><div role="menu" data-state="open"><div role="menuitem" tabindex="-1">Pin</div></div></div>`;
+
+      press({ key: "u" }, document.querySelector('[role="menuitem"]')!);
+      expect(undo.run).not.toHaveBeenCalled();
+    });
+
+    // docs/issues/menu-exit-swallows-keys.md: Radix keeps a menu mounted,
+    // with focus inside it, through its exit animation.
+    test("a menu animating closed does not swallow keys", () => {
+      const undo = runAction("undo", "u");
+      registry.define(undo.action);
+      document.body.innerHTML = `<div data-radix-popper-content-wrapper><div role="menu" data-state="closed"><div role="menuitem" tabindex="-1">Pin</div></div></div>`;
+
+      press({ key: "u" }, document.querySelector('[role="menuitem"]')!);
+      expect(undo.run).toHaveBeenCalledTimes(1);
+    });
+
     test("Enter on a focused button keeps its native meaning", () => {
       const open = vi.fn<() => void>();
       registry.define({

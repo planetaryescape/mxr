@@ -109,5 +109,11 @@
   },
   "overrides": {
     "tinypool": "^2.2.0"
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true,
+    "fsevents@2.3.2": true,
+    "esbuild@0.28.2": true,
+    "msw": false
   }
 }

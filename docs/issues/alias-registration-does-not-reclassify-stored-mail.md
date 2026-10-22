@@ -27,14 +27,15 @@ from it Outbound.
   unless the user corrected them.
 - The contacts table is queued for a refresh when any row changed.
 - The config reload path reclassifies each account whose owned set changed.
-- The response and CLI output report `to_outbound` and `to_inbound`.
+- The response and CLI output report `to_outbound` and `to_inbound`. Add and
+  remove also take `dry_run`, and `--dry-run` previews the same counts.
   `set-primary` never changes which addresses are owned, so its counts are zero.
 
 ## Residual risks
 
-- No dry-run. The repo rule asks for a preview path, but the fix reports counts
-  after the commit instead, as BK asked. A preview that shares the selection
-  would be a new flow.
+- Add and remove take `--dry-run`. It runs the same selection against the owned
+  set the change would produce, and writes nothing. Set-primary has no dry run:
+  it never changes membership.
 - A sync pass that loaded the registry before the refresh can still write an
   Inbound row for an alias after the reclassify. Nothing repairs that row until
   the next alias change.

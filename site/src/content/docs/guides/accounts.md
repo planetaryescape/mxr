@@ -108,8 +108,21 @@ The command reports how many messages changed:
 mxr accounts addresses add --account work support@planetaryescape.xyz
 # Added support@planetaryescape.xyz. Stored mail reclassified: 14 now sent, 0 now received.
 mxr accounts addresses add --account work support@planetaryescape.xyz --format json
-# {"email":"support@planetaryescape.xyz","to_outbound":14,"to_inbound":0}
+# {"email":"support@planetaryescape.xyz","dry_run":false,"to_outbound":14,"to_inbound":0}
 ```
+
+Add and remove take `--dry-run`. It prints the same counts the real change
+would apply and changes nothing: the address, the stored directions and the
+arrivals stay as they are. Run it first when you want to see the effect:
+
+```bash
+mxr accounts addresses add --account work support@planetaryescape.xyz --dry-run
+# Dry run: nothing changed. Added support@planetaryescape.xyz. Would reclassify stored mail: 14 now sent, 0 now received.
+mxr accounts addresses remove --account work support@planetaryescape.xyz --dry-run --format json
+```
+
+`set-primary` has no dry run. It changes only the primary marker, so it never
+reclassifies anything.
 
 Once an address is registered it becomes a valid sender inside mxr for that
 account. A reply defaults its From to whichever owned address the original was

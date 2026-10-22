@@ -2097,7 +2097,25 @@ impl AppState {
         // Accounts added since startup are written to the store by the setup
         // above; the registry must learn them too or sync and desk miss their
         // primary.
-        self.refresh_account_addresses().await;
+        let accounts: Vec<AccountId> = provider_setup.providers.keys().cloned().collect();
+        let before: Vec<_> = accounts
+            .iter()
+            .map(|id| self.account_addresses.owned(id))
+            .collect();
+        if self.refresh_account_addresses().await {
+            // A config edit can move an account's primary; clients caching
+            // reply recipients must hear about it like any alias change.
+            for (account_id, before) in accounts.iter().zip(before) {
+                if *self.account_addresses.owned(account_id) != *before {
+                    crate::chimes::emit_daemon_event(
+                        self,
+                        mxr_protocol::DaemonEvent::AccountAddressesChanged {
+                            account_id: account_id.clone(),
+                        },
+                    );
+                }
+            }
+        }
         {
             let mut runtime = self.runtime.write();
             *runtime = ProviderRuntime {

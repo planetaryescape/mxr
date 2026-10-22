@@ -599,6 +599,7 @@ mod tests {
             link: Some(mxr_protocol::AssistantLinkData::Thread {
                 thread_id: thread.into(),
             }),
+            ..Default::default()
         }
     }
 

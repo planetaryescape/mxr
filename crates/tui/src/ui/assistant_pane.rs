@@ -1834,11 +1834,13 @@ mod tests {
                             title: "Weekly sync".into(),
                             detail: Some("Quinn".into()),
                             link: None,
+                            ..Default::default()
                         },
                         mxr_protocol::AssistantReadoutRowData {
                             title: "Invoice".into(),
                             detail: None,
                             link: None,
+                            ..Default::default()
                         },
                     ],
                     created_at: 0,
@@ -1872,6 +1874,7 @@ mod tests {
                         title: hostile.into(),
                         detail: Some(hostile.into()),
                         link: None,
+                        ..Default::default()
                     }],
                     created_at: 0,
                 },

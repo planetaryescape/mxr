@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.139](https://github.com/planetaryescape/mxr/compare/v0.6.138...v0.6.139) (2026-10-22)
+
+
+### Features
+
+* read, search and filter by account in the Raycast extension ([#594](https://github.com/planetaryescape/mxr/issues/594)) ([6851b2a](https://github.com/planetaryescape/mxr/commit/6851b2ab97a8a36e04b9b70f8e761cd480bb4ea7))
+
 ## [0.6.138](https://github.com/planetaryescape/mxr/compare/v0.6.137...v0.6.138) (2026-10-22)
 
 

@@ -318,13 +318,20 @@ See [Archive](/guides/archive/).
 ### Recover a mailbox Archive action
 
 The mailbox Archive action removes messages from the provider Inbox. It is
-separate from filing a record in Archive or using **Done** on the desk. If the
-action loses its response, open the **Archive recovery** panel and query the
-retained operation. Before submission, the browser shows a confirmation with
-the reviewed message count and IDs; confirm it explicitly. Submit or resume
-that same operation only to continue `pending` items. An `unknown` item may
-have reached the provider; query again and do not start a second Archive
-action for it.
+separate from filing a record in Archive or using **Done** on the desk. Press
+`e`, or use the Archive button, swipe or hover action, and the conversation
+leaves the list at once. There is no confirmation dialog: the toast offers
+**Undo**, and a second Archive of a message that is still being archived does
+nothing. Behind the scenes the web app still reviews the selection with the
+daemon, keeps a record of it in the browser, submits exactly what was reviewed
+and polls the outcome.
+
+If the action loses its response, open the **Archive recovery** panel (it shows
+a count of retained operations) and choose **Query outcome** on the retained
+operation. **Submit reviewed selection** or **Resume undispatched items** sends
+that same reviewed operation again, only to continue `pending` items. An
+`unknown` item may have reached the provider; query again and do not start a
+second Archive action for it.
 
 ## Reading and triage
 
@@ -373,6 +380,11 @@ A conversation opens with its context before the messages:
   messages below never move when it arrives. It shows only for long
   conversations (four or more messages, or over 400 words): for a short one
   the list row already said it, and the ask is still marked in the message.
+- **When it arrived.** Every message, open or folded, shows its arrival in
+  your local time and your locale's format: "Today, 14:02 · 2 hours ago" for
+  today's mail, "Tue 21 Oct, 14:02" for earlier mail this year, and with the
+  year after that. Hover the time for the full date. The "2 hours ago" moves
+  on while the email stays open. On a phone the arrival has its own line.
 - **How you know them.** "You and Maya: 41 emails · you usually reply within
   4h · last spoke 12 Sep", or "your first conversation".
 - **Whether you owe a reply**, and since when. Newsletters never count.
@@ -537,6 +549,23 @@ cloud), how many of your emails shaped the voice and whether your history
 was used. **Sources** lists those emails and the messages it read from the
 conversation; each opens in a new tab on that message
 ([where a draft came from](/guides/llm-features/#see-where-a-draft-came-from)).
+
+### Recipients
+
+To, Cc and Bcc hold each address as a chip. Type, then press `Enter`, `,` or
+`;` to make a chip, or paste a list separated by commas, semicolons or new
+lines. `Backspace` on an empty field removes the last chip. An address that does
+not parse stays in the field as an invalid chip until you fix or remove it.
+
+As you type, mxr suggests from the people who have written to you. A
+suggestion matches part of the address or the display name, and each address
+appears once, with its name, even when it writes to more than one of your
+accounts. Addresses already in the field are left out. `↓` and `↑` move through
+the list, `Enter` takes the highlighted suggestion, and `Esc` closes it. If a
+suggestion does not appear, type the whole address.
+
+Suggestions come from your most frequent inbound senders, so someone you only
+write to, or who has written to you rarely, may not be suggested.
 
 Drafts save as you type and when you close the composer. Sending asks for
 confirmation with the recipients, the From address and the pre-send safety

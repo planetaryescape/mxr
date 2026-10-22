@@ -105,7 +105,11 @@ export function AssistantSplit({ children }: { children: ReactNode }) {
           }}
           aria-label="Assistant"
           onKeyDown={(event) => {
-            if (event.key === "Escape" && !(event.target instanceof HTMLTextAreaElement)) {
+            if (
+              event.key === "Escape" &&
+              !event.defaultPrevented &&
+              !(event.target instanceof HTMLTextAreaElement)
+            ) {
               setOpen(false);
             }
           }}

@@ -9,7 +9,7 @@
  */
 
 import { Paperclip } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { Avatar } from "@/components/Avatar";
 import { MODE_GLYPHS } from "@/components/ModeMark";
@@ -19,8 +19,8 @@ import { UnreadDot } from "@/components/UnreadDot";
 import { formatReceived } from "@/lib/format";
 import type { AssistantLink } from "./links";
 import type { ModesByThread } from "./threadGlyph";
-import { useLinkPreview, type ThreadPreview } from "./useLinkPreview";
-import type { PersonPage } from "@/features/messages/api";
+import { useLinkPreview, type PersonProfile, type ThreadPreview } from "./useLinkPreview";
+
 import type { ThreadModes } from "@/features/modes/membership";
 
 const OPEN_DELAY_MS = 400;
@@ -41,19 +41,51 @@ export function LinkHoverCard({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  // Radix keeps its open timer running after a click, so a click during the
+  // delay would navigate and then open the card. Once the link is activated
+  // the card stays shut until the pointer leaves or focus moves off.
+  const activated = useRef(false);
   const { thread, person } = useLinkPreview(link, open);
   return (
     <HoverCard
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(next) => {
+        if (next && activated.current) return;
+        setOpen(next);
+      }}
       openDelay={OPEN_DELAY_MS}
       closeDelay={CLOSE_DELAY_MS}
     >
-      {/* A click follows the link; the card has done its job. */}
-      <HoverCardTrigger asChild onClick={() => setOpen(false)}>
+      <HoverCardTrigger
+        asChild
+        onPointerDown={() => {
+          activated.current = true;
+        }}
+        onClick={() => {
+          activated.current = true;
+          setOpen(false);
+        }}
+        onPointerLeave={() => {
+          activated.current = false;
+        }}
+        onBlur={() => {
+          activated.current = false;
+        }}
+      >
         {children}
       </HoverCardTrigger>
-      <HoverCardContent side="left" collisionPadding={8} data-testid="link-hover-card">
+      <HoverCardContent
+        side="left"
+        collisionPadding={8}
+        data-testid="link-hover-card"
+        // Esc closes the card and nothing else: the event is marked handled so
+        // the narrow-screen drawer, which also closes on Esc, leaves the
+        // assistant open.
+        onEscapeKeyDown={(event) => {
+          event.preventDefault();
+          setOpen(false);
+        }}
+      >
         {link.kind === "thread" ? (
           <EmailCard title={title} preview={thread} held={modes?.get(link.thread_id)} />
         ) : (
@@ -132,7 +164,7 @@ function EmailCard({
   );
 }
 
-function PersonCard({ name, page }: { name: string; page: PersonPage | null }) {
+function PersonCard({ name, page }: { name: string; page: PersonProfile | null }) {
   const shown = page?.row.title ?? name;
   return (
     <div className="flex items-start gap-3">

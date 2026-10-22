@@ -38,6 +38,7 @@ async fn person(fx: &Fixture, who: &str, topic: Option<&ThreadId>) -> PersonPage
             account_id: None,
             person: who.into(),
             topic: topic.cloned(),
+            conversation: true,
         },
     )
     .await
@@ -225,6 +226,33 @@ async fn a_person_is_one_row_a_group_is_its_own_and_copied_mail_is_in_updates() 
     assert_eq!(conversation.thread_id, contract);
     assert!(conversation.composer.label.starts_with("Reply to Samir · "));
     assert!(!conversation.composer.reply_all);
+
+    // A profile read (a hover card's) carries the same facts and no message text.
+    let profile = match request(
+        &fx,
+        Request::GetPerson {
+            account_id: None,
+            person: SAMIR.into(),
+            topic: None,
+            conversation: false,
+        },
+    )
+    .await
+    {
+        ResponseData::PersonPage { page } => page,
+        other => panic!("expected a person page, got {other:?}"),
+    };
+    assert!(profile.conversation.is_none());
+    assert!(profile.row.preview.is_none());
+    assert_eq!(profile.header_line, page.header_line);
+    assert_eq!(profile.topics.len(), 3);
+    let wire = serde_json::to_string(&profile).unwrap();
+    for message in &conversation.messages {
+        assert!(
+            message.text.is_empty() || !wire.contains(message.text.as_str()),
+            "{wire}"
+        );
+    }
 }
 
 #[tokio::test]

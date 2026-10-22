@@ -819,9 +819,18 @@ pub(super) async fn get_person(
     account_id: Option<&AccountId>,
     person: &str,
     topic: Option<&ThreadId>,
+    with_conversation: bool,
 ) -> HandlerResult {
     Ok(ResponseData::PersonPage {
-        page: person_at(state, account_id, person, topic, Utc::now()).await?,
+        page: person_at(
+            state,
+            account_id,
+            person,
+            topic,
+            with_conversation,
+            Utc::now(),
+        )
+        .await?,
     })
 }
 
@@ -830,13 +839,18 @@ pub(super) async fn person_at(
     account_id: Option<&AccountId>,
     person: &str,
     topic: Option<&ThreadId>,
+    with_conversation: bool,
     now: DateTime<Utc>,
 ) -> Result<PersonPageData, HandlerError> {
     let arg = parse_person(person)?;
     for account in scoped_cached_accounts(state, account_id).await? {
         let page = match &arg {
-            PersonArg::Person(email) => person_page(state, &account, email, topic, now).await?,
-            PersonArg::Group(thread) => group_page(state, &account, thread, now).await?,
+            PersonArg::Person(email) => {
+                person_page(state, &account, email, topic, with_conversation, now).await?
+            }
+            PersonArg::Group(thread) => {
+                group_page(state, &account, thread, with_conversation, now).await?
+            }
         };
         if let Some(page) = page {
             return Ok(page);
@@ -852,6 +866,7 @@ async fn person_page(
     account_id: &AccountId,
     email: &str,
     topic: Option<&ThreadId>,
+    with_conversation: bool,
     now: DateTime<Utc>,
 ) -> Result<Option<PersonPageData>, HandlerError> {
     let people = People::new(&state.store.person_links(account_id).await?);
@@ -909,12 +924,15 @@ async fn person_page(
         .map(|t| t.data.clone())
         .collect();
     let mut rows = vec![row];
-    fill_previews(state, std::slice::from_ref(&g), &mut rows).await?;
+    // The preview line and the conversation are message text; a profile
+    // read leaves both out.
+    if with_conversation {
+        fill_previews(state, std::slice::from_ref(&g), &mut rows).await?;
+    }
     let row = rows.remove(0);
-    let selected = pick_topic(&topics, topic);
-    let conversation = match selected {
-        Some(selected) => Some(conversation(state, &g, selected, &row).await?),
-        None => None,
+    let conversation = match pick_topic(&topics, topic) {
+        Some(selected) if with_conversation => Some(conversation(state, &g, selected, &row).await?),
+        _ => None,
     };
     let facts = ctx.merged_facts(&primary);
     let merge_suggestions = suggestions_for(state, account_id)
@@ -936,6 +954,7 @@ async fn group_page(
     state: &AppState,
     account_id: &AccountId,
     thread_id: &ThreadId,
+    with_conversation: bool,
     now: DateTime<Utc>,
 ) -> Result<Option<PersonPageData>, HandlerError> {
     let g = gather(
@@ -955,15 +974,21 @@ async fn group_page(
     };
     let ctx = g.ctx(now);
     let mut rows = vec![build_row(topic.key.clone(), vec![topic.clone()], &ctx)];
-    fill_previews(state, std::slice::from_ref(&g), &mut rows).await?;
+    if with_conversation {
+        fill_previews(state, std::slice::from_ref(&g), &mut rows).await?;
+    }
     let row = rows.remove(0);
-    let conversation = conversation(state, &g, &topic.data, &row).await?;
+    let conversation = if with_conversation {
+        Some(conversation(state, &g, &topic.data, &row).await?)
+    } else {
+        None
+    };
     let names: Vec<String> = row.members.iter().map(|m| m.label().to_string()).collect();
     Ok(Some(PersonPageData {
         relationship_line: format!("A conversation with {}.", join_names(&names)),
         header_line: header_line(row.closeness, None),
         topics: vec![topic.data],
-        conversation: Some(conversation),
+        conversation,
         merge_suggestions: Vec::new(),
         row,
     }))

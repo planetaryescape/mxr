@@ -104,7 +104,7 @@ async fn messages_report() {
 
     if let Some(row) = data.your_turn.first().or_else(|| data.recent.first()) {
         let started = Instant::now();
-        let page = messages::person_at(&state, Some(&row.account_id), &row.id, None, at)
+        let page = messages::person_at(&state, Some(&row.account_id), &row.id, None, true, at)
             .await
             .unwrap();
         println!(

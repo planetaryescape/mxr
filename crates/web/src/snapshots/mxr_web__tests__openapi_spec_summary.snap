@@ -513,6 +513,8 @@ expression: summary
     "ThreadGistsBody",
     "ThreadId",
     "ThreadModesData",
+    "ThreadPreviewData",
+    "ThreadPreviewsBody",
     "ThreadPromiseData",
     "ThreadShapeData",
     "ThreadSummaryData",

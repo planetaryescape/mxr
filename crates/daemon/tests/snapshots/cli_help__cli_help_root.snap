@@ -17,6 +17,7 @@ Commands:
   count               Count matching messages
   cat                 Display a message. Pass a positional ID, pipe IDs on stdin, or resolve a list with `--search QUERY` (then `--first` for the most recent match or `--limit N` for the top N)
   thread              Display a thread. Pass a positional ID, pipe IDs on stdin, or resolve a list with `--search QUERY` (deduplicated by thread)
+  thread-preview      Headline facts for up to 100 threads with no bodies: subject, the latest sender, date and snippet, message and unread counts, and whether any message has an attachment. Unknown ids are left out
   threads             List threads in date-descending order. Each returned thread includes its constituent message IDs (date-ascending). Filter by account or label; paginate with --limit/--offset
   export              Export a thread or matching search results
   headers             Show message headers. Pass a positional ID, pipe IDs on stdin, or resolve a list with `--search QUERY`

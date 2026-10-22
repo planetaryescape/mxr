@@ -97,6 +97,7 @@ pub(crate) mod summarize;
 mod thread_context;
 mod thread_gist;
 pub(crate) mod thread_gists;
+mod thread_previews;
 mod time;
 mod todo_resolution;
 mod todo_view;
@@ -1586,6 +1587,9 @@ async fn dispatch(
         Request::GetThreadContext { thread_id } => {
             thread_context::get_thread_context(state, thread_id).await
         }
+        Request::GetThreadPreviews { thread_ids } => {
+            thread_previews::get_thread_previews(state, thread_ids).await
+        }
         Request::GetThreadGist { thread_id, refresh } => {
             thread_gist::get_thread_gist(state, thread_id, *refresh).await
         }
@@ -1801,7 +1805,17 @@ async fn dispatch(
             account_id,
             person,
             topic,
-        } => messages::get_person(state, account_id.as_ref(), person, topic.as_ref()).await,
+            conversation,
+        } => {
+            messages::get_person(
+                state,
+                account_id.as_ref(),
+                person,
+                topic.as_ref(),
+                *conversation,
+            )
+            .await
+        }
         Request::AckMessage {
             thread_id,
             dry_run,
@@ -2544,6 +2558,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::SendTimeRecommendation { .. }
         | Request::GetThreadBriefing { .. }
         | Request::GetThreadContext { .. }
+        | Request::GetThreadPreviews { .. }
         | Request::GetThreadGist { .. }
         | Request::GetThreadGists { .. }
         | Request::DetectPromises { .. }
@@ -2983,6 +2998,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SendTimeRecommendation { .. } => "send_time_recommendation",
         Request::GetThreadBriefing { .. } => "get_thread_briefing",
         Request::GetThreadContext { .. } => "get_thread_context",
+        Request::GetThreadPreviews { .. } => "get_thread_previews",
         Request::GetThreadGist { .. } => "get_thread_gist",
         Request::GetThreadGists { .. } => "get_thread_gists",
         Request::DetectPromises { .. } => "detect_promises",

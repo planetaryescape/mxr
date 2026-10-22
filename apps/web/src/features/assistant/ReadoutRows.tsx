@@ -13,6 +13,7 @@ import { Avatar } from "@/components/Avatar";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { formatWhen } from "@/lib/format";
 import { linkHref, type AssistantLink } from "./links";
+import { LinkHoverCard } from "./LinkHoverCard";
 import { APP_LINK_ATTRIBUTE } from "./markdown";
 import { threadGlyph, type ModesByThread } from "./threadGlyph";
 import type { AssistantItem, AssistantStepRows } from "./api";
@@ -171,13 +172,15 @@ function ReadoutLine({ row, modes }: { row: ReadoutRow; modes: ModesByThread }) 
       renderMain={
         link
           ? (content, className) => (
-              <a
-                href={linkHref(link satisfies AssistantLink)}
-                {...{ [APP_LINK_ATTRIBUTE]: "" }}
-                className={`${className} focus-visible:text-signal`}
-              >
-                {content}
-              </a>
+              <LinkHoverCard link={link} title={row.title} modes={modes}>
+                <a
+                  href={linkHref(link satisfies AssistantLink)}
+                  {...{ [APP_LINK_ATTRIBUTE]: "" }}
+                  className={`${className} focus-visible:text-signal`}
+                >
+                  {content}
+                </a>
+              </LinkHoverCard>
             )
           : undefined
       }

@@ -195,6 +195,13 @@ Display a full thread.
 --format <FORMAT>
 ```
 
+### `mxr thread-preview <THREAD_ID>... [OPTIONS]`
+Up to 100 threads at a glance, no bodies: subject, latest sender, latest date (`latest_at`, unix seconds), snippet, `message_count`, `unread_count`, `has_attachments`. Unknown ids are left out.
+
+```
+--format <FORMAT>         json, jsonl, ids, table
+```
+
 ### `mxr headers [MESSAGE_ID] [OPTIONS]`
 Raw RFC 5322 headers. Same `--search` / pipe semantics as `cat`.
 

@@ -98,6 +98,7 @@ mod sync_upsert;
 mod test_fixtures;
 mod thread;
 mod thread_context;
+mod thread_preview;
 mod thread_summary;
 mod todo_first_run;
 mod todo_microsoft;
@@ -232,6 +233,7 @@ pub(crate) fn sources_json(sources: &[mxr_core::MessageId]) -> String {
     .unwrap_or_else(|_| "[]".into())
 }
 pub use thread_context::CounterpartyExchange;
+pub use thread_preview::ThreadPreviewRecord;
 pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use triage::TriageCacheRecord;
 pub use undo::{

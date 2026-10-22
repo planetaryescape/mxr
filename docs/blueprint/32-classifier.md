@@ -631,6 +631,28 @@ Scenario "bill with due date from a utility" {
   held-out accuracy falls behind, the judge learned the generator, not
   the mail.
 
+As built in R1b, the generated demo keeps its 13 thread slots, thread
+lengths and numbering, and each slot holds a scenario family
+(`crates/provider-fake/src/fixtures/scenarios/bulk/`): a colleague's thread,
+a dated request, a hiring thread, a thread you were only copied on, an order
+with its dispatch and delivery, a bill, a booking, a service alert, a
+security notice, a newsletter, a promotion, spam in the Spam folder and a
+phishing lookalike in the inbox. A family states the four answers (who,
+home, to-do, record) for each message position of its thread, so one thread
+mixes answers: the confirmation of an order is a record, the survey that
+follows is not. Which family and phrasing a thread uses is a function of
+its number, so the 50,000 labels are recomputed from an email's index and
+never held in memory. Each family holds two phrasings out
+(`scenarios/held_out.rs`), 29% of the labelled mail, and the eval reports
+them apart.
+
+A to-do is shown only while its deadline is open, so a family that asks for
+something by a date dates one thread in thirty in the last hours (the ask is
+live) and the rest at least two months back (the deadline passed before the
+mail was found, and the label says no to-do). Labels never depend on the
+seed clock; `bulk_dates_follow_the_seed_clock` checks every family, phrasing
+and position at clocks a year apart.
+
 Each expectation states its label-schema version, so changing the
 questions doesn't silently invalidate old expectations.
 
@@ -652,8 +674,12 @@ planned `mxr modes eval`.
 The quick set (about 2,000 emails: every near-miss twin, every attention
 timeline, and a seeded sample of ordinary cases) is what agents run after
 every change. The full set (all 50,000) runs in CI before merge. The demo
-stays at 50,000 for performance work. Run times are estimates until the
-first build measures them.
+stays at 50,000 for performance work. R1b built the full set and measured
+it: the demo's mail builds and is classified in about two and a half
+minutes in-process and grades in about twenty seconds. The quick set is
+still the 147 emails of the curated fixtures and the twins; growing it to
+about 2,000 is a follow-up
+([docs/issues/classify-quick-set-expansion.md](../issues/classify-quick-set-expansion.md)).
 
 ### Audit is red-teaming as a command
 
@@ -794,7 +820,7 @@ their own. The ladder, with status as of 21 October 2026:
 | R0 | trust that a promise's deadline came from the email's own words | the shared due-words check | shipped, v0.6.120 |
 | R0b | see which stored deadlines came from the email's own words, and have mxr act only on those | `by_when_source` on commitments (D149), no new command | in progress |
 | R1 | see how well mxr sorts, per question, with every mismatch | scenario corpus (quick set), `mxr classify eval` | shipped, v0.6.122 |
-| R1b | have every one of the 50,000 demo emails graded in CI | scenario-first demo generator, held-out phrasings, full set | next |
+| R1b | have every one of the 50,000 demo emails graded in CI | scenario-first demo generator, held-out phrasings, full set | built, awaiting review |
 | R2 | see one home for every email everywhere, with the deciding reason | facts, judges for who and what-for, the resolver, the stored assessment, every projection reading it, fallback, `classify report` | planned |
 | R2b | stop organisations with person-like addresses landing in Messages | the redesign loop on the who judge | planned |
 | R3 | correct once and have it counted | teaching events and service (thread scope), labels, the four uncertainty kinds, `classify eval --set mine`, the effects table in code | planned |
@@ -852,6 +878,66 @@ Measured by `scripts/cargo-test -p mxr --lib -- handler::tests::classify_eval`
 
 The numbers are for the labelled set, which was written to find splits,
 not sampled from a mailbox, so they are not a rate of error in real mail.
+
+### Baseline: today's classifier on the full set
+
+R1b builds the rest of the demo from scenario families and makes
+`mxr classify eval --set full` grade every labelled email in it: the
+curated mail plus the generated threads of both demo accounts, 38,747
+labelled emails of the 50,000 (the other 11,253 are mail the accounts sent,
+which is context and is not classified). The snapshot of the in-process run
+(`crates/daemon/src/handler/tests/snapshots/mxr__handler__tests__classify_eval_full__the_full_set_is_graded_on_the_whole_demo.snap`)
+is the record. It is deterministic: two runs gave identical figures.
+
+| Question | Right | Of | Accuracy | Held-out accuracy | Quick set |
+|---|---|---|---|---|---|
+| Who sent it | 31,100 | 38,747 | 80.3% | 78.0% (8,674 of 11,115) | 89.1% |
+| Home | 31,980 | 38,747 | 82.5% | 79.6% (8,850 of 11,115) | 89.8% |
+| To-do aspect | 38,654 | 38,747 | 99.8% | 99.9% (11,099 of 11,115) | 98.0% |
+| Record aspect | 35,588 | 38,747 | 91.8% | 85.3% (9,483 of 11,115) | 96.6% |
+
+17,666 answers are wrong, in 57 clusters of the same scenario, question,
+expected and actual answer. The biggest:
+
+- Machine mail read as a person: 7,647 emails wrong on who and 6,767 on home
+  (the other 880 are spam, whose home the provider's Spam folder decides).
+  Every home miss is Updates mail placed in Messages. Most are the later
+  emails of a machine's thread: a payment received, a statement ready, a
+  price change, a schedule change, a survey. The rule that decides them is
+  "authored reply in existing correspondence". The generator links each
+  follow-up to the email before it with `In-Reply-To`, and a store, biller or
+  airline rarely does. The first email of an order or a bill is right. On a
+  6,000-message demo (4,665 graded emails), a temporary change that dropped
+  that header from the machine families moved who from 80.5% to 91.9% and
+  home from 82.7% to 94.2%, so a large part of this cluster is the mail's
+  threading, not the sender. The rest (booking confirmations, spam, the
+  phishing lookalike) are "possible personal mail; no decisive list or
+  automation evidence", the quick set's gap again: a sender with no
+  automation cue in the address. The generated machine mail also carries no
+  headers beyond List-Unsubscribe (no Auto-Submitted, Precedence, List-Id or
+  Authentication-Results), so the classifier has little to go on.
+- Records not filed: 2,806 emails. Of 938 text-only order confirmations, 310
+  are not filed; of 938 dispatch emails 615, and all 703 delivery emails. 465
+  of 1,405 booking confirmations are missed, every one of them in a held-out
+  phrasing, and 314 of 468 bills and 161 of 468 payments received. The
+  generated mail has no schema.org markup, which the curated order
+  confirmations do.
+- Records filed that should not be: 353 emails, 289 of them trip reminders
+  (178) and schedule changes (111) that name the booking. Whether those join
+  a trip's record is a judgement call and the labels say so.
+- To-dos missed: 91 of the 98 emails whose ask is live (46 of 46 colleague
+  requests with a date, 44 of 46 bills, and the failed payout). To-do
+  accuracy is 99.8% because live asks are 0.3% of the set.
+
+The held-out phrasings score lower on who (78.0% against 80.3%), home
+(79.6% against 82.5%) and record (85.3% against 91.8%). The classifier was not
+changed for any phrasing, so the gap is how much of today's recall depends
+on wording.
+
+The labels that rest on a judgement call (12,653 of the 38,747: threads you
+were only copied on, trip reminders and schedule changes, promotions, spam,
+phishing lookalikes, sign-in alerts, statements and a colleague's dated
+request) mark their mismatches `[label to check]`.
 
 ## Decisions this rests on
 

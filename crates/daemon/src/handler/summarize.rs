@@ -93,26 +93,15 @@ pub(crate) async fn valid_cached_summary(
     thread_id: &ThreadId,
     envelopes: &[Envelope],
 ) -> Option<ThreadSummaryData> {
-    let (relationship_hash, owned_revision) = match envelopes.first() {
-        Some(first) => {
-            let owned_addresses = owned_addresses_for(store, &first.account_id)
-                .await
-                .unwrap_or_default();
-            let relationship_hash = relationship_context_for_summary(
-                store,
-                &first.account_id,
-                &owned_addresses,
-                envelopes,
-            )
+    // The writer summarizes for the thread's account, so the check must read the
+    // same one. A failed read is a miss, not an empty owner set.
+    let account_id = store.get_thread(thread_id).await.ok().flatten()?.account_id;
+    let owned_addresses = owned_addresses_for(store, &account_id).await.ok()?;
+    let relationship_hash =
+        relationship_context_for_summary(store, &account_id, &owned_addresses, envelopes)
             .await
             .1;
-            (
-                relationship_hash,
-                owned_addresses_revision(&owned_addresses),
-            )
-        }
-        None => (String::new(), String::new()),
-    };
+    let owned_revision = owned_addresses_revision(&owned_addresses);
     // The owner's addresses are in the prompt, so a new alias must miss. Rows
     // written under the old key miss once and are replaced in place (one row per
     // thread), so SUMMARY_PROMPT_VERSION stays: the wording did not change.
@@ -228,7 +217,7 @@ async fn load_summary_context(
     }
     let owned_addresses = owned_addresses_for(store, &thread.account_id)
         .await
-        .unwrap_or_default();
+        .map_err(|e| e.to_string())?;
 
     let mut prompt = String::new();
     prompt.push_str(
@@ -733,6 +722,70 @@ mod tests {
         assert!(requests[1].messages[1]
             .content
             .contains("Alice now wants launch risks called out first."));
+    }
+
+    #[tokio::test]
+    async fn a_thread_spanning_two_accounts_validates_under_the_account_its_summary_names() {
+        use mxr_core::types::Account;
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+        let account_a = state.default_account_id();
+        let account_b = mxr_core::AccountId::new();
+        state
+            .store
+            .insert_account(&Account {
+                id: account_b.clone(),
+                name: "second".into(),
+                email: "second-owner@example.com".into(),
+                sync_backend: None,
+                send_backend: None,
+                enabled: true,
+            })
+            .await
+            .unwrap();
+        let thread_id = mxr_core::ThreadId::new();
+        // The older message is in A and the newer one in B.
+        let older = TestEnvelopeBuilder::new()
+            .account_id(account_a.clone())
+            .thread_id(thread_id.clone())
+            .provider_id("older")
+            .date(chrono::Utc::now() - chrono::Duration::days(2))
+            .build();
+        let newer = TestEnvelopeBuilder::new()
+            .account_id(account_b.clone())
+            .thread_id(thread_id.clone())
+            .provider_id("newer")
+            .date(chrono::Utc::now())
+            .build();
+        for envelope in [&older, &newer] {
+            state.store.upsert_envelope(envelope).await.unwrap();
+            state
+                .store
+                .insert_body(&body(envelope.id.clone(), "Shared thread text."))
+                .await
+                .unwrap();
+        }
+        assert_eq!(
+            state
+                .store
+                .get_thread(&thread_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .account_id,
+            account_b,
+            "the summary is written for the thread's account"
+        );
+
+        summarize_thread(&state, &thread_id).await.unwrap();
+        let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
+        assert!(
+            valid_cached_summary(&state.store, &thread_id, &envelopes)
+                .await
+                .is_some(),
+            "a summary must validate against the account it was written for"
+        );
     }
 
     #[tokio::test]

@@ -9,6 +9,7 @@ import { invokeAction } from "@/lib/actions/registry";
 import type { ActionContext, ActionScope } from "@/lib/actions/types";
 
 import { isMacPlatform, tokenFromEvent, type KeyToken } from "./chord";
+import { isComposingKey } from "./composition";
 
 export const SEQUENCE_TIMEOUT_MS = 1000;
 
@@ -86,7 +87,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.defaultPrevented || event.isComposing) return;
+    if (event.defaultPrevented || isComposingKey(event)) return;
     const token = tokenFromEvent(event, mac);
     if (!token) return;
     if (ownsKeyboard(event.target) || options.isSuspended?.()) {

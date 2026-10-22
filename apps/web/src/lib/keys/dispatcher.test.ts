@@ -189,6 +189,18 @@ describe("installKeyDispatcher", () => {
     });
   });
 
+  test("a key that is part of an IME composition is not a shortcut", () => {
+    const compose = runAction("compose", "c");
+    registry.define(compose.action);
+
+    // WebKit reports the composition's edge keystrokes with isComposing
+    // false and only keyCode 229 to tell them apart.
+    expect(press({ key: "c", isComposing: false, keyCode: 229 })).toBe(true);
+    expect(press({ key: "c", isComposing: true })).toBe(true);
+
+    expect(compose.run).not.toHaveBeenCalled();
+  });
+
   describe("text fields and overlays", () => {
     test("plain keys typed into an input are not actions", () => {
       const compose = runAction("compose", "c");

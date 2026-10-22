@@ -12,6 +12,7 @@ import { useAssistantUi } from "./assistantStore";
 import { PENDING_CARD_ATTRIBUTE } from "./cardKeys";
 import { ModelMenu } from "./ModelMenu";
 import { KeyChip } from "@/components/KeyChip";
+import { isComposingKey } from "@/lib/keys/composition";
 import { formatChord } from "@/lib/keys/chord";
 import { cn } from "@/lib/utils";
 
@@ -60,7 +61,7 @@ export function Composer({
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
           // Enter sends; Shift+Enter adds a line.
-          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+          if (event.key === "Enter" && !event.shiftKey && !isComposingKey(event)) {
             event.preventDefault();
             submit();
           }

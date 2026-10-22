@@ -18,7 +18,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{ActivePane, MessagesFocus, MessagesItem, MessagesPageState};
-use crate::ui::received_label::received_label_in;
+use crate::ui::received_label::{received_label, DisplayZone};
 use crate::ui::sanitize::{one_line, truncate};
 use crate::ui::todo_lens::wrap;
 
@@ -359,7 +359,7 @@ fn message_lines(
     } else {
         one_line(message.from.name.as_deref().unwrap_or(&message.from.email))
     };
-    let when = received_label_in(message.date, view.now, &view.offset);
+    let when = received_label(message.date, view.now, DisplayZone::Fixed(view.offset));
     let header = format!("{who} \u{b7} {when}");
     let text = match &message.ask_quote {
         Some(quote) => message

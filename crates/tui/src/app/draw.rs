@@ -115,6 +115,7 @@ impl App {
                 area,
                 &reader.preview_blocks,
                 ui::message_view::DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Local,
                     context: reader.context,
                     summary: reader.summary,
                     scroll_offset: *message_scroll_offset,
@@ -270,6 +271,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &mut ui::subscriptions_page::SubscriptionsPageView {
+                                    zone: crate::ui::received_label::DisplayZone::Local,
                                     entries: &self.mailbox.subscriptions_page.entries,
                                     selected_index: self.mailbox.selected_index,
                                     scroll_offset: self.mailbox.scroll_offset,
@@ -300,6 +302,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::place_lens::PlaceView {
+                                    zone: crate::ui::received_label::DisplayZone::Local,
                                     page: &self.mailbox.place_page,
                                     place,
                                     selected_index: self.mailbox.selected_index,
@@ -339,6 +342,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::records_lens::RecordsView {
+                                    zone: crate::ui::received_label::DisplayZone::Local,
                                     now: chrono::Utc::now(),
                                     page: &self.mailbox.records_page,
                                     selected_index: self.mailbox.selected_index,
@@ -351,6 +355,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::reading_lens::ReadingLensView {
+                                    zone: crate::ui::received_label::DisplayZone::Local,
                                     now: chrono::Utc::now(),
                                     page: &self.mailbox.reading_page,
                                     selected_index: self.mailbox.selected_index,
@@ -364,6 +369,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 ui::todo_lens::TodoView {
+                                    zone: crate::ui::received_label::DisplayZone::Local,
                                     now: chrono::Utc::now(),
                                     page: &self.mailbox.todo_page,
                                     selected_index: self.mailbox.selected_index,
@@ -436,6 +442,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &mut ui::subscriptions_page::SubscriptionsPageView {
+                                    zone: crate::ui::received_label::DisplayZone::Local,
                                     entries: &self.mailbox.subscriptions_page.entries,
                                     selected_index: self.mailbox.selected_index,
                                     scroll_offset: self.mailbox.scroll_offset,
@@ -466,6 +473,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::place_lens::PlaceView {
+                                    zone: crate::ui::received_label::DisplayZone::Local,
                                     page: &self.mailbox.place_page,
                                     place,
                                     selected_index: self.mailbox.selected_index,
@@ -505,6 +513,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::records_lens::RecordsView {
+                                    zone: crate::ui::received_label::DisplayZone::Local,
                                     now: chrono::Utc::now(),
                                     page: &self.mailbox.records_page,
                                     selected_index: self.mailbox.selected_index,
@@ -517,6 +526,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 &ui::reading_lens::ReadingLensView {
+                                    zone: crate::ui::received_label::DisplayZone::Local,
                                     now: chrono::Utc::now(),
                                     page: &self.mailbox.reading_page,
                                     selected_index: self.mailbox.selected_index,
@@ -530,6 +540,7 @@ impl App {
                                 frame,
                                 chunks[1],
                                 ui::todo_lens::TodoView {
+                                    zone: crate::ui::received_label::DisplayZone::Local,
                                     now: chrono::Utc::now(),
                                     page: &self.mailbox.todo_page,
                                     selected_index: self.mailbox.selected_index,
@@ -601,6 +612,7 @@ impl App {
                                 inner[1],
                                 &preview_blocks,
                                 ui::message_view::DrawOptions {
+                                    zone: crate::ui::received_label::DisplayZone::Local,
                                     context,
                                     summary,
                                     scroll_offset: self.mailbox.message_scroll_offset,
@@ -622,6 +634,7 @@ impl App {
                             content_area,
                             &preview_blocks,
                             ui::message_view::DrawOptions {
+                                zone: crate::ui::received_label::DisplayZone::Local,
                                 context,
                                 summary,
                                 scroll_offset: self.mailbox.message_scroll_offset,
@@ -642,6 +655,7 @@ impl App {
                     frame,
                     content_area,
                     ui::search_page::SearchPageView {
+                        zone: crate::ui::received_label::DisplayZone::Local,
                         state: &self.search.page,
                         rows: &rows,
                         selected_set: &self.mailbox.selected_set,
@@ -696,6 +710,7 @@ impl App {
                         cols[1],
                         &preview_blocks,
                         ui::message_view::DrawOptions {
+                            zone: crate::ui::received_label::DisplayZone::Local,
                             context,
                             summary,
                             scroll_offset: self.mailbox.message_scroll_offset,
@@ -776,6 +791,7 @@ impl App {
             &self.mailbox.records_page,
             theme,
             chrono::Utc::now(),
+            crate::ui::received_label::DisplayZone::Local,
         );
 
         // Send confirmation overlay

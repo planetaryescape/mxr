@@ -30,6 +30,8 @@ pub struct ReadingLensView<'a> {
     /// "Now" for relative and absolute arrival times, passed in so the render
     /// doesn't read the clock.
     pub now: chrono::DateTime<chrono::Utc>,
+    /// The zone times show in: `Local` in the app, a fixed one in tests.
+    pub zone: crate::ui::received_label::DisplayZone,
 }
 
 /// The reader's measure.
@@ -369,6 +371,7 @@ pub(crate) fn reader_lines(
     width: usize,
     theme: &crate::theme::Theme,
     now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
 ) -> (Vec<Line<'static>>, Vec<Option<usize>>) {
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut owners: Vec<Option<usize>> = Vec::new();
@@ -410,7 +413,7 @@ pub(crate) fn reader_lines(
                     "{}{}{}{}{left} min left",
                     one_line(&item.source),
                     dot(),
-                    received_label(item.arrived_at, now),
+                    received_label(item.arrived_at, now, zone),
                     dot()
                 ),
                 width,
@@ -505,8 +508,18 @@ pub(crate) fn reader_lines(
 }
 
 /// The paragraph at the top of the reader, for `h`.
-pub(crate) fn paragraph_at_top(page: &ReadingPageState, now: DateTime<Utc>) -> Option<String> {
-    let (_, owners) = reader_lines(page, READER_WIDTH, &crate::theme::Theme::default(), now);
+pub(crate) fn paragraph_at_top(
+    page: &ReadingPageState,
+    now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
+) -> Option<String> {
+    let (_, owners) = reader_lines(
+        page,
+        READER_WIDTH,
+        &crate::theme::Theme::default(),
+        now,
+        zone,
+    );
     let paragraphs = reader_paragraphs(page);
     owners
         .iter()
@@ -517,8 +530,18 @@ pub(crate) fn paragraph_at_top(page: &ReadingPageState, now: DateTime<Utc>) -> O
 }
 
 /// How many lines the reader holds, for progress.
-pub(crate) fn reader_line_count(page: &ReadingPageState, now: DateTime<Utc>) -> u16 {
-    let (lines, _) = reader_lines(page, READER_WIDTH, &crate::theme::Theme::default(), now);
+pub(crate) fn reader_line_count(
+    page: &ReadingPageState,
+    now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
+) -> u16 {
+    let (lines, _) = reader_lines(
+        page,
+        READER_WIDTH,
+        &crate::theme::Theme::default(),
+        now,
+        zone,
+    );
     u16::try_from(lines.len()).unwrap_or(u16::MAX)
 }
 
@@ -545,6 +568,7 @@ fn draw_reader(
     focused: bool,
     theme: &crate::theme::Theme,
     now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
 ) {
     let block = Block::bordered()
         .border_type(BorderType::Rounded)
@@ -552,7 +576,7 @@ fn draw_reader(
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let width = (inner.width as usize).saturating_sub(2).min(READER_WIDTH);
-    let (lines, _) = reader_lines(page, width, theme, now);
+    let (lines, _) = reader_lines(page, width, theme, now, zone);
     // Centre the measure in a wide pane.
     let pad = (inner.width as usize).saturating_sub(width) / 2;
     let column = Rect {
@@ -613,9 +637,9 @@ pub fn draw(
             .constraints([Constraint::Length(list_width), Constraint::Min(20)])
             .split(body_area);
         draw_list(frame, chunks[0], view, theme);
-        draw_reader(frame, chunks[1], page, reading, theme, view.now);
+        draw_reader(frame, chunks[1], page, reading, theme, view.now, view.zone);
     } else if reading {
-        draw_reader(frame, body_area, page, true, theme, view.now);
+        draw_reader(frame, body_area, page, true, theme, view.now, view.zone);
     } else {
         draw_list(frame, body_area, view, theme);
     }

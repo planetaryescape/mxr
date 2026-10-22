@@ -1,12 +1,12 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 140
+assertion_line: 141
 expression: snapshot
 ---
 "╭ Message ───────────────────────────────────────────────────────────╮"
 "│From:     Alice Example <alice@example.com>                         │"
 "│To:       Bob Example <bob@example.com>                             │"
-"│Date:     Fri 15 Mar 2024 09:30                                     │"
+"│Date:     Fri 15 Mar 2024 10:30                                     │"
 "│Subject:  Snapshot fixture                                          │"
 "│ INBOX   STARRED   UNSUBSCRIBE                                      │"
 "│List:      Open unsubscribe page (D)                                │"

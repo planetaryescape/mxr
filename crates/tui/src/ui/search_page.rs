@@ -20,6 +20,8 @@ pub struct SearchPageView<'a> {
     pub preview_scroll: u16,
     pub html_images: &'a mut HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
     pub now: chrono::DateTime<chrono::Utc>,
+    /// The zone times show in: `Local` in the app, a fixed one in tests.
+    pub zone: crate::ui::received_label::DisplayZone,
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &Theme) {
@@ -32,6 +34,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
         preview_scroll,
         html_images,
         now,
+        zone,
     } = view;
 
     let chunks = Layout::default()
@@ -142,6 +145,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
                 theme,
                 html_images,
                 now,
+                zone,
             },
         );
     }

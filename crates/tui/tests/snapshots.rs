@@ -125,6 +125,9 @@ fn message_view_snapshot() {
             Rect::new(0, 0, 70, 20),
             &[block],
             DrawOptions {
+                zone: mxr_tui::ui::received_label::DisplayZone::Fixed(
+                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                ),
                 context: Vec::new(),
                 summary: None,
                 scroll_offset: 0,
@@ -401,6 +404,9 @@ fn search_page_snapshot() {
             frame,
             Rect::new(0, 0, 90, 24),
             SearchPageView {
+                zone: mxr_tui::ui::received_label::DisplayZone::Fixed(
+                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                ),
                 state: &state,
                 rows: &rows,
                 selected_set: &selected_set,
@@ -427,6 +433,9 @@ fn search_page_blank_snapshot() {
             frame,
             Rect::new(0, 0, 90, 24),
             SearchPageView {
+                zone: mxr_tui::ui::received_label::DisplayZone::Fixed(
+                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                ),
                 state: &state,
                 rows: &[],
                 selected_set: &selected_set,
@@ -538,6 +547,9 @@ fn search_page_searching_snapshot() {
             frame,
             Rect::new(0, 0, 90, 24),
             SearchPageView {
+                zone: mxr_tui::ui::received_label::DisplayZone::Fixed(
+                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                ),
                 state: &state,
                 rows: &[],
                 selected_set: &selected_set,

@@ -65,6 +65,8 @@ pub struct DrawOptions<'a> {
     /// "Now" for the "2h ago" on today's mail, passed in so the render
     /// doesn't read the clock.
     pub now: DateTime<Utc>,
+    /// The zone times show in: `Local` in the app, a fixed one in tests.
+    pub zone: crate::ui::received_label::DisplayZone,
 }
 
 /// Draws the thread/message reader. Returns the scroll offset actually used,
@@ -84,6 +86,7 @@ pub fn draw(
         theme,
         html_images,
         now,
+        zone,
     } = options;
     let is_focused = *active_pane == ActivePane::MessageView;
     let border_style = theme.border_style(is_focused);
@@ -159,7 +162,7 @@ pub fn draw(
         }
         text_lines.push(Line::from(vec![
             Span::styled(format!("{:<label_width$}", "Date:"), label_style),
-            Span::styled(received_label(env.date, now), value_style),
+            Span::styled(received_label(env.date, now, zone), value_style),
         ]));
         text_lines.push(Line::from(vec![
             Span::styled(format!("{:<label_width$}", "Subject:"), label_style),
@@ -1352,6 +1355,9 @@ mod tests {
                 Rect::new(0, 0, 70, 18),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
@@ -1398,6 +1404,9 @@ mod tests {
                 Rect::new(0, 0, 70, 18),
                 std::slice::from_ref(&block),
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: u16::MAX,
@@ -1446,6 +1455,9 @@ mod tests {
                 Rect::new(0, 0, 90, 20),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: Some(ThreadSummaryBlock {
                         text: Some("Summary:\n- Alice asked for launch approval.".into()),
@@ -1500,6 +1512,9 @@ mod tests {
                 Rect::new(0, 0, 80, 18),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
@@ -1556,6 +1571,9 @@ mod tests {
                 Rect::new(0, 0, 120, 30),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
@@ -1607,6 +1625,9 @@ mod tests {
                 Rect::new(0, 0, 100, 18),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
@@ -1665,6 +1686,9 @@ mod tests {
                 Rect::new(0, 0, 100, 24),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,
@@ -1726,6 +1750,9 @@ mod tests {
                 Rect::new(0, 0, 80, 10),
                 &[block],
                 DrawOptions {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     context: Vec::new(),
                     summary: None,
                     scroll_offset: 0,

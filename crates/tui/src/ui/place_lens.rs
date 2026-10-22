@@ -21,6 +21,8 @@ pub struct PlaceView<'a> {
     pub place: MailPlaceData,
     pub selected_index: usize,
     pub active_pane: &'a ActivePane,
+    /// The zone times show in: `Local` in the app, a fixed one in tests.
+    pub zone: crate::ui::received_label::DisplayZone,
 }
 
 pub(crate) const fn place_title(place: MailPlaceData) -> &'static str {
@@ -95,7 +97,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &PlaceView<'_>, theme: &crate::
             if selected {
                 selected_line = lines.len();
             }
-            lines.push(message_line(message, selected, width, theme));
+            lines.push(message_line(message, selected, width, theme, view.zone));
             row_index += 1;
         }
         let hidden = (bundle.message_count as usize).saturating_sub(bundle.messages.len());
@@ -178,14 +180,11 @@ fn message_line(
     selected: bool,
     width: usize,
     theme: &crate::theme::Theme,
+    zone: crate::ui::received_label::DisplayZone,
 ) -> Line<'static> {
     let marker = if selected { "\u{258c} " } else { "  " };
     let pin = if message.pinned { "\u{2022} " } else { "  " };
-    let date = message
-        .date
-        .with_timezone(&chrono::Local)
-        .format("%-d %b")
-        .to_string();
+    let date = zone.at(message.date).format("%-d %b").to_string();
     // marker (2) + indent (2) + pin (2) + subject + gap (2) + date
     let subject_width = width
         .saturating_sub(2 + 2 + 2 + 2 + date.chars().count())
@@ -470,6 +469,9 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 100, 20),
                 &PlaceView {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     page,
                     place: MailPlaceData::PaperTrail,
                     selected_index: 1,

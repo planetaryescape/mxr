@@ -2,22 +2,32 @@
 //! never UTC and never a day alone (blueprint 27, "When an email arrived";
 //! D148). Lists keep `mail_list::format_date_relative`'s compact form.
 
-use chrono::{DateTime, Datelike, Local, TimeZone, Utc};
-use std::fmt::Display;
+use chrono::{DateTime, Datelike, FixedOffset, Local, Utc};
+
+/// The zone the TUI shows times in. Production uses `Local`, which follows
+/// daylight saving per instant. Tests pass `Fixed` so the text is the same
+/// on any machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayZone {
+    Local,
+    Fixed(FixedOffset),
+}
+
+impl DisplayZone {
+    /// `instant` in this zone, with the offset in force at that instant.
+    pub fn at(self, instant: DateTime<Utc>) -> DateTime<FixedOffset> {
+        match self {
+            Self::Local => instant.with_timezone(&Local).fixed_offset(),
+            Self::Fixed(offset) => instant.with_timezone(&offset),
+        }
+    }
+}
 
 /// "Today 14:02 · 2h ago", "Tue 21 Oct 14:02", "Tue 21 Oct 2025 14:02".
 /// The clock is passed in so the render doesn't read it.
-pub fn received_label(at: DateTime<Utc>, now: DateTime<Utc>) -> String {
-    received_label_in(at, now, &Local)
-}
-
-pub fn received_label_in<Tz>(at: DateTime<Utc>, now: DateTime<Utc>, zone: &Tz) -> String
-where
-    Tz: TimeZone,
-    Tz::Offset: Display,
-{
-    let local = at.with_timezone(zone);
-    let today = now.with_timezone(zone);
+pub fn received_label(at: DateTime<Utc>, now: DateTime<Utc>, zone: DisplayZone) -> String {
+    let local = zone.at(at);
+    let today = zone.at(now);
     let clock = local.format("%H:%M");
     if local.date_naive() == today.date_naive() {
         return format!("Today {clock} \u{b7} {}", ago(now - at));
@@ -45,7 +55,7 @@ fn ago(elapsed: chrono::Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::FixedOffset;
+    use chrono::{FixedOffset, TimeZone};
 
     // Fixed offsets keep these tests independent of the machine's zone.
     fn zone() -> FixedOffset {
@@ -62,7 +72,7 @@ mod tests {
         let at = utc(2026, 10, 21, 12, 2);
         let now = utc(2026, 10, 21, 14, 2);
         assert_eq!(
-            received_label_in(at, now, &zone()),
+            received_label(at, now, DisplayZone::Fixed(zone())),
             "Today 14:02 \u{b7} 2h ago"
         );
     }
@@ -71,11 +81,11 @@ mod tests {
     fn a_minute_old_or_future_arrival_is_just_now() {
         let at = utc(2026, 10, 21, 12, 2);
         assert_eq!(
-            received_label_in(at, utc(2026, 10, 21, 12, 2), &zone()),
+            received_label(at, utc(2026, 10, 21, 12, 2), DisplayZone::Fixed(zone())),
             "Today 14:02 \u{b7} just now"
         );
         assert_eq!(
-            received_label_in(at, utc(2026, 10, 21, 11, 0), &zone()),
+            received_label(at, utc(2026, 10, 21, 11, 0), DisplayZone::Fixed(zone())),
             "Today 14:02 \u{b7} just now"
         );
     }
@@ -84,14 +94,20 @@ mod tests {
     fn this_year_gives_weekday_day_month_and_time() {
         let at = utc(2026, 10, 21, 12, 2);
         let now = utc(2026, 11, 3, 9, 0);
-        assert_eq!(received_label_in(at, now, &zone()), "Wed 21 Oct 14:02");
+        assert_eq!(
+            received_label(at, now, DisplayZone::Fixed(zone())),
+            "Wed 21 Oct 14:02"
+        );
     }
 
     #[test]
     fn another_year_adds_the_year() {
         let at = utc(2025, 10, 21, 12, 2);
         let now = utc(2026, 10, 22, 9, 0);
-        assert_eq!(received_label_in(at, now, &zone()), "Tue 21 Oct 2025 14:02");
+        assert_eq!(
+            received_label(at, now, DisplayZone::Fixed(zone())),
+            "Tue 21 Oct 2025 14:02"
+        );
     }
 
     #[test]
@@ -100,7 +116,7 @@ mod tests {
         let at = utc(2026, 10, 21, 23, 30);
         let now = utc(2026, 10, 22, 6, 0);
         assert_eq!(
-            received_label_in(at, now, &zone()),
+            received_label(at, now, DisplayZone::Fixed(zone())),
             "Today 01:30 \u{b7} 6h ago"
         );
     }

@@ -105,6 +105,9 @@ fn result_list_renders_first_batch_before_query_completes() {
             frame,
             Rect::new(0, 0, 160, 24),
             SearchPageView {
+                zone: mxr_tui::ui::received_label::DisplayZone::Fixed(
+                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                ),
                 state: &state,
                 rows: &rows,
                 selected_set: &selected_set,

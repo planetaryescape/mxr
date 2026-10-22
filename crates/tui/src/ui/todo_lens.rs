@@ -25,6 +25,8 @@ pub struct TodoView<'a> {
     /// "Now" for relative and absolute arrival times, passed in so the render
     /// doesn't read the clock.
     pub now: chrono::DateTime<chrono::Utc>,
+    /// The zone times show in: `Local` in the app, a fixed one in tests.
+    pub zone: crate::ui::received_label::DisplayZone,
 }
 
 /// Cells in the runway bar.
@@ -63,10 +65,14 @@ fn who(todo: &TodoData) -> String {
 
 /// The footer's first line: where the row's link goes (Enter opens the
 /// email, never the link), then why the row is here.
-pub(crate) fn trust_line(todo: &TodoData, now: DateTime<Utc>) -> String {
+pub(crate) fn trust_line(
+    todo: &TodoData,
+    now: DateTime<Utc>,
+    zone: crate::ui::received_label::DisplayZone,
+) -> String {
     let mut parts = Vec::new();
     if let Some(arrived) = todo.source_date {
-        parts.push(format!("arrived {}", received_label(arrived, now)));
+        parts.push(format!("arrived {}", received_label(arrived, now, zone)));
     }
     if let Some(domain) = todo
         .action
@@ -642,7 +648,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &TodoView<'_>, theme: &crate::t
         body_area,
     );
     let trust = selected
-        .map(|todo| trust_line(todo, view.now))
+        .map(|todo| trust_line(todo, view.now, view.zone))
         .unwrap_or_default();
     frame.render_widget(
         Paragraph::new(vec![
@@ -975,6 +981,9 @@ pub(crate) mod tests {
                 frame,
                 Rect::new(0, 0, 120, 30),
                 &TodoView {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     now: chrono::Utc::now(),
                     page,
                     selected_index,
@@ -1019,6 +1028,9 @@ pub(crate) mod tests {
                         frame,
                         Rect::new(0, 0, width, height),
                         &TodoView {
+                            zone: crate::ui::received_label::DisplayZone::Fixed(
+                                chrono::FixedOffset::east_opt(3600).unwrap(),
+                            ),
                             now: chrono::Utc::now(),
                             page,
                             selected_index: 39,
@@ -1043,6 +1055,9 @@ pub(crate) mod tests {
                 frame,
                 Rect::new(0, 0, 20, 5),
                 &TodoView {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     now: chrono::Utc::now(),
                     page: &page,
                     selected_index: 39,
@@ -1124,6 +1139,9 @@ pub(crate) mod tests {
                     frame,
                     Rect::new(0, 0, 120, 30),
                     &TodoView {
+                        zone: crate::ui::received_label::DisplayZone::Fixed(
+                            chrono::FixedOffset::east_opt(3600).unwrap(),
+                        ),
                         now: chrono::Utc::now(),
                         page: &page,
                         selected_index: 0,
@@ -1191,10 +1209,24 @@ pub(crate) mod tests {
         let now = chrono::DateTime::parse_from_rfc3339("2026-10-22T09:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
-        assert!(trust_line(&bill, now).starts_with("arrived "));
+        assert!(trust_line(
+            &bill,
+            now,
+            crate::ui::received_label::DisplayZone::Fixed(
+                chrono::FixedOffset::east_opt(3600).unwrap()
+            )
+        )
+        .starts_with("arrived "));
 
         let no_source = council_tax();
-        assert!(!trust_line(&no_source, now).contains("arrived"));
+        assert!(!trust_line(
+            &no_source,
+            now,
+            crate::ui::received_label::DisplayZone::Fixed(
+                chrono::FixedOffset::east_opt(3600).unwrap()
+            )
+        )
+        .contains("arrived"));
     }
 
     #[test]
@@ -1289,6 +1321,9 @@ pub(crate) mod tests {
                 frame,
                 Rect::new(0, 0, width, 30),
                 &TodoView {
+                    zone: crate::ui::received_label::DisplayZone::Fixed(
+                        chrono::FixedOffset::east_opt(3600).unwrap(),
+                    ),
                     now: chrono::Utc::now(),
                     page,
                     selected_index: 0,

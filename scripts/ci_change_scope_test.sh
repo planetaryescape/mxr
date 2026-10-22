@@ -47,7 +47,7 @@ cp "$root/scripts/ci_workflow_test.sh" scripts/ci_workflow_test.sh
 touch .github/workflows/ci.yml .github/workflows/openapi-conformance.yml \
   .github/workflows/release.yml src/main.rs apps/web/src/app.ts crates/web/src/lib.rs \
   crates/protocol/src/lib.rs crates/provider-fake/src/lib.rs crates/daemon/src/lib.rs \
-  crates/tui/src/lib.rs crates/config/src/lib.rs crates/llm/src/lib.rs site/index.md
+  crates/tui/src/lib.rs crates/config/src/lib.rs crates/llm/src/lib.rs Cargo.toml site/index.md
 commit_all baseline
 baseline="$(git rev-parse HEAD)"
 
@@ -73,6 +73,13 @@ for classifier_path in crates/provider-fake/src/lib.rs crates/daemon/src/lib.rs 
   commit_all "classifier path $classifier_path"
   assert_scope pull_request "$baseline" HEAD true false false false false true
 done
+
+# The root manifest is the daemon crate's and the workspace's dependency
+# manifest, so a dependency or feature change there can move an answer.
+reset_fixture
+echo change >Cargo.toml
+commit_all 'root manifest change'
+assert_scope pull_request "$baseline" HEAD true false false false false true
 
 reset_fixture
 echo tui >crates/tui/src/lib.rs

@@ -2600,9 +2600,9 @@ pub enum Request {
         dry_run: bool,
     },
     // ----- Updates -----
-    /// One-time codes from mail received in the last day, newest first,
-    /// at most `limit` (default 10), each with whether it is still in its
-    /// window. Found by rules in the subject and body, any folder but
+    /// One-time codes from mail received in the last day, at most `limit`
+    /// (default 10): the current ones first, then expired ones, each newest
+    /// first. Found by rules in the subject and body, any folder but
     /// Trash and Spam. Read only. Returns `ResponseData::OneTimeCodes`.
     ListOneTimeCodes {
         #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -185,6 +185,46 @@ async fn a_code_shows_once_its_body_arrives() {
     );
 }
 
+/// Newer expired codes never push one that still works past the limit.
+#[tokio::test]
+async fn a_current_code_comes_before_newer_expired_ones() {
+    let fx = Fixture::new().await;
+    mail(
+        &fx,
+        "no-reply@long.example",
+        "Your verification code is 700001",
+        Duration::minutes(30),
+        Some("Your verification code is 700001. It is valid for 1 hour."),
+    )
+    .await;
+    for (i, minutes) in [12, 13, 14, 15, 16, 17].iter().enumerate() {
+        mail(
+            &fx,
+            "no-reply@short.example",
+            &format!("Your verification code is 80000{i}"),
+            Duration::minutes(*minutes),
+            None,
+        )
+        .await;
+    }
+    let codes = match request(
+        &fx,
+        Request::ListOneTimeCodes {
+            account_id: None,
+            limit: Some(5),
+        },
+    )
+    .await
+    {
+        ResponseData::OneTimeCodes { codes } => codes,
+        other => panic!("expected OneTimeCodes, got {other:?}"),
+    };
+    assert_eq!(codes.len(), 5);
+    assert_eq!(codes[0].code, "700001");
+    assert!(codes[0].current);
+    assert!(codes[1..].iter().all(|code| !code.current));
+}
+
 #[tokio::test]
 async fn reading_codes_is_read_only() {
     assert!(request_is_read_only(&Request::ListOneTimeCodes {

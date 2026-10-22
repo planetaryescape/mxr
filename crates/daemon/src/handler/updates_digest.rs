@@ -461,7 +461,15 @@ where
         sender_email: message.from_email.to_ascii_lowercase(),
         fact: fact.text.clone(),
         fact_source: fact.fact_source.as_str().to_string(),
-        code: newest.item.fact.code.clone(),
+        // Only while the code works: a sign-in alert stays two days, the
+        // code it carries minutes.
+        code: newest.item.fact.code.clone().filter(|_| {
+            newest
+                .item
+                .fact
+                .code_expires
+                .is_some_and(|until| until > ctx.inputs.now)
+        }),
         numbers: numbers_data(&fact.numbers),
         delta: lead.delta.as_ref().map(delta_data),
         signal: signal_data(strongest),

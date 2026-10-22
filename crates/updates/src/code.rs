@@ -80,7 +80,8 @@ pub fn one_time_code(subject: &str, body: Option<&str>) -> Option<String> {
     if let Some(code) = in_text(subject) {
         return Some(code);
     }
-    let subject_names_a_code = TRIGGER.is_match(subject);
+    // A subject about spending ("Your promo code") names no sign-in code.
+    let subject_names_a_code = TRIGGER.is_match(subject) && !NOT_A_SIGN_IN.is_match(subject);
     if OTHER_SUBJECT.is_match(subject) && !subject_names_a_code {
         return None;
     }
@@ -101,6 +102,9 @@ const ALONE_MAX: usize = 1_500;
 
 fn alone_on_a_line(text: &str) -> Option<String> {
     let mut offset = 0;
+    // The last line with words, which may name the value below it
+    // ("Order number:" over "55210").
+    let mut above = "";
     for line in text.split_inclusive('\n') {
         let trimmed = line.trim();
         let start = offset + (line.len() - line.trim_start().len());
@@ -112,10 +116,13 @@ fn alone_on_a_line(text: &str) -> Option<String> {
             .find(trimmed)
             .filter(|m| m.start() == 0 && m.end() == trimmed.len());
         if let Some(m) = whole {
-            if looks_like_a_code(text, start + m.start(), start + m.end(), Trust::Placed) {
+            if !NAMED_BEFORE.is_match(above)
+                && looks_like_a_code(text, start + m.start(), start + m.end(), Trust::Placed)
+            {
                 return Some(m.as_str().to_string());
             }
         }
+        above = trimmed;
     }
     None
 }
@@ -134,20 +141,36 @@ fn in_text(text: &str) -> Option<String> {
             let next = ceil_char_boundary(text, end + 1);
             end = next + sentence_end(&text[next..reach.max(next)]);
         }
-        // A value right after "is" or a colon wins; it may even look like a
-        // year ("Your code is 2024").
-        let marked = MARKER
-            .find_iter(&text[trigger.end()..end])
-            .find_map(|marker| {
-                let at = trigger.end() + marker.end();
-                let skipped = text[at..end]
-                    .find(|c: char| !c.is_whitespace() && !('\u{2500}'..='\u{257F}').contains(&c))
-                    .map_or(end, |i| at + i);
-                CANDIDATE
-                    .find_at(&text[..end], skipped)
-                    .filter(|m| m.start() == skipped)
-                    .filter(|m| looks_like_a_code(text, m.start(), m.end(), Trust::Placed))
-            });
+        // A value right after "is" or a colon wins over an earlier number
+        // ("code for card ending 4242 is 958361"). Only "is" or a colon
+        // straight after the words vouches for a year-shaped value ("Your
+        // code is 2024", "Code: 2024"); one further on ("…whose model is
+        // 2024 is 958361") still passes the year and named-number checks.
+        let ends_marked = trigger.as_str().trim_end().ends_with(':')
+            || trigger
+                .as_str()
+                .trim_end()
+                .to_ascii_lowercase()
+                .ends_with(" is");
+        let immediate = std::iter::once((trigger.end(), true)).filter(|_| ends_marked);
+        let later = MARKER.find_iter(&text[trigger.end()..end]).map(|marker| {
+            let between = &text[trigger.end()..trigger.end() + marker.start()];
+            (trigger.end() + marker.end(), between.trim().is_empty())
+        });
+        let marked = immediate.chain(later).find_map(|(at, straight_after)| {
+            let skipped = text[at..end]
+                .find(|c: char| !c.is_whitespace() && !('\u{2500}'..='\u{257F}').contains(&c))
+                .map_or(end, |i| at + i);
+            let trust = if straight_after {
+                Trust::Placed
+            } else {
+                Trust::Nearby
+            };
+            CANDIDATE
+                .find_at(&text[..end], skipped)
+                .filter(|m| m.start() == skipped)
+                .filter(|m| looks_like_a_code(text, m.start(), m.end(), trust))
+        });
         let found = marked.or_else(|| candidates(text, trigger.end(), end).next());
         if let Some(code) = found {
             if !spends(text, &trigger, code.end()) {
@@ -489,6 +512,34 @@ mod tests {
             Some("2024")
         );
         assert_eq!(code("Your offer code is SAVE20", ""), None);
+    }
+
+    #[test]
+    fn a_marker_further_on_still_checks_what_follows_it() {
+        assert_eq!(
+            code(
+                "Hi",
+                "Your verification code for the device whose model is 2024 is 958361."
+            )
+            .as_deref(),
+            Some("958361")
+        );
+        assert_eq!(
+            code(
+                "Hi",
+                "Your verification code is: see below\nCard ending: 4242\n958361"
+            )
+            .as_deref(),
+            Some("958361")
+        );
+        assert_eq!(code("Code: 2024", "").as_deref(), Some("2024"));
+        assert_eq!(code("Code is 2024", "").as_deref(), Some("2024"));
+    }
+
+    #[test]
+    fn a_value_alone_on_its_line_keeps_the_exclusions() {
+        assert_eq!(code("Your verification code", "Order number:\n55210"), None);
+        assert_eq!(code("Your promo code", "SAVE20NOW"), None);
     }
 
     #[test]

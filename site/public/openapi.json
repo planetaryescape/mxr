@@ -31196,7 +31196,7 @@
           },
           {
             "type": "object",
-            "description": "One-time codes from mail received in the last day, newest first,\nat most `limit` (default 10), each with whether it is still in its\nwindow. Found by rules in the subject and body, any folder but\nTrash and Spam. Read only. Returns `ResponseData::OneTimeCodes`.",
+            "description": "One-time codes from mail received in the last day, at most `limit`\n(default 10): the current ones first, then expired ones, each newest\nfirst. Found by rules in the subject and body, any folder but\nTrash and Spam. Read only. Returns `ResponseData::OneTimeCodes`.",
             "required": [
               "cmd"
             ],

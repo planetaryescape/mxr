@@ -32,7 +32,7 @@ pub(super) async fn list(
         .await?;
     let messages: Vec<_> = recent.iter().collect();
     let facts = updates::facts_for(state, &messages, &Local).await?;
-    let codes = recent
+    let mut codes: Vec<OneTimeCodeData> = recent
         .iter()
         .filter_map(|message| {
             let fact = facts.get(&message.id)?;
@@ -56,7 +56,10 @@ pub(super) async fn list(
                 thread_id: message.thread_id.clone(),
             })
         })
-        .take(limit)
         .collect();
+    // Current codes first, then expired ones, each newest first, so a limit
+    // never hides a code that still works behind newer expired ones.
+    codes.sort_by_key(|code| !code.current);
+    codes.truncate(limit);
     Ok(ResponseData::OneTimeCodes { codes })
 }

@@ -399,10 +399,12 @@ impl App {
     fn copy_code(&mut self, code: String, from: &str) {
         let shown = crate::ui::sanitize::one_line(&code);
         self.status_message = Some(match copy_code_to_clipboard(&code) {
-            Ok(()) => format!("Code {shown} from {from} copied"),
+            Ok(()) => {
+                self.mailbox.updates_page.last_copied = Some(code);
+                format!("Code {shown} from {from} copied")
+            }
             Err(error) => format!("Couldn't copy the code {shown}: {error}"),
         });
-        self.mailbox.updates_page.last_copied = Some(code);
     }
 
     fn updates_close(&mut self) {

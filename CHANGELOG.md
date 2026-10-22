@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.130](https://github.com/planetaryescape/mxr/compare/v0.6.129...v0.6.130) (2026-10-22)
+
+
+### Bug Fixes
+
+* make Undo Send exact and refuse sends an account cannot make ([#588](https://github.com/planetaryescape/mxr/issues/588)) ([f3a5323](https://github.com/planetaryescape/mxr/commit/f3a5323475324df5136cd8c5c2046fa29d0c180e))
+
 ## [0.6.129](https://github.com/planetaryescape/mxr/compare/v0.6.128...v0.6.129) (2026-10-22)
 
 

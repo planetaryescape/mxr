@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.133](https://github.com/planetaryescape/mxr/compare/v0.6.132...v0.6.133) (2026-10-22)
+
+
+### Bug Fixes
+
+* never serve a mode view that may predate synced mail, and stop rebuilding unchanged views in the background ([#595](https://github.com/planetaryescape/mxr/issues/595)) ([06e3361](https://github.com/planetaryescape/mxr/commit/06e33616c272e92bda5699133378743cf4acdec8))
+
 ## [0.6.132](https://github.com/planetaryescape/mxr/compare/v0.6.131...v0.6.132) (2026-10-22)
 
 

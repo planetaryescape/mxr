@@ -61,7 +61,7 @@ describe("freshness words", () => {
       },
     });
     expect(syncLine(paused, 900, now)).toMatch(
-      /^work@example.com paused: rate limited, retrying 9:50/,
+      /^work@example.com paused: rate limited, retrying 09:50/,
     );
     const due = new Date(now.getTime() + 10 * 60_000);
     expect(syncLine(paused, 900, due)).toBe("work@example.com paused: rate limited, retrying now");
@@ -89,7 +89,7 @@ describe("freshness words", () => {
         retry_at: minutesAhead(1),
       },
     };
-    expect(syncLine(retrying, 900, now)).toMatch(/^Can't reach work@example.com, retrying 9:43/);
+    expect(syncLine(retrying, 900, now)).toMatch(/^Can't reach work@example.com, retrying 09:43/);
   });
 
   test("an in-progress sync outranks its scheduled retry and stays a warning", () => {

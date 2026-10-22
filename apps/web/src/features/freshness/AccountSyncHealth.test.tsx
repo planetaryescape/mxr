@@ -60,7 +60,7 @@ describe("account sync health", () => {
     query.data = reply(offline);
     render(<SyncHealthWords accountId="acct-1" />);
     const words = screen.getByTestId("account-sync-health");
-    expect(words).toHaveTextContent(/^Can't sync, retrying 9:47/);
+    expect(words).toHaveTextContent(/^Can't sync, retrying 09:47/);
     expect(words).toHaveAttribute("data-tone", "bad");
   });
 
@@ -69,8 +69,8 @@ describe("account sync health", () => {
     render(<AccountSyncDetails accountId="acct-1" />);
     const details = screen.getByTestId("account-sync-details");
     expect(details).toHaveTextContent("Last good sync2m ago");
-    expect(details).toHaveTextContent(/Next try9:47/);
-    expect(details).toHaveTextContent(/Can't reach work@example.com\. Trying again at 9:47/);
+    expect(details).toHaveTextContent(/Next try09:47/);
+    expect(details).toHaveTextContent(/Can't reach work@example.com\. Trying again at 09:47/);
     expect(screen.getByText("Details")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /sign in again/i })).toBeNull();
   });

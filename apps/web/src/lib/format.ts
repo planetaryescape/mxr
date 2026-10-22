@@ -10,7 +10,26 @@ export function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString()} ${pluralRules.select(count) === "one" ? one : many}`;
 }
 
-const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+const timeFormats = new Map<string | undefined, Intl.DateTimeFormat>();
+
+/**
+ * Hours are padded in 24-hour locales ("00:08", as the locale writes them) and
+ * left bare in 12-hour ones ("12:08 AM"). Intl's `numeric` hour alone gives
+ * "0:08" in en-GB.
+ */
+function timeFormatFor(locale: string | undefined): Intl.DateTimeFormat {
+  let format = timeFormats.get(locale);
+  if (!format) {
+    const cycle = new Intl.DateTimeFormat(locale, { hour: "numeric" }).resolvedOptions().hourCycle;
+    const twentyFourHour = cycle === "h23" || cycle === "h24";
+    format = new Intl.DateTimeFormat(locale, {
+      hour: twentyFourHour ? "2-digit" : "numeric",
+      minute: "2-digit",
+    });
+    timeFormats.set(locale, format);
+  }
+  return format;
+}
 const weekdayFormat = new Intl.DateTimeFormat(undefined, { weekday: "short" });
 const dayMonthFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 const fullDateFormat = new Intl.DateTimeFormat(undefined, {
@@ -39,7 +58,12 @@ export function startOfDay(date: Date): number {
 
 /** "4:26 PM" (or "16:26", by locale): a time of day, the same everywhere. */
 export function formatTime(value: Date): string {
-  return timeFormat.format(value);
+  return formatTimeIn(undefined, value);
+}
+
+/** `formatTime` for a named locale (or the viewer's, for undefined). */
+export function formatTimeIn(locale: string | undefined, value: Date): string {
+  return timeFormatFor(locale).format(value);
 }
 
 /**

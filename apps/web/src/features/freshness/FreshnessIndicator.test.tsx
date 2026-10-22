@@ -147,7 +147,7 @@ describe("FreshnessIndicator", () => {
     });
     renderIndicator();
     expect(screen.getByTestId("freshness-warning")).toHaveTextContent(
-      /work@example.com paused: rate limited, retrying 9:50/,
+      /work@example.com paused: rate limited, retrying 09:50/,
     );
     expect(screen.getByTestId("freshness-trigger").querySelector("[data-tone]")).toHaveAttribute(
       "data-tone",

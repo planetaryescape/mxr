@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { formatReceived, formatTime, formatWhen, initials } from "./format";
+import { formatReceived, formatTime, formatTimeIn, formatWhen, initials } from "./format";
 
 // Fixed zone so midnight and day boundaries land where the tests say.
 process.env.TZ = "Europe/London";
@@ -144,5 +144,21 @@ describe("formatReceived: when an open email arrived, always in plain sight", ()
   test("an empty or unreadable value is blank", () => {
     expect(formatReceived(null, NOW)).toBe("");
     expect(formatReceived("not a date", NOW)).toBe("");
+  });
+});
+
+describe("formatTime: hours padded in 24-hour locales, bare in 12-hour ones", () => {
+  const eight = new Date(2026, 9, 1, 0, 8);
+  const afternoon = new Date(2026, 9, 1, 13, 8);
+
+  test("en-GB is 24-hour: 00:08 and 13:08", () => {
+    expect(formatTimeIn("en-GB", eight)).toBe("00:08");
+    expect(formatTimeIn("en-GB", afternoon)).toBe("13:08");
+  });
+
+  test("en-US is 12-hour: 12:08 AM and 1:08 PM", () => {
+    // Intl may put a narrow no-break space before AM or PM; \s covers it.
+    expect(formatTimeIn("en-US", eight)).toMatch(/^12:08\sAM$/);
+    expect(formatTimeIn("en-US", afternoon)).toMatch(/^1:08\sPM$/);
   });
 });

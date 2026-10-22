@@ -1,7 +1,7 @@
 import { Action, ActionPanel, Color, Icon, List, Keyboard } from "@raycast/api";
-import { useCachedPromise } from "@raycast/utils";
+import { useCachedPromise, useCachedState } from "@raycast/utils";
 import { useState } from "react";
-import { getMessages, markDone } from "./bridge/modes";
+import { getMessages, markDone, type MessagesFilter } from "./bridge/modes";
 import type { MessagesRow } from "./bridge/types";
 import { AccountDropdown } from "./components/AccountDropdown";
 import { useAccountBadge } from "./components/accountBadge";
@@ -13,11 +13,32 @@ import { itemErrors, runPreviewed } from "./components/previewed";
 import { arrival } from "./components/time";
 import { useWebBase, web } from "./components/web";
 
+const TURN_CHOICES: [MessagesFilter["turn"], string][] = [
+  [undefined, "All"],
+  ["mine", "Your Turn"],
+  ["theirs", "Waiting on Them"],
+];
+
+/** "Your Turn · Unread": the words for the filters that are on, or nothing. */
+function filterLabel(filter: MessagesFilter): string | undefined {
+  const parts = [
+    filter.turn === "mine" ? "Your turn" : filter.turn === "theirs" ? "Waiting on them" : "",
+    filter.unread ? "Unread" : "",
+    filter.pace ? "Past your pace" : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
 export default function Messages() {
   const [account, setAccount] = useState<string>();
-  const { data, isLoading, revalidate } = useCachedPromise(getMessages, [account], {
+  // Remembered per command, so reopening Messages keeps the filter it was left with.
+  const [filter, setFilter] = useCachedState<MessagesFilter>("messages-filter", {});
+  const { data, isLoading, revalidate } = useCachedPromise(getMessages, [account, filter], {
     keepPreviousData: true,
   });
+  const label = filterLabel(filter);
+  const narrowedEmpty =
+    Boolean(label) && data !== undefined && (data.matched ?? data.row_count) === 0;
   const badge = useAccountBadge(account);
   useLiveRefresh(revalidate);
   const webBase = useWebBase();
@@ -30,6 +51,35 @@ export default function Messages() {
         ...row.topics.map((topic) => topic.subject),
       ),
     );
+
+  // ⌘F in every row's panel: the choices, with a check on the ones in force.
+  const filterMenu = (
+    <ActionPanel.Submenu
+      title="Filter"
+      icon={Icon.Filter}
+      shortcut={{ modifiers: ["cmd"], key: "f" }}
+    >
+      {TURN_CHOICES.map(([turn, title]) => (
+        <Action
+          key={title}
+          title={title}
+          icon={filter.turn === turn ? Icon.Checkmark : Icon.Circle}
+          onAction={() => setFilter({ ...filter, turn })}
+        />
+      ))}
+      <Action
+        title="Unread"
+        icon={filter.unread ? Icon.Checkmark : Icon.Circle}
+        onAction={() => setFilter({ ...filter, unread: !filter.unread })}
+      />
+      <Action
+        title="Past Your Pace"
+        icon={filter.pace ? Icon.Checkmark : Icon.Circle}
+        onAction={() => setFilter({ ...filter, pace: !filter.pace })}
+      />
+      {label && <Action title="Clear Filters" icon={Icon.Eraser} onAction={() => setFilter({})} />}
+    </ActionPanel.Submenu>
+  );
 
   const item = (row: MessagesRow, band: string) => {
     const topic = row.topics[0];
@@ -56,6 +106,7 @@ export default function Messages() {
         ]}
         actions={
           <ActionPanel>
+            {filterMenu}
             {topic && (
               <ReadAction
                 threadId={topic.thread_id}
@@ -132,13 +183,25 @@ export default function Messages() {
   return (
     <List
       isLoading={isLoading || search.isLoading}
-      navigationTitle={data?.header ?? "Messages"}
+      navigationTitle={label ? `Messages · ${label}` : (data?.header ?? "Messages")}
       searchBarPlaceholder="Filter people and search all mail"
       searchBarAccessory={<AccountDropdown onChange={setAccount} />}
       {...search.listProps}
     >
-      {data && data.row_count === 0 && !search.searching && (
-        <List.EmptyView icon={Icon.Message} title={data.empty_state ?? "No conversations"} />
+      {data && (data.row_count === 0 || narrowedEmpty) && !search.searching && (
+        <List.EmptyView
+          icon={Icon.Message}
+          title={data.empty_state?.split("\n")[0] ?? "No conversations"}
+          description={data.empty_state?.split("\n").slice(1).join("\n") || undefined}
+          actions={
+            label ? (
+              <ActionPanel>
+                {filterMenu}
+                <Action title="Clear Filters" icon={Icon.Eraser} onAction={() => setFilter({})} />
+              </ActionPanel>
+            ) : undefined
+          }
+        />
       )}
       <List.Section title="Your Turn">
         {shown(data?.your_turn).map((row) => item(row, "turn"))}

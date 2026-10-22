@@ -1,4 +1,4 @@
-use crate::cli::{DraftAction, DraftLengthArg, OutputFormat, VoiceRegisterArg};
+use crate::cli::{DraftAction, DraftEvalSetArg, DraftLengthArg, OutputFormat, VoiceRegisterArg};
 use crate::commands::draft_output::{
     draft_suggestion_json, eprint_draft_notes, length_data, register_data, DraftSuggestionView,
 };
@@ -46,22 +46,34 @@ pub async fn run(
                 .await?;
             print_draft_response(resp, fmt)
         }
-        Some(DraftAction::Eval { limit }) => {
-            let account_id = match account.as_deref() {
-                Some(account) => Some(resolve_account(&mut client, Some(account)).await?),
-                None => None,
+        Some(DraftAction::Eval { limit, set }) => {
+            let set = match set {
+                DraftEvalSetArg::Mine => DraftEvalSet::Mine,
+                DraftEvalSetArg::Quick => DraftEvalSet::Quick,
+            };
+            let account_id = match (set, account.as_deref()) {
+                (DraftEvalSet::Mine, Some(account)) => {
+                    Some(resolve_account(&mut client, Some(account)).await?)
+                }
+                _ => None,
             };
             let resp = client
-                .request(Request::DraftEval { account_id, limit })
+                .request(Request::DraftEval {
+                    account_id,
+                    limit,
+                    set,
+                })
                 .await?;
-            let (cases, summary) = match resp {
+            match resp {
                 Response::Ok {
                     data: ResponseData::DraftEval { cases, summary },
-                } => (cases, summary),
+                } => print_eval(&cases, &summary, fmt),
+                Response::Ok {
+                    data: ResponseData::DraftEvalQuick { cases, summary },
+                } => print_eval_quick(&cases, &summary, fmt),
                 Response::Ok { .. } => anyhow::bail!("Unexpected response"),
                 Response::Error { message, .. } => anyhow::bail!(message),
-            };
-            print_eval(&cases, &summary, fmt)
+            }
         }
         None => {
             let to = to.ok_or_else(|| anyhow::anyhow!("Pass --to for a new draft"))?;
@@ -187,6 +199,70 @@ fn print_eval(
                 summary.sign_off_match_rate * 100.0,
                 summary.invented_number_rate * 100.0
             );
+        }
+    }
+    Ok(())
+}
+
+fn print_eval_quick(
+    cases: &[DraftEvalQuickCaseData],
+    summary: &DraftEvalQuickSummaryData,
+    fmt: OutputFormat,
+) -> anyhow::Result<()> {
+    match fmt {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &serde_json::json!({ "cases": cases, "summary": summary })
+                )?
+            );
+        }
+        OutputFormat::Jsonl => {
+            for case in cases {
+                println!("{}", serde_json::to_string(case)?);
+            }
+            println!(
+                "{}",
+                serde_json::to_string(&serde_json::json!({ "summary": summary }))?
+            );
+        }
+        _ => {
+            for case in cases {
+                match &case.error {
+                    Some(error) => println!("{} did not draft: {error}", case.id),
+                    None => {
+                        println!(
+                            "── {} · {} words · {}",
+                            case.id, case.words, case.description
+                        );
+                        for check in &case.checks {
+                            println!(
+                                "  {:<4} {:<9} {}; {}",
+                                if check.pass { "pass" } else { "FAIL" },
+                                check.check,
+                                check.requirement,
+                                check.detail
+                            );
+                        }
+                        println!("       draft: {}", case.draft.replace('\n', " / "));
+                    }
+                }
+            }
+            println!();
+            println!(
+                "{} cases ({} did not draft) with {}; style score mean {:.0} (humanizer score: 100 reads plain, lower reads more like AI; reported, not graded)",
+                summary.cases,
+                summary.errors,
+                if summary.model.is_empty() { "the configured model" } else { summary.model.as_str() },
+                summary.style_mean
+            );
+            for count in &summary.checks {
+                println!(
+                    "{:<9} {}/{} passed",
+                    count.check, count.passed, count.evaluated
+                );
+            }
         }
     }
     Ok(())

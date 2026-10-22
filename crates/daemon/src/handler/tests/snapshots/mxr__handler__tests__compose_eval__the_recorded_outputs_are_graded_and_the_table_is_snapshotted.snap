@@ -1,0 +1,50 @@
+---
+source: crates/daemon/src/handler/tests/compose_eval.rs
+expression: grade_report()
+---
+case                         output                         kept   answers  gaps   invented  length  leftovers  style
+friday-typed                 good                           pass   pass     pass   pass      pass    pass       100  
+friday-typed                 bad: dropped typed sentence    FAIL   pass     pass   pass      FAIL    pass       100  
+friday-empty                 good                           pass   pass     pass   pass      pass    pass       100  
+price-typed                  good                           pass   pass     pass   pass      pass    pass       97   
+price-open                   good                           pass   pass     pass   pass      pass    pass       100  
+price-open                   bad: invented price            pass   pass     FAIL   FAIL      pass    pass       97   
+date-typed                   good                           pass   pass     pass   pass      pass    pass       97   
+date-open                    good                           pass   pass     pass   pass      pass    pass       100  
+deck-typed                   good                           pass   pass     pass   pass      pass    pass       100  
+intro-typed                  good                           pass   pass     pass   pass      pass    pass       97   
+intro-typed                  bad: subject line              pass   pass     pass   pass      pass    FAIL       97   
+german-typed                 good                           pass   pass     pass   pass      pass    pass       100  
+warmer-selection             good                           pass   pass     pass   pass      pass    pass       100  
+shorter-selection            good                           pass   pass     pass   pass      pass    pass       97   
+invoice-typed-no-price       good                           pass   pass     pass   pass      pass    pass       97   
+invoice-typed-no-price       bad: invented price            pass   pass     pass   FAIL      pass    pass       97   
+lunch-initial-voice          good                           pass   pass     pass   pass      pass    pass       100  
+lunch-first-name-voice       good                           pass   pass     pass   pass      pass    pass       100  
+clause-long-thread           good                           pass   pass     pass   pass      pass    pass       100  
+clause-long-thread           bad: recap of thread           pass   pass     pass   pass      pass    FAIL       100  
+ack-typed                    good                           pass   pass     pass   pass      pass    pass       97   
+ack-typed                    bad: duplicate signature       pass   pass     pass   pass      pass    FAIL       97   
+seats-open                   good                           pass   pass     pass   pass      pass    pass       100  
+rate-from-instruction        good                           pass   pass     pass   pass      pass    pass       97   
+rate-from-instruction        bad: invented price            pass   FAIL     pass   FAIL      pass    pass       97   
+rate-open                    good                           pass   pass     pass   pass      pass    pass       100  
+
+kept       1 of 26 outputs fail
+answers    1 of 26 outputs fail
+gaps       1 of 26 outputs fail
+invented   3 of 26 outputs fail
+length     1 of 26 outputs fail
+leftovers  3 of 26 outputs fail
+
+Failures
+friday-typed · bad: dropped typed sentence · kept: keep each typed sentence: "friday at 2pm works for me", "i'll bring the deck" -> missing: "friday at 2pm works for me"; missing: "i'll bring the deck"
+friday-typed · bad: dropped typed sentence · length: 8 to 60 words -> 7 words
+price-open · bad: invented price · gaps: leave a [[?: …]] gap for: price -> no gap for: price
+price-open · bad: invented price · invented: no number, date or amount that no input carries -> not in any input: 450
+intro-typed · bad: subject line · leftovers: no subject line, preamble, fence or placeholder, no repeated sign-off, and no run of 8 words copied from the thread -> subject line: "Subject: Re: Intro to Priya"; clean-up removed: "Subject: Re: Intro to Priya"
+invoice-typed-no-price · bad: invented price · invented: no number, date or amount that no input carries -> not in any input: 1,200
+clause-long-thread · bad: recap of thread · leftovers: no subject line, preamble, fence or placeholder, no repeated sign-off, and no run of 8 words copied from the thread -> copies the thread back: "update on clause 4 the board wants to"
+ack-typed · bad: duplicate signature · leftovers: no subject line, preamble, fence or placeholder, no repeated sign-off, and no run of 8 words copied from the thread -> sign-off repeated: "Alex"
+rate-from-instruction · bad: invented price · answers: answer "rate per person" (any of: 85) -> not addressed: rate per person
+rate-from-instruction · bad: invented price · invented: no number, date or amount that no input carries -> not in any input: 95

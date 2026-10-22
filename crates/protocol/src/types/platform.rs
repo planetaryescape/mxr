@@ -540,6 +540,74 @@ pub struct DraftEvalSummaryData {
     pub model: String,
 }
 
+/// Which cases `Request::DraftEval` drafts. `Mine` replays the user's own
+/// recent replies; `Quick` drafts the labelled compose corpus and grades each
+/// draft against what its case required. Neither saves or sends anything.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DraftEvalSet {
+    #[default]
+    Mine,
+    Quick,
+}
+
+impl DraftEvalSet {
+    /// The default is left off the wire, so an older client's request is unchanged.
+    pub fn is_mine(&self) -> bool {
+        matches!(self, Self::Mine)
+    }
+}
+
+/// One check on one draft: what it required and what the draft did.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DraftEvalCheckData {
+    /// `kept`, `answers`, `gaps`, `invented`, `length` or `leftovers`.
+    pub check: String,
+    pub pass: bool,
+    pub requirement: String,
+    pub detail: String,
+}
+
+/// One corpus case drafted by the configured model and graded.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DraftEvalQuickCaseData {
+    pub id: String,
+    pub description: String,
+    /// The draft the user would see, after clean-up.
+    pub draft: String,
+    pub words: u32,
+    pub checks: Vec<DraftEvalCheckData>,
+    /// Humanizer score: 100 reads plain, lower reads more like a model wrote it.
+    /// Reported, not graded.
+    pub style_score: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Passes and evaluations for one check across the set.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DraftEvalCheckCountData {
+    pub check: String,
+    pub passed: u32,
+    pub evaluated: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DraftEvalQuickSummaryData {
+    pub cases: u32,
+    /// Cases the model failed to draft; they are not graded.
+    pub errors: u32,
+    pub checks: Vec<DraftEvalCheckCountData>,
+    /// Mean style score over the drafted cases (0 when none drafted).
+    pub style_mean: f64,
+    pub model: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VoiceMatchData {

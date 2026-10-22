@@ -12,6 +12,7 @@
 use super::draft_compose::{draft_in_thread, DraftRequest};
 use super::HandlerResult;
 use crate::state::AppState;
+use mxr_composer::check::invented_numbers;
 use mxr_core::id::AccountId;
 use mxr_protocol::{DraftEvalCaseData, DraftEvalSummaryData, ResponseData};
 use mxr_relationship::{analyse_habits, clean_for_voice};
@@ -158,28 +159,6 @@ fn same(left: Option<&str>, right: Option<&str>) -> bool {
         (Some(left), Some(right)) => key(left) == key(right),
         _ => false,
     }
-}
-
-/// Numbers (prices, times, dates, counts) in the draft that the model could
-/// not have seen: not in the conversation it was given.
-fn invented_numbers(draft: &str, known: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for token in
-        draft.split(|c: char| c.is_whitespace() || matches!(c, ';' | '(' | ')' | '!' | '?'))
-    {
-        let token = token.trim_matches(|c: char| !c.is_alphanumeric());
-        if token.is_empty() || !token.chars().any(|c| c.is_ascii_digit()) {
-            continue;
-        }
-        let digits: String = token.chars().filter(char::is_ascii_digit).collect();
-        if !known.contains(token)
-            && !known.contains(&digits)
-            && !out.iter().any(|seen| seen == token)
-        {
-            out.push(token.to_string());
-        }
-    }
-    out
 }
 
 fn summarise(cases: &[DraftEvalCaseData], model: String) -> DraftEvalSummaryData {
@@ -337,13 +316,6 @@ mod tests {
             !prompts[0].contains("SECRET-ACTUAL-REPLY"),
             "the replayed reply leaked into its own prompt"
         );
-    }
-
-    #[test]
-    fn numbers_the_model_could_not_have_seen() {
-        let known = "Can we meet on the 14th at 3pm? Budget is $4,000.";
-        let draft = "Yes, the 14th at 3pm works. I can do $5,000 and 20 seats.";
-        assert_eq!(invented_numbers(draft, known), vec!["5,000", "20"]);
     }
 
     #[test]

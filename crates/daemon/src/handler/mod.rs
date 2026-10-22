@@ -24,6 +24,8 @@ mod classify_eval;
 mod codes;
 mod commitments;
 mod commitments_extract;
+mod compose_corpus;
+mod compose_eval;
 mod conversation_shape;
 mod decisions_extract;
 pub(crate) mod deferral;
@@ -2089,9 +2091,14 @@ async fn dispatch(
             knobs,
             body,
         } => draft_refine::draft_refine(state, draft_id, knobs.clone(), body.as_deref()).await,
-        Request::DraftEval { account_id, limit } => {
-            draft_eval::draft_eval(state, account_id.as_ref(), *limit).await
-        }
+        Request::DraftEval {
+            account_id,
+            limit,
+            set,
+        } => match set {
+            DraftEvalSet::Mine => draft_eval::draft_eval(state, account_id.as_ref(), *limit).await,
+            DraftEvalSet::Quick => compose_eval::quick(state).await,
+        },
         Request::ClassifyEval { account_id, set } => {
             classify_eval::classify_eval(state, account_id.as_ref(), *set).await
         }

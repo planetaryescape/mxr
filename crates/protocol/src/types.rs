@@ -1562,13 +1562,18 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         body: Option<String>,
     },
-    /// Replay the user's most recent replies: draft each one from what was
-    /// known just before they replied, and compare with what they sent.
-    /// Calls the configured LLM once per case; nothing is saved or sent.
+    /// Draft and grade cases with the configured LLM, once per case; nothing
+    /// is saved or sent. `set: mine` replays the user's most recent replies,
+    /// drafted from what was known just before they replied and compared with
+    /// what they sent. `set: quick` drafts the labelled compose corpus and
+    /// grades each draft against what its case required. `limit` applies to
+    /// `mine` only.
     DraftEval {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,
         limit: u32,
+        #[serde(default, skip_serializing_if = "DraftEvalSet::is_mine")]
+        set: DraftEvalSet,
     },
     /// Measure today's classifier against labelled scenarios in the stored
     /// mail: who sent it, which mode it went to, and whether it made a
@@ -3780,6 +3785,11 @@ pub enum ResponseData {
         cases: Vec<DraftEvalCaseData>,
         summary: DraftEvalSummaryData,
     },
+    /// Returned by `Request::DraftEval` with `set: quick`.
+    DraftEvalQuick {
+        cases: Vec<DraftEvalQuickCaseData>,
+        summary: DraftEvalQuickSummaryData,
+    },
     /// Returned by `Request::ClassifyEval`. Mismatches are sorted by
     /// scenario, then provider id, then question.
     ClassifyEval {
@@ -4596,6 +4606,7 @@ impl ResponseData {
             | Self::TriageResults { .. }
             | Self::DraftSuggestion { .. }
             | Self::DraftEval { .. }
+            | Self::DraftEvalQuick { .. }
             | Self::ClassifyEval { .. }
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }

@@ -9,6 +9,7 @@ import { invokeAction } from "@/lib/actions/registry";
 import type { ActionContext, ActionScope } from "@/lib/actions/types";
 
 import { isMacPlatform, tokenFromEvent, type KeyToken } from "./chord";
+import { isComposingKey } from "./composition";
 
 export const SEQUENCE_TIMEOUT_MS = 1000;
 
@@ -16,6 +17,8 @@ export const SEQUENCE_TIMEOUT_MS = 1000;
  * The only actions a held key repeats: moving and scrolling. Everything
  * else (archive, trash, send, snooze, star, sweep, done…) runs once per
  * press, however long the key is held, so a held `e` can't empty a list.
+ * Listed by id rather than derived, so a new action never starts
+ * repeating by accident.
  */
 export const REPEATABLE_ACTION_IDS: ReadonlySet<string> = new Set([
   "list.down",
@@ -24,6 +27,24 @@ export const REPEATABLE_ACTION_IDS: ReadonlySet<string> = new Set([
   "list.page-up",
   "sidebar.down",
   "sidebar.up",
+  "now.down",
+  "now.up",
+  "messages.down",
+  "messages.up",
+  "todo.down",
+  "todo.up",
+  "catchup.down",
+  "catchup.up",
+  "expired.down",
+  "expired.up",
+  "updates.down",
+  "updates.up",
+  "reading.down",
+  "reading.up",
+  "archive.down",
+  "archive.up",
+  "screener.down",
+  "screener.up",
   "reader.scroll-down",
   "reader.scroll-up",
   "reader.page-down",
@@ -37,6 +58,8 @@ export interface DispatcherOptions {
   context: () => ActionContext;
   /** Reports the pending sequence prefix ("g", "*") for the status bar. */
   onPendingChange?: (prefix: string | null) => void;
+  /** Reports a prefix and a key that complete nothing ("g U"), for the status bar. */
+  onDeadEnd?: (sequence: string) => void;
   /** Extra veto, e.g. while compose owns the page. */
   isSuspended?: () => boolean;
   mac?: boolean;
@@ -84,7 +107,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.defaultPrevented || event.isComposing) return;
+    if (event.defaultPrevented || isComposingKey(event)) return;
     const token = tokenFromEvent(event, mac);
     if (!token) return;
     if (ownsKeyboard(event.target) || options.isSuspended?.()) {
@@ -148,18 +171,21 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
         clear();
         return;
       }
-      // Dead end: drop the prefix and treat this key on its own, the way
-      // vim does after a mistyped "g".
       clear();
-      const single = registry.resolve(token, scopes);
-      if (single && !registry.hasContinuation(token, scopes)) {
-        event.preventDefault();
-        invokeAction(single.action, ctx);
-      } else if (registry.hasContinuation(token, scopes)) {
-        event.preventDefault();
-        setPending([token]);
-        timer = setTimeout(clear, SEQUENCE_TIMEOUT_MS);
+      // A modifier chord is never a mistyped second key: ⌘K after a stray
+      // "g" still opens the palette.
+      if (isModifierChord(token)) {
+        const single = registry.resolve(token, scopes);
+        if (single && !registry.hasContinuation(token, scopes)) {
+          event.preventDefault();
+          invokeAction(single.action, ctx);
+        }
+        return;
       }
+      // Dead end: cancel and say so. Running the key on its own turned a
+      // mistyped "g U" into marking mail unread.
+      event.preventDefault();
+      options.onDeadEnd?.(chord);
     }
   };
 
@@ -223,10 +249,11 @@ const EDITING_CHORDS = new Set([
  */
 export function ownsKeyboard(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
-  // A dialog animating closed (Radix keeps it mounted with data-state
-  // "closed") no longer owns anything; keys typed then belong to the page.
+  // A dialog or menu animating closed (Radix keeps it mounted, focus
+  // inside, with data-state "closed") no longer owns anything; keys typed
+  // then belong to the page.
   const closing = target.closest(
-    '[data-state="closed"][role="dialog"], [data-state="closed"][role="alertdialog"]',
+    '[data-state="closed"][role="dialog"], [data-state="closed"][role="alertdialog"], [data-state="closed"][role="menu"]',
   );
   if (closing) return false;
   if (target instanceof HTMLElement && target.isContentEditable) return true;

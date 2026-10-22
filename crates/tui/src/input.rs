@@ -1,5 +1,5 @@
 use crate::action::{Action, PatternKind};
-use crate::keybindings::{KeyPress, KeybindingConfig, ViewContext};
+use crate::keybindings::{format_keybinding, KeyBinding, KeyPress, KeybindingConfig, ViewContext};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::{Duration, Instant};
 
@@ -52,6 +52,8 @@ pub struct InputHandler {
     state: KeyState,
     configured: Option<ConfiguredChord>,
     used_this_turn: bool,
+    /// A sequence that completed nothing, spelled for the status line.
+    dead_end: Option<String>,
 }
 
 struct ConfiguredChord {
@@ -72,7 +74,41 @@ impl InputHandler {
             state: KeyState::Normal,
             configured: None,
             used_this_turn: false,
+            dead_end: None,
         }
+    }
+
+    /// The last sequence that completed nothing, spelled as typed
+    /// (`g z`), taking it.
+    pub(crate) fn take_dead_end(&mut self) -> Option<String> {
+        self.dead_end.take()
+    }
+
+    /// A key after a prefix completed nothing: the prefix is cancelled
+    /// and nothing runs (blueprint 35), so a mistyped `g U` cannot mark
+    /// mail unread. Esc is the way to cancel on purpose, so it says nothing.
+    pub(crate) fn cancel_prefix(&mut self, first: char, key: KeyEvent) {
+        self.note_dead_end(&[
+            KeyPress::from_event(KeyEvent::new(KeyCode::Char(first), KeyModifiers::NONE)),
+            KeyPress::from_event(key),
+        ]);
+    }
+
+    fn note_dead_end(&mut self, sequence: &[KeyPress]) {
+        self.state = KeyState::Normal;
+        self.configured = None;
+        if sequence.last().is_some_and(|key| key.code == KeyCode::Esc) {
+            return;
+        }
+        let spelled: Vec<String> = sequence
+            .iter()
+            .map(|key| {
+                format_keybinding(&KeyBinding {
+                    keys: vec![key.clone()],
+                })
+            })
+            .collect();
+        self.dead_end = Some(spelled.join(" "));
     }
 
     /// A chord prefix is waiting and has not timed out.
@@ -170,12 +206,14 @@ impl InputHandler {
                 // chord (e.g. retiring `a` must not break `ga` or `ia`).
                 let mut probe = Self::new();
                 probe.handle_key(KeyEvent::new(KeyCode::Char(first), KeyModifiers::NONE));
-                let chord = probe.handle_key(key);
-                let single = Self::new().handle_key(key);
-                if chord.is_some() && chord != single {
+                if probe.handle_key(key).is_some() {
                     return None;
                 }
-                self.state = KeyState::Normal;
+                // The configured key completes no chord after the waiting
+                // prefix: cancel it, as the default chords do.
+                self.used_this_turn = true;
+                self.cancel_prefix(first, key);
+                return Some(None);
             }
         }
         let pending = self.configured.take();
@@ -218,18 +256,18 @@ impl InputHandler {
             return Some(None);
         }
         // Preserve default chords outside the registry (saved-search digits,
-        // invite comments). Replay only into the pure legacy key resolver.
+        // invite comments). Replay only into the pure legacy key resolver,
+        // which completes the chord or cancels it.
         self.state = KeyState::Normal;
         for previous in sequence.iter().take(sequence.len().saturating_sub(1)) {
             self.handle_key(KeyEvent::new(previous.code, previous.modifiers));
         }
-        // An invalid chord recovers by processing this key afresh, including
-        // a different configured prefix rather than just hardcoded defaults.
-        if config.overrides_prefix(context, sequence.last()?) {
-            self.state = KeyState::Normal;
-            return self.handle_configured_key(config, context, key);
+        if matches!(self.state, KeyState::WaitingForSecond { .. }) {
+            return None;
         }
-        None
+        // Nothing can complete the sequence: cancel it and run nothing.
+        self.note_dead_end(&sequence);
+        Some(None)
     }
 
     pub fn check_timeout(&mut self) -> Option<Action> {
@@ -501,9 +539,10 @@ impl InputHandler {
                 pattern_select_chord(c)
             }
 
-            (KeyState::WaitingForSecond { .. }, _, _) => {
-                self.state = KeyState::Normal;
-                self.handle_key(key)
+            (KeyState::WaitingForSecond { first, .. }, _, _) => {
+                let first = *first;
+                self.cancel_prefix(first, key);
+                None
             }
 
             // Single keys
@@ -630,8 +669,10 @@ mod tests {
         input.handle_configured_key(&config, context, key(KeyCode::Char('w')));
         assert_eq!(
             input.handle_configured_key(&config, context, key(KeyCode::Char(';'))),
-            Some(Some("archive".into()))
+            Some(None),
+            "a suffix that completes nothing cancels the chord and runs nothing"
         );
+        assert_eq!(input.take_dead_end().as_deref(), Some("w ;"));
         assert!(!input.is_pending());
         input.handle_configured_key(&config, context, key(KeyCode::Char('w')));
         input.configured.as_mut().unwrap().deadline = Instant::now() - Duration::from_millis(1);
@@ -648,6 +689,27 @@ mod tests {
             Some(Some("trash".into())),
             "a new configured chord can start after timeout"
         );
+        assert!(!input.is_pending());
+    }
+
+    /// A second key that completes nothing cancels the prefix and runs
+    /// nothing (blueprint 35): `g j` must not move the cursor.
+    #[test]
+    fn a_second_key_that_completes_nothing_cancels_the_prefix() {
+        let mut input = InputHandler::new();
+        assert_eq!(input.handle_key(key(KeyCode::Char('g'))), None);
+        assert_eq!(input.handle_key(key(KeyCode::Char('j'))), None);
+        assert_eq!(input.take_dead_end().as_deref(), Some("g j"));
+        assert!(!input.is_pending());
+        assert_eq!(
+            input.handle_key(key(KeyCode::Char('j'))),
+            Some(Action::MoveDown)
+        );
+
+        // Esc cancels on purpose, so it is not reported.
+        assert_eq!(input.handle_key(key(KeyCode::Char('*'))), None);
+        assert_eq!(input.handle_key(key(KeyCode::Esc)), None);
+        assert_eq!(input.take_dead_end(), None);
         assert!(!input.is_pending());
     }
 

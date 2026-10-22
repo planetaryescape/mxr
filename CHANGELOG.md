@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.148](https://github.com/planetaryescape/mxr/compare/v0.6.147...v0.6.148) (2026-10-22)
+
+
+### Features
+
+* remap a mode's keys in keys.toml, check the file, and list each mode's keys in help ([#646](https://github.com/planetaryescape/mxr/issues/646)) ([15bb54c](https://github.com/planetaryescape/mxr/commit/15bb54ced20e7033d8f4540d3cdb265c1624525d))
+
+
+### Bug Fixes
+
+* drop dead web place keys, read nav key labels from the definition, and publish every mode's keys ([#648](https://github.com/planetaryescape/mxr/issues/648)) ([2f56e5e](https://github.com/planetaryescape/mxr/commit/2f56e5e8de5fe754ca704dd22f114cd1b46d51ba))
+* move the web app to dompurify 3.4.17 for three sanitizer advisories ([#649](https://github.com/planetaryescape/mxr/issues/649)) ([208ff5a](https://github.com/planetaryescape/mxr/commit/208ff5ab3b9bf312e7f9d7ba955429b9403d99ee))
+* suggest each contact once in compose To ([#650](https://github.com/planetaryescape/mxr/issues/650)) ([53ca64a](https://github.com/planetaryescape/mxr/commit/53ca64a61b3157f201af9878df1c4ee5e2ec6004))
+
 ## [0.6.147](https://github.com/planetaryescape/mxr/compare/v0.6.146...v0.6.147) (2026-10-22)
 
 

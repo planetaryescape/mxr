@@ -27,6 +27,7 @@ import {
 
 import { Avatar } from "@/components/Avatar";
 import { Label } from "@/components/ui/label";
+import { isComposingKey } from "@/lib/keys/composition";
 import { cn } from "@/lib/utils";
 import { fetchContactsAutocomplete } from "./api";
 
@@ -118,6 +119,7 @@ export function RecipientField({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (isComposingKey(event)) return;
     switch (event.key) {
       case "Enter":
         event.preventDefault();

@@ -146,6 +146,7 @@ fn set_active_inbox(app: &mut App) {
 
 mod accounts_and_delivery;
 mod assistant;
+mod back_and_quit;
 mod export;
 mod input_and_compose;
 mod keymap;

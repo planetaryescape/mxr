@@ -128,6 +128,20 @@ describe("HighlightToolbar", () => {
     );
   });
 
+  test("Escape that ends an IME composition keeps the note open", () => {
+    setup();
+    select(screen.getByTestId("inside"));
+    fireEvent.click(screen.getByTestId("toolbar-highlight-note"));
+    const input = screen.getByTestId("highlight-note-input");
+    fireEvent.change(input, { target: { value: "\u306e\u30fc\u3068" } });
+
+    fireEvent.keyDown(input, { key: "Escape", keyCode: 229 });
+    expect(screen.getByTestId("highlight-note-input")).toHaveValue("\u306e\u30fc\u3068");
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByTestId("highlight-note-input")).not.toBeInTheDocument();
+  });
+
   test("selecting one of your highlights edits its note or removes it", async () => {
     setup();
     select(screen.getByTestId("own"));

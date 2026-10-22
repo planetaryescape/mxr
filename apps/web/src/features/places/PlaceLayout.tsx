@@ -128,7 +128,9 @@ export function PlaceLayout({
           >
             <section
               aria-label={label}
-              className="mode-page flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+              data-mode-pane=""
+              tabIndex={-1}
+              className="mode-page flex min-h-0 min-w-0 flex-1 flex-col bg-background outline-none"
             >
               {children}
             </section>

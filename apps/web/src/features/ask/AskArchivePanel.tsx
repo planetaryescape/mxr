@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useLlmStatus } from "@/features/llm/useLlmStatus";
 import { formatWhen, plural } from "@/lib/format";
+import { isComposingKey } from "@/lib/keys/composition";
 import { SectionHeading } from "@/components/SectionHeading";
 import { useHeldPending } from "@/hooks/useDelayedPending";
 
@@ -55,7 +56,7 @@ export function AskArchivePanel() {
           onChange={(event) => setQuestion(event.target.value)}
           onKeyDown={(event) => {
             // Enter asks; Shift+Enter adds a line.
-            if (event.key === "Enter" && !event.shiftKey) {
+            if (event.key === "Enter" && !event.shiftKey && !isComposingKey(event)) {
               event.preventDefault();
               submit();
             }

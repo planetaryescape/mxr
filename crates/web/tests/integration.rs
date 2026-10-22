@@ -529,9 +529,14 @@ async fn contacts_autocomplete_matches_addresses_and_returns_typed_suggestions()
             }),
             Request::ListSenders { .. } => Some(Response::Ok {
                 data: ResponseData::Senders {
+                    // One row per account: the same person can appear more than once,
+                    // with different casing and with a name on only some rows.
                     senders: vec![
                         sender_summary("nora@foundry.example", Some("Nora Okafor")),
+                        sender_summary("NORA@foundry.example", Some("Nora Kim")),
                         sender_summary("bob@example.com", Some("   ")),
+                        sender_summary("pat@example.com", None),
+                        sender_summary("pat@example.com", Some("Pat Lee")),
                     ],
                 },
             }),
@@ -566,6 +571,44 @@ async fn contacts_autocomplete_matches_addresses_and_returns_typed_suggestions()
     assert_eq!(
         json,
         serde_json::json!({ "contacts": [{ "name": null, "email": "bob@example.com" }] })
+    );
+
+    // An address seen under two accounts is suggested once, with the first name seen.
+    let json: serde_json::Value = autocomplete("nora").await.unwrap().json().await.unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "contacts": [{ "name": "Nora Okafor", "email": "nora@foundry.example" }]
+        })
+    );
+
+    // A name is filled from a later row when the first row for the address has none.
+    let json: serde_json::Value = autocomplete("pat").await.unwrap().json().await.unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({ "contacts": [{ "name": "Pat Lee", "email": "pat@example.com" }] })
+    );
+
+    // The limit counts distinct addresses, so a duplicate row does not use up a slot.
+    let json: serde_json::Value = client
+        .get(format!(
+            "http://{addr}/api/v1/mail/contacts/autocomplete?q=example&limit=2"
+        ))
+        .bearer_auth(TEST_TOKEN)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "contacts": [
+                { "name": "Nora Okafor", "email": "nora@foundry.example" },
+                { "name": null, "email": "bob@example.com" }
+            ]
+        })
     );
 }
 

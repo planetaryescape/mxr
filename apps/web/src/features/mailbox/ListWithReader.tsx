@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { SINGLE_PANE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSplitPane } from "@/hooks/useSplitPane";
+import { isComposingKey } from "@/lib/keys/composition";
 import { focusActivePane } from "@/lib/keys/focusPane";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -245,6 +246,7 @@ export function ListWithReader({
                     value={filter}
                     onChange={(event) => setFilter(event.target.value)}
                     onKeyDown={(event) => {
+                      if (isComposingKey(event)) return;
                       if (event.key === "Escape") {
                         event.preventDefault();
                         setFilter("");

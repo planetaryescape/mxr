@@ -1431,18 +1431,9 @@ fn edit_key_reopens_missing_recipient_draft() {
     let _ = std::fs::remove_file(temp);
 }
 
-#[test]
-fn escape_discards_missing_recipient_draft_confirmation_and_queues_cleanup() {
-    let temp = std::env::temp_dir().join(format!(
-        "mxr-compose-discard-draft-{}-{}.md",
-        std::process::id(),
-        chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
-    ));
-    std::fs::write(&temp, "draft").unwrap();
-
-    let mut app = App::new();
-    app.compose.pending_send_confirm = Some(PendingSend {
-        account_id: AccountId::new(),
+fn missing_recipient_confirm(draft_path: std::path::PathBuf, account_id: AccountId) -> PendingSend {
+    PendingSend {
+        account_id,
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: String::new(),
             cc: String::new(),
@@ -1457,7 +1448,7 @@ fn escape_discards_missing_recipient_draft_confirmation_and_queues_cleanup() {
             signature: None,
         },
         body: "Body".into(),
-        draft_path: temp.clone(),
+        draft_path,
         intent: mxr_core::DraftIntent::New,
         mode: PendingSendMode::DraftOnlyNoRecipients,
         safety_report: None,
@@ -1466,12 +1457,44 @@ fn escape_discards_missing_recipient_draft_confirmation_and_queues_cleanup() {
         suggested_collaborators: vec![],
         invite_reply: None,
         resolved_from: None,
-    });
+    }
+}
+
+/// Esc never destroys (blueprint 35): it goes back to the draft, and only
+/// the option that names the discard throws it away.
+#[test]
+fn escape_returns_to_the_draft_and_only_hash_discards_it() {
+    let temp = std::env::temp_dir().join(format!(
+        "mxr-compose-discard-draft-{}-{}.md",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    ));
+    std::fs::write(&temp, "draft").unwrap();
+
+    let mut app = App::new();
+    let account_id = AccountId::new();
+    app.compose.pending_send_confirm =
+        Some(missing_recipient_confirm(temp.clone(), account_id.clone()));
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
     assert!(app.compose.pending_send_confirm.is_none());
     assert!(temp.exists());
+    assert!(app.compose.pending_draft_cleanup.is_empty());
+    assert_eq!(
+        app.compose.pending_compose,
+        Some(crate::app::ComposeAction::EditDraft {
+            path: temp.clone(),
+            account_id: account_id.clone(),
+        })
+    );
+
+    app.compose.pending_compose = None;
+    app.compose.pending_send_confirm = Some(missing_recipient_confirm(temp.clone(), account_id));
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('#'), KeyModifiers::SHIFT));
+
+    assert!(app.compose.pending_send_confirm.is_none());
+    assert!(app.compose.pending_compose.is_none());
     assert_eq!(app.compose.pending_draft_cleanup, vec![temp.clone()]);
     assert_eq!(app.status_message.as_deref(), Some("Discarded"));
 

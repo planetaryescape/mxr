@@ -121,8 +121,8 @@ fn run_with_terminal_suspended<R>(
     run_with_terminal_suspended_with(
         terminal,
         events,
-        ratatui::restore,
-        ratatui::init,
+        crate::terminal_session::restore,
+        crate::terminal_session::init,
         EventStream::new,
         action,
     )
@@ -443,7 +443,8 @@ pub async fn run() -> anyhow::Result<()> {
         app.accounts.page.refresh_pending = !session.target.is_paired_remote();
     }
 
-    let mut terminal = ratatui::init();
+    let mut terminal = crate::terminal_session::init();
+    let _restore = crate::terminal_session::RestoreOnDrop;
     app.set_terminal_image_support(crate::terminal_images::TerminalImageSupport::detect());
     let mut events = Some(EventStream::new());
 
@@ -462,6 +463,16 @@ pub async fn run() -> anyhow::Result<()> {
 
     loop {
         crate::local_io::submit_pending_work(&mut app, &local_io);
+
+        if std::mem::take(&mut app.pending_suspend) {
+            // Restores the terminal, stops until the shell resumes us, then
+            // takes the terminal back; the next draw repaints everything.
+            run_with_terminal_suspended(
+                &mut terminal,
+                &mut events,
+                crate::terminal_session::suspend_process,
+            );
+        }
 
         if app.diagnostics.pending_config_edit {
             app.diagnostics.pending_config_edit = false;
@@ -3411,6 +3422,9 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                     }
                 }
+                if let Some(Ok(Event::Paste(text))) = event {
+                    app.handle_paste(&text);
+                }
             }
             _ = debounce_wait => {
                 // Wake-up only — the top of the next loop iteration
@@ -4854,7 +4868,6 @@ pub async fn run() -> anyhow::Result<()> {
         }
     }
 
-    ratatui::restore();
     Ok(())
 }
 

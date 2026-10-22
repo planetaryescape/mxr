@@ -10,7 +10,7 @@ import { Shield } from "lucide-react";
 import { toast } from "sonner";
 
 import { getActiveQueryClient } from "@/lib/queryClient";
-import type { Action } from "@/lib/actions/types";
+import type { ActionBehavior } from "@/lib/actions/types";
 import { useModals } from "@/state/modalStore";
 
 import { backfillSemantic, reindexSemantic, semanticSnapshot, setSemanticEnabled } from "./api";
@@ -28,14 +28,10 @@ function closePalette(): void {
   useModals.getState().setCommandPaletteOpen(false);
 }
 
-export const diagnosticsActions: Action[] = [
+export const diagnosticsActions: ActionBehavior[] = [
   {
     id: "semantic.backfill",
-    label: "Backfill semantic now",
-    description: "Queue local semantic chunk and embedding repair",
-    group: "Semantic",
     icon: Shield,
-    paletteOnly: true,
     run: () => {
       closePalette();
       backfillSemantic()
@@ -47,11 +43,7 @@ export const diagnosticsActions: Action[] = [
   },
   {
     id: "semantic.enable",
-    label: "Enable semantic search",
-    description: "Toggle hybrid and semantic retrieval locally",
-    group: "Semantic",
     icon: Shield,
-    paletteOnly: true,
     when: () => !semanticEnabledFromCache(),
     run: () => {
       closePalette();
@@ -64,11 +56,7 @@ export const diagnosticsActions: Action[] = [
   },
   {
     id: "semantic.disable",
-    label: "Disable semantic search",
-    description: "Toggle hybrid and semantic retrieval locally",
-    group: "Semantic",
     icon: Shield,
-    paletteOnly: true,
     when: () => semanticEnabledFromCache(),
     run: () => {
       closePalette();
@@ -81,11 +69,7 @@ export const diagnosticsActions: Action[] = [
   },
   {
     id: "semantic.reindex",
-    label: "Reindex semantic now",
-    description: "Rebuild embeddings for the active semantic profile",
-    group: "Semantic",
     icon: Shield,
-    paletteOnly: true,
     run: () => {
       closePalette();
       reindexSemantic()

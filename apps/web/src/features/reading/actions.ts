@@ -16,124 +16,35 @@ import {
   MailX,
 } from "lucide-react";
 
-import type { Action, ActionScope, CommandAction } from "@/lib/actions/types";
+import type { ActionBehavior } from "@/lib/actions/types";
 
-function key(
-  scope: ActionScope,
-  id: string,
-  command: string,
-  label: string,
-  shortcut: string,
-  extra: Partial<Omit<CommandAction, "id" | "command" | "run">> = {},
-): CommandAction {
-  return { id, command, label, shortcut, group: "Read", scopes: [scope], ...extra };
-}
-
-const move = (scope: ActionScope, prefix: string): Action[] => [
-  key(scope, `${prefix}.down`, "down", "Next", "j", {
-    group: "Move",
-    aliases: ["ArrowDown"],
-    hideInPalette: true,
-  }),
-  key(scope, `${prefix}.up`, "up", "Previous", "k", {
-    group: "Move",
-    aliases: ["ArrowUp"],
-    hideInPalette: true,
-  }),
-];
-
-export const readingActions: Action[] = [
-  ...move("reading", "reading"),
-  key("reading", "reading.read", "read", "Read", "Enter", { shortLabel: "Read" }),
-  key("reading", "reading.article", "article", "Fetch the linked article", "L", {
-    shortLabel: "Article",
-    icon: ExternalLink,
-    description: "Contacts the article's site, named before anything is sent",
-  }),
-  key("reading", "reading.later", "later", "Save for later", "b", {
-    shortLabel: "Later",
-    icon: Bookmark,
-  }),
-  key("reading", "reading.let-go", "letGo", "Let go", "e", { shortLabel: "Let go", icon: Check }),
-  key("reading", "reading.unsubscribe", "unsubscribe", "Unsubscribe…", "D", {
-    shortLabel: "Unsubscribe",
-    icon: MailX,
-    tuiNote: "Shows the evidence and the method first; nothing is sent until you confirm",
-  }),
-  key("reading", "reading.original", "original", "Read in the sender's layout", "R", {
-    shortLabel: "Original",
-    icon: Layout,
-  }),
-  key("reading", "reading.let-go-all", "letGoAll", "Let go of everything shown…", "A", {
-    shortLabel: "Let go of all",
-    tuiNote: "Previews the daemon's dry run first; undo afterwards",
-  }),
-  key("reading", "reading.open-email", "openEmail", "Open the email as sent", "o", {
-    shortLabel: "Email",
-  }),
-  key("reading", "reading.move-sender", "moveSender", "This sender here: move to…", "K", {
-    description:
-      "People, Reading, Paper trail, Screened out or automatic, for their future mail too",
-  }),
-  key("reading", "reading.later-shelf", "laterShelf", "Open Later", "B", {
-    shortLabel: "Later shelf",
-  }),
-  key("reading", "reading.marginalia", "marginalia", "Open in Marginalia", "M", {
-    shortLabel: "Marginalia",
-    icon: BookOpenText,
-    description: "Sends the item's text to Marginalia the first time, then opens it there",
-  }),
-  key("reading", "reading.close-hint", "closeHint", "Dismiss the hint", "Escape", {
-    hideInPalette: true,
-  }),
+export const readingActions: ActionBehavior[] = [
+  { id: "reading.down", command: "down" },
+  { id: "reading.up", command: "up" },
+  { id: "reading.read", command: "read" },
+  { id: "reading.article", command: "article", icon: ExternalLink },
+  { id: "reading.later", command: "later", icon: Bookmark },
+  { id: "reading.let-go", command: "letGo", icon: Check },
+  { id: "reading.unsubscribe", command: "unsubscribe", icon: MailX },
+  { id: "reading.original", command: "original", icon: Layout },
+  { id: "reading.let-go-all", command: "letGoAll" },
+  { id: "reading.open-email", command: "openEmail" },
+  { id: "reading.move-sender", command: "moveSender" },
+  { id: "reading.later-shelf", command: "laterShelf" },
+  { id: "reading.marginalia", command: "marginalia", icon: BookOpenText },
+  { id: "reading.close-hint", command: "closeHint" },
   // The reader.
-  key("reading-reader", "reading.reader-down", "down", "Scroll down", "j", {
-    group: "Move",
-    aliases: ["ArrowDown"],
-    hideInPalette: true,
-  }),
-  key("reading-reader", "reading.reader-up", "up", "Scroll up", "k", {
-    group: "Move",
-    aliases: ["ArrowUp"],
-    hideInPalette: true,
-  }),
-  key("reading-reader", "reading.reader-article", "article", "Article: fetch and read it", "L", {
-    shortLabel: "Article",
-    icon: ExternalLink,
-  }),
-  key("reading-reader", "reading.reader-issue", "issue", "Issue: the email itself", "I", {
-    shortLabel: "Issue",
-  }),
-  key("reading-reader", "reading.reader-later", "later", "Save for later", "b", {
-    shortLabel: "Later",
-    icon: Bookmark,
-  }),
-  key("reading-reader", "reading.reader-let-go", "letGo", "Let go and go back", "e", {
-    shortLabel: "Let go",
-    icon: Check,
-  }),
-  key("reading-reader", "reading.reader-next", "next", "Next item", "n", { shortLabel: "Next" }),
-  key("reading-reader", "reading.reader-original", "original", "Sender's layout or cleaned", "R", {
-    shortLabel: "Original",
-    icon: Layout,
-  }),
-  key("reading-reader", "reading.reader-highlight", "highlight", "Highlight the selection", "h", {
-    shortLabel: "Highlight",
-    icon: Highlighter,
-  }),
-  key("reading-reader", "reading.reader-unsubscribe", "unsubscribe", "Unsubscribe…", "D", {
-    shortLabel: "Unsubscribe",
-    icon: MailX,
-  }),
-  key("reading-reader", "reading.reader-open-email", "openEmail", "Open the email as sent", "o", {
-    shortLabel: "Email",
-  }),
-  key("reading-reader", "reading.reader-marginalia", "marginalia", "Open in Marginalia", "M", {
-    shortLabel: "Marginalia",
-    icon: BookOpenText,
-    description: "Sends the item's text to Marginalia the first time, then opens it there",
-  }),
-  key("reading-reader", "reading.reader-back", "back", "Back to the edition", "Escape", {
-    hideInPalette: true,
-  }),
+  { id: "reading.reader-down", command: "down" },
+  { id: "reading.reader-up", command: "up" },
+  { id: "reading.reader-article", command: "article", icon: ExternalLink },
+  { id: "reading.reader-issue", command: "issue" },
+  { id: "reading.reader-later", command: "later", icon: Bookmark },
+  { id: "reading.reader-let-go", command: "letGo", icon: Check },
+  { id: "reading.reader-next", command: "next" },
+  { id: "reading.reader-original", command: "original", icon: Layout },
+  { id: "reading.reader-highlight", command: "highlight", icon: Highlighter },
+  { id: "reading.reader-unsubscribe", command: "unsubscribe", icon: MailX },
+  { id: "reading.reader-open-email", command: "openEmail" },
+  { id: "reading.reader-marginalia", command: "marginalia", icon: BookOpenText },
+  { id: "reading.reader-back", command: "back" },
 ];

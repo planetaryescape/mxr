@@ -233,6 +233,11 @@ unknown. A judge never reads another judge's answer, so nothing can be
 circular, and a missing input (an unfetched body) makes a claim pending,
 not false. Claims carry evidence, never scores.
 
+The What-it-asks judge is specified in [37](37-what-it-asks.md): units
+of authored text tagged with act, actor and state, rules that vote per
+unit, a document reading for bills, and the models each step needs
+(D174-D185).
+
 ### One resolver holds the whole precedence ladder
 
 One function turns facts, claims and your teaching into the assessment.
@@ -820,10 +825,15 @@ their own. The ladder, with status as of 21 October 2026:
 | R0 | trust that a promise's deadline came from the email's own words | the shared due-words check | shipped, v0.6.120 |
 | R0b | see which stored deadlines came from the email's own words, and have mxr act only on those | `by_when_source` on commitments (D149), no new command | in progress |
 | R1 | see how well mxr sorts, per question, with every mismatch | scenario corpus (quick set), `mxr classify eval` | shipped, v0.6.122 |
-| R1b | have every one of the 50,000 demo emails graded in CI | scenario-first demo generator, held-out phrasings, full set | built, awaiting review |
+| R1b | have every one of the 50,000 demo emails graded in CI | scenario-first demo generator, held-out phrasings, full set | done (#638) |
+| R1c | see how often mxr finds what an email asks, per kind and field | label schema v2, per-kind and per-field metrics, twins, held-out template families, recorded model responses ([37](37-what-it-asks.md#r1c-measure-asks-by-kind-and-field)) | planned |
 | R2 | see one home for every email everywhere, with the deciding reason | facts, judges for who and what-for, the resolver, the stored assessment, every projection reading it, fallback, `classify report` | planned |
 | R2b | stop organisations with person-like addresses landing in Messages | the redesign loop on the who judge | planned |
+| R2c | trust that every to-do is something an email asks you, with whose move it is | zones, owner identity, units, rules that vote, the document reading, item identity, the four-way correction ([37](37-what-it-asks.md#r2c-every-to-do-is-something-an-email-asks-you-with-whose-move-it-is)) | planned |
+| R2d | have a model catch the asks rules can't tell | structured output, the language-model band, the cloud opt-in ([37](37-what-it-asks.md#r2d-a-model-answers-the-asks-rules-cant-tell)) | planned |
+| R2e | have asks found offline and on old mail | the local unit classifier through `ort` ([37](37-what-it-asks.md#r2e-mxr-understands-asks-offline-and-on-old-mail)) | planned |
 | R3 | correct once and have it counted | teaching events and service (thread scope), labels, the four uncertainty kinds, `classify eval --set mine`, the effects table in code | planned |
+| R3e | have your corrections tune what counts as asking you | per-user thresholds by class ([37](37-what-it-asks.md#r3e-your-corrections-tune-what-counts-as-asking-you)) | planned |
 | R3a | see your sorting in Gmail and teach mxr by changing it there | provider-effects queue, the label capability, the mirror, consent | planned |
 | R3b–d | sync chosen categories; get the same on Outlook, then IMAP | the same capability per provider | planned |
 | R4 | write rules in the classifier's own terms, by domain, from corrections | fact conditions, domain scope on `K`, the teaching list, rule suggestions | planned |
@@ -836,7 +846,10 @@ their own. The ladder, with status as of 21 October 2026:
 R1b comes before R2 because R2 rewrites placement and 147 labelled emails
 is too thin a regression gate for that. After R2, R2b, R3 and R6 can run in
 parallel: they touch the judges, teaching and Now respectively, and share
-only the assessment R2 fixes.
+only the assessment R2 fixes. R1c comes before R2 for the same reason
+R1b does: the to-do question is graded as yes or no today, which hides a
+7% recall on live asks. R2c runs beside them on the What-it-asks judge
+(37, D184).
 
 ### Baseline: today's classifier on the quick set
 

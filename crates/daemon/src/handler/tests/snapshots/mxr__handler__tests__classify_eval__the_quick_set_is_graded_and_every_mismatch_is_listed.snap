@@ -2,12 +2,12 @@
 source: crates/daemon/src/handler/tests/classify_eval.rs
 expression: "report(&summary, &mismatches)"
 ---
-label schema v2; 184 labelled in the set, 184 in the mailbox, 0 not placed
-who     158/181  87.3%
-home    159/181  87.8%
-record  170/181  93.9%
+label schema v2; 185 labelled in the set, 185 in the mailbox, 0 not placed
+who     159/182  87.4%
+home    160/182  87.9%
+record  171/182  94.0%
 
-asks graded on 184 emails
+asks graded on 185 emails
 all                          expected    36 found    22 tp    20 fp     2 fn    16 precision  90.9% recall  55.6%
 pay                          expected    17 found    13 tp    12 fp     1 fn     5 precision  92.3% recall  70.6%
 fix_payment                  expected     5 found     3 tp     3 fp     0 fn     2 precision 100.0% recall  60.0%
@@ -30,16 +30,16 @@ field due           pairs    20 exact    19 (95.0%) missing 1 wrong 0 spurious 0
 field counterparty  pairs    20 exact    20 (100.0%) missing 0 wrong 0 spurious 0
 
 duplicates 0 merges 1
-twin pairs 42 both right 27; differing pairs 22 both right 8
-reply owed (181 emails) expected    13 found     5 tp     2 fp     3 fn    11 precision  40.0% recall  15.4%
+twin pairs 43 both right 14; differing pairs 32 both right 6
+reply owed (182 emails) expected    13 found     5 tp     2 fp     3 fn    11 precision  40.0% recall  15.4%
 
-locale           en-GB                              emails    162 expected    32 found    20 tp    18 fp     2 fn    14 precision  90.0% recall  56.3%
+locale           en-GB                              emails    163 expected    32 found    20 tp    18 fp     2 fn    14 precision  90.0% recall  56.3%
 locale           en-US                              emails     18 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
 locale           en-ZA                              emails      4 expected     4 found     2 tp     2 fp     0 fn     2 precision 100.0% recall  50.0%
 phrasing         held_out                           emails      4 expected     2 found     0 tp     0 fp     0 fn     2 precision      - recall   0.0%
-phrasing         visible                            emails    180 expected    34 found    22 tp    20 fp     2 fn    14 precision  90.9% recall  58.8%
+phrasing         visible                            emails    181 expected    34 found    22 tp    20 fp     2 fn    14 precision  90.9% recall  58.8%
 sender_kind      list                               emails     37 expected     0 found     2 tp     0 fp     2 fn     0 precision   0.0% recall      -
-sender_kind      organisation                       emails     84 expected    22 found    16 tp    16 fp     0 fn     6 precision 100.0% recall  72.7%
+sender_kind      organisation                       emails     85 expected    22 found    16 tp    16 fp     0 fn     6 precision 100.0% recall  72.7%
 sender_kind      person                             emails     43 expected    11 found     2 tp     2 fp     0 fn     9 precision 100.0% recall  18.2%
 sender_kind      platform                           emails     20 expected     3 found     2 tp     2 fp     0 fn     1 precision 100.0% recall  66.7%
 template_family  ask-to-you-alone                   emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
@@ -86,7 +86,7 @@ application-auto-ack demo-msg-148 who: expected machine, got list [label to chec
 application-auto-ack demo-msg-148 home: expected updates, got reading [label to check]
 ask-to-you-alone demo-msg-184 ask: expected book, got no row
 bill-with-a-direct-debit-offer demo-msg-165 ask: expected pay, got no row
-calendar-invite demo-msg-128 due: expected a stated date, got none [label to check]
+calendar-invite demo-msg-128 due: expected 2026-10-29, got none [label to check]
 card-expiring demo-msg-152 ask: expected fix_payment, got no row
 cold-intro-in-inbox demo-msg-161 reply: expected owed, got none owed
 colleague-asks demo-msg-112 ask: expected send, got no row [label to check]
@@ -101,7 +101,7 @@ direct-parking-charge demo-msg-178 record: expected yes, got no [label to check]
 final-reminder-money-owed demo-msg-172 record: expected yes, got no
 forwarded-letter-to-someone-else demo-msg-177 who: expected person, got machine
 forwarded-letter-to-someone-else demo-msg-177 home: expected messages, got updates
-friend-asks-for-an-eft demo-msg-195 ask: expected pay, got no row
+friend-asks-for-an-eft demo-msg-196 ask: expected pay, got no row
 friend-reply-about-a-payment demo-msg-125 ask: expected pay, got no row [label to check]
 invoice-in-euros demo-msg-182 who: expected machine, got person
 invoice-in-euros demo-msg-182 home: expected updates, got messages
@@ -110,10 +110,10 @@ invoice-in-rand demo-msg-183 amount: expected 1234.56 ZAR, got none
 messages-group-thread-ask demo-msg-27 ask: expected other, got no row [label to check]
 messages-one-line-question demo-msg-29 reply: expected owed, got none owed
 modes-first-time-sender demo-msg-19 reply: expected owed, got none owed [label to check]
-municipal-account-in-rand demo-msg-194 record: expected yes, got no [label to check]
-municipal-account-in-rand demo-msg-194 amount: expected 2345.10 ZAR, got none
+municipal-account-in-rand demo-msg-195 record: expected yes, got no [label to check]
+municipal-account-in-rand demo-msg-195 amount: expected 2345.10 ZAR, got none
 note-to-you-alone demo-msg-159 reply: expected owed, got none owed
-open-question demo-msg-191 reply: expected owed, got none owed
+open-question demo-msg-192 reply: expected owed, got none owed
 owner-promises-something demo-msg-176 ask: expected send (you promised), got no row
 payment-failed demo-msg-132 record: expected no, got yes
 person-writes-directly demo-msg-144 reply: expected owed, got none owed
@@ -130,7 +130,7 @@ receipt-with-unsubscribe-header demo-msg-142 home: expected updates, got reading
 records-event-tickets demo-msg-38 who: expected machine, got person
 records-event-tickets demo-msg-38 home: expected updates, got messages
 recruiter-reply-with-opt-out demo-msg-147 reply: expected owed, got none owed
-school-trip-consent-form demo-msg-196 ask: expected sign, got no row
+school-trip-consent-form demo-msg-197 ask: expected sign, got no row
 service-charge-first-account demo-msg-179 who: expected machine, got person
 service-charge-first-account demo-msg-179 home: expected updates, got messages
 service-charge-first-account demo-msg-179 record: expected yes, got no [label to check]
@@ -170,8 +170,8 @@ todo-statement-ready demo-msg-13 record: expected no, got yes [label to check]
 unconditional-ask demo-msg-187 ask: expected send, got no row
 unconditional-ask demo-msg-187 reply: expected none owed, got owed
 updates-payout-failed demo-msg-78 ask: expected fix_payment, got no row [label to check]
-vet-balance-now-payable demo-msg-198 who: expected machine, got person
-vet-balance-now-payable demo-msg-198 home: expected updates, got messages
-vet-balance-now-payable demo-msg-198 ask: expected pay, got no row
-vet-balance-paid-by-insurer demo-msg-199 who: expected machine, got person
-vet-balance-paid-by-insurer demo-msg-199 home: expected updates, got messages
+vet-balance-now-payable demo-msg-199 who: expected machine, got person
+vet-balance-now-payable demo-msg-199 home: expected updates, got messages
+vet-balance-now-payable demo-msg-199 ask: expected pay, got no row
+vet-balance-paid-by-insurer demo-msg-200 who: expected machine, got person
+vet-balance-paid-by-insurer demo-msg-200 home: expected updates, got messages

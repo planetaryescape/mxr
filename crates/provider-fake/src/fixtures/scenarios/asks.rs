@@ -7,8 +7,8 @@
 //! turn) is its own answer on [`super::Expect`].
 //!
 //! A due date written from the seed clock cannot be a label (labels never
-//! move with the clock), so [`Due`] says only that a dated deadline is stated,
-//! or names the clock-free words of one ("Friday").
+//! move with the clock), so [`Due`] states it as hours after the email's own
+//! date, or as the clock-free words of it ("Friday").
 
 use super::Who;
 
@@ -97,15 +97,20 @@ pub struct Amount {
 }
 
 /// The deadline an item states.
+///
+/// A date written from the seed clock cannot be a label (labels never move
+/// with the clock), but its distance from the email's own date can: the mail
+/// and its date move together.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Due {
     /// No deadline is stated.
     None,
-    /// A dated deadline is stated. The date itself follows the seed clock, so
-    /// the label cannot name it; the eval checks that the row has one.
-    Stated,
-    /// Clock-free words of the deadline ("Friday"), which the row's due words
-    /// must contain.
+    /// The deadline is the calendar day (UTC, as the mail writes it) this many
+    /// hours after the email's own date. Negative for a date already past.
+    AfterSent(i64),
+    /// Clock-free words of the deadline ("Friday"). The eval resolves them
+    /// from the email's date with the to-do code's own date reader, so this
+    /// grades the row's date against that reading, not an independent one.
     Words(&'static str),
 }
 

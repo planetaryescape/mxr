@@ -142,6 +142,14 @@ async fn the_quick_set_is_graded_and_every_mismatch_is_listed() {
     assert_eq!(summary.present, summary.labelled_in_set);
     assert_eq!(summary.not_placed, 0);
     assert_eq!(summary.message, None);
+    // The desk's Your turn needs a sender that classifies as a person, so a
+    // question from a no-reply address is not owed a reply.
+    assert!(
+        mismatches
+            .iter()
+            .all(|m| !(m.scenario == "no-reply-vendor-question" && m.question == "reply")),
+        "{mismatches:?}"
+    );
     classify_eval_floor::check("quick", summary.asks.as_ref().expect("asks"));
     insta::assert_snapshot!(report(&summary, &mismatches));
 }

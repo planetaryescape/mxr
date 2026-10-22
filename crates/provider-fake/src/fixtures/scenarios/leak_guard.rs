@@ -14,7 +14,7 @@ use chrono::{TimeZone, Utc};
 use std::collections::HashMap;
 
 /// The surface baseline may get both members of at most this share of the
-/// pairs whose answers differ. A guess for each member is right half the
+/// pairs whose answers differ (an item, a reply owed, or both). A guess for each member is right half the
 /// time, so chance for a pair is a quarter; the bar is set a little above it.
 /// A corpus that leaks scores far higher (see
 /// `a_surface_that_separates_a_pair_is_caught`).
@@ -41,24 +41,31 @@ fn surface(subject: &str, from_email: &str, body: &str) -> Vec<String> {
     features
 }
 
-/// Naive Bayes over surface features with add-one smoothing: does the email
-/// ask something of the owner?
+/// What an email asks of the owner, as one of four classes: nothing, an item
+/// (a to-do), a reply owed, or both.
+fn class_of(label: &Labelled) -> usize {
+    usize::from(!label.items.is_empty()) + 2 * usize::from(label.expect.reply)
+}
+
+const CLASSES: usize = 4;
+
+/// Naive Bayes over surface features with add-one smoothing: what does the
+/// email ask of the owner?
 struct Baseline {
-    /// Per class (0: asks nothing, 1: asks), the count of each feature.
-    counts: [HashMap<String, f64>; 2],
-    totals: [f64; 2],
-    emails: [f64; 2],
+    /// Per class, the count of each feature.
+    counts: [HashMap<String, f64>; CLASSES],
+    totals: [f64; CLASSES],
+    emails: [f64; CLASSES],
 }
 
 impl Baseline {
-    fn train<'a>(examples: impl Iterator<Item = (&'a [String], bool)>) -> Self {
+    fn train<'a>(examples: impl Iterator<Item = (&'a [String], usize)>) -> Self {
         let mut baseline = Self {
-            counts: [HashMap::new(), HashMap::new()],
-            totals: [0.0; 2],
-            emails: [0.0; 2],
+            counts: Default::default(),
+            totals: [0.0; CLASSES],
+            emails: [0.0; CLASSES],
         };
-        for (features, asks) in examples {
-            let class = usize::from(asks);
+        for (features, class) in examples {
             baseline.emails[class] += 1.0;
             for feature in features {
                 *baseline.counts[class].entry(feature.clone()).or_default() += 1.0;
@@ -68,7 +75,7 @@ impl Baseline {
         baseline
     }
 
-    fn predicts_an_ask(&self, features: &[String]) -> bool {
+    fn predict(&self, features: &[String]) -> usize {
         let vocabulary: f64 = self
             .counts
             .iter()
@@ -76,13 +83,21 @@ impl Baseline {
             .collect::<std::collections::HashSet<_>>()
             .len() as f64;
         let score = |class: usize| {
-            let prior = ((self.emails[class] + 1.0) / (self.emails[0] + self.emails[1] + 2.0)).ln();
+            let prior = ((self.emails[class] + 1.0)
+                / (self.emails.iter().sum::<f64>() + CLASSES as f64))
+                .ln();
             features.iter().fold(prior, |sum, feature| {
                 let seen = self.counts[class].get(feature).copied().unwrap_or(0.0);
                 sum + ((seen + 1.0) / (self.totals[class] + vocabulary + 1.0)).ln()
             })
         };
-        score(1) > score(0)
+        (0..CLASSES)
+            .map(|class| (class, score(class)))
+            .fold(
+                (0, f64::MIN),
+                |best, next| if next.1 > best.1 { next } else { best },
+            )
+            .0
     }
 }
 
@@ -90,7 +105,8 @@ struct Example {
     scenario: &'static str,
     twin_of: Option<&'static str>,
     features: Vec<String>,
-    asks: bool,
+    /// What the email asks: see [`class_of`].
+    class: usize,
 }
 
 fn examples(seed: &ScenarioSeed) -> Vec<Example> {
@@ -110,7 +126,7 @@ fn examples(seed: &ScenarioSeed) -> Vec<Example> {
                     &envelope.from.email,
                     body.text_plain.as_deref().unwrap_or(""),
                 ),
-                asks: !label.items.is_empty(),
+                class: class_of(label),
             })
         })
         .collect()
@@ -124,7 +140,7 @@ fn pairs_the_surface_gets_right(examples: &[Example]) -> (usize, usize) {
         let Some(plain) = examples.iter().find(|e| Some(e.scenario) == twin.twin_of) else {
             continue;
         };
-        if twin.asks == plain.asks {
+        if twin.class == plain.class {
             continue;
         }
         pairs += 1;
@@ -132,11 +148,11 @@ fn pairs_the_surface_gets_right(examples: &[Example]) -> (usize, usize) {
             examples
                 .iter()
                 .filter(|e| e.scenario != twin.scenario && e.scenario != plain.scenario)
-                .map(|e| (e.features.as_slice(), e.asks)),
+                .map(|e| (e.features.as_slice(), e.class)),
         );
         right += usize::from(
-            baseline.predicts_an_ask(&twin.features) == twin.asks
-                && baseline.predicts_an_ask(&plain.features) == plain.asks,
+            baseline.predict(&twin.features) == twin.class
+                && baseline.predict(&plain.features) == plain.class,
         );
     }
     (pairs, right)
@@ -172,11 +188,11 @@ fn a_surface_only_baseline_fails_the_twins() {
 /// answer, the baseline gets the pair right and the check would fail.
 #[test]
 fn a_surface_that_separates_a_pair_is_caught() {
-    let example = |scenario, twin_of, subject: &str, asks| Example {
+    let example = |scenario, twin_of, subject: &str, asks: bool| Example {
         scenario,
         twin_of,
         features: surface(subject, "billing@acme.example", "body"),
-        asks,
+        class: usize::from(asks),
     };
     let mut examples = vec![
         example("pair-plain", None, "Invoice #5", true),

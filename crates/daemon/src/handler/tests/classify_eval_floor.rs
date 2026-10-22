@@ -61,6 +61,19 @@ fn measured(asks: &ClassifyEvalAsksData) -> BTreeMap<String, Floor> {
 /// What is below the floor, one line each.
 fn shortfalls(floor: &BTreeMap<String, Floor>, now: &BTreeMap<String, Floor>) -> Vec<String> {
     let mut out = Vec::new();
+    // A kind that found nothing when the floor was set has no precision to
+    // fall below, so a false positive in it would pass. Once it finds
+    // anything, its precision must be perfect: true positives may appear, a
+    // wrong row may not.
+    for (kind, got) in now {
+        let baseline = floor.get(kind).and_then(|f| f.precision);
+        if baseline.is_none() && got.precision.is_some_and(|p| p + 1e-9 < 100.0) {
+            out.push(format!(
+                "{kind} precision: {} where the floor had nothing found; a new kind may add true positives but no false ones",
+                got.precision.unwrap_or_default()
+            ));
+        }
+    }
     for (kind, wanted) in floor {
         let got = now.get(kind).cloned().unwrap_or_default();
         for (name, want, have) in [
@@ -233,6 +246,61 @@ fn a_kind_below_its_floor_is_reported_and_one_at_it_is_not() {
         &at(None, None)
     )
     .is_empty());
+}
+
+/// One pay false positive fewer and one new verify false positive leaves the
+/// total unchanged. The kind with no baseline precision must still fail.
+#[test]
+fn a_false_positive_in_a_kind_with_no_baseline_is_a_shortfall() {
+    let floor = BTreeMap::from([
+        (
+            "all".to_string(),
+            Floor {
+                precision: Some(50.0),
+                recall: Some(50.0),
+            },
+        ),
+        (
+            "pay".to_string(),
+            Floor {
+                precision: Some(50.0),
+                recall: Some(50.0),
+            },
+        ),
+        ("verify".to_string(), Floor::default()),
+    ]);
+    let at = |all: f64, pay: f64, verify: Option<f64>| {
+        BTreeMap::from([
+            (
+                "all".to_string(),
+                Floor {
+                    precision: Some(all),
+                    recall: Some(50.0),
+                },
+            ),
+            (
+                "pay".to_string(),
+                Floor {
+                    precision: Some(pay),
+                    recall: Some(50.0),
+                },
+            ),
+            (
+                "verify".to_string(),
+                Floor {
+                    precision: verify,
+                    recall: None,
+                },
+            ),
+        ])
+    };
+    // pay improved, verify gained a false positive, the total did not move.
+    let swapped = shortfalls(&floor, &at(50.0, 100.0, Some(0.0)));
+    assert_eq!(swapped.len(), 1, "{swapped:?}");
+    assert!(swapped[0].starts_with("verify precision"));
+    // A true positive with no false one is fine, and so is staying silent.
+    assert!(shortfalls(&floor, &at(50.0, 50.0, Some(100.0))).is_empty());
+    assert!(shortfalls(&floor, &at(50.0, 50.0, None)).is_empty());
 }
 
 #[test]

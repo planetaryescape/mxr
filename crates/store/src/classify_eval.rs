@@ -35,7 +35,9 @@ pub struct EvalTodo {
     pub currency: Option<String>,
     /// The phrase the due date was read from, when there is a due date.
     pub due_words: Option<String>,
-    pub has_due: bool,
+    /// The due date as stored (Unix seconds, the end of the day it resolved
+    /// to in the daemon's time zone).
+    pub due_at: Option<i64>,
 }
 
 /// The to-do rows and records made from some emails.
@@ -146,7 +148,7 @@ impl super::Store {
         )?;
         let todo_rows = sqlx::query(
             "SELECT source_message_id, kind, title, counterparty, amount_minor, currency,
-                    due_words, (due_at IS NOT NULL) AS has_due
+                    due_words, due_at
              FROM todos
              WHERE source_message_id IN (SELECT value FROM json_each(?1))
                AND expired_at_birth = 0
@@ -174,7 +176,7 @@ impl super::Store {
                         amount_minor: row.try_get("amount_minor")?,
                         currency: row.try_get("currency")?,
                         due_words: row.try_get("due_words")?,
-                        has_due: row.try_get("has_due")?,
+                        due_at: row.try_get("due_at")?,
                     })
                 })
                 .collect::<Result<_, sqlx::Error>>()?,

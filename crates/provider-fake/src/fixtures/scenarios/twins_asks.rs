@@ -27,6 +27,7 @@ pub(super) fn build(b: &mut Builder) {
     group_cc_or_alone(b);
     conditional_or_unconditional(b);
     pleasantry_or_real_question(b);
+    question_from_a_no_reply_address(b);
     answered_or_open(b);
     south_african_phrasings(b);
 }
@@ -68,7 +69,7 @@ fn marketing_with_pay_words_or_invoice(b: &mut Builder) {
         )
         .asks(vec![Item::asks(AskKind::Pay, "Skyline Hosting")
             .amount(12_000, "GBP")
-            .due(Due::Stated)
+            .due(Due::AfterSent(152))
             .reference("SH-5107")])
         .twin_of(
             "promo-with-pay-words",
@@ -95,7 +96,7 @@ fn direct_debit_offer_or_notice(b: &mut Builder) {
         )
         .asks(vec![Item::asks(AskKind::Pay, "Northwater")
             .amount(5_830, "GBP")
-            .due(Due::Stated)
+            .due(Due::AfterSent(204))
             .reference("NW-20817")])
         .review(
             &["record"],
@@ -183,21 +184,21 @@ fn credit_note_or_balance_due(b: &mut Builder) {
     let due = b.on(7);
     let balance = b.inbound(Mail::new(
         "a04-balance",
-        addr("Harbour Lights Energy", "statements@harbourlights.example"),
+        addr("Harbour Lights Energy", "billing@harbourlights.example"),
         "Your balance",
-        &format!("Hi Alex,\n\nStatement ST-4471\nAmount due: £210.50\nDue date: {due}\nPay online: https://harbourlights.example/pay"),
+        &format!("Hi Alex,\n\nBill ST-4471\nAmount due: £210.50\nDue date: {due}\nPay online: https://harbourlights.example/pay"),
         13,
     ));
     b.label(
         &balance,
         Scenario::new(
             "positive-balance-due",
-            "The same company's statement with a positive balance and a due date",
+            "The same company's bill with a positive balance and a due date (a bill, not a statement: chapter 37 makes a statement a to-do only with a minimum payment and a date)",
             expect(Who::Machine, Home::Updates, true),
         )
         .asks(vec![Item::asks(AskKind::Pay, "Harbour Lights Energy")
             .amount(21_050, "GBP")
-            .due(Due::Stated)
+            .due(Due::AfterSent(181))
             .reference("ST-4471")])
         .twin_of("credit-note-nothing-due", "a balance above zero is due"),
     );
@@ -240,7 +241,7 @@ fn final_reminder_with_or_without_money(b: &mut Builder) {
         )
         .asks(vec![Item::asks(AskKind::Pay, "Gearloft")
             .amount(6_410, "GBP")
-            .due(Due::Stated)
+            .due(Due::AfterSent(-81))
             .reference("GL-3321")])
         .twin_of(
             "final-reminder-sale",
@@ -373,7 +374,7 @@ fn forwarded_letter_or_direct_request(b: &mut Builder) {
         )
         .asks(vec![Item::asks(AskKind::Pay, "Eastport Parking")
             .amount(6_000, "GBP")
-            .due(Due::Stated)])
+            .due(Due::AfterSent(308))])
         .twin_of(
             "forwarded-letter-to-someone-else",
             "sent to you directly, not forwarded",
@@ -410,7 +411,7 @@ fn two_accounts_from_one_sender(b: &mut Builder) {
             "Ashgrove Property Management",
         )
         .amount(25_000, "GBP")
-        .due(Due::Stated)
+        .due(Due::AfterSent(264))
         .reference("AG-1001")])
         .review(
             &["record"],
@@ -436,7 +437,7 @@ fn two_accounts_from_one_sender(b: &mut Builder) {
             "Ashgrove Property Management",
         )
         .amount(25_000, "GBP")
-        .due(Due::Stated)
+        .due(Due::AfterSent(263))
         .reference("AG-1002")])
         .twin_of(
             "service-charge-first-account",
@@ -467,7 +468,7 @@ fn pound_euro_and_rand(b: &mut Builder) {
         )
         .asks(vec![Item::asks(AskKind::Pay, "Lumen Power")
             .amount(123_456, "GBP")
-            .due(Due::Stated)
+            .due(Due::AfterSent(242))
             .reference("LP-2201")])
         .review(
             &["record"],
@@ -490,7 +491,7 @@ fn pound_euro_and_rand(b: &mut Builder) {
         )
         .asks(vec![Item::asks(AskKind::Pay, "Lumiere Energie")
             .amount(123_456, "EUR")
-            .due(Due::Stated)
+            .due(Due::AfterSent(241))
             .reference("LE-2202")])
         .twin_of("invoice-in-pounds", "the amount is in euros")
         .review(
@@ -514,7 +515,7 @@ fn pound_euro_and_rand(b: &mut Builder) {
         )
         .asks(vec![Item::asks(AskKind::Pay, "Kloof Power Supply")
             .amount(123_456, "ZAR")
-            .due(Due::Stated)
+            .due(Due::AfterSent(240))
             .reference("KP-2203")])
         .locale("en-ZA")
         .twin_of("invoice-in-pounds", "the amount is in rand")
@@ -675,6 +676,30 @@ fn pleasantry_or_real_question(b: &mut Builder) {
     );
 }
 
+/// The same question, from an address that cannot be answered.
+fn question_from_a_no_reply_address(b: &mut Builder) {
+    let vendor = b.inbound(Mail::new(
+        "a13-vendor",
+        addr("Fernbank Supplies", "no-reply@vendor.example"),
+        "Invoice reference",
+        "Hi Alex,\n\nCould you confirm the invoice reference?\n\nFernbank Supplies",
+        33,
+    ));
+    b.label(
+        &vendor,
+        Scenario::new(
+            "no-reply-vendor-question",
+            "A supplier's no-reply address asks you to confirm an invoice reference",
+            NOTICE,
+        )
+        .twin_of("real-question", "from a no-reply address, not a person")
+        .review(
+            &["todo"],
+            "A message nobody can answer is not Your turn: the desk needs a sender that classifies as a person (`requires_reply`).",
+        ),
+    );
+}
+
 fn answered_or_open(b: &mut Builder) {
     let open = b.inbound(Mail::new(
         "a14-open",
@@ -739,7 +764,7 @@ fn south_african_phrasings(b: &mut Builder) {
         )
         .asks(vec![Item::asks(AskKind::Pay, "Kloof Municipality")
             .amount(234_510, "ZAR")
-            .due(Due::Stated)
+            .due(Due::AfterSent(304))
             .reference("4410 7731")])
         .locale("en-ZA")
         .review(

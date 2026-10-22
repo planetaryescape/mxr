@@ -390,7 +390,7 @@ fn vet_balance_payable(b: &mut Builder) {
         )
         .asks(vec![Item::asks(AskKind::Pay, "Willowbank Vets")
             .amount(8_600, "GBP")
-            .due(Due::Words("seven days"))])
+            .due(Due::AfterSent(168))])
         .held_out(),
     );
     let insured = b.inbound(Mail::new(

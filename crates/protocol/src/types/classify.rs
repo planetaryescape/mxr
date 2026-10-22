@@ -148,13 +148,18 @@ pub struct ClassifyEvalFieldData {
     /// Matched items: the ones this field is compared on.
     pub pairs: u32,
     /// Pairs where the row's field equals the label's, an absent value on
-    /// both sides counting as equal.
+    /// both sides counting as equal. A due date is exact only when the row's
+    /// day is the day the label names.
     pub exact: u32,
     pub exact_percent: f64,
     /// The label states a value and the row has none.
     pub missing: u32,
     /// Both have a value and they differ.
     pub wrong: u32,
+    /// The label states a value the eval cannot resolve to an exact one, and
+    /// the row has one. Counted apart and never as exact.
+    #[serde(default)]
+    pub present: u32,
     /// The label states none and the row has one.
     pub spurious: u32,
 }

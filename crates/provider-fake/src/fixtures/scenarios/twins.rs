@@ -822,7 +822,7 @@ fn invite_or_invite_reply(b: &mut Builder) {
             "A calendar invitation that asks for an RSVP",
             ACTION,
         )
-        .asks(vec![Item::asks(AskKind::Attend, "Lena Hart").due(Due::Stated)])
+        .asks(vec![Item::asks(AskKind::Attend, "Lena Hart").due(Due::AfterSent(179))])
         .review(
             &["todo"],
             "Invites have a home in Updates (blueprint 32). Whether an invitation that asks for an RSVP is a to-do is a policy call; labelled yes because an RSVP is a to-do kind."),
@@ -962,7 +962,7 @@ fn dated_bill_or_statement_ready(b: &mut Builder) {
         )
         .asks(vec![Item::asks(AskKind::Pay, "Brightgrid Energy")
             .amount(9_240, "GBP")
-            .due(Due::Stated)
+            .due(Due::AfterSent(229))
             .reference("BG-77310")]),
     );
     let statement = b.inbound(Mail::new(
@@ -1306,7 +1306,7 @@ fn renewal_notice_or_card_expiring(b: &mut Builder) {
             ACTION,
         )
         .asks(vec![
-            Item::asks(AskKind::FixPayment, "Cloudbox").due(Due::Stated)
+            Item::asks(AskKind::FixPayment, "Cloudbox").due(Due::AfterSent(356))
         ])
         .twin_of("renewal-notice", "an action is needed before a date"),
     );

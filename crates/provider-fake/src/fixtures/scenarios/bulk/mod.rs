@@ -506,7 +506,11 @@ pub(crate) fn items(thread_num: usize, reply_idx: usize) -> Vec<Item> {
     }
     let body = variant.bodies[family.inbound_before(reply_idx)];
     if body.contains("{due}") {
-        item = item.due(Due::Stated);
+        // The mail writes `{due}` as the email's own date plus this many
+        // days (`render`), so the label is a number of hours, not a date.
+        item = item.due(Due::AfterSent(
+            24 * (family.due_days + (thread_num % 5) as i64),
+        ));
     }
     vec![item]
 }

@@ -171,7 +171,7 @@ fn specs() -> Vec<Spec> {
             ),
             vec![Item::asks(AskKind::Pay, "Camden Council")
                 .amount(14_200, "GBP")
-                .due(Due::Stated)
+                .due(Due::AfterSent(140))
                 .reference("4471 0092 18")],
         ),
         asking(
@@ -224,7 +224,7 @@ fn specs() -> Vec<Spec> {
                 ),
                 vec![Item::asks(AskKind::Pay, "Thames Water")
                     .amount(4_820, "GBP")
-                    .due(Due::Stated)],
+                    .due(Due::AfterSent(168))],
             ),
             &["record"],
             "A reminder about a bill is not the bill; labelled no record. The to-do waits in the catch-up rather than in Now, but it exists.",
@@ -261,7 +261,7 @@ fn specs() -> Vec<Spec> {
                 QUESTION,
             ),
             // The Thursday question is Your turn, not a second item.
-            vec![Item::asks(AskKind::Sign, "Sam Okafor").due(Due::Stated)],
+            vec![Item::asks(AskKind::Sign, "Sam Okafor").due(Due::AfterSent(51))],
         ),
         judged(
             spec(

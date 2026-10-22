@@ -67,6 +67,8 @@ struct MailRead {
     kind: SenderKindData,
     reason: String,
     reply_owed: bool,
+    /// The email's own date.
+    sent: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -366,6 +368,7 @@ pub(super) async fn classify_eval(
                 // rely on it.
                 rows: rows.remove(&candidate.message_id).unwrap_or_default(),
                 reply_found: (!label.outbound).then_some(read.reply_owed),
+                sent: read.sent,
             },
             &candidate.from_email,
         );
@@ -434,7 +437,8 @@ async fn mail_reads(
             let Some(message) = by_id.get(&candidate.message_id) else {
                 continue;
             };
-            let described = mail_kind::describe(&senders.signals(message, &is_self));
+            let signals = senders.signals(message, &is_self);
+            let described = mail_kind::describe(&signals);
             kinds.insert(
                 candidate.message_id.clone(),
                 MailRead {
@@ -443,16 +447,19 @@ async fn mail_reads(
                     // Your turn: a request directed to you that you have not
                     // answered. The desk puts a thread in You owe only when
                     // its latest stored message is not yours
-                    // (`desk_lanes.rs` `thread_row`: an outbound latest is
-                    // Waiting) and the inbound one passes `needs_reply`
-                    // (`desk_lanes.rs` `desk_signals`, `reply_request`).
-                    // Per message that is: needs_reply, and nothing sent
-                    // after it. The lane's other gates (copied threads,
-                    // decay, the screener, snoozes) are not mirrored.
-                    reply_owed: mail_kind::needs_reply(message, &is_self)
+                    // (`desk_lanes.rs:428`: an outbound latest is Waiting)
+                    // and the inbound one passes `requires_reply`
+                    // (`desk_lanes.rs:483`), which is `reply_request` and a
+                    // sender that classifies as a person
+                    // (`mail_kind.rs:408-418`). Per message that is:
+                    // requires_reply on the signals built above, and
+                    // nothing sent after it. The lane's other gates (copied
+                    // threads, decay, the screener, snoozes) are not mirrored.
+                    reply_owed: mail_kind::requires_reply(&signals)
                         && last_sent
                             .get(&message.thread_id)
                             .is_none_or(|sent| *sent < message.seq),
+                    sent: message.date,
                 },
             );
         }

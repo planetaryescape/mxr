@@ -3,10 +3,12 @@
 
 use crate::cli::OutputFormat;
 use crate::commands::desk::parse_thread_ids;
+use crate::commands::owed::csv_escape;
 use crate::ipc_client::IpcClient;
-use crate::output::{print_json, resolve_format, terminal_text};
+use crate::output::{print_json, resolve_format, terminal_block, terminal_text};
 use chrono::{TimeZone, Utc};
 use mxr_protocol::{Request, Response, ResponseData, ThreadPreviewData};
+use std::fmt::Write as _;
 
 pub async fn run(thread_ids: Vec<String>, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let thread_ids = parse_thread_ids(&thread_ids)?;
@@ -33,9 +35,37 @@ pub async fn run(thread_ids: Vec<String>, format: Option<OutputFormat>) -> anyho
                 println!("{}", preview.thread_id);
             }
         }
-        _ => print!("{}", render(&previews)),
+        OutputFormat::Csv => print!("{}", csv(&previews)),
+        OutputFormat::Table => print!("{}", render(&previews)),
     }
     Ok(())
+}
+
+/// One row per thread. Text goes through `terminal_block` before escaping, so
+/// a control character from mail cannot reach a terminal that prints the
+/// CSV, while newlines stay in the field, quoted as RFC 4180 requires.
+fn csv(previews: &[ThreadPreviewData]) -> String {
+    let mut out = String::from(
+        "thread_id,subject,sender_name,sender_email,latest_at,message_count,unread_count,has_attachments,snippet\n",
+    );
+    for preview in previews {
+        let _ = writeln!(
+            out,
+            "{},{},{},{},{},{},{},{},{}",
+            preview.thread_id,
+            csv_escape(&terminal_block(&preview.subject)),
+            csv_escape(&terminal_block(
+                preview.sender_name.as_deref().unwrap_or_default()
+            )),
+            csv_escape(&terminal_block(&preview.sender_email)),
+            preview.latest_at,
+            preview.message_count,
+            preview.unread_count,
+            preview.has_attachments,
+            csv_escape(&terminal_block(&preview.snippet)),
+        );
+    }
+    out
 }
 
 fn render(previews: &[ThreadPreviewData]) -> String {
@@ -95,5 +125,28 @@ mod tests {
         assert!(!text.contains('\u{1b}'));
         assert!(text.contains("Dana <dana@example.com>"));
         assert!(text.contains("2 messages (1 unread, attachment)"));
+    }
+
+    #[test]
+    fn csv_quotes_commas_quotes_and_newlines_and_keeps_one_row_per_thread() {
+        let thread = ThreadId::new();
+        let text = csv(&[ThreadPreviewData {
+            thread_id: thread.clone(),
+            subject: "Q3, \"final\"".into(),
+            sender_name: None,
+            sender_email: "dana@example.com".into(),
+            latest_at: 1_760_000_000,
+            message_count: 3,
+            unread_count: 0,
+            snippet: "line one\nline \u{1b}[31mtwo".into(),
+            has_attachments: false,
+        }]);
+        assert_eq!(
+            text,
+            format!(
+                "thread_id,subject,sender_name,sender_email,latest_at,message_count,unread_count,has_attachments,snippet\n\
+                 {thread},\"Q3, \"\"final\"\"\",,dana@example.com,1760000000,3,0,false,\"line one\nline  [31mtwo\"\n"
+            )
+        );
     }
 }

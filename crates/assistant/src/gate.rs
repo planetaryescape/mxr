@@ -120,6 +120,7 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_sync_draft_to_provider", Rule::Confirm),
     ("mxr_thread_context", Rule::Read),
     ("mxr_thread_gists", Rule::Read),
+    ("mxr_thread_previews", Rule::Read),
     ("mxr_todo_get", Rule::Read),
     ("mxr_todo_list", Rule::Read),
     // Confirmed links and syncs can write to an external service.

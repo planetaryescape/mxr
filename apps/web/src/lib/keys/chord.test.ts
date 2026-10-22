@@ -45,6 +45,38 @@ describe("tokenFromEvent", () => {
     expect(tokenFromEvent(key({ key: "Escape" }), false)).toBe("Escape");
   });
 
+  test("a character typed with Option on macOS is the character, with no Alt", () => {
+    // UK Mac: Option-3 types "#". German Mac: Option-5 and Option-8 type "[" and "{".
+    expect(tokenFromEvent(key({ key: "#", code: "Digit3", altKey: true }), true)).toBe("#");
+    expect(tokenFromEvent(key({ key: "[", code: "Digit5", altKey: true }), true)).toBe("[");
+    expect(
+      tokenFromEvent(key({ key: "{", code: "Digit8", altKey: true, shiftKey: true }), true),
+    ).toBe("{");
+  });
+
+  test("a character typed with AltGr off macOS is the character, with no modifiers", () => {
+    // Browsers report AltGr as Ctrl+Alt. German: AltGr-8 "[", AltGr-7 "{"; French: AltGr-3 "#".
+    expect(
+      tokenFromEvent(key({ key: "[", code: "Digit8", ctrlKey: true, altKey: true }), false),
+    ).toBe("[");
+    expect(
+      tokenFromEvent(key({ key: "{", code: "Digit7", ctrlKey: true, altKey: true }), false),
+    ).toBe("{");
+    expect(
+      tokenFromEvent(key({ key: "#", code: "Digit3", ctrlKey: true, altKey: true }), false),
+    ).toBe("#");
+  });
+
+  test("real Alt and Mod chords keep their modifiers", () => {
+    expect(tokenFromEvent(key({ key: "a", code: "KeyA", altKey: true }), false)).toBe("Alt+a");
+    expect(tokenFromEvent(key({ key: "a", code: "KeyA", altKey: true }), true)).toBe("Alt+a");
+    expect(tokenFromEvent(key({ key: "k", metaKey: true, altKey: true }), true)).toBe("Mod+Alt+k");
+    expect(tokenFromEvent(key({ key: "k", ctrlKey: true, altKey: true }), false)).toBe("Mod+Alt+k");
+    // Plain Alt off macOS is not AltGr: the chord stays a chord.
+    expect(tokenFromEvent(key({ key: "[", altKey: true }), false)).toBe("Alt+[");
+    expect(tokenFromEvent(key({ key: "F4", altKey: true }), false)).toBe("Alt+F4");
+  });
+
   test("ignores a bare modifier press", () => {
     expect(tokenFromEvent(key({ key: "Shift", shiftKey: true }), false)).toBeNull();
     expect(tokenFromEvent(key({ key: "Meta", metaKey: true }), true)).toBeNull();

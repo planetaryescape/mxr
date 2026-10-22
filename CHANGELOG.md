@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.6.144](https://github.com/planetaryescape/mxr/compare/v0.6.143...v0.6.144) (2026-10-22)
+
+
+### Bug Fixes
+
+* bump vitest to 4.1.12 to clear the two mocker advisories ([#634](https://github.com/planetaryescape/mxr/issues/634)) ([6e893ad](https://github.com/planetaryescape/mxr/commit/6e893adf0120a4fbd8d23c74d0a131cbed086cd3))
+
+## [0.6.143](https://github.com/planetaryescape/mxr/compare/v0.6.142...v0.6.143) (2026-10-22)
+
+
+### Features
+
+* give every account a colour and a tag ([#628](https://github.com/planetaryescape/mxr/issues/628)) ([54908a4](https://github.com/planetaryescape/mxr/commit/54908a44cab1488aa152ffdc2d8e6813ec019377))
+* keep history to 90 days by pruning it daily ([#626](https://github.com/planetaryescape/mxr/issues/626)) ([f14f0b0](https://github.com/planetaryescape/mxr/commit/f14f0b0b3f5362f0132139c71231e1889a57bf2d))
+
+
+### Bug Fixes
+
+* keep the Mac release build off the developer's Rust toolchain and sccache ([#629](https://github.com/planetaryescape/mxr/issues/629)) ([a4bf492](https://github.com/planetaryescape/mxr/commit/a4bf49248ccca2612bde57eac4204a9580f0e7b2))
+* make main pass fmt, clippy, rustdoc and the OpenAPI snapshot again ([#630](https://github.com/planetaryescape/mxr/issues/630)) ([0e1d81a](https://github.com/planetaryescape/mxr/commit/0e1d81ad1881f97f07c548c155cfffcab7ae7db3))
+
+
+### Documentation
+
+* design keyboard shortcuts as one grammar across every client ([d964546](https://github.com/planetaryescape/mxr/commit/d9645466096fa00dccb75bc507a5bbf6009a1b09))
+* design the composer and its compose screens ([e9079f4](https://github.com/planetaryescape/mxr/commit/e9079f46452a0b9b2e8168dd86269657c7dc9503))
+
 ## [0.6.142](https://github.com/planetaryescape/mxr/compare/v0.6.141...v0.6.142) (2026-10-22)
 
 

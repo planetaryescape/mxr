@@ -3,8 +3,9 @@ title: Keybindings
 description: Default keybindings for the mxr TUI and web app.
 ---
 
-These tables show defaults. To remap TUI mail-pane actions, create
-[`keys.toml`](/reference/config/#custom-keybindings) and restart the TUI.
+These tables show defaults. To remap TUI keys in mail panes or in a mode,
+create [`keys.toml`](/reference/config/#custom-keybindings), run
+`mxr keys check`, and restart the TUI.
 Help and the command palette show your effective shortcuts in each mail view;
 the web app keeps its own defaults.
 

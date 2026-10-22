@@ -49,27 +49,53 @@ impl App {
     /// A second key that completes nothing is read on its own, as the
     /// built-in chords read it.
     pub(crate) fn defined_key(&mut self, context: &str, key: KeyEvent) -> DefinedKey {
-        let keymap = mxr_keymap::defaults();
         let Some(chord) = spelling(key) else {
             self.input.reset();
             return DefinedKey::Unbound;
         };
         if let Some(first) = self.input.take_waiting_first() {
-            if let Some((_, binding)) = keymap.tui_binding(context, &format!("{first} {chord}")) {
-                return resolved(&binding.name);
+            if let Some(hit) = self.bound_key(context, &format!("{first} {chord}")) {
+                return hit;
             }
         }
-        if let Some((_, binding)) = keymap.tui_binding(context, &chord) {
-            return resolved(&binding.name);
+        if let Some(hit) = self.bound_key(context, &chord) {
+            return hit;
         }
         let mut chars = chord.chars();
         if let (Some(first), None) = (chars.next(), chars.next()) {
-            if keymap.tui_starts_sequence(context, &chord) {
+            if mxr_keymap::defaults().tui_starts_sequence(context, &chord)
+                || self.keybindings.modes.starts_sequence(context, &chord)
+            {
                 self.input.wait_for_second(first);
                 return DefinedKey::Waiting;
             }
         }
         DefinedKey::Unbound
+    }
+
+    /// What `keys` is bound to in `context`: the person's `keys.toml` mode
+    /// section first, then the definition, minus defaults they moved away.
+    fn bound_key(&self, context: &str, keys: &str) -> Option<DefinedKey> {
+        let keymap = mxr_keymap::defaults();
+        let remaps = &self.keybindings.modes;
+        match remaps.lookup(context, keys) {
+            Some(Some(id)) => {
+                let action = keymap.get(id)?;
+                let binding = action
+                    .tui
+                    .iter()
+                    .find(|binding| binding.contexts.includes(context))
+                    .or_else(|| action.tui.first())?;
+                return Some(resolved(&binding.name));
+            }
+            Some(None) => return Some(DefinedKey::Unbound),
+            None => {}
+        }
+        let (action, binding) = keymap.tui_binding(context, keys)?;
+        if remaps.retires(context, &action.id) {
+            return Some(DefinedKey::Unbound);
+        }
+        Some(resolved(&binding.name))
     }
 
     /// Run a mode's key: the action it returns, or its in-place effect.

@@ -794,6 +794,8 @@ fn help_modal_snapshot() {
                 query: "",
                 selected: 0,
                 mode_guide: None,
+                mode_keys: None,
+                mode_common: None,
                 _marker: std::marker::PhantomData,
             },
             &mxr_tui::theme::Theme::default(),

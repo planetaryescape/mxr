@@ -12,6 +12,9 @@ pub struct KeybindingConfig {
     pub thread_view: HashMap<KeyBinding, String>,
     // Explicit keys and retired defaults must not reach hardcoded fallbacks.
     overrides: [HashSet<KeyBinding>; 3],
+    /// The `[now]`, `[todo]` and other mode sections, keyed by the key
+    /// definition's action ids.
+    pub modes: mxr_keymap::ModeRemaps,
 }
 
 impl ViewContext {
@@ -558,6 +561,69 @@ fn action_display_name(action: &str) -> String {
     }
 }
 
+/// Everything in `keys.toml` that mxr can't use, as sentences: malformed
+/// TOML, unknown sections or actions, keys a terminal can't send, and
+/// sections the loader ignores because one key starts another.
+pub fn check_keys_toml(text: &str) -> Vec<String> {
+    let table: toml::Table = match text.parse() {
+        Ok(table) => table,
+        Err(error) => return vec![format!("keys.toml is not valid TOML: {error}")],
+    };
+    let mut problems = Vec::new();
+    for section in ["mail_list", "message_view", "thread_view"] {
+        let Some(value) = table.get(section) else {
+            continue;
+        };
+        let Some(entries) = value.as_table() else {
+            problems.push(format!("[{section}] must be a table of key = \"action\""));
+            continue;
+        };
+        let mut parsed = Vec::new();
+        for (key, name) in entries {
+            let Some(name) = name.as_str() else {
+                problems.push(format!("[{section}] `{key}`: the action must be a string"));
+                continue;
+            };
+            let binding = match parse_key_string(key) {
+                Ok(binding) => binding,
+                Err(error) => {
+                    problems.push(format!("[{section}] `{key}`: {error}"));
+                    continue;
+                }
+            };
+            if matches!(key.as_str(), "Ctrl-i" | "Ctrl-m" | "Ctrl-h" | "Ctrl-[")
+                || key.starts_with("Ctrl-Shift-")
+            {
+                problems.push(format!(
+                    "[{section}] `{key}`: terminals can't send this apart from another key"
+                ));
+            }
+            if !name.is_empty() && action_from_name(name).is_none() {
+                problems.push(format!("[{section}] `{key}`: no action {name}"));
+                continue;
+            }
+            parsed.push((binding, name.is_empty()));
+        }
+        let ambiguous = parsed.iter().enumerate().any(|(i, (key, unbound))| {
+            !unbound
+                && parsed
+                    .iter()
+                    .enumerate()
+                    .any(|(j, (other, other_unbound))| {
+                        i != j && !other_unbound && other.keys.starts_with(&key.keys)
+                    })
+        });
+        if ambiguous {
+            problems.push(format!(
+                "[{section}]: one key is the start of another, so mxr ignores the whole section"
+            ));
+        }
+    }
+    let (_, mode_problems) = mxr_keymap::ModeRemaps::from_table(&table, mxr_keymap::defaults());
+    problems.extend(mode_problems);
+    problems
+}
+
 /// Raw TOML structure for keys.toml
 #[derive(Debug, Deserialize)]
 pub struct KeysToml {
@@ -572,15 +638,19 @@ pub struct KeysToml {
 /// Load keybinding config from keys.toml, falling back to defaults.
 pub fn load_keybindings(config_dir: &std::path::Path) -> KeybindingConfig {
     let keys_path = config_dir.join("keys.toml");
-    let user_config = if keys_path.exists() {
-        std::fs::read_to_string(&keys_path)
-            .ok()
-            .and_then(|s| toml::from_str::<KeysToml>(&s).ok())
-    } else {
-        None
-    };
+    let text = std::fs::read_to_string(&keys_path).ok();
+    let user_config = text
+        .as_deref()
+        .and_then(|s| toml::from_str::<KeysToml>(s).ok());
 
     let mut config = default_keybindings();
+    if let Some(table) = text.as_deref().and_then(|s| s.parse::<toml::Table>().ok()) {
+        let (modes, problems) = mxr_keymap::ModeRemaps::from_table(&table, mxr_keymap::defaults());
+        for problem in problems {
+            tracing::warn!(%problem, "Ignoring part of keys.toml; `mxr keys check` lists it");
+        }
+        config.modes = modes;
+    }
 
     if let Some(user) = user_config {
         for (index, (map, user)) in [
@@ -885,6 +955,7 @@ pub fn default_keybindings() -> KeybindingConfig {
 
     KeybindingConfig {
         overrides: Default::default(),
+        modes: mxr_keymap::ModeRemaps::default(),
         mail_list,
         message_view,
         thread_view,
@@ -893,6 +964,30 @@ pub fn default_keybindings() -> KeybindingConfig {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn check_keys_toml_names_what_mxr_would_ignore() {
+        let problems = check_keys_toml(
+            "[mail_list]\n\"Ctrl-i\" = \"archive\"\n\"q\" = \"no_such_action\"\n\"g\" = \"archive\"\n\"gx\" = \"trash\"\n[todo]\n\"x\" = \"todo.nope\"\n",
+        )
+        .join("\n");
+        for expected in [
+            "`Ctrl-i`: terminals can't send this",
+            "no action no_such_action",
+            "mxr ignores the whole section",
+            "no action todo.nope",
+        ] {
+            assert!(
+                problems.contains(expected),
+                "missing {expected:?} in:\n{problems}"
+            );
+        }
+        assert_eq!(
+            check_keys_toml("[todo]\n\"x\" = \"todo.done\"\n"),
+            Vec::<String>::new()
+        );
+        assert!(check_keys_toml("[todo").join("").contains("not valid TOML"));
+    }
+
     use super::*;
 
     #[test]

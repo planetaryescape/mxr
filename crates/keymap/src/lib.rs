@@ -8,6 +8,9 @@
 //! must equal [`Keymap::tui_keymap`], and the web registry must equal the
 //! generated `apps/web/src/lib/actions/keymap.generated.json`.
 
+mod remaps;
+
+pub use remaps::{ModeRemaps, MODE_SECTIONS};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;

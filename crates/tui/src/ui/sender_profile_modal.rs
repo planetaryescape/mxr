@@ -626,6 +626,7 @@ mod tests {
                 who_owes: "me".into(),
                 what: "Send signed contract copy".into(),
                 by_when: None,
+                date_unverified: false,
                 evidence_msg_id: MessageId::new(),
                 extracted_at: Utc.with_ymd_and_hms(2026, 5, 1, 0, 0, 0).unwrap(),
             }],

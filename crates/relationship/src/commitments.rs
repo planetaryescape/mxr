@@ -8,7 +8,9 @@ use mxr_llm::{
     UNTRUSTED_MAIL_BEGIN, UNTRUSTED_MAIL_END, UNTRUSTED_MAIL_GUARD,
 };
 use mxr_reader::{clean, ReaderConfig};
-use mxr_store::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord, Store};
+use mxr_store::{
+    ByWhenSource, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord, Store,
+};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::str::FromStr;
@@ -172,6 +174,10 @@ pub async fn extract_commitments(
         {
             continue;
         }
+        let by_when = commitment
+            .due
+            .as_deref()
+            .and_then(|due| due_by(sample, due, &reader_config));
         let record = ContactCommitmentRecord {
             id: commitment_id(
                 account_id,
@@ -188,10 +194,8 @@ pub async fn extract_commitments(
             status: CommitmentStatus::Open,
             who_owes: commitment.who_owes.trim().to_string(),
             what: normalized_what,
-            by_when: commitment
-                .due
-                .as_deref()
-                .and_then(|due| due_by(sample, due, &reader_config)),
+            by_when,
+            by_when_source: by_when.map(|_| ByWhenSource::Words),
             evidence_msg_id,
             extracted_at: Utc::now(),
             resolved_at: None,
@@ -245,7 +249,9 @@ fn normalize_what(value: &str) -> String {
 
 /// The due words resolved against when the evidence message was written: a
 /// "by Friday" from last month means that Friday, not the next one. The
-/// words must be in the text the model read. This crate has no daemon
+/// words must be in the text the model read, and have one reading: a phrase
+/// that dropped words, names the day it was written on or resolves several
+/// ways leaves the commitment undated rather than store a guess. This crate has no daemon
 /// config, so a day without a time takes the default hours and the machine's
 /// local zone rather than the user's snooze preferences.
 fn due_by(
@@ -255,9 +261,7 @@ fn due_by(
 ) -> Option<DateTime<Utc>> {
     let body = clean(Some(&sample.body), None, reader_config).content;
     let written = sample.date.with_timezone(&Local);
-    due_words(&body, words, &written, &TimePrefs::default())?
-        .resolution
-        .map(|resolution| resolution.at)
+    due_words(&body, words, &written, &TimePrefs::default())?.unambiguous_at()
 }
 
 fn commitment_id(
@@ -540,6 +544,10 @@ mod tests {
     }
 
     async fn extracted_due(body: &str, written: DateTime<Utc>, due: &str) -> Option<DateTime<Utc>> {
+        extracted(body, written, due).await.by_when
+    }
+
+    async fn extracted(body: &str, written: DateTime<Utc>, due: &str) -> ContactCommitmentRecord {
         let store = Store::in_memory().await.expect("store");
         let account = test_account();
         store.insert_account(&account).await.expect("account");
@@ -571,13 +579,13 @@ mod tests {
             .await
             .expect("commitments")
             .remove(0)
-            .by_when
     }
 
     #[tokio::test]
     async fn due_words_resolve_against_when_the_evidence_was_written() {
-        use chrono::{Datelike, Weekday};
-        let written = Utc::now() - chrono::Duration::days(30);
+        use chrono::{Datelike, TimeZone, Weekday};
+        // A Monday: "by Friday" written on a Friday would be ambiguous.
+        let written = Utc.with_ymd_and_hms(2026, 9, 28, 12, 0, 0).unwrap();
         let due = extracted_due(
             "I will send the launch date by Friday.",
             written,
@@ -601,6 +609,61 @@ mod tests {
             extracted_due(body, written, "2026-10-09T17:00:00Z").await,
             None
         );
+    }
+
+    #[tokio::test]
+    async fn a_date_resolved_from_the_emails_words_is_stored_as_words() {
+        use chrono::TimeZone;
+        // A Monday: "by Friday" written on a Friday would be ambiguous.
+        let written = Utc.with_ymd_and_hms(2026, 9, 28, 12, 0, 0).unwrap();
+        let dated = extracted(
+            "I will send the launch date by Friday.",
+            written,
+            "by Friday",
+        )
+        .await;
+        assert!(dated.by_when.is_some());
+        assert_eq!(dated.by_when_source, Some(ByWhenSource::Words));
+        assert!(!dated.date_unverified());
+
+        let undated = extracted("I will send the launch date soon.", written, "by Friday").await;
+        assert_eq!(undated.by_when, None);
+        assert_eq!(undated.by_when_source, None);
+    }
+
+    #[tokio::test]
+    async fn words_with_more_than_one_reading_leave_the_commitment_undated() {
+        use chrono::TimeZone;
+        // Monday 28 September 2026 and Friday 2 October 2026, at midday UTC.
+        let monday = Utc.with_ymd_and_hms(2026, 9, 28, 12, 0, 0).unwrap();
+        let friday = Utc.with_ymd_and_hms(2026, 10, 2, 12, 0, 0).unwrap();
+        for (what, body, due, written) in [
+            // Reads only "Friday": the "one week after" was dropped.
+            (
+                "dropped words",
+                "I will send the launch date one week after Friday.",
+                "one week after Friday",
+                monday,
+            ),
+            // A weekday named on its own weekday could mean today.
+            (
+                "today's weekday",
+                "I will send the launch date by Friday.",
+                "by Friday",
+                friday,
+            ),
+            // 15:00 or 03:00.
+            (
+                "am or pm",
+                "I will send the launch date fri 3.",
+                "fri 3",
+                monday,
+            ),
+        ] {
+            let stored = extracted(body, written, due).await;
+            assert_eq!(stored.by_when, None, "{what}");
+            assert_eq!(stored.by_when_source, None, "{what}");
+        }
     }
 
     #[test]

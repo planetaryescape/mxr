@@ -279,7 +279,14 @@ fn format_platform_response(data: &ResponseData) -> String {
                 .map(|commitment| {
                     let due = commitment
                         .by_when
-                        .map(|date| format!(" due {}", date.format("%Y-%m-%d")))
+                        .map(|date| {
+                            let unverified = if commitment.date_unverified {
+                                " (date unverified)"
+                            } else {
+                                ""
+                            };
+                            format!(" due {}{unverified}", date.format("%Y-%m-%d"))
+                        })
                         .unwrap_or_default();
                     format!(
                         "- {:?} · {}{}\n  {}\n  id: {}",

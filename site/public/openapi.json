@@ -11823,6 +11823,10 @@
             ],
             "format": "date-time"
           },
+          "date_unverified": {
+            "type": "boolean",
+            "description": "`by_when` is a date a model wrote before due words existed, so it\nstays on the row but nothing acts on it (desk, to-dos). Clients show\nit as \"date unverified\"."
+          },
           "direction": {
             "$ref": "#/components/schemas/CommitmentDirectionData"
           },

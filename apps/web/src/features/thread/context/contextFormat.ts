@@ -90,7 +90,8 @@ export interface PromiseView {
 export function promiseViews(context: ThreadContext, now = new Date()): PromiseView[] {
   return (context.promises ?? []).map(({ owner, commitment }) => {
     const who = ownerLabel(owner);
-    const due = commitment.by_when ? `, due ${dayLabel(commitment.by_when, now)}` : "";
+    const unverified = commitment.date_unverified ? " (date unverified)" : "";
+    const due = commitment.by_when ? `, due ${dayLabel(commitment.by_when, now)}${unverified}` : "";
     return { id: commitment.id, text: `${who} promised: ${commitment.what}${due}` };
   });
 }
@@ -101,7 +102,8 @@ export function promiseViews(context: ThreadContext, now = new Date()): PromiseV
  */
 export function provenanceScope(provenance: AiProvenance, personName: string | null): string {
   const withHistory = provenance.sources.includes("relationship_history");
-  if (withHistory) return `from this thread and your history${personName ? ` with ${personName}` : ""}`;
+  if (withHistory)
+    return `from this thread and your history${personName ? ` with ${personName}` : ""}`;
   return provenance.locality === "local" ? "from this thread" : "from this thread only";
 }
 

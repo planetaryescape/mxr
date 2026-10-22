@@ -1826,6 +1826,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
         who_owes: "sender".into(),
         what: "Send launch dates".into(),
         by_when: None,
+        date_unverified: false,
         evidence_msg_id: first.id.clone(),
         extracted_at: Utc::now(),
     };

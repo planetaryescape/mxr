@@ -64,7 +64,9 @@ About **Done, no reply needed**:
 
 - **Everyone answered:** focus mode shows low tide ("Low tide. That's
   everyone you write with.") and the next promise you made that is due, for
-  example "Next thing due: Mon, send the notes to nora@example.com." People
+  example "Next thing due: Mon, send the notes to nora@example.com." A promise
+  whose date a model wrote is not offered here; see [dates mxr does not act
+  on](/guides/forgotten-work/#dates-mxr-shows-but-does-not-act-on). People
   who wrote to you and you have not written to are in Messages, not in the
   queue, and the end says how many: "3 others who wrote to you are in
   Messages."

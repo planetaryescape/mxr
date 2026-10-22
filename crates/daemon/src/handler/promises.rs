@@ -30,7 +30,9 @@ use mxr_protocol::{
     PromiseDetectionStatusData, PromiseSourceData, ResponseData,
 };
 use mxr_reader::{clean, ReaderConfig};
-use mxr_store::{new_candidate_id, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
+use mxr_store::{
+    new_candidate_id, ByWhenSource, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord,
+};
 use serde::Deserialize;
 use std::time::Duration;
 
@@ -303,6 +305,7 @@ pub(super) async fn record_promise(
         who_owes: envelope.from.email.clone(),
         what,
         by_when: Some(due_at),
+        by_when_source: Some(ByWhenSource::User),
         evidence_msg_id: message_id.clone(),
         extracted_at: Utc::now(),
         resolved_at: None,

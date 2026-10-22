@@ -68,8 +68,12 @@ fn print_list(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
             _ => {
                 for commitment in commitments {
                     println!(
-                        "{}\t{}\t{:?}\t{}",
-                        commitment.id, commitment.email, commitment.direction, commitment.what
+                        "{}\t{}\t{:?}\t{}{}",
+                        commitment.id,
+                        commitment.email,
+                        commitment.direction,
+                        commitment.what,
+                        due_column(&commitment)
                     );
                 }
             }
@@ -80,10 +84,73 @@ fn print_list(resp: Response, fmt: OutputFormat) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A fifth tab-separated column, only on dated rows, so the four existing
+/// columns keep their places for scripts.
+fn due_column(commitment: &CommitmentData) -> String {
+    match commitment.by_when {
+        Some(when) if commitment.date_unverified => {
+            format!("\tdue {} (date unverified)", when.format("%Y-%m-%d"))
+        }
+        Some(when) => format!("\tdue {}", when.format("%Y-%m-%d")),
+        None => String::new(),
+    }
+}
+
 fn status_data(value: CommitmentStatusArg) -> CommitmentStatusData {
     match value {
         CommitmentStatusArg::Open => CommitmentStatusData::Open,
         CommitmentStatusArg::Resolved => CommitmentStatusData::Resolved,
         CommitmentStatusArg::Expired => CommitmentStatusData::Expired,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+    use mxr_core::id::{AccountId, MessageId, ThreadId};
+
+    fn commitment(by_when: bool, date_unverified: bool) -> CommitmentData {
+        CommitmentData {
+            id: "c-1".into(),
+            account_id: AccountId::new(),
+            email: "nora@example.com".into(),
+            thread_id: ThreadId::new(),
+            direction: CommitmentDirectionData::Yours,
+            status: CommitmentStatusData::Open,
+            who_owes: "you".into(),
+            what: "send the deck".into(),
+            by_when: by_when.then(|| Utc.with_ymd_and_hms(2026, 10, 2, 8, 0, 0).unwrap()),
+            date_unverified,
+            evidence_msg_id: MessageId::new(),
+            extracted_at: Utc.with_ymd_and_hms(2026, 9, 20, 8, 0, 0).unwrap(),
+        }
+    }
+
+    #[test]
+    fn json_output_says_whether_the_date_is_unverified() {
+        let unverified = serde_json::to_value(commitment(true, true)).unwrap();
+        assert_eq!(unverified["date_unverified"], true);
+        assert_eq!(unverified["by_when"], "2026-10-02T08:00:00Z");
+        let verified = serde_json::to_value(commitment(true, false)).unwrap();
+        assert_eq!(verified["date_unverified"], false);
+    }
+
+    #[test]
+    fn an_older_daemons_commitment_without_the_field_reads_as_verified() {
+        let mut value = serde_json::to_value(commitment(true, true)).unwrap();
+        value.as_object_mut().unwrap().remove("date_unverified");
+        let parsed: CommitmentData = serde_json::from_value(value).unwrap();
+        assert!(!parsed.date_unverified);
+    }
+
+    #[test]
+    fn text_output_appends_a_due_column_only_on_dated_rows() {
+        assert_eq!(due_column(&commitment(false, false)), "");
+        assert_eq!(due_column(&commitment(true, false)), "\tdue 2026-10-02");
+        assert_eq!(
+            due_column(&commitment(true, true)),
+            "\tdue 2026-10-02 (date unverified)"
+        );
     }
 }

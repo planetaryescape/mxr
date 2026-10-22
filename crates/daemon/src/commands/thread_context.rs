@@ -142,6 +142,7 @@ mod tests {
                 who_owes: email.into(),
                 what: what.into(),
                 by_when: None,
+                date_unverified: false,
                 evidence_msg_id: MessageId::new(),
                 extracted_at: Utc::now(),
             },

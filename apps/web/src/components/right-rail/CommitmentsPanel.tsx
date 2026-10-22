@@ -46,6 +46,7 @@ export function CommitmentsPanel({ payload }: { payload: unknown }) {
                 {commitment.who_owes} · {commitment.direction}
                 {commitment.email ? ` · ${commitment.email}` : ""}
                 {commitment.by_when ? ` · due ${formatShortDate(commitment.by_when)}` : ""}
+                {commitment.by_when && commitment.date_unverified ? " (date unverified)" : ""}
               </div>
             </div>
             <Button

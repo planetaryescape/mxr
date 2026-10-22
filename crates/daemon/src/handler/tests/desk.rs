@@ -156,6 +156,7 @@ impl Fixture {
                 who_owes: "you".into(),
                 what: "send the security review notes".into(),
                 by_when: Some(chrono::Utc::now() + due_in),
+                by_when_source: Some(mxr_store::ByWhenSource::Words),
                 evidence_msg_id: evidence.clone(),
                 extracted_at: chrono::Utc::now(),
                 resolved_at: None,

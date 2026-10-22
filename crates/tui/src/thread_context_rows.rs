@@ -81,7 +81,14 @@ pub fn context_rows(
             let who = owner_label(&promise.owner);
             let due = commitment
                 .by_when
-                .map(|when| format!(", due {}", day_label(when, now)))
+                .map(|when| {
+                    let unverified = if commitment.date_unverified {
+                        " (date unverified)"
+                    } else {
+                        ""
+                    };
+                    format!(", due {}{unverified}", day_label(when, now))
+                })
                 .unwrap_or_default();
             push(
                 if index == 0 { "Promises" } else { "" },
@@ -283,6 +290,7 @@ mod tests {
                     who_owes: email.into(),
                     what: what.into(),
                     by_when: None,
+                    date_unverified: false,
                     evidence_msg_id: MessageId::new(),
                     extracted_at: Utc::now(),
                 },

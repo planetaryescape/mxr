@@ -44,7 +44,7 @@ classify_path() {
   # when any of them changes. UI, transport and provider crates cannot move
   # an answer.
   case "$path" in
-    crates/provider-fake/*|crates/daemon/*|crates/store/*|crates/protocol/*|crates/core/*|crates/todo/*|crates/records/*|crates/deliveries/*|crates/updates/*|crates/reading/*|crates/reader/*|crates/relationship/*|crates/rules/*|crates/safety/*|crates/sync/*|crates/mail-parse/*|Cargo.lock|.sqlx/*)
+    crates/provider-fake/*|crates/daemon/*|crates/store/*|crates/protocol/*|crates/core/*|crates/todo/*|crates/records/*|crates/deliveries/*|crates/updates/*|crates/reading/*|crates/reader/*|crates/relationship/*|crates/rules/*|crates/safety/*|crates/sync/*|crates/mail-parse/*|crates/config/*|crates/llm/*|Cargo.lock|.sqlx/*)
       classifier=true
       ;;
   esac

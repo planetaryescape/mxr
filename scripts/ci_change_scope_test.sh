@@ -40,14 +40,14 @@ git init -q
 git config user.email ci@example.test
 git config user.name 'CI test'
 mkdir -p scripts src apps/web/src crates/web/src crates/protocol/src crates/provider-fake/src \
-  crates/daemon/src crates/tui/src site .github/workflows
+  crates/daemon/src crates/tui/src crates/config/src crates/llm/src site .github/workflows
 cp "$root/scripts/ci_change_scope.sh" scripts/ci_change_scope.sh
 cp "$root/scripts/ci_change_scope_test.sh" scripts/ci_change_scope_test.sh
 cp "$root/scripts/ci_workflow_test.sh" scripts/ci_workflow_test.sh
 touch .github/workflows/ci.yml .github/workflows/openapi-conformance.yml \
   .github/workflows/release.yml src/main.rs apps/web/src/app.ts crates/web/src/lib.rs \
   crates/protocol/src/lib.rs crates/provider-fake/src/lib.rs crates/daemon/src/lib.rs \
-  crates/tui/src/lib.rs site/index.md
+  crates/tui/src/lib.rs crates/config/src/lib.rs crates/llm/src/lib.rs site/index.md
 commit_all baseline
 baseline="$(git rev-parse HEAD)"
 
@@ -67,7 +67,7 @@ assert_scope pull_request "$baseline" HEAD true true false false false true
 
 # The full-set classifier eval runs for the crates that generate, classify
 # and grade mail, and not for a UI crate.
-for classifier_path in crates/provider-fake/src/lib.rs crates/daemon/src/lib.rs; do
+for classifier_path in crates/provider-fake/src/lib.rs crates/daemon/src/lib.rs crates/config/src/lib.rs crates/llm/src/lib.rs; do
   reset_fixture
   echo change >"$classifier_path"
   commit_all "classifier path $classifier_path"

@@ -108,7 +108,7 @@ color = "amber"   # sky, amber, green, yellow, blue, vermilion, purple or slate
 tag = "W"         # 1 to 3 letters or digits, unique across accounts
 ```
 
-An unknown colour or a bad tag fails config validation with the allowed values. A duplicate tag is refused and the account that holds it is named. `mxr accounts identity <key> --color <slot> --tag <tag> [--dry-run]` sets them without editing the file.
+Config keeps a colour or tag as written, even when it is not valid. The daemon ignores an invalid value or a clashing tag, logs a warning that names the key and the allowed values, and uses the stored value. The write paths refuse a bad new value before saving. `mxr accounts identity <key> --color <slot> --tag <tag> [--dry-run]` sets them without editing the file.
 
 ## IMAP connection limit
 

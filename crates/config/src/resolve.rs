@@ -1,7 +1,6 @@
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::types::{AccountConfig, IdentityWarning, MxrConfig};
+use crate::types::MxrConfig;
 
 pub const PROD_INSTANCE_NAME: &str = "mxr";
 pub const DEV_INSTANCE_NAME: &str = "mxr-dev";
@@ -24,8 +23,6 @@ pub enum ConfigError {
         path: PathBuf,
         source: toml::ser::Error,
     },
-    #[error("account '{key}' has an invalid identity: {message}")]
-    AccountIdentity { key: String, message: String },
 }
 
 /// Returns the mxr config directory (e.g. `~/.config/mxr` on Linux/macOS).
@@ -581,79 +578,11 @@ pub fn save_config_to_path(config: &MxrConfig, path: &Path) -> Result<(), Config
 
 /// Load config from a TOML string.
 pub fn load_config_from_str(toml_str: &str) -> Result<MxrConfig, ConfigError> {
-    let mut config: MxrConfig = toml::from_str(toml_str).map_err(|e| ConfigError::ParseToml {
+    let config: MxrConfig = toml::from_str(toml_str).map_err(|e| ConfigError::ParseToml {
         path: PathBuf::from("<string>"),
         source: e,
     })?;
-    config.identity_warnings = sanitize_account_identities(&mut config.accounts);
     Ok(config)
-}
-
-/// Checks the colour and tag overrides and normalises tags to uppercase. Each
-/// override that fails is cleared and reported, so an identity problem never
-/// stops the rest of the config from loading. A colour that is not a slot
-/// name, a tag that is not 1 to 3 letters or digits, or a tag a sorted-earlier
-/// account already holds: the account keeps its stored value.
-pub fn sanitize_account_identities(
-    accounts: &mut HashMap<String, AccountConfig>,
-) -> Vec<IdentityWarning> {
-    let mut keys: Vec<String> = accounts.keys().cloned().collect();
-    keys.sort();
-    let mut holders: HashMap<String, String> = HashMap::new();
-    let mut warnings = Vec::new();
-    for key in keys {
-        let Some(account) = accounts.get_mut(&key) else {
-            continue;
-        };
-        if let Some(raw_color) = account.color.clone() {
-            if let Err(error) = raw_color.parse::<mxr_core::AccountColor>() {
-                warnings.push(IdentityWarning {
-                    key: key.clone(),
-                    message: error.to_string(),
-                });
-                account.color = None;
-            }
-        }
-        let Some(raw_tag) = account.tag.take() else {
-            continue;
-        };
-        let tag = match mxr_core::parse_account_tag(&raw_tag) {
-            Ok(tag) => tag,
-            Err(error) => {
-                warnings.push(IdentityWarning {
-                    key,
-                    message: error.to_string(),
-                });
-                continue;
-            }
-        };
-        if let Some(holder) = holders.get(&tag) {
-            warnings.push(IdentityWarning {
-                key,
-                message: format!("tag '{tag}' is already set on account '{holder}'"),
-            });
-            continue;
-        }
-        holders.insert(tag.clone(), key.clone());
-        account.tag = Some(tag);
-    }
-    warnings
-}
-
-/// The strict check, for writes: the first problem is an error, and nothing is
-/// changed. Loading uses `sanitize_account_identities`, which keeps going.
-pub fn validate_account_identities(
-    accounts: &mut HashMap<String, AccountConfig>,
-) -> Result<(), ConfigError> {
-    let mut checked = accounts.clone();
-    if let Some(first) = sanitize_account_identities(&mut checked).into_iter().next() {
-        return Err(ConfigError::AccountIdentity {
-            key: first.key,
-            message: first.message,
-        });
-    }
-    *accounts = checked;
-    Ok(())
 }
 
 /// Apply environment variable overrides to the config.

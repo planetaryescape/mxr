@@ -228,11 +228,15 @@ pub(super) async fn upsert_account_config(
                 );
             }
         };
-        let others = resolved
-            .iter()
-            .filter(|other| Some(&other.account_id) != existing_id.as_ref());
-        if let Some(clash) = crate::account_identity::tag_clash(others, &tag) {
-            let message = crate::account_identity::clash_message(&tag, clash, reveal_holder);
+        let others: Vec<_> = resolved
+            .into_iter()
+            .filter(|other| Some(&other.account_id) != existing_id.as_ref())
+            .collect();
+        let configured = mxr_config::load_config()
+            .map(|config| crate::account_identity::configured_tags(&config, &account.key))
+            .unwrap_or_default();
+        if let Some(holder) = crate::account_identity::tag_holder(&tag, &others, &configured) {
+            let message = crate::account_identity::clash_message(&tag, holder, reveal_holder);
             return account_operation_result(
                 false,
                 format!("Failed to save account '{}'.", account.key),
@@ -275,7 +279,6 @@ pub(super) async fn upsert_account_config(
                 tag,
             },
         );
-        mxr_config::validate_account_identities(&mut config.accounts).map_err(|e| e.to_string())?;
         if account.is_default || config.general.default_account.is_none() {
             config.general.default_account = Some(account.key.clone());
         }
@@ -373,11 +376,15 @@ pub(super) async fn set_account_identity(
         .filter(|resolved| resolved.account_id != account_id)
         .cloned()
         .collect();
+    let configured = mxr_config::load_config()
+        .map(|config| crate::account_identity::configured_tags(&config, key))
+        .unwrap_or_default();
     let (before, after) = match crate::account_identity::plan_identity_change(
         current,
         color,
         tag.as_deref(),
         &others,
+        &configured,
         reveal_holder,
     ) {
         Ok(plan) => plan,
@@ -1479,8 +1486,12 @@ fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfi
     }
 }
 
+///
+/// An account with no provider gets "account" as its kind, which is the id
+/// startup has always created for it. Rows already stored use that id, so
+/// it must not change.
 pub(crate) fn config_account_id(
-    key: &str,
+    _key: &str,
     account: &mxr_config::AccountConfig,
 ) -> mxr_core::AccountId {
     let kind = account
@@ -1488,7 +1499,7 @@ pub(crate) fn config_account_id(
         .as_ref()
         .map(config_sync_kind_label)
         .or_else(|| account.send.as_ref().map(config_send_kind_label))
-        .unwrap_or_else(|| key.to_string());
+        .unwrap_or_else(|| "account".to_string());
     mxr_core::AccountId::from_provider_id(&kind, &account.email)
 }
 

@@ -40,3 +40,15 @@ all accounts and runs on every open (`crates/store/src/pool.rs:199`). It is
 cheap at realistic account counts. It becomes worth a guard (for example, a
 `WHERE identity_tag IS NULL OR identity_color IS NULL` query) only if the
 account table grows far beyond a handful of rows.
+
+## A committed phase that then fails is recorded as a failure
+
+The activity seam records an entry only when the response is ok
+(`crates/daemon/src/handler/mod.rs`, `response_succeeded`, near line 2824).
+`AccountOperationResult.ok == false` also covers changes that were already
+committed and then failed, such as a config save that succeeded followed by a
+runtime reload or cached-mail processing that did not. Those changes lose
+their activity entry, although the config really changed.
+
+Fix direction: report the committed phases separately (for example, a
+`saved` flag beside `ok`) and record activity when a save happened.

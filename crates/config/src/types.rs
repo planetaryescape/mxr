@@ -11,24 +11,12 @@ pub enum GmailCredentialSource {
     Custom,
 }
 
-/// An account's colour or tag override that config load dropped. The account
-/// keeps its stored value.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IdentityWarning {
-    pub key: String,
-    pub message: String,
-}
-
 /// Top-level mxr configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MxrConfig {
     pub general: GeneralConfig,
     pub accounts: HashMap<String, AccountConfig>,
-    /// Identity overrides dropped at load, each with its reason. Never written
-    /// back to the file.
-    #[serde(skip)]
-    pub identity_warnings: Vec<IdentityWarning>,
     #[serde(alias = "agents", alias = "agent")]
     pub agent_surfaces: AgentSurfaceConfig,
     pub render: RenderConfig,
@@ -722,9 +710,9 @@ pub struct AccountConfig {
     pub sync: Option<SyncProviderConfig>,
     pub send: Option<SendProviderConfig>,
     /// Overrides the colour the daemon stored for this account: one of the
-    /// eight slot names (blueprint 33). Kept as text so an unknown name is
-    /// reported by `validate_account_identities` with the allowed names,
-    /// not as a bare TOML parse error.
+    /// eight slot names (blueprint 33). Kept as written, even when it is not a
+    /// slot name: the daemon ignores a bad value and says so, and the file keeps
+    /// it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     /// Overrides the tag derived from the name. One to three letters or digits.

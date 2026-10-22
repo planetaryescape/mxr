@@ -1,24 +1,29 @@
 //! Resolves each account's colour and tag for the mail marks (blueprint 33).
 //!
 //! The store keeps each account's colour and tag from the moment it is
-//! created. Config can override either one. The pure functions here decide
-//! the rules. `resolve_from_store` only gathers the stored values and the
-//! config into the shape they take.
+//! created. Config can override either one. Config is read as written, so
+//! this module decides what to use: a value that is not valid, or that clashes,
+//! is ignored with a warning, and the stored value is used.
 
 use crate::state::AppState;
-use mxr_core::{derive_account_tag, next_account_color, AccountColor, AccountId, NoFreeAccountTag};
+use mxr_core::{
+    derive_account_tag, next_account_color, parse_account_tag, AccountColor, AccountId,
+    NoFreeAccountTag,
+};
 use mxr_protocol::AccountIdentityData;
 use std::collections::{HashMap, HashSet};
 
-/// One account in creation order: what the store holds and what config says.
-/// A stored value is `None` only for an account with no row yet.
+/// One account in creation order. The config fields are the raw strings
+/// from the file, which may not be valid.
 #[derive(Debug, Clone)]
 pub struct IdentityInput {
     pub account_id: AccountId,
     pub name: String,
+    /// The config key, when config defines the account.
+    pub key: Option<String>,
     pub stored_color: Option<AccountColor>,
     pub stored_tag: Option<String>,
-    pub config_color: Option<AccountColor>,
+    pub config_color: Option<String>,
     pub config_tag: Option<String>,
 }
 
@@ -33,20 +38,19 @@ pub struct ResolvedIdentity {
     pub stored_tag: String,
 }
 
-/// A configured tag that another account already holds. The configured tag is
-/// not applied, and the account keeps its stored tag.
+/// An override that was ignored, and why. `key` is the config key, or the
+/// account name when config does not define the account.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IdentityConflict {
-    pub account_name: String,
-    pub configured_tag: String,
-    pub holder_name: String,
+pub struct IdentityWarning {
+    pub key: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Resolution {
     /// Same order as the input.
     pub resolved: Vec<ResolvedIdentity>,
-    pub conflicts: Vec<IdentityConflict>,
+    pub warnings: Vec<IdentityWarning>,
 }
 
 /// Resolves every account's colour and tag.
@@ -55,18 +59,54 @@ pub struct Resolution {
 /// override, else the stored tag. A stored tag is never derived again, so a
 /// rename, a removal or an override on one account cannot change another's.
 ///
-/// A config tag equal to another account's stored tag is refused and reported
-/// as a conflict. The override is dropped and the account keeps its stored tag.
+/// An override is ignored, with a warning, when it is not valid (a colour
+/// that is not a slot name, a tag that is not 1 to 3 letters or digits), when
+/// another account stores that tag, or when an earlier account configures it.
 ///
 /// An account with no stored value gets the one insertion will give it:
 /// `next_account_color` and a derived tag, both against what is stored and
-/// the configured tags, counting accounts in input order. Callers insert such
-/// accounts in that order, so the value shown is the one stored.
+/// the configured tags, counting accounts in input order.
 pub fn resolve_identities(inputs: &[IdentityInput]) -> Result<Resolution, NoFreeAccountTag> {
-    let reserved: HashSet<String> = inputs
-        .iter()
-        .filter_map(|input| input.config_tag.clone())
-        .collect();
+    let label = |index: usize| {
+        inputs[index]
+            .key
+            .clone()
+            .unwrap_or_else(|| inputs[index].name.clone())
+    };
+    let mut warnings = Vec::new();
+
+    let mut color_overrides = Vec::with_capacity(inputs.len());
+    let mut tag_overrides: Vec<Option<String>> = Vec::with_capacity(inputs.len());
+    for (index, input) in inputs.iter().enumerate() {
+        color_overrides.push(match &input.config_color {
+            None => None,
+            Some(raw) => match raw.parse::<AccountColor>() {
+                Ok(color) => Some(color),
+                Err(error) => {
+                    warnings.push(IdentityWarning {
+                        key: label(index),
+                        message: format!("{error}; using the stored colour"),
+                    });
+                    None
+                }
+            },
+        });
+        tag_overrides.push(match &input.config_tag {
+            None => None,
+            Some(raw) => match parse_account_tag(raw) {
+                Ok(tag) => Some(tag),
+                Err(error) => {
+                    warnings.push(IdentityWarning {
+                        key: label(index),
+                        message: format!("{error}; using the stored tag"),
+                    });
+                    None
+                }
+            },
+        });
+    }
+
+    let reserved: HashSet<String> = tag_overrides.iter().flatten().cloned().collect();
     let mut taken_colors: Vec<AccountColor> = inputs
         .iter()
         .filter_map(|input| input.stored_color)
@@ -82,8 +122,8 @@ pub fn resolve_identities(inputs: &[IdentityInput]) -> Result<Resolution, NoFree
         .filter_map(|(index, input)| Some((input.stored_tag.as_deref()?, index)))
         .collect();
 
+    let mut claimed: HashMap<String, usize> = HashMap::new();
     let mut resolved = Vec::with_capacity(inputs.len());
-    let mut conflicts = Vec::new();
     for (index, input) in inputs.iter().enumerate() {
         let stored_color = match input.stored_color {
             Some(color) => color,
@@ -103,78 +143,114 @@ pub fn resolve_identities(inputs: &[IdentityInput]) -> Result<Resolution, NoFree
             }
         };
 
-        let config_tag = match &input.config_tag {
-            Some(configured) => match holders.get(configured.as_str()) {
+        let config_tag = match tag_overrides[index].clone() {
+            None => None,
+            Some(tag) => match holders.get(tag.as_str()) {
                 Some(&holder) if holder != index => {
-                    conflicts.push(IdentityConflict {
-                        account_name: input.name.clone(),
-                        configured_tag: configured.clone(),
-                        holder_name: inputs[holder].name.clone(),
+                    warnings.push(IdentityWarning {
+                        key: label(index),
+                        message: format!(
+                            "tag '{tag}' is already held by account '{}'; using the stored tag",
+                            label(holder)
+                        ),
                     });
                     None
                 }
-                _ => Some(configured.clone()),
+                _ => match claimed.get(&tag) {
+                    Some(&first) => {
+                        warnings.push(IdentityWarning {
+                            key: label(index),
+                            message: format!(
+                                "tag '{tag}' is already set on account '{}'; using the stored tag",
+                                label(first)
+                            ),
+                        });
+                        None
+                    }
+                    None => {
+                        claimed.insert(tag.clone(), index);
+                        Some(tag)
+                    }
+                },
             },
-            None => None,
         };
 
         resolved.push(ResolvedIdentity {
             account_id: input.account_id.clone(),
             name: input.name.clone(),
             identity: AccountIdentityData {
-                color: input.config_color.unwrap_or(stored_color),
+                color: color_overrides[index].unwrap_or(stored_color),
                 tag: config_tag.unwrap_or_else(|| stored_tag.clone()),
             },
             stored_tag,
         });
     }
-    Ok(Resolution {
-        resolved,
-        conflicts,
-    })
+    Ok(Resolution { resolved, warnings })
 }
 
-/// The colour override from config. Validation at load already refused any
-/// other name, so a name that fails to parse here is treated as no override.
+/// The colour override from config, when it is a valid slot name.
 pub fn config_color(account: &mxr_config::AccountConfig) -> Option<AccountColor> {
     account.color.as_deref().and_then(|raw| raw.parse().ok())
 }
 
-/// The other account that would show `tag` or already stores it, if any.
-/// A stored tag is reserved even when that account overrides it in config.
-pub fn tag_clash<'a>(
-    others: impl IntoIterator<Item = &'a ResolvedIdentity>,
+/// The name of the account that already has `tag`: one that shows it or
+/// stores it, or one that config defines with it. `configured` is each
+/// account's name and valid tag, for accounts config defines.
+pub fn tag_holder<'a>(
     tag: &str,
-) -> Option<&'a ResolvedIdentity> {
+    others: &'a [ResolvedIdentity],
+    configured: &'a [(String, String)],
+) -> Option<&'a str> {
     others
-        .into_iter()
+        .iter()
         .find(|other| other.identity.tag == tag || other.stored_tag == tag)
+        .map(|other| other.name.as_str())
+        .or_else(|| {
+            configured
+                .iter()
+                .find(|(_, configured_tag)| configured_tag == tag)
+                .map(|(name, _)| name.as_str())
+        })
 }
 
 /// The refusal for a tag another account holds. A caller whose allowlist does
 /// not cover that account is not told its name, since the name could leak it.
-pub fn clash_message(tag: &str, clash: &ResolvedIdentity, reveal_holder: bool) -> String {
+pub fn clash_message(tag: &str, holder: &str, reveal_holder: bool) -> String {
     if reveal_holder {
-        format!("Tag '{tag}' is already used by account '{}'.", clash.name)
+        format!("Tag '{tag}' is already used by account '{holder}'.")
     } else {
         format!("Tag '{tag}' is already used by another account.")
     }
 }
 
+/// The name and valid tag of every account config defines, except `exclude_key`.
+pub fn configured_tags(config: &mxr_config::MxrConfig, exclude_key: &str) -> Vec<(String, String)> {
+    config
+        .accounts
+        .iter()
+        .filter(|(key, _)| key.as_str() != exclude_key)
+        .filter_map(|(_, account)| {
+            let tag = parse_account_tag(account.tag.as_deref()?).ok()?;
+            Some((account.name.clone(), tag))
+        })
+        .collect()
+}
+
 /// Checks a requested colour and tag for one account and returns the identity
-/// before and after. `others` are the other accounts. A dry run and the real
-/// write both call this, so they agree. `reveal_holder` is false for a scoped
-/// caller.
+/// before and after. A dry run and the real write both call this, so they agree.
+/// `others` are the other accounts and `configured` the other configured tags.
+/// `reveal_holder` is false for a scoped caller.
 pub fn plan_identity_change(
     current: &ResolvedIdentity,
     color: Option<AccountColor>,
     tag: Option<&str>,
     others: &[ResolvedIdentity],
+    configured: &[(String, String)],
     reveal_holder: bool,
 ) -> Result<(AccountIdentityData, AccountIdentityData), String> {
     if let Some(tag) = tag {
-        if let Some(clash) = tag_clash(others, tag) {
-            return Err(clash_message(tag, clash, reveal_holder));
+        if let Some(holder) = tag_holder(tag, others, configured) {
+            return Err(clash_message(tag, holder, reveal_holder));
         }
     }
     let after = AccountIdentityData {
@@ -188,7 +264,7 @@ pub fn plan_identity_change(
 
 /// Writes a colour and tag override into `config` for one account. It touches
 /// nothing else: `default_account` and the account's other fields are left as
-/// they were.
+/// they were, including any values the daemon ignores.
 pub fn set_identity_in_config(
     config: &mut mxr_config::MxrConfig,
     key: &str,
@@ -203,9 +279,9 @@ pub fn set_identity_in_config(
         account.color = Some(color.as_str().to_string());
     }
     if let Some(tag) = tag {
-        account.tag = Some(mxr_core::parse_account_tag(tag).map_err(|e| e.to_string())?);
+        account.tag = Some(parse_account_tag(tag).map_err(|e| e.to_string())?);
     }
-    mxr_config::validate_account_identities(&mut config.accounts).map_err(|e| e.to_string())
+    Ok(())
 }
 
 /// Gathers the stored values and config for every account and resolves them.
@@ -225,18 +301,20 @@ pub async fn resolve_from_store(
         let configured = config.accounts.iter().find(|(key, account)| {
             crate::handler::config_account_id(key, account) == slot.account_id
         });
-        let (name, config_color, config_tag) = match configured {
-            Some((_, account)) => (
+        let (name, key, config_color, config_tag) = match configured {
+            Some((key, account)) => (
                 account.name.clone(),
-                config_color(account),
+                Some(key.clone()),
+                account.color.clone(),
                 account.tag.clone(),
             ),
-            None => (slot.name.clone(), None, None),
+            None => (slot.name.clone(), None, None, None),
         };
         seen.insert(slot.account_id.clone());
         inputs.push(IdentityInput {
             account_id: slot.account_id,
             name,
+            key,
             stored_color: slot.color,
             stored_tag: slot.tag,
             config_color,
@@ -254,9 +332,10 @@ pub async fn resolve_from_store(
         inputs.push(IdentityInput {
             account_id: crate::handler::config_account_id(key, account),
             name: account.name.clone(),
+            key: Some(key.clone()),
             stored_color: None,
             stored_tag: None,
-            config_color: config_color(account),
+            config_color: account.color.clone(),
             config_tag: account.tag.clone(),
         });
     }
@@ -268,15 +347,14 @@ pub async fn resolve_for_state(state: &AppState) -> Result<Resolution, String> {
     resolve_from_store(&state.store, &state.config_snapshot()).await
 }
 
-/// Logs each refused override. Called where config is loaded or reloaded, so
-/// the operator sees why a configured tag is not in effect.
-pub fn log_conflicts(conflicts: &[IdentityConflict]) {
-    for conflict in conflicts {
-        tracing::error!(
-            account = %conflict.account_name,
-            tag = %conflict.configured_tag,
-            holder = %conflict.holder_name,
-            "configured account tag is already held by another account; keeping the stored tag"
+/// Logs each ignored override. Called where config is loaded or reloaded, so
+/// the operator sees why a configured value is not in effect.
+pub fn log_warnings(warnings: &[IdentityWarning]) {
+    for warning in warnings {
+        tracing::warn!(
+            account = %warning.key,
+            "ignoring this account's colour or tag override: {}",
+            warning.message
         );
     }
 }
@@ -294,6 +372,7 @@ mod tests {
         IdentityInput {
             account_id: AccountId::new(),
             name: name.to_string(),
+            key: None,
             stored_color: None,
             stored_tag: stored_tag.map(str::to_string),
             config_color: None,
@@ -301,41 +380,52 @@ mod tests {
         }
     }
 
+    fn resolved(name: &str, tag: &str, stored_tag: &str) -> ResolvedIdentity {
+        ResolvedIdentity {
+            account_id: AccountId::new(),
+            name: name.into(),
+            identity: AccountIdentityData {
+                color: AccountColor::Sky,
+                tag: tag.into(),
+            },
+            stored_tag: stored_tag.into(),
+        }
+    }
+
     #[test]
     fn stored_tag_is_used_even_after_a_rename() {
         let mut office = input("Office", Some("W"));
         office.stored_color = Some(AccountColor::Sky);
-        let resolved = resolve_identities(&[office]).unwrap();
-        assert_eq!(resolved.resolved[0].identity.tag, "W");
-        assert_eq!(resolved.resolved[0].stored_tag, "W");
+        let resolution = resolve_identities(&[office]).unwrap();
+        assert_eq!(resolution.resolved[0].identity.tag, "W");
+        assert_eq!(resolution.resolved[0].stored_tag, "W");
     }
 
     #[test]
     fn config_tag_wins_over_the_stored_tag() {
         let mut work = input("Work", Some("W"));
         work.config_tag = Some("OFF".into());
-        let resolved = resolve_identities(&[work]).unwrap();
-        assert_eq!(resolved.resolved[0].identity.tag, "OFF");
-        assert_eq!(resolved.resolved[0].stored_tag, "W");
-        assert!(resolved.conflicts.is_empty());
+        let resolution = resolve_identities(&[work]).unwrap();
+        assert_eq!(resolution.resolved[0].identity.tag, "OFF");
+        assert_eq!(resolution.resolved[0].stored_tag, "W");
+        assert!(resolution.warnings.is_empty());
     }
 
     #[test]
-    fn configured_tag_held_by_another_stored_account_is_refused() {
-        // Work stores W. Wedding's override asks for W too: refused, Wedding
-        // keeps WE, and the conflict names both accounts.
-        let work = input("Work", Some("W"));
+    fn configured_tag_held_by_another_stored_account_is_ignored_with_a_warning() {
+        let mut work = input("Work", Some("W"));
+        work.key = Some("work".into());
         let mut wedding = input("Wedding", Some("WE"));
+        wedding.key = Some("wedding".into());
         wedding.config_tag = Some("W".into());
-        let resolved = resolve_identities(&[work, wedding]).unwrap();
-        assert_eq!(resolved.resolved[1].identity.tag, "WE");
-        assert_eq!(resolved.resolved[0].identity.tag, "W");
+        let resolution = resolve_identities(&[work, wedding]).unwrap();
+        assert_eq!(resolution.resolved[1].identity.tag, "WE");
+        assert_eq!(resolution.resolved[0].identity.tag, "W");
         assert_eq!(
-            resolved.conflicts,
-            vec![IdentityConflict {
-                account_name: "Wedding".into(),
-                configured_tag: "W".into(),
-                holder_name: "Work".into(),
+            resolution.warnings,
+            vec![IdentityWarning {
+                key: "wedding".into(),
+                message: "tag 'W' is already held by account 'work'; using the stored tag".into(),
             }]
         );
     }
@@ -344,9 +434,50 @@ mod tests {
     fn configured_tag_matching_own_stored_tag_is_not_a_conflict() {
         let mut work = input("Work", Some("W"));
         work.config_tag = Some("W".into());
-        let resolved = resolve_identities(&[work]).unwrap();
-        assert_eq!(resolved.resolved[0].identity.tag, "W");
-        assert!(resolved.conflicts.is_empty());
+        let resolution = resolve_identities(&[work]).unwrap();
+        assert_eq!(resolution.resolved[0].identity.tag, "W");
+        assert!(resolution.warnings.is_empty());
+    }
+
+    #[test]
+    fn an_invalid_configured_tag_is_ignored_and_names_the_key() {
+        let mut work = input("Work", Some("W"));
+        work.key = Some("work".into());
+        work.config_tag = Some("WORK".into());
+        let resolution = resolve_identities(&[work]).unwrap();
+        assert_eq!(resolution.resolved[0].identity.tag, "W");
+        assert_eq!(resolution.warnings.len(), 1);
+        assert_eq!(resolution.warnings[0].key, "work");
+        assert!(resolution.warnings[0].message.contains("1 to 3"));
+    }
+
+    #[test]
+    fn an_invalid_configured_colour_is_ignored_and_lists_the_slots() {
+        let mut work = input("Work", Some("W"));
+        work.key = Some("work".into());
+        work.stored_color = Some(AccountColor::Green);
+        work.config_color = Some("teal".into());
+        let resolution = resolve_identities(&[work]).unwrap();
+        assert_eq!(resolution.resolved[0].identity.color, AccountColor::Green);
+        let message = &resolution.warnings[0].message;
+        assert!(message.contains("'teal'"), "{message}");
+        assert!(message.contains("sky, amber, green"), "{message}");
+    }
+
+    #[test]
+    fn a_duplicate_configured_tag_is_ignored_on_the_later_account() {
+        let mut first = input("Work", None);
+        first.config_tag = Some("OFF".into());
+        let mut second = input("Travel", None);
+        second.key = Some("travel".into());
+        second.config_tag = Some("OFF".into());
+        let resolution = resolve_identities(&[first, second]).unwrap();
+        assert_eq!(resolution.resolved[0].identity.tag, "OFF");
+        assert_eq!(resolution.resolved[1].identity.tag, "T");
+        assert_eq!(resolution.warnings[0].key, "travel");
+        assert!(resolution.warnings[0]
+            .message
+            .contains("already set on account 'Work'"));
     }
 
     #[test]
@@ -354,14 +485,12 @@ mod tests {
         let work = input("Work", Some("W"));
         let mut travel = input("Travel", None);
         travel.config_tag = Some("T".into());
-        let mut wedding = input("Wedding", None);
-        wedding.name = "Tango".into();
-        let resolved = resolve_identities(&[work, travel, wedding]).unwrap();
-        // "Travel" wants T, which is configured on Travel itself: the derived
-        // tag is the initial, so it is taken by configuration and the search
-        // moves on to TR.
-        assert_eq!(resolved.resolved[1].stored_tag, "TR");
-        assert_eq!(resolved.resolved[2].stored_tag, "TA");
+        let mut tango = input("Tango", None);
+        tango.name = "Tango".into();
+        let resolution = resolve_identities(&[work, travel, tango]).unwrap();
+        // "T" is configured on Travel, so Travel's derived tag moves on to TR.
+        assert_eq!(resolution.resolved[1].stored_tag, "TR");
+        assert_eq!(resolution.resolved[2].stored_tag, "TA");
     }
 
     #[test]
@@ -369,100 +498,92 @@ mod tests {
         let mut first = input("Work", Some("W"));
         first.stored_color = Some(AccountColor::Sky);
         let second = input("Wedding", None);
-        let resolved = resolve_identities(&[first, second]).unwrap();
-        assert_eq!(resolved.resolved[1].identity.color, AccountColor::Amber);
+        let resolution = resolve_identities(&[first, second]).unwrap();
+        assert_eq!(resolution.resolved[1].identity.color, AccountColor::Amber);
     }
 
     #[test]
     fn config_colour_overrides_the_stored_colour_and_nothing_moves_it() {
         let mut work = input("Work", Some("W"));
         work.stored_color = Some(AccountColor::Green);
-        work.config_color = Some(AccountColor::Slate);
-        let resolved = resolve_identities(&[work]).unwrap();
-        assert_eq!(resolved.resolved[0].identity.color, AccountColor::Slate);
+        work.config_color = Some("slate".into());
+        let resolution = resolve_identities(&[work]).unwrap();
+        assert_eq!(resolution.resolved[0].identity.color, AccountColor::Slate);
     }
 
     #[test]
-    fn clash_is_checked_against_stored_and_resolved_tags() {
-        let work = ResolvedIdentity {
-            account_id: AccountId::new(),
-            name: "Work".into(),
-            identity: AccountIdentityData {
-                color: AccountColor::Sky,
-                tag: "OFF".into(),
-            },
-            stored_tag: "W".into(),
-        };
-        assert_eq!(tag_clash([&work], "OFF").unwrap().name, "Work");
-        assert_eq!(tag_clash([&work], "W").unwrap().name, "Work");
-        assert!(tag_clash([&work], "PE").is_none());
+    fn tag_holder_finds_a_stored_or_configured_holder() {
+        let work = resolved("Work", "OFF", "W");
+        let configured = [("Personal".to_string(), "Q".to_string())];
+        assert_eq!(
+            tag_holder("OFF", std::slice::from_ref(&work), &configured),
+            Some("Work")
+        );
+        assert_eq!(
+            tag_holder("W", std::slice::from_ref(&work), &configured),
+            Some("Work")
+        );
+        assert_eq!(
+            tag_holder("Q", std::slice::from_ref(&work), &configured),
+            Some("Personal")
+        );
+        assert_eq!(
+            tag_holder("PE", std::slice::from_ref(&work), &configured),
+            None
+        );
     }
 
     #[test]
-    fn plan_refuses_a_clash_and_names_the_holder() {
-        let work = ResolvedIdentity {
-            account_id: AccountId::new(),
-            name: "Work".into(),
-            identity: AccountIdentityData {
-                color: AccountColor::Sky,
-                tag: "W".into(),
-            },
-            stored_tag: "W".into(),
-        };
-        let wedding = ResolvedIdentity {
-            account_id: AccountId::new(),
-            name: "Wedding".into(),
-            identity: AccountIdentityData {
-                color: AccountColor::Amber,
-                tag: "WE".into(),
-            },
-            stored_tag: "WE".into(),
-        };
-        let error =
-            plan_identity_change(&wedding, None, Some("W"), std::slice::from_ref(&work), true)
-                .unwrap_err();
-        assert_eq!(error, "Tag 'W' is already used by account 'Work'.");
-        let (before, after) =
-            plan_identity_change(&wedding, Some(AccountColor::Green), None, &[work], true).unwrap();
-        assert_eq!(before.color, AccountColor::Amber);
-        assert_eq!(after.color, AccountColor::Green);
-        assert_eq!(after.tag, "WE");
-    }
-
-    #[test]
-    fn a_scoped_caller_is_not_told_which_account_holds_the_tag() {
-        let work = ResolvedIdentity {
-            account_id: AccountId::new(),
-            name: "Work".into(),
-            identity: AccountIdentityData {
-                color: AccountColor::Sky,
-                tag: "W".into(),
-            },
-            stored_tag: "W".into(),
-        };
-        let wedding = ResolvedIdentity {
-            account_id: AccountId::new(),
-            name: "Wedding".into(),
-            identity: AccountIdentityData {
-                color: AccountColor::Amber,
-                tag: "WE".into(),
-            },
-            stored_tag: "WE".into(),
-        };
+    fn plan_refuses_a_clash_and_names_the_holder_only_when_allowed() {
+        let work = resolved("Work", "W", "W");
+        let wedding = resolved("Wedding", "WE", "WE");
         let error = plan_identity_change(
             &wedding,
             None,
             Some("W"),
             std::slice::from_ref(&work),
+            &[],
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(error, "Tag 'W' is already used by account 'Work'.");
+        let error = plan_identity_change(
+            &wedding,
+            None,
+            Some("W"),
+            std::slice::from_ref(&work),
+            &[],
             false,
         )
         .unwrap_err();
         assert_eq!(error, "Tag 'W' is already used by another account.");
-        assert!(!error.contains("Work"), "{error}");
-        assert_eq!(
-            clash_message("W", &work, true),
-            "Tag 'W' is already used by account 'Work'."
-        );
+        let (before, after) = plan_identity_change(
+            &wedding,
+            Some(AccountColor::Green),
+            None,
+            &[work],
+            &[],
+            true,
+        )
+        .unwrap();
+        assert_eq!(before.color, AccountColor::Sky);
+        assert_eq!(after.color, AccountColor::Green);
+        assert_eq!(after.tag, "WE");
+    }
+
+    #[test]
+    fn a_tag_configured_on_another_account_is_refused_and_hidden_from_a_scoped_caller() {
+        // Personal is configured with Q but has no stored row yet, so only
+        // config holds Q. The scoped refusal must not name Personal.
+        let wedding = resolved("Wedding", "WE", "WE");
+        let configured = [("Personal".to_string(), "Q".to_string())];
+        let scoped =
+            plan_identity_change(&wedding, None, Some("Q"), &[], &configured, false).unwrap_err();
+        assert_eq!(scoped, "Tag 'Q' is already used by another account.");
+        assert!(!scoped.contains("Personal"), "{scoped}");
+        let unscoped =
+            plan_identity_change(&wedding, None, Some("Q"), &[], &configured, true).unwrap_err();
+        assert_eq!(unscoped, "Tag 'Q' is already used by account 'Personal'.");
     }
 
     #[test]
@@ -476,7 +597,7 @@ mod tests {
                 enabled: true,
                 sync: None,
                 send: None,
-                color: None,
+                color: Some("teal".into()),
                 tag: None,
             },
         );
@@ -571,7 +692,7 @@ mod tests {
         assert_eq!(tag_for(&resolution, &work.id), ("W".into(), "W".into()));
         assert_eq!(tag_for(&resolution, &travel.id), ("OFF".into(), "T".into()));
         assert_eq!(tag_for(&resolution, &fourth.id), ("WE".into(), "WE".into()));
-        assert!(resolution.conflicts.is_empty());
+        assert!(resolution.warnings.is_empty());
     }
 
     #[tokio::test]
@@ -622,7 +743,7 @@ mod tests {
                 resolved.name
             );
         }
-        // Sorted by key, "wedding" is first, so it takes sky and WE stays free for it.
+        // Sorted by key, "wedding" is first, so it takes sky.
         assert_eq!(before.resolved[0].identity.color, AccountColor::Sky);
     }
 }

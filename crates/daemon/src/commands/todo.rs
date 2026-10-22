@@ -433,6 +433,7 @@ async fn catchup(
     if matches!(format, OutputFormat::Json | OutputFormat::Jsonl) {
         return print_json(&catchup, format);
     }
+    let scoped = account_id.is_some();
     let runway = expect_data!(
         client
             .request(Request::GetTodoRunway {
@@ -443,7 +444,11 @@ async fn catchup(
         TodoRunway,
         runway
     );
-    print!("{}", terminal_block(&catchup_text(&catchup, &runway)));
+    let marks = AccountMarks::marks_for(client, true, scoped).await?;
+    print!(
+        "{}",
+        terminal_block(&catchup_text(&catchup, &runway, &marks))
+    );
     Ok(())
 }
 
@@ -628,7 +633,11 @@ fn runway_text(runway: &TodoRunwayData, marks: &AccountMarks) -> String {
     out
 }
 
-fn catchup_text(catchup: &TodoCatchupData, runway: &TodoRunwayData) -> String {
+fn catchup_text(
+    catchup: &TodoCatchupData,
+    runway: &TodoRunwayData,
+    marks: &AccountMarks,
+) -> String {
     let mut out = String::new();
     let open = runway.now.len()
         + runway
@@ -655,7 +664,7 @@ fn catchup_text(catchup: &TodoCatchupData, runway: &TodoRunwayData) -> String {
     }
     let _ = writeln!(out, "{}\n", catchup.why);
     for todo in &catchup.todos {
-        row(&mut out, todo, "");
+        push_row(&mut out, todo, "", marks);
     }
     if catchup.overflow_count > 0 {
         let _ = writeln!(

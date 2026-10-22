@@ -308,10 +308,11 @@ Optional:
   wherever a list mixes accounts. Case does not matter; it is stored in
   uppercase. The default comes from the name: the first letter of each of
   its first two words, so "Work" is `W` and "Planetary Escape" is `PE`.
-  Two accounts cannot share a tag. A configured tag that another account
-  already holds, whether configured or stored, is refused: the daemon logs an
-  error and keeps that account's stored tag. A duplicate between two
-  configured tags is a config error that names the other account. The default
+  Two accounts cannot share a tag. The daemon ignores a configured tag that
+  another account already holds, whether configured or stored, and logs a
+  warning that names the account. It uses that account's stored tag instead.
+  The file keeps the value as written. A colour or tag that is not valid is
+  ignored the same way, and the warning lists the allowed values. The default
   tag is stored when the account is created, so renaming an account does not
   change it.
 

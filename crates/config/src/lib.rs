@@ -12,9 +12,8 @@ pub use resolve::{
     lock_config_file_at, read_bridge_port, read_or_create_bridge_token, remote_bridge_token_path,
     resolve_daemon_token, retired_config_keys_in, save_config, save_config_to_path,
     scoped_credential_service, secrets_file_path, socket_path, token_dir, update_config,
-    update_config_at_path, validate_account_identities, write_bridge_port, ConfigError,
-    ConfigFileLock, DAEMON_TOKEN_ENV, DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, PROD_INSTANCE_NAME,
-    RETIRED_CONFIG_KEYS,
+    update_config_at_path, write_bridge_port, ConfigError, ConfigFileLock, DAEMON_TOKEN_ENV,
+    DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, PROD_INSTANCE_NAME, RETIRED_CONFIG_KEYS,
 };
 pub use secret_store::SecretStore;
 pub use types::*;
@@ -595,68 +594,41 @@ use_tls = true
     }
 
     #[test]
-    fn identity_overrides_load_and_the_tag_is_uppercased() {
-        let config =
-            load_config_from_str(&identity_config("color = \"amber\"\ntag = \"w\"", "")).unwrap();
+    fn identity_values_load_exactly_as_written() {
+        // Validation belongs to the daemon's resolver, so the config keeps
+        // what the user typed, including values the daemon will ignore.
+        let config = load_config_from_str(&identity_config(
+            "color = \"teal\"\ntag = \"w\"",
+            "tag = \"WORK\"",
+        ))
+        .expect("an identity value must not fail the load");
         let work = &config.accounts["work"];
-        assert_eq!(work.color.as_deref(), Some("amber"));
-        assert_eq!(work.tag.as_deref(), Some("W"));
-        let wedding = &config.accounts["wedding"];
-        assert_eq!(wedding.color, None);
-        assert_eq!(wedding.tag, None);
+        assert_eq!(work.color.as_deref(), Some("teal"));
+        assert_eq!(work.tag.as_deref(), Some("w"));
+        assert_eq!(config.accounts["wedding"].tag.as_deref(), Some("WORK"));
     }
 
     #[test]
-    fn an_unknown_colour_drops_only_that_override_and_loads_every_account() {
-        let config =
-            load_config_from_str(&identity_config("color = \"teal\"", "color = \"amber\""))
-                .expect("an identity problem must not fail the whole config");
-        assert_eq!(config.accounts.len(), 2);
-        assert_eq!(config.accounts["work"].color, None);
-        assert_eq!(config.accounts["wedding"].color.as_deref(), Some("amber"));
-        assert_eq!(config.identity_warnings.len(), 1);
-        let warning = &config.identity_warnings[0];
-        assert_eq!(warning.key, "work");
-        assert!(warning.message.contains("'teal'"), "{}", warning.message);
-        assert!(
-            warning.message.contains("sky, amber, green"),
-            "{}",
-            warning.message
-        );
-    }
+    fn an_unrelated_config_edit_keeps_an_identity_value_the_daemon_ignores() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            identity_config("color = \"teal\"", "color = \"amber\""),
+        )
+        .unwrap();
+        update_config_at_path(&path, |config| {
+            config.general.sync_interval = 120;
+            Ok::<(), ConfigError>(())
+        })
+        .unwrap();
 
-    #[test]
-    fn a_bad_tag_drops_only_that_override() {
-        let config =
-            load_config_from_str(&identity_config("tag = \"WORK\"", "tag = \"WE\"")).expect("load");
-        assert_eq!(config.accounts["work"].tag, None);
-        assert_eq!(config.accounts["wedding"].tag.as_deref(), Some("WE"));
-        assert_eq!(config.identity_warnings.len(), 1);
-        assert!(config.identity_warnings[0].message.contains("1 to 3"));
-    }
-
-    #[test]
-    fn a_duplicate_configured_tag_drops_the_later_account_override() {
-        // Keys are checked in sorted order, so "wedding" holds W and "work" is
-        // the one whose override is dropped.
-        let config =
-            load_config_from_str(&identity_config("tag = \"W\"", "tag = \"w\"")).expect("load");
-        assert_eq!(config.accounts["wedding"].tag.as_deref(), Some("W"));
-        assert_eq!(config.accounts["work"].tag, None);
-        let warning = &config.identity_warnings[0];
-        assert_eq!(warning.key, "work");
-        assert!(
-            warning.message.contains("already set on account 'wedding'"),
-            "{}",
-            warning.message
-        );
-    }
-
-    #[test]
-    fn the_strict_check_still_refuses_a_bad_colour_for_writes() {
-        let mut config = load_config_from_str(&identity_config("", "")).expect("load");
-        config.accounts.get_mut("work").unwrap().color = Some("teal".into());
-        let error = validate_account_identities(&mut config.accounts).unwrap_err();
-        assert!(error.to_string().contains("'teal'"), "{error}");
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("color = \"teal\""), "{written}");
+        let reloaded = load_config_from_path(&path).unwrap();
+        assert_eq!(reloaded.accounts.len(), 2);
+        assert_eq!(reloaded.accounts["work"].color.as_deref(), Some("teal"));
+        assert_eq!(reloaded.accounts["wedding"].color.as_deref(), Some("amber"));
+        assert_eq!(reloaded.general.sync_interval, 120);
     }
 }

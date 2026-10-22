@@ -21,7 +21,7 @@ An account's default tag is derived from its name when the account is created, a
 
 ### People can change both
 
-`[accounts.<key>]` takes `color = "<slot>"` and `tag = "<1-3 chars>"`. A config value wins over the stored slot and the derived tag. An unknown slot or a bad tag is a config error that names the allowed values. Two accounts may be given the same colour on purpose. Settings warn but allow it. The tag must stay unique, and a duplicate is refused with the clashing account named. The web settings picker, `mxr accounts identity <key> --color <slot> --tag <tag>` (with `--dry-run`) and the TUI account form all write these keys through the daemon's account-config path.
+`[accounts.<key>]` takes `color = "<slot>"` and `tag = "<1-3 chars>"`. A config value wins over the stored slot and the derived tag. Config keeps the value as written. The daemon ignores an unknown slot, a bad tag or a clashing tag, warns with the key and the allowed values, and uses the stored value. Two accounts may be given the same colour on purpose. Settings warn but allow it. The write paths (`mxr accounts identity`, the upsert) refuse a bad new value, or a tag another account holds, before saving. The web settings picker, `mxr accounts identity <key> --color <slot> --tag <tag>` (with `--dry-run`) and the TUI account form all write these keys through the daemon's account-config path.
 
 ## A row is marked only when the view mixes accounts
 

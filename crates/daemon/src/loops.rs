@@ -2340,11 +2340,21 @@ pub(crate) fn history_cutoff(now: chrono::DateTime<chrono::Utc>, retention_days:
 
 /// The retention setting as the config file says now. `config set` writes the
 /// file but not the daemon's cached snapshot, so a cached value must not decide
-/// what gets deleted. `None` when the file cannot be read or parsed.
+/// what gets deleted. `None` when the file is missing, empty, whitespace-only or
+/// cannot be read or parsed. A missing or empty file loads as defaults, so
+/// reading it would prune on a value the user never set.
+///
+/// Takes the config writer's lock, so a save in progress is never half-read.
 pub(crate) fn retention_days_on_disk(config_path: &std::path::Path) -> Option<u32> {
+    // Held until the end of this function, across the read.
+    let _lock = mxr_config::lock_config_file_at(config_path).ok()?;
+    let contents = std::fs::read_to_string(config_path).ok()?;
+    if contents.trim().is_empty() {
+        return None;
+    }
     // Errors are not logged here: a parse error quotes the offending line,
     // which can be a credential. Callers say only that the setting is unknown.
-    mxr_config::load_config_from_path(config_path)
+    mxr_config::load_config_from_str(&contents)
         .ok()
         .map(|config| config.logging.event_retention_days)
 }
@@ -2360,7 +2370,7 @@ pub(crate) async fn history_prune_pass(
     let Some(days) = retention_days_on_disk(config_path) else {
         tracing::warn!(
             path = %config_path.display(),
-            "history prune skipped: config could not be read or parsed"
+            "history prune skipped: config is missing, empty or unreadable"
         );
         return Ok(HistoryPruneCounts::default());
     };
@@ -3968,6 +3978,31 @@ mod history_prune_tests {
 
         assert_eq!(counts, HistoryPruneCounts::default());
         assert_eq!(remaining(&state, &account_id).await, (2, 2));
+    }
+
+    /// A missing or empty file loads as defaults (retention 90). Pruning on
+    /// that would delete history the user never asked to drop.
+    #[tokio::test]
+    async fn pass_skips_a_missing_or_empty_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let later = chrono::Utc::now() + ChronoDuration::days(91);
+        let missing = dir.path().join("missing.toml");
+        let empty = dir.path().join("empty.toml");
+        std::fs::write(&empty, "  \n\t\n").unwrap();
+
+        for config in [&missing, &empty] {
+            let (state, account_id) = seeded_state(3, 55).await;
+            let counts = history_prune_pass(&state.store, config, later)
+                .await
+                .unwrap();
+            assert_eq!(
+                counts,
+                HistoryPruneCounts::default(),
+                "{}",
+                config.display()
+            );
+            assert_eq!(remaining(&state, &account_id).await, (3, 55));
+        }
     }
 
     fn write_config(path: &std::path::Path, retention_days: u32) {

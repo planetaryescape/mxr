@@ -45,6 +45,9 @@ help modal (`?`).
 | `Esc` | Back, close modal, dismiss pane, or clear selection |
 | `q` | Close the innermost layer (a menu, the reader, a sub-view, a screen); quit at the mailbox root |
 
+Pasted text types into the focused text field. With no field focused, the
+TUI drops it, so a paste never runs as shortcuts.
+
 ## Mail list
 
 ### Navigation

@@ -37,6 +37,7 @@ mod mutation_actions;
 mod mutation_helpers;
 pub mod mutation_snapshot;
 mod now_actions;
+mod paste;
 mod pending_optimistic;
 mod personal_category_actions;
 mod place_actions;

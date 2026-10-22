@@ -260,9 +260,11 @@ pub(super) async fn upsert_account_config(
         let color = account
             .color
             .map(|color| color.as_str().to_string())
-            .or(existing
-                .as_ref()
-                .and_then(|existing| existing.color.clone()));
+            .or_else(|| {
+                existing
+                    .as_ref()
+                    .and_then(|existing| existing.color.clone())
+            });
         let tag = match account.tag.as_deref() {
             Some(raw_tag) => Some(mxr_core::parse_account_tag(raw_tag).map_err(|e| e.to_string())?),
             None => existing.as_ref().and_then(|existing| existing.tag.clone()),

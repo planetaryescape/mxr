@@ -55,7 +55,9 @@ test("the model mark is a menu: five choices, an unavailable one says why, a pic
   );
 });
 
-test("an email chip in a reply shows the glyph of the mode that holds it", async ({ page }) => {
+test("an email chip and its row in a reply show the glyph of the mode that holds it", async ({
+  page,
+}) => {
   await page.route("**/api/v1/mail/modes/membership", (route) =>
     route.fulfill({
       json: {
@@ -85,4 +87,20 @@ test("an email chip in a reply shows the glyph of the mode that holds it", async
   const chip = page.getByRole("link", { name: "CI failed on main: build-linux" }).first();
   await expect(chip.locator(".lucide-newspaper")).toBeVisible();
   await expect(chip.locator(".lucide-mail")).toHaveCount(0);
+
+  // The reply's row for the same email is a compact card: who and a clip under
+  // the subject, and the paperclip and mode glyph in the trail.
+  const row = page
+    .getByRole("list", { name: "The emails and people in this reply" })
+    .getByRole("listitem")
+    .first();
+  await expect(row).toContainText("GitHub Actions · Run 4471 failed in build-linux");
+  await expect(row.locator(".lucide-paperclip")).toBeVisible();
+  await expect(row.locator(".lucide-newspaper")).toBeVisible();
+  // An older row, with only a detail, has no marks.
+  const old = page
+    .getByRole("list", { name: "The emails and people in this reply" })
+    .getByRole("listitem")
+    .nth(1);
+  await expect(old.locator(".lucide-paperclip, .lucide-mail")).toHaveCount(0);
 });

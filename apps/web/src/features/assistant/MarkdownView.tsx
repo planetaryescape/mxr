@@ -7,13 +7,12 @@
  * becomes a chip drawn from its data (docs/blueprint/29 "The copy").
  */
 
-import { Mail } from "lucide-react";
 import { createElement, useMemo, type ReactNode } from "react";
 
 import { APP_LINK_ATTRIBUTE, APP_LINK_ID_ATTRIBUTE, renderMarkdown } from "./markdown";
 import { Avatar } from "@/components/Avatar";
-import { MODE_GLYPHS } from "@/components/ModeMark";
-import { useThreadModesMap, type ThreadModes } from "@/features/modes/membership";
+import { useThreadModesMap } from "@/features/modes/membership";
+import { threadGlyph, type ModesByThread } from "./threadGlyph";
 
 const TAGS = new Set([
   "p",
@@ -40,8 +39,6 @@ const TAGS = new Set([
   "del",
 ]);
 const VOID = new Set(["br", "hr"]);
-
-type ModesByThread = ReadonlyMap<string, ThreadModes> | undefined;
 
 export function MarkdownView({
   text,
@@ -84,17 +81,6 @@ function toNode(node: ChildNode, key: string, modes: ModesByThread): ReactNode {
   if (tag === "a") return toLink(node, key, children, modes);
   if (!TAGS.has(tag)) return children;
   return VOID.has(tag) ? createElement(tag, { key }) : createElement(tag, { key }, children);
-}
-
-/**
- * The glyph of where an email lives: its first mode in rail order, else
- * Inbox when only the provider's inbox holds it. Mail while the lookup is
- * out or the thread is unknown (docs/blueprint/27 "Iconography").
- */
-function threadGlyph(threadId: string | null, modes: ModesByThread) {
-  const held = threadId ? modes?.get(threadId) : undefined;
-  const mode = held?.modes[0]?.mode ?? (held?.in_inbox ? "inbox" : null);
-  return mode ? MODE_GLYPHS[mode] : Mail;
 }
 
 function toLink(

@@ -78,6 +78,11 @@ const reply: Json = {
     {
       title: "CI failed on main: build-linux",
       detail: "GitHub Actions",
+      sender: "GitHub Actions",
+      snippet: "Run 4471 failed in build-linux",
+      at: 1_760_000_000,
+      attachment: true,
+      unread: true,
       link: { kind: "thread", thread_id: "t-ci-1" },
     },
     {

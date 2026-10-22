@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.151](https://github.com/planetaryescape/mxr/compare/v0.6.150...v0.6.151) (2026-10-22)
+
+
+### Bug Fixes
+
+* make every mode guide show keys that work there, from the key definition ([#661](https://github.com/planetaryescape/mxr/issues/661)) ([eda0661](https://github.com/planetaryescape/mxr/commit/eda066153670aa557245736220f4479890c3d151))
+
+
+### Documentation
+
+* say release builds never enable the langfuse feature ([#668](https://github.com/planetaryescape/mxr/issues/668)) ([aa26dd2](https://github.com/planetaryescape/mxr/commit/aa26dd25b7749d44b3f0a5e3b0dc84243b13c634))
+
 ## [0.6.150](https://github.com/planetaryescape/mxr/compare/v0.6.149...v0.6.150) (2026-10-22)
 
 

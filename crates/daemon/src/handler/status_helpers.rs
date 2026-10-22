@@ -913,6 +913,7 @@ mod tests {
             ("gmail token unreadable 4xx", &format!("{TOKEN_UNAVAILABLE}: token endpoint returned an unreadable HTTP 400 response"), Kind::Offline, DoctorFindingCategory::Network, false),
             ("gmail token 4xx without code", &format!("{TOKEN_UNAVAILABLE}: token endpoint returned HTTP 403 without an OAuth error code"), Kind::Offline, DoctorFindingCategory::Network, false),
             ("gmail token 429", "Rate limited — retry after 120s", Kind::RateLimited, DoctorFindingCategory::Sync, false),
+            ("gmail 403 usage limit with reason", "Rate limited by Gmail messages.get (rateLimitExceeded: Rate Limit Exceeded; 412 requests in the last hour) — retry after 1234s", Kind::RateLimited, DoctorFindingCategory::Sync, false),
             ("gmail cache write", "Provider error: Local token cache write failed: Permission denied (os error 13)", Kind::Store, DoctorFindingCategory::Storage, false),
             // IMAP: rejected credentials, transport failure inside the login
             // wrapper, and an XOAUTH2 token fetch wrapped as an auth error.

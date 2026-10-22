@@ -1281,7 +1281,9 @@ async fn run_analytics_repair(state: &Arc<AppState>, account_id: &AccountId) {
 /// costs one 429.
 pub(crate) fn next_backoff_secs(previous_secs: u64, error: &MxrError) -> u64 {
     match error {
-        MxrError::RateLimited { retry_after_secs } => retry_after_secs.saturating_add(10),
+        MxrError::RateLimited {
+            retry_after_secs, ..
+        } => retry_after_secs.saturating_add(10),
         _ => previous_secs.saturating_mul(2),
     }
     .clamp(30, 300)
@@ -1353,6 +1355,7 @@ mod classify_sync_error_tests {
         use mxr_core::MxrError;
         let limited = |secs| MxrError::RateLimited {
             retry_after_secs: secs,
+            detail: None,
         };
         assert_eq!(next_backoff_secs(0, &limited(60)), 70);
         assert_eq!(next_backoff_secs(0, &limited(86_400)), 300);
@@ -1366,6 +1369,14 @@ mod classify_sync_error_tests {
     fn maps_common_sync_error_classes_for_event_payloads() {
         assert_eq!(
             classify_sync_error("rate limit: retry after 60s"),
+            "rate_limit"
+        );
+        // The Gmail text names the refused endpoint and Gmail's reason. Neither
+        // may pull the class away from rate_limit.
+        assert_eq!(
+            classify_sync_error(
+                "Rate limited by Gmail messages.get (rateLimitExceeded: User-rate limit exceeded; 412 requests in the last hour) — retry after 1234s"
+            ),
             "rate_limit"
         );
         assert_eq!(classify_sync_error("oauth login failed"), "auth");

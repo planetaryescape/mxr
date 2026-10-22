@@ -246,6 +246,7 @@ fn map_send_error(retryable: bool, error: impl std::fmt::Display) -> MxrError {
         // daemon can reschedule the send instead of hard-failing it.
         MxrError::RateLimited {
             retry_after_secs: 60,
+            detail: None,
         }
     } else {
         MxrError::Provider(format!("SMTP send failed: {error}"))
@@ -430,7 +431,8 @@ mod tests {
         assert!(matches!(
             map_send_error(true, "transient boom"),
             MxrError::RateLimited {
-                retry_after_secs: 60
+                retry_after_secs: 60,
+                ..
             }
         ));
         assert!(matches!(

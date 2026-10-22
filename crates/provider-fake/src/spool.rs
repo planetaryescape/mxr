@@ -132,7 +132,10 @@ impl Spool {
         let line = text.lines().next().unwrap_or("").trim();
         if let Some(rest) = line.strip_prefix("rate_limit") {
             let retry_after_secs = rest.trim().parse().unwrap_or(60);
-            return Some(MxrError::RateLimited { retry_after_secs });
+            return Some(MxrError::RateLimited {
+                retry_after_secs,
+                detail: None,
+            });
         }
         Some(MxrError::Provider(if line.is_empty() {
             "fake provider failure".to_string()
@@ -328,7 +331,8 @@ mod tests {
         assert!(matches!(
             spool.failure(),
             Some(MxrError::RateLimited {
-                retry_after_secs: 120
+                retry_after_secs: 120,
+                ..
             })
         ));
         std::fs::write(dir.join("fail"), "oauth token revoked").unwrap();

@@ -9,8 +9,13 @@ pub enum GmailError {
     #[error("Not found: {0}")]
     NotFound(String),
 
+    /// `detail` names the refused endpoint and Gmail's reason, when Gmail said
+    /// anything usable. Shown to the user through `MxrError::RateLimited`.
     #[error("Rate limited — retry after {retry_after_secs}s")]
-    RateLimited { retry_after_secs: u64 },
+    RateLimited {
+        retry_after_secs: u64,
+        detail: Option<String>,
+    },
 
     #[error("Gmail API error (HTTP {status}): {body}")]
     Api { status: u16, body: String },
@@ -32,8 +37,54 @@ impl From<GmailError> for MxrError {
     fn from(e: GmailError) -> Self {
         match e {
             GmailError::NotFound(msg) => Self::NotFound(msg),
-            GmailError::RateLimited { retry_after_secs } => Self::RateLimited { retry_after_secs },
+            GmailError::RateLimited {
+                retry_after_secs,
+                detail,
+            } => Self::RateLimited {
+                retry_after_secs,
+                detail,
+            },
             other => Self::Provider(other.to_string()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rate_limit_reaches_the_sync_error_text_with_its_reason_and_retry() {
+        let mxr: MxrError = GmailError::RateLimited {
+            retry_after_secs: 1234,
+            detail: Some(
+                "Gmail messages.get (rateLimitExceeded: User-rate limit exceeded; 412 requests in the last hour)"
+                    .into(),
+            ),
+        }
+        .into();
+
+        assert_eq!(
+            mxr.to_string(),
+            "Rate limited by Gmail messages.get (rateLimitExceeded: User-rate limit exceeded; 412 requests in the last hour) — retry after 1234s"
+        );
+        assert!(matches!(
+            mxr,
+            MxrError::RateLimited {
+                retry_after_secs: 1234,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn rate_limit_without_detail_keeps_the_plain_text() {
+        let mxr: MxrError = GmailError::RateLimited {
+            retry_after_secs: 60,
+            detail: None,
+        }
+        .into();
+
+        assert_eq!(mxr.to_string(), "Rate limited — retry after 60s");
     }
 }

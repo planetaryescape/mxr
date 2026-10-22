@@ -9,12 +9,14 @@
 
 use crate::auth::{AuthError, GmailAuth};
 use crate::error::GmailError;
+use crate::error_response::{read_error_response, ErrorResponse, RateLimitRefusal};
+use crate::request_log::{RequestLog, RequestSummary};
 use crate::types::*;
 use async_trait::async_trait;
 use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
-use mxr_core::ServerDraftSnapshot;
-use std::time::Duration;
+use mxr_core::{AccountId, ServerDraftSnapshot};
+use std::time::{Duration, Instant};
 use tracing::{debug, warn};
 
 const GMAIL_API_BASE: &str = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -46,6 +48,9 @@ pub struct GmailClient {
     http: reqwest::Client,
     auth: GmailAuth,
     base_url: String,
+    /// Named in the rate-limit warning. Set by `GmailProvider::new`.
+    account: String,
+    requests: RequestLog,
 }
 
 #[async_trait]
@@ -122,7 +127,14 @@ impl GmailClient {
             http,
             auth,
             base_url: GMAIL_API_BASE.to_string(),
+            account: "unknown".to_string(),
+            requests: RequestLog::default(),
         }
+    }
+
+    pub(crate) fn with_account(mut self, account_id: &AccountId) -> Self {
+        self.account = account_id.as_str();
+        self
     }
 
     /// Override base URL (used for testing with wiremock).
@@ -140,9 +152,10 @@ impl GmailClient {
                 // Typed so the daemon can size its backoff from the hint. It is
                 // reported before any mail request exists, so a send is never
                 // retried because of it.
-                AuthError::RefreshRateLimited { retry_after_secs } => {
-                    GmailError::RateLimited { retry_after_secs }
-                }
+                AuthError::RefreshRateLimited { retry_after_secs } => GmailError::RateLimited {
+                    retry_after_secs,
+                    detail: None,
+                },
                 // Not an authorization failure: keep it out of the "Auth error"
                 // label so sync health does not prescribe signing in again.
                 error @ AuthError::TokenCacheWrite(_) => GmailError::Other(error.into()),
@@ -151,29 +164,43 @@ impl GmailClient {
         Ok(format!("Bearer {token}"))
     }
 
-    async fn handle_error(&self, resp: reqwest::Response) -> GmailError {
-        let status = resp.status().as_u16();
-        match status {
-            401 => GmailError::AuthExpired,
-            404 => {
-                let body = resp.text().await.unwrap_or_default();
-                GmailError::NotFound(body)
-            }
-            429 => {
-                let retry_after = resp
-                    .headers()
-                    .get("retry-after")
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(60);
-                GmailError::RateLimited {
-                    retry_after_secs: retry_after,
-                }
-            }
-            _ => {
-                let body = resp.text().await.unwrap_or_default();
-                GmailError::Api { status, body }
-            }
+    /// Sends one Gmail API request and counts it against this account. The
+    /// endpoint label is a fixed name such as `messages.get`: no ids, no query.
+    async fn send(
+        &self,
+        endpoint: &'static str,
+        request: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, reqwest::Error> {
+        self.requests.record(endpoint, Instant::now());
+        request.send().await
+    }
+
+    async fn handle_error(&self, endpoint: &'static str, resp: reqwest::Response) -> GmailError {
+        match read_error_response(resp).await {
+            ErrorResponse::RateLimited(refusal) => self.rate_limited(endpoint, refusal),
+            other => other.into(),
+        }
+    }
+
+    /// Builds the typed rate limit and writes the one WARN line for it. The
+    /// detail (endpoint, Gmail's reason, the count) goes into the error text too,
+    /// so sync status shows it without a log search.
+    fn rate_limited(&self, endpoint: &'static str, refusal: RateLimitRefusal) -> GmailError {
+        let summary = self.requests.summary(Instant::now());
+        let detail = refused_detail(endpoint, &refusal, &summary);
+        warn!(
+            account = %self.account,
+            endpoint,
+            reason = refusal.reason.as_deref().unwrap_or("none"),
+            retry_after_secs = refusal.retry_after_secs,
+            requests_last_minute = summary.last_minute,
+            requests_last_hour = summary.last_hour,
+            requests_by_endpoint_last_hour = %summary.endpoint_counts(),
+            "Gmail refused a request with a rate limit"
+        );
+        GmailError::RateLimited {
+            retry_after_secs: refusal.retry_after_secs,
+            detail: Some(detail),
         }
     }
 
@@ -194,14 +221,16 @@ impl GmailClient {
         debug!(url = %url, "listing messages");
 
         let resp = self
-            .http
-            .get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send()
+            .send(
+                "messages.list",
+                self.http
+                    .get(&url)
+                    .header("Authorization", self.auth_header().await?),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("messages.list", resp).await);
         }
 
         Ok(resp.json().await?)
@@ -219,14 +248,16 @@ impl GmailClient {
         );
 
         let resp = self
-            .http
-            .get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send()
+            .send(
+                "messages.get",
+                self.http
+                    .get(&url)
+                    .header("Authorization", self.auth_header().await?),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("messages.get", resp).await);
         }
 
         Ok(resp.json().await?)
@@ -278,14 +309,16 @@ impl GmailClient {
         }
 
         let resp = self
-            .http
-            .get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send()
+            .send(
+                "history.list",
+                self.http
+                    .get(&url)
+                    .header("Authorization", self.auth_header().await?),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("history.list", resp).await);
         }
 
         Ok(resp.json().await?)
@@ -306,15 +339,17 @@ impl GmailClient {
         });
 
         let resp = self
-            .http
-            .post(&url)
-            .header("Authorization", self.auth_header().await?)
-            .json(&body)
-            .send()
+            .send(
+                "messages.modify",
+                self.http
+                    .post(&url)
+                    .header("Authorization", self.auth_header().await?)
+                    .json(&body),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("messages.modify", resp).await);
         }
 
         Ok(())
@@ -336,15 +371,17 @@ impl GmailClient {
         });
 
         let resp = self
-            .http
-            .post(&url)
-            .header("Authorization", self.auth_header().await?)
-            .json(&body)
-            .send()
+            .send(
+                "messages.batchModify",
+                self.http
+                    .post(&url)
+                    .header("Authorization", self.auth_header().await?)
+                    .json(&body),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("messages.batchModify", resp).await);
         }
 
         Ok(())
@@ -355,16 +392,18 @@ impl GmailClient {
         let url = format!("{}/messages/{message_id}/trash", self.base_url);
 
         let resp = self
-            .http
-            .post(&url)
-            .header("Authorization", self.auth_header().await?)
-            .header(reqwest::header::CONTENT_LENGTH, "0")
-            .body(Vec::new())
-            .send()
+            .send(
+                "messages.trash",
+                self.http
+                    .post(&url)
+                    .header("Authorization", self.auth_header().await?)
+                    .header(reqwest::header::CONTENT_LENGTH, "0")
+                    .body(Vec::new()),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("messages.trash", resp).await);
         }
 
         Ok(())
@@ -382,15 +421,17 @@ impl GmailClient {
         let body = message_body(raw_base64url, thread_id);
 
         let resp = self
-            .http
-            .post(&url)
-            .header("Authorization", self.auth_header().await?)
-            .json(&body)
-            .send()
+            .send(
+                "messages.send",
+                self.http
+                    .post(&url)
+                    .header("Authorization", self.auth_header().await?)
+                    .json(&body),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("messages.send", resp).await);
         }
 
         Ok(resp.json().await?)
@@ -407,14 +448,16 @@ impl GmailClient {
         );
 
         let resp = self
-            .http
-            .get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send()
+            .send(
+                "messages.attachments.get",
+                self.http
+                    .get(&url)
+                    .header("Authorization", self.auth_header().await?),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("messages.attachments.get", resp).await);
         }
 
         let json: serde_json::Value = resp.json().await?;
@@ -439,15 +482,17 @@ impl GmailClient {
         let body = draft_body(raw_base64url, thread_id);
 
         let resp = self
-            .http
-            .post(&url)
-            .header("Authorization", self.auth_header().await?)
-            .json(&body)
-            .send()
+            .send(
+                "drafts.create",
+                self.http
+                    .post(&url)
+                    .header("Authorization", self.auth_header().await?)
+                    .json(&body),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("drafts.create", resp).await);
         }
 
         let json: serde_json::Value = resp.json().await?;
@@ -466,15 +511,17 @@ impl GmailClient {
         let body = draft_body(raw_base64url, thread_id);
 
         let resp = self
-            .http
-            .put(&url)
-            .header("Authorization", self.auth_header().await?)
-            .json(&body)
-            .send()
+            .send(
+                "drafts.update",
+                self.http
+                    .put(&url)
+                    .header("Authorization", self.auth_header().await?)
+                    .json(&body),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("drafts.update", resp).await);
         }
 
         Ok(())
@@ -486,16 +533,18 @@ impl GmailClient {
     ) -> Result<Option<ServerDraftSnapshot>, GmailError> {
         let url = format!("{}/drafts/{draft_id}?format=raw", self.base_url);
         let resp = self
-            .http
-            .get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send()
+            .send(
+                "drafts.get",
+                self.http
+                    .get(&url)
+                    .header("Authorization", self.auth_header().await?),
+            )
             .await?;
         if resp.status().as_u16() == 404 {
             return Ok(None);
         }
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("drafts.get", resp).await);
         }
 
         let json: serde_json::Value = resp.json().await?;
@@ -518,14 +567,16 @@ impl GmailClient {
     pub async fn delete_draft(&self, draft_id: &str) -> Result<(), GmailError> {
         let url = format!("{}/drafts/{draft_id}", self.base_url);
         let resp = self
-            .http
-            .delete(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send()
+            .send(
+                "drafts.delete",
+                self.http
+                    .delete(&url)
+                    .header("Authorization", self.auth_header().await?),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("drafts.delete", resp).await);
         }
         Ok(())
     }
@@ -534,14 +585,16 @@ impl GmailClient {
         let url = format!("{}/labels", self.base_url);
 
         let resp = self
-            .http
-            .get(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send()
+            .send(
+                "labels.list",
+                self.http
+                    .get(&url)
+                    .header("Authorization", self.auth_header().await?),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("labels.list", resp).await);
         }
 
         Ok(resp.json().await?)
@@ -566,15 +619,17 @@ impl GmailClient {
         }
 
         let resp = self
-            .http
-            .post(&url)
-            .header("Authorization", self.auth_header().await?)
-            .json(&body)
-            .send()
+            .send(
+                "labels.create",
+                self.http
+                    .post(&url)
+                    .header("Authorization", self.auth_header().await?)
+                    .json(&body),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("labels.create", resp).await);
         }
 
         Ok(resp.json().await?)
@@ -591,15 +646,17 @@ impl GmailClient {
         });
 
         let resp = self
-            .http
-            .patch(&url)
-            .header("Authorization", self.auth_header().await?)
-            .json(&body)
-            .send()
+            .send(
+                "labels.patch",
+                self.http
+                    .patch(&url)
+                    .header("Authorization", self.auth_header().await?)
+                    .json(&body),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("labels.patch", resp).await);
         }
 
         Ok(resp.json().await?)
@@ -609,14 +666,16 @@ impl GmailClient {
         let url = format!("{}/labels/{label_id}", self.base_url);
 
         let resp = self
-            .http
-            .delete(&url)
-            .header("Authorization", self.auth_header().await?)
-            .send()
+            .send(
+                "labels.delete",
+                self.http
+                    .delete(&url)
+                    .header("Authorization", self.auth_header().await?),
+            )
             .await?;
 
         if !resp.status().is_success() {
-            return Err(self.handle_error(resp).await);
+            return Err(self.handle_error("labels.delete", resp).await);
         }
 
         Ok(())
@@ -624,6 +683,16 @@ impl GmailClient {
 }
 
 /// Body for `messages.send`: `{"raw": ..}` plus `threadId` when known.
+/// `messages.get (rateLimitExceeded: User-rate limit exceeded; 412 requests in the last hour)`.
+fn refused_detail(endpoint: &str, refusal: &RateLimitRefusal, summary: &RequestSummary) -> String {
+    let requests = format!("{} requests in the last hour", summary.last_hour);
+    let inside = match refusal.describe() {
+        Some(what) => format!("{what}; {requests}"),
+        None => requests,
+    };
+    format!("Gmail {endpoint} ({inside})")
+}
+
 fn message_body(raw_base64url: &str, thread_id: Option<&str>) -> serde_json::Value {
     let mut body = serde_json::json!({ "raw": raw_base64url });
     if let Some(thread_id) = thread_id {
@@ -813,29 +882,7 @@ mod tests {
         }
 
         async fn handle_error(&self, resp: reqwest::Response) -> GmailError {
-            let status = resp.status().as_u16();
-            match status {
-                401 => GmailError::AuthExpired,
-                404 => {
-                    let body = resp.text().await.unwrap_or_default();
-                    GmailError::NotFound(body)
-                }
-                429 => {
-                    let retry_after = resp
-                        .headers()
-                        .get("retry-after")
-                        .and_then(|v| v.to_str().ok())
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(60);
-                    GmailError::RateLimited {
-                        retry_after_secs: retry_after,
-                    }
-                }
-                _ => {
-                    let body = resp.text().await.unwrap_or_default();
-                    GmailError::Api { status, body }
-                }
-            }
+            read_error_response(resp).await.into()
         }
 
         async fn list_messages(
@@ -945,8 +992,12 @@ mod tests {
 
         let err = client.list_messages(None, None, 10).await.unwrap_err();
         match err {
-            GmailError::RateLimited { retry_after_secs } => {
+            GmailError::RateLimited {
+                retry_after_secs,
+                detail,
+            } => {
                 assert_eq!(retry_after_secs, 30);
+                assert_eq!(detail, None, "a plain-text body names no one");
             }
             other => panic!("Expected RateLimited, got {other:?}"),
         }
@@ -1179,7 +1230,8 @@ mod tests {
                 matches!(
                     error,
                     GmailError::RateLimited {
-                        retry_after_secs: 120
+                        retry_after_secs: 120,
+                        ..
                     }
                 ),
                 "{error:?}"
@@ -1187,7 +1239,8 @@ mod tests {
             assert!(matches!(
                 MxrError::from(error),
                 MxrError::RateLimited {
-                    retry_after_secs: 120
+                    retry_after_secs: 120,
+                    ..
                 }
             ));
         }

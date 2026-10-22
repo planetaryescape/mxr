@@ -33,13 +33,24 @@ pub enum MxrError {
     /// Provider asked us to back off. `retry_after_secs` is the wait the
     /// provider suggested (Retry-After header for Gmail, server hint for IMAP).
     /// Surfaced as a typed variant so the daemon's sync loop can size its
-    /// backoff without parsing strings.
-    #[error("Rate limited — retry after {retry_after_secs}s")]
-    RateLimited { retry_after_secs: u64 },
+    /// backoff without parsing strings. `detail` names who refused and why
+    /// (e.g. `Gmail messages.get (rateLimitExceeded: ...)`), for status and logs.
+    #[error("{}", rate_limit_message(*retry_after_secs, .detail.as_deref()))]
+    RateLimited {
+        retry_after_secs: u64,
+        detail: Option<String>,
+    },
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+}
+
+fn rate_limit_message(retry_after_secs: u64, detail: Option<&str>) -> String {
+    match detail {
+        Some(detail) => format!("Rate limited by {detail} — retry after {retry_after_secs}s"),
+        None => format!("Rate limited — retry after {retry_after_secs}s"),
+    }
 }

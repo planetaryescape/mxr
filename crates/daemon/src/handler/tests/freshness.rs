@@ -133,7 +133,8 @@ async fn sync_failures_surface_with_their_kind_and_the_worst_speaks_for_all() {
     let fx = Fixture::new().await;
     let now = Utc::now();
     let store = &fx.state.store;
-    // Rate limited: paused, with the retry the sync loop scheduled.
+    // Rate limited: paused, with the retry the sync loop scheduled. The Gmail
+    // endpoint and reason ride in the message; the kind is still a rate limit.
     let retry = now + Duration::minutes(8);
     store
         .upsert_sync_runtime_status(
@@ -141,7 +142,9 @@ async fn sync_failures_surface_with_their_kind_and_the_worst_speaks_for_all() {
             &SyncRuntimeStatusUpdate {
                 last_attempt_at: Some(now),
                 last_success_at: Some(now - Duration::minutes(3)),
-                last_error: Some(Some("Rate limited, retry after 470s".into())),
+                last_error: Some(Some(
+                    "Rate limited by Gmail messages.get (rateLimitExceeded: User-rate limit exceeded; 412 requests in the last hour) — retry after 470s".into(),
+                )),
                 failure_class: Some(Some("rate_limit".into())),
                 consecutive_failures: Some(1),
                 backoff_until: Some(Some(retry)),
@@ -184,6 +187,7 @@ async fn sync_failures_surface_with_their_kind_and_the_worst_speaks_for_all() {
     assert_eq!(paused.health, SyncHealthData::Paused);
     let error = paused.last_sync_error.as_ref().unwrap();
     assert_eq!(error.kind, SyncErrorKindData::RateLimited);
+    assert!(error.message.contains("messages.get"), "{}", error.message);
     assert!(close(error.retry_at, retry));
 
     let signed_out = by_id(&gmail.id);

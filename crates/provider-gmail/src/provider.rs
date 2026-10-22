@@ -109,8 +109,8 @@ pub struct GmailProvider {
 impl GmailProvider {
     pub fn new(account_id: AccountId, client: GmailClient) -> Self {
         Self {
+            client: Box::new(client.with_account(&account_id)),
             account_id,
-            client: Box::new(client),
             #[cfg(test)]
             parse_observer: None,
         }

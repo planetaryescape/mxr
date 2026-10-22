@@ -16,6 +16,7 @@ pub mod error;
 mod error_response;
 pub mod parse;
 pub mod provider;
+mod rate_limit_gate;
 mod request_log;
 pub mod send;
 mod token_cache_file;

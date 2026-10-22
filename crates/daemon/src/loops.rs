@@ -1274,19 +1274,18 @@ async fn run_analytics_repair(state: &Arc<AppState>, account_id: &AccountId) {
 }
 
 /// Seconds to wait before retrying after a failed sync. A rate limit waits
-/// what the provider asked plus a margin; anything else doubles. Both stay
-/// between 30 seconds and 5 minutes: a provider is free to send a
-/// Retry-After measured in days, and honouring it literally would park the
-/// account until the daemon restarts. Re-polling a still-limited provider
-/// costs one 429.
+/// the provider's own retry time plus a margin, so the retry lands after the
+/// provider's window has passed. Gmail's window is about 15 minutes; a longer
+/// wait is capped at an hour so a Retry-After in days cannot park the account
+/// until the daemon restarts. Any other failure doubles, up to 5 minutes.
+/// Retrying earlier than Gmail's window only renews it.
 pub(crate) fn next_backoff_secs(previous_secs: u64, error: &MxrError) -> u64 {
     match error {
         MxrError::RateLimited {
             retry_after_secs, ..
-        } => retry_after_secs.saturating_add(10),
-        _ => previous_secs.saturating_mul(2),
+        } => retry_after_secs.saturating_add(10).clamp(30, 3600),
+        _ => previous_secs.saturating_mul(2).clamp(30, 300),
     }
-    .clamp(30, 300)
 }
 
 pub(crate) fn classify_sync_error(error: &str) -> &'static str {
@@ -1358,7 +1357,9 @@ mod classify_sync_error_tests {
             detail: None,
         };
         assert_eq!(next_backoff_secs(0, &limited(60)), 70);
-        assert_eq!(next_backoff_secs(0, &limited(86_400)), 300);
+        assert_eq!(next_backoff_secs(0, &limited(899)), 909);
+        assert_eq!(next_backoff_secs(0, &limited(86_400)), 3600);
+        assert_eq!(next_backoff_secs(0, &limited(0)), 30);
         let offline = MxrError::Provider("connection refused".into());
         assert_eq!(next_backoff_secs(0, &offline), 30);
         assert_eq!(next_backoff_secs(30, &offline), 60);

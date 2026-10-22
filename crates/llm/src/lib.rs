@@ -52,6 +52,7 @@ mod route;
 mod routed;
 mod stream;
 mod tool_chat;
+pub mod trace;
 
 #[cfg(test)]
 mod observation_tests;
@@ -471,7 +472,10 @@ impl LlmRuntime {
         let (generation, provider) = self
             .observations
             .with_generation(|generation| (generation, self.current()));
-        let result = provider.complete(req).await;
+        let span = trace::feature(None);
+        span.input(|| trace::completion_input(&req.messages));
+        let result = span.instrument(provider.complete(req)).await;
+        trace::finish_completion(&span, &result);
         self.observations.record(generation, None, &result);
         result
     }
@@ -584,7 +588,10 @@ impl FeatureLlmRuntime {
         let (generation, provider) = self.runtime.observations.with_generation(|generation| {
             (generation, self.runtime.provider_for_feature(self.feature))
         });
-        let result = provider.complete(req).await;
+        let span = trace::feature(Some(self.feature));
+        span.input(|| trace::completion_input(&req.messages));
+        let result = span.instrument(provider.complete(req)).await;
+        trace::finish_completion(&span, &result);
         self.runtime
             .observations
             .record(generation, Some(self.feature), &result);
@@ -680,7 +687,10 @@ impl PinnedLlm {
         if let Some(reason) = &self.blocked {
             return Err(LlmError::PrivacyBlocked(reason.clone()));
         }
-        let result = self.provider.complete_as(req, kind).await;
+        let span = trace::feature(Some(self.feature));
+        span.input(|| trace::completion_input(&req.messages));
+        let result = span.instrument(self.provider.complete_as(req, kind)).await;
+        trace::finish_completion(&span, &result);
         self.runtime
             .observations
             .record(self.generation, Some(self.feature), &result);
@@ -693,7 +703,12 @@ impl PinnedLlm {
         if let Some(reason) = &self.blocked {
             return Err(LlmError::PrivacyBlocked(reason.clone()));
         }
-        let result = self.provider.chat_as(req, CallKind::Foreground).await;
+        let span = trace::feature(Some(self.feature));
+        span.input(|| trace::chat_input(&req.messages));
+        let result = span
+            .instrument(self.provider.chat_as(req, CallKind::Foreground))
+            .await;
+        trace::finish_chat(&span, &result);
         self.runtime
             .observations
             .record(self.generation, Some(self.feature), &result);
@@ -709,10 +724,15 @@ impl PinnedLlm {
         if let Some(reason) = &self.blocked {
             return Err(LlmError::PrivacyBlocked(reason.clone()));
         }
-        let result = self
-            .provider
-            .chat_stream_as(req, CallKind::Foreground, on_text)
+        let span = trace::feature(Some(self.feature));
+        span.input(|| trace::chat_input(&req.messages));
+        let result = span
+            .instrument(
+                self.provider
+                    .chat_stream_as(req, CallKind::Foreground, on_text),
+            )
             .await;
+        trace::finish_chat(&span, &result);
         self.runtime
             .observations
             .record(self.generation, Some(self.feature), &result);
@@ -907,25 +927,66 @@ impl OpenAiCompatibleProvider {
             reasoning_effort: disable_reasoning.then_some("none"),
             stream: false,
         };
-        let raw: ChatCompletionsResponseBody = self.post(&body, api_key, timeout).await?;
-
-        let choice = raw
-            .choices
-            .into_iter()
-            .next()
-            .ok_or_else(|| AttemptError::request(LlmError::Empty))?;
-        let reasoned = [choice.message.reasoning, choice.message.reasoning_content]
+        let span = trace::generation(
+            "generate",
+            &self.model,
+            &self.base_url,
+            || trace::completion_input(&req.messages),
+            || {
+                serde_json::json!({
+                    "max_tokens": req.max_tokens,
+                    "temperature": trace::parameter_f32(req.temperature),
+                    "reasoning_effort": body.reasoning_effort,
+                })
+            },
+        );
+        let raw: ChatCompletionsResponseBody =
+            match span.instrument(self.post(&body, api_key, timeout)).await {
+                Ok(raw) => raw,
+                Err(attempt) => {
+                    span.fail(&attempt.error.to_string());
+                    return Err(attempt);
+                }
+            };
+        let Some(choice) = raw.choices.into_iter().next() else {
+            span.fail(&LlmError::Empty.to_string());
+            return Err(AttemptError::request(LlmError::Empty));
+        };
+        let reasoning = [&choice.message.reasoning, &choice.message.reasoning_content];
+        let reasoned = reasoning
             .iter()
+            .copied()
             .flatten()
             .any(|text| !text.trim().is_empty());
-        Ok(ChatCompletion {
-            response: CompletionResponse {
-                content: choice.message.content.unwrap_or_default(),
-                model: raw.model,
-                finish_reason: choice.finish_reason,
-            },
-            reasoned,
-        })
+        let response = CompletionResponse {
+            content: choice.message.content.unwrap_or_default(),
+            model: raw.model,
+            finish_reason: choice.finish_reason,
+        };
+        // An empty `content` is still recorded as the reply: next to the
+        // reasoning, it is what shows a thinking model spent its budget.
+        #[cfg(feature = "langfuse")]
+        trace::finish_completion_attempt(
+            &span,
+            &response,
+            raw.usage
+                .map(|usage| TokenUsage {
+                    input_tokens: usage.prompt_tokens,
+                    output_tokens: usage.completion_tokens,
+                    ..TokenUsage::default()
+                })
+                .as_ref(),
+            Some(
+                &reasoning
+                    .into_iter()
+                    .flatten()
+                    .filter(|text| !text.trim().is_empty())
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
+            ),
+        );
+        Ok(ChatCompletion { response, reasoned })
     }
 
     /// One tool-calling chat turn. A reply with neither text nor tool calls
@@ -937,13 +998,21 @@ impl OpenAiCompatibleProvider {
         timeout: Option<Duration>,
     ) -> Result<ToolChatResponse, AttemptError> {
         let body = tool_chat::openai_body(&self.model, req, self.dialect);
-        let raw: tool_chat::OpenAiToolChatReply = self.post(&body, api_key, timeout).await?;
-        let response = tool_chat::openai_reply(raw, &self.model)
-            .ok_or_else(|| AttemptError::request(LlmError::Empty))?;
-        if response.text.trim().is_empty() && response.tool_calls.is_empty() {
-            return Err(AttemptError::request(LlmError::Empty));
-        }
-        Ok(response)
+        let span = self.chat_generation(&body);
+        let result = span
+            .instrument(async {
+                let raw: tool_chat::OpenAiToolChatReply =
+                    self.post(&body, api_key, timeout).await?;
+                let response = tool_chat::openai_reply(raw, &self.model)
+                    .ok_or_else(|| AttemptError::request(LlmError::Empty))?;
+                if response.text.trim().is_empty() && response.tool_calls.is_empty() {
+                    return Err(AttemptError::request(LlmError::Empty));
+                }
+                Ok(response)
+            })
+            .await;
+        trace::finish_chat_attempt(&span, &result);
+        result
     }
 
     /// [`Self::chat_attempt`] with the reply streamed.
@@ -956,10 +1025,36 @@ impl OpenAiCompatibleProvider {
     ) -> Result<ToolChatResponse, AttemptError> {
         let mut body = tool_chat::openai_body(&self.model, req, self.dialect);
         body.stream = true;
-        let response = self.send_checked(&body, api_key, timeout).await?;
-        let mut folded = stream::OpenAiStream::default();
-        stream::read_events(response, |data| folded.fold(data, on_text)).await?;
-        folded.finish(&self.model)
+        let span = self.chat_generation(&body);
+        let result = span
+            .instrument(async {
+                let response = self.send_checked(&body, api_key, timeout).await?;
+                let mut folded = stream::OpenAiStream::default();
+                stream::read_events(response, |data| folded.fold(data, on_text)).await?;
+                folded.finish(&self.model)
+            })
+            .await;
+        trace::finish_chat_attempt(&span, &result);
+        result
+    }
+
+    /// The generation for one tool-calling request, recording the messages
+    /// as sent.
+    fn chat_generation(&self, body: &tool_chat::OpenAiToolChatBody<'_>) -> trace::Observation {
+        trace::generation(
+            "chat",
+            &self.model,
+            &self.base_url,
+            || serde_json::Value::Array(body.messages.clone()),
+            || {
+                serde_json::json!({
+                    "max_tokens": body.max_tokens.or(body.max_completion_tokens),
+                    "reasoning_effort": body.reasoning_effort,
+                    "stream": body.stream,
+                    "tools": body.tools.len(),
+                })
+            },
+        )
     }
 
     /// POST one chat-completions body and read the reply, mapping transport
@@ -1177,6 +1272,10 @@ struct ChatCompletionsRequestBody<'a> {
 struct ChatCompletionsResponseBody {
     model: String,
     choices: Vec<ChatChoice>,
+    /// Read only for traces; servers that leave it out are fine.
+    #[cfg(feature = "langfuse")]
+    #[serde(default)]
+    usage: Option<tool_chat::OpenAiUsage>,
 }
 
 #[derive(Deserialize)]

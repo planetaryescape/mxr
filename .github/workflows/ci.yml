@@ -203,6 +203,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      # LLM tracing is a developer build (`--features langfuse`): keep it
+      # working, and keep it out of the feature set release.yml ships.
+      - run: cargo test -p mxr-llm --features langfuse --test trace_spans --locked
+      - name: Release builds carry no tracing code
+        # The tree goes through a variable so a failing `cargo tree` fails the
+        # step instead of reading as "no opentelemetry".
+        run: |
+          tree="$(cargo tree -p mxr --features semantic-local,web-ui -e normal --locked)"
+          if grep -q opentelemetry <<<"$tree"; then
+            echo "opentelemetry is in the release dependency tree; tracing must stay behind the langfuse feature" >&2
+            exit 1
+          fi
 
   test:
     name: Test (fast / no semantic)

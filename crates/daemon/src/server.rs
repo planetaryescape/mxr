@@ -83,6 +83,8 @@ pub async fn run_stdio() -> anyhow::Result<()> {
         }
         Err(error) => return Err(error),
     });
+    #[cfg(feature = "langfuse")]
+    let llm_tracing = crate::llm_tracing::start();
 
     let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
     let bulk_semaphore = Arc::new(Semaphore::new(BULK_CONCURRENCY_LIMIT));
@@ -107,6 +109,10 @@ pub async fn run_stdio() -> anyhow::Result<()> {
     // Drain any in-flight background work spawned by handlers, then exit.
     state.request_shutdown();
     state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
+    #[cfg(feature = "langfuse")]
+    if let Some(llm_tracing) = llm_tracing {
+        llm_tracing.shutdown().await;
+    }
     Ok(())
 }
 
@@ -148,6 +154,10 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         }
         Err(error) => return Err(error),
     });
+    // Only the daemon that holds the lock traces, so a refused second start
+    // never opens an exporter.
+    #[cfg(feature = "langfuse")]
+    let llm_tracing = crate::llm_tracing::start();
 
     // We hold the exclusive lock, so we are the sole daemon. Build the
     // configured transports (factory match over config — UDS always on, TCP
@@ -432,6 +442,11 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     }
     drain_connection_tasks(&mut connections, CONNECTION_DRAIN_TIMEOUT).await;
     state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
+    // After the drains, so the traces of work they finished are sent too.
+    #[cfg(feature = "langfuse")]
+    if let Some(llm_tracing) = llm_tracing {
+        llm_tracing.shutdown().await;
+    }
     // Release each transport's resources LAST — after the connection and
     // runtime-task drains. `UdsListener::cleanup` removes the socket file only
     // if it is still ours: a successor daemon spawned during the drain window

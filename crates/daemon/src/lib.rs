@@ -19,6 +19,8 @@ pub mod handler;
 pub(crate) mod history_text;
 pub mod ipc_client;
 pub(crate) mod llm_keys;
+#[cfg(feature = "langfuse")]
+pub(crate) mod llm_tracing;
 pub(crate) mod logging;
 pub(crate) mod loops;
 pub(crate) mod message_deletion;

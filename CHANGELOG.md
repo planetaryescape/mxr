@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.131](https://github.com/planetaryescape/mxr/compare/v0.6.130...v0.6.131) (2026-10-22)
+
+
+### Features
+
+* doctor shows recent sync durations and repeated errors ([#592](https://github.com/planetaryescape/mxr/issues/592)) ([484169a](https://github.com/planetaryescape/mxr/commit/484169a3a1787adad55daf29fa02fcf3597c640b))
+
 ## [0.6.130](https://github.com/planetaryescape/mxr/compare/v0.6.129...v0.6.130) (2026-10-22)
 
 

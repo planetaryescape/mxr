@@ -121,9 +121,19 @@ fn number_tokens(text: &str) -> Vec<&str> {
         .collect()
 }
 
-/// A number in its comparable form: thousands commas removed, case folded.
+/// A number in its comparable form: thousands commas removed, case folded,
+/// and an ordinal suffix dropped, so "30th" is the number 30. "2pm" keeps its
+/// unit, so it stays apart from "12pm".
 fn number_key(token: &str) -> String {
-    token.replace(',', "").to_lowercase()
+    let key = token.replace(',', "").to_lowercase();
+    for suffix in ["st", "nd", "rd", "th"] {
+        if let Some(digits) = key.strip_suffix(suffix) {
+            if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
+                return digits.to_string();
+            }
+        }
+    }
+    key
 }
 
 #[cfg(test)]
@@ -148,6 +158,18 @@ mod tests {
         assert_eq!(invented_numbers("the 2pm slot", "at 12pm"), vec!["2pm"]);
         assert_eq!(invented_numbers("$45", "$450"), vec!["45"]);
         assert_eq!(invented_numbers("$450", "$45"), vec!["450"]);
+    }
+
+    #[test]
+    fn an_ordinal_is_the_number_it_ends() {
+        assert_eq!(
+            invented_numbers("on the 30th", "Thursday 30 October"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            invented_numbers("the 31st", "Thursday 30 October"),
+            vec!["31st"]
+        );
     }
 
     #[test]

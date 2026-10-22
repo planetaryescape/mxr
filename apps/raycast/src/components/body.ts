@@ -40,6 +40,14 @@ function escapeLine(line: string): string {
 }
 
 /**
+ * Sender-controlled header text (subject, names, file names) on one line,
+ * escaped like body text so it can never become an image, link or heading.
+ */
+export function inline(text: string): string {
+  return escapeLine(text.replace(/\s+/g, " ").trim());
+}
+
+/**
  * Plain text as markdown paragraphs, line breaks kept inside each. Blank
  * lines must stay paragraph breaks: Raycast's arrow keys scroll a detail
  * view a block at a time, so one block per message jumps end to end.

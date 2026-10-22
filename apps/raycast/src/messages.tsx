@@ -17,6 +17,7 @@ export default function Messages() {
   const { data, isLoading, revalidate } = useCachedPromise(getMessages, [account], {
     keepPreviousData: true,
   });
+  useLiveRefresh(revalidate);
   const webBase = useWebBase();
   const search = useMailSearch(account);
   const shown = (rows: MessagesRow[] | undefined) =>
@@ -151,5 +152,4 @@ export default function Messages() {
       <SearchSection search={search} onChange={revalidate} />
     </List>
   );
-  useLiveRefresh(revalidate);
 }

@@ -18,6 +18,7 @@ export default function Now() {
   const { data, isLoading, revalidate } = useCachedPromise(getNow, [account], {
     keepPreviousData: true,
   });
+  useLiveRefresh(revalidate);
   const search = useMailSearch(account);
   const { keep } = search;
   const webBase = useWebBase();
@@ -197,5 +198,4 @@ export default function Now() {
       <SearchSection search={search} onChange={revalidate} />
     </List>
   );
-  useLiveRefresh(revalidate);
 }

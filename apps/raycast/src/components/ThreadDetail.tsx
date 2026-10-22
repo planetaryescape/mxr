@@ -2,7 +2,7 @@ import { Action, ActionPanel, Detail, Icon, Keyboard, Toast, showToast } from "@
 import { useCachedPromise } from "@raycast/utils";
 import { useEffect, useRef } from "react";
 import { type Address, type Thread, getThread, setRead } from "../bridge/mail";
-import { bodyMarkdown } from "./body";
+import { bodyMarkdown, inline } from "./body";
 import { message } from "./previewed";
 import { ReplyForm } from "./ReplyForm";
 import { fullDate } from "./time";
@@ -22,7 +22,7 @@ interface Props {
 }
 
 function people(addresses: Address[] | undefined): string {
-  return (addresses ?? []).map((address) => address.name || address.email).join(", ");
+  return (addresses ?? []).map((address) => inline(address.name || address.email)).join(", ");
 }
 
 function markdown(data: Thread): string {
@@ -33,16 +33,16 @@ function markdown(data: Thread): string {
     const cc = people(entry.cc);
     const attachments = bodies.get(entry.id)?.attachments ?? [];
     return [
-      `## ${entry.sender}`,
+      `## ${inline(entry.sender)}`,
       [`${fullDate(entry.date)}`, to && `To ${to}`, cc && `Cc ${cc}`].filter(Boolean).join(" · "),
       bodyMarkdown(bodies.get(entry.id)),
       attachments.length > 0 &&
-        `**Attachments:** ${attachments.map((attachment) => attachment.filename).join(", ")}`,
+        `**Attachments:** ${attachments.map((attachment) => inline(attachment.filename)).join(", ")}`,
     ]
       .filter(Boolean)
       .join("\n\n");
   });
-  return [`# ${data.thread.subject || "(no subject)"}`, ...messages].join("\n\n---\n\n");
+  return [`# ${inline(data.thread.subject) || "(no subject)"}`, ...messages].join("\n\n---\n\n");
 }
 
 /** Read a conversation in Raycast, newest message first. */

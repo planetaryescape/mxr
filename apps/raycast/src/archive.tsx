@@ -14,6 +14,7 @@ export default function Archive() {
   const { data, isLoading, revalidate } = useCachedPromise(getRecords, [account], {
     keepPreviousData: true,
   });
+  useLiveRefresh(revalidate);
   const webBase = useWebBase();
   const search = useMailSearch(account);
 
@@ -73,5 +74,4 @@ export default function Archive() {
       <SearchSection search={search} onChange={revalidate} />
     </List>
   );
-  useLiveRefresh(revalidate);
 }

@@ -10,14 +10,17 @@
 //! conversation never do.
 
 use super::draft_compose::{draft_in_thread, DraftRequest};
-use super::HandlerResult;
+use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
+use mxr_composer::check::replay_invented_numbers;
 use mxr_core::id::AccountId;
 use mxr_protocol::{DraftEvalCaseData, DraftEvalSummaryData, ResponseData};
 use mxr_relationship::{analyse_habits, clean_for_voice};
 use mxr_store::MyReplySample;
 
 pub(crate) const MAX_EVAL_CASES: u32 = 50;
+const NO_ACCOUNT: &str =
+    "No account is set up. Add one with `mxr accounts add`, or pass --account once one exists.";
 
 pub(super) async fn draft_eval(
     state: &AppState,
@@ -26,7 +29,9 @@ pub(super) async fn draft_eval(
 ) -> HandlerResult {
     let account_id = match account_id {
         Some(id) => id.clone(),
-        None => state.default_account_id(),
+        None => state
+            .default_account_id_opt()
+            .ok_or_else(|| HandlerError::InvalidRequest(NO_ACCOUNT.to_string()))?,
     };
     let limit = limit.clamp(1, MAX_EVAL_CASES);
     // Ask for more than needed: very short or template replies are skipped.
@@ -124,7 +129,7 @@ async fn replay(
             model.clone_from(&used);
             case.draft_words = body.split_whitespace().count() as u32;
             case.placeholders = body.matches("[[?:").count() as u32;
-            case.invented_numbers = invented_numbers(&body, &known);
+            case.invented_numbers = replay_invented_numbers(&body, &known);
             let names: Vec<&str> = Vec::new();
             let mine = analyse_habits(&[case.actual.as_str()], &names);
             let theirs = analyse_habits(&[body.as_str()], &names);
@@ -158,28 +163,6 @@ fn same(left: Option<&str>, right: Option<&str>) -> bool {
         (Some(left), Some(right)) => key(left) == key(right),
         _ => false,
     }
-}
-
-/// Numbers (prices, times, dates, counts) in the draft that the model could
-/// not have seen: not in the conversation it was given.
-fn invented_numbers(draft: &str, known: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for token in
-        draft.split(|c: char| c.is_whitespace() || matches!(c, ';' | '(' | ')' | '!' | '?'))
-    {
-        let token = token.trim_matches(|c: char| !c.is_alphanumeric());
-        if token.is_empty() || !token.chars().any(|c| c.is_ascii_digit()) {
-            continue;
-        }
-        let digits: String = token.chars().filter(char::is_ascii_digit).collect();
-        if !known.contains(token)
-            && !known.contains(&digits)
-            && !out.iter().any(|seen| seen == token)
-        {
-            out.push(token.to_string());
-        }
-    }
-    out
 }
 
 fn summarise(cases: &[DraftEvalCaseData], model: String) -> DraftEvalSummaryData {
@@ -339,11 +322,14 @@ mod tests {
         );
     }
 
-    #[test]
-    fn numbers_the_model_could_not_have_seen() {
-        let known = "Can we meet on the 14th at 3pm? Budget is $4,000.";
-        let draft = "Yes, the 14th at 3pm works. I can do $5,000 and 20 seats.";
-        assert_eq!(invented_numbers(draft, known), vec!["5,000", "20"]);
+    #[tokio::test]
+    async fn replaying_my_replies_with_no_account_is_a_clear_error() {
+        let state = AppState::in_memory_without_accounts().await.unwrap();
+        let error = draft_eval(&state, None, 5).await.unwrap_err();
+        assert!(
+            error.to_string().contains("No account is set up"),
+            "{error}"
+        );
     }
 
     #[test]

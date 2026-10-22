@@ -348,7 +348,7 @@ pub(crate) fn target_words(
 }
 
 /// Room for the draft plus a reasoning model's thinking.
-fn max_tokens_for_words(words: u32) -> u32 {
+pub(crate) fn max_tokens_for_words(words: u32) -> u32 {
     (words * 3 + 400).clamp(600, 2_000)
 }
 
@@ -388,7 +388,7 @@ fn context_note(
 
 /// Complete, and when the model stops for length, try once more with more
 /// room: a cut-off email is worse than a slow one.
-async fn complete_with_retry(
+pub(crate) async fn complete_with_retry(
     llm: &PinnedLlm,
     prompt: &draft_prompt::Prompt,
     max_tokens: u32,

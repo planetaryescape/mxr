@@ -2377,6 +2377,14 @@ pub enum ClassifyAction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum DraftEvalSetArg {
+    /// Your most recent replies, replayed.
+    Mine,
+    /// The labelled compose corpus, graded check by check.
+    Quick,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum ClassifySetArg {
     /// The labelled demo mail and every near-miss twin.
     Quick,
@@ -2402,14 +2410,21 @@ pub enum DraftAction {
         #[arg(long = "add-context")]
         add_context: Option<String>,
     },
-    /// Replay your most recent replies: draft each one from what was known
-    /// just before you replied and compare it with what you sent (greeting,
-    /// sign-off, length, invented numbers). Calls your LLM once per reply;
-    /// nothing is saved or sent. Uses --account when given.
+    /// Measure drafting with your LLM. Nothing is saved or sent.
+    ///
+    /// With --set mine (the default), replay your most recent replies: draft each one from
+    /// what was known just before you replied and compare it with what you sent
+    /// (greeting, sign-off, length, invented numbers). With --set quick, draft
+    /// each labelled compose case and grade it against what that case required
+    /// (kept sentences, answers, gaps, invented numbers, length, leftovers).
+    /// Calls your LLM once per case. Uses --account with --set mine.
     Eval {
-        /// How many replies to replay (at most 50).
+        /// How many replies to replay, at most 50 (--set mine only).
         #[arg(long, default_value_t = 10)]
         limit: u32,
+        /// Which cases to draft.
+        #[arg(long, value_enum, default_value_t = DraftEvalSetArg::Mine)]
+        set: DraftEvalSetArg,
     },
 }
 

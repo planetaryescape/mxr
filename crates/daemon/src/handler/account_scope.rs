@@ -487,8 +487,10 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::GetRule {rule} | Request::GetRuleForm {rule} => Targets(vec![T::Rule(rule)]),
 
         // ----- Every account, or daemon-wide data that mixes them -----
+        // Quick drafts a fixed corpus, so it reads no account's mail.
         Request::ListAccounts
         | Request::ListAccountsConfig
+        | Request::DraftEvalQuick
         | Request::CreateCategory { .. }
         | Request::PreviewCategoryName { .. }
         | Request::RenameCategory { .. }

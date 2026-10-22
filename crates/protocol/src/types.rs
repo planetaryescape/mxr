@@ -1570,6 +1570,12 @@ pub enum Request {
         account_id: Option<AccountId>,
         limit: u32,
     },
+    /// Draft the labelled compose corpus with the configured LLM and grade
+    /// each draft against what its case required. Nothing is saved or sent.
+    /// A separate request, not a field on `DraftEval`: a daemon that predates
+    /// it rejects the unknown command, instead of ignoring a field and
+    /// replaying the user's own mail.
+    DraftEvalQuick,
     /// Measure today's classifier against labelled scenarios in the stored
     /// mail: who sent it, which mode it went to, and whether it made a
     /// to-do or a record. Local; nothing is changed or sent.
@@ -2957,6 +2963,7 @@ impl Request {
             | Self::DraftCompose { .. }
             | Self::DraftRefine { .. }
             | Self::DraftEval { .. }
+            | Self::DraftEvalQuick
             | Self::ClassifyEval { .. }
             | Self::PrepareReply { .. }
             | Self::PrepareForward { .. }
@@ -3784,6 +3791,12 @@ pub enum ResponseData {
         cases: Vec<DraftEvalCaseData>,
         summary: DraftEvalSummaryData,
     },
+    /// Returned by `Request::DraftEvalQuick`: the labelled synthetic corpus
+    /// only, never the user's mail.
+    DraftEvalQuick {
+        cases: Vec<DraftEvalQuickCaseData>,
+        summary: DraftEvalQuickSummaryData,
+    },
     /// Returned by `Request::ClassifyEval`. Mismatches are sorted by
     /// scenario, then provider id, then question.
     ClassifyEval {
@@ -4600,6 +4613,7 @@ impl ResponseData {
             | Self::TriageResults { .. }
             | Self::DraftSuggestion { .. }
             | Self::DraftEval { .. }
+            | Self::DraftEvalQuick { .. }
             | Self::ClassifyEval { .. }
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }

@@ -6913,6 +6913,55 @@ export interface components {
             /** @description Both close the same way (or neither signs off). */
             sign_off_match: boolean;
         };
+        /** @description Passes and evaluations for one check across the set. */
+        DraftEvalCheckCountData: {
+            check: string;
+            /** Format: int32 */
+            evaluated: number;
+            /** Format: int32 */
+            passed: number;
+        };
+        /** @description One check on one draft: what it required and what the draft did. */
+        DraftEvalCheckData: {
+            /** @description `kept`, `answers`, `gaps`, `invented`, `length` or `leftovers`. */
+            check: string;
+            detail: string;
+            pass: boolean;
+            requirement: string;
+        };
+        /** @description One corpus case drafted by the configured model and graded. */
+        DraftEvalQuickCaseData: {
+            checks: components["schemas"]["DraftEvalCheckData"][];
+            description: string;
+            /** @description The draft the user would see, after clean-up. */
+            draft: string;
+            error?: string | null;
+            id: string;
+            /**
+             * Format: int32
+             * @description Humanizer score: 100 reads plain, lower reads more like a model wrote it.
+             *     Reported, not graded.
+             */
+            style_score: number;
+            /** Format: int32 */
+            words: number;
+        };
+        DraftEvalQuickSummaryData: {
+            /** Format: int32 */
+            cases: number;
+            checks: components["schemas"]["DraftEvalCheckCountData"][];
+            /**
+             * Format: int32
+             * @description Cases the model failed to draft; they are not graded.
+             */
+            errors: number;
+            model: string;
+            /**
+             * Format: double
+             * @description Mean style score over the drafted cases (0 when none drafted).
+             */
+            style_mean: number;
+        };
         DraftEvalSummaryData: {
             /** Format: int32 */
             cases: number;
@@ -11190,6 +11239,10 @@ export interface components {
                   limit: number;
               }
             | {
+                  /** @enum {string} */
+                  cmd: "DraftEvalQuick";
+              }
+            | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "ClassifyEval";
@@ -12615,6 +12668,12 @@ export interface components {
                   /** @enum {string} */
                   kind: "DraftEval";
                   summary: components["schemas"]["DraftEvalSummaryData"];
+              }
+            | {
+                  cases: components["schemas"]["DraftEvalQuickCaseData"][];
+                  /** @enum {string} */
+                  kind: "DraftEvalQuick";
+                  summary: components["schemas"]["DraftEvalQuickSummaryData"];
               }
             | {
                   /** @enum {string} */

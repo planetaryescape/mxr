@@ -4408,6 +4408,7 @@ dependencies = [
  "mxr-async-imap",
  "mxr-client",
  "mxr-compose",
+ "mxr-composer",
  "mxr-config",
  "mxr-core",
  "mxr-deliveries",
@@ -4575,6 +4576,13 @@ dependencies = [
  "url",
  "utoipa",
  "uuid",
+]
+
+[[package]]
+name = "mxr-composer"
+version = "0.6.148"
+dependencies = [
+ "mxr-humanizer",
 ]
 
 [[package]]

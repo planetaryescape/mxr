@@ -2438,4 +2438,42 @@ mod tests {
         let back: AccountIdentityData = serde_json::from_value(json).unwrap();
         assert_eq!(back, identity);
     }
+
+    /// Mine is the request every older daemon already understands. Its JSON
+    /// must not change, so a new CLI and an old daemon agree on it.
+    #[test]
+    fn legacy_draft_eval_json_round_trips_unchanged() {
+        let wire = r#"{"cmd":"DraftEval","limit":10}"#;
+        let request: Request = serde_json::from_str(wire).unwrap();
+        assert!(matches!(
+            request,
+            Request::DraftEval {
+                account_id: None,
+                limit: 10
+            }
+        ));
+        assert_eq!(
+            serde_json::to_value(&request).unwrap(),
+            serde_json::from_str::<serde_json::Value>(wire).unwrap()
+        );
+    }
+
+    /// Quick is a command of its own. A daemon that predates it fails to decode
+    /// the command, so it never reads a `set` flag as "replay mine".
+    #[test]
+    fn quick_draft_eval_is_a_separate_command() {
+        let wire = serde_json::to_value(Request::DraftEvalQuick).unwrap();
+        assert_eq!(wire, serde_json::json!({"cmd": "DraftEvalQuick"}));
+        #[derive(serde::Deserialize)]
+        #[serde(tag = "cmd")]
+        #[expect(dead_code, reason = "only that the command fails to decode is checked")]
+        enum PreQuickRequest {
+            DraftEval {
+                #[serde(default)]
+                account_id: Option<AccountId>,
+                limit: u32,
+            },
+        }
+        assert!(serde_json::from_value::<PreQuickRequest>(wire).is_err());
+    }
 }

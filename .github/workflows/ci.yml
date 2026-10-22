@@ -438,11 +438,18 @@ jobs:
       github.event_name != 'pull_request' &&
       (needs.changes.outputs.apps_web == 'true' || needs.changes.outputs.expensive == 'true')
     timeout-minutes: 15
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: sccache
     defaults:
       run:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v7
+      # This runner is the developer's Mac; keep the job off their toolchain.
+      - uses: ./.github/actions/self-hosted-rust-home
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.11
       - uses: actions/setup-node@v7
         with:
           node-version: 24

@@ -53,7 +53,6 @@ const SCOPES: Record<ActionScope, true> = {
   reader: true,
   screener: true,
   focus: true,
-  place: true,
   todo: true,
   catchup: true,
   expired: true,

@@ -35,7 +35,6 @@ const SCOPE_TITLE: Record<Exclude<ActionScope, "global">, string> = {
   sidebar: "Sidebar",
   screener: "Screener",
   focus: "Focus & reply",
-  place: "Places",
   todo: "To do",
   catchup: "To do: catch-up",
   expired: "To do: Expired list",

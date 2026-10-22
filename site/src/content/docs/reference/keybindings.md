@@ -743,22 +743,6 @@ One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out o
 | `r` | Back to the reply |  |
 | `Esc` | Leave focus mode |  |
 
-### Reading and Paper trail
-
-Bundles of mail that isn't from people. The reader keeps its own keys.
-
-| Key | Action | Note |
-|-----|--------|------|
-| `j`, `ArrowDown` | Next |  |
-| `k`, `ArrowUp` | Previous |  |
-| `Enter`, `o` | Open, or expand a bundle |  |
-| `e` | Done here: let go of this in Updates or Reading |  |
-| `p` | Pin or unpin (a sweep leaves pins) |  |
-| `S` | Sweep this sender's bundle… | Previews the daemon's dry run first; undo afterwards |
-| `A` | Sweep the whole place… | Everything unpinned here; previews first and opens on Cancel (Tab, then Enter) |
-| `K` | Move sender to… | In the reader K is the previous message; use the palette or the line under the thread |
-| `D` | Unsubscribe… |  |
-
 ### Reading edition
 
 Newsletters as an edition. `b`, `e`, `D` and `A` work on the item or link under the cursor; `D` and `A` preview first.

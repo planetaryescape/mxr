@@ -1444,4 +1444,3 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 **Why**: Gmail's `b` snoozes, so a Gmail habit put mail on the wrong shelf; one verb with Later as its first option keeps both outcomes one or two keys away (BK, 2026-10-22).
 
 **Trade-offs accepted**: Snoozing takes a second key (`b` then a time) where `Z` used to open the same picker; `Z` habits are relearned.
-||||||| Stash base

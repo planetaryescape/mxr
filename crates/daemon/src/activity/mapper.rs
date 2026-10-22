@@ -43,6 +43,10 @@ pub fn map_request(
     if !response_ok {
         return None;
     }
+    // A preview changes nothing, so it is not an activity.
+    if matches!(req, Request::SetAccountIdentity { dry_run: true, .. }) {
+        return None;
+    }
     let now = current_unix_ms();
 
     macro_rules! skip_activity {
@@ -1194,6 +1198,18 @@ mod tests {
             }),
             is_default: false,
         }
+    }
+
+    #[test]
+    fn identity_dry_runs_are_not_recorded_but_real_edits_are() {
+        let request = |dry_run| Request::SetAccountIdentity {
+            key: "work".into(),
+            color: None,
+            tag: Some("W".into()),
+            dry_run,
+        };
+        assert!(map_request(&request(true), ClientKind::Cli, None, true).is_none());
+        assert!(map_request(&request(false), ClientKind::Cli, None, true).is_some());
     }
 
     #[test]

@@ -151,21 +151,30 @@ pub fn tag_clash<'a>(
         .find(|other| other.identity.tag == tag || other.stored_tag == tag)
 }
 
+/// The refusal for a tag another account holds. A caller whose allowlist does
+/// not cover that account is not told its name, since the name could leak it.
+pub fn clash_message(tag: &str, clash: &ResolvedIdentity, reveal_holder: bool) -> String {
+    if reveal_holder {
+        format!("Tag '{tag}' is already used by account '{}'.", clash.name)
+    } else {
+        format!("Tag '{tag}' is already used by another account.")
+    }
+}
+
 /// Checks a requested colour and tag for one account and returns the identity
 /// before and after. `others` are the other accounts. A dry run and the real
-/// write both call this, so they agree.
+/// write both call this, so they agree. `reveal_holder` is false for a scoped
+/// caller.
 pub fn plan_identity_change(
     current: &ResolvedIdentity,
     color: Option<AccountColor>,
     tag: Option<&str>,
     others: &[ResolvedIdentity],
+    reveal_holder: bool,
 ) -> Result<(AccountIdentityData, AccountIdentityData), String> {
     if let Some(tag) = tag {
         if let Some(clash) = tag_clash(others, tag) {
-            return Err(format!(
-                "Tag '{tag}' is already used by account '{}'.",
-                clash.name
-            ));
+            return Err(clash_message(tag, clash, reveal_holder));
         }
     }
     let after = AccountIdentityData {
@@ -409,14 +418,51 @@ mod tests {
             },
             stored_tag: "WE".into(),
         };
-        let error = plan_identity_change(&wedding, None, Some("W"), std::slice::from_ref(&work))
-            .unwrap_err();
+        let error =
+            plan_identity_change(&wedding, None, Some("W"), std::slice::from_ref(&work), true)
+                .unwrap_err();
         assert_eq!(error, "Tag 'W' is already used by account 'Work'.");
         let (before, after) =
-            plan_identity_change(&wedding, Some(AccountColor::Green), None, &[work]).unwrap();
+            plan_identity_change(&wedding, Some(AccountColor::Green), None, &[work], true).unwrap();
         assert_eq!(before.color, AccountColor::Amber);
         assert_eq!(after.color, AccountColor::Green);
         assert_eq!(after.tag, "WE");
+    }
+
+    #[test]
+    fn a_scoped_caller_is_not_told_which_account_holds_the_tag() {
+        let work = ResolvedIdentity {
+            account_id: AccountId::new(),
+            name: "Work".into(),
+            identity: AccountIdentityData {
+                color: AccountColor::Sky,
+                tag: "W".into(),
+            },
+            stored_tag: "W".into(),
+        };
+        let wedding = ResolvedIdentity {
+            account_id: AccountId::new(),
+            name: "Wedding".into(),
+            identity: AccountIdentityData {
+                color: AccountColor::Amber,
+                tag: "WE".into(),
+            },
+            stored_tag: "WE".into(),
+        };
+        let error = plan_identity_change(
+            &wedding,
+            None,
+            Some("W"),
+            std::slice::from_ref(&work),
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(error, "Tag 'W' is already used by another account.");
+        assert!(!error.contains("Work"), "{error}");
+        assert_eq!(
+            clash_message("W", &work, true),
+            "Tag 'W' is already used by account 'Work'."
+        );
     }
 
     #[test]

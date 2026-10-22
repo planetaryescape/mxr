@@ -321,7 +321,8 @@ pub(super) async fn complete_auth_session(
     }
 
     if save_account {
-        let result = upsert_account_config(state, account).await;
+        // The auth flow does not carry the caller, so it never names a holder.
+        let result = upsert_account_config(state, account, false).await;
         update_session(&status, |session| {
             if result.ok {
                 session.message = Some(result.summary.clone());

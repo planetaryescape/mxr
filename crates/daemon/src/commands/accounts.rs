@@ -265,10 +265,19 @@ async fn client() -> anyhow::Result<IpcClient> {
 
 async fn list_accounts(format: Option<OutputFormat>) -> anyhow::Result<()> {
     let accounts = account_configs().await?;
-    let identities = account_identities().await?;
+    let summaries_by_key = account_identities().await?;
     let summaries: Vec<AccountSummaryRow> = accounts
         .iter()
-        .map(|account| AccountSummaryRow::new(account, identity_for(&identities, &account.key)))
+        .map(|account| {
+            let found = summaries_by_key
+                .iter()
+                .find(|(key, _, _)| key == &account.key);
+            AccountSummaryRow::new(
+                account,
+                found.map(|(_, id, _)| id.clone()),
+                found.map(|(_, _, identity)| identity.clone()),
+            )
+        })
         .collect();
 
     match resolve_format(format) {
@@ -334,11 +343,17 @@ struct AccountSummaryRow {
     sync: &'static str,
     send: &'static str,
     enabled: bool,
+    /// The id mail rows carry as `account_id`, so scripts can join the two.
+    account_id: Option<AccountId>,
     identity: Option<AccountIdentityData>,
 }
 
 impl AccountSummaryRow {
-    fn new(account: &AccountConfigData, identity: Option<AccountIdentityData>) -> Self {
+    fn new(
+        account: &AccountConfigData,
+        account_id: Option<AccountId>,
+        identity: Option<AccountIdentityData>,
+    ) -> Self {
         Self {
             key: account.key.clone(),
             name: account.name.clone(),
@@ -346,18 +361,19 @@ impl AccountSummaryRow {
             sync: describe_sync_data(account.sync.as_ref()),
             send: describe_send_data(account.send.as_ref()),
             enabled: account.enabled,
+            account_id,
             identity,
         }
     }
 }
 
-/// The daemon's resolved identities, keyed by account key. Accounts it does
-/// not report, or an older daemon, have no entry.
-async fn account_identities() -> anyhow::Result<Vec<(String, AccountIdentityData)>> {
+/// Each account's key, id and resolved identity, from the daemon. An account
+/// without an identity (an older daemon) is left out.
+async fn account_identities() -> anyhow::Result<Vec<(String, AccountId, AccountIdentityData)>> {
     Ok(account_summaries()
         .await?
         .into_iter()
-        .filter_map(|summary| Some((summary.key?, summary.identity?)))
+        .filter_map(|summary| Some((summary.key?, summary.account_id, summary.identity?)))
         .collect())
 }
 
@@ -370,16 +386,6 @@ async fn account_summaries() -> anyhow::Result<Vec<AccountSummaryData>> {
         Response::Error { message, .. } => anyhow::bail!(message),
         other => anyhow::bail!("Unexpected accounts response: {other:?}"),
     }
-}
-
-fn identity_for(
-    identities: &[(String, AccountIdentityData)],
-    key: &str,
-) -> Option<AccountIdentityData> {
-    identities
-        .iter()
-        .find(|(candidate, _)| candidate == key)
-        .map(|(_, identity)| identity.clone())
 }
 
 fn identity_columns(identity: Option<&AccountIdentityData>) -> (String, String) {

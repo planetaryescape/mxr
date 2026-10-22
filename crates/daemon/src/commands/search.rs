@@ -38,7 +38,7 @@ pub async fn run(
     if triage {
         let payload =
             request_triage(&mut client, query, account_id, limit.unwrap_or(50), mode).await?;
-        return render_triage(payload, &mut client, format, None, None).await;
+        return render_triage(payload, &mut client, format, None, None, account.is_some()).await;
     }
     if let Some(group_by) = group_by {
         let resp = client

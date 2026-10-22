@@ -983,13 +983,8 @@ impl AppState {
             let acct_config = &config.accounts[key];
             let provider_kind = sync_provider_kind(acct_config.sync.as_ref());
             let send_kind = send_provider_kind(acct_config.send.as_ref());
-            let account_id = AccountId::from_provider_id(
-                provider_kind
-                    .clone()
-                    .or_else(|| send_kind.clone())
-                    .map_or("account", provider_kind_name),
-                &acct_config.email,
-            );
+            // The same id as the identity resolver and the config views use.
+            let account_id = crate::handler::config_account_id(key, acct_config);
 
             let account = Account {
                 id: account_id.clone(),
@@ -1293,6 +1288,13 @@ impl AppState {
             }
         }
 
+        for warning in &config.identity_warnings {
+            tracing::warn!(
+                account = %warning.key,
+                "ignoring this account's colour or tag override; the stored value is used: {}",
+                warning.message
+            );
+        }
         match crate::account_identity::resolve_from_store(store, config).await {
             Ok(resolution) => crate::account_identity::log_conflicts(&resolution.conflicts),
             Err(error) => tracing::error!(%error, "could not resolve account colours and tags"),
@@ -2629,17 +2631,6 @@ fn send_provider_kind(send: Option<&mxr_config::SendProviderConfig>) -> Option<P
     }
 }
 
-fn provider_kind_name(kind: ProviderKind) -> &'static str {
-    match kind {
-        ProviderKind::Gmail => "gmail",
-        ProviderKind::Imap => "imap",
-        ProviderKind::Smtp => "smtp",
-        ProviderKind::OutlookPersonal => "outlook",
-        ProviderKind::OutlookWork => "outlook-work",
-        ProviderKind::Fake => "fake",
-    }
-}
-
 /// The one rule for an account's owned addresses: the `accounts` row's email
 /// is always primary, and every `account_addresses` row is an owned alias.
 /// Reads committed store data, so a send, a handler check and the sync
@@ -2716,6 +2707,40 @@ mod tests {
             .acquire_attachment_materialization(&other_message, &other_attachment)
             .await;
         assert_eq!(state.attachment_materialization_locks.lock().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_config_account_without_a_provider_gets_the_id_its_identity_is_shown_under() {
+        // Drives the real startup path. Before the fix startup used a different
+        // id for a provider-less account, so the resolver saw two accounts.
+        let store = Store::in_memory().await.unwrap();
+        let mut config = mxr_config::MxrConfig::default();
+        config.accounts.insert(
+            "work".into(),
+            mxr_config::AccountConfig {
+                name: "Work".into(),
+                email: "bk@work.example".into(),
+                enabled: true,
+                sync: None,
+                send: None,
+                color: None,
+                tag: None,
+            },
+        );
+        AppState::create_providers_from_config(&config, &store)
+            .await
+            .unwrap();
+
+        let rows = store.list_account_identity_slots().await.unwrap();
+        assert_eq!(rows.len(), 1, "startup must write exactly one row");
+        let resolution = crate::account_identity::resolve_from_store(&store, &config)
+            .await
+            .unwrap();
+        assert_eq!(resolution.resolved.len(), 1);
+        let shown = &resolution.resolved[0];
+        assert_eq!(shown.account_id, rows[0].account_id);
+        assert_eq!(shown.identity.color, mxr_core::AccountColor::Sky);
+        assert_eq!(shown.identity.tag, "W");
     }
 
     fn imap_smtp_config(default_account: &str) -> mxr_config::MxrConfig {

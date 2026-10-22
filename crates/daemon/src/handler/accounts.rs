@@ -30,9 +30,10 @@ pub(super) async fn authorize_account(
 pub(super) async fn upsert_account(
     state: &Arc<AppState>,
     account: AccountConfigData,
+    reveal_holder: bool,
 ) -> HandlerResult {
     Ok(ResponseData::AccountOperation {
-        result: upsert_account_config(state, account).await,
+        result: upsert_account_config(state, account, reveal_holder).await,
     })
 }
 

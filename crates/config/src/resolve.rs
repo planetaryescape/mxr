@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::types::{AccountConfig, MxrConfig};
+use crate::types::{AccountConfig, IdentityWarning, MxrConfig};
 
 pub const PROD_INSTANCE_NAME: &str = "mxr";
 pub const DEV_INSTANCE_NAME: &str = "mxr-dev";
@@ -585,50 +585,74 @@ pub fn load_config_from_str(toml_str: &str) -> Result<MxrConfig, ConfigError> {
         path: PathBuf::from("<string>"),
         source: e,
     })?;
-    validate_account_identities(&mut config.accounts)?;
+    config.identity_warnings = sanitize_account_identities(&mut config.accounts);
     Ok(config)
 }
 
-/// Checks every configured tag and normalises it to uppercase. Two accounts
-/// cannot share a configured tag. The error names the one that got there first
-/// in key order. Tags derived from names are not checked here: the daemon
-/// derives those around the configured ones.
-pub fn validate_account_identities(
+/// Checks the colour and tag overrides and normalises tags to uppercase. Each
+/// override that fails is cleared and reported, so an identity problem never
+/// stops the rest of the config from loading. A colour that is not a slot
+/// name, a tag that is not 1 to 3 letters or digits, or a tag a sorted-earlier
+/// account already holds: the account keeps its stored value.
+pub fn sanitize_account_identities(
     accounts: &mut HashMap<String, AccountConfig>,
-) -> Result<(), ConfigError> {
+) -> Vec<IdentityWarning> {
     let mut keys: Vec<String> = accounts.keys().cloned().collect();
     keys.sort();
     let mut holders: HashMap<String, String> = HashMap::new();
+    let mut warnings = Vec::new();
     for key in keys {
         let Some(account) = accounts.get_mut(&key) else {
             continue;
         };
-        if let Some(raw_color) = &account.color {
-            raw_color
-                .parse::<mxr_core::AccountColor>()
-                .map_err(|error| ConfigError::AccountIdentity {
+        if let Some(raw_color) = account.color.clone() {
+            if let Err(error) = raw_color.parse::<mxr_core::AccountColor>() {
+                warnings.push(IdentityWarning {
                     key: key.clone(),
                     message: error.to_string(),
-                })?;
+                });
+                account.color = None;
+            }
         }
         let Some(raw_tag) = account.tag.take() else {
             continue;
         };
-        let tag = mxr_core::parse_account_tag(&raw_tag).map_err(|error| {
-            ConfigError::AccountIdentity {
-                key: key.clone(),
-                message: error.to_string(),
+        let tag = match mxr_core::parse_account_tag(&raw_tag) {
+            Ok(tag) => tag,
+            Err(error) => {
+                warnings.push(IdentityWarning {
+                    key,
+                    message: error.to_string(),
+                });
+                continue;
             }
-        })?;
+        };
         if let Some(holder) = holders.get(&tag) {
-            return Err(ConfigError::AccountIdentity {
-                key: key.clone(),
+            warnings.push(IdentityWarning {
+                key,
                 message: format!("tag '{tag}' is already set on account '{holder}'"),
             });
+            continue;
         }
         holders.insert(tag.clone(), key.clone());
         account.tag = Some(tag);
     }
+    warnings
+}
+
+/// The strict check, for writes: the first problem is an error, and nothing is
+/// changed. Loading uses `sanitize_account_identities`, which keeps going.
+pub fn validate_account_identities(
+    accounts: &mut HashMap<String, AccountConfig>,
+) -> Result<(), ConfigError> {
+    let mut checked = accounts.clone();
+    if let Some(first) = sanitize_account_identities(&mut checked).into_iter().next() {
+        return Err(ConfigError::AccountIdentity {
+            key: first.key,
+            message: first.message,
+        });
+    }
+    *accounts = checked;
     Ok(())
 }
 

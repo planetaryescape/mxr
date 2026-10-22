@@ -11,12 +11,24 @@ pub enum GmailCredentialSource {
     Custom,
 }
 
+/// An account's colour or tag override that config load dropped. The account
+/// keeps its stored value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentityWarning {
+    pub key: String,
+    pub message: String,
+}
+
 /// Top-level mxr configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MxrConfig {
     pub general: GeneralConfig,
     pub accounts: HashMap<String, AccountConfig>,
+    /// Identity overrides dropped at load, each with its reason. Never written
+    /// back to the file.
+    #[serde(skip)]
+    pub identity_warnings: Vec<IdentityWarning>,
     #[serde(alias = "agents", alias = "agent")]
     pub agent_surfaces: AgentSurfaceConfig,
     pub render: RenderConfig,

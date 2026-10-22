@@ -332,6 +332,7 @@ async fn runway(
     account_id: Option<AccountId>,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
+    let scoped = account_id.is_some();
     let runway = expect_data!(
         client
             .request(Request::GetTodoRunway {
@@ -355,7 +356,8 @@ async fn runway(
             Ok(())
         }
         _ => {
-            print!("{}", terminal_block(&runway_text(&runway)));
+            let marks = AccountMarks::marks_for(client, true, scoped).await?;
+            print!("{}", terminal_block(&runway_text(&runway, &marks)));
             Ok(())
         }
     }
@@ -537,7 +539,13 @@ fn row(out: &mut String, todo: &TodoData, indent: &str) {
     let _ = writeln!(out, "{indent}            {}", todo.why);
 }
 
-fn runway_text(runway: &TodoRunwayData) -> String {
+/// One runway row, with the account mark in front of it.
+fn push_row(out: &mut String, todo: &TodoData, indent: &str, marks: &AccountMarks) {
+    out.push_str(&marks.prefix(&todo.account_id));
+    row(out, todo, indent);
+}
+
+fn runway_text(runway: &TodoRunwayData, marks: &AccountMarks) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "To do: {}", runway.header);
     if !runway.first_run.complete {
@@ -560,7 +568,7 @@ fn runway_text(runway: &TodoRunwayData) -> String {
         let _ = writeln!(out, "{}", runway.headline);
         out.push_str("\nNOW\n");
         for todo in &runway.now {
-            row(&mut out, todo, "");
+            push_row(&mut out, todo, "", marks);
         }
     }
     if !runway.coming_up.is_empty() {
@@ -568,20 +576,20 @@ fn runway_text(runway: &TodoRunwayData) -> String {
         for week in &runway.coming_up {
             let _ = writeln!(out, "  {}", week.label);
             for todo in &week.todos {
-                row(&mut out, todo, "  ");
+                push_row(&mut out, todo, "  ", marks);
             }
         }
     }
     if !runway.later.is_empty() {
         let _ = writeln!(out, "\nLATER ({})", runway.later.len());
         for todo in &runway.later {
-            row(&mut out, todo, "");
+            push_row(&mut out, todo, "", marks);
         }
     }
     if !runway.whenever.is_empty() {
         let _ = writeln!(out, "\nWHENEVER ({})", runway.whenever.len());
         for todo in &runway.whenever {
-            row(&mut out, todo, "");
+            push_row(&mut out, todo, "", marks);
         }
     }
     if !runway.done_this_week.is_empty() {

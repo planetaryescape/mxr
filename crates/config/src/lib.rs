@@ -607,37 +607,56 @@ use_tls = true
     }
 
     #[test]
-    fn unknown_colour_is_a_config_error_that_lists_the_slots() {
-        let error = load_config_from_str(&identity_config("color = \"teal\"", ""))
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("account 'work'"), "{error}");
-        assert!(error.contains("'teal'"), "{error}");
-        let detail = match load_config_from_str(&identity_config("color = \"teal\"", "")) {
-            Err(ConfigError::AccountIdentity { message, .. }) => message,
-            other => panic!("expected an identity error, got {other:?}"),
-        };
-        assert!(detail.contains("sky, amber, green"), "{detail}");
-    }
-
-    #[test]
-    fn a_tag_longer_than_three_characters_is_refused() {
-        let error = load_config_from_str(&identity_config("tag = \"WORK\"", ""))
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("1 to 3"), "{error}");
-    }
-
-    #[test]
-    fn a_duplicate_configured_tag_names_the_account_that_holds_it() {
-        let error = load_config_from_str(&identity_config("tag = \"W\"", "tag = \"w\""))
-            .unwrap_err()
-            .to_string();
-        // Keys are checked in sorted order, so "wedding" holds the tag first and
-        // "work" is the account refused.
+    fn an_unknown_colour_drops_only_that_override_and_loads_every_account() {
+        let config =
+            load_config_from_str(&identity_config("color = \"teal\"", "color = \"amber\""))
+                .expect("an identity problem must not fail the whole config");
+        assert_eq!(config.accounts.len(), 2);
+        assert_eq!(config.accounts["work"].color, None);
+        assert_eq!(config.accounts["wedding"].color.as_deref(), Some("amber"));
+        assert_eq!(config.identity_warnings.len(), 1);
+        let warning = &config.identity_warnings[0];
+        assert_eq!(warning.key, "work");
+        assert!(warning.message.contains("'teal'"), "{}", warning.message);
         assert!(
-            error.contains("account 'work'") && error.contains("already set on account 'wedding'"),
-            "{error}"
+            warning.message.contains("sky, amber, green"),
+            "{}",
+            warning.message
         );
+    }
+
+    #[test]
+    fn a_bad_tag_drops_only_that_override() {
+        let config =
+            load_config_from_str(&identity_config("tag = \"WORK\"", "tag = \"WE\"")).expect("load");
+        assert_eq!(config.accounts["work"].tag, None);
+        assert_eq!(config.accounts["wedding"].tag.as_deref(), Some("WE"));
+        assert_eq!(config.identity_warnings.len(), 1);
+        assert!(config.identity_warnings[0].message.contains("1 to 3"));
+    }
+
+    #[test]
+    fn a_duplicate_configured_tag_drops_the_later_account_override() {
+        // Keys are checked in sorted order, so "wedding" holds W and "work" is
+        // the one whose override is dropped.
+        let config =
+            load_config_from_str(&identity_config("tag = \"W\"", "tag = \"w\"")).expect("load");
+        assert_eq!(config.accounts["wedding"].tag.as_deref(), Some("W"));
+        assert_eq!(config.accounts["work"].tag, None);
+        let warning = &config.identity_warnings[0];
+        assert_eq!(warning.key, "work");
+        assert!(
+            warning.message.contains("already set on account 'wedding'"),
+            "{}",
+            warning.message
+        );
+    }
+
+    #[test]
+    fn the_strict_check_still_refuses_a_bad_colour_for_writes() {
+        let mut config = load_config_from_str(&identity_config("", "")).expect("load");
+        config.accounts.get_mut("work").unwrap().color = Some("teal".into());
+        let error = validate_account_identities(&mut config.accounts).unwrap_err();
+        assert!(error.to_string().contains("'teal'"), "{error}");
     }
 }

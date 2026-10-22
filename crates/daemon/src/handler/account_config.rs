@@ -191,6 +191,7 @@ pub(crate) fn list_account_configs() -> Result<Vec<AccountConfigData>, String> {
 pub(super) async fn upsert_account_config(
     state: &Arc<AppState>,
     account: AccountConfigData,
+    reveal_holder: bool,
 ) -> AccountOperationResult {
     // A tag is refused when another account already shows it or stores it.
     // The account's own tag is not a clash.
@@ -231,7 +232,7 @@ pub(super) async fn upsert_account_config(
             .iter()
             .filter(|other| Some(&other.account_id) != existing_id.as_ref());
         if let Some(clash) = crate::account_identity::tag_clash(others, &tag) {
-            let message = format!("Tag '{tag}' is already used by account '{}'.", clash.name);
+            let message = crate::account_identity::clash_message(&tag, clash, reveal_holder);
             return account_operation_result(
                 false,
                 format!("Failed to save account '{}'.", account.key),
@@ -331,6 +332,7 @@ pub(super) async fn set_account_identity(
     color: Option<mxr_core::AccountColor>,
     tag: Option<&str>,
     dry_run: bool,
+    reveal_holder: bool,
 ) -> AccountOperationResult {
     let fail = |message: String| {
         account_operation_result(
@@ -376,6 +378,7 @@ pub(super) async fn set_account_identity(
         color,
         tag.as_deref(),
         &others,
+        reveal_holder,
     ) {
         Ok(plan) => plan,
         Err(message) => return fail(message),

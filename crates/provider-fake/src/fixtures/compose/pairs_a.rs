@@ -381,7 +381,10 @@ pub(super) const CASES: &[Case] = &[
         draft: DraftState::Empty,
         instruction: "thank her for sending it, warm, I'll read it properly Monday",
         expect: expect(MONDAY, &[], (8, 60)),
-        recorded: &[],
+        recorded: &[Recording {
+            name: "good",
+            text: "Sure, thanks for the draft roadmap. I will read it properly on Monday.\n\nAlex",
+        }],
     },
     Case {
         id: "shorter-selection",

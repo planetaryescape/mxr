@@ -132,7 +132,10 @@ pub(super) const CASES: &[Case] = &[
         draft: DraftState::Typed("Paid today, thanks."),
         instruction: "",
         expect: expect(PAID, &[], (3, 30)),
-        recorded: &[],
+        recorded: &[Recording {
+            name: "good",
+            text: "Hi Priya,\n\nPaid today, thanks. The £1,200.00 is on its way.\n\nAlex",
+        }],
     },
     Case {
         id: "invoice-typed-no-price",

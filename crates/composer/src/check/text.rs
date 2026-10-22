@@ -79,9 +79,9 @@ pub fn invented_numbers(draft: &str, known: &str) -> Vec<String> {
     let known_keys: HashSet<String> = number_tokens(known).iter().map(|t| number_key(t)).collect();
     let mut out: Vec<String> = Vec::new();
     for token in number_tokens(draft) {
-        let key = number_key(token);
+        let key = number_key(&token);
         if !known_keys.contains(&key) && !out.iter().any(|seen| number_key(seen) == key) {
-            out.push(token.to_string());
+            out.push(token);
         }
     }
     out
@@ -113,12 +113,37 @@ pub fn replay_invented_numbers(draft: &str, known: &str) -> Vec<String> {
 
 /// The tokens of a text that carry a digit, split on the marks that join
 /// numbers in ranges and dates ("4,000-5,000", "10/12") so each part is
-/// compared on its own.
-fn number_tokens(text: &str) -> Vec<&str> {
-    text.split(|c: char| c.is_whitespace() || matches!(c, ';' | '(' | ')' | '!' | '?' | '/' | '-'))
+/// compared on its own. A time written with a space ("3 pm") is one token
+/// with its unit ("3pm").
+fn number_tokens(text: &str) -> Vec<String> {
+    let parts: Vec<&str> = text
+        .split(|c: char| c.is_whitespace() || matches!(c, ';' | '(' | ')' | '!' | '?' | '/' | '-'))
         .map(|token| token.trim_matches(|c: char| !c.is_alphanumeric()))
-        .filter(|token| token.chars().any(|c| c.is_ascii_digit()))
-        .collect()
+        .filter(|token| !token.is_empty())
+        .collect();
+    let has_digit = |token: &str| token.chars().any(|c| c.is_ascii_digit());
+    let mut out = Vec::new();
+    let mut index = 0;
+    while index < parts.len() {
+        let part = parts[index];
+        let unit = parts
+            .get(index + 1)
+            .copied()
+            .filter(|next| next.eq_ignore_ascii_case("am") || next.eq_ignore_ascii_case("pm"));
+        match unit {
+            Some(unit) if has_digit(part) => {
+                out.push(format!("{part}{unit}"));
+                index += 2;
+            }
+            _ => {
+                if has_digit(part) {
+                    out.push(part.to_string());
+                }
+                index += 1;
+            }
+        }
+    }
+    out
 }
 
 /// A number in its comparable form: thousands commas removed, case folded,
@@ -126,6 +151,12 @@ fn number_tokens(text: &str) -> Vec<&str> {
 /// unit, so it stays apart from "12pm".
 fn number_key(token: &str) -> String {
     let key = token.replace(',', "").to_lowercase();
+    // "1200.00" is the amount 1200, as "£1,200.00" is "£1,200".
+    if let Some((whole, fraction)) = key.split_once('.') {
+        if !fraction.is_empty() && fraction.chars().all(|c| c == '0') {
+            return whole.to_string();
+        }
+    }
     for suffix in ["st", "nd", "rd", "th"] {
         if let Some(digits) = key.strip_suffix(suffix) {
             if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
@@ -158,6 +189,26 @@ mod tests {
         assert_eq!(invented_numbers("the 2pm slot", "at 12pm"), vec!["2pm"]);
         assert_eq!(invented_numbers("$45", "$450"), vec!["45"]);
         assert_eq!(invented_numbers("$450", "$45"), vec!["450"]);
+    }
+
+    #[test]
+    fn equivalent_amounts_and_times_are_the_same_number() {
+        let known = "The fee is £1,200 at 3pm.";
+        assert_eq!(
+            invented_numbers("£1,200.00 is on its way", known),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            invented_numbers("£1200.00 is on its way", known),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            invented_numbers("see you at 3 pm", known),
+            Vec::<String>::new()
+        );
+        // Still apart: a different time, or a different amount with a cent part.
+        assert_eq!(invented_numbers("at 2 pm", known), vec!["2pm"]);
+        assert_eq!(invented_numbers("£1,200.50", known), vec!["1,200.50"]);
     }
 
     #[test]

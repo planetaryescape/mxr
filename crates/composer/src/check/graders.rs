@@ -163,10 +163,10 @@ pub(super) fn length(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
     }
 }
 
-/// A line that talks about the draft rather than being part of the email:
-/// "Sure, here's a draft of your reply.", "Here is the reply:". The lead
-/// word alone is not enough ("Sure, Friday works") because a real email can
-/// open that way; the line must also name the draft or end like a label.
+/// A line of commentary about generating the reply: "Sure, here's a draft of
+/// your reply.", "Here is my reply:". It must open like commentary and name
+/// the reply, its draft or its version. A line that only mentions a draft
+/// document ("thanks for the draft roadmap") is part of the email.
 fn is_preamble(line: &str) -> bool {
     let lower = line.to_lowercase();
     let leads = [
@@ -180,10 +180,22 @@ fn is_preamble(line: &str) -> bool {
         "below",
         "alright",
     ];
-    let names_the_draft = ["draft", "reply", "email", "message", "version", "response"]
-        .iter()
-        .any(|word| lower.contains(word));
-    leads.iter().any(|lead| lower.starts_with(lead)) && (names_the_draft || lower.ends_with(':'))
+    let about_the_reply = [
+        "draft of your",
+        "draft:",
+        "drafted",
+        "your reply",
+        "my reply",
+        "this reply",
+        "a reply",
+        "reply:",
+        "your version",
+        "my version",
+    ]
+    .iter()
+    .any(|phrase| lower.contains(phrase))
+        || lower.trim_end_matches(['.', '!']).ends_with("a draft");
+    leads.iter().any(|lead| lower.starts_with(lead)) && about_the_reply
 }
 
 /// What clean-up had to remove, what a sign-off repeated, and whether a
@@ -525,6 +537,33 @@ mod tests {
         assert!(report.grades[5]
             .detail
             .contains("preamble: \"Sure, here's a draft of your reply.\""));
+    }
+
+    #[test]
+    fn a_draft_document_in_an_email_is_not_a_preamble() {
+        let requirements = req("", &[], &[]);
+        let text = "Sure, thanks for the draft roadmap. I will read it properly on Monday.\n\nAlex";
+        assert_eq!(
+            run(&requirements, text).passed(Check::Leftovers),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn commentary_about_the_reply_is_a_preamble_however_it_is_worded() {
+        let requirements = req("", &[], &[]);
+        for line in [
+            "Here is my reply:",
+            "Sure, here's a draft.",
+            "Here's the draft:",
+        ] {
+            let text = format!("{line}\n\nHi Alex,\n\nFriday works.\n\nAlex");
+            assert_eq!(
+                run(&requirements, &text).passed(Check::Leftovers),
+                Some(false),
+                "{line}"
+            );
+        }
     }
 
     #[test]

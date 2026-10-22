@@ -17,7 +17,9 @@ intro-typed                  good                           pass   pass     pass
 intro-typed                  bad: subject line              pass   pass     pass   pass      pass    FAIL       97   
 german-typed                 good                           pass   pass     pass   pass      pass    pass       100  
 warmer-selection             good                           pass   pass     pass   pass      pass    pass       100  
+warmer-empty                 good                           pass   pass     pass   pass      pass    pass       100  
 shorter-selection            good                           pass   pass     pass   pass      pass    pass       97   
+invoice-typed-price          good                           pass   pass     pass   pass      pass    pass       97   
 invoice-typed-no-price       good                           pass   pass     pass   pass      pass    pass       97   
 invoice-typed-no-price       bad: invented price            pass   pass     pass   FAIL      pass    pass       97   
 invoice-typed-no-price       bad: reversed typed sentence   FAIL   pass     pass   pass      pass    pass       97   
@@ -34,12 +36,12 @@ rate-from-instruction        good                           pass   pass     pass
 rate-from-instruction        bad: invented price            pass   FAIL     pass   FAIL      pass    pass       97   
 rate-open                    good                           pass   pass     pass   pass      pass    pass       100  
 
-kept       3 of 30 outputs fail
-answers    2 of 30 outputs fail
-gaps       1 of 30 outputs fail
-invented   3 of 30 outputs fail
-length     1 of 30 outputs fail
-leftovers  4 of 30 outputs fail
+kept       3 of 32 outputs fail
+answers    2 of 32 outputs fail
+gaps       1 of 32 outputs fail
+invented   3 of 32 outputs fail
+length     1 of 32 outputs fail
+leftovers  4 of 32 outputs fail
 
 Failures
 friday-typed · bad: dropped typed sentence · kept: keep each typed sentence: "friday at 2pm works for me", "i'll bring the deck" -> missing: "friday at 2pm works for me"; missing: "i'll bring the deck"

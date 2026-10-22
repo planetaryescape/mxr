@@ -17,6 +17,8 @@ export const SEQUENCE_TIMEOUT_MS = 1000;
  * The only actions a held key repeats: moving and scrolling. Everything
  * else (archive, trash, send, snooze, star, sweep, done…) runs once per
  * press, however long the key is held, so a held `e` can't empty a list.
+ * Listed by id rather than derived, so a new action never starts
+ * repeating by accident.
  */
 export const REPEATABLE_ACTION_IDS: ReadonlySet<string> = new Set([
   "list.down",
@@ -27,6 +29,24 @@ export const REPEATABLE_ACTION_IDS: ReadonlySet<string> = new Set([
   "sidebar.up",
   "place.down",
   "place.up",
+  "now.down",
+  "now.up",
+  "messages.down",
+  "messages.up",
+  "todo.down",
+  "todo.up",
+  "catchup.down",
+  "catchup.up",
+  "expired.down",
+  "expired.up",
+  "updates.down",
+  "updates.up",
+  "reading.down",
+  "reading.up",
+  "archive.down",
+  "archive.up",
+  "screener.down",
+  "screener.up",
   "reader.scroll-down",
   "reader.scroll-up",
   "reader.page-down",

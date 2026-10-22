@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.147](https://github.com/planetaryescape/mxr/compare/v0.6.146...v0.6.147) (2026-10-22)
+
+
+### Bug Fixes
+
+* suggest contacts in To without crashing compose ([#641](https://github.com/planetaryescape/mxr/issues/641)) ([dc271b1](https://github.com/planetaryescape/mxr/commit/dc271b1b77743d4736c7c4cb5feaf168f1635d5e))
+
 ## [0.6.146](https://github.com/planetaryescape/mxr/compare/v0.6.145...v0.6.146) (2026-10-22)
 
 

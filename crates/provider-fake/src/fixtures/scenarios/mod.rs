@@ -759,6 +759,12 @@ mod tests {
     /// This is the full-set sibling of `scenario_dates_follow_the_seed_clock`:
     /// the post-sync work reads the real clock, so the set can only be graded
     /// if no label depends on the seed's.
+    ///
+    /// This samples a 6,000-message demo through the stream and `full_label_for`,
+    /// so it covers the serving path but not every family, phrasing and position:
+    /// `bulk_dates_follow_the_seed_clock` and
+    /// `every_ask_thread_is_dated_to_its_label_at_every_clock` in `bulk/tests.rs`
+    /// are the exhaustive ones.
     #[test]
     fn bulk_labels_do_not_move_with_the_seed_clock() {
         use crate::fixtures::DemoFixtureStream;

@@ -306,7 +306,7 @@ mod tests {
         let mut app = App::new();
         app.compose.pending_send_confirm = Some(test_pending_send(temp.clone()));
 
-        let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('#'), KeyModifiers::SHIFT));
 
         assert!(app.compose.pending_send_confirm.is_none());
         assert!(

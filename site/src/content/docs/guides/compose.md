@@ -291,6 +291,9 @@ After the editor closes, mxr shows a confirmation modal:
 - Changed draft: send, save draft, edit again, discard
 - Unchanged draft: edit again or discard
 
+`Esc` goes back to the draft in your editor, the same as `e`. Only `#`
+discards it, so a stray `Esc` never loses what you wrote.
+
 The modal also shows the [pre-send safety verdict](/guides/pre-send-safety/)
 (SAFE / WARN / BLOCKED) and any issues found. Blocker issues require a
 fix or override token before the `s` (send) key is enabled.

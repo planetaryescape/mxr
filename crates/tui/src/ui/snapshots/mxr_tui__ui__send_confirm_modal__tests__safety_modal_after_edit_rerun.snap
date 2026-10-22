@@ -18,7 +18,7 @@ expression: rendered
 "        │  no issues                                                                                           │        "
 "        │                                                                                                      │        "
 "        │[s] send   [a] send at   [n] remind   [d] save draft                                                  │        "
-"        │[r] refine   [e] edit again   [Esc] discard                                                           │        "
+"        │[r] refine   [e/Esc] edit again   [#] discard draft                                                   │        "
 "        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯        "
 "                                                                                                                        "
 "                                                                                                                        "

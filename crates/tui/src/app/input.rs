@@ -952,8 +952,11 @@ impl App {
                     }
                     return None;
                 }
-                (KeyCode::Char('e'), KeyModifiers::NONE) => {
-                    // Edit again — reopen editor
+                // Edit again: reopen the editor on the same file. `Esc` goes
+                // back to the draft the same way, because it must never
+                // destroy (blueprint 35, "Back and quit"); the file holds the
+                // only copy, so closing without reopening would strand it.
+                (KeyCode::Char('e'), KeyModifiers::NONE) | (KeyCode::Esc, _) => {
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
                         self.compose.pending_remind_at_input = None;
@@ -967,8 +970,9 @@ impl App {
                 (KeyCode::Char('r'), KeyModifiers::NONE) => {
                     return Some(Action::RefinePendingDraft);
                 }
-                (KeyCode::Esc, _) => {
-                    // Discard
+                // Discard only on the option that names it, with the shared
+                // destroy key (blueprint 36's "# discard draft").
+                (KeyCode::Char('#'), _) => {
                     if let Some(pending) = self.compose.pending_send_confirm.take() {
                         self.compose.pending_send_at_input = None;
                         self.compose.pending_remind_at_input = None;

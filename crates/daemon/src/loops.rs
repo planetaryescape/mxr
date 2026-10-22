@@ -1276,7 +1276,7 @@ async fn post_delete_fanout(
 /// because the steps filter the whole table: the run after the last page
 /// repairs every row the earlier pages left. `finalize_sync_pass` owns the
 /// decision of when that is.
-async fn run_analytics_repair(state: &Arc<AppState>, account_id: &AccountId) {
+pub(crate) async fn run_analytics_repair(state: &Arc<AppState>, account_id: &AccountId) {
     let backfill = crate::handler::diagnostics_impl::incremental_analytics_backfill(state).await;
     if backfill.did_work() || backfill.startup_repair_ran {
         tracing::info!(

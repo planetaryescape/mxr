@@ -46,13 +46,24 @@ fn account(email: &str, name: &str) -> Account {
 }
 
 /// Both demo accounts synced from a demo of `total` messages (split 55/45
-/// between them, as `mxr demo` does), with the post-sync classification the
-/// daemon runs after each page and a contacts refresh.
+/// between them, as `mxr demo` does), set up as the daemon sets up a sync.
 ///
-/// Only the classification half of the post-sync work runs (rules, deliveries,
-/// to-dos, records, Reading, Updates facts, arrivals). The semantic, contact
-/// and relationship indexing beside it decides nothing the eval grades and,
-/// measured on a 12,000-message demo, was three quarters of the time.
+/// * The sync engine is the daemon's: built with `with_address_lookup` over the
+///   account address registry, loaded from the stored accounts
+///   (`load_account_address_registry`). The test state's own engine has no
+///   address lookup and leaves every message's direction unknown, and then
+///   nothing aggregates into contacts or sender histories.
+/// * Each page gets the post-sync classification the daemon runs.
+/// * At the end of the backfill the daemon's whole-table analytics repair runs
+///   (`run_analytics_repair`: directions, list ids, reply pairs), then the
+///   contacts refresh its worker does.
+///
+/// Skipped, because none of it is read by who, home, to-do or record: the
+/// semantic ingest, the relationship-profile and voice-profile workers, and
+/// the search warm-up (all beside the classification, and three quarters of the
+/// post-sync time on a 12,000-message demo); and the demo's seeded rules and
+/// screener decisions, which `mxr demo` adds over IPC and the quick-set test
+/// does not have either (CONTRIBUTING says its numbers differ slightly).
 async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
     let personal = account(SELF_EMAIL, "Alex Demo");
     let work = account(WORK_EMAIL, "Alex Work");
@@ -68,12 +79,20 @@ async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
     let work_provider =
         Arc::new(FakeProvider::with_demo_dataset(work.id.clone(), total).with_page_size(PAGE_SIZE));
     state.add_sync_provider_for_test(work_provider.clone());
+    // Both accounts are stored, so the registry holds both primaries.
+    crate::state::load_account_address_registry(&state.store, &state.account_addresses)
+        .await
+        .unwrap();
+    let engine = mxr_sync::SyncEngine::with_address_lookup(
+        state.store.clone(),
+        state.search.clone(),
+        state.account_addresses.clone() as Arc<dyn mxr_core::types::AccountAddressLookup>,
+    );
     for (id, provider) in [(&personal.id, personal_provider), (&work.id, work_provider)] {
         let started = Instant::now();
         let mut pages = 0;
         loop {
-            let outcome = state
-                .sync_engine
+            let outcome = engine
                 .sync_account_with_outcome(provider.as_ref())
                 .await
                 .unwrap();
@@ -101,8 +120,34 @@ async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
         }
         eprintln!("synced and classified {} in {:?}", id, started.elapsed());
     }
+    crate::loops::run_analytics_repair(&state, &personal.id).await;
     state.store.refresh_contacts().await.unwrap();
+    assert_directions_are_known(&state).await;
     (state, personal.id, work.id)
+}
+
+/// The correspondence history the classifier reads exists: every message has
+/// a direction, the accounts' own mail is outbound, and contacts and the
+/// addresses written to were aggregated from it. Without an address-aware
+/// sync none of this holds and the eval grades a mailbox the daemon never has.
+async fn assert_directions_are_known(state: &AppState) {
+    let count = |sql: &'static str| async move {
+        sqlx::query_scalar::<_, i64>(sql)
+            .fetch_one(state.store.reader())
+            .await
+            .unwrap()
+    };
+    assert_eq!(
+        count("SELECT COUNT(*) FROM messages WHERE direction NOT IN ('inbound', 'outbound')").await,
+        0,
+        "some messages have no direction"
+    );
+    assert!(count("SELECT COUNT(*) FROM messages WHERE direction = 'outbound'").await > 0);
+    assert!(count("SELECT COUNT(*) FROM messages WHERE direction = 'inbound'").await > 0);
+    assert!(
+        count("SELECT COUNT(*) FROM contacts").await > 0,
+        "no contacts"
+    );
 }
 
 async fn eval(

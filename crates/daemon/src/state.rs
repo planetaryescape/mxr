@@ -843,6 +843,10 @@ impl AppState {
         if let Err(err) = load_account_address_registry(&store, &account_addresses).await {
             tracing::warn!(error = %err, "failed initial account_addresses load");
         }
+        // Repair debt lives in memory, so a restart forgets Unknown directions
+        // written while an earlier daemon's registry was stale. The first sync
+        // pass reclassifies whatever Unknown rows are left.
+        account_addresses.mark_repair_owed();
 
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
@@ -2123,9 +2127,22 @@ impl AppState {
         let provider_setup = Self::create_providers_from_config(&config, &self.store)
             .await
             .map_err(|e| e.to_string())?;
-        let after = owned_sets_by_account(&self.store)
-            .await
-            .map_err(|e| e.to_string())?;
+        let after = match owned_sets_by_account(&self.store).await {
+            Ok(after) => after,
+            Err(err) => {
+                // Provider setup may already have changed addresses. A retry
+                // would see no difference, so notify every account now.
+                for (account_id, _) in &before {
+                    crate::chimes::emit_daemon_event(
+                        self,
+                        mxr_protocol::DaemonEvent::AccountAddressesChanged {
+                            account_id: account_id.clone(),
+                        },
+                    );
+                }
+                return Err(err.to_string());
+            }
+        };
         self.sync_error_chimes
             .retain_accounts(&provider_setup.providers.keys().cloned().collect());
 

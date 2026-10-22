@@ -48,6 +48,7 @@ function NowRow({
   primary,
   secondary,
   trail,
+  time,
   verbs,
   unread,
 }: {
@@ -60,6 +61,7 @@ function NowRow({
   primary: ReactNode;
   secondary?: ReactNode;
   trail?: ReactNode;
+  time?: ReactNode;
   verbs?: ReactNode;
   unread?: boolean;
 }) {
@@ -79,6 +81,7 @@ function NowRow({
       primary={primary}
       secondary={secondary}
       trail={trail}
+      time={time}
       verbs={verbs}
       onClick={() => state.onSelect(item, "pointer")}
       renderMain={(content, className) => (
@@ -133,13 +136,11 @@ export const PersonRow = memo(function PersonRow({
         </>
       }
       secondary={subject || undefined}
-      trail={
-        <>
-          <ModeMarks modes={marksOf(modes, "messages")} />
-          <time dateTime={row.since} className="whitespace-nowrap tabular-nums">
-            {age}
-          </time>
-        </>
+      trail={<ModeMarks modes={marksOf(modes, "messages")} />}
+      time={
+        <time dateTime={row.since} className="whitespace-nowrap tabular-nums">
+          {age}
+        </time>
       }
       verbs={
         newSender ? (
@@ -211,16 +212,14 @@ export const TodoRow = memo(function TodoRow({
         </>
       }
       secondary={rowParty(todo) || undefined}
-      trail={
-        <>
-          <ModeMarks modes={marksOf(modes, "todo")} />
-          <span
-            data-testid="now-due"
-            className={cn("whitespace-nowrap", dueByToday(todo) && "text-cue")}
-          >
-            {todo.when_label}
-          </span>
-        </>
+      trail={<ModeMarks modes={marksOf(modes, "todo")} />}
+      time={
+        <span
+          data-testid="now-due"
+          className={cn("whitespace-nowrap", dueByToday(todo) && "text-cue")}
+        >
+          {todo.when_label}
+        </span>
       }
       verbs={
         <RowVerb
@@ -277,7 +276,7 @@ export const UpdatesRow = memo(function UpdatesRow({
           card.more_line || undefined
         )
       }
-      trail={
+      time={
         <span className="whitespace-nowrap">
           {card.cut_label ? card.cut_label : sinceLabel(card.since)}
         </span>

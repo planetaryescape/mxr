@@ -86,7 +86,7 @@ export function SubscriptionsDashboard() {
                   {...rowProps(id)}
                   primary={row.sender_name || row.sender_email}
                   secondary={`${plural(row.message_count, "message")} · ${openRateLabel(row)} opened · ${row.latest_subject ?? ""}`}
-                  trail={<span>{formatWhen(row.latest_date)}</span>}
+                  time={<span>{formatWhen(row.latest_date)}</span>}
                   verbs={
                     row.latest_message_id ? (
                       <RowVerb

@@ -97,9 +97,9 @@ export const LedgerRow = memo(function LedgerRow({
             <span className="hidden max-w-[10rem] truncate @2xl:inline">{record.reference}</span>
           ) : null}
           {record.pdf ? <span>PDF</span> : null}
-          <span className="tabular-nums">{shortDate(record.date)}</span>
         </>
       }
+      time={<span className="tabular-nums">{shortDate(record.date)}</span>}
       verbs={
         <>
           {record.thread_id ? (

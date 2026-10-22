@@ -360,13 +360,15 @@ export const TodoRow = memo(function TodoRow({
               unchecked
             </span>
           ) : null}
-          <span
-            data-testid="todo-when"
-            className={cn("hidden max-w-[16rem] truncate sm:inline", cue && !done && "text-cue")}
-          >
-            {todo.when_label}
-          </span>
         </>
+      }
+      time={
+        <span
+          data-testid="todo-when"
+          className={cn("hidden max-w-[16rem] truncate sm:inline", cue && !done && "text-cue")}
+        >
+          {todo.when_label}
+        </span>
       }
       verbs={
         done ? (

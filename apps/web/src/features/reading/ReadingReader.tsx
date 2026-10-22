@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Segmented } from "@/components/Segmented";
 import { PageFrame } from "@/components/PageFrame";
 import { ReaderToolbar, ToolButton } from "@/components/ToolButton";
+import { Received } from "@/components/When";
 import { Button } from "@/components/ui/button";
 import { fetchThread } from "@/features/mailbox/api";
 import { BridgeRequestError } from "@/api/client";
@@ -24,7 +25,7 @@ import { MessageContent } from "@/features/thread/MessageCard";
 import { PrivacyLine } from "@/features/thread/privacy/PrivacyLine";
 import { pickSearch, useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
-import { formatLongDate, formatReceived } from "@/lib/format";
+import { formatLongDate } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -356,15 +357,19 @@ function Reader({ detail }: { detail: ReadingDetail }) {
           purposeTestId="reading-source"
           title={showingArticle && article.title ? article.title : item.title}
           purpose={
-            showingArticle
-              ? [
-                  article.site_name ?? domainLabel(item.domain),
-                  article.byline,
-                  formatReceived(item.arrived_at),
-                ]
+            showingArticle ? (
+              <>
+                {[article.site_name ?? domainLabel(item.domain), article.byline]
                   .filter(Boolean)
-                  .join(" · ")
-              : `${item.source} · ${formatReceived(item.arrived_at)}`
+                  .map((part) => `${part} · `)
+                  .join("")}
+                <Received value={item.arrived_at} />
+              </>
+            ) : (
+              <>
+                {item.source} · <Received value={item.arrived_at} />
+              </>
+            )
           }
         />
         <div className="h-[2px] w-full bg-border/60" aria-hidden>

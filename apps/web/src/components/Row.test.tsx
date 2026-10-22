@@ -110,6 +110,22 @@ describe("Row", () => {
     expect(actions.compareDocumentPosition(time) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  test("at a phone width the actions clip before the time, which is still rendered", () => {
+    renderRow({
+      lit: true,
+      trail: <span>marks</span>,
+      time: <time data-testid="row-time">Tue 21 Oct, 14:02</time>,
+    });
+    const time = screen.getByTestId("row-time");
+    // jsdom applies no layout, so the phone rule is asserted as the classes that carry it.
+    const group = time.parentElement!.parentElement!;
+    expect(group).toHaveClass("max-sm:max-w-[60%]");
+    const actions = screen.getByRole("button", { name: "reply" }).parentElement!;
+    expect(actions).toHaveClass("min-w-0", "max-sm:overflow-hidden");
+    expect(time.parentElement).toHaveClass("shrink-0");
+    expect(time).toBeInTheDocument();
+  });
+
   test("a verb is its own act: it doesn't also light the row", () => {
     const onRow = vi.fn<() => void>();
     const onVerb = vi.fn<() => void>();

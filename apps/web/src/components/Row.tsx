@@ -138,11 +138,14 @@ export const Row = memo(function Row({
         {leadControl ? lead : null}
         {renderMain ? renderMain(text, MAIN) : <div className={MAIN}>{text}</div>}
         {trail || verbs || time ? (
-          <div className="type-meta flex shrink-0 items-center text-text-3">
+          // Below sm the group takes at most 60% of the row, so the primary
+          // text keeps room. Inside it the actions and marks clip first; the
+          // time never does.
+          <div className="type-meta flex max-sm:max-w-[60%] shrink-0 items-center text-text-3">
             {trail ? (
               <div
                 className={cn(
-                  "flex items-center gap-2.5",
+                  "flex min-w-0 items-center gap-2.5 max-sm:overflow-hidden",
                   verbs && (lit ? "hidden" : "pointer-fine:group-hover/row:hidden"),
                 )}
               >
@@ -152,7 +155,7 @@ export const Row = memo(function Row({
             {verbs ? (
               <div
                 className={cn(
-                  "items-center gap-1 text-text-2",
+                  "min-w-0 items-center gap-1 text-text-2 max-sm:overflow-hidden",
                   lit ? "flex" : "hidden pointer-fine:group-hover/row:flex",
                 )}
               >
@@ -160,7 +163,9 @@ export const Row = memo(function Row({
               </div>
             ) : null}
             {time ? (
-              <div className="ml-2.5 flex items-center whitespace-nowrap tabular-nums">{time}</div>
+              <div className="ml-2.5 flex shrink-0 items-center whitespace-nowrap tabular-nums">
+                {time}
+              </div>
             ) : null}
           </div>
         ) : null}

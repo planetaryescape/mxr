@@ -243,7 +243,7 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
               lead={<Avatar name={name} />}
               primary={name}
               secondary={`${entry.sender_email} · ${plural(entry.message_count, "message")} · ${entry.latest_subject}`}
-              trail={<span>{formatWhen(entry.latest_at)}</span>}
+              time={<span>{formatWhen(entry.latest_at)}</span>}
               verbs={DECISIONS.map(({ disposition, label, key, Icon }) => (
                 <RowVerb
                   key={disposition}

@@ -171,7 +171,7 @@ function MessageRow({ message }: { message: PreviewMessage }) {
       lead={<Avatar name={message.from || message.subject} size="sm" />}
       primary={message.from || "(unknown sender)"}
       secondary={message.subject}
-      trail={message.date ? formatWhen(message.date) : undefined}
+      time={message.date ? formatWhen(message.date) : undefined}
     />
   );
 }

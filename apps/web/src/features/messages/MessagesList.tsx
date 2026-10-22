@@ -404,12 +404,8 @@ const PersonRow = memo(function PersonRow({
           </span>
         ) : undefined
       }
-      trail={
-        <>
-          <ModeMarks modes={otherModes(modes, "messages")} />
-          <span className="whitespace-nowrap tabular-nums">{rowTime(row)}</span>
-        </>
-      }
+      trail={<ModeMarks modes={otherModes(modes, "messages")} />}
+      time={<span className="whitespace-nowrap tabular-nums">{rowTime(row)}</span>}
       verbs={
         newSender ? (
           <NewSenderChips question={newSender} label={row.title} />

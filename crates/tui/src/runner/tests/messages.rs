@@ -783,3 +783,31 @@ fn a_preview_that_arrives_while_the_picker_is_open_starts_no_countdown() {
     app.tick_messages_ack(start + std::time::Duration::from_secs(10));
     assert!(queued(&app).is_empty());
 }
+
+#[test]
+fn clear_filters_resets_the_turn_and_both_toggles_at_once() {
+    let mut app = messages_app(true);
+    press_ctrl(&mut app, 'f');
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter); // Your turn
+    for _ in 0..2 {
+        press(&mut app, KeyCode::Char('j'));
+    }
+    press(&mut app, KeyCode::Enter); // Unread
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter); // Past your pace
+    let on = app.mailbox.messages_page.filter;
+    assert!(on.turn.is_some() && on.unread && on.past_pace);
+
+    app.mailbox.messages_page.pending_refresh = false;
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter); // Clear filters
+    assert_eq!(
+        app.mailbox.messages_page.filter,
+        mxr_protocol::MessagesFilterData::default()
+    );
+    assert!(app.mailbox.messages_page.pending_refresh, "the list refetches unfiltered");
+    assert!(app.modals.messages_filter.is_some(), "the picker stays open, Esc still closes");
+    press(&mut app, KeyCode::Esc);
+    assert!(app.modals.messages_filter.is_none());
+}

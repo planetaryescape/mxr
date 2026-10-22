@@ -655,7 +655,7 @@ impl App {
     }
 
     /// Rows 0 to 2 pick the turn (All, Your turn, Waiting on them); 3 and 4
-    /// flip Unread and Past your pace.
+    /// flip Unread and Past your pace; 5 clears the whole filter.
     fn apply_messages_filter_choice(&mut self, cursor: usize) {
         let page = &mut self.mailbox.messages_page;
         match cursor {
@@ -664,6 +664,7 @@ impl App {
             2 => page.filter.turn = Some(mxr_protocol::MessagesTurnData::Theirs),
             3 => page.filter.unread = !page.filter.unread,
             4 => page.filter.past_pace = !page.filter.past_pace,
+            5 => page.filter = mxr_protocol::MessagesFilterData::default(),
             _ => return,
         }
         page.pending_refresh = true;

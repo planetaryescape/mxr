@@ -54,6 +54,12 @@ pub fn draw(
             theme,
         ));
     }
+    lines.push(row_line(
+        5,
+        picker.cursor,
+        "Clear filters".to_string(),
+        theme,
+    ));
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "j/k move   Enter pick or toggle   Esc close",

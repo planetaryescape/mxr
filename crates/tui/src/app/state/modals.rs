@@ -1078,8 +1078,8 @@ pub struct MessagesFilterPicker {
 }
 
 impl MessagesFilterPicker {
-    /// The last row: past your pace.
-    pub const LAST: usize = 4;
+    /// The last row: Clear filters.
+    pub const LAST: usize = 5;
 }
 
 #[derive(Debug, Clone)]

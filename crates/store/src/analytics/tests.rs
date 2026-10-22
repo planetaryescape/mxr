@@ -183,13 +183,12 @@ async fn reclassify_account_directions_moves_reply_pairs_with_the_reply() {
         .await
         .unwrap();
 
-    let pending: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM reply_pair_pending WHERE reply_message_id = ?",
-    )
-    .bind(reply.id.as_str())
-    .fetch_one(store.reader())
-    .await
-    .unwrap();
+    let pending: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM reply_pair_pending WHERE reply_message_id = ?")
+            .bind(reply.id.as_str())
+            .fetch_one(store.reader())
+            .await
+            .unwrap();
     assert_eq!(pending, 0, "a resolved reply leaves the pending queue");
 
     let (direction, counterparty): (String, String) = sqlx::query_as(
@@ -212,7 +211,9 @@ async fn reclassify_account_directions_moves_reply_pairs_with_the_reply() {
     .unwrap();
     assert_eq!(
         latency,
-        Some(crate::reply_pairs::compute_business_hours_seconds(parent_at, replied_at)),
+        Some(crate::reply_pairs::compute_business_hours_seconds(
+            parent_at, replied_at
+        )),
         "a rebuilt pair carries its business-hours latency"
     );
 }

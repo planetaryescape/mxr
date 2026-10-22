@@ -194,6 +194,9 @@ impl Store {
         for migration in MIGRATIONS {
             self.apply_migration(migration).await?;
         }
+        // Runs on every open, not once: a restored bundle from before 96
+        // brings accounts without a colour or tag.
+        self.backfill_account_identity().await?;
 
         self.validate_schema().await?;
         Ok(())
@@ -1253,6 +1256,23 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 93, name: "unsubscribe_receipts", kind: MigrationKind::Sql(include_str!("../migrations/093_unsubscribe_receipts.sql")) },
     Migration { version: 94, name: "commitment_date_source", kind: MigrationKind::Composite(COMMITMENT_DATE_SOURCE_STEPS) },
     Migration { version: 95, name: "draft_candidate_date_source", kind: MigrationKind::Composite(DRAFT_CANDIDATE_DATE_SOURCE_STEPS) },
+    Migration { version: 96, name: "account_identity", kind: MigrationKind::Composite(ACCOUNT_IDENTITY_STEPS) },
+];
+
+/// Each account's colour slot and stored tag (blueprint 33). Both are set when
+/// the account is inserted, and `Store::backfill_account_identity` fills any
+/// that predate them.
+const ACCOUNT_IDENTITY_STEPS: &[MigrationStep] = &[
+    MigrationStep::AddColumn {
+        table: "accounts",
+        column: "identity_color",
+        sql: "ALTER TABLE accounts ADD COLUMN identity_color TEXT",
+    },
+    MigrationStep::AddColumn {
+        table: "accounts",
+        column: "identity_tag",
+        sql: "ALTER TABLE accounts ADD COLUMN identity_tag TEXT",
+    },
 ];
 
 /// The same provenance on a draft's commitment candidates, which become
@@ -1835,7 +1855,14 @@ mod tests {
         let category = mxr_core::CategoryId::new();
         {
             let store = store_at_version(&path, 77).await;
-            store.insert_account(&account).await.unwrap();
+            // insert_account writes identity_color, which a version-77 schema lacks.
+            sqlx::query("INSERT INTO accounts (id, name, email, enabled, created_at, updated_at) VALUES (?, ?, ?, 1, 1, 1)")
+                .bind(account.id.as_str())
+                .bind(&account.name)
+                .bind(&account.email)
+                .execute(store.writer())
+                .await
+                .unwrap();
             store.upsert_envelope(&message).await.unwrap();
             sqlx::query("INSERT INTO personal_categories(id,name,normalized_name,created_at,updated_at) VALUES(?,'Travel','travel',1,1)").bind(category.as_str()).execute(store.writer()).await.unwrap();
             sqlx::query("INSERT INTO message_category_memberships(message_id,category_id,assigned,revision,updated_at) VALUES(?,?,0,2,1)").bind(message.id.as_str()).bind(category.as_str()).execute(store.writer()).await.unwrap();
@@ -2081,7 +2108,7 @@ mod tests {
             .unwrap();
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
-                (83..=95).collect::<Vec<_>>(),
+                (83..=95).chain(96..=96).collect::<Vec<_>>(),
                 "from {from}"
             );
             assert!(test_table_exists(store.writer(), "reading_marginalia").await);

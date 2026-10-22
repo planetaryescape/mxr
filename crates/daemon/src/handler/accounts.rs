@@ -262,6 +262,8 @@ mod tests {
                 source: ::mxr_protocol::ClientKind::default(),
                 payload: IpcPayload::Request(Request::RepairAccountConfig {
                     account: AccountConfigData {
+                        color: None,
+                        tag: None,
                         key: "gmail".into(),
                         name: "Gmail".into(),
                         email: "me@example.com".into(),
@@ -330,6 +332,8 @@ mod tests {
                         source: ::mxr_protocol::ClientKind::default(),
                         payload: IpcPayload::Request(Request::RepairAccountConfig {
                             account: AccountConfigData {
+                                color: None,
+                                tag: None,
                                 key: "consulting".into(),
                                 name: "Consulting".into(),
                                 email: "consulting@example.com".into(),
@@ -377,6 +381,8 @@ mod tests {
 
     fn account_config(name: &str, email: &str, enabled: bool) -> mxr_config::AccountConfig {
         mxr_config::AccountConfig {
+            color: None,
+            tag: None,
             name: name.into(),
             email: email.into(),
             enabled,

@@ -1,6 +1,7 @@
 use crate::{ArchiveIdentityData, ArchiveOperationData, ArchiveWorkspaceData};
 use mxr_core::id::*;
 use mxr_core::types::*;
+use mxr_core::AccountColor;
 use serde::{Deserialize, Serialize};
 
 mod arrivals;
@@ -843,6 +844,15 @@ pub enum Request {
     },
     UpsertAccountConfig {
         account: AccountConfigData,
+    },
+    /// Writes only `[accounts.<key>] color/tag`. Unlike `UpsertAccountConfig`
+    /// it never changes `default_account` or the account's other fields.
+    /// `dry_run` computes the same plan and writes nothing.
+    SetAccountIdentity {
+        key: String,
+        color: Option<AccountColor>,
+        tag: Option<String>,
+        dry_run: bool,
     },
     SetDefaultAccount {
         key: String,
@@ -3063,6 +3073,7 @@ impl Request {
             | Self::CancelAuthSession { .. }
             | Self::CompleteAuthSession { .. }
             | Self::UpsertAccountConfig { .. }
+            | Self::SetAccountIdentity { .. }
             | Self::SetDefaultAccount { .. }
             | Self::TestAccountConfig { .. }
             | Self::DisableAccountConfig { .. }
@@ -5469,6 +5480,22 @@ pub struct AccountConfigData {
     pub sync: Option<AccountSyncConfigData>,
     pub send: Option<AccountSendConfigData>,
     pub is_default: bool,
+    /// Config override for the account's colour. `None` keeps the stored
+    /// slot. Upserts that omit it also keep the override already in config.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<AccountColor>,
+    /// Config override for the account's tag, uppercased by the daemon.
+    /// `None` keeps the override already in config, or the derived tag.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+}
+
+/// An account's resolved colour and tag, as the daemon shows them (blueprint 33).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AccountIdentityData {
+    pub color: AccountColor,
+    pub tag: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -5558,6 +5585,9 @@ pub struct AccountSummaryData {
     pub send: Option<AccountSendConfigData>,
     #[serde(default)]
     pub capabilities: AccountCapabilitiesData,
+    /// Absent from daemons older than blueprint 33, so clients draw no mark.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<AccountIdentityData>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -6,6 +6,7 @@
 use crate::cli::{
     OutputFormat, TodoAction, TodoMicrosoftAction, TodoResolutionActionArg, TodoStateArg,
 };
+use crate::commands::account_mark::AccountMarks;
 use crate::commands::selection::parse_message_id;
 use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
@@ -367,6 +368,7 @@ async fn list_state(
     limit: u32,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
+    let scoped = account_id.is_some();
     let todos = expect_data!(
         client
             .request(Request::ListTodos {
@@ -392,9 +394,16 @@ async fn list_state(
             if todos.is_empty() {
                 println!("No to-dos in that state.");
             }
+            let marks =
+                AccountMarks::marks_for(client, matches!(format, OutputFormat::Table), scoped)
+                    .await?;
             let mut out = String::new();
             for todo in &todos {
-                row(&mut out, todo, "");
+                // The mark goes on the row's first line only.
+                let mut block = String::new();
+                row(&mut block, todo, "");
+                out.push_str(&marks.prefix(&todo.account_id));
+                out.push_str(&block);
             }
             if state == TodoStateData::Expired && !todos.is_empty() {
                 out.push_str("\nRestore one with `mxr todo undo ID`.\n");

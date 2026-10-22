@@ -970,6 +970,7 @@ mod tests {
 
     fn fake_account(name: &str) -> mxr_protocol::AccountSummaryData {
         mxr_protocol::AccountSummaryData {
+            identity: None,
             account_id: mxr_core::AccountId::new(),
             key: Some("user".into()),
             name: name.into(),

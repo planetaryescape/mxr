@@ -31,6 +31,8 @@ pub async fn run(demo: bool, key: String, force: bool) -> anyhow::Result<()> {
             enabled: true,
             sync: Some(SyncProviderConfig::Fake),
             send: None,
+            color: None,
+            tag: None,
         };
         config.accounts.insert(key.clone(), account);
 

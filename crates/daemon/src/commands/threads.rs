@@ -1,4 +1,5 @@
 use crate::cli::{OutputFormat, ThreadsSort};
+use crate::commands::account_mark::AccountMarks;
 use crate::commands::expect_response;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -14,6 +15,7 @@ pub async fn run(
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let scoped = account.is_some();
 
     let account_id = match account {
         Some(s) => Some(
@@ -91,9 +93,15 @@ pub async fn run(
             if threads.is_empty() {
                 println!("(no threads)");
             }
+            let marks = AccountMarks::load(&mut client, scoped).await?;
             for thread in &threads {
+                let acct = if marks.shown() {
+                    format!("{:<4} ", marks.cell(&thread.account_id))
+                } else {
+                    String::new()
+                };
                 println!(
-                    "{}  {} msgs ({} unread)  {}",
+                    "{acct}{}  {} msgs ({} unread)  {}",
                     thread.latest_date.format("%Y-%m-%d %H:%M"),
                     thread.message_count,
                     thread.unread_count,

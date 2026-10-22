@@ -614,6 +614,12 @@ pub fn map_request(
                 "email": account.email,
             })),
         ),
+        Request::SetAccountIdentity { key, .. } => (
+            "account.identity",
+            Some("account"),
+            Some(key.clone()),
+            Some(serde_json::json!({ "key": key })),
+        ),
         Request::RemoveAccountConfig { key, .. } => (
             "account.remove",
             Some("account"),
@@ -1165,6 +1171,8 @@ mod tests {
 
     fn secret_bearing_account_config() -> mxr_protocol::AccountConfigData {
         mxr_protocol::AccountConfigData {
+            color: None,
+            tag: None,
             key: "secret-account".into(),
             name: "Secret Account".into(),
             email: "secret@example.com".into(),

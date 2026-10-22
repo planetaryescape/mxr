@@ -969,7 +969,18 @@ impl AppState {
         let mut default_send_provider = None;
         let requested_default = config.general.default_account.as_deref();
 
-        for (key, acct_config) in &config.accounts {
+        // Sorted, so a provisional colour or tag shown before insertion is the
+        // one insertion stores. Every configured tag is reserved, so a derived
+        // tag never takes one.
+        let mut keys: Vec<&String> = config.accounts.keys().collect();
+        keys.sort();
+        let reserved_tags: Vec<String> = config
+            .accounts
+            .values()
+            .filter_map(|account| account.tag.clone())
+            .collect();
+        for key in keys {
+            let acct_config = &config.accounts[key];
             let provider_kind = sync_provider_kind(acct_config.sync.as_ref());
             let send_kind = send_provider_kind(acct_config.send.as_ref());
             let account_id = AccountId::from_provider_id(
@@ -994,7 +1005,9 @@ impl AppState {
                 }),
                 enabled: acct_config.enabled,
             };
-            store.insert_account(&account).await?;
+            store
+                .insert_account_reserving(&account, &reserved_tags)
+                .await?;
 
             if !acct_config.enabled {
                 continue;
@@ -1278,6 +1291,11 @@ impl AppState {
                 }
                 send_providers.insert(account_id.clone(), fake);
             }
+        }
+
+        match crate::account_identity::resolve_from_store(store, config).await {
+            Ok(resolution) => crate::account_identity::log_conflicts(&resolution.conflicts),
+            Err(error) => tracing::error!(%error, "could not resolve account colours and tags"),
         }
 
         Ok(ProviderSetup {

@@ -300,6 +300,8 @@ mod tests {
 
     fn sample_account_config() -> AccountConfigData {
         AccountConfigData {
+            color: None,
+            tag: None,
             key: "work".into(),
             name: "Work".into(),
             email: "work@example.com".into(),
@@ -543,6 +545,15 @@ mod tests {
             (
                 Request::UpsertAccountConfig {
                     account: sample_account_config(),
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (
+                Request::SetAccountIdentity {
+                    key: "work".into(),
+                    color: Some(mxr_core::AccountColor::Amber),
+                    tag: Some("W".into()),
+                    dry_run: true,
                 },
                 IpcCategory::MxrPlatform,
             ),
@@ -2386,5 +2397,44 @@ mod tests {
                 updated_at: chrono::Utc::now(),
             }
         }
+    }
+
+    #[test]
+    fn account_summary_without_identity_still_decodes() {
+        // A daemon from before blueprint 33 sends no identity key.
+        let older = serde_json::json!({
+            "account_id": AccountId::new(),
+            "key": "work",
+            "name": "Work",
+            "email": "bk@work.example",
+            "provider_kind": "fake",
+            "sync_kind": null,
+            "send_kind": null,
+            "enabled": true,
+            "is_default": false,
+            "source": "config",
+            "editable": "full",
+            "sync": null,
+            "send": null,
+        });
+        let decoded: AccountSummaryData = serde_json::from_value(older).unwrap();
+        assert!(decoded.identity.is_none());
+        let encoded = serde_json::to_value(&decoded).unwrap();
+        assert!(encoded.get("identity").is_none());
+    }
+
+    #[test]
+    fn account_summary_identity_round_trips() {
+        let identity = AccountIdentityData {
+            color: mxr_core::AccountColor::Vermilion,
+            tag: "PE".into(),
+        };
+        let json = serde_json::to_value(&identity).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "color": "vermilion", "tag": "PE" })
+        );
+        let back: AccountIdentityData = serde_json::from_value(json).unwrap();
+        assert_eq!(back, identity);
     }
 }

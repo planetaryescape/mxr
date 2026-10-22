@@ -50,6 +50,7 @@ fn account_config_to_summary(account: AccountConfigData) -> AccountSummaryData {
     let account_id = AccountId::from_provider_id(&provider_kind, &account.email);
 
     AccountSummaryData {
+        identity: None,
         account_id,
         key: Some(account.key),
         name: account.name,

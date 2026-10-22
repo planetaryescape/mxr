@@ -4,8 +4,8 @@ use crate::output::{jsonl, resolve_format};
 use mxr_core::id::AccountId;
 use mxr_core::types::AccountAddress;
 use mxr_protocol::{
-    AccountConfigData, AccountOperationResult, AccountSendConfigData, AccountSummaryData,
-    AccountSyncConfigData, AuthFlowData, AuthSessionData, AuthSessionStateData,
+    AccountConfigData, AccountIdentityData, AccountOperationResult, AccountSendConfigData,
+    AccountSummaryData, AccountSyncConfigData, AuthFlowData, AuthSessionData, AuthSessionStateData,
     GmailCredentialSourceData, Request, Response, ResponseData,
 };
 use std::io::IsTerminal;
@@ -23,6 +23,7 @@ pub async fn run(
                 | AccountsAction::Reauth { .. }
                 | AccountsAction::Disable { .. }
                 | AccountsAction::Remove { .. }
+                | AccountsAction::Identity { .. }
         )
     ) && !matches!(
         crate::server::resolve_daemon_addr()?,
@@ -98,6 +99,12 @@ pub async fn run(
             remove_account(&name, dry_run, yes, purge_local_data).await?;
         }
         Some(AccountsAction::Addresses { op }) => addresses_dispatch(op, format).await?,
+        Some(AccountsAction::Identity {
+            key,
+            color,
+            tag,
+            dry_run,
+        }) => set_identity(&key, color, tag.as_deref(), dry_run).await?,
     }
     Ok(())
 }
@@ -258,7 +265,11 @@ async fn client() -> anyhow::Result<IpcClient> {
 
 async fn list_accounts(format: Option<OutputFormat>) -> anyhow::Result<()> {
     let accounts = account_configs().await?;
-    let summaries: Vec<AccountSummaryRow> = accounts.iter().map(AccountSummaryRow::from).collect();
+    let identities = account_identities().await?;
+    let summaries: Vec<AccountSummaryRow> = accounts
+        .iter()
+        .map(|account| AccountSummaryRow::new(account, identity_for(&identities, &account.key)))
+        .collect();
 
     match resolve_format(format) {
         OutputFormat::Json => {
@@ -269,8 +280,11 @@ async fn list_accounts(format: Option<OutputFormat>) -> anyhow::Result<()> {
         }
         OutputFormat::Csv => {
             let mut writer = csv::Writer::from_writer(Vec::new());
-            writer.write_record(["key", "name", "email", "sync", "send", "enabled"])?;
+            writer.write_record([
+                "key", "name", "email", "sync", "send", "enabled", "tag", "color",
+            ])?;
             for row in &summaries {
+                let (tag, color) = identity_columns(row.identity.as_ref());
                 writer.write_record([
                     row.key.as_str(),
                     row.name.as_str(),
@@ -278,6 +292,8 @@ async fn list_accounts(format: Option<OutputFormat>) -> anyhow::Result<()> {
                     row.sync,
                     row.send,
                     if row.enabled { "true" } else { "false" },
+                    tag.as_str(),
+                    color.as_str(),
                 ])?;
             }
             println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
@@ -294,8 +310,9 @@ async fn list_accounts(format: Option<OutputFormat>) -> anyhow::Result<()> {
                 return Ok(());
             }
             for row in &summaries {
+                let (tag, color) = identity_columns(row.identity.as_ref());
                 println!(
-                    "  {} - {} <{}> [sync: {}, send: {}, {}]",
+                    "  {} - {} <{}> [sync: {}, send: {}, {}] tag {tag}, colour {color}",
                     row.key,
                     row.name,
                     row.email,
@@ -317,10 +334,11 @@ struct AccountSummaryRow {
     sync: &'static str,
     send: &'static str,
     enabled: bool,
+    identity: Option<AccountIdentityData>,
 }
 
-impl From<&AccountConfigData> for AccountSummaryRow {
-    fn from(account: &AccountConfigData) -> Self {
+impl AccountSummaryRow {
+    fn new(account: &AccountConfigData, identity: Option<AccountIdentityData>) -> Self {
         Self {
             key: account.key.clone(),
             name: account.name.clone(),
@@ -328,8 +346,69 @@ impl From<&AccountConfigData> for AccountSummaryRow {
             sync: describe_sync_data(account.sync.as_ref()),
             send: describe_send_data(account.send.as_ref()),
             enabled: account.enabled,
+            identity,
         }
     }
+}
+
+/// The daemon's resolved identities, keyed by account key. Accounts it does
+/// not report, or an older daemon, have no entry.
+async fn account_identities() -> anyhow::Result<Vec<(String, AccountIdentityData)>> {
+    Ok(account_summaries()
+        .await?
+        .into_iter()
+        .filter_map(|summary| Some((summary.key?, summary.identity?)))
+        .collect())
+}
+
+async fn account_summaries() -> anyhow::Result<Vec<AccountSummaryData>> {
+    let mut client = client().await?;
+    match client.request(Request::ListAccounts).await? {
+        Response::Ok {
+            data: ResponseData::Accounts { accounts },
+        } => Ok(accounts),
+        Response::Error { message, .. } => anyhow::bail!(message),
+        other => anyhow::bail!("Unexpected accounts response: {other:?}"),
+    }
+}
+
+fn identity_for(
+    identities: &[(String, AccountIdentityData)],
+    key: &str,
+) -> Option<AccountIdentityData> {
+    identities
+        .iter()
+        .find(|(candidate, _)| candidate == key)
+        .map(|(_, identity)| identity.clone())
+}
+
+fn identity_columns(identity: Option<&AccountIdentityData>) -> (String, String) {
+    match identity {
+        Some(identity) => (identity.tag.clone(), identity.color.to_string()),
+        None => ("-".to_string(), "-".to_string()),
+    }
+}
+
+/// Sets an account's colour and tag override. The daemon writes only those
+/// two keys, and a dry run gets the same plan from it, so the preview is the
+/// change that would be made.
+async fn set_identity(
+    key: &str,
+    color: Option<mxr_core::AccountColor>,
+    tag: Option<&str>,
+    dry_run: bool,
+) -> anyhow::Result<()> {
+    if color.is_none() && tag.is_none() {
+        anyhow::bail!("Pass --color, --tag or both.");
+    }
+    let tag = tag.map(mxr_core::parse_account_tag).transpose()?;
+    run_account_operation(Request::SetAccountIdentity {
+        key: key.to_string(),
+        color,
+        tag,
+        dry_run,
+    })
+    .await
 }
 
 async fn show_account(name: &str) -> anyhow::Result<()> {
@@ -638,6 +717,8 @@ async fn add_gmail(args: &AddArgs) -> anyhow::Result<()> {
     let token_ref = format!("mxr/{account_name}-gmail");
 
     let account = AccountConfigData {
+        color: None,
+        tag: None,
         key: account_name.clone(),
         name: account_name.clone(),
         email,
@@ -745,6 +826,8 @@ async fn add_imap(include_smtp: bool, args: &AddArgs) -> anyhow::Result<()> {
     };
 
     let account = AccountConfigData {
+        color: None,
+        tag: None,
         key: account_name.clone(),
         name: display_name,
         email,
@@ -806,6 +889,8 @@ async fn add_smtp_only(args: &AddArgs) -> anyhow::Result<()> {
     };
 
     let account = AccountConfigData {
+        color: None,
+        tag: None,
         key: account_name.clone(),
         name: display_name,
         email,
@@ -910,6 +995,8 @@ async fn add_outlook_inner(kind: OutlookAccountKind) -> anyhow::Result<()> {
     };
 
     let account = AccountConfigData {
+        color: None,
+        tag: None,
         key: account_name.clone(),
         name: display_name,
         email,

@@ -830,6 +830,7 @@ mod tests {
 
     fn test_account_summary(email: &str, enabled: bool, is_default: bool) -> AccountSummaryData {
         AccountSummaryData {
+            identity: None,
             account_id: mxr_core::AccountId::new(),
             key: Some(email.to_string()),
             name: email.to_string(),

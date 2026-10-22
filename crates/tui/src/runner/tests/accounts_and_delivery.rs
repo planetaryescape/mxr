@@ -989,6 +989,7 @@ fn test_draft_account(
         ..Default::default()
     };
     mxr_protocol::AccountSummaryData {
+        identity: None,
         account_id,
         key: Some("work".into()),
         name: "Work".into(),
@@ -2322,6 +2323,8 @@ async fn auth_session_poller_retries_after_transient_error() {
 
     // Fake account config.
     let account = mxr_protocol::AccountConfigData {
+        color: None,
+        tag: None,
         key: "test".into(),
         name: "Test".into(),
         email: "test@example.com".into(),
@@ -2376,6 +2379,8 @@ async fn auth_session_poller_aborts_after_max_consecutive_failures() {
     let (result_tx, mut result_rx) = mpsc::unbounded_channel::<AsyncResult>();
 
     let account = mxr_protocol::AccountConfigData {
+        color: None,
+        tag: None,
         key: "test".into(),
         name: "Test".into(),
         email: "test@example.com".into(),

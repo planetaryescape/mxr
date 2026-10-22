@@ -35,6 +35,7 @@
     )
 )]
 
+pub mod account_identity;
 pub mod error;
 pub mod i18n;
 pub mod id;
@@ -46,6 +47,7 @@ pub mod remote;
 pub mod text;
 pub mod types;
 
+pub use account_identity::*;
 pub use error::MxrError;
 pub use id::*;
 pub use provider::*;

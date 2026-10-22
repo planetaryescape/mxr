@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::types::MxrConfig;
+use crate::types::{AccountConfig, MxrConfig};
 
 pub const PROD_INSTANCE_NAME: &str = "mxr";
 pub const DEV_INSTANCE_NAME: &str = "mxr-dev";
@@ -23,6 +24,8 @@ pub enum ConfigError {
         path: PathBuf,
         source: toml::ser::Error,
     },
+    #[error("account '{key}' has an invalid identity: {message}")]
+    AccountIdentity { key: String, message: String },
 }
 
 /// Returns the mxr config directory (e.g. `~/.config/mxr` on Linux/macOS).
@@ -578,10 +581,55 @@ pub fn save_config_to_path(config: &MxrConfig, path: &Path) -> Result<(), Config
 
 /// Load config from a TOML string.
 pub fn load_config_from_str(toml_str: &str) -> Result<MxrConfig, ConfigError> {
-    toml::from_str(toml_str).map_err(|e| ConfigError::ParseToml {
+    let mut config: MxrConfig = toml::from_str(toml_str).map_err(|e| ConfigError::ParseToml {
         path: PathBuf::from("<string>"),
         source: e,
-    })
+    })?;
+    validate_account_identities(&mut config.accounts)?;
+    Ok(config)
+}
+
+/// Checks every configured tag and normalises it to uppercase. Two accounts
+/// cannot share a configured tag. The error names the one that got there first
+/// in key order. Tags derived from names are not checked here: the daemon
+/// derives those around the configured ones.
+pub fn validate_account_identities(
+    accounts: &mut HashMap<String, AccountConfig>,
+) -> Result<(), ConfigError> {
+    let mut keys: Vec<String> = accounts.keys().cloned().collect();
+    keys.sort();
+    let mut holders: HashMap<String, String> = HashMap::new();
+    for key in keys {
+        let Some(account) = accounts.get_mut(&key) else {
+            continue;
+        };
+        if let Some(raw_color) = &account.color {
+            raw_color
+                .parse::<mxr_core::AccountColor>()
+                .map_err(|error| ConfigError::AccountIdentity {
+                    key: key.clone(),
+                    message: error.to_string(),
+                })?;
+        }
+        let Some(raw_tag) = account.tag.take() else {
+            continue;
+        };
+        let tag = mxr_core::parse_account_tag(&raw_tag).map_err(|error| {
+            ConfigError::AccountIdentity {
+                key: key.clone(),
+                message: error.to_string(),
+            }
+        })?;
+        if let Some(holder) = holders.get(&tag) {
+            return Err(ConfigError::AccountIdentity {
+                key: key.clone(),
+                message: format!("tag '{tag}' is already set on account '{holder}'"),
+            });
+        }
+        holders.insert(tag.clone(), key.clone());
+        account.tag = Some(tag);
+    }
+    Ok(())
 }
 
 /// Apply environment variable overrides to the config.

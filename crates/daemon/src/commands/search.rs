@@ -1,4 +1,5 @@
 use crate::cli::{OutputFormat, SearchGroupByArg, SearchModeArg, SearchSortArg};
+use crate::commands::account_mark::{self, AccountMarks};
 use crate::commands::resolve_optional_account;
 use crate::commands::triage::{render_triage, request_triage};
 use crate::ipc_client::IpcClient;
@@ -206,7 +207,16 @@ pub async fn run(
             if envelopes.is_empty() {
                 println!("No results found.");
             } else {
-                println!("{:<1} {:<20} {:<45} {:<12}", "", "FROM", "SUBJECT", "DATE");
+                let marks = AccountMarks::load(&mut client, account.is_some()).await?;
+                let acct_header = if marks.shown() {
+                    format!("{:<4} ", account_mark::HEADER)
+                } else {
+                    String::new()
+                };
+                println!(
+                    "{:<1} {acct_header}{:<20} {:<45} {:<12}",
+                    "", "FROM", "SUBJECT", "DATE"
+                );
                 println!("{}", "-".repeat(80));
                 for (env, _score) in &envelopes {
                     let unread = if !env.flags.contains(MessageFlags::READ) {
@@ -214,11 +224,16 @@ pub async fn run(
                     } else {
                         " "
                     };
+                    let acct = if marks.shown() {
+                        format!("{:<4} ", marks.cell(&env.account_id))
+                    } else {
+                        String::new()
+                    };
                     let from = env.from.name.as_deref().unwrap_or(&env.from.email);
                     let from_trunc: String = from.chars().take(20).collect();
                     let subject_trunc: String = env.subject.chars().take(45).collect();
                     let date = env.date.format("%Y-%m-%d").to_string();
-                    println!("{unread} {from_trunc:<20} {subject_trunc:<45} {date}");
+                    println!("{unread} {acct}{from_trunc:<20} {subject_trunc:<45} {date}");
                 }
                 print!("\n{} results", envelopes.len());
                 if total > envelopes.len() as u32 || offset > 0 {

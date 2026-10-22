@@ -455,6 +455,7 @@ fn search_page_blank_snapshot() {
 fn accounts_page_snapshot() {
     let state = AccountsPageState {
         accounts: vec![AccountSummaryData {
+            identity: None,
             account_id: AccountId::new(),
             key: Some("work".into()),
             name: "Work".into(),

@@ -4485,7 +4485,21 @@ export interface components {
             supports_send: boolean;
             supports_server_drafts: boolean;
         };
+        /**
+         * @description One of eight named account colour slots, in assignment order.
+         * @enum {string}
+         */
+        AccountColor:
+            | "sky"
+            | "amber"
+            | "green"
+            | "yellow"
+            | "blue"
+            | "vermilion"
+            | "purple"
+            | "slate";
         AccountConfigData: {
+            color?: components["schemas"]["AccountColor"] | null;
             email: string;
             enabled?: boolean;
             is_default: boolean;
@@ -4493,6 +4507,11 @@ export interface components {
             name: string;
             send?: components["schemas"]["AccountSendConfigData"] | null;
             sync?: components["schemas"]["AccountSyncConfigData"] | null;
+            /**
+             * @description Config override for the account's tag, uppercased by the daemon.
+             *     `None` keeps the override already in config, or the derived tag.
+             */
+            tag?: string | null;
         };
         /** @enum {string} */
         AccountEditModeData: "full" | "runtime_only";
@@ -4524,6 +4543,11 @@ export interface components {
         };
         /** Format: uuid */
         AccountId: string;
+        /** @description An account's resolved colour and tag, as the daemon shows them (blueprint 33). */
+        AccountIdentityData: {
+            color: components["schemas"]["AccountColor"];
+            tag: string;
+        };
         AccountMutationResultData: {
             account_id: components["schemas"]["AccountId"];
             account_name: string;
@@ -4590,6 +4614,7 @@ export interface components {
             editable: components["schemas"]["AccountEditModeData"];
             email: string;
             enabled: boolean;
+            identity?: components["schemas"]["AccountIdentityData"] | null;
             is_default: boolean;
             key?: string | null;
             name: string;

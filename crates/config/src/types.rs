@@ -709,6 +709,15 @@ pub struct AccountConfig {
     pub enabled: bool,
     pub sync: Option<SyncProviderConfig>,
     pub send: Option<SendProviderConfig>,
+    /// Overrides the colour the daemon stored for this account: one of the
+    /// eight slot names (blueprint 33). Kept as text so an unknown name is
+    /// reported by `validate_account_identities` with the allowed names,
+    /// not as a bare TOML parse error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Overrides the tag derived from the name. One to three letters or digits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
 }
 
 /// Sync provider configuration (tagged enum).

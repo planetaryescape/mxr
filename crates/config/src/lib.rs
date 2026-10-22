@@ -12,8 +12,9 @@ pub use resolve::{
     lock_config_file_at, read_bridge_port, read_or_create_bridge_token, remote_bridge_token_path,
     resolve_daemon_token, retired_config_keys_in, save_config, save_config_to_path,
     scoped_credential_service, secrets_file_path, socket_path, token_dir, update_config,
-    update_config_at_path, write_bridge_port, ConfigError, ConfigFileLock, DAEMON_TOKEN_ENV,
-    DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, PROD_INSTANCE_NAME, RETIRED_CONFIG_KEYS,
+    update_config_at_path, validate_account_identities, write_bridge_port, ConfigError,
+    ConfigFileLock, DAEMON_TOKEN_ENV, DEMO_INSTANCE_NAME, DEV_INSTANCE_NAME, PROD_INSTANCE_NAME,
+    RETIRED_CONFIG_KEYS,
 };
 pub use secret_store::SecretStore;
 pub use types::*;
@@ -584,5 +585,59 @@ use_tls = true
             fastmail.send,
             Some(SendProviderConfig::Smtp { .. })
         ));
+    }
+
+    fn identity_config(extra_work: &str, extra_wedding: &str) -> String {
+        format!(
+            "[accounts.work]\nname = \"Work\"\nemail = \"bk@work.example\"\n{extra_work}\n\
+             [accounts.wedding]\nname = \"Wedding\"\nemail = \"bk@wedding.example\"\n{extra_wedding}\n"
+        )
+    }
+
+    #[test]
+    fn identity_overrides_load_and_the_tag_is_uppercased() {
+        let config =
+            load_config_from_str(&identity_config("color = \"amber\"\ntag = \"w\"", "")).unwrap();
+        let work = &config.accounts["work"];
+        assert_eq!(work.color.as_deref(), Some("amber"));
+        assert_eq!(work.tag.as_deref(), Some("W"));
+        let wedding = &config.accounts["wedding"];
+        assert_eq!(wedding.color, None);
+        assert_eq!(wedding.tag, None);
+    }
+
+    #[test]
+    fn unknown_colour_is_a_config_error_that_lists_the_slots() {
+        let error = load_config_from_str(&identity_config("color = \"teal\"", ""))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("account 'work'"), "{error}");
+        assert!(error.contains("'teal'"), "{error}");
+        let detail = match load_config_from_str(&identity_config("color = \"teal\"", "")) {
+            Err(ConfigError::AccountIdentity { message, .. }) => message,
+            other => panic!("expected an identity error, got {other:?}"),
+        };
+        assert!(detail.contains("sky, amber, green"), "{detail}");
+    }
+
+    #[test]
+    fn a_tag_longer_than_three_characters_is_refused() {
+        let error = load_config_from_str(&identity_config("tag = \"WORK\"", ""))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("1 to 3"), "{error}");
+    }
+
+    #[test]
+    fn a_duplicate_configured_tag_names_the_account_that_holds_it() {
+        let error = load_config_from_str(&identity_config("tag = \"W\"", "tag = \"w\""))
+            .unwrap_err()
+            .to_string();
+        // Keys are checked in sorted order, so "wedding" holds the tag first and
+        // "work" is the account refused.
+        assert!(
+            error.contains("account 'work'") && error.contains("already set on account 'wedding'"),
+            "{error}"
+        );
     }
 }

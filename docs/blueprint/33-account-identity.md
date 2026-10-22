@@ -15,9 +15,9 @@ The daemon resolves both and sends them on `AccountSummaryData.identity` (`Accou
 
 When an account is created, the daemon stores the first free slot, in the order above, in `accounts.identity_color`. Existing accounts get slots in creation order when the column is added. Adding, removing or renaming another account never changes an account's colour, so the colour can become memory. From the ninth account on, slots repeat in order and the tag tells those accounts apart. Settings say so beside the picker.
 
-### Tags come from the name
+### Tags come from the name, once
 
-The default tag is the initials of the account's name: up to two words, so "Work" is `W` and "Planetary Escape" is `PE`. If two accounts would share a tag, the later-created one takes its name's first two letters, then the first three ("Work" and "Wedding" become `W` and `WE`). Then a digit is added. The daemon resolves this in creation order, so tags are stable and unique.
+An account's default tag is derived from its name when the account is created, and the daemon stores it with the account. The initials of the name's first two words come first, so "Work" is `W` and "Planetary Escape" is `PE`. If that tag is taken, the name's first two letters are tried, then its first three, then the initials with a digit. The derivation avoids every stored tag and every configured tag, so a new account never takes one of those. Once stored, the tag is never derived again. Renaming an account, removing another, or overriding a tag in config cannot change it. A config tag that another account already holds is refused: the daemon logs an error, keeps the stored tag, and the upsert and the `identity` command refuse the same clash.
 
 ### People can change both
 

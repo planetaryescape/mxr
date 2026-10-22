@@ -1519,6 +1519,7 @@ fn sample_subscription(account_id: &AccountId) -> SubscriptionSummary {
 
 fn sample_account(account_id: &AccountId) -> mxr_protocol::AccountSummaryData {
     mxr_protocol::AccountSummaryData {
+        identity: None,
         account_id: account_id.clone(),
         key: Some("personal".into()),
         name: "Personal".into(),

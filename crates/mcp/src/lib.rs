@@ -3643,6 +3643,7 @@ mod tests {
                 },
                 Request::ListAccounts => ResponseData::Accounts {
                     accounts: vec![mxr_protocol::AccountSummaryData {
+                        identity: None,
                         account_id: self.draft.account_id.clone(),
                         key: None,
                         name: "Test".into(),

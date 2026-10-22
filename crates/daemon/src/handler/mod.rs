@@ -130,7 +130,7 @@ use tracing::Instrument;
 /// directory per message.
 pub(crate) const HTML_ASSETS_DIR: &str = "_html_assets";
 
-pub(crate) use account_config::{list_account_configs, repair_account_config};
+pub(crate) use account_config::{config_account_id, list_account_configs, repair_account_config};
 pub(crate) use helpers::{
     dir_size_sync, file_size_sync, recent_log_lines_sync, should_fallback_to_tantivy,
 };
@@ -869,6 +869,21 @@ async fn dispatch(
         Request::UpsertAccountConfig { account } => {
             accounts::upsert_account(state, account.clone()).await
         }
+        Request::SetAccountIdentity {
+            key,
+            color,
+            tag,
+            dry_run,
+        } => Ok(ResponseData::AccountOperation {
+            result: account_config::set_account_identity(
+                state,
+                key,
+                *color,
+                tag.as_deref(),
+                *dry_run,
+            )
+            .await,
+        }),
         Request::SetDefaultAccount { key } => accounts::set_default_account_key(state, key).await,
         Request::TestAccountConfig { account } => {
             accounts::test_account(state, account.clone()).await
@@ -2656,6 +2671,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::CancelAuthSession { .. }
         | Request::CompleteAuthSession { .. }
         | Request::UpsertAccountConfig { .. }
+        | Request::SetAccountIdentity { .. }
         | Request::SetDefaultAccount { .. }
         | Request::TestAccountConfig { .. }
         | Request::DisableAccountConfig { .. }
@@ -2849,6 +2865,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::CancelAuthSession { .. } => "cancel_auth_session",
         Request::CompleteAuthSession { .. } => "complete_auth_session",
         Request::UpsertAccountConfig { .. } => "upsert_account_config",
+        Request::SetAccountIdentity { .. } => "set_account_identity",
         Request::SetDefaultAccount { .. } => "set_default_account",
         Request::TestAccountConfig { .. } => "test_account_config",
         Request::DisableAccountConfig { .. } => "disable_account_config",
@@ -3235,6 +3252,7 @@ fn request_account_key(req: &Request) -> Option<&str> {
         | Request::StartAuthSession { account, .. }
         | Request::UpsertAccountConfig { account }
         | Request::TestAccountConfig { account } => Some(account.key.as_str()),
+        Request::SetAccountIdentity { key, .. } => Some(key.as_str()),
         Request::SetDefaultAccount { key } => Some(key.as_str()),
         Request::DisableAccountConfig { key } => Some(key.as_str()),
         Request::RemoveAccountConfig { key, .. } => Some(key.as_str()),

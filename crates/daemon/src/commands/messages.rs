@@ -3,6 +3,7 @@
 //! shows the same bands, order and new text as the web app and the TUI.
 
 use crate::cli::{MessagesAction, MessagesTurnArg, OutputFormat};
+use crate::commands::account_mark::AccountMarks;
 use crate::commands::{expect_response, resolve_account, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{resolve_format, terminal_text};
@@ -45,7 +46,12 @@ pub async fn run(
                     _ => None,
                 },
             )?;
-            print!("{}", render_list(&messages, format)?);
+            let marks = if matches!(format, OutputFormat::Table) {
+                AccountMarks::load(&mut client, account.is_some()).await?
+            } else {
+                AccountMarks::hidden()
+            };
+            print!("{}", render_list(&messages, format, &marks)?);
         }
         MessagesAction::Person { person, topic } => {
             let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
@@ -239,7 +245,11 @@ fn bands(messages: &MessagesData) -> [(&'static str, &[MessagesRowData]); 4] {
     ]
 }
 
-fn render_list(messages: &MessagesData, format: OutputFormat) -> anyhow::Result<String> {
+fn render_list(
+    messages: &MessagesData,
+    format: OutputFormat,
+    marks: &AccountMarks,
+) -> anyhow::Result<String> {
     Ok(match format {
         OutputFormat::Json => json(messages)?,
         OutputFormat::Jsonl => {
@@ -280,11 +290,11 @@ fn render_list(messages: &MessagesData, format: OutputFormat) -> anyhow::Result<
             }
             out
         }
-        OutputFormat::Table => list_table(messages),
+        OutputFormat::Table => list_table(messages, marks),
     })
 }
 
-fn list_table(messages: &MessagesData) -> String {
+fn list_table(messages: &MessagesData, marks: &AccountMarks) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "{}", terminal_text(&messages.header));
     if messages.your_turn.is_empty() {
@@ -297,7 +307,7 @@ fn list_table(messages: &MessagesData) -> String {
     } else {
         let _ = writeln!(out, "\nYOUR TURN");
         for row in &messages.your_turn {
-            row_lines(&mut out, row);
+            row_lines(&mut out, row, marks);
         }
     }
     if !messages.pinned.is_empty() {
@@ -306,7 +316,11 @@ fn list_table(messages: &MessagesData) -> String {
             .iter()
             .map(|row| {
                 let dot = if row.your_turn { " *" } else { "" };
-                format!("{}{dot}", terminal_text(&row.title))
+                format!(
+                    "{}{}{dot}",
+                    marks.prefix(&row.account_id),
+                    terminal_text(&row.title)
+                )
             })
             .collect();
         let _ = writeln!(out, "\nPINNED  {}", faces.join(" · "));
@@ -314,7 +328,7 @@ fn list_table(messages: &MessagesData) -> String {
     if !messages.recent.is_empty() {
         let _ = writeln!(out, "\nRECENT");
         for row in &messages.recent {
-            row_lines(&mut out, row);
+            row_lines(&mut out, row, marks);
         }
         if messages.recent_total as usize > messages.recent.len() {
             let _ = writeln!(
@@ -329,7 +343,8 @@ fn list_table(messages: &MessagesData) -> String {
         for row in messages.quiet.iter().take(5) {
             let _ = writeln!(
                 out,
-                "  {:<24}  {}",
+                "  {}{:<24}  {}",
+                marks.prefix(&row.account_id),
                 terminal_text(&super::owed::truncate(&row.title, 24)),
                 age(row.last_at)
             );
@@ -338,13 +353,18 @@ fn list_table(messages: &MessagesData) -> String {
     out
 }
 
-fn row_lines(out: &mut String, row: &MessagesRowData) {
+fn row_lines(out: &mut String, row: &MessagesRowData, marks: &AccountMarks) {
     let mut facts = vec![row.closeness.label().to_string()];
     facts.extend(row.pace_label.clone());
     let when = row.turn_since.unwrap_or(row.last_at);
+    let acct = if marks.shown() {
+        format!("{:<4} ", marks.cell(&row.account_id))
+    } else {
+        String::new()
+    };
     let _ = writeln!(
         out,
-        "  {:<24} {:>6}  {}",
+        "  {acct}{:<24} {:>6}  {}",
         terminal_text(&super::owed::truncate(&row.title, 24)),
         age(when),
         facts.join(" · ")

@@ -290,6 +290,10 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_burn", &["burn", "--help"]),
         ("cli_help_bug_report", &["bug-report", "--help"]),
         ("cli_help_accounts", &["accounts", "--help"]),
+        (
+            "cli_help_accounts_identity",
+            &["accounts", "identity", "--help"],
+        ),
         ("cli_help_accounts_add", &["accounts", "add", "--help"]),
         ("cli_help_accounts_show", &["accounts", "show", "--help"]),
         ("cli_help_accounts_test", &["accounts", "test", "--help"]),

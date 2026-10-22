@@ -56,6 +56,7 @@ fn account_summary(
     is_default: bool,
 ) -> mxr_protocol::AccountSummaryData {
     mxr_protocol::AccountSummaryData {
+        identity: None,
         account_id,
         key: Some("user".into()),
         name: "User".into(),

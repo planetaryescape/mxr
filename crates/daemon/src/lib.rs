@@ -7,6 +7,7 @@
 )]
 
 #[doc(hidden)]
+pub mod account_identity;
 pub mod activity;
 mod assistant;
 pub mod backup;

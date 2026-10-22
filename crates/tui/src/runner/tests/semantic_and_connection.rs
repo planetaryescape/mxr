@@ -983,6 +983,7 @@ fn account_unhealthy_reflects_diagnostics_sync_status() {
     let mut app = App::new();
     let account_id = mxr_core::AccountId::new();
     let summary = mxr_protocol::AccountSummaryData {
+        identity: None,
         account_id: account_id.clone(),
         key: Some("user".into()),
         name: "User".into(),
@@ -1039,6 +1040,7 @@ fn repair_account_action_queues_pending_repair_for_config_account() {
     // Insert a config-backed account so selected_account_config
     // produces a real AccountConfigData.
     app.accounts.page.accounts = vec![mxr_protocol::AccountSummaryData {
+        identity: None,
         account_id: mxr_core::AccountId::new(),
         key: Some("user".into()),
         name: "User".into(),

@@ -1454,6 +1454,102 @@ async fn dispatch_cancel_scheduled_send_prevents_flush() {
     );
 }
 
+async fn dispatch(state: &Arc<AppState>, id: u64, request: Request) -> Response {
+    match handle_request(
+        state,
+        &IpcMessage {
+            expected_workspace: None,
+            id,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(request),
+        },
+    )
+    .await
+    .payload
+    {
+        IpcPayload::Response(response) => response,
+        other => panic!("expected a response, got {other:?}"),
+    }
+}
+
+/// Undo Send after the flusher has fired must say so, not report a stop
+/// that did not happen.
+#[tokio::test]
+async fn cancelling_a_send_that_already_fired_reports_too_late() {
+    let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+    let state = Arc::new(state);
+    let _ = sync_and_get_first_id(&state).await;
+    let account = state.store.list_accounts().await.unwrap()[0].clone();
+    let draft = scheduled_test_draft(account.id.clone(), "fired-then-undone");
+    state.store.insert_draft(&draft).await.unwrap();
+    let scheduled = dispatch(
+        &state,
+        420,
+        Request::ScheduleSend {
+            managed_attachments_reviewed: true,
+            expected_revision: Some(1),
+            draft_id: draft.id.clone(),
+            send_at: chrono::Utc::now() - chrono::Duration::minutes(1),
+        },
+    )
+    .await;
+    assert!(matches!(scheduled, Response::Ok { .. }), "{scheduled:?}");
+
+    let fired = crate::loops::process_due_scheduled_sends(&state, chrono::Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(fired, 1);
+
+    let undo = dispatch(
+        &state,
+        421,
+        Request::CancelScheduledSend {
+            draft_id: draft.id.clone(),
+        },
+    )
+    .await;
+    match undo {
+        Response::Error { message, .. } => assert!(message.contains("Too late"), "{message}"),
+        other => panic!("a fired send cannot be cancelled: {other:?}"),
+    }
+}
+
+/// The flusher only finds out at firing time that an account cannot send;
+/// scheduling must refuse it instead of promising a send.
+#[tokio::test]
+async fn scheduling_refuses_an_account_without_a_send_provider() {
+    let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+    let state = Arc::new(state);
+    let mut receive_only = state.store.list_accounts().await.unwrap()[0].clone();
+    receive_only.id = mxr_core::AccountId::new();
+    receive_only.email = "receive-only@example.com".into();
+    state.store.insert_account(&receive_only).await.unwrap();
+    let draft = scheduled_test_draft(receive_only.id.clone(), "no provider");
+    state.store.insert_draft(&draft).await.unwrap();
+
+    let scheduled = dispatch(
+        &state,
+        430,
+        Request::ScheduleSend {
+            managed_attachments_reviewed: true,
+            expected_revision: Some(1),
+            draft_id: draft.id.clone(),
+            send_at: chrono::Utc::now() + chrono::Duration::minutes(5),
+        },
+    )
+    .await;
+    match scheduled {
+        Response::Error { message, .. } => {
+            assert!(message.contains("No send provider"), "{message}");
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+    assert_eq!(
+        state.store.get_scheduled_send(&draft.id).await.unwrap(),
+        None
+    );
+}
+
 fn scheduled_test_draft(account_id: mxr_core::AccountId, subject: &str) -> mxr_core::types::Draft {
     mxr_core::types::Draft {
         revision: Some(1),
@@ -1522,29 +1618,34 @@ async fn dispatch_list_scheduled_sends_lists_pending_across_accounts_and_scopes(
     }
     let sooner_at = chrono::Utc::now() + chrono::Duration::hours(1);
     let later_at = chrono::Utc::now() + chrono::Duration::hours(4);
-    for (draft_id, send_at) in [(&later.id, later_at), (&sooner.id, sooner_at)] {
-        let resp = handle_request(
-            &state,
-            &IpcMessage {
-                expected_workspace: None,
-                id: 421,
-                source: ::mxr_protocol::ClientKind::default(),
-                payload: IpcPayload::Request(Request::ScheduleSend {
-                    managed_attachments_reviewed: true,
-                    expected_revision: Some(1),
-                    draft_id: draft_id.clone(),
-                    send_at,
-                }),
-            },
-        )
-        .await;
-        assert!(matches!(
-            resp.payload,
-            IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack
-            })
-        ));
-    }
+    let resp = handle_request(
+        &state,
+        &IpcMessage {
+            expected_workspace: None,
+            id: 421,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::ScheduleSend {
+                managed_attachments_reviewed: true,
+                expected_revision: Some(1),
+                draft_id: later.id.clone(),
+                send_at: later_at,
+            }),
+        },
+    )
+    .await;
+    assert!(matches!(
+        resp.payload,
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Ack
+        })
+    ));
+    // The other account has no send provider here, so the daemon would
+    // refuse to schedule it; the listing still has to show stored schedules.
+    state
+        .store
+        .schedule_send(&sooner.id, sooner_at)
+        .await
+        .unwrap();
 
     let all = list_scheduled_sends(&state, None).await;
     assert_eq!(

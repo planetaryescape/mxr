@@ -3528,10 +3528,13 @@ pub(super) async fn schedule_send(
 ) -> HandlerResult {
     let _draft_guard = state.acquire_draft_operation(draft_id).await;
     let revision = expected_revision.ok_or("Scheduling requires the reviewed draft revision")?;
-    checked_draft(state, draft_id, Some(revision)).await?;
+    let draft = checked_draft(state, draft_id, Some(revision)).await?;
     if state.store.get_draft_status(draft_id).await? != Some(DraftStatus::Draft) {
         return Err("Draft cannot be scheduled while a send is uncertain or completed".into());
     }
+    // The flusher looks the provider up only when it fires; refuse now
+    // rather than accept a send that is bound to fail later.
+    state.send_provider_for_account(&draft.account_id)?;
     state.store.schedule_send(draft_id, send_at).await?;
     Ok(ResponseData::Ack)
 }
@@ -3540,7 +3543,11 @@ pub(super) async fn cancel_scheduled_send(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
 ) -> HandlerResult {
-    state.store.cancel_scheduled_send(draft_id).await?;
+    if !state.store.cancel_scheduled_send(draft_id).await? {
+        return Err(
+            "Too late to stop it: this send has already started, or it was not scheduled".into(),
+        );
+    }
     Ok(ResponseData::Ack)
 }
 
@@ -3596,6 +3603,20 @@ pub(crate) async fn send_stored_draft_reviewed(
     }
     let _draft_guard = state.acquire_draft_operation(draft_id).await;
     send_stored_draft_locked(state, draft_id, identity, override_safety_token, false).await
+}
+
+/// `send_stored_draft_reviewed` for a caller that already holds the draft's
+/// operation lock: the scheduled-send flusher claims and sends under it, so
+/// a reschedule cannot be accepted while a claimed send is going out.
+pub(crate) async fn send_stored_draft_reviewed_locked(
+    state: &AppState,
+    draft_id: &mxr_core::DraftId,
+    identity: &mxr_core::SendIdentity,
+) -> HandlerResult {
+    if identity.expected_revision <= 0 {
+        return Err("A saved draft's reviewed revision is required".into());
+    }
+    send_stored_draft_locked(state, draft_id, identity, None, false).await
 }
 
 pub(super) async fn send_stored_draft_remote(

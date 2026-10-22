@@ -116,10 +116,13 @@ async fn addresses_dispatch(op: AddressesOp, format: Option<OutputFormat>) -> an
             account,
             email,
             primary,
-        } => add_address(account.as_deref(), &email, primary, format).await,
-        AddressesOp::Remove { account, email } => {
-            remove_address(account.as_deref(), &email, format).await
-        }
+            dry_run,
+        } => add_address(account.as_deref(), &email, primary, dry_run, format).await,
+        AddressesOp::Remove {
+            account,
+            email,
+            dry_run,
+        } => remove_address(account.as_deref(), &email, dry_run, format).await,
         AddressesOp::SetPrimary { account, email } => {
             set_primary_address(account.as_deref(), &email, format).await
         }
@@ -209,6 +212,7 @@ async fn add_address(
     account_name: Option<&str>,
     email: &str,
     primary: bool,
+    dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let account_id = resolve_account_id(account_name).await?;
@@ -216,24 +220,39 @@ async fn add_address(
         account_id,
         email: email.to_string(),
         primary,
+        dry_run,
     };
     let changes = address_change(request).await?;
     let marker = if primary { " (primary)" } else { "" };
-    render_address_change(&format!("Added {email}{marker}."), email, changes, format)
+    render_address_change(
+        &format!("Added {email}{marker}."),
+        email,
+        changes,
+        dry_run,
+        format,
+    )
 }
 
 async fn remove_address(
     account_name: Option<&str>,
     email: &str,
+    dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let account_id = resolve_account_id(account_name).await?;
     let request = Request::RemoveAccountAddress {
         account_id,
         email: email.to_string(),
+        dry_run,
     };
     let changes = address_change(request).await?;
-    render_address_change(&format!("Removed {email}."), email, changes, format)
+    render_address_change(
+        &format!("Removed {email}."),
+        email,
+        changes,
+        dry_run,
+        format,
+    )
 }
 
 async fn set_primary_address(
@@ -247,10 +266,13 @@ async fn set_primary_address(
         email: email.to_string(),
     };
     let changes = address_change(request).await?;
+    // Set-primary moves only the primary marker, so its change is always zero
+    // and it has no dry run.
     render_address_change(
         &format!("Promoted {email} to primary."),
         email,
         changes,
+        false,
         format,
     )
 }
@@ -275,6 +297,7 @@ fn render_address_change(
     summary: &str,
     email: &str,
     (to_outbound, to_inbound): (u32, u32),
+    dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     match resolve_format(format) {
@@ -282,9 +305,13 @@ fn render_address_change(
             "{}",
             serde_json::to_string(&serde_json::json!({
                 "email": email,
+                "dry_run": dry_run,
                 "to_outbound": to_outbound,
                 "to_inbound": to_inbound,
             }))?
+        ),
+        _ if dry_run => println!(
+            "Dry run: nothing changed. {summary} Would reclassify stored mail: {to_outbound} now sent, {to_inbound} now received."
         ),
         _ => println!(
             "{summary} Stored mail reclassified: {to_outbound} now sent, {to_inbound} now received."

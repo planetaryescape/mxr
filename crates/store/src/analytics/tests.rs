@@ -102,7 +102,7 @@ async fn reclassify_account_directions_follows_the_owned_set() {
     .await;
 
     let changed = store
-        .reclassify_account_directions(&account.id, &owned)
+        .reclassify_account_directions(&account.id, &owned, true)
         .await
         .unwrap();
 
@@ -117,7 +117,7 @@ async fn reclassify_account_directions_follows_the_owned_set() {
     assert_eq!(direction_of(&store, &other_account_alias).await, "inbound");
 
     let again = store
-        .reclassify_account_directions(&account.id, &owned)
+        .reclassify_account_directions(&account.id, &owned, true)
         .await
         .unwrap();
     assert_eq!((again.to_outbound, again.to_inbound), (0, 0));
@@ -169,7 +169,7 @@ async fn reclassify_account_directions_moves_reply_pairs_with_the_reply() {
 
     let owned = OwnedAddresses::new(Some("me@example.com"), ["alias@example.com"]);
     store
-        .reclassify_account_directions(&account.id, &owned)
+        .reclassify_account_directions(&account.id, &owned, true)
         .await
         .unwrap();
 
@@ -208,7 +208,7 @@ async fn reclassify_account_directions_drops_arrivals_for_mail_now_sent() {
 
     let owned = OwnedAddresses::new(Some("me@example.com"), ["alias@example.com"]);
     store
-        .reclassify_account_directions(&account.id, &owned)
+        .reclassify_account_directions(&account.id, &owned, true)
         .await
         .unwrap();
 
@@ -224,4 +224,41 @@ async fn reclassify_account_directions_drops_arrivals_for_mail_now_sent() {
     };
     assert_eq!(arrived(alias_mail).await, 0);
     assert_eq!(arrived(bob_mail).await, 1);
+}
+
+#[tokio::test]
+async fn dry_run_reports_the_counts_the_real_run_applies_and_writes_nothing() {
+    let store = crate::Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let alias_mail = insert_message(
+        &store,
+        &account.id,
+        "alias-in",
+        "alias@example.com",
+        Some(MessageDirection::Inbound),
+    )
+    .await;
+    let owned = OwnedAddresses::new(Some("me@example.com"), ["alias@example.com"]);
+
+    let previewed = store
+        .reclassify_account_directions(&account.id, &owned, false)
+        .await
+        .unwrap();
+
+    assert_eq!(previewed.to_outbound, 1);
+    assert_eq!(previewed.to_inbound, 0);
+    assert_eq!(direction_of(&store, &alias_mail).await, "inbound");
+    let arrivals: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM arrivals")
+        .fetch_one(store.reader())
+        .await
+        .unwrap();
+    assert_eq!(arrivals, 1);
+
+    let applied = store
+        .reclassify_account_directions(&account.id, &owned, true)
+        .await
+        .unwrap();
+    assert_eq!(applied, previewed);
+    assert_eq!(direction_of(&store, &alias_mail).await, "outbound");
 }

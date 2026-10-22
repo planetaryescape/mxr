@@ -10534,6 +10534,8 @@ export interface components {
                   account_id: components["schemas"]["AccountId"];
                   /** @enum {string} */
                   cmd: "AddAccountAddress";
+                  /** @description Report what the add would reclassify without writing anything. */
+                  dry_run?: boolean;
                   email: string;
                   primary: boolean;
               }
@@ -10541,6 +10543,8 @@ export interface components {
                   account_id: components["schemas"]["AccountId"];
                   /** @enum {string} */
                   cmd: "RemoveAccountAddress";
+                  /** @description Report what the remove would reclassify without writing anything. */
+                  dry_run?: boolean;
                   email: string;
               }
             | {

@@ -982,10 +982,16 @@ pub enum Request {
         account_id: AccountId,
         email: String,
         primary: bool,
+        /// Report what the add would reclassify without writing anything.
+        #[serde(default)]
+        dry_run: bool,
     },
     RemoveAccountAddress {
         account_id: AccountId,
         email: String,
+        /// Report what the remove would reclassify without writing anything.
+        #[serde(default)]
+        dry_run: bool,
     },
     SetPrimaryAccountAddress {
         account_id: AccountId,

@@ -25806,6 +25806,10 @@
                   "AddAccountAddress"
                 ]
               },
+              "dry_run": {
+                "type": "boolean",
+                "description": "Report what the add would reclassify without writing anything."
+              },
               "email": {
                 "type": "string"
               },
@@ -25830,6 +25834,10 @@
                 "enum": [
                   "RemoveAccountAddress"
                 ]
+              },
+              "dry_run": {
+                "type": "boolean",
+                "description": "Report what the remove would reclassify without writing anything."
               },
               "email": {
                 "type": "string"

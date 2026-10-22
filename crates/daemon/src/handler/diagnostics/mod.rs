@@ -11,6 +11,7 @@ use super::status_helpers::{
 use super::{
     handle_export_search, handle_export_thread, helpers::protocol_event_entry, HandlerResult,
 };
+use crate::state::owned_addresses_after_change;
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{
@@ -23,7 +24,7 @@ use mxr_protocol::{
     SearchExplainResult, SearchResultItem,
 };
 use mxr_search::{SearchPage, SearchResult};
-use mxr_store::{AccountDirectionChanges, SyncRuntimeStatusUpdate};
+use mxr_store::{AccountDirectionChanges, SyncRuntimeStatusUpdate, PRIMARY_REMOVAL_REFUSED};
 use std::collections::HashMap;
 
 #[cfg(not(test))]
@@ -792,7 +793,15 @@ pub(crate) async fn add_account_address(
     account_id: &AccountId,
     email: &str,
     primary: bool,
+    dry_run: bool,
 ) -> HandlerResult {
+    if dry_run {
+        let owned =
+            owned_addresses_after_change(&state.store, account_id, Some(email), None).await?;
+        return Ok(address_changed(
+            preview_account_directions(state, account_id, &owned).await?,
+        ));
+    }
     state
         .store
         .add_account_address(account_id, email, primary)
@@ -812,7 +821,25 @@ pub(crate) async fn remove_account_address(
     state: &AppState,
     account_id: &AccountId,
     email: &str,
+    dry_run: bool,
 ) -> HandlerResult {
+    if dry_run {
+        // The same refusal the real remove makes, from the same stored primary row.
+        let is_primary = state
+            .store
+            .list_account_addresses(account_id)
+            .await?
+            .iter()
+            .any(|address| address.is_primary && address.email == email);
+        if is_primary {
+            return Err(sqlx::Error::Protocol(PRIMARY_REMOVAL_REFUSED.to_string()).into());
+        }
+        let owned =
+            owned_addresses_after_change(&state.store, account_id, None, Some(email)).await?;
+        return Ok(address_changed(
+            preview_account_directions(state, account_id, &owned).await?,
+        ));
+    }
     state
         .store
         .remove_account_address(account_id, email)
@@ -852,6 +879,19 @@ fn address_changed(changes: AccountDirectionChanges) -> ResponseData {
     }
 }
 
+/// The counts an address change would apply, computed against `owned` without
+/// writing. Same selection as the real change.
+async fn preview_account_directions(
+    state: &AppState,
+    account_id: &AccountId,
+    owned: &mxr_core::types::OwnedAddresses,
+) -> Result<AccountDirectionChanges, sqlx::Error> {
+    state
+        .store
+        .reclassify_account_directions(account_id, owned, false)
+        .await
+}
+
 /// Make the account's stored mail agree with its committed owned set. Callers
 /// refresh the registry first, so sync passes that start now classify against
 /// the new set. The contacts table caches direction, so it is queued too.
@@ -862,7 +902,7 @@ pub(crate) async fn reclassify_account_directions(
     let owned = state.owned_addresses(account_id).await?;
     let changes = state
         .store
-        .reclassify_account_directions(account_id, &owned)
+        .reclassify_account_directions(account_id, &owned, true)
         .await?;
     if changes != AccountDirectionChanges::default() {
         if let Err(error) = state

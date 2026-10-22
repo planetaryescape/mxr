@@ -48,7 +48,7 @@ async fn alias_registered_through_the_handler_counts_in_every_owned_reader_at_on
             .contains("alias@example.com")
     );
 
-    crate::handler::diagnostics_impl::add_account_address(&state, &account_id, alias, false)
+    crate::handler::diagnostics_impl::add_account_address(&state, &account_id, alias, false, false)
         .await
         .unwrap();
 
@@ -84,6 +84,7 @@ async fn draft_voice_lists_the_primary_first_and_then_the_aliases() {
         &account_id,
         "zeta@example.com",
         false,
+        false,
     )
     .await
     .unwrap();
@@ -91,6 +92,7 @@ async fn draft_voice_lists_the_primary_first_and_then_the_aliases() {
         &state,
         &account_id,
         "alpha@example.com",
+        false,
         false,
     )
     .await
@@ -119,9 +121,13 @@ async fn removing_the_primary_through_the_handler_is_refused_and_keeps_it_owned(
         .unwrap()
         .email;
 
-    let result =
-        crate::handler::diagnostics_impl::remove_account_address(&state, &account_id, &primary)
-            .await;
+    let result = crate::handler::diagnostics_impl::remove_account_address(
+        &state,
+        &account_id,
+        &primary,
+        false,
+    )
+    .await;
     assert!(result.is_err());
     assert!(state
         .owned_addresses(&account_id)
@@ -137,9 +143,15 @@ async fn unicode_spellings_of_an_alias_both_validate_as_from() {
     let state = AppState::in_memory().await.unwrap();
     let account_id = state.default_account_id();
     for email in ["user@BÜCHER.example", "user@bücher.example"] {
-        crate::handler::diagnostics_impl::add_account_address(&state, &account_id, email, false)
-            .await
-            .unwrap();
+        crate::handler::diagnostics_impl::add_account_address(
+            &state,
+            &account_id,
+            email,
+            false,
+            false,
+        )
+        .await
+        .unwrap();
     }
     for email in ["user@BÜCHER.example", "user@bücher.example"] {
         let requested = mxr_core::types::Address {
@@ -172,6 +184,7 @@ async fn sync_registry_keeps_the_configured_email_after_it_stops_being_primary()
         &account_id,
         "alias@example.com",
         false,
+        false,
     )
     .await
     .unwrap();
@@ -182,9 +195,14 @@ async fn sync_registry_keeps_the_configured_email_after_it_stops_being_primary()
     )
     .await
     .unwrap();
-    crate::handler::diagnostics_impl::remove_account_address(&state, &account_id, &configured)
-        .await
-        .unwrap();
+    crate::handler::diagnostics_impl::remove_account_address(
+        &state,
+        &account_id,
+        &configured,
+        false,
+    )
+    .await
+    .unwrap();
 
     assert!(state
         .owned_addresses(&account_id)
@@ -252,6 +270,7 @@ async fn adding_an_alias_tells_clients_that_cached_reply_contexts_may_be_stale()
         &state,
         &account_id,
         "alias@example.com",
+        false,
         false,
     )
     .await
@@ -327,6 +346,7 @@ async fn adding_an_alias_reclassifies_stored_mail_from_it_and_reports_the_count(
         &account_id,
         "alias@example.com",
         false,
+        false,
     )
     .await
     .unwrap();
@@ -357,6 +377,7 @@ async fn removing_an_alias_reclassifies_its_stored_mail_back_to_inbound() {
         &account_id,
         "alias@example.com",
         false,
+        false,
     )
     .await
     .unwrap();
@@ -373,6 +394,7 @@ async fn removing_an_alias_reclassifies_its_stored_mail_back_to_inbound() {
         &state,
         &account_id,
         "alias@example.com",
+        false,
     )
     .await
     .unwrap();
@@ -398,6 +420,7 @@ async fn set_primary_leaves_the_owned_set_and_its_mail_unchanged() {
         &account_id,
         "alias@example.com",
         false,
+        false,
     )
     .await
     .unwrap();
@@ -417,4 +440,180 @@ async fn set_primary_leaves_the_owned_set_and_its_mail_unchanged() {
             to_inbound: 0
         }
     ));
+}
+
+async fn arrival_rows(state: &AppState) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM arrivals")
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn dry_run_add_reports_the_real_counts_and_changes_nothing() {
+    use mxr_core::types::MessageDirection;
+    use mxr_protocol::ResponseData;
+
+    let state = AppState::in_memory().await.unwrap();
+    let account_id = state.default_account_id();
+    let alias_mail = store_mail_from(
+        &state,
+        &account_id,
+        "alias@example.com",
+        MessageDirection::Inbound,
+        "alias-dry",
+    )
+    .await;
+    let arrivals_before = arrival_rows(&state).await;
+    let mut events = state.event_tx.subscribe();
+
+    let preview = crate::handler::diagnostics_impl::add_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        false,
+        true,
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        preview,
+        ResponseData::AccountAddressChanged {
+            to_outbound: 1,
+            to_inbound: 0
+        }
+    ));
+    assert!(!state
+        .store
+        .list_account_addresses(&account_id)
+        .await
+        .unwrap()
+        .iter()
+        .any(|address| address.email == "alias@example.com"));
+    assert_eq!(direction_of(&state, &alias_mail).await, "inbound");
+    assert_eq!(arrival_rows(&state).await, arrivals_before);
+    assert!(events.try_recv().is_err());
+
+    let applied = crate::handler::diagnostics_impl::add_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        false,
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        applied,
+        ResponseData::AccountAddressChanged { .. }
+    ));
+    assert_eq!(
+        serde_json::to_value(&preview).unwrap(),
+        serde_json::to_value(&applied).unwrap()
+    );
+    assert_eq!(direction_of(&state, &alias_mail).await, "outbound");
+}
+
+#[tokio::test]
+async fn dry_run_remove_reports_the_real_counts_and_changes_nothing() {
+    use mxr_core::types::MessageDirection;
+    use mxr_protocol::ResponseData;
+
+    let state = AppState::in_memory().await.unwrap();
+    let account_id = state.default_account_id();
+    crate::handler::diagnostics_impl::add_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        false,
+        false,
+    )
+    .await
+    .unwrap();
+    let sent_from_alias = store_mail_from(
+        &state,
+        &account_id,
+        "alias@example.com",
+        MessageDirection::Outbound,
+        "alias-out-dry",
+    )
+    .await;
+    let arrivals_before = arrival_rows(&state).await;
+    let mut events = state.event_tx.subscribe();
+
+    let preview = crate::handler::diagnostics_impl::remove_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        true,
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(
+        preview,
+        ResponseData::AccountAddressChanged {
+            to_outbound: 0,
+            to_inbound: 1
+        }
+    ));
+    assert!(state
+        .store
+        .list_account_addresses(&account_id)
+        .await
+        .unwrap()
+        .iter()
+        .any(|address| address.email == "alias@example.com"));
+    assert_eq!(direction_of(&state, &sent_from_alias).await, "outbound");
+    assert_eq!(arrival_rows(&state).await, arrivals_before);
+    assert!(events.try_recv().is_err());
+
+    let applied = crate::handler::diagnostics_impl::remove_account_address(
+        &state,
+        &account_id,
+        "alias@example.com",
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&preview).unwrap(),
+        serde_json::to_value(&applied).unwrap()
+    );
+    assert_eq!(direction_of(&state, &sent_from_alias).await, "inbound");
+}
+
+#[tokio::test]
+async fn dry_run_remove_refuses_the_primary_like_the_real_remove() {
+    let state = AppState::in_memory().await.unwrap();
+    let account_id = state.default_account_id();
+    let primary = state
+        .store
+        .get_account(&account_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .email;
+
+    let preview = crate::handler::diagnostics_impl::remove_account_address(
+        &state,
+        &account_id,
+        &primary,
+        true,
+    )
+    .await;
+    let applied = crate::handler::diagnostics_impl::remove_account_address(
+        &state,
+        &account_id,
+        &primary,
+        false,
+    )
+    .await;
+
+    assert!(preview.is_err());
+    assert_eq!(
+        preview.unwrap_err().to_string(),
+        applied.unwrap_err().to_string()
+    );
 }

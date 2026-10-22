@@ -38,53 +38,85 @@ fn direction_flips(
         .collect()
 }
 
+/// The rows of one account whose direction is known, as `(id, from_email,
+/// direction)`. Both the preview and the real change read them here.
+async fn account_direction_rows<'e, E>(
+    executor: E,
+    account_id: &AccountId,
+) -> Result<Vec<(String, String, String)>, sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
+    sqlx::query_as(
+        r#"SELECT id, from_email, direction
+           FROM messages
+           WHERE account_id = ? AND direction != 'unknown'"#,
+    )
+    .bind(account_id.as_str())
+    .fetch_all(executor)
+    .await
+}
+
+impl AccountDirectionChanges {
+    fn from_flips(flips: &[(String, MessageDirection)]) -> Self {
+        let mut changes = Self::default();
+        for (_, direction) in flips {
+            match direction {
+                MessageDirection::Outbound => changes.to_outbound += 1,
+                _ => changes.to_inbound += 1,
+            }
+        }
+        changes
+    }
+}
+
 impl super::Store {
-    /// Reclassify one account's stored messages against its owned set, after
-    /// an address add, remove or primary change. Inbound rows from an owned
-    /// sender become outbound, and outbound rows from an unowned sender become
-    /// inbound. The derived rows that read direction move with them: their
-    /// reply pairs, and arrivals for mail now sent. Everything runs in one
-    /// writer transaction, so sync cannot write between the read and the flip.
+    /// Reclassify one account's stored messages against `owned`, the set the
+    /// change produces. With `apply: false` it runs the same selection and
+    /// returns the counts a real run would apply, and writes nothing. Its
+    /// callers are the address commands' dry run and the real change.
+    ///
+    /// With `apply: true`, inbound rows from an owned sender become outbound and
+    /// outbound rows from an unowned one become inbound. Their reply pairs and
+    /// unplaced arrivals move with them. It all runs in one writer transaction,
+    /// so sync cannot write between the read and the flip.
     pub async fn reclassify_account_directions(
         &self,
         account_id: &AccountId,
         owned: &OwnedAddresses,
+        apply: bool,
     ) -> Result<AccountDirectionChanges, sqlx::Error> {
+        if !apply {
+            let rows = account_direction_rows(self.reader(), account_id).await?;
+            let flips = direction_flips(&rows, owned);
+            return Ok(AccountDirectionChanges::from_flips(&flips));
+        }
+
         let started_at = Instant::now();
         let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
-        let rows: Vec<(String, String, String)> = sqlx::query_as(
-            r#"SELECT id, from_email, direction
-               FROM messages
-               WHERE account_id = ? AND direction != 'unknown'"#,
-        )
-        .bind(account_id.as_str())
-        .fetch_all(&mut *tx)
-        .await?;
-
-        let mut changes = AccountDirectionChanges::default();
-        for (id, direction) in direction_flips(&rows, owned) {
+        let rows = account_direction_rows(&mut *tx, account_id).await?;
+        let flips = direction_flips(&rows, owned);
+        for (id, direction) in &flips {
             sqlx::query("UPDATE messages SET direction = ? WHERE id = ?")
                 .bind(direction.as_db_str())
-                .bind(&id)
+                .bind(id)
                 .execute(&mut *tx)
                 .await?;
-            Self::reseat_reply_pair_tx(&mut tx, &id).await?;
-            if direction == MessageDirection::Outbound {
+            Self::reseat_reply_pair_tx(&mut tx, id).await?;
+            if *direction == MessageDirection::Outbound {
                 // Mail the account sent is not an arrival. An arrival the user
                 // corrected keeps its record of where it went.
                 sqlx::query(
                     "DELETE FROM arrivals
                      WHERE message_id = ? AND now_mode IS NULL AND moved_at IS NULL",
                 )
-                .bind(&id)
+                .bind(id)
                 .execute(&mut *tx)
                 .await?;
-                changes.to_outbound += 1;
-            } else {
-                changes.to_inbound += 1;
             }
         }
         tx.commit().await?;
+        let changes = AccountDirectionChanges::from_flips(&flips);
         trace_query(
             "analytics.reclassify_account_directions",
             started_at,
@@ -94,9 +126,6 @@ impl super::Store {
     }
 }
 
-/// Reclassify every `direction='unknown'` row using a closure that queries
-/// the account-address lookup. Returns the number of rows updated. Called
-/// by `mxr doctor --rebuild-analytics` (Slice 15).
 impl super::Store {
     pub async fn reclassify_unknown_directions(
         &self,

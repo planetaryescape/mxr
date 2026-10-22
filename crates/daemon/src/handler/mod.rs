@@ -1046,10 +1046,13 @@ async fn dispatch(
             account_id,
             email,
             primary,
-        } => platform::add_account_address(state, account_id, email, *primary).await,
-        Request::RemoveAccountAddress { account_id, email } => {
-            platform::remove_account_address(state, account_id, email).await
-        }
+            dry_run,
+        } => platform::add_account_address(state, account_id, email, *primary, *dry_run).await,
+        Request::RemoveAccountAddress {
+            account_id,
+            email,
+            dry_run,
+        } => platform::remove_account_address(state, account_id, email, *dry_run).await,
         Request::SetPrimaryAccountAddress { account_id, email } => {
             platform::set_primary_account_address(state, account_id, email).await
         }

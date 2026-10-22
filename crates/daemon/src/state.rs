@@ -2722,14 +2722,34 @@ pub(crate) async fn owned_addresses_for(
     store: &Store,
     account_id: &AccountId,
 ) -> std::result::Result<mxr_core::types::OwnedAddresses, sqlx::Error> {
+    owned_addresses_after_change(store, account_id, None, None).await
+}
+
+/// The owned set an alias add or remove would produce, read from committed
+/// store data and changing nothing. `added` and `removed` match the stored
+/// spelling exactly, as the address row's delete does. With neither set, this
+/// is `owned_addresses_for`.
+pub(crate) async fn owned_addresses_after_change(
+    store: &Store,
+    account_id: &AccountId,
+    added: Option<&str>,
+    removed: Option<&str>,
+) -> std::result::Result<mxr_core::types::OwnedAddresses, sqlx::Error> {
     let primary = store
         .get_account(account_id)
         .await?
         .map(|account| account.email);
-    let aliases = store.list_account_addresses(account_id).await?;
+    let mut aliases: Vec<String> = store
+        .list_account_addresses(account_id)
+        .await?
+        .into_iter()
+        .map(|address| address.email)
+        .filter(|email| Some(email.as_str()) != removed)
+        .collect();
+    aliases.extend(added.map(str::to_string));
     Ok(mxr_core::types::OwnedAddresses::new(
         primary.as_deref(),
-        aliases.iter().map(|address| address.email.as_str()),
+        aliases.iter().map(String::as_str),
     ))
 }
 

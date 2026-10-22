@@ -190,16 +190,18 @@ pub(super) async fn add_account_address(
     account_id: &AccountId,
     email: &str,
     primary: bool,
+    dry_run: bool,
 ) -> HandlerResult {
-    diagnostics_impl::add_account_address(state, account_id, email, primary).await
+    diagnostics_impl::add_account_address(state, account_id, email, primary, dry_run).await
 }
 
 pub(super) async fn remove_account_address(
     state: &AppState,
     account_id: &AccountId,
     email: &str,
+    dry_run: bool,
 ) -> HandlerResult {
-    diagnostics_impl::remove_account_address(state, account_id, email).await
+    diagnostics_impl::remove_account_address(state, account_id, email, dry_run).await
 }
 
 pub(super) async fn set_primary_account_address(

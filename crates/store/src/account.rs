@@ -1,6 +1,11 @@
 use crate::{decode_id, decode_json, encode_json, trace_lookup, trace_query};
 use mxr_core::{derive_account_tag, Account, AccountAddress, AccountColor, AccountId, BackendRef};
 
+/// Why `remove_account_address` refuses the primary. A dry run returns the
+/// same error, so the two paths cannot disagree.
+pub const PRIMARY_REMOVAL_REFUSED: &str =
+    "cannot remove the primary address; set another address as primary first";
+
 /// An account's stored colour slot, with what the daemon needs to order
 /// accounts when it resolves tags (blueprint 33).
 #[derive(Debug, Clone)]
@@ -230,10 +235,7 @@ impl super::Store {
             .fetch_optional(self.writer())
             .await?;
             if is_primary.is_some() {
-                return Err(sqlx::Error::Protocol(
-                    "cannot remove the primary address; set another address as primary first"
-                        .to_string(),
-                ));
+                return Err(sqlx::Error::Protocol(PRIMARY_REMOVAL_REFUSED.to_string()));
             }
         }
         Ok(())

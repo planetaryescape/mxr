@@ -35,6 +35,21 @@
       ]
     },
     {
+      "name": "copy-code",
+      "title": "Copy Latest Code",
+      "subtitle": "mxr",
+      "description": "Copy the one-time code from your latest sign-in or verification email, without opening a window.",
+      "mode": "no-view",
+      "keywords": [
+        "otp",
+        "2fa",
+        "totp",
+        "verification",
+        "code",
+        "login"
+      ]
+    },
+    {
       "name": "messages",
       "title": "Messages",
       "subtitle": "mxr",

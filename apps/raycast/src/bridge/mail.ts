@@ -6,6 +6,7 @@ import type { Reply, Schemas } from "./types";
 // the extension reads, as the web app's `features/mailbox/types.ts` has them.
 
 export type Account = Schemas["AccountSummaryData"];
+export type OneTimeCode = Schemas["OneTimeCodeData"];
 
 export interface Address {
   name?: string | null;
@@ -117,4 +118,21 @@ export function getThread(threadId: string): Promise<Thread> {
 /** Mark messages read or unread, as the web reader does once a thread is open. */
 export async function setRead(messageIds: string[], read: boolean): Promise<void> {
   await request("/api/v1/mail/mutations/read", { body: { message_ids: messageIds, read } });
+}
+
+/**
+ * Recent one-time codes, current ones first, then expired, each newest
+ * first (`GET /api/v1/mail/codes`, mxr 0.6.138 and later).
+ */
+export async function getCodes(account?: string, limit = 5): Promise<OneTimeCode[]> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (account) query.set("account", account);
+  return (await request<Reply<"OneTimeCodes">>(`/api/v1/mail/codes?${query}`)).codes;
+}
+
+/** "Google (accounts.google.com)": a borrowed brand shows beside its host. */
+export function codeSender(code: OneTimeCode): string {
+  return code.sender_host && code.sender_host.toLowerCase() !== code.sender_name.toLowerCase()
+    ? `${code.sender_name} (${code.sender_host})`
+    : code.sender_name;
 }

@@ -1,7 +1,7 @@
 import { Action, ActionPanel, Detail, Icon, Keyboard, Toast, showToast } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useEffect, useRef } from "react";
-import { type Address, type Thread, getThread, setRead } from "../bridge/mail";
+import { type Address, type Thread, getCodes, getThread, setRead } from "../bridge/mail";
 import { bodyMarkdown, inline } from "./body";
 import { message } from "./previewed";
 import { ReplyForm } from "./ReplyForm";
@@ -49,6 +49,11 @@ function markdown(data: Thread): string {
 export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
   const webBase = useWebBase();
   const { data, isLoading, error } = useCachedPromise(getThread, [threadId]);
+  // A sign-in email's code, while it still works, as the first action.
+  const { data: codes } = useCachedPromise(() => getCodes(undefined, 10), [], {
+    onError: () => undefined,
+  });
+  const code = codes?.find((entry) => entry.thread_id === threadId && entry.current);
   const markedRead = useRef(false);
 
   const unread = data?.messages.filter((entry) => entry.unread).map((entry) => entry.id) ?? [];
@@ -101,6 +106,14 @@ export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
       }
       actions={
         <ActionPanel>
+          {code && (
+            <Action.CopyToClipboard
+              title={`Copy Code ${code.code}`}
+              icon={Icon.Key}
+              content={code.code}
+              concealed
+            />
+          )}
           {answer && (
             <Action.Push
               title="Reply"

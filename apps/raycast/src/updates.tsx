@@ -42,12 +42,23 @@ export default function Updates() {
       title={line.source_name}
       subtitle={line.fact}
       accessories={[
+        ...(line.code
+          ? [{ tag: { value: line.code, color: Color.Green }, tooltip: "One-time code" }]
+          : []),
         ...badge(line.account_id),
         ...(line.count > 1 ? [{ text: `${line.count}` }] : []),
         arrival(line.latest_at),
       ]}
       actions={
         <ActionPanel>
+          {line.code && (
+            <Action.CopyToClipboard
+              title="Copy Code"
+              icon={Icon.Key}
+              content={line.code}
+              concealed
+            />
+          )}
           {line.latest_thread_id && (
             <ReadAction
               threadId={line.latest_thread_id}

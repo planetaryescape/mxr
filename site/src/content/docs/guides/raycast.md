@@ -37,9 +37,10 @@ changes. They stay in Raycast after you stop it.
 |---|---|---|
 | Now | People, Due Soon, Updates, Reading, Coming Up | Read, Reply, Done Here, Tick Off, Open in mxr |
 | Inbox | Every inbox conversation, newest first | Read, Reply, Open in mxr |
+| Copy Latest Code | No window | Copies the newest current one-time code |
 | Messages | Your Turn, Pinned, Recent, Quiet | Read, Reply, Reply All (groups), Done Here, Open in mxr |
 | To Do | Now, each coming week, Whenever, Later | Tick Off, Read Source Email, Open in mxr, Open Source Email in mxr |
-| Updates | Needs a Look, Changed, Routine | Read, Done Here, Let Go of This Digest, Open Link, Open in mxr |
+| Updates | Needs a Look, Changed, Routine | Copy Code, Read, Done Here, Let Go of This Digest, Open Link, Open in mxr |
 | Reading | The edition's bands, then Later | Read, Read in mxr, Open Original, Save for Later, Let Go |
 | Archive | Records | Read Source Email, Open in mxr, Copy Reference |
 
@@ -71,6 +72,22 @@ text, with images left out, so opening it never loads a sender's tracking
 pixel. As in the web app, the conversation is marked read once it has been
 open a moment; Mark as Unread (⌘⇧U) puts it back. Reply (⌘R), Reply All
 (⌘⇧R) and Open in mxr (⌘O) work from the reader too.
+
+## Copy a one-time code
+
+Copy Latest Code copies the code from your newest sign-in, verification or
+two-factor email that is still in its window, and says whose it is:
+"Copied 482913 from Google (accounts.google.com)". The host is where the
+mail came from, so a borrowed brand shows. It opens no window, so give it
+a hotkey in Raycast's settings and paste straight into the sign-in. The
+code goes on the clipboard concealed, so Raycast's clipboard history does
+not keep it.
+
+mxr finds codes by rules, the same way as `mxr code`; see
+[Updates](/guides/updates/#copy-a-one-time-code) for what counts. An
+Updates line with a code shows it and offers Copy Code first, and reading
+a sign-in email offers Copy Code while the code still works. Copying
+codes needs mxr 0.6.138 or later.
 
 ## Search and filter by account
 

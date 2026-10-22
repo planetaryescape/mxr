@@ -213,11 +213,7 @@ fn row(object: &Map<String, Value>) -> AssistantReadoutRowData {
         .or_else(|| person_name.clone())
         .unwrap_or_else(|| "(no subject)".to_string());
 
-    let from = object.get("from").and_then(|from| {
-        text(from.get("name"))
-            .or_else(|| text(from.get("email")))
-            .or_else(|| text(Some(from)))
-    });
+    let from = from_name(object);
     let first_topic = object
         .get("topics")
         .and_then(Value::as_array)
@@ -236,11 +232,45 @@ fn row(object: &Map<String, Value>) -> AssistantReadoutRowData {
     .find(|detail| *detail != title)
     .map(|detail| clipped(&detail, DETAIL_CHARS));
 
+    // Only keys the tools really return: `from` (search, envelopes),
+    // `snippet` and `has_attachments` (envelopes, place messages), `date`
+    // (envelopes, place messages) or `last_at` (Messages rows), and `unread`
+    // (place messages, Messages rows) or `flags` (envelopes).
+    let sender = from_name(object);
     AssistantReadoutRowData {
         title: clipped(&title, DETAIL_CHARS),
         detail,
         link: link(object),
+        sender: sender.map(|sender| clipped(&sender, DETAIL_CHARS)),
+        snippet: text(object.get("snippet")).map(|snippet| clipped(&snippet, DETAIL_CHARS)),
+        at: object
+            .get("date")
+            .or_else(|| object.get("last_at"))
+            .and_then(Value::as_str)
+            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+            .map(|at| at.timestamp()),
+        attachment: object.get("has_attachments").and_then(Value::as_bool) == Some(true),
+        unread: unread(object),
     }
+}
+
+fn from_name(object: &Map<String, Value>) -> Option<String> {
+    let from = object.get("from")?;
+    text(from.get("name"))
+        .or_else(|| text(from.get("email")))
+        .or_else(|| text(Some(from)))
+}
+
+/// An envelope's `flags` serialise as names ("READ | STARRED"); unread is
+/// the absence of READ. Place messages and Messages rows say `unread`.
+fn unread(object: &Map<String, Value>) -> bool {
+    if let Some(unread) = object.get("unread").and_then(Value::as_bool) {
+        return unread;
+    }
+    object
+        .get("flags")
+        .and_then(Value::as_str)
+        .is_some_and(|flags| !flags.split('|').any(|flag| flag.trim() == "READ"))
 }
 
 /// Where the row opens: its conversation, or the person's row in Messages.
@@ -422,6 +452,111 @@ mod tests {
                 thread_id: "t1".into()
             })
         );
+    }
+
+    #[test]
+    fn flags_serialise_as_names_so_unread_is_the_absence_of_read() {
+        // Pins the wire shape `unread()` reads, from the real type.
+        use mxr_core::MessageFlags;
+        let json = |flags: MessageFlags| serde_json::to_value(flags).unwrap();
+        let read = json(MessageFlags::READ | MessageFlags::STARRED);
+        assert_eq!(read, json!("READ | STARRED"));
+        let out = read_rows(json!({"envelopes": [
+            {"subject": "a", "flags": read},
+            {"subject": "b", "flags": json(MessageFlags::STARRED)},
+            {"subject": "c", "flags": json(MessageFlags::empty())},
+        ]}));
+        assert_eq!(
+            out.iter().map(|row| row.unread).collect::<Vec<_>>(),
+            [false, true, true]
+        );
+    }
+
+    fn read_rows(value: Value) -> Vec<AssistantReadoutRowData> {
+        read(value).rows
+    }
+
+    #[test]
+    fn an_envelope_row_carries_sender_snippet_time_clip_and_unread() {
+        // The shape mxr_list_messages returns: full envelopes.
+        let out = read_rows(json!({"kind": "Envelopes", "envelopes": [{
+            "id": "m1", "thread_id": "t1", "subject": "Invoice 4471",
+            "from": {"name": "Dana Ruiz", "email": "dana@work.example"},
+            "date": "2026-10-01T09:00:00Z", "flags": "STARRED",
+            "snippet": "Please confirm\npayment by Friday", "has_attachments": true,
+        }]}));
+        let row = &out[0];
+        assert_eq!(row.sender.as_deref(), Some("Dana Ruiz"));
+        assert_eq!(
+            row.snippet.as_deref(),
+            Some("Please confirm payment by Friday")
+        );
+        assert_eq!(row.at, Some(1_790_845_200));
+        assert!(row.attachment && row.unread);
+        // `detail` is what it always was.
+        assert_eq!(row.detail.as_deref(), Some("Dana Ruiz"));
+    }
+
+    #[test]
+    fn a_search_result_fills_what_the_tool_names_and_no_more() {
+        let out = read_rows(json!({"results": [{
+            "message_id": "m1", "thread_id": "t1", "score": 1.0,
+            "subject": "CI failed", "from": {"name": "", "email": "ci@github.example"},
+        }]}));
+        let row = &out[0];
+        assert_eq!(row.sender.as_deref(), Some("ci@github.example"));
+        assert_eq!((row.snippet.as_deref(), row.at), (None, None));
+        assert!(!row.attachment && !row.unread);
+    }
+
+    #[test]
+    fn a_place_message_has_snippet_time_and_unread_but_no_sender() {
+        let out = read_rows(
+            json!({"bundles": [{"sender_email": "a@b.example", "messages": [{
+                "message_id": "m1", "thread_id": "t1", "subject": "Weekly digest",
+                "snippet": "Ten links", "date": "2026-10-01T09:00:00+00:00",
+                "unread": true, "pinned": false, "starred": false,
+            }]}]}),
+        );
+        let row = &out[0];
+        assert_eq!(row.sender, None);
+        assert_eq!(row.snippet.as_deref(), Some("Ten links"));
+        assert_eq!(row.at, Some(1_790_845_200));
+        assert!(row.unread && !row.attachment);
+    }
+
+    #[test]
+    fn a_messages_row_has_time_and_unread_but_no_email_fields() {
+        let out = read_rows(json!({"your_turn": [{
+            "id": "person:ann@x.example", "kind": "person", "title": "Ann",
+            "last_at": "2026-10-01T09:00:00Z", "unread": true,
+            "preview": {"kind": "ask", "text": "Can you review?"}, "topics": [],
+        }]}));
+        let row = &out[0];
+        assert_eq!(row.at, Some(1_790_845_200));
+        assert!(row.unread);
+        assert_eq!(
+            (row.sender.as_deref(), row.snippet.as_deref()),
+            (None, None)
+        );
+    }
+
+    #[test]
+    fn email_fields_carry_no_control_characters() {
+        let out = read_rows(json!({"results": [{
+            "subject": "s", "from": {"name": "Eve\u{1b}[31m\u{202e}", "email": "e@x"},
+            "snippet": "line\u{7}one\ntwo",
+        }]}));
+        let row = &out[0];
+        for text in [row.sender.as_deref(), row.snippet.as_deref()]
+            .into_iter()
+            .flatten()
+        {
+            assert!(
+                !text.chars().any(|c| c.is_control() || c == '\u{202e}'),
+                "{text:?}"
+            );
+        }
     }
 
     #[test]

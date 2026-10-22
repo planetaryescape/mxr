@@ -334,6 +334,7 @@ mod tests {
             title: title.into(),
             detail: None,
             link: None,
+            ..Default::default()
         };
         let listed = AssistantReadoutData {
             total: Some(9),

@@ -6397,11 +6397,13 @@ async fn assistant_step_rows_route_returns_every_row_the_step_listed() {
                             title: "Quarterly report".into(),
                             detail: Some("Ann".into()),
                             link: None,
+                            ..Default::default()
                         },
                         mxr_protocol::AssistantReadoutRowData {
                             title: "Invoice 42".into(),
                             detail: None,
                             link: None,
+                            ..Default::default()
                         },
                     ],
                     listed: 2,

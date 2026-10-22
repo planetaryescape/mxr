@@ -4604,6 +4604,38 @@ export interface components {
                   /** @enum {string} */
                   type: "fake";
               };
+        /** @description Recent `sync_log` history for one account, as `mxr doctor` reports it. */
+        AccountSyncHistory: {
+            account_id: components["schemas"]["AccountId"];
+            account_name: string;
+            /** Format: int32 */
+            failed_syncs: number;
+            /** Format: int32 */
+            finished_syncs: number;
+            /** Format: int64 */
+            latest_duration_secs?: number | null;
+            /**
+             * Format: int64
+             * @description Whole seconds, since `sync_log` timestamps are stored at second
+             *     resolution.
+             */
+            median_duration_secs?: number | null;
+            /**
+             * Format: int32
+             * @description Rows read for this account, newest first.
+             */
+            recent_syncs: number;
+            recurring_errors: components["schemas"]["RecurringSyncError"][];
+            /** Format: int64 */
+            slowest_duration_secs?: number | null;
+            trend?: components["schemas"]["SyncDurationTrend"] | null;
+            /**
+             * Format: int32
+             * @description Rows without `finished_at`: still running, or abandoned mid-run. They
+             *     never contribute to the duration fields.
+             */
+            unfinished_syncs: number;
+        };
         AccountSyncStatus: {
             account_id: components["schemas"]["AccountId"];
             account_name: string;
@@ -5307,9 +5339,25 @@ export interface components {
         };
         /** @description One thing a result lists: an email, a person, a to-do. */
         AssistantReadoutRowData: {
+            /**
+             * Format: int64
+             * @description When the email arrived or the person last wrote: unix seconds.
+             */
+            at?: number | null;
+            /** @description The email carries an attachment. */
+            attachment?: boolean;
             detail?: string | null;
             link?: components["schemas"]["AssistantLinkData"] | null;
+            /**
+             * @description Who an email is from, apart from `detail`. Absent for people and
+             *     from older daemons.
+             */
+            sender?: string | null;
+            /** @description The start of an email's text, clipped. */
+            snippet?: string | null;
             title: string;
+            /** @description The email or the person's latest activity is unread. */
+            unread?: boolean;
         };
         /** @description Body of `POST /api/v1/mail/assistant/conversations`. */
         AssistantSendBody: {
@@ -6619,6 +6667,11 @@ export interface components {
             log_path: string;
             /** Format: int64 */
             log_size_bytes: number;
+            /**
+             * Format: int64
+             * @description Active log plus rotated archives. `log_size_bytes` stays active-file only.
+             */
+            log_total_bytes?: number;
             recent_error_logs: string[];
             recent_sync_events: components["schemas"]["EventLogEntry"][];
             recommended_next_steps: string[];
@@ -6631,6 +6684,8 @@ export interface components {
             socket_exists: boolean;
             socket_reachable: boolean;
             stale_socket: boolean;
+            /** @description Per-account `sync_log` summary. Empty from a daemon that predates it. */
+            sync_history?: components["schemas"]["AccountSyncHistory"][];
             sync_statuses: components["schemas"]["AccountSyncStatus"][];
         };
         Draft: components["schemas"]["DraftContentSchema"] & {
@@ -9582,6 +9637,16 @@ export interface components {
             retired_intentions: number;
             source_owner_stopped: boolean;
             workspace_id: string;
+        };
+        /**
+         * @description One normalised failure message that recurred within an account's recent
+         *     sync history.
+         */
+        RecurringSyncError: {
+            /** Format: int32 */
+            count: number;
+            last_seen_at: string;
+            message: string;
         };
         RegisteredClient: {
             capabilities: components["schemas"]["RemoteCapability"][];
@@ -13878,6 +13943,12 @@ export interface components {
          * @enum {string}
          */
         SyncAccountResultKind: "started" | "joined" | "failed";
+        /**
+         * @description Direction of an account's recent sync durations, compared as the median of
+         *     the newest finished syncs against the median of the ones before them.
+         * @enum {string}
+         */
+        SyncDurationTrend: "slower" | "faster" | "steady";
         /** @description The last sync failure of one account. */
         SyncErrorData: {
             /** Format: int32 */

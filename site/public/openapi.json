@@ -10325,6 +10325,18 @@
           "title"
         ],
         "properties": {
+          "at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the email arrived or the person last wrote: unix seconds."
+          },
+          "attachment": {
+            "type": "boolean",
+            "description": "The email carries an attachment."
+          },
           "detail": {
             "type": [
               "string",
@@ -10341,8 +10353,26 @@
               }
             ]
           },
+          "sender": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who an email is from, apart from `detail`. Absent for people and\nfrom older daemons."
+          },
+          "snippet": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The start of an email's text, clipped."
+          },
           "title": {
             "type": "string"
+          },
+          "unread": {
+            "type": "boolean",
+            "description": "The email or the person's latest activity is unread."
           }
         }
       },

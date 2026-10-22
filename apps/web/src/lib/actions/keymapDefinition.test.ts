@@ -34,13 +34,19 @@ const defined = (keymap.action as DefinedAction[]).filter(
 );
 
 function definedBindings(): string[] {
-  return defined.flatMap((action) =>
-    (action.scopes ?? ["global"]).flatMap((scope) => [
-      ...(action.keys ?? []).map((chord) => `${scope}|${chord}|${action.id}`),
-      ...(action.mac_keys ?? []).map((chord) => `${scope}|${chord}|${action.id}|mac`),
-      ...(action.retired_keys ?? []).map((chord) => `${scope}|${chord}|${action.id}|retired`),
-    ]),
-  );
+  const bindings: string[] = [];
+  for (const action of defined) {
+    for (const scope of action.scopes ?? ["global"]) {
+      for (const chord of action.keys ?? []) bindings.push(`${scope}|${chord}|${action.id}`);
+      for (const chord of action.mac_keys ?? []) {
+        bindings.push(`${scope}|${chord}|${action.id}|mac`);
+      }
+      for (const chord of action.retired_keys ?? []) {
+        bindings.push(`${scope}|${chord}|${action.id}|retired`);
+      }
+    }
+  }
+  return bindings;
 }
 
 describe("the web registry and the key definition", () => {
@@ -84,7 +90,9 @@ describe("the web registry and the key definition", () => {
       };
       return JSON.stringify(have) === JSON.stringify(expected)
         ? []
-        : [`${want.id}: registry ${JSON.stringify(have)} ≠ keymap.toml ${JSON.stringify(expected)}`];
+        : [
+            `${want.id}: registry ${JSON.stringify(have)} ≠ keymap.toml ${JSON.stringify(expected)}`,
+          ];
     });
     expect(mismatched).toEqual([]);
   });

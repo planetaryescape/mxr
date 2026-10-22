@@ -47,7 +47,10 @@ impl App {
             }
             Action::MessagesAsSent => self.messages_as_sent(),
             Action::MessagesFilter => {
+                // Opening the picker takes the Messages keys away, so a Got it
+                // counting down is cancelled here, not left to send under it.
                 self.modals.messages_filter = Some(MessagesFilterPicker::default());
+                self.guard_messages_ack();
             }
             Action::MessagesBack => self.messages_back(),
             _ => {}
@@ -399,7 +402,10 @@ impl App {
     /// is running, the Messages lens has the keys, and the conversation on
     /// it (including one about to load) is that thread.
     fn messages_ack_still_wanted(&self, thread_id: &ThreadId) -> bool {
-        if self.should_quit || !self.messages_list_focused() {
+        if self.should_quit
+            || !self.messages_list_focused()
+            || self.modals.messages_filter.is_some()
+        {
             return false;
         }
         let page = &self.mailbox.messages_page;

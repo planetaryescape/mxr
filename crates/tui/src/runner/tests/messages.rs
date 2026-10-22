@@ -747,3 +747,39 @@ fn the_picker_sets_the_turn_and_pace_without_leaving_messages() {
     assert!(filter.past_pace, "Space toggles like Enter");
     assert_eq!(app.mailbox.mailbox_view, MailboxView::People);
 }
+
+#[test]
+fn opening_the_filter_picker_cancels_a_got_it_counting_down() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('.'));
+    app.mailbox.messages_page.pending_ack_preview = None;
+    let start = std::time::Instant::now();
+    app.show_messages_ack(plan(&app), start);
+    assert!(app.mailbox.messages_page.ack.is_some());
+
+    press_ctrl(&mut app, 'f');
+    assert!(app.modals.messages_filter.is_some());
+    assert!(
+        app.mailbox.messages_page.ack.is_none(),
+        "the picker cancels the countdown"
+    );
+    // `u` in the picker changes nothing and sends nothing.
+    press(&mut app, KeyCode::Char('u'));
+    app.tick_messages_ack(start + std::time::Duration::from_secs(10));
+    assert!(
+        queued(&app).is_empty(),
+        "an open picker never lets a Got it send"
+    );
+}
+
+#[test]
+fn a_preview_that_arrives_while_the_picker_is_open_starts_no_countdown() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('.'));
+    press_ctrl(&mut app, 'f');
+    let start = std::time::Instant::now();
+    app.show_messages_ack(plan(&app), start);
+    assert!(app.mailbox.messages_page.ack.is_none());
+    app.tick_messages_ack(start + std::time::Duration::from_secs(10));
+    assert!(queued(&app).is_empty());
+}

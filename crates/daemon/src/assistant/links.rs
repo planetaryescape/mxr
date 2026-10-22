@@ -180,12 +180,13 @@ impl KnownLinks {
             };
             let text = pieces[index].0.clone();
             let end = start + name.len();
+            let (before, after) = unquoted(&text[..start], &text[end..]);
             pieces.splice(
                 index..=index,
                 [
-                    (text[..start].to_string(), false),
+                    (before.to_string(), false),
                     (format!("[{name}]({target})"), true),
-                    (text[end..].to_string(), false),
+                    (after, false),
                 ],
             );
         }
@@ -198,6 +199,24 @@ fn link_target(link: &AssistantLinkData) -> String {
     match link {
         AssistantLinkData::Thread { thread_id } => format!("mxr:thread/{thread_id}"),
         AssistantLinkData::Person { person_id } => format!("mxr:person/{person_id}"),
+    }
+}
+
+/// The text either side of a linked name, without the quote marks the
+/// reply put round it: the chip already marks the title, and quotes left
+/// beside it read as stray marks. A comma or full stop written inside the
+/// closing quote stays, after the chip.
+fn unquoted<'a>(before: &'a str, after: &str) -> (&'a str, String) {
+    let Some(open) = before.strip_suffix(['"', '\u{201C}']) else {
+        return (before, after.to_string());
+    };
+    let (stop, rest) = match after.chars().next() {
+        Some(mark @ (',' | '.' | ';' | ':' | '!' | '?')) => (Some(mark), &after[1..]),
+        _ => (None, after),
+    };
+    match rest.strip_prefix(['"', '\u{201D}']) {
+        Some(rest) => (open, stop.map_or_else(String::new, String::from) + rest),
+        None => (before, after.to_string()),
     }
 }
 
@@ -264,7 +283,21 @@ mod tests {
         assert_eq!(
             known.apply(reply),
             "1. **[Wendy Data](mxr:person/person:wendy@work.com)** (wendy@work.com): \
-             \"[API design discussion](mxr:thread/thread-wendy-1)\". Wendy Data again."
+             [API design discussion](mxr:thread/thread-wendy-1). Wendy Data again."
+        );
+    }
+
+    #[test]
+    fn drops_the_quotes_round_a_linked_title_but_keeps_its_punctuation() {
+        let known = known(&[json!({"todos": {"your_turn": [
+            {"title": "Pay Patreon", "thread_id": "t1"},
+            {"title": "Pay Pretor", "thread_id": "t2"},
+            {"title": "Pay Google", "thread_id": "t3"},
+        ]}})]);
+        assert_eq!(
+            known.apply("You need to \"Pay Patreon,\" now; \u{201C}Pay Pretor\u{201D} soon; \"Pay Google later."),
+            "You need to [Pay Patreon](mxr:thread/t1), now; [Pay Pretor](mxr:thread/t2) soon; \
+             \"[Pay Google](mxr:thread/t3) later."
         );
     }
 

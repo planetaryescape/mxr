@@ -113,12 +113,12 @@ function toLink(
         key={key}
         href={href}
         {...{ [APP_LINK_ATTRIBUTE]: kind }}
-        className="assistant-chip type-body inline-flex max-w-full items-center gap-1 rounded-sm border border-rule-soft px-1 align-baseline text-text-1 outline-none hover:bg-ink-lamp focus-visible:border-signal"
+        className="assistant-chip type-body inline-flex max-w-full items-center gap-1 rounded-sm border border-rule px-1 align-baseline text-signal outline-none hover:bg-signal-soft focus-visible:border-signal"
       >
         {kind === "person" ? (
           <Avatar name={name} size="xs" />
         ) : (
-          <Glyph aria-hidden className="size-3.5 shrink-0 text-text-3" strokeWidth={1.75} />
+          <Glyph aria-hidden className="size-3.5 shrink-0" strokeWidth={1.75} />
         )}
         <span className="truncate">{children}</span>
       </a>

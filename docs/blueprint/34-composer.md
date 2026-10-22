@@ -511,8 +511,23 @@ written in the model's own words; length is the only check that catches
 that. A repeated sign-off is the same short line appearing twice in the last
 four lines of the output.
 
-The live baseline (`mxr draft eval --set quick` against a real model) is not
-yet recorded in this chapter.
+The live baseline runs `mxr draft eval --set quick` against a real model.
+The first table is from 2026-10-22 on this Mac with `gemma4:latest` through a
+local Ollama endpoint. It is one run after the `won't` phrase fix; the first
+run before that fix differed by up to four cases per check.
+
+| Check | Passed | Of |
+|---|---|---|
+| Kept: typed sentences survive | 20 | 40 |
+| Answers: each question from the target is addressed | 31 | 40 |
+| Gaps: facts nobody gave are left as gaps | 38 | 40 |
+| Invented: no number outside the inputs | 40 | 40 |
+| Length: inside the case's word band | 40 | 40 |
+| Leftovers: no subject, preamble, repeated sign-off or copied run | 39 | 40 |
+
+Runs vary by up to four cases per check. `kept` fails for most typed cases
+because typed text is not sent yet; the 18 cases with nothing typed pass it by
+construction.
 
 ## The compose screen: your page under the lamp, help as a proof
 

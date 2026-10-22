@@ -2380,6 +2380,10 @@ pub enum ClassifyAction {
 pub enum ClassifySetArg {
     /// The labelled demo mail and every near-miss twin.
     Quick,
+    /// Every labelled email in the mailbox: on the 50,000-message demo, the
+    /// labelled demo mail and all of the generated mail, with held-out
+    /// phrasings reported on their own line. Takes up to a minute.
+    Full,
 }
 
 #[derive(Debug, Clone, Subcommand)]

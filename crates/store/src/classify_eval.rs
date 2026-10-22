@@ -29,6 +29,17 @@ pub struct EvalAspects {
     pub record: HashSet<MessageId>,
 }
 
+fn candidate(row: &sqlx::sqlite::SqliteRow) -> Result<EvalCandidate, sqlx::Error> {
+    Ok(EvalCandidate {
+        message_id: decode_id(row.try_get::<&str, _>("id")?)?,
+        account_id: decode_id(row.try_get::<&str, _>("account_id")?)?,
+        thread_id: decode_id(row.try_get::<&str, _>("thread_id")?)?,
+        provider_id: row.try_get("provider_id")?,
+        from_email: row.try_get("from_email")?,
+        spam: row.try_get("spam")?,
+    })
+}
+
 impl super::Store {
     /// Stored emails of `accounts` (all accounts when empty) whose provider
     /// id is in `provider_ids`.
@@ -55,18 +66,32 @@ impl super::Store {
         .bind(i64::from(MessageFlags::SPAM.bits()))
         .fetch_all(self.reader())
         .await?;
-        rows.iter()
-            .map(|row| {
-                Ok(EvalCandidate {
-                    message_id: decode_id(row.try_get::<&str, _>("id")?)?,
-                    account_id: decode_id(row.try_get::<&str, _>("account_id")?)?,
-                    thread_id: decode_id(row.try_get::<&str, _>("thread_id")?)?,
-                    provider_id: row.try_get("provider_id")?,
-                    from_email: row.try_get("from_email")?,
-                    spam: row.try_get("spam")?,
-                })
-            })
-            .collect()
+        rows.iter().map(candidate).collect()
+    }
+
+    /// Every stored email of `accounts` (all accounts when empty), for a set
+    /// that labels mail by where the generator put it rather than by a list
+    /// of provider ids.
+    pub async fn classify_eval_all_candidates(
+        &self,
+        accounts: &[AccountId],
+    ) -> Result<Vec<EvalCandidate>, sqlx::Error> {
+        let accounts_json =
+            encode_json(&accounts.iter().map(AccountId::as_str).collect::<Vec<_>>())?;
+        let rows = sqlx::query(
+            "SELECT id, account_id, thread_id, provider_id, from_email,
+                    ((flags & ?2) != 0 OR EXISTS (
+                        SELECT 1 FROM message_labels ml JOIN labels l ON l.id = ml.label_id
+                        WHERE ml.message_id = messages.id AND l.provider_id = 'SPAM')) AS spam
+             FROM messages
+             WHERE json_array_length(?1) = 0
+                OR account_id IN (SELECT value FROM json_each(?1))",
+        )
+        .bind(accounts_json)
+        .bind(i64::from(MessageFlags::SPAM.bits()))
+        .fetch_all(self.reader())
+        .await?;
+        rows.iter().map(candidate).collect()
     }
 
     /// How many emails `accounts` hold (all accounts when empty).

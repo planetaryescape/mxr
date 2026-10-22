@@ -1171,13 +1171,31 @@ pub(crate) async fn post_sync_fanout(
         });
     }
 
-    if let Err(error) = apply_rules_to_messages(
+    post_sync_classification(
         &state,
         &account_id,
         provider.as_ref(),
         &upserted_message_ids,
+        initial_backfill_in_progress,
     )
-    .await
+    .await;
+}
+
+/// The post-sync work that decides what new mail is: rules, deliveries,
+/// to-dos, records, Reading, Updates facts and where each arrival went. It is
+/// the second half of [`post_sync_fanout`], split out so `mxr classify eval
+/// --set full` can run exactly this over a 50,000-message demo. The indexing
+/// and profile building before it decide nothing the eval grades and are most
+/// of the time.
+pub(crate) async fn post_sync_classification(
+    state: &AppState,
+    account_id: &AccountId,
+    provider: &dyn MailSyncProvider,
+    upserted_message_ids: &[mxr_core::MessageId],
+    initial_backfill_in_progress: bool,
+) {
+    if let Err(error) =
+        apply_rules_to_messages(state, account_id, provider, upserted_message_ids).await
     {
         tracing::error!(account = %account_id, %error, "rule execution failed");
     }
@@ -1185,7 +1203,7 @@ pub(crate) async fn post_sync_fanout(
     // Scan newly-upserted mail for deliveries (heuristic + optional LLM).
     // Respects `[deliveries].enabled`; failures are logged, never propagated.
     let delivery_summary =
-        crate::handler::deliveries::scan_messages(&state, &upserted_message_ids).await;
+        crate::handler::deliveries::scan_messages(state, upserted_message_ids).await;
     if delivery_summary.created > 0 || delivery_summary.updated > 0 {
         tracing::info!(
             account = %account_id,
@@ -1198,23 +1216,23 @@ pub(crate) async fn post_sync_fanout(
 
     // To-dos and confirmations of them in the new mail. Local rules only;
     // windows apply here too, so a backfill page never floods To do.
-    crate::handler::todos::scan_messages(&state, &upserted_message_ids).await;
+    crate::handler::todos::scan_messages(state, upserted_message_ids).await;
 
     // Records in the new mail: receipts, orders, bookings, bills. Rules and
     // schema.org only; an order's later emails join its record.
-    crate::handler::records::scan_messages(&state, &upserted_message_ids).await;
+    crate::handler::records::scan_messages(state, upserted_message_ids).await;
 
     // Reading: extract the new newsletters and let go of what faded.
     if !initial_backfill_in_progress {
-        Box::pin(crate::handler::reading::after_sync(&state, &account_id)).await;
+        Box::pin(crate::handler::reading::after_sync(state, account_id)).await;
     }
 
     // Facts for new Updates mail, so the next digest reads them cached.
-    crate::handler::updates::scan_messages(&state, &upserted_message_ids).await;
+    crate::handler::updates::scan_messages(state, upserted_message_ids).await;
 
     // Where each new arrival went (D119). Last, so a delivery or a record
     // found above is placed as one.
-    if let Err(error) = crate::handler::arrivals::place_pending(&state, &account_id).await {
+    if let Err(error) = crate::handler::arrivals::place_pending(state, account_id).await {
         tracing::warn!(account = %account_id, %error, "placing arrivals failed");
     }
 }
@@ -1261,7 +1279,7 @@ async fn post_delete_fanout(
 /// because the steps filter the whole table: the run after the last page
 /// repairs every row the earlier pages left. `finalize_sync_pass` owns the
 /// decision of when that is.
-async fn run_analytics_repair(state: &Arc<AppState>, account_id: &AccountId) {
+pub(crate) async fn run_analytics_repair(state: &Arc<AppState>, account_id: &AccountId) {
     let backfill = crate::handler::diagnostics_impl::incremental_analytics_backfill(state).await;
     if backfill.did_work() || backfill.startup_repair_ran {
         tracing::info!(

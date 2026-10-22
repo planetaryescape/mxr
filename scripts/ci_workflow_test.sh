@@ -75,4 +75,18 @@ if grep -Fq 'continue-on-error:' <<<"$web_tests_block"; then
   exit 1
 fi
 
+classifier_block="$(sed -n '/^  classifier-eval:/,/^  test-quality-audit:/p' "$workflow")"
+if ! grep -Fq "needs.changes.outputs.classifier == 'true' || github.event_name == 'push'" <<<"$classifier_block"; then
+  echo "Classifier Eval must run for classifier changes and on every push to main." >&2
+  exit 1
+fi
+if ! grep -Fq 'handler::tests::classify_eval_full::the_full_set_is_graded_on_the_whole_demo' <<<"$classifier_block"; then
+  echo "Classifier Eval must run the ignored full-set test." >&2
+  exit 1
+fi
+if ! grep -Fq -- '--ignored' <<<"$classifier_block"; then
+  echo "Classifier Eval must run the full-set test with --ignored." >&2
+  exit 1
+fi
+
 echo "ci_workflow_test: ok"

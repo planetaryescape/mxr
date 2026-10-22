@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Paperclip } from "lucide-react";
 import { useId, useState } from "react";
 
+import { Received } from "@/components/When";
 import { KeyChip } from "@/components/KeyChip";
 import { fetchThread } from "@/features/mailbox/api";
 import { MessageBody } from "@/features/thread/MessageBody";
@@ -52,14 +53,6 @@ function who(message: ConversationMessage): string {
   return message.from.name?.split(/\s+/)[0] ?? message.from.email;
 }
 
-function when(date: string): string {
-  return new Date(date).toLocaleString(undefined, {
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function MessageItem({
   message,
   threadId,
@@ -84,7 +77,7 @@ function MessageItem({
       className="flex flex-col items-start border-t border-rule-soft py-4 first:border-t-0"
     >
       <p className="type-meta mb-1.5 text-text-3">
-        <span className="text-text-2">{who(message)}</span> · {when(message.date)}
+        <span className="text-text-2">{who(message)}</span> · <Received value={message.date} />
       </p>
       {asSent ? (
         <AsSent

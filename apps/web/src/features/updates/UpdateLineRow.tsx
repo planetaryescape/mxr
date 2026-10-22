@@ -3,6 +3,7 @@ import { MoreHorizontal } from "lucide-react";
 import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ModelMark } from "@/components/ModelMark";
+import { Received, When } from "@/components/When";
 import { Row, RowVerb, type LampVia } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useRowGist, type RowGist } from "@/features/gists/rowGists";
 import { fetchThread } from "@/features/mailbox/api";
-import { initials, plural } from "@/lib/format";
+import { formatLongDate, initials, plural } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import type { UpdateLine } from "./api";
@@ -184,6 +185,11 @@ export const UpdateLineRow = memo(function UpdateLineRow({
             onNeedsMe={() => onNeedsMe(line)}
           />
         ) : null
+      }
+      time={
+        <time dateTime={line.latest_at} title={formatLongDate(line.latest_at)}>
+          <When value={line.latest_at} />
+        </time>
       }
       verbs={
         <>
@@ -526,13 +532,19 @@ function EmailPreview({ line }: { line: UpdateLine }) {
     (candidate) => candidate.message_id === line.latest_message_id,
   );
   const lines = previewLines(previewSource(body));
-  if (lines.length === 0) return null;
   return (
-    <p
-      data-testid="update-preview"
-      className="type-reading max-w-[68ch] whitespace-pre-line text-text-1"
-    >
-      {lines.join("\n")}
-    </p>
+    <>
+      <p data-testid="update-arrived" className="type-meta text-text-2">
+        <Received value={line.latest_at} />
+      </p>
+      {lines.length > 0 ? (
+        <p
+          data-testid="update-preview"
+          className="type-reading max-w-[68ch] whitespace-pre-line text-text-1"
+        >
+          {lines.join("\n")}
+        </p>
+      ) : null}
+    </>
   );
 }

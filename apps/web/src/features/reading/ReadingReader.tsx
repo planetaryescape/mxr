@@ -24,7 +24,7 @@ import { MessageContent } from "@/features/thread/MessageCard";
 import { PrivacyLine } from "@/features/thread/privacy/PrivacyLine";
 import { pickSearch, useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
-import { formatLongDate } from "@/lib/format";
+import { formatLongDate, formatReceived } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -357,10 +357,14 @@ function Reader({ detail }: { detail: ReadingDetail }) {
           title={showingArticle && article.title ? article.title : item.title}
           purpose={
             showingArticle
-              ? [article.site_name ?? domainLabel(item.domain), article.byline]
+              ? [
+                  article.site_name ?? domainLabel(item.domain),
+                  article.byline,
+                  formatReceived(item.arrived_at),
+                ]
                   .filter(Boolean)
                   .join(" · ")
-              : `${item.source} · ${formatLongDate(item.arrived_at)}`
+              : `${item.source} · ${formatReceived(item.arrived_at)}`
           }
         />
         <div className="h-[2px] w-full bg-border/60" aria-hidden>

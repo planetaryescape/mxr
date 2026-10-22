@@ -1,6 +1,7 @@
 import { Copy, FileText, Mail, X } from "lucide-react";
 import { memo, type ReactNode } from "react";
 
+import { Received } from "@/components/When";
 import { Row, RowVerb, type LampVia } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 
@@ -263,7 +264,7 @@ export function RecordCard({
             {record.sources.map((source) => (
               <li key={source.message_id} className="flex min-w-0 gap-2">
                 <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
-                  {shortDate(source.date)}
+                  <Received value={source.date} />
                 </span>
                 <span className="shrink-0 text-muted-foreground">{source.stage}</span>
                 <span className="min-w-0 truncate">{source.subject}</span>

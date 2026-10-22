@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { putGist, resetRowGistsForTest } from "@/features/gists/rowGists";
+import { formatReceived, formatWhen } from "@/lib/format";
 
 import type { UpdateLine } from "./api";
 import { lineFixture } from "./testing";
@@ -86,6 +87,18 @@ describe("UpdateLineRow at rest", () => {
   test("the delta is neutral, not cyan", () => {
     const { row } = renderLine(lineFixture());
     expect(within(row).getByTestId("update-delta")).not.toHaveClass("text-primary", "text-signal");
+  });
+
+  test("the trail's time is the latest email's arrival, lit or not; the peek gives it in full", () => {
+    const line = lineFixture();
+    const { row } = renderLine(line, { focused: false });
+    expect(within(row).getByText(formatWhen(line.latest_at))).toBeInTheDocument();
+    cleanup();
+    const lit = renderLine(line, { focused: true, peeked: true });
+    expect(within(lit.row).getByText(formatWhen(line.latest_at))).toBeInTheDocument();
+    expect(within(lit.row).getByTestId("update-arrived")).toHaveTextContent(
+      formatReceived(line.latest_at),
+    );
   });
 
   test("a clock time is not shown at rest", () => {

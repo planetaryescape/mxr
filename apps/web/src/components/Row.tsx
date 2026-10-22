@@ -32,8 +32,13 @@ export interface RowProps extends Omit<ComponentPropsWithoutRef<"li">, "children
   primary: ReactNode;
   /** One secondary line: Body, `--text-2`, truncated. */
   secondary?: ReactNode;
-  /** Marks and the time. Shown while unlit. */
+  /** Marks and values. Shown while unlit; the lit row shows the verbs in their place. */
   trail?: ReactNode;
+  /**
+   * The row's time. Shown lit or not, after the trail or the verbs, so the row
+   * you are on keeps when it arrived (D148, docs/blueprint/27 "Trail").
+   */
+  time?: ReactNode;
   /** The row's actions with their keys. Replace the trail on the lit row and on pointer hover. */
   verbs?: ReactNode;
   /**
@@ -71,6 +76,7 @@ export const Row = memo(function Row({
   primary,
   secondary,
   trail,
+  time,
   verbs,
   renderMain,
   hint,
@@ -131,7 +137,7 @@ export const Row = memo(function Row({
         />
         {leadControl ? lead : null}
         {renderMain ? renderMain(text, MAIN) : <div className={MAIN}>{text}</div>}
-        {trail || verbs ? (
+        {trail || verbs || time ? (
           <div className="type-meta flex shrink-0 items-center text-text-3">
             {trail ? (
               <div
@@ -152,6 +158,9 @@ export const Row = memo(function Row({
               >
                 {verbs}
               </div>
+            ) : null}
+            {time ? (
+              <div className="ml-2.5 flex items-center whitespace-nowrap tabular-nums">{time}</div>
             ) : null}
           </div>
         ) : null}

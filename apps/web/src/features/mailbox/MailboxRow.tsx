@@ -46,8 +46,8 @@ interface MailboxRowProps {
 /**
  * One conversation or message, on the shared `Row` (D129): avatar, sender
  * with the message count in meta, subject and snippet on the second line,
- * mode marks and the time in the trail. The lit row's trail becomes its
- * verbs. Inner verbs are mouse affordances only (rows are listbox options,
+ * mode marks in the trail and the time after them, which the lit row keeps.
+ * The lit row's trail becomes its verbs. Inner verbs are mouse affordances only (rows are listbox options,
  * which can't hold controls); the listbox owns keyboard focus and every
  * action has a key.
  */
@@ -196,14 +196,12 @@ export const MailboxRow = memo(function MailboxRow({
           {row.starred ? <Star className="size-3.5 fill-star text-star" aria-hidden /> : null}
           {/* Where it went (Inbox only; elsewhere no chip scope is mounted). */}
           <ModeChip messageId={row.id} />
-          <time
-            dateTime={row.date}
-            title={row.date_full}
-            className="whitespace-nowrap tabular-nums"
-          >
-            {when || row.date_label}
-          </time>
         </>
+      }
+      time={
+        <time dateTime={row.date} title={row.date_full}>
+          {when || row.date_label}
+        </time>
       }
       verbs={
         rowAction || !readOnly ? (

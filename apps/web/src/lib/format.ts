@@ -70,6 +70,35 @@ export function formatWhen(value: string | Date | null | undefined, now = new Da
   return fullDateFormat.format(date);
 }
 
+const receivedDayFormat = new Intl.DateTimeFormat(undefined, {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
+const receivedDayYearFormat = new Intl.DateTimeFormat(undefined, {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+/**
+ * When an open email arrived, always in plain sight (D148): "Today, 14:02 ·
+ * 2h ago", "Tue 21 Oct, 14:02", and "Tue 21 Oct 2025, 14:02" outside this
+ * year. The date and time words come from the viewer's locale and time zone.
+ */
+export function formatReceived(value: string | Date | null | undefined, now = new Date()): string {
+  const date = parse(value);
+  if (!date) return "";
+  const time = formatTime(date);
+  if (startOfDay(date) === startOfDay(now)) return `Today, ${time} · ${formatRelative(date, now)}`;
+  const day =
+    date.getFullYear() === now.getFullYear()
+      ? receivedDayFormat.format(date)
+      : receivedDayYearFormat.format(date);
+  return `${day}, ${time}`;
+}
+
 /** Reader header date: "Sat, Sep 26, 2026, 10:11 PM". */
 export function formatLongDate(value: string | Date | null | undefined): string {
   const date = parse(value);

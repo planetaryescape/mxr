@@ -44,6 +44,18 @@ describe("ConversationView", () => {
     document.documentElement.removeAttribute("data-scheme");
   });
 
+  test("each message's line says when it arrived, in full", () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationView conversation={conversation} asSent={null} onToggleAsSent={() => {}} />
+      </QueryClientProvider>,
+    );
+    const line = screen.getByTestId("conversation-message").querySelector("p");
+    // The fixture is from 2026-10-06, so the line carries the date and the time.
+    expect(line?.textContent).toMatch(/^Samir · .*6.*Oct.*\d{1,2}:\d{2}/);
+    expect(line?.textContent).not.toMatch(/ago|just now/);
+  });
+
   test("a quote-only message says so and offers the message as sent", () => {
     render(
       <QueryClientProvider client={new QueryClient()}>

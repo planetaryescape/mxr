@@ -264,8 +264,9 @@ Updates, Reading, Archive and the Inbox) one row is lit, a lighter surface
 with a thin cyan line on its leading edge. The first row is lit when a page
 opens, and a lit row opens nothing. `j` and `k` move it at once, a click moves
 it with a short fade. The lit row's keys ("r reply", "Space done") take the
-place of its time and marks on the same line, so no row changes height as the
-lamp moves, and pointing at a row shows its keys without lighting it. The
+place of its marks on the same line, and its time stays after them, so no row
+changes height as the lamp moves, and pointing at a row shows its keys
+without lighting it. The
 status bar names the page's three to five main verbs with their keys, and the
 whole key list is one `?` away; whatever doesn't fit drops off the end a whole
 verb at a time, and the reason shortens with an ellipsis first (hover it for

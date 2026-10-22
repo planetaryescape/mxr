@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { formatTime, formatWhen, initials } from "./format";
+import { formatReceived, formatTime, formatWhen, initials } from "./format";
+
+// Fixed zone so midnight and day boundaries land where the tests say.
+process.env.TZ = "Europe/London";
 
 // Saturday 26 September 2026, 15:00 local time.
 const NOW = new Date(2026, 8, 26, 15, 0, 0);
@@ -74,5 +77,72 @@ describe("formatWhen: one wording for an age, on every surface", () => {
   test("an empty or unreadable value is blank", () => {
     expect(formatWhen(null, NOW)).toBe("");
     expect(formatWhen("not a date", NOW)).toBe("");
+  });
+});
+
+const receivedDay = (date: Date) =>
+  new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" }).format(
+    date,
+  );
+const receivedDayYear = (date: Date) =>
+  new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+
+describe("formatReceived: when an open email arrived, always in plain sight", () => {
+  test("today shows the time and how long ago", () => {
+    const earlier = at(2026, 8, 26, 12, 2);
+    expect(formatReceived(earlier, NOW)).toBe(`Today, ${formatTime(earlier)} · 3 hours ago`);
+    const twelveMinutes = at(2026, 8, 26, 14, 48);
+    expect(formatReceived(twelveMinutes, NOW)).toBe(
+      `Today, ${formatTime(twelveMinutes)} · 12 minutes ago`,
+    );
+  });
+
+  test("under a minute is just now, not a count", () => {
+    const moments = at(2026, 8, 26, 14, 59, 30);
+    expect(formatReceived(moments, NOW)).toBe(`Today, ${formatTime(moments)} · just now`);
+  });
+
+  test("midnight belongs to the day it starts", () => {
+    const midnight = at(2026, 8, 26, 0, 0, 0);
+    expect(formatReceived(midnight, NOW)).toBe(`Today, ${formatTime(midnight)} · 15 hours ago`);
+    const lastSecondYesterday = at(2026, 8, 25, 23, 59, 59);
+    expect(formatReceived(lastSecondYesterday, NOW)).toBe(
+      `${receivedDay(lastSecondYesterday)}, ${formatTime(lastSecondYesterday)}`,
+    );
+  });
+
+  test("this year shows the weekday, day, month and time, with no year", () => {
+    const tuesday = at(2026, 9, 20, 14, 2);
+    expect(formatReceived(tuesday, NOW)).toBe(`${receivedDay(tuesday)}, ${formatTime(tuesday)}`);
+    expect(formatReceived(tuesday, NOW)).not.toMatch(/2026/);
+  });
+
+  test("another year adds the year", () => {
+    const lastYear = at(2025, 9, 21, 14, 2);
+    expect(formatReceived(lastYear, NOW)).toBe(
+      `${receivedDayYear(lastYear)}, ${formatTime(lastYear)}`,
+    );
+  });
+
+  test("the year boundary: 31 Dec last year is not this year", () => {
+    const newYearsEve = at(2025, 11, 31, 23, 30);
+    const newYearsDay = at(2026, 0, 1, 0, 5);
+    const now = at(2026, 0, 1, 9, 0);
+    expect(formatReceived(newYearsEve, now)).toBe(
+      `${receivedDayYear(newYearsEve)}, ${formatTime(newYearsEve)}`,
+    );
+    expect(formatReceived(newYearsDay, now)).toBe(
+      `Today, ${formatTime(newYearsDay)} · 9 hours ago`,
+    );
+  });
+
+  test("an empty or unreadable value is blank", () => {
+    expect(formatReceived(null, NOW)).toBe("");
+    expect(formatReceived("not a date", NOW)).toBe("");
   });
 });

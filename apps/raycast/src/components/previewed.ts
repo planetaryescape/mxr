@@ -1,5 +1,6 @@
 import { Alert, Toast, confirmAlert, showToast } from "@raycast/api";
 import { undoMutation } from "../bridge/modes";
+import { keyFor } from "./keys";
 
 export interface Previewed<R> {
   /** Confirm-dialog title, e.g. "Done here?" */
@@ -50,7 +51,7 @@ export async function runPreviewed<R>(change: Previewed<R>): Promise<void> {
     if (undoId) {
       progress.primaryAction = {
         title: "Undo",
-        shortcut: { modifiers: ["cmd"], key: "z" },
+        shortcut: keyFor("mail.undo"),
         onAction: async (shown) => {
           shown.style = Toast.Style.Animated;
           shown.title = "Undoing…";

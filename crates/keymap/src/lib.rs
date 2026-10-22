@@ -120,11 +120,42 @@ pub struct KeyAction {
     /// How the TUI binds this action today.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tui: Vec<TuiBinding>,
+    /// The Raycast key when it can't be Cmd plus the web letter: Raycast's
+    /// own shortcut for the same action, or `""` for none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raycast_key: Option<String>,
 }
 
 impl KeyAction {
     pub fn is_for(&self, client: Client) -> bool {
         self.clients.contains(&client)
+    }
+
+    /// The key Raycast and other modifier-only clients use: Cmd plus the
+    /// action's first single-letter web key, keeping its Shift, unless
+    /// `raycast_key` says otherwise. Cmd+K is Raycast's action panel, so a
+    /// derived key never takes it.
+    pub fn raycast_key(&self) -> Option<String> {
+        if let Some(key) = &self.raycast_key {
+            return (!key.is_empty()).then(|| key.clone());
+        }
+        let letter = self
+            .keys
+            .iter()
+            .filter_map(|key| {
+                let mut chars = key.chars();
+                match (chars.next(), chars.next()) {
+                    (Some(c), None) if c.is_ascii_alphabetic() => Some(c),
+                    _ => None,
+                }
+            })
+            .next()?;
+        let key = if letter.is_ascii_uppercase() {
+            format!("Cmd+Shift+{}", letter.to_ascii_lowercase())
+        } else {
+            format!("Cmd+{letter}")
+        };
+        (key != "Cmd+k").then_some(key)
     }
 
     /// The web scopes the action's keys are live in.
@@ -134,6 +165,35 @@ impl KeyAction {
         } else {
             self.scopes.iter().map(String::as_str).collect()
         }
+    }
+}
+
+/// An action's Raycast key, as `@raycast/api` takes it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RaycastShortcut {
+    pub modifiers: Vec<String>,
+    pub key: String,
+}
+
+impl RaycastShortcut {
+    /// `Cmd+Shift+e` → `{ modifiers: ["cmd", "shift"], key: "e" }`.
+    pub fn parse(spelling: &str) -> Option<Self> {
+        let mut parts: Vec<&str> = spelling.split('+').collect();
+        let key = parts.pop()?.to_string();
+        let modifiers = parts
+            .into_iter()
+            .map(|part| match part {
+                "Cmd" => Some("cmd"),
+                "Shift" => Some("shift"),
+                "Ctrl" => Some("ctrl"),
+                "Opt" => Some("opt"),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()?
+            .into_iter()
+            .map(String::from)
+            .collect();
+        (!key.is_empty()).then_some(Self { modifiers, key })
     }
 }
 
@@ -264,6 +324,18 @@ impl Keymap {
         map
     }
 
+    /// Every web action's Raycast key, by action id.
+    pub fn raycast_keys(&self) -> BTreeMap<String, RaycastShortcut> {
+        self.actions
+            .iter()
+            .filter(|action| action.is_for(Client::Web))
+            .filter_map(|action| {
+                let shortcut = RaycastShortcut::parse(&action.raycast_key()?)?;
+                Some((action.id.clone(), shortcut))
+            })
+            .collect()
+    }
+
     /// Every key the web app binds.
     pub fn web_bindings(&self) -> Vec<WebBinding> {
         let mut bindings = Vec::new();
@@ -325,6 +397,13 @@ impl Keymap {
             for key in web_keys.chain(action.tui.iter().flat_map(|b| &b.keys)) {
                 if !is_well_formed(key) {
                     problems.push(format!("{id}: malformed key `{key}`"));
+                }
+            }
+            if let Some(key) = action.raycast_key.as_deref().filter(|key| !key.is_empty()) {
+                if RaycastShortcut::parse(key).is_none() {
+                    problems.push(format!(
+                        "{id}: raycast_key `{key}` is not Cmd/Shift/Ctrl/Opt plus a key"
+                    ));
                 }
             }
             if !action.is_for(Client::Tui) && !action.tui.is_empty() {

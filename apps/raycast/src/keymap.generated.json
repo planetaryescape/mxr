@@ -1,0 +1,864 @@
+{
+  "archive.check": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "v"
+  },
+  "archive.copy-amount": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "y"
+  },
+  "archive.copy-reference": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "c"
+  },
+  "archive.dismiss": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "x"
+  },
+  "archive.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "archive.export": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "e"
+  },
+  "archive.issuer": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "p"
+  },
+  "archive.make-todo": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "t"
+  },
+  "archive.open-email": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "o"
+  },
+  "catchup.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "expired.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "focus.done": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "e"
+  },
+  "focus.draft": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "d"
+  },
+  "focus.remind": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "w"
+  },
+  "focus.reply": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "r"
+  },
+  "focus.skip": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "s"
+  },
+  "focus.snooze": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "z"
+  },
+  "list.bottom": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "g"
+  },
+  "list.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "list.open": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "o"
+  },
+  "list.row-action": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "w"
+  },
+  "list.sidebar": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "h"
+  },
+  "list.toggle-select": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "x"
+  },
+  "list.viewport-middle": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "m"
+  },
+  "list.viewport-top": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "h"
+  },
+  "list.visual": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "v"
+  },
+  "mail.archive": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "e"
+  },
+  "mail.attachments": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "a"
+  },
+  "mail.briefing": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "b"
+  },
+  "mail.export": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "e"
+  },
+  "mail.forward": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "f"
+  },
+  "mail.label": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "l"
+  },
+  "mail.links": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "l"
+  },
+  "mail.make-todo": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "t"
+  },
+  "mail.mark-read": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "i"
+  },
+  "mail.mark-unread": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "u"
+  },
+  "mail.move": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "v"
+  },
+  "mail.pass-to-mode": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "t"
+  },
+  "mail.read-archive": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "m"
+  },
+  "mail.reply": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "r"
+  },
+  "mail.reply-all": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "r"
+  },
+  "mail.reply-later": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "b"
+  },
+  "mail.sender-profile": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "p"
+  },
+  "mail.snooze": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "z"
+  },
+  "mail.star": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "s"
+  },
+  "mail.undo": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "z"
+  },
+  "mail.unsubscribe": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "d"
+  },
+  "mail.whois": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "w"
+  },
+  "messages.as-sent": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "o"
+  },
+  "messages.done": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "e"
+  },
+  "messages.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "messages.filter": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "f"
+  },
+  "messages.new-topic": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "c"
+  },
+  "messages.person-page": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "p"
+  },
+  "messages.pin": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "."
+  },
+  "messages.reply": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "r"
+  },
+  "messages.reply-all": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "r"
+  },
+  "messages.reply-later": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "b"
+  },
+  "messages.to-do": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "t"
+  },
+  "modes.move": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "x"
+  },
+  "modes.move-sender": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "k"
+  },
+  "now.done": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "e"
+  },
+  "now.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "now.let-go-digest": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "a"
+  },
+  "now.open-email": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "o"
+  },
+  "now.reply": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "r"
+  },
+  "reader.bottom": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "g"
+  },
+  "reader.close": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "q"
+  },
+  "reader.fullscreen": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "f"
+  },
+  "reader.list": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "h"
+  },
+  "reader.next-message": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "j"
+  },
+  "reader.next-thread": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "n"
+  },
+  "reader.open-original": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "o"
+  },
+  "reader.prev-message": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "k"
+  },
+  "reader.prev-thread": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "n"
+  },
+  "reader.quotes": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "q"
+  },
+  "reader.remote": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "m"
+  },
+  "reader.scroll-down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "reader.signature": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "s"
+  },
+  "reader.summary": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "y"
+  },
+  "reader.toggle-message": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "o"
+  },
+  "reader.view-html": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "h"
+  },
+  "reader.view-reader": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "r"
+  },
+  "reading.article": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "l"
+  },
+  "reading.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "reading.later": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "b"
+  },
+  "reading.later-shelf": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "b"
+  },
+  "reading.let-go": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "e"
+  },
+  "reading.let-go-all": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "a"
+  },
+  "reading.marginalia": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "m"
+  },
+  "reading.move-sender": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "k"
+  },
+  "reading.open-email": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "o"
+  },
+  "reading.original": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "r"
+  },
+  "reading.reader-article": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "l"
+  },
+  "reading.reader-down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "reading.reader-highlight": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "h"
+  },
+  "reading.reader-issue": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "i"
+  },
+  "reading.reader-later": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "b"
+  },
+  "reading.reader-let-go": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "e"
+  },
+  "reading.reader-marginalia": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "m"
+  },
+  "reading.reader-next": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "n"
+  },
+  "reading.reader-open-email": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "o"
+  },
+  "reading.reader-original": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "r"
+  },
+  "reading.reader-unsubscribe": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "d"
+  },
+  "reading.unsubscribe": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "d"
+  },
+  "screener.allow": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "a"
+  },
+  "screener.deny": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "d"
+  },
+  "screener.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "screener.feed": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "f"
+  },
+  "screener.paper-trail": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "p"
+  },
+  "shell.compose": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "c"
+  },
+  "sidebar.bottom": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "g"
+  },
+  "sidebar.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "sidebar.open": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "o"
+  },
+  "todo.catchup": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "c"
+  },
+  "todo.catchup-let-go": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "e"
+  },
+  "todo.catchup-let-go-all": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "a"
+  },
+  "todo.details": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "v"
+  },
+  "todo.dismiss": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "x"
+  },
+  "todo.done": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "e"
+  },
+  "todo.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "todo.expired": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "e"
+  },
+  "todo.open-email": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "o"
+  },
+  "todo.schedule": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "z"
+  },
+  "updates.copy-code": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "c"
+  },
+  "updates.down": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "j"
+  },
+  "updates.let-go-all": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "a"
+  },
+  "updates.let-go-source": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "e"
+  },
+  "updates.link": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "l"
+  },
+  "updates.needs-me": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "t"
+  },
+  "updates.open-email": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "o"
+  },
+  "updates.pin": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "."
+  },
+  "updates.sweep": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "s"
+  },
+  "updates.tune": {
+    "modifiers": [
+      "cmd",
+      "shift"
+    ],
+    "key": "k"
+  }
+}

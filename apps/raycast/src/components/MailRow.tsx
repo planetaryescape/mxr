@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Color, Icon, Keyboard, List } from "@raycast/api";
+import { Action, ActionPanel, Color, Icon, List } from "@raycast/api";
 import type { useAccountBadge } from "./accountBadge";
 import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
@@ -7,6 +7,7 @@ import { ReplyForm } from "./ReplyForm";
 import { ReadAction } from "./ThreadDetail";
 import { arrival } from "./time";
 import { useWebBase, web } from "./web";
+import { keyFor } from "./keys";
 
 /** Shorter queries match too much of the mailbox to be worth asking. */
 const MIN_QUERY = 2;
@@ -55,7 +56,7 @@ export function MailRowItem({
           <Action.Push
             title="Reply"
             icon={Icon.Reply}
-            shortcut={{ modifiers: ["cmd"], key: "r" }}
+            shortcut={keyFor("mail.reply")}
             target={
               <ReplyForm
                 messageId={row.id}
@@ -69,7 +70,7 @@ export function MailRowItem({
             <Action.OpenInBrowser
               title="Open in mxr"
               url={`${webBase}${path}`}
-              shortcut={Keyboard.Shortcut.Common.Open}
+              shortcut={keyFor("list.open")}
             />
           )}
         </ActionPanel>

@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Icon, List, Keyboard } from "@raycast/api";
+import { Action, ActionPanel, Icon, List } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import { getReading, markDone, saveForLater } from "./bridge/modes";
@@ -10,6 +10,7 @@ import { SearchSection, useMailSearch } from "./components/MailRow";
 import { ReadAction } from "./components/ThreadDetail";
 import { itemErrors, runPreviewed } from "./components/previewed";
 import { useWebBase, web } from "./components/web";
+import { keyFor } from "./components/keys";
 
 export default function Reading() {
   const [account, setAccount] = useState<string>();
@@ -43,7 +44,7 @@ export default function Reading() {
             <Action.OpenInBrowser
               title="Read in mxr"
               url={`${webBase}${web.readingItem(entry.item_key)}`}
-              shortcut={Keyboard.Shortcut.Common.Open}
+              shortcut={keyFor("reading.open-email")}
             />
           )}
           {entry.url && <Action.OpenInBrowser title="Open Original" url={entry.url} />}
@@ -51,7 +52,7 @@ export default function Reading() {
             <Action
               title="Save for Later"
               icon={Icon.Bookmark}
-              shortcut={{ modifiers: ["cmd"], key: "l" }}
+              shortcut={keyFor("reading.later")}
               onAction={() =>
                 runPreviewed({
                   title: "Save for later?",
@@ -69,7 +70,7 @@ export default function Reading() {
           <Action
             title="Let Go"
             icon={Icon.Checkmark}
-            shortcut={Keyboard.Shortcut.Common.Edit}
+            shortcut={keyFor("reading.let-go")}
             onAction={() =>
               runPreviewed({
                 title: "Let this go?",

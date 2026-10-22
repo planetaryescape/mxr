@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Color, Icon, List, Keyboard } from "@raycast/api";
+import { Action, ActionPanel, Color, Icon, List } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import { getNow, markDone, tickOffTodo } from "./bridge/modes";
@@ -13,6 +13,7 @@ import { itemErrors, runPreviewed } from "./components/previewed";
 import { arrival } from "./components/time";
 import { useWebBase, web } from "./components/web";
 import Updates from "./updates";
+import { keyFor } from "./components/keys";
 
 export default function Now() {
   const [account, setAccount] = useState<string>();
@@ -29,7 +30,7 @@ export default function Now() {
       <Action.OpenInBrowser
         title="Open in mxr"
         url={`${webBase}${path}`}
-        shortcut={Keyboard.Shortcut.Common.Open}
+        shortcut={keyFor("now.open-email")}
       />
     );
   const now: NowData | undefined = data;
@@ -73,7 +74,7 @@ export default function Now() {
                   <Action.Push
                     title="Reply"
                     icon={Icon.Reply}
-                    shortcut={{ modifiers: ["cmd"], key: "r" }}
+                    shortcut={keyFor("now.reply")}
                     target={
                       <ReplyForm
                         messageId={row.message_id}
@@ -87,7 +88,7 @@ export default function Now() {
                   <Action
                     title="Done Here"
                     icon={Icon.Checkmark}
-                    shortcut={Keyboard.Shortcut.Common.Edit}
+                    shortcut={keyFor("now.done")}
                     onAction={() =>
                       runPreviewed({
                         title: "Done here?",
@@ -123,7 +124,7 @@ export default function Now() {
                   <Action
                     title="Tick Off"
                     icon={Icon.CheckCircle}
-                    shortcut={Keyboard.Shortcut.Common.Edit}
+                    shortcut={keyFor("now.done")}
                     onAction={() =>
                       runPreviewed({
                         title: "Tick this off?",

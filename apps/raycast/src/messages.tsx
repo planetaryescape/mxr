@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Color, Icon, List, Keyboard } from "@raycast/api";
+import { Action, ActionPanel, Color, Icon, List } from "@raycast/api";
 import { useCachedPromise, useCachedState } from "@raycast/utils";
 import { useState } from "react";
 import { getMessages, markDone, type MessagesFilter } from "./bridge/modes";
@@ -12,6 +12,7 @@ import { ReadAction } from "./components/ThreadDetail";
 import { itemErrors, runPreviewed } from "./components/previewed";
 import { arrival } from "./components/time";
 import { useWebBase, web } from "./components/web";
+import { keyFor } from "./components/keys";
 
 const TURN_CHOICES: [MessagesFilter["turn"], string][] = [
   [undefined, "All"],
@@ -54,11 +55,7 @@ export default function Messages() {
 
   // ⌘F in every row's panel: the choices, with a check on the ones in force.
   const filterMenu = (
-    <ActionPanel.Submenu
-      title="Filter"
-      icon={Icon.Filter}
-      shortcut={{ modifiers: ["cmd"], key: "f" }}
-    >
+    <ActionPanel.Submenu title="Filter" icon={Icon.Filter} shortcut={keyFor("messages.filter")}>
       {TURN_CHOICES.map(([turn, title]) => (
         <Action
           key={title}
@@ -127,7 +124,7 @@ export default function Messages() {
               <Action.Push
                 title="Reply"
                 icon={Icon.Reply}
-                shortcut={{ modifiers: ["cmd"], key: "r" }}
+                shortcut={keyFor("messages.reply")}
                 target={
                   <ReplyForm
                     messageId={topic.reply_to_message_id}
@@ -142,7 +139,7 @@ export default function Messages() {
               <Action.Push
                 title="Reply All"
                 icon={Icon.Reply}
-                shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
+                shortcut={keyFor("messages.reply-all")}
                 target={
                   <ReplyForm
                     messageId={topic.reply_to_message_id}
@@ -158,14 +155,14 @@ export default function Messages() {
               <Action.OpenInBrowser
                 title="Open in mxr"
                 url={`${webBase}${web.person(row.id, topic?.thread_id)}`}
-                shortcut={Keyboard.Shortcut.Common.Open}
+                shortcut={keyFor("messages.as-sent")}
               />
             )}
             {row.topics.length > 0 && (
               <Action
                 title="Done Here"
                 icon={Icon.Checkmark}
-                shortcut={Keyboard.Shortcut.Common.Edit}
+                shortcut={keyFor("messages.done")}
                 onAction={() => {
                   const threads = row.topics.map((t) => t.thread_id);
                   return runPreviewed({

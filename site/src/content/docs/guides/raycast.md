@@ -44,6 +44,13 @@ changes. They stay in Raycast after you stop it.
 | Reading | The edition's bands, then Later | Read, Read in mxr, Open Original, Save for Later, Let Go |
 | Archive | Records | Read Source Email, Open in mxr, Copy Reference |
 
+Shortcuts are Cmd plus the letter the same action has in the TUI and the
+web app, so Done Here is ⌘E, Save for Later ⌘B, Mark as Unread ⌘⇧U and Let
+Go of This Digest ⌘⇧A. Raycast's own keys stay where Raycast has one: ⌘Z
+undoes, ⌘⇧C copies, ⌘. pins, and Reply All is ⌘⇧R because ⌘A selects the
+search text. `mxr keys --client web` lists the letters. Every action is also
+in the ⌘K action panel.
+
 Rows show when mail arrived: the time today, "Yesterday 14:32", the weekday
 within a week, then the date. The tooltip has the full date.
 
@@ -119,7 +126,7 @@ on the toast, instead of being reported as done.
 ## Reply
 
 Reply opens a form with the recipients and subject filled in and an empty
-body, as the web composer does. Draft in My Voice (⌘D) adds a suggested
+body, as the web composer does. Draft in My Voice (in the ⌘K action panel) adds a suggested
 reply written in your style above what you have typed; nothing is sent until
 you send it.
 

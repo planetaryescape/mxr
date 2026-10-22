@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Color, Icon, List, Keyboard } from "@raycast/api";
+import { Action, ActionPanel, Color, Icon, List } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import { getUpdates, letGoDigest, markDone } from "./bridge/modes";
@@ -11,6 +11,7 @@ import { ReadAction } from "./components/ThreadDetail";
 import { itemErrors, runPreviewed } from "./components/previewed";
 import { arrival } from "./components/time";
 import { useWebBase, web } from "./components/web";
+import { keyFor } from "./components/keys";
 
 export default function Updates() {
   const [account, setAccount] = useState<string>();
@@ -70,7 +71,7 @@ export default function Updates() {
             <Action.OpenInBrowser
               title="Open in mxr"
               url={`${webBase}${line.latest_thread_id ? web.thread("updates", line.latest_thread_id) : web.mode("updates")}`}
-              shortcut={Keyboard.Shortcut.Common.Open}
+              shortcut={keyFor("updates.open-email")}
             />
           )}
           {line.link?.url && <Action.OpenInBrowser title="Open Link" url={line.link.url} />}
@@ -78,7 +79,7 @@ export default function Updates() {
             <Action
               title="Done Here"
               icon={Icon.Checkmark}
-              shortcut={Keyboard.Shortcut.Common.Edit}
+              shortcut={keyFor("updates.let-go-source")}
               onAction={() => {
                 const threads = line.thread_ids ?? [];
                 return runPreviewed({
@@ -99,7 +100,7 @@ export default function Updates() {
             <Action
               title="Let Go of This Digest"
               icon={Icon.Tray}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
+              shortcut={keyFor("updates.let-go-all")}
               onAction={() => letGo(data)}
             />
           )}

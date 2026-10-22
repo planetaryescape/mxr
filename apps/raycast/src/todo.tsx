@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Color, Icon, List, Keyboard } from "@raycast/api";
+import { Action, ActionPanel, Color, Icon, List } from "@raycast/api";
 import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import { getTodo, tickOffTodo } from "./bridge/modes";
@@ -10,6 +10,7 @@ import { SearchSection, useMailSearch } from "./components/MailRow";
 import { ReadAction } from "./components/ThreadDetail";
 import { runPreviewed } from "./components/previewed";
 import { useWebBase, web } from "./components/web";
+import { keyFor } from "./components/keys";
 
 export default function TodoCommand() {
   const [account, setAccount] = useState<string>();
@@ -36,7 +37,7 @@ export default function TodoCommand() {
           <Action
             title="Tick Off"
             icon={Icon.CheckCircle}
-            shortcut={Keyboard.Shortcut.Common.Edit}
+            shortcut={keyFor("todo.done")}
             onAction={() =>
               runPreviewed({
                 title: "Tick this off?",
@@ -55,7 +56,7 @@ export default function TodoCommand() {
             <Action.OpenInBrowser
               title="Open in mxr"
               url={`${webBase}${web.todo(todo.id)}`}
-              shortcut={Keyboard.Shortcut.Common.Open}
+              shortcut={keyFor("todo.open-email")}
             />
           )}
           {todo.thread_id && (

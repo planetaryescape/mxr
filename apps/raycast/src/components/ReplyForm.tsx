@@ -9,7 +9,6 @@ import {
   confirmAlert,
   showToast,
   useNavigation,
-  Keyboard,
 } from "@raycast/api";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -28,6 +27,7 @@ import {
 import type { SafetyReport } from "../bridge/types";
 import { message } from "./previewed";
 import { useWebBase, web } from "./web";
+import { keyFor } from "./keys";
 
 /** The daemon owns the wait, so closing Raycast does not lose the reply. */
 const UNDO_SECONDS = 10;
@@ -155,7 +155,7 @@ export function ReplyForm({ messageId, threadId, kind = "reply", to, onSent }: P
       title: "Reply sends within a minute",
       primaryAction: {
         title: "Undo Send",
-        shortcut: { modifiers: ["cmd"], key: "z" },
+        shortcut: keyFor("mail.undo"),
         onAction: async (shown) => {
           shown.style = Toast.Style.Animated;
           shown.title = "Stopping…";
@@ -232,17 +232,12 @@ export function ReplyForm({ messageId, threadId, kind = "reply", to, onSent }: P
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Send Reply" icon={Icon.Envelope} onSubmit={submit} />
-          <Action
-            title="Draft in My Voice"
-            icon={Icon.Pencil}
-            shortcut={{ modifiers: ["cmd"], key: "d" }}
-            onAction={draftInMyVoice}
-          />
+          <Action title="Draft in My Voice" icon={Icon.Pencil} onAction={draftInMyVoice} />
           {webBase && draft && (
             <Action
               title="Open in mxr"
               icon={Icon.Globe}
-              shortcut={Keyboard.Shortcut.Common.Open}
+              shortcut={keyFor("list.open")}
               onAction={openInMxr}
             />
           )}

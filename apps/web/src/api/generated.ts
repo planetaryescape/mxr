@@ -6105,6 +6105,17 @@ export interface components {
             msg_count_used_theirs: number;
             source_hash: string;
         };
+        /**
+         * @description One prefix-search hit. `name` is the sender's display name when the daemon
+         *     has a non-blank one; clients fall back to the address when it is `null`.
+         */
+        ContactSuggestion: {
+            email: string;
+            name?: string | null;
+        };
+        ContactsAutocompleteResponse: {
+            contacts: components["schemas"]["ContactSuggestion"][];
+        };
         ConversationAttachmentData: {
             attachment_id: components["schemas"]["AttachmentId"];
             filename: string;
@@ -6720,6 +6731,13 @@ export interface components {
             findings?: components["schemas"]["DoctorFinding"][];
             health_class?: components["schemas"]["DaemonHealthClass"];
             healthy: boolean;
+            /**
+             * Format: int32
+             * @description `logging.event_retention_days` as the daemon reads the config file now.
+             *     `None` from a daemon that predates the field, or when the file cannot be
+             *     read or parsed.
+             */
+            history_retention_days?: number | null;
             index_exists: boolean;
             index_lock_error?: string | null;
             index_lock_held: boolean;
@@ -10214,6 +10232,14 @@ export interface components {
                   account: components["schemas"]["AccountConfigData"];
                   /** @enum {string} */
                   cmd: "UpsertAccountConfig";
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "SetAccountIdentity";
+                  color?: components["schemas"]["AccountColor"] | null;
+                  dry_run: boolean;
+                  key: string;
+                  tag?: string | null;
               }
             | {
                   /** @enum {string} */
@@ -17979,12 +18005,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Known senders matching the query */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ContactsAutocompleteResponse"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

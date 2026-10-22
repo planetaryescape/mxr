@@ -120,6 +120,8 @@ use utoipa::{
     components(schemas(
         crate::request_types::AcceptedComposeDraft,
         crate::request_types::RecoveredComposeSession,
+        crate::routes_v6::ContactSuggestion,
+        crate::routes_v6::ContactsAutocompleteResponse,
         Request,
         Response,
         ResponseData,
@@ -507,7 +509,9 @@ endpoint!(get snippets_list "/api/v1/mail/snippets", "List snippets");
 endpoint!(post snippets_set "/api/v1/mail/snippets", "Create or update a snippet");
 endpoint!(delete snippets_delete "/api/v1/mail/snippets/{name}", "Delete a snippet");
 endpoint!(get sender_profile "/api/v1/mail/sender", "Sender profile");
-endpoint!(get contacts_autocomplete "/api/v1/mail/contacts/autocomplete", "Prefix-search known senders");
+#[utoipa::path(get, path = "/api/v1/mail/contacts/autocomplete", summary = "Prefix-search known senders", responses((status = 200, description = "Known senders matching the query", body = crate::routes_v6::ContactsAutocompleteResponse), (status = 401, description = "Missing or invalid bridge token")))]
+#[allow(dead_code)]
+fn contacts_autocomplete() {}
 endpoint!(get screener_queue "/api/v1/mail/screener/queue", "List screener queue");
 endpoint!(get screener_decisions_list "/api/v1/mail/screener/decisions", "List screener decisions");
 endpoint!(post screener_decisions_set "/api/v1/mail/screener/decisions", "Set screener decision");

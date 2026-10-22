@@ -163,6 +163,8 @@ expression: summary
     "ContactDecayRow",
     "ContactRelationshipSummaryData",
     "ContactStyleData",
+    "ContactSuggestion",
+    "ContactsAutocompleteResponse",
     "ConversationAttachmentData",
     "ConversationData",
     "ConversationMessageData",

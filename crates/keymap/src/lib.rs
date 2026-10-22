@@ -120,6 +120,10 @@ pub struct KeyAction {
     /// How the TUI binds this action today.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tui: Vec<TuiBinding>,
+    /// Keys this action had until a recent release. For a short window
+    /// pressing one shows where the action went and runs nothing (D171).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub moved: Vec<MovedKey>,
     /// The Raycast key when it can't be Cmd plus the web letter: Raycast's
     /// own shortcut for the same action, or `""` for none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -195,6 +199,18 @@ impl RaycastShortcut {
             .collect();
         (!key.is_empty()).then_some(Self { modifiers, key })
     }
+}
+
+/// A key an action no longer has, kept for a short window so pressing it
+/// says where the action went instead of doing nothing or something else.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MovedKey {
+    pub key: String,
+    /// Web scopes and TUI contexts (the names are shared) where it moved.
+    pub contexts: Vec<String>,
+    /// The first release that no longer shows the notice; the entry is
+    /// deleted then (`problems` fails once mxr reaches this version).
+    pub until: String,
 }
 
 /// A TUI binding: the action name its dispatcher returns for these keys, in
@@ -324,6 +340,17 @@ impl Keymap {
         map
     }
 
+    /// The action whose old key `key` was in `context`, while its move is
+    /// still being announced.
+    pub fn moved_from(&self, context: &str, key: &str) -> Option<&KeyAction> {
+        self.actions.iter().find(|action| {
+            action
+                .moved
+                .iter()
+                .any(|moved| moved.key == key && moved.contexts.iter().any(|c| c == context))
+        })
+    }
+
     /// Every web action's Raycast key, by action id.
     pub fn raycast_keys(&self) -> BTreeMap<String, RaycastShortcut> {
         self.actions
@@ -422,6 +449,28 @@ impl Keymap {
                 }
             }
         }
+        for action in &self.actions {
+            for moved in &action.moved {
+                if !older_than(env!("CARGO_PKG_VERSION"), &moved.until) {
+                    problems.push(format!(
+                        "{}: the move of `{}` was announced until {}; delete the entry",
+                        action.id, moved.key, moved.until
+                    ));
+                }
+                for context in &moved.contexts {
+                    let web_bound = self.web_bindings().iter().any(|b| {
+                        b.chord == moved.key && (b.scope == *context || b.scope == "global")
+                    });
+                    let tui_bound = self.tui_binding(context, &moved.key).is_some();
+                    if web_bound || tui_bound {
+                        problems.push(format!(
+                            "{}: `{}` moved away in {context} but is still bound there",
+                            action.id, moved.key
+                        ));
+                    }
+                }
+            }
+        }
         let mut strip_ids = BTreeSet::new();
         for strip in &self.strips {
             if !strip_ids.insert(strip.id.as_str()) {
@@ -457,6 +506,12 @@ impl Keymap {
         ));
         problems
     }
+}
+
+/// True when version `a` comes before `b` (`0.6.149` < `0.6.152`).
+fn older_than(a: &str, b: &str) -> bool {
+    let parts = |v: &str| -> Vec<u64> { v.split('.').map(|p| p.parse().unwrap_or(0)).collect() };
+    parts(a) < parts(b)
 }
 
 /// Two actions on one key in one place, or a key that is also the start of

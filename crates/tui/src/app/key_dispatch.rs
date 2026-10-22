@@ -21,7 +21,7 @@ pub(crate) enum DefinedKey {
 
 /// The key's spelling in the definition, as the dispatcher probe names
 /// keys. `None` for a key no binding can spell.
-fn spelling(key: KeyEvent) -> Option<String> {
+pub(crate) fn spelling(key: KeyEvent) -> Option<String> {
     let named = |name: &str| (key.modifiers == KeyModifiers::NONE).then(|| name.to_string());
     match key.code {
         KeyCode::Char(' ') => named("Space"),
@@ -45,6 +45,52 @@ fn spelling(key: KeyEvent) -> Option<String> {
 }
 
 impl App {
+    /// The key definition's name for where keys are going: a mode, or the
+    /// mailbox's list, reader or sidebar.
+    pub(crate) fn key_place(&self) -> Option<&'static str> {
+        if self.screen != Screen::Mailbox {
+            return None;
+        }
+        self.mode_key_context().or(match self.mailbox.active_pane {
+            ActivePane::MailList => Some("list"),
+            ActivePane::MessageView => Some("reader"),
+            ActivePane::Sidebar => Some("sidebar"),
+        })
+    }
+
+    /// A key that moved away from here in a recent release says where its
+    /// action went and runs nothing (D171). Returns true when it did.
+    pub(crate) fn announce_moved_key(&mut self, key: KeyEvent) -> bool {
+        let (Some(place), Some(chord)) = (self.key_place(), spelling(key)) else {
+            return false;
+        };
+        let keymap = mxr_keymap::defaults();
+        let sequence = self
+            .input
+            .pending_prefix()
+            .map(|first| format!("{first} {chord}"));
+        let Some(action) = sequence
+            .as_deref()
+            .and_then(|seq| keymap.moved_from(place, seq))
+            .or_else(|| keymap.moved_from(place, &chord))
+        else {
+            return false;
+        };
+        let now = action
+            .tui
+            .iter()
+            .find(|binding| binding.contexts.includes(place))
+            .or_else(|| action.tui.first())
+            .and_then(|binding| binding.keys.first())
+            .or_else(|| action.keys.first());
+        self.input.reset();
+        self.status_message = Some(match now {
+            Some(now) => format!("{} is now {now}", action.label),
+            None => format!("{} has no key now; find it in the palette", action.label),
+        });
+        true
+    }
+
     /// What `key` does in `context`, completing a waiting sequence first.
     /// A second key that completes nothing cancels the sequence and runs
     /// nothing, as the built-in chords do.

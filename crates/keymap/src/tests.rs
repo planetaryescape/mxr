@@ -284,3 +284,53 @@ fn binding_a_sequence_prefix_alone_is_reported() {
         "{problems:?}"
     );
 }
+
+#[test]
+fn a_moved_key_must_be_free_where_it_moved_and_expires() {
+    let keymap = Keymap::parse(
+        r#"
+        [[action]]
+        id = "updates.let-go-all"
+        label = "Let go of all"
+        group = "Triage"
+        scopes = ["updates"]
+        keys = ["E"]
+        [[action.moved]]
+        key = "A"
+        contexts = ["updates"]
+        until = "99.0.0"
+
+        [[action]]
+        id = "updates.attach"
+        label = "Attachments"
+        group = "Mail"
+        scopes = ["updates"]
+        keys = ["A"]
+        "#,
+    )
+    .expect("parses");
+    assert_eq!(
+        keymap.moved_from("updates", "A").map(|a| a.id.as_str()),
+        Some("updates.let-go-all")
+    );
+    assert_eq!(keymap.moved_from("now", "A"), None);
+    assert_eq!(
+        keymap.problems(),
+        vec!["updates.let-go-all: `A` moved away in updates but is still bound there".to_string()]
+    );
+    let expired = Keymap::parse(
+        r#"
+        [[action]]
+        id = "x"
+        label = "X"
+        group = "Mail"
+        keys = ["E"]
+        [[action.moved]]
+        key = "A"
+        contexts = ["list"]
+        until = "0.0.1"
+        "#,
+    )
+    .expect("parses");
+    assert!(expired.problems()[0].contains("delete the entry"));
+}

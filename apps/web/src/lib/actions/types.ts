@@ -93,6 +93,11 @@ interface ActionBase {
    * time to move. Bound, but never shown in help, hints or the docs.
    */
   retiredAliases?: ShortcutChord[];
+  /**
+   * Keys this action had until a recent release, by scope. Pressing one
+   * says where the action went and runs nothing (blueprint 35, D171).
+   */
+  movedAliases?: { chord: ShortcutChord; scopes: ActionScope[] }[];
   /** Listed in the palette but never bound to a key. */
   paletteOnly?: boolean;
   /** Scopes the binding is live in; defaults to ["global"]. */

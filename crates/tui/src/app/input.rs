@@ -1528,6 +1528,10 @@ impl App {
 
         // Remaps are authoritative only in mail panes, after all modal/text
         // owners. Explicit keys also beat lens-specific single-key defaults.
+        if self.announce_moved_key(key) {
+            return None;
+        }
+
         // A mode takes its remaps from its own keys.toml section, so
         // `[mail_list]` stays out of it.
         if self.mode_key_context().is_none()

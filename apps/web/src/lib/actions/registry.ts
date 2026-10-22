@@ -18,6 +18,8 @@ export interface Binding {
   retired: boolean;
   /** Bound from `macAliases`: live on macOS only. */
   macOnly: boolean;
+  /** Bound from `movedAliases`: announces where the action went, runs nothing. */
+  moved: boolean;
 }
 
 export class ActionRegistry {
@@ -49,6 +51,27 @@ export class ActionRegistry {
             action,
             retired: retired.has(chord),
             macOnly: macOnly.has(chord),
+            moved: false,
+          });
+        }
+      }
+      for (const { chord, scopes } of action.movedAliases ?? []) {
+        for (const scope of scopes) {
+          const key = `${scope}|${normalize(chord)}`;
+          const owner = this.#bindings.get(key);
+          if (owner) {
+            throw new Error(
+              `ActionRegistry: moved key "${chord}" in scope "${scope}" is still bound to "${owner.action.id}"`,
+            );
+          }
+          this.#assertNoPrefixClash(scope, chord, action.id);
+          this.#bindings.set(key, {
+            chord: normalize(chord),
+            scope,
+            action,
+            retired: true,
+            macOnly: false,
+            moved: true,
           });
         }
       }
@@ -82,7 +105,12 @@ export class ActionRegistry {
     const normalized = normalize(chord);
     for (const scope of scopes) {
       const binding = this.#bindings.get(`${scope}|${normalized}`);
-      if (binding && (mac || !binding.macOnly) && isRunnableIn(binding.action, scope)) {
+      // A moved key always answers, so pressing it can say where it went.
+      if (
+        binding &&
+        (mac || !binding.macOnly) &&
+        (binding.moved || isRunnableIn(binding.action, scope))
+      ) {
         return binding;
       }
     }

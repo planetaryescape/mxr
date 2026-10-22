@@ -2275,12 +2275,20 @@ pub async fn activity_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::R
     }
 }
 
+/// Starts the history prune loop. Both daemon entry points call this, so a
+/// new entry point gets pruning by calling it too.
+pub fn spawn_history_prune_loop(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
+    // Subscribe before spawning. A receiver made inside the task can miss a
+    // shutdown sent just before the task first runs, and then never exit.
+    let shutdown_rx = state.shutdown_receiver();
+    tokio::spawn(history_prune_loop(state, shutdown_rx))
+}
+
 /// Daily sweep that keeps operational history to `logging.event_retention_days`:
 /// `event_log` (behind `mxr history` and `mxr logs`) and `sync_log` (doctor's
-/// sync history). The config is read on every pass, so `config set` takes
-/// effect without a restart. Unsubscribe receipts live in their own table and
-/// are never pruned here.
-pub async fn history_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
+/// sync history). Unsubscribe receipts live in their own table and are never
+/// pruned here.
+async fn history_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
     // First pass a minute after startup, then every 24 h.
     let first_pass = tokio::time::Instant::now() + Duration::from_secs(60);
     let mut ticker = tokio::time::interval_at(first_pass, Duration::from_secs(86_400));
@@ -2295,8 +2303,13 @@ pub async fn history_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::Re
                 continue;
             }
         }
-        let days = state.config_snapshot().logging.event_retention_days;
-        match prune_history(&state.store, days, chrono::Utc::now()).await {
+        match history_prune_pass(
+            &state.store,
+            &mxr_config::config_file_path(),
+            chrono::Utc::now(),
+        )
+        .await
+        {
             Ok(HistoryPruneCounts {
                 events: 0,
                 sync_logs: 0,
@@ -2304,7 +2317,6 @@ pub async fn history_prune_loop(state: Arc<AppState>, mut shutdown_rx: watch::Re
             Ok(counts) => tracing::info!(
                 events = counts.events,
                 sync_logs = counts.sync_logs,
-                retention_days = days,
                 "history prune deleted rows"
             ),
             Err(e) => tracing::warn!(error = %e, "history prune failed"),
@@ -2326,8 +2338,37 @@ pub(crate) fn history_cutoff(now: chrono::DateTime<chrono::Utc>, retention_days:
         .saturating_sub(i64::from(retention_days).saturating_mul(86_400))
 }
 
+/// The retention setting as the config file says now. `config set` writes the
+/// file but not the daemon's cached snapshot, so a cached value must not decide
+/// what gets deleted. `None` when the file cannot be read or parsed.
+pub(crate) fn retention_days_on_disk(config_path: &std::path::Path) -> Option<u32> {
+    // Errors are not logged here: a parse error quotes the offending line,
+    // which can be a credential. Callers say only that the setting is unknown.
+    mxr_config::load_config_from_path(config_path)
+        .ok()
+        .map(|config| config.logging.event_retention_days)
+}
+
+/// One pass, reading the retention from `config_path` as it is now. An
+/// unreadable or invalid config skips the pass: a stale or default value must
+/// never decide what gets deleted.
+pub(crate) async fn history_prune_pass(
+    store: &mxr_store::Store,
+    config_path: &std::path::Path,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<HistoryPruneCounts, sqlx::Error> {
+    let Some(days) = retention_days_on_disk(config_path) else {
+        tracing::warn!(
+            path = %config_path.display(),
+            "history prune skipped: config could not be read or parsed"
+        );
+        return Ok(HistoryPruneCounts::default());
+    };
+    prune_history(store, days, now).await
+}
+
 /// Prunes history older than `retention_days` as of `now`. `0` keeps
-/// everything. Shared by the daily loop and tests.
+/// everything.
 pub(crate) async fn prune_history(
     store: &mxr_store::Store,
     retention_days: u32,
@@ -3828,6 +3869,7 @@ mod history_prune_tests {
     use super::*;
     use chrono::{Duration as ChronoDuration, TimeZone};
     use mxr_store::SyncStatus as StoreSyncStatus;
+    use std::time::Duration;
 
     /// Rows written now are "old" when pruning as of a later instant, so the
     /// tests move `now` instead of backdating rows or sleeping.
@@ -3926,5 +3968,87 @@ mod history_prune_tests {
 
         assert_eq!(counts, HistoryPruneCounts::default());
         assert_eq!(remaining(&state, &account_id).await, (2, 2));
+    }
+
+    fn write_config(path: &std::path::Path, retention_days: u32) {
+        std::fs::write(
+            path,
+            format!("[logging]\nevent_retention_days = {retention_days}\n"),
+        )
+        .unwrap();
+    }
+
+    /// `config set` rewrites the file while the daemon runs. The pass reads the
+    /// file, so setting 0 stops pruning and setting 90 again resumes it, with
+    /// no restart.
+    #[tokio::test]
+    async fn pass_follows_the_config_file_when_it_changes() {
+        let (state, account_id) = seeded_state(3, 55).await;
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config.toml");
+        let later = chrono::Utc::now() + ChronoDuration::days(91);
+
+        write_config(&config, 0);
+        let counts = history_prune_pass(&state.store, &config, later)
+            .await
+            .unwrap();
+        assert_eq!(counts, HistoryPruneCounts::default());
+        assert_eq!(remaining(&state, &account_id).await, (3, 55));
+
+        write_config(&config, 90);
+        let counts = history_prune_pass(&state.store, &config, later)
+            .await
+            .unwrap();
+        assert_eq!(
+            counts,
+            HistoryPruneCounts {
+                events: 3,
+                sync_logs: 5
+            }
+        );
+        assert_eq!(remaining(&state, &account_id).await, (0, 50));
+    }
+
+    /// A config that cannot be read or parsed must skip the pass. Pruning on a
+    /// default here would delete history the user has asked to keep.
+    #[tokio::test]
+    async fn pass_with_an_unreadable_config_deletes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let later = chrono::Utc::now() + ChronoDuration::days(91);
+
+        let invalid = dir.path().join("invalid.toml");
+        std::fs::write(&invalid, "[logging\nevent_retention_days = ").unwrap();
+        // A directory where the file should be is a read error, not "missing".
+        let not_a_file = dir.path().join("dir-config.toml");
+        std::fs::create_dir(&not_a_file).unwrap();
+
+        for config in [&invalid, &not_a_file] {
+            let (state, account_id) = seeded_state(3, 55).await;
+            let counts = history_prune_pass(&state.store, config, later)
+                .await
+                .unwrap();
+            assert_eq!(
+                counts,
+                HistoryPruneCounts::default(),
+                "{}",
+                config.display()
+            );
+            assert_eq!(remaining(&state, &account_id).await, (3, 55));
+        }
+    }
+
+    /// Both daemon entry points start the loop through this function, and it
+    /// stops when shutdown is requested.
+    #[tokio::test]
+    async fn the_shared_spawn_stops_on_shutdown() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let handle = spawn_history_prune_loop(state.clone());
+
+        state.request_shutdown();
+
+        tokio::time::timeout(Duration::from_secs(5), handle)
+            .await
+            .expect("history prune loop exits after shutdown")
+            .unwrap();
     }
 }

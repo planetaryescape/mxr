@@ -268,7 +268,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
             "log_path": report.log_path,
             "log_size_bytes": report.log_size_bytes,
             "log_total_bytes": report.log_total_bytes,
-            "history_retention_days": history_retention_days(),
+            "history_retention_days": report.history_retention_days,
             "accounts": report.sync_statuses.len(),
         });
         print_contextual_json(stats, fmt, remote_target, &selected_target)?;
@@ -620,6 +620,9 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         findings,
         sync_history,
         log_total_bytes: crate::logging::total_bytes(&data_dir.join("logs")),
+        history_retention_days: crate::loops::retention_days_on_disk(
+            &mxr_config::config_file_path(),
+        ),
     })
 }
 
@@ -720,7 +723,10 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
                 "Logs:         {} ({} bytes active, {} bytes with archives)",
                 report.log_path, report.log_size_bytes, report.log_total_bytes
             );
-            println!("History:      {}", history_retention_label());
+            println!(
+                "History:      {}",
+                history_retention_label(report.history_retention_days)
+            );
             println!(
                 "Daemon info:  version={} protocol={} build={}",
                 report.daemon_version.as_deref().unwrap_or("unknown"),
@@ -1196,20 +1202,14 @@ mod tests {
     }
 }
 
-/// `None` when the config cannot be read, so doctor still prints its report.
-fn history_retention_days() -> Option<u32> {
-    mxr_config::load_config()
-        .ok()
-        .map(|config| config.logging.event_retention_days)
-}
-
-fn history_retention_label() -> String {
-    match history_retention_days() {
+/// `None` means the daemon could not read its config, or predates the field.
+fn history_retention_label(days: Option<u32>) -> String {
+    match days {
         Some(0) => "kept forever (automatic prune off)".to_string(),
         Some(days) => format!(
             "kept {days} days, pruned daily (sync keeps the newest {} rows per account)",
             crate::sync_history::WINDOW
         ),
-        None => "unknown (config unreadable)".to_string(),
+        None => "unknown (config unreadable or daemon predates this field)".to_string(),
     }
 }

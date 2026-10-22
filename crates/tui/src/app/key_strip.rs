@@ -114,17 +114,73 @@ impl App {
             .filter(|id| !omit.contains(&id.as_str()))
             .filter_map(|id| {
                 let action = keymap.get(id)?;
-                let key = action
-                    .tui
-                    .iter()
-                    .find(|binding| binding.contexts.includes(context))?
-                    .keys
-                    .first()?;
+                let remaps = &self.keybindings.modes;
+                let key = match remaps.key_for(context, id) {
+                    Some(key) => key,
+                    None => action
+                        .tui
+                        .iter()
+                        .find(|binding| binding.contexts.includes(context))?
+                        .keys
+                        .iter()
+                        .find(|key| remaps.lookup(context, key).is_none())?,
+                };
                 let label = action.short_label.as_deref().unwrap_or(&action.label);
                 Some((key_display(key), label.to_string()))
             })
             .collect();
         (!hints.is_empty()).then_some(hints)
+    }
+}
+
+impl App {
+    /// The mode's name and every key its context binds, with the person's
+    /// remaps, for the help modal. `None` outside a mode, or while help is
+    /// filtered to another context.
+    pub(crate) fn mode_help_keys(&self) -> Option<(&'static str, Vec<(String, String)>)> {
+        if self.modals.help_context_filter.is_some() {
+            return None;
+        }
+        let context = self.mode_key_context()?;
+        let remaps = &self.keybindings.modes;
+        let entries = mxr_keymap::defaults()
+            .actions
+            .iter()
+            .filter_map(|action| {
+                let mut keys: Vec<String> = remaps
+                    .keys_for(context, &action.id)
+                    .into_iter()
+                    .map(key_display)
+                    .collect();
+                if keys.is_empty() {
+                    keys = action
+                        .tui
+                        .iter()
+                        .filter(|binding| binding.contexts.includes(context))
+                        .flat_map(|binding| &binding.keys)
+                        .filter(|key| remaps.lookup(context, key).is_none())
+                        .map(|key| key_display(key))
+                        .collect();
+                }
+                keys.dedup();
+                (!keys.is_empty()).then(|| (keys.join(" / "), action.label.clone()))
+            })
+            .collect();
+        Some((mode_title(context), entries))
+    }
+}
+
+fn mode_title(context: &str) -> &'static str {
+    match context {
+        "now" => "Now",
+        "messages" => "Messages",
+        "todo" => "To do",
+        "catchup" => "To do catch-up",
+        "expired" => "To do: Expired",
+        "updates" => "Updates",
+        "reading" => "Reading",
+        "archive" => "Archive",
+        _ => "Mode",
     }
 }
 

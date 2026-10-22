@@ -859,7 +859,7 @@ Use `[mail_list]` for lists, `[message_view]` for a reader containing one messag
 [mail_list]
 "j" = "move_down"
 "k" = "move_up"
-"Ctrl-Shift-A" = "open_tab_6" # open Analytics from a mail list
+"Ctrl-g" = "open_tab_6"       # open Analytics from a mail list
 ";" = "archive"              # replaces e in mail lists
 "wq" = "trash"               # replaces # in mail lists
 
@@ -873,12 +873,28 @@ Use `[mail_list]` for lists, `[message_view]` for a reader containing one messag
 
 Remapping an action removes its old shortcuts in that context. To keep an alias, list it explicitly too (for example, both `"e" = "archive"` and `";" = "archive"`). Other actions keep their defaults unless you reuse their key. To disable a key without replacing it, set its action to `""`.
 
-Explicit remaps take precedence over mode-specific mail keys. A chord also reserves its prefix: `"ra" = "archive"` replaces the single-key `r` reply shortcut. Avoid overlapping user bindings such as `"w"` and `"wq"`; the TUI ignores that context's overrides rather than choosing an ambiguous action.
+These sections cover the mail list and the reader, not the modes: remapping `archive` here leaves `e` meaning Done in Now and To do. A chord also reserves its prefix: `"ra" = "archive"` replaces the single-key `r` reply shortcut. Avoid overlapping user bindings such as `"w"` and `"wq"`; the TUI ignores that context's overrides rather than choosing an ambiguous action.
+
+### Remapping a mode's keys
+
+Now, Messages, To do (with `[catchup]` and `[expired]`), Updates, Reading and Archive each have a section of their own. Keys are spelled the way `mxr keys` prints them (`x`, `g x`, `Ctrl+d`, `Escape`), and each names an action id from `mxr keys --client tui --context <mode>`:
+
+```toml
+[todo]
+"x" = "todo.done"      # tick off with x; e no longer does it in To do
+"Z" = ""               # unbind Z in To do
+"d d" = "todo.edit"    # a sequence of your own
+
+[now]
+"x" = "now.done"
+```
+
+Moving an action to a new key retires its default keys in that mode only. The hint bar shows the key you chose.
 
 ### Key-string grammar
 
 - Bare characters: `"j"`, `"E"`, `"#"`, `";"`, `","`
-- Modifier prefixes: `Ctrl-`, `Alt-`, and `Shift-`, including combinations such as `Ctrl-Shift-A`. Bare uppercase letters imply Shift.
+- Modifier prefixes: `Ctrl-`, `Alt-`, and `Shift-`. Bare uppercase letters imply Shift. Most terminals send `Ctrl-Shift-A` as `Ctrl-a` and `Ctrl-i`, `Ctrl-m`, `Ctrl-h` as Tab, Enter and Backspace, so avoid binding those.
 - Special keys: `Enter`, `Esc`, `Escape`, `Tab`, `Space`, `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`, `Backspace`, and `Delete`.
 - Character chords: concatenate without separators, such as `"gg"`, `"wq"`, or `"wqr"`. Press each next key within 500 ms. A timeout discards the prefix; an unmatched suffix is processed as a fresh key.
 
@@ -886,7 +902,7 @@ Explicit remaps take precedence over mode-specific mail keys. A chord also reser
 
 Bindings reference names registered in `crates/tui/src/keybindings.rs`. These include navigation, mail mutations, screen switching (`open_tab_1`–`open_tab_6`), reader-mode toggles, and the standard chords. Deferred pattern-selection and count-prefix features are not enabled by this file.
 
-Unknown action names and invalid key strings are ignored, leaving their defaults unchanged. If the file is malformed TOML or contains a non-string action value, the TUI uses defaults for the whole file. The daemon does not load this file.
+Unknown action names and invalid key strings are ignored, leaving their defaults unchanged. `mxr keys check` lists everything the TUI would ignore, and exits non-zero when it finds something. If the file is malformed TOML or contains a non-string action value, the TUI uses defaults for the whole file. The daemon does not load this file.
 
 ### Reading what's bound
 
@@ -897,7 +913,7 @@ mxr --help                 # command surface
 Ctrl-p                     # command palette searches by action name
 ```
 
-Help, the command palette and mail-pane hints show the effective bindings for the focused view. After restarting with the example above, help in a mail list shows `;` for Archive and `wq` for Trash; `e` and `#` no longer run those actions there. The [keybindings reference](/reference/keybindings/) lists defaults, not your local remaps. Web shortcuts are unchanged by this TUI-only file.
+Help, the command palette and mail-pane hints show the effective bindings for the focused view. After restarting with the example above, help in a mail list shows `;` for Archive and `wq` for Trash; `e` and `#` no longer run those actions there. The [keybindings reference](/reference/keybindings/) and `mxr keys` list defaults, not your local remaps. Web shortcuts are unchanged by this TUI-only file.
 
 ## Notes
 

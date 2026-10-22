@@ -644,9 +644,9 @@ fn configured_retired_destructive_keys_remain_blocked_with_modifiers() {
 }
 
 #[test]
-fn configured_chord_beats_mail_and_mode_keys_and_retires_old_chord() {
+fn configured_chord_beats_mail_keys_and_retires_old_chord() {
     let mut app = remapped_app(
-        "reading",
+        "list",
         "[mail_list]\n\"ra\" = \"trash\"\n\";\" = \"go_inbox\"\n",
     );
     assert_eq!(press_char(&mut app, 'r'), None);
@@ -669,12 +669,6 @@ fn configured_chord_beats_mail_and_mode_keys_and_retires_old_chord() {
     assert_eq!(
         press_char(&mut app, '2'),
         Some(Action::OpenSavedSearchByIndex(2))
-    );
-    let mut app = remapped_app("reading", "[mail_list]\n\"p\" = \"trash\"\n");
-    assert_eq!(
-        press_char(&mut app, 'p'),
-        Some(Action::Trash),
-        "explicit remap wins over Reading's pin key"
     );
     let mut app = remapped_app("list", "[mail_list]\n\";\" = \"reply_all\"\n");
     assert_eq!(press_char(&mut app, 'g'), None);
@@ -1108,4 +1102,41 @@ fn shown_bindings_do_what_help_says() {
     }
     wrong.sort();
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+#[test]
+fn a_mode_section_remaps_that_mode_and_retires_the_moved_default() {
+    let toml = "[todo]\n\"x\" = \"todo.done\"\n\"Z\" = \"\"\n\"d d\" = \"todo.edit\"\n";
+    let mut app = remapped_app("todo", toml);
+    assert_eq!(press_char(&mut app, 'x'), Some(Action::TodoDone));
+    assert_eq!(press_char(&mut app, 'e'), None, "e moved to x");
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('Z'), KeyModifiers::SHIFT)),
+        None,
+        "an empty action unbinds the key"
+    );
+    assert_eq!(press_char(&mut app, 'd'), None);
+    assert!(app.input_pending(), "d starts the person's own sequence");
+    assert_eq!(press_char(&mut app, 'd'), Some(Action::TodoEdit));
+    let mut app = remapped_app("now", toml);
+    assert_eq!(
+        press_char(&mut app, 'e'),
+        Some(Action::NowDone),
+        "other modes keep e"
+    );
+}
+
+#[test]
+fn mail_list_remaps_stay_out_of_the_modes() {
+    let toml = "[mail_list]\n\";\" = \"archive\"\n";
+    let mut app = remapped_app("list", toml);
+    assert_eq!(press_char(&mut app, ';'), Some(Action::Archive));
+    assert_eq!(press_char(&mut app, 'e'), None, "archive moved to ;");
+    let mut app = remapped_app("now", toml);
+    assert_eq!(
+        press_char(&mut app, 'e'),
+        Some(Action::NowDone),
+        "retiring the list's e leaves Now's done alone"
+    );
+    assert_eq!(press_char(&mut app, ';'), None);
 }

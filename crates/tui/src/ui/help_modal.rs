@@ -41,6 +41,10 @@ pub struct HelpModalState<'a> {
     pub selected: usize,
     /// The mode on screen, when it has a guide: help leads with it.
     pub mode_guide: Option<&'a mxr_protocol::ModeGuideData>,
+    /// In a mode: its name and every key it binds, from the key definition.
+    pub mode_keys: Option<(&'static str, Vec<(String, String)>)>,
+    /// In a mode: the lit item's verbs, as the hint bar shows them.
+    pub mode_common: Option<Vec<(String, String)>>,
     pub _marker: std::marker::PhantomData<&'a ()>,
 }
 
@@ -145,7 +149,10 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
         },
         HelpSection {
             title: "Most Common Actions".into(),
-            entries: context_entries(state),
+            entries: state
+                .mode_common
+                .clone()
+                .unwrap_or_else(|| context_entries(state)),
         },
     ]);
 
@@ -181,6 +188,12 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
                 entries,
             }];
         }
+    }
+    if let (UiContext::MailboxList, Some((title, entries))) = (state.ui_context, &state.mode_keys) {
+        screens = vec![HelpSection {
+            title: format!("{title} keys"),
+            entries: entries.clone(),
+        }];
     }
     sections.extend(screens);
     sections.push(HelpSection {
@@ -920,6 +933,8 @@ mod tests {
             query,
             selected: 0,
             mode_guide: None,
+            mode_keys: None,
+            mode_common: None,
             _marker: std::marker::PhantomData,
         }
     }

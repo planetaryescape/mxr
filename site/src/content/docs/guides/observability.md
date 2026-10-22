@@ -157,6 +157,16 @@ so `mxr config set logging.event_retention_days <n>` applies without a restart.
 Unsubscribe receipts are in their own table and are never pruned. The daemon
 logs row counts only, not contents.
 
+Check the setting the daemon will use:
+
+```bash
+mxr doctor --format table | grep '^History:'
+```
+
+What you get: `History:      kept 90 days, pruned daily (sync keeps the newest 50 rows per account)`,
+or `kept forever (automatic prune off)` when `event_retention_days` is `0`. The
+JSON report carries the number as `history_retention_days`.
+
 ### Bound local text logs
 
 ```toml

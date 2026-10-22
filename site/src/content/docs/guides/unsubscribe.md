@@ -44,6 +44,20 @@ mxr unsubscribe newsletter@example.com --dry-run
 mxr unsubscribe newsletter@example.com --yes
 ```
 
+An address selects every message from that sender, as
+`--search 'from:newsletter@example.com'` does, and mxr tries each one. The dry
+run says how many it found:
+
+```bash
+mxr unsubscribe newsletter@example.com --dry-run --format json \
+  | jq '{requested, selected_messages}'
+```
+
+What you get: the number of messages mxr will try, for example
+`{"requested": 354, "selected_messages": 354}` for a promotional sender in the
+demo mailbox. To send one request, pass a message id instead:
+`mxr unsubscribe MESSAGE_ID --dry-run`, then `--yes`.
+
 What happens after confirmation depends on the stored method:
 
 | Method | Source | Action |
@@ -54,13 +68,49 @@ What happens after confirmation depends on the stored method:
 | `BodyLink` | HTML body fallback | Opens the unsubscribe page in your browser |
 | `None` | No usable method | Fails without mutating anything |
 
-mxr records a successful unsubscribe event. Re-running the same unsubscribe is
-idempotent, so scripts do not accidentally fire the side effect twice.
+mxr records a successful unsubscribe event.
 
 ```bash
 mxr activity list --action mail.unsubscribe --format json \
   | jq '.entries'
 ```
+
+## Why a second unsubscribe is never sent
+
+mxr keeps one receipt per message for each unsubscribe it sent. The receipt
+holds the method and the time, with no subject, sender or URL. Once a message
+has a receipt, running `mxr unsubscribe` on it again is acknowledged without
+sending anything, so a script can retry without firing the side effect twice.
+
+The receipt lives in its own table, so purging history (`mxr logs --purge`, or
+the daily [history retention](/guides/observability/#automatic-history-retention))
+cannot make a second request go out. Deleting the message deletes its receipt.
+
+mxr claims the message before it sends, so two requests for the same message
+cannot both send. A request that finds another one still running gets the error
+code `unsubscribe_in_progress`, marked retryable. A claim that is more than ten
+minutes old, left by a crash, is taken over.
+
+If the send fails or is not confirmed, mxr releases the claim and answers with
+the error code `unsubscribe_not_confirmed`, marked retryable. The first attempt
+may have reached the sender, so a retry can send again. The CLI prints one line
+to stderr for each message it skipped:
+
+```text
+Skipped 4912a411-7dad-5a95-89c8-c3049e918bd6 (The unsubscribe was not confirmed: could not complete the request to the sender's server (could not connect). A retry may send it again if the first attempt actually reached the sender.)
+```
+
+Failure text names neither the unsubscribe URL nor your address, because those
+carry tokens and the error is logged. If the send went out but mxr could not
+write the receipt, the error code is `unsubscribe_sent_not_recorded`, not
+retryable. Check with the sender before trying again.
+
+If the claim cannot be released after a failure, the error code is
+`unsubscribe_release_failed`, also not retryable: mxr keeps the message marked
+and will not resend it.
+
+Unsubscribes sent before v0.6.136 are recovered from the event log when you
+upgrade, and when you restore a backup made before that version.
 
 ## Keep mail with the sender preview
 

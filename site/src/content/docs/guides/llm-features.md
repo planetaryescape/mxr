@@ -407,6 +407,29 @@ call, and each retry adds to the time and any model charges. `--set quick`
 takes a while on a slow local model. Use `--format jsonl` for one line per
 case, and run either again after changing models to compare.
 
+With `--format table`, each case prints its six checks, then the draft, and the
+run ends with the counts. This is the shape, from the demo profile's built-in
+script, which echoes its prompt instead of drafting, so most checks fail:
+
+```text
+── price-open · 79 words · A price nobody has given: leave a gap, invent nothing
+  pass kept      nothing typed to keep; no typed text
+  pass answers   no question to answer; nothing to check
+  FAIL gaps      leave a [[?: …]] gap for: price; no gap for: price
+  FAIL invented  no number, date or amount that no input carries; not in any input: 23, 2026, 1, 2
+  FAIL length    8 to 60 words; 79 words
+  pass leftovers no subject line, preamble, fence or placeholder, no repeated sign-off, and no run of 8 words copied from the thread; clean
+       draft: Voice-matched draft: / ...
+
+40 cases (0 did not draft) with mxr-demo-canned; style score mean 91 (humanizer score: 100 reads plain, lower reads more like AI; reported, not graded)
+kept      18/40 passed
+answers   19/40 passed
+gaps      36/40 passed
+invented  0/40 passed
+length    0/40 passed
+leftovers 40/40 passed
+```
+
 ### See where a draft came from
 
 Every draft says which model wrote it, whether your history was used, and

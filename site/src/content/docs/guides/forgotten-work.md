@@ -49,7 +49,30 @@ What you get: one row per open commitment from the last 7 days, tab-separated, s
 
 ### Dates mxr shows but does not act on
 
-Commitments saved before v0.6.120 carry a date a model wrote, not words from the email, and mxr cannot tell which of those are right. They stay on the row and show as "date unverified" in thread context, the relationship profile and `mxr commitments` (`"date_unverified": true` in JSON). The desk's Due lane, your to-dos and Now ignore them, so a wrong date never makes a promise look overdue. To make one count, record your own promise again with the date you want, `mxr commitments add MESSAGE_ID --what "..." --due "fri 9am"`, which marks the date as yours; `mxr commitments resolve COMMITMENT_ID` closes one that is done. A date that comes from words the email says, or that you typed, is acted on as usual. When a phrase has more than one reading, such as "fri 3" or a weekday named on that same weekday, the commitment is saved without a date.
+mxr acts on a commitment's date only when it knows where the date came from: words in the email ("by Friday"), or a date you typed. A date a model wrote on its own is kept on the row and shown as "date unverified", and nothing runs on it. The desk's Due lane, your to-dos and Now all ignore it, so a wrong date never makes a promise look overdue.
+
+See which dates are unverified:
+
+```bash
+mxr commitments --status open --format json \
+  | jq -r '.[] | select(.date_unverified) | "\(.id)\t\(.by_when)\t\(.what)"'
+```
+
+Text output marks the same rows, for example `due 2026-10-30 (date unverified)`. Thread context and the relationship profile show the same "(date unverified)" label.
+
+Every commitment that already had a date when you upgraded to v0.6.141 counts as unverified, including some that were dated from the email's words in v0.6.120 to v0.6.140, because mxr did not record the source before then. Your own recorded promises keep their dates. New commitments are dated from the email's words, or left undated.
+
+To make an unverified date count, record the promise again with the date you want. Preview it first, then keep it; the date is now yours:
+
+```bash
+mxr commitments add MESSAGE_ID --what "send the deck" --due "fri 9am" --dry-run
+mxr commitments add MESSAGE_ID --what "send the deck" --due "fri 9am"
+mxr commitments resolve COMMITMENT_ID
+```
+
+`resolve` closes a commitment that is done.
+
+A phrase with more than one reading is saved without a date. That covers "fri 3", a weekday named on that same weekday, and a phrase mxr could only read by dropping some of its words.
 
 ### When the LLM is off
 

@@ -25,5 +25,10 @@
     "@ai-sdk/vue": "3.0.286",
     "postcss-selector-parser": "^7.1.6",
     "vite": "8.1.6"
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true,
+    "esbuild@0.28.1": true,
+    "vue-demi@0.14.10": true
   }
 }

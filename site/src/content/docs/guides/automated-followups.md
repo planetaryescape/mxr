@@ -76,6 +76,11 @@ mxr send DRAFT_ID --at "tomorrow 9am" \
 mxr unsend DRAFT_ID
 ```
 
+Scheduling checks the account first. An account that cannot send, such as a
+receive-only IMAP account with no SMTP side, is refused right away with `No
+send provider configured for account <id>`, so you never wait for a send that
+cannot go out.
+
 The scheduler assigns a separate operation identity. If delivery is interrupted,
 query the scheduled draft with the exact `expected_workspace` JSON from its
 schedule preview. Shell-quote that JSON and do not recapture it from the current
@@ -101,6 +106,21 @@ edit does not silently replace that message. If an attempt's result is
 uncertain, query its outcome using the draft alias above and do not schedule
 another send unless the outcome is explicitly `not_accepted`. The scheduler
 does not make an uncertain send safe by retrying it after restart.
+
+### Undo a scheduled send
+
+`mxr unsend` and **Undo** in Raycast, **Cancel send** in the web app and `c` in
+the TUI draft browser all cancel the same thing. When the daemon's flusher
+reaches the draft, it claims the send in one step, only if the draft is due and
+its send time is unchanged. Your cancel makes the same check, so exactly one of
+them wins:
+
+- If your cancel wins, nothing is sent and the draft stays.
+- If the flusher wins, the send goes out and the cancel fails with `Too late to
+  stop it: this send has already started, or it was not scheduled`. Check
+  `mxr send-outcome` to see what happened.
+- If you move the send time while the flusher is looking at the draft, the send
+  waits for the new time.
 
 ## Time syntax
 

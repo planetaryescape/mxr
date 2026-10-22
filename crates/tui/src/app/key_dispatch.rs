@@ -49,7 +49,7 @@ impl App {
     /// list is showing one. Modes move here one at a time.
     pub(crate) fn defined_key_context(&self) -> Option<&'static str> {
         self.mode_key_context()
-            .filter(|context| matches!(*context, "todo" | "catchup" | "expired"))
+            .filter(|context| matches!(*context, "todo" | "catchup" | "expired" | "now" | "messages"))
     }
 
     /// What `key` does in `context`, completing a waiting sequence first.

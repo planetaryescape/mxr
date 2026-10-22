@@ -3,7 +3,6 @@
 //! of the Updates card after a preview, and answer a new sender's one
 //! question. The daemon owns every cap, count and line.
 
-use super::input::plain_or_shift;
 use super::*;
 use crate::app::state::NowRow;
 use mxr_core::id::ThreadId;
@@ -391,7 +390,6 @@ impl App {
             };
         }
         let plain = key.modifiers == KeyModifiers::NONE;
-        let shifted = plain_or_shift(key.modifiers);
         let asks = matches!(
             self.selected_now_row(),
             Some(NowRow::Person(person)) if person.new_sender.is_some()
@@ -408,55 +406,12 @@ impl App {
                 }
             }
         }
-        let action = match key.code {
-            KeyCode::Char('/') if plain => Some(Action::OpenGlobalSearch),
-            KeyCode::Char('h') | KeyCode::Left if plain => {
-                self.mailbox.active_pane = ActivePane::Sidebar;
-                return None;
+        if let KeyCode::Char(digit @ '1'..='4') = key.code {
+            if plain && asks {
+                return Some(Action::NowAnswerSender(digit as usize - '0' as usize));
             }
-            // Dismisses a hint when one shows; nothing to go back from here.
-            KeyCode::Esc => Some(Action::DismissHint),
-            KeyCode::Enter => Some(Action::NowOpen),
-            KeyCode::Char('e') if plain => Some(Action::NowDone),
-            KeyCode::Char('o') if plain => Some(Action::NowOpenEmail),
-            KeyCode::Char('r') if plain => Some(Action::Reply),
-            KeyCode::Char('t') if plain => Some(Action::CreateTodoFromMessage),
-            KeyCode::Char('A') if shifted => Some(Action::NowLetGoDigest),
-            KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
-            KeyCode::Char('K') if shifted => Some(Action::OpenSenderMoveMenu),
-            KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),
-            KeyCode::Char(digit @ '1'..='4') if plain && asks => {
-                Some(Action::NowAnswerSender(digit as usize - '0' as usize))
-            }
-            _ => None,
-        };
-        if action.is_some() {
-            return action;
         }
-        self.contextual_input_action(key).filter(|action| {
-            !matches!(
-                action,
-                Action::OpenSelected
-                    | Action::ToggleSelect
-                    | Action::VisualLineMode
-                    | Action::AttachmentList
-                    | Action::ExportThread
-                    | Action::ToggleFullscreen
-                    | Action::FlagReplyLater
-                    | Action::NextSearchResult
-                    | Action::PrevSearchResult
-                    | Action::SwitchPane
-                    | Action::Back
-                    | Action::Archive
-                    | Action::MarkReadAndArchive
-                    | Action::Trash
-                    | Action::Spam
-                    | Action::Star
-                    | Action::MarkRead
-                    | Action::MarkUnread
-                    | Action::RespondInvite(_)
-                    | Action::RespondInviteWithComment(_)
-            )
-        })
+        let defined = self.defined_key("now", key);
+        self.run_defined_key(defined)
     }
 }

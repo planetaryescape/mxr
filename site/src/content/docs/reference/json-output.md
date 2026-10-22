@@ -173,7 +173,7 @@ A hybrid or semantic aggregation runs the query twice. The first run decides how
 
 ## Message and thread reads
 
-`mxr cat`, `mxr thread`, `mxr headers`, and `mxr export --format json` return fuller daemon payloads because they are read surfaces, not compact search rows. Prefer `mxr search --format ids` when you only need IDs. When you only need to say what a thread is, `mxr thread-preview <id>...` returns up to 100 threads' subject, latest sender (`sender_name`, `sender_email`), `latest_at` (unix seconds), `snippet`, `message_count`, `unread_count` and `has_attachments` with no bodies.
+`mxr cat`, `mxr thread`, `mxr headers`, and `mxr export --format json` return fuller daemon payloads because they are read surfaces, not compact search rows. Prefer `mxr search --format ids` when you only need IDs. When you only need to say what a thread is, `mxr thread-preview <id>...` returns up to 100 threads' subject, latest sender (`sender_name`, `sender_email`), `latest_at` (unix seconds), `snippet`, `message_count`, `unread_count` and an attachment flag, with no bodies. It is a separate read from `mxr search`, whose rows have no such flag.
 
 ```bash
 mxr search 'from:sarah@example.com after:2026-04-23' --format ids \

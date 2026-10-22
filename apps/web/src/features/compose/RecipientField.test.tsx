@@ -43,6 +43,17 @@ describe("RecipientField", () => {
     expect(screen.getByTitle("Invalid address: not-an-email")).toBeVisible();
   });
 
+  test("Enter that picks an IME candidate does not commit the chip", () => {
+    renderField();
+
+    const input = screen.getByRole("combobox", { name: "To" });
+    fireEvent.change(input, { target: { value: "やまだ" } });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+
+    expect(screen.queryByTitle(/invalid address/i)).not.toBeInTheDocument();
+    expect(input).toHaveValue("やまだ");
+  });
+
   test("does not flag a valid address chip", () => {
     renderField("alpha@example.com");
 

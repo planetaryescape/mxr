@@ -9,6 +9,7 @@
 import { useLayoutEffect, useRef, type KeyboardEvent, type Ref } from "react";
 
 import { KeyChip } from "@/components/KeyChip";
+import { isComposingKey } from "@/lib/keys/composition";
 import { cn } from "@/lib/utils";
 
 import { describeChoice, type TimeChoice } from "./api";
@@ -78,6 +79,7 @@ export function NaturalTimeInput({
   }
 
   function onFieldKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (isComposingKey(event)) return;
     // A held Enter repeats; only a deliberate press may commit, so holding
     // it can't reveal an ambiguous phrase's choices and then take one.
     if (event.key === "Enter" && event.repeat) {

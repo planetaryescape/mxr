@@ -141,6 +141,7 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
     <div
       ref={pageRef}
       tabIndex={-1}
+      data-mode-pane=""
       aria-label="Focus and reply"
       // Tab skips only from the page itself (where Esc leaves you); from a
       // button or link it still moves focus.

@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { routeMessages } from "@/features/mailbox/api";
 import { lensesFromShell } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
+import { isComposingKey } from "@/lib/keys/composition";
 import { plural } from "@/lib/format";
 
 import { performMailAction } from "../mailMutations";
@@ -155,7 +156,7 @@ function RoutePreview({
           onBack();
         }}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && result) {
+          if (event.key === "Enter" && result && !isComposingKey(event)) {
             event.preventDefault();
             onConfirm();
           }

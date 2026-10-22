@@ -17,6 +17,7 @@ import { setActiveQueryClient } from "@/lib/queryClient";
 import { useModeDone, type ModeDoneOutcome } from "@/features/modes/modeDone";
 import { useUndo } from "@/state/undoStore";
 import { optionalString } from "@/lib/searchParams";
+import { focusActivePane } from "@/lib/keys/focusPane";
 
 type FixtureReply =
   | { page: PersonPage }
@@ -281,6 +282,18 @@ test("opening a person with a closed cached default heals the URL to their curre
     delayed.resolve({ page: personPage(a, "a-live") });
   });
   await screen.findByText("a-live");
+});
+
+test("focus returns into Messages when an overlay closes with nothing to return to", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  client.setQueryData(listKey, listOf(a));
+  cachePage(a, "a-live", "a-live");
+  await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
+  await screen.findByText("a-live");
+
+  focusActivePane();
+
+  expect(screen.getByRole("region", { name: "Messages" })).toHaveFocus();
 });
 
 test("deliberately opening a historical topic does not redirect or mark it done again", async () => {

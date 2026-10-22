@@ -15,6 +15,7 @@ export type AssistantAnswer = Schemas["AssistantAnswerData"];
 export type AssistantProgress = Schemas["AssistantProgressData"];
 export type AssistantViewContext = Schemas["AssistantViewContextData"];
 export type AssistantCallState = Schemas["AssistantCallStateData"];
+export type AssistantDelete = Schemas["AssistantDeleteData"];
 /** Every row one step's result lists; `total` can exceed `listed`. */
 export type AssistantStepRows = {
   rows: Schemas["AssistantReadoutRowData"][];
@@ -125,9 +126,14 @@ export async function setAutoApprove(
   return response.conversation;
 }
 
-export async function deleteConversation(conversationId: string): Promise<void> {
-  await apiFetch(`${BASE}/conversations/${encodeURIComponent(conversationId)}/delete`, {
-    method: "POST",
-    body: { dry_run: false },
-  });
+/** With `dryRun`, says what would go (the title and message count) and deletes nothing. */
+export async function deleteConversation(
+  conversationId: string,
+  { dryRun = false }: { dryRun?: boolean } = {},
+): Promise<AssistantDelete> {
+  const response = await apiFetch<{ delete: AssistantDelete }>(
+    `${BASE}/conversations/${encodeURIComponent(conversationId)}/delete`,
+    { method: "POST", body: { dry_run: dryRun } },
+  );
+  return response.delete;
 }

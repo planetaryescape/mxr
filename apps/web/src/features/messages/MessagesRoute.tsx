@@ -99,7 +99,12 @@ export function MessagesRoute({
   const guide = useModeGuide("messages");
   const phase = useDelayedPending(messages.isLoading);
   return (
-    <section aria-label="Messages" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+    <section
+      aria-label="Messages"
+      data-mode-pane=""
+      tabIndex={-1}
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-background outline-none"
+    >
       {phase !== "ready" ? (
         <>
           <MessagesHeader search={search} guide={guide.data} />

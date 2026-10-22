@@ -228,7 +228,7 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
         </span>
         {scope}
       </p>
-      <ul aria-label="Screener queue">
+      <ul aria-label="Screener queue" data-mode-pane="" tabIndex={-1} className="outline-none">
         {rows.map((entry, index) => {
           const name = entry.display_name || entry.sender_email;
           return (

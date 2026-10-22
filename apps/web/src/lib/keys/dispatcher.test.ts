@@ -2,6 +2,7 @@ import { fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { todoActions } from "@/features/todo/actions";
+import { fromDefinition } from "@/lib/actions/definition";
 import { listActions, readerActions } from "@/lib/actions/paneActions";
 import { ActionRegistry } from "@/lib/actions/registry";
 import type { Action, ActionContext, ActionScope } from "@/lib/actions/types";
@@ -263,7 +264,7 @@ describe("installKeyDispatcher", () => {
   // The list binds "Ctrl+d"/"Ctrl+u" (TUI half-page); off macOS Ctrl parses
   // as "Mod", and the dispatcher must still match the Ctrl spelling.
   test("Ctrl+d pages the list down on Windows and Linux", () => {
-    registry.defineMany(listActions);
+    registry.defineMany(listActions.map(fromDefinition));
     const pageDown = vi.fn<() => void>();
     setController("list", { pageDown });
     scopes = ["list", "global"];
@@ -274,7 +275,7 @@ describe("installKeyDispatcher", () => {
   });
 
   test("Space and e tick off the focused to-do once per press", () => {
-    registry.defineMany(todoActions);
+    registry.defineMany(todoActions.map(fromDefinition));
     const done = vi.fn<() => void>();
     setController("todo", { done });
     scopes = ["todo", "global"];
@@ -287,7 +288,7 @@ describe("installKeyDispatcher", () => {
   });
 
   test("Space on a focused checkbox keeps its native toggle", () => {
-    registry.defineMany(todoActions);
+    registry.defineMany(todoActions.map(fromDefinition));
     const done = vi.fn<() => void>();
     setController("todo", { done });
     scopes = ["todo", "global"];
@@ -300,7 +301,7 @@ describe("installKeyDispatcher", () => {
   });
 
   test("To do shortcuts do not consume ordinary text typed into fields", () => {
-    registry.defineMany(todoActions);
+    registry.defineMany(todoActions.map(fromDefinition));
     const done = vi.fn<() => void>();
     setController("todo", { done });
     scopes = ["todo", "global"];
@@ -319,7 +320,7 @@ describe("installKeyDispatcher", () => {
   });
 
   test("Space keeps its reader page-down action", () => {
-    registry.defineMany([...todoActions, ...readerActions]);
+    registry.defineMany([...todoActions, ...readerActions].map(fromDefinition));
     const done = vi.fn<() => void>();
     const pageDown = vi.fn<() => void>();
     setController("todo", { done });

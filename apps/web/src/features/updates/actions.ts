@@ -7,71 +7,21 @@
 
 import { Archive, BellOff, Check, Copy, ExternalLink, ListPlus, Mail, Pin } from "lucide-react";
 
-import type { Action, CommandAction } from "@/lib/actions/types";
+import type { ActionBehavior } from "@/lib/actions/types";
 
-function key(
-  id: string,
-  command: string,
-  label: string,
-  shortcut: string,
-  extra: Partial<Omit<CommandAction, "id" | "command" | "run">> = {},
-): CommandAction {
-  return { id, command, label, shortcut, group: "Triage", scopes: ["updates"], ...extra };
-}
-
-export const updatesActions: Action[] = [
-  key("updates.down", "down", "Next", "j", {
-    group: "Move",
-    aliases: ["ArrowDown"],
-    hideInPalette: true,
-  }),
-  key("updates.up", "up", "Previous", "k", {
-    group: "Move",
-    aliases: ["ArrowUp"],
-    hideInPalette: true,
-  }),
-  key("updates.expand", "expand", "Show routine", "Enter", {
-    shortLabel: "Routine",
-    group: "Move",
-  }),
-  key("updates.let-go-all", "letGoAll", "Let go of the digest…", "A", {
-    shortLabel: "Let go of digest",
-    icon: Check,
-    tuiNote: "Previews the daemon's dry run first; undo afterwards",
-  }),
-  key("updates.let-go-source", "letGoSource", "Let go of this source", "e", {
-    shortLabel: "Let go",
-  }),
-  key("updates.needs-me", "needsMe", "This needs me: make it a to-do", "t", {
-    shortLabel: "To-do",
-    icon: ListPlus,
-  }),
-  key("updates.tune", "tune", "Tune this source…", "K", {
-    shortLabel: "Tune",
-    icon: BellOff,
-  }),
-  key("updates.link", "link", "Open the link", "L", { shortLabel: "Link", icon: ExternalLink }),
-  key("updates.copy-code", "copyCode", "Copy the one-time code", "y", {
-    shortLabel: "Copy code",
-    icon: Copy,
-  }),
-  key("updates.open-email", "openEmail", "Open the email", "o", {
-    shortLabel: "Email",
-    icon: Mail,
-  }),
-  key("updates.peek", "peek", "Peek at this update under its line", "Space", {
-    shortLabel: "Peek",
-  }),
-  key("updates.pin", "pin", "Pin or unpin this source's latest email", "p", {
-    shortLabel: "Pin",
-    icon: Pin,
-  }),
-  key("updates.sweep", "sweep", "Sweep this sender out of Updates…", "S", {
-    shortLabel: "Sweep sender",
-    icon: Archive,
-    tuiNote: "Previews the daemon's dry run first; undo afterwards",
-  }),
-  key("updates.close-hint", "closeHint", "Dismiss the hint", "Escape", {
-    hideInPalette: true,
-  }),
+export const updatesActions: ActionBehavior[] = [
+  { id: "updates.down", command: "down" },
+  { id: "updates.up", command: "up" },
+  { id: "updates.expand", command: "expand" },
+  { id: "updates.let-go-all", command: "letGoAll", icon: Check },
+  { id: "updates.let-go-source", command: "letGoSource" },
+  { id: "updates.needs-me", command: "needsMe", icon: ListPlus },
+  { id: "updates.tune", command: "tune", icon: BellOff },
+  { id: "updates.link", command: "link", icon: ExternalLink },
+  { id: "updates.copy-code", command: "copyCode", icon: Copy },
+  { id: "updates.open-email", command: "openEmail", icon: Mail },
+  { id: "updates.peek", command: "peek" },
+  { id: "updates.pin", command: "pin", icon: Pin },
+  { id: "updates.sweep", command: "sweep", icon: Archive },
+  { id: "updates.close-hint", command: "closeHint" },
 ];

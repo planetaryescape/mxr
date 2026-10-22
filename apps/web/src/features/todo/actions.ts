@@ -1,97 +1,40 @@
 /*
- * To do's web keys. The `e` alias matches the TUI; Space follows checkbox convention.
- * The mounted runway, catch-up or Expired list registers what each command
- * does (`useScopeController`); the reader keeps its own keys while it has
- * focus. `g x` opens To do from anywhere and `t` (in verbActions) makes a
- * to-do from a conversation.
+ * To do's web keys. The mounted runway, catch-up or Expired list registers
+ * what each command does (`useScopeController`); the reader keeps its own
+ * keys while it has focus. `g x` opens To do from anywhere and `t` (in
+ * verbActions) makes a to-do from a conversation.
  */
 
 import { CalendarClock, Check, PenLine, X } from "lucide-react";
 
 import { MODE_GLYPHS } from "@/components/ModeMark";
 import { getRuntimeNavigate } from "@/lib/actions/runtime";
-import type { Action, ActionScope, CommandAction } from "@/lib/actions/types";
+import type { ActionBehavior } from "@/lib/actions/types";
 
-function key(
-  scope: ActionScope,
-  id: string,
-  command: string,
-  label: string,
-  shortcut: string,
-  extra: Partial<Omit<CommandAction, "id" | "command" | "run">> = {},
-): CommandAction {
-  return { id, command, label, shortcut, group: "Triage", scopes: [scope], ...extra };
-}
-
-const move = (scope: ActionScope, prefix: string): Action[] => [
-  key(scope, `${prefix}.down`, "down", "Next", "j", {
-    group: "Move",
-    aliases: ["ArrowDown"],
-    hideInPalette: true,
-  }),
-  key(scope, `${prefix}.up`, "up", "Previous", "k", {
-    group: "Move",
-    aliases: ["ArrowUp"],
-    hideInPalette: true,
-  }),
+const move = (prefix: string): ActionBehavior[] => [
+  { id: `${prefix}.down`, command: "down" },
+  { id: `${prefix}.up`, command: "up" },
 ];
 
-export const todoActions: Action[] = [
-  {
-    id: "nav.todo",
-    label: "To do",
-    description: "Things email asked you to do, ordered by when to act",
-    group: "Navigate",
-    icon: MODE_GLYPHS.todo,
-    shortcut: "g x",
-    run: () => getRuntimeNavigate().navigate("/todo"),
-  },
-  ...move("todo", "todo"),
-  key("todo", "todo.primary", "primary", "Do it: what the row's button says", "Enter", {
-    shortLabel: "Do it",
-    tuiNote: "Opens a link only when the sender passed the check; otherwise the email",
-  }),
-  key("todo", "todo.done", "done", "Done", "Space", {
-    shortLabel: "Done",
-    icon: Check,
-    aliases: ["e"],
-  }),
-  key("todo", "todo.schedule", "schedule", "Schedule…", "Z", {
-    shortLabel: "Schedule",
-    icon: CalendarClock,
-  }),
-  key("todo", "todo.edit", "edit", "Edit what mxr read…", ",", {
-    shortLabel: "Edit",
-    icon: PenLine,
-  }),
-  key("todo", "todo.dismiss", "dismiss", "Not a to-do", "X", {
-    shortLabel: "Not a to-do",
-    icon: X,
-  }),
-  key("todo", "todo.open-email", "openEmail", "Open the email it came from", "o", {
-    shortLabel: "Email",
-  }),
-  key("todo", "todo.details", "details", "Why it is here and where each field came from", "v", {
-    shortLabel: "Details",
-  }),
-  key("todo", "todo.expired", "expired", "Expired list", "E", { shortLabel: "Expired" }),
-  key("todo", "todo.catchup", "catchup", "Catch-up", "C", { shortLabel: "Catch-up" }),
-  key("todo", "todo.close-hint", "closeHint", "Dismiss the hint", "Escape", {
-    hideInPalette: true,
-  }),
-  ...move("catchup", "catchup"),
-  key("catchup", "todo.catchup-keep", "keep", "Keep: it still needs me", "Enter", {
-    shortLabel: "Keep",
-  }),
-  key("catchup", "todo.catchup-let-go", "letGo", "Let go of this one", "e", {
-    shortLabel: "Let go",
-  }),
-  key("catchup", "todo.catchup-let-go-all", "letGoAll", "Let go of all…", "A", {
-    shortLabel: "Let go of all",
-    tuiNote: "Previews the daemon's dry run first; undo afterwards",
-  }),
-  key("catchup", "todo.catchup-back", "back", "Back to To do", "Escape", { hideInPalette: true }),
-  ...move("expired", "expired"),
-  key("expired", "todo.restore", "restore", "Restore to To do", "Enter", { shortLabel: "Restore" }),
-  key("expired", "todo.expired-back", "back", "Back to To do", "Escape", { hideInPalette: true }),
+export const todoActions: ActionBehavior[] = [
+  { id: "nav.todo", icon: MODE_GLYPHS.todo, run: () => getRuntimeNavigate().navigate("/todo") },
+  ...move("todo"),
+  { id: "todo.primary", command: "primary" },
+  { id: "todo.done", command: "done", icon: Check },
+  { id: "todo.schedule", command: "schedule", icon: CalendarClock },
+  { id: "todo.edit", command: "edit", icon: PenLine },
+  { id: "todo.dismiss", command: "dismiss", icon: X },
+  { id: "todo.open-email", command: "openEmail" },
+  { id: "todo.details", command: "details" },
+  { id: "todo.expired", command: "expired" },
+  { id: "todo.catchup", command: "catchup" },
+  { id: "todo.close-hint", command: "closeHint" },
+  ...move("catchup"),
+  { id: "todo.catchup-keep", command: "keep" },
+  { id: "todo.catchup-let-go", command: "letGo" },
+  { id: "todo.catchup-let-go-all", command: "letGoAll" },
+  { id: "todo.catchup-back", command: "back" },
+  ...move("expired"),
+  { id: "todo.restore", command: "restore" },
+  { id: "todo.expired-back", command: "back" },
 ];

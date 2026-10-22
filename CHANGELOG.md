@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.134](https://github.com/planetaryescape/mxr/compare/v0.6.133...v0.6.134) (2026-10-22)
+
+
+### Features
+
+* show what the assistant is doing while mxr assistant send waits ([#601](https://github.com/planetaryescape/mxr/issues/601)) ([fd55bf3](https://github.com/planetaryescape/mxr/commit/fd55bf3aa42ce9c5907fa830968ef8b3a2d1eae7))
+
+
+### Bug Fixes
+
+* pad 24-hour times and give the arrival its own line on phones ([#602](https://github.com/planetaryescape/mxr/issues/602)) ([91838af](https://github.com/planetaryescape/mxr/commit/91838afb13900852ed21cb475bcdbe5434ba6fab))
+
 ## [0.6.133](https://github.com/planetaryescape/mxr/compare/v0.6.132...v0.6.133) (2026-10-22)
 
 

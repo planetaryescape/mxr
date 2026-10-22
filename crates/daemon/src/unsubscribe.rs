@@ -13,8 +13,29 @@ use reqwest::Client;
 #[derive(Debug)]
 pub enum UnsubscribeResult {
     Success(String),
-    Failed(String),
+    Failed {
+        message: String,
+        outcome: FailureOutcome,
+    },
     NoMethod,
+}
+
+/// Whether a failed attempt could have had an effect at the sender.
+///
+/// The caller keeps the send claim for `Unknown` so the unsubscribe is never
+/// re-sent, and releases it for `NotSent` so a retry can go out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureOutcome {
+    /// The request never left mxr, or the server answered with an error status
+    /// and so did not apply the unsubscribe.
+    NotSent,
+    /// The request may have been received: a timeout or reset after it was
+    /// written, or a response that could not be read.
+    Unknown,
+}
+
+fn failed(message: String, outcome: FailureOutcome) -> UnsubscribeResult {
+    UnsubscribeResult::Failed { message, outcome }
 }
 
 /// Execute an unsubscribe action.
@@ -31,17 +52,30 @@ pub async fn execute_unsubscribe(method: &UnsubscribeMethod, client: &Client) ->
                 Ok(resp) if resp.status().is_success() => {
                     UnsubscribeResult::Success("Unsubscribed via one-click.".into())
                 }
-                Ok(resp) => {
-                    UnsubscribeResult::Failed(format!("One-click POST returned {}", resp.status()))
-                }
-                Err(e) => UnsubscribeResult::Failed(format!("One-click unsubscribe failed: {e}")),
+                Ok(resp) => failed(
+                    format!("One-click POST returned {}", resp.status()),
+                    FailureOutcome::NotSent,
+                ),
+                // Connect-phase errors (refused, DNS, bad URL) are raised before
+                // the request body is written, so the server cannot have acted.
+                Err(e) if e.is_connect() || e.is_builder() => failed(
+                    format!("One-click unsubscribe failed: {e}"),
+                    FailureOutcome::NotSent,
+                ),
+                Err(e) => failed(
+                    format!("One-click unsubscribe failed: {e}"),
+                    FailureOutcome::Unknown,
+                ),
             }
         }
 
         UnsubscribeMethod::HttpLink { url } | UnsubscribeMethod::BodyLink { url } => {
             match open_in_browser(url) {
                 Ok(()) => UnsubscribeResult::Success("Opened unsubscribe page in browser.".into()),
-                Err(e) => UnsubscribeResult::Failed(format!("Failed to open browser: {e}")),
+                Err(e) => failed(
+                    format!("Failed to open browser: {e}"),
+                    FailureOutcome::NotSent,
+                ),
             }
         }
 
@@ -76,6 +110,80 @@ mod tests {
         let client = Client::new();
         let result = execute_unsubscribe(&UnsubscribeMethod::None, &client).await;
         assert!(matches!(result, UnsubscribeResult::NoMethod));
+    }
+
+    fn one_click(url: String) -> UnsubscribeMethod {
+        UnsubscribeMethod::OneClick { url }
+    }
+
+    #[tokio::test]
+    async fn refused_connection_is_not_sent() {
+        let result = execute_unsubscribe(
+            &one_click("http://127.0.0.1:1/unsubscribe".into()),
+            &Client::new(),
+        )
+        .await;
+        assert!(
+            matches!(
+                result,
+                UnsubscribeResult::Failed {
+                    outcome: FailureOutcome::NotSent,
+                    ..
+                }
+            ),
+            "got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn server_error_status_is_not_sent() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(wiremock::ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let result = execute_unsubscribe(
+            &one_click(format!("{}/unsubscribe", server.uri())),
+            &Client::new(),
+        )
+        .await;
+        assert!(
+            matches!(
+                result,
+                UnsubscribeResult::Failed {
+                    outcome: FailureOutcome::NotSent,
+                    ..
+                }
+            ),
+            "got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn timeout_after_the_request_is_unknown() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(204).set_delay(std::time::Duration::from_secs(3)),
+            )
+            .mount(&server)
+            .await;
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_millis(200))
+            .build()
+            .unwrap();
+        let result =
+            execute_unsubscribe(&one_click(format!("{}/unsubscribe", server.uri())), &client).await;
+        assert!(
+            matches!(
+                result,
+                UnsubscribeResult::Failed {
+                    outcome: FailureOutcome::Unknown,
+                    ..
+                }
+            ),
+            "got {result:?}"
+        );
     }
 
     #[tokio::test]

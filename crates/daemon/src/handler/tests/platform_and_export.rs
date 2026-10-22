@@ -319,6 +319,221 @@ async fn dispatch_one_click_post_fires_once_after_event_log_is_purged() {
     );
 }
 
+async fn unsubscribe_request(state: &Arc<AppState>, message_id: &mxr_core::MessageId) -> Response {
+    match handle_request(
+        state,
+        &IpcMessage {
+            expected_workspace: None,
+            id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(Request::Unsubscribe {
+                message_id: message_id.clone(),
+            }),
+        },
+    )
+    .await
+    .payload
+    {
+        IpcPayload::Response(response) => response,
+        other => panic!("expected a response, got {other:?}"),
+    }
+}
+
+async fn mailto_fixture(state: &Arc<AppState>) -> mxr_core::MessageId {
+    state
+        .store
+        .list_envelopes_by_account(&state.default_account_id(), 200, 0)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|envelope| matches!(envelope.unsubscribe, UnsubscribeMethod::Mailto { .. }))
+        .map(|envelope| envelope.id)
+        .expect("mailto fixture")
+}
+
+fn expect_error(response: &Response) -> (&str, bool) {
+    match response {
+        Response::Error {
+            code, retryable, ..
+        } => (code.as_str(), *retryable),
+        other => panic!("expected an error response, got {other:?}"),
+    }
+}
+
+async fn synced_state() -> (Arc<AppState>, Arc<mxr_provider_fake::FakeProvider>) {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+    (Arc::new(state), fake)
+}
+
+/// Two requests in flight at once must produce one send.
+#[tokio::test]
+async fn concurrent_unsubscribes_send_exactly_once() {
+    let (state, fake) = synced_state().await;
+    let id = mailto_fixture(&state).await;
+    let (first, second) = tokio::join!(
+        unsubscribe_request(&state, &id),
+        unsubscribe_request(&state, &id),
+    );
+    for response in [&first, &second] {
+        assert!(
+            matches!(
+                response,
+                Response::Ok {
+                    data: ResponseData::Ack
+                }
+            ),
+            "both requests ack, got {response:?}"
+        );
+    }
+    assert_eq!(fake.sent_drafts().len(), 1, "only the claimant sends");
+}
+
+/// Recording the send fails after it went out. The claim stays, and the
+/// error must not be retryable: a retry would ack without sending.
+#[tokio::test]
+async fn a_send_that_cannot_be_recorded_is_not_retryable_and_never_resent() {
+    let (state, fake) = synced_state().await;
+    let id = mailto_fixture(&state).await;
+    sqlx::query(
+        "CREATE TRIGGER fail_confirm BEFORE UPDATE ON unsubscribe_receipts
+         BEGIN SELECT RAISE(ABORT, 'injected receipt failure'); END",
+    )
+    .execute(state.store.writer())
+    .await
+    .unwrap();
+
+    let response = unsubscribe_request(&state, &id).await;
+    assert_eq!(
+        expect_error(&response),
+        ("unsubscribe_sent_not_recorded", false),
+        "{response:?}"
+    );
+    assert_eq!(fake.sent_drafts().len(), 1);
+
+    sqlx::query("DROP TRIGGER fail_confirm")
+        .execute(state.store.writer())
+        .await
+        .unwrap();
+    let retry = unsubscribe_request(&state, &id).await;
+    assert!(matches!(
+        retry,
+        Response::Ok {
+            data: ResponseData::Ack
+        }
+    ));
+    assert_eq!(fake.sent_drafts().len(), 1, "a retry must not send again");
+}
+
+/// The provider accepted the mail and then failed. The outcome is unknown:
+/// the claim stays, is marked `_unknown`, and a retry does not send.
+#[tokio::test]
+async fn an_unknown_send_outcome_keeps_the_claim() {
+    let (state, fake) = synced_state().await;
+    let id = mailto_fixture(&state).await;
+    fake.fail_sends_after_accepting(true);
+
+    let response = unsubscribe_request(&state, &id).await;
+    assert_eq!(
+        expect_error(&response),
+        ("unsubscribe_outcome_unknown", false),
+        "{response:?}"
+    );
+    let method: String =
+        sqlx::query_scalar("SELECT method FROM unsubscribe_receipts WHERE message_id = ?")
+            .bind(id.as_str())
+            .fetch_one(state.store.reader())
+            .await
+            .unwrap();
+    assert_eq!(method, "mailto_unknown");
+
+    fake.fail_sends_after_accepting(false);
+    let retry = unsubscribe_request(&state, &id).await;
+    assert!(matches!(
+        retry,
+        Response::Ok {
+            data: ResponseData::Ack
+        }
+    ));
+    assert_eq!(fake.sent_drafts().len(), 1, "a retry must not send again");
+}
+
+/// The server refuses the first POST with a 500, so nothing was applied: the
+/// claim is released and the retry goes out.
+#[tokio::test]
+async fn a_server_refusal_is_retryable_and_the_retry_sends() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let posts = Arc::new(AtomicUsize::new(0));
+    let counter = posts.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = [0u8; 4096];
+            let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await;
+            let attempt = counter.fetch_add(1, Ordering::SeqCst);
+            let status = if attempt == 0 {
+                "500 Internal Server Error"
+            } else {
+                "204 No Content"
+            };
+            let _ = tokio::io::AsyncWriteExt::write_all(
+                &mut stream,
+                format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    .as_bytes(),
+            )
+            .await;
+        }
+    });
+
+    let (state, _) = synced_state().await;
+    let mut envelope = state
+        .store
+        .list_envelopes_by_account(&state.default_account_id(), 200, 0)
+        .await
+        .unwrap()
+        .into_iter()
+        .next()
+        .expect("at least one fixture envelope");
+    envelope.unsubscribe = UnsubscribeMethod::OneClick {
+        url: format!("http://{addr}/unsubscribe"),
+    };
+    state
+        .store
+        .upsert_envelope_with_direction(&envelope, mxr_core::types::MessageDirection::Inbound)
+        .await
+        .unwrap();
+
+    let refused = unsubscribe_request(&state, &envelope.id).await;
+    assert_eq!(
+        expect_error(&refused),
+        ("unsubscribe_not_sent", true),
+        "{refused:?}"
+    );
+    assert_eq!(posts.load(Ordering::SeqCst), 1);
+
+    let retry = unsubscribe_request(&state, &envelope.id).await;
+    assert!(matches!(
+        retry,
+        Response::Ok {
+            data: ResponseData::Ack
+        }
+    ));
+    assert_eq!(
+        posts.load(Ordering::SeqCst),
+        2,
+        "the retry reaches the server"
+    );
+}
+
 /// Phase 2.6: when the unsubscribe URL fails (network error,
 /// non-2xx), the handler must surface an Error response. Quietly
 /// returning Ack would mislead the user into thinking they were

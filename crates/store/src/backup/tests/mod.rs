@@ -287,6 +287,56 @@ async fn resolution_queue_round_trips_through_backup_and_restore() {
 }
 
 #[tokio::test]
+async fn unsubscribe_receipts_round_trip_through_backup_and_restore() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let restored = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let mut envelope = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    envelope.provider_id = "backup-unsubscribed".into();
+    store
+        .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+        .await
+        .unwrap();
+    store
+        .claim_unsubscribe(&envelope.id, &account.id, 1)
+        .await
+        .unwrap();
+    store
+        .confirm_unsubscribe(&envelope.id, "one_click", 2)
+        .await
+        .unwrap();
+    store.writer().close().await;
+
+    let manifest = write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    inspect(stage.path()).await.unwrap();
+    std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
+    retire_restored(&restored.path().join("mxr.db"))
+        .await
+        .unwrap();
+
+    assert_eq!(manifest.schema_version, 93);
+    let restored_store = Store::new(&restored.path().join("mxr.db")).await.unwrap();
+    assert!(
+        restored_store
+            .has_unsubscribe_receipt(&envelope.id)
+            .await
+            .unwrap(),
+        "a restored backup must still refuse a second unsubscribe"
+    );
+    restored_store.writer().close().await;
+}
+
+#[tokio::test]
 async fn inspect_accepts_exact_schema_81_and_rejects_future_schema() {
     let source = tempfile::tempdir().unwrap();
     let stage = tempfile::tempdir().unwrap();

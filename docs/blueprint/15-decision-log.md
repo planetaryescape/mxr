@@ -1169,13 +1169,13 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 ## D146: Unsubscribe receipts are separate from history
 
-**Chosen**: Each sent unsubscribe writes a row to `unsubscribe_receipts` (message id, account, method, time) in the same step as the external effect. Before any send, the daemon checks that table and no longer checks event_log. Purging event_log never touches the table. Deleting a message deletes its receipt. Rows that existed before the migration are backfilled from the event_log entries the old check matched, with method `unknown`.
+**Chosen**: Each unsubscribe claims its message in `unsubscribe_receipts` before anything is sent: an insert with method `pending`. A request that finds a claim or receipt sends nothing and acknowledges. The send then either confirms the claim (the method and time of the send) or releases it, and it releases only when the send certainly did not happen: connection refused or DNS failure before the request, a 4xx/5xx response, or a provider's `NotAccepted`. Any other outcome (a timeout or reset after the request, or a provider's `Unknown`) keeps the claim, marked `<method>_unknown`, and the error says mxr can't tell whether the unsubscribe went through and won't send it again. Purging event_log never touches the table. Deleting a message deletes its receipt, and the table references messages with ON DELETE CASCADE, so deleting an account removes its receipts too. Rows that existed before the migration are backfilled from the event_log entries the old check matched, for messages that still exist, with method `unknown`.
 
 **Considered**: Keep the event_log check and stop `mxr logs --purge` from deleting unsubscribe rows. Keep the receipt in the event_log row with a longer retention for that category.
 
 **Why**: Purging event_log made mxr send the same unsubscribe mail or POST a second time. The promise is that mxr sends an unsubscribe for a message once, whatever happens to logs and history. A purge that deletes history must not also delete the guard.
 
-**Trade-offs accepted**: A small table that is never pruned by purge, and grows by one row per unsubscribe. A receipt is removed with its message, so a message that is deleted and later synced back under the same id can be unsubscribed again. A failed receipt write after a sent unsubscribe is reported as an error, so the user sees that a retry would send it again.
+**Trade-offs accepted**: A small table that is never pruned by purge, and grows by one row per unsubscribe. A receipt is removed with its message, so a message that is deleted and later synced back under the same id can be unsubscribed again. An unsubscribe whose outcome mxr can't tell is never re-sent, so if the sender did not act, the user has to unsubscribe by other means; the error says so. A daemon that stops between the claim and the send leaves the claim in place, which reads as unknown and blocks a resend. If the receipt cannot be recorded after a send, the error is not retryable, and a retry acknowledges without sending.
 
 ## D147: Each account has one identity, a colour and a tag, owned by the daemon
 
@@ -1197,4 +1197,3 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 **Trade-offs accepted**: Message headers grow by about ten characters. The lit row's actions sit beside the time instead of over it, which leaves less room for actions on narrow screens; the overflow menu takes the rest.
 
-||||||| parent of 7eab2e71f (fix: never send an unsubscribe twice after logs are purged)

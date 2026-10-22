@@ -39,6 +39,17 @@ pub(crate) enum HandlerError {
     /// Already sanitized at authenticated remote admission.
     #[error("Remote operation was refused")]
     RemoteResponse(Box<Response>),
+    /// A failed unsubscribe attempt. `retryable` is set here, not inferred from
+    /// the message: a retry of an unsent attempt may go out, while a retry of
+    /// an attempt whose outcome is unknown or already recorded as sent would be
+    /// acknowledged without sending.
+    #[error("{message}")]
+    UnsubscribeAttempt {
+        message: String,
+        code: &'static str,
+        kind: IpcErrorKind,
+        retryable: bool,
+    },
     /// A storage-layer failure. `sqlx::Error` is what the store returns today.
     #[error(transparent)]
     Store(#[from] sqlx::Error),
@@ -83,6 +94,9 @@ impl HandlerError {
             Self::Archive { message, code, identity, kind, state } => Response::Error {
                 message, kind, code: code.into(), retryable: false,
                 details: Some(serde_json::json!({"identity": identity, "state": state, "retry_guidance": "Query this identity; never create a new identity to retry an uncertain effect"})),
+            },
+            Self::UnsubscribeAttempt { message, code, kind, retryable } => Response::Error {
+                message, kind, code: code.into(), retryable, details: None,
             },
             Self::InvalidRequest(message) => {
                 Response::error_kinded(message, IpcErrorKind::InvalidRequest)

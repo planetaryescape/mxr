@@ -30,6 +30,7 @@ const TABLES: &[&str] = &[
     "accounts",
     "labels",
     "messages",
+    "unsubscribe_receipts",
     "message_labels",
     "bodies",
     "attachments",

@@ -21,6 +21,8 @@ From a terminal:
 mxr assistant send "Which newsletters haven't I opened in a month?"
 ```
 
+While the turn runs, one line under the command says what the assistant is doing and for how long, "Reading your request · 3s", then each step as it starts, then "Writing the answer". It is cleared when the reply prints. Piped, each change is its own line on stderr; with `--format json`, stderr carries them as JSON lines, so stdout stays the conversation.
+
 ## In the terminal
 
 In the TUI, press `Ctrl-a` on any screen. The assistant opens as a pane on the right, or over the right of the screen when the terminal is narrower than 110 columns. It is hidden until you open it. `Ctrl-a` hides it again, or brings the keys back to it after you've moved away. The palette (`Ctrl-p`) has the same commands under "Assistant".

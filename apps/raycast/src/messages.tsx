@@ -106,7 +106,6 @@ export default function Messages() {
         ]}
         actions={
           <ActionPanel>
-            {filterMenu}
             {topic && (
               <ReadAction
                 threadId={topic.thread_id}
@@ -174,6 +173,7 @@ export default function Messages() {
                 }}
               />
             )}
+            <ActionPanel.Section>{filterMenu}</ActionPanel.Section>
           </ActionPanel>
         }
       />
@@ -196,8 +196,8 @@ export default function Messages() {
           actions={
             label ? (
               <ActionPanel>
-                {filterMenu}
                 <Action title="Clear Filters" icon={Icon.Eraser} onAction={() => setFilter({})} />
+                <ActionPanel.Section>{filterMenu}</ActionPanel.Section>
               </ActionPanel>
             ) : undefined
           }

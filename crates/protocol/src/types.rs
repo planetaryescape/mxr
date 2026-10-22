@@ -3787,7 +3787,8 @@ pub enum ResponseData {
         cases: Vec<DraftEvalCaseData>,
         summary: DraftEvalSummaryData,
     },
-    /// Returned by `Request::DraftEval` with `set: quick`.
+    /// Returned by `Request::DraftEvalQuick`: the labelled synthetic corpus
+    /// only, never the user's mail.
     DraftEvalQuick {
         cases: Vec<DraftEvalQuickCaseData>,
         summary: DraftEvalQuickSummaryData,

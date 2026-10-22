@@ -33846,7 +33846,7 @@
           },
           {
             "type": "object",
-            "description": "Returned by `Request::DraftEval` with `set: quick`.",
+            "description": "Returned by `Request::DraftEvalQuick`: the labelled synthetic corpus\nonly, never the user's mail.",
             "required": [
               "cases",
               "summary",

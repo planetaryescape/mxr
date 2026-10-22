@@ -248,6 +248,7 @@ pub(super) async fn collect_doctor_report(
         history_retention_days: crate::loops::retention_days_on_disk(
             &mxr_config::config_file_path(),
         ),
+        address_cache_stale: state.account_addresses.is_stale(),
         database_path: db_path.display().to_string(),
         database_size_bytes: file_size(state, db_path.clone()).await,
         index_path: index_path.display().to_string(),

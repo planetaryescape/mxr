@@ -183,7 +183,9 @@ calling a model; `generate = true` queues the missing ones from people, and
 `automated = true` adds automated senders' mail (receipts, alerts).
 `mxr_thread_previews` returns each thread's headline facts (subject, latest
 sender, `latest_at`, counts, attachment flag and snippet) for 1 to 100 threads,
-with no bodies. The snippet is mail text, so the assistant treats it as data.
+with no bodies, in the order asked. Unknown ids are left out, except under an
+agent profile limited to some accounts, where an id it cannot place fails the
+whole request. The snippet is mail text, so the assistant treats it as data.
 `mxr_list_place` lists [Reading or Paper trail](/guides/reading-and-paper-trail/)
 (`place` is `reading` or `paper_trail`) bundled by sender, with the reason for
 each bundle. `mxr_sweep_preview` shows what sweeping a place, or one sender's

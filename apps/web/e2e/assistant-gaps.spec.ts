@@ -55,9 +55,29 @@ test("the model mark is a menu: five choices, an unavailable one says why, a pic
   );
 });
 
-test("an email chip and its row in a reply show the glyph of the mode that holds it", async ({
+test("an email chip and its row in a reply show the glyph of the mode that holds it, and hovering the chip shows the email", async ({
   page,
 }) => {
+  await page.route("**/api/v1/mail/threads/previews", (route) =>
+    route.fulfill({
+      json: {
+        kind: "ThreadPreviews",
+        previews: [
+          {
+            thread_id: "t-ci-1",
+            subject: "CI failed on main: build-linux",
+            sender_name: "GitHub Actions",
+            sender_email: "notifications@github.com",
+            latest_at: 1_760_000_000,
+            message_count: 3,
+            unread_count: 1,
+            snippet: "Run 4471 failed in build-linux",
+            has_attachments: true,
+          },
+        ],
+      },
+    }),
+  );
   await page.route("**/api/v1/mail/modes/membership", (route) =>
     route.fulfill({
       json: {
@@ -103,4 +123,15 @@ test("an email chip and its row in a reply show the glyph of the mode that holds
     .getByRole("listitem")
     .nth(1);
   await expect(old.locator(".lucide-paperclip, .lucide-mail")).toHaveCount(0);
+
+  // Hovering the chip opens a card with the email's facts; Esc closes it, and
+  // the chip is still the link.
+  await chip.hover();
+  const card = page.getByTestId("link-hover-card");
+  await expect(card).toContainText("GitHub Actions <notifications@github.com>");
+  await expect(card).toContainText("3 messages");
+  await expect(card).toContainText("Run 4471 failed in build-linux");
+  await page.keyboard.press("Escape");
+  await expect(card).toBeHidden();
+  await expect(chip).toHaveAttribute("href", "/m/archive/t-ci-1");
 });

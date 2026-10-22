@@ -45,7 +45,6 @@ import {
   usePersonQuery,
   type MessagesData,
   type MessagesRow,
-  type MessagesTurn,
   type PersonPage,
 } from "./api";
 import { focusFilterBar, MessagesFilterBar } from "./MessagesFilterBar";

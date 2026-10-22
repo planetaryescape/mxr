@@ -582,6 +582,7 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
             search
         }
         "mxr_list_messages" => v("Listing", "Listed", "list", "recent emails"),
+        "mxr_thread_previews" => v("Previewing", "Previewed", "preview", "emails"),
         "mxr_read_message" => v("Reading", "Read", "read", "an email"),
         "mxr_read_thread" => v("Reading", "Read", "read", "a conversation"),
         "mxr_thread_context" => v(

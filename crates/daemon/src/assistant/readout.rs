@@ -233,10 +233,15 @@ fn row(object: &Map<String, Value>) -> AssistantReadoutRowData {
     .map(|detail| clipped(&detail, DETAIL_CHARS));
 
     // Only keys the tools really return: `from` (search, envelopes),
-    // `snippet` and `has_attachments` (envelopes, place messages), `date`
-    // (envelopes, place messages) or `last_at` (Messages rows), and `unread`
-    // (place messages, Messages rows) or `flags` (envelopes).
-    let sender = from_name(object);
+    // `snippet` and `has_attachments` (envelopes, place messages, thread
+    // previews), `date` (envelopes, place messages) or `last_at` (Messages
+    // rows) or `latest_at` (thread previews, unix seconds), and `unread`
+    // (place messages, Messages rows), `unread_count` (thread previews) or
+    // `flags` (envelopes). A thread preview names its latest sender in
+    // `sender_name` and `sender_email`.
+    let sender = from_name(object)
+        .or_else(|| text(object.get("sender_name")))
+        .or_else(|| text(object.get("sender_email")));
     AssistantReadoutRowData {
         title: clipped(&title, DETAIL_CHARS),
         detail,
@@ -248,7 +253,8 @@ fn row(object: &Map<String, Value>) -> AssistantReadoutRowData {
             .or_else(|| object.get("last_at"))
             .and_then(Value::as_str)
             .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
-            .map(|at| at.timestamp()),
+            .map(|at| at.timestamp())
+            .or_else(|| object.get("latest_at").and_then(Value::as_i64)),
         attachment: object.get("has_attachments").and_then(Value::as_bool) == Some(true),
         unread: unread(object),
     }
@@ -266,6 +272,9 @@ fn from_name(object: &Map<String, Value>) -> Option<String> {
 fn unread(object: &Map<String, Value>) -> bool {
     if let Some(unread) = object.get("unread").and_then(Value::as_bool) {
         return unread;
+    }
+    if let Some(count) = object.get("unread_count").and_then(Value::as_u64) {
+        return count > 0;
     }
     object
         .get("flags")
@@ -523,6 +532,63 @@ mod tests {
         assert_eq!(row.snippet.as_deref(), Some("Ten links"));
         assert_eq!(row.at, Some(1_790_845_200));
         assert!(row.unread && !row.attachment);
+    }
+
+    #[test]
+    fn thread_previews_fill_the_email_row_from_the_real_wire_shape() {
+        // Serialised from the daemon's own response type, so this pins what
+        // `mxr_thread_previews` hands the readout.
+        let first = mxr_core::id::ThreadId::new();
+        let second = mxr_core::id::ThreadId::new();
+        let content = serde_json::to_string(&mxr_protocol::ResponseData::ThreadPreviews {
+            previews: vec![
+                mxr_protocol::ThreadPreviewData {
+                    thread_id: first.clone(),
+                    subject: "Invoice 4471".into(),
+                    sender_name: Some("Dana Ruiz".into()),
+                    sender_email: "dana@work.example".into(),
+                    latest_at: 1_760_000_000,
+                    message_count: 4,
+                    unread_count: 2,
+                    snippet: "Please confirm\npayment by Friday".into(),
+                    has_attachments: true,
+                },
+                mxr_protocol::ThreadPreviewData {
+                    thread_id: second.clone(),
+                    subject: "Weekly digest".into(),
+                    sender_name: None,
+                    sender_email: "news@example.com".into(),
+                    latest_at: 1_759_900_000,
+                    message_count: 1,
+                    unread_count: 0,
+                    snippet: "Ten links".into(),
+                    has_attachments: false,
+                },
+            ],
+        })
+        .expect("serialise previews");
+
+        let out = readout(&content).expect("a readout");
+        assert_eq!(out.rows.len(), 2);
+
+        let first_row = &out.rows[0];
+        assert_eq!(first_row.title, "Invoice 4471");
+        assert_eq!(first_row.sender.as_deref(), Some("Dana Ruiz"));
+        assert_eq!(first_row.at, Some(1_760_000_000));
+        assert_eq!(
+            first_row.snippet.as_deref(),
+            Some("Please confirm payment by Friday")
+        );
+        assert!(first_row.unread && first_row.attachment);
+        assert!(matches!(
+            &first_row.link,
+            Some(AssistantLinkData::Thread { thread_id }) if *thread_id == first.to_string()
+        ));
+
+        let second_row = &out.rows[1];
+        assert_eq!(second_row.sender.as_deref(), Some("news@example.com"));
+        assert_eq!(second_row.at, Some(1_759_900_000));
+        assert!(!second_row.unread && !second_row.attachment);
     }
 
     #[test]

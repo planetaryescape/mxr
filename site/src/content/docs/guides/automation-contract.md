@@ -35,7 +35,7 @@ These are the common automation-oriented read surfaces. Exact formats live in th
 | `mxr count` | scalar count | json, jsonl, table/text |
 | `mxr cat` | full message body | json, jsonl, table (and the `--view` modes for body rendering) |
 | `mxr thread` | thread + messages | json, jsonl, table |
-| `mxr thread-preview` | up to 100 threads' subject, latest sender, date, snippet, counts, attachments (no bodies) | json, jsonl, ids, table |
+| `mxr thread-preview` | up to 100 threads' subject, latest sender, date, snippet, counts, attachments (no bodies) | json, jsonl, csv, ids, table |
 | `mxr headers` | RFC 822 headers | json, jsonl, table |
 | `mxr labels` | labels with counts | json, jsonl, csv, ids, table |
 | `mxr saved list` / `mxr saved run <name>` | saved searches / matches | json, jsonl, csv, ids, table |

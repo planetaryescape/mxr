@@ -71,6 +71,7 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_read_thread`
 - `mxr_thread_context`
 - `mxr_thread_gists`
+- `mxr_thread_previews`
 - `mxr_list_place`
 - `mxr_sweep_preview`
 - `mxr_messages`: people as rows in four bands, with topics and what they asked
@@ -180,6 +181,9 @@ It has no refresh option, so a cached gist is reused.
 `mxr_thread_gists` returns cached one-line gists for up to 100 threads without
 calling a model; `generate = true` queues the missing ones from people, and
 `automated = true` adds automated senders' mail (receipts, alerts).
+`mxr_thread_previews` returns each thread's headline facts (subject, latest
+sender, `latest_at`, counts, attachment flag and snippet) for 1 to 100 threads,
+with no bodies. The snippet is mail text, so the assistant treats it as data.
 `mxr_list_place` lists [Reading or Paper trail](/guides/reading-and-paper-trail/)
 (`place` is `reading` or `paper_trail`) bundled by sender, with the reason for
 each bundle. `mxr_sweep_preview` shows what sweeping a place, or one sender's

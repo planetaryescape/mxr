@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.135](https://github.com/planetaryescape/mxr/compare/v0.6.134...v0.6.135) (2026-10-22)
+
+
+### Bug Fixes
+
+* stop renewing Gmail rate limits by waiting Gmail's full retry time ([#604](https://github.com/planetaryescape/mxr/issues/604)) ([4875051](https://github.com/planetaryescape/mxr/commit/48750519a055008a5c6b2965bd027336543e25f5))
+
 ## [0.6.134](https://github.com/planetaryescape/mxr/compare/v0.6.133...v0.6.134) (2026-10-22)
 
 

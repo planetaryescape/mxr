@@ -126,7 +126,7 @@ fn message_view_snapshot() {
             &[block],
             DrawOptions {
                 zone: mxr_tui::ui::received_label::DisplayZone::Fixed(
-                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                    chrono::FixedOffset::east_opt(3600).expect("one hour east is a valid offset"),
                 ),
                 context: Vec::new(),
                 summary: None,
@@ -405,7 +405,7 @@ fn search_page_snapshot() {
             Rect::new(0, 0, 90, 24),
             SearchPageView {
                 zone: mxr_tui::ui::received_label::DisplayZone::Fixed(
-                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                    chrono::FixedOffset::east_opt(3600).expect("one hour east is a valid offset"),
                 ),
                 state: &state,
                 rows: &rows,
@@ -434,7 +434,7 @@ fn search_page_blank_snapshot() {
             Rect::new(0, 0, 90, 24),
             SearchPageView {
                 zone: mxr_tui::ui::received_label::DisplayZone::Fixed(
-                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                    chrono::FixedOffset::east_opt(3600).expect("one hour east is a valid offset"),
                 ),
                 state: &state,
                 rows: &[],
@@ -548,7 +548,7 @@ fn search_page_searching_snapshot() {
             Rect::new(0, 0, 90, 24),
             SearchPageView {
                 zone: mxr_tui::ui::received_label::DisplayZone::Fixed(
-                    chrono::FixedOffset::east_opt(3600).unwrap(),
+                    chrono::FixedOffset::east_opt(3600).expect("one hour east is a valid offset"),
                 ),
                 state: &state,
                 rows: &[],

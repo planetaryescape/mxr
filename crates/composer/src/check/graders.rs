@@ -182,6 +182,7 @@ fn is_preamble(line: &str) -> bool {
     ];
     let about_the_reply = [
         "draft of your",
+        "draft reply",
         "draft:",
         "drafted",
         "your reply",
@@ -537,6 +538,19 @@ mod tests {
         assert!(report.grades[5]
             .detail
             .contains("preamble: \"Sure, here's a draft of your reply.\""));
+    }
+
+    #[test]
+    fn a_draft_reply_wording_is_commentary_about_the_reply() {
+        let requirements = req("", &[], &[]);
+        for line in ["Here is the draft reply.", "Here's your draft reply."] {
+            let text = format!("{line}\n\nHi Alex,\n\nFriday works.\n\nAlex");
+            assert_eq!(
+                run(&requirements, &text).passed(Check::Leftovers),
+                Some(false),
+                "{line}"
+            );
+        }
     }
 
     #[test]

@@ -1444,3 +1444,123 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 **Why**: Gmail's `b` snoozes, so a Gmail habit put mail on the wrong shelf; one verb with Later as its first option keeps both outcomes one or two keys away (BK, 2026-10-22).
 
 **Trade-offs accepted**: Snoozing takes a second key (`b` then a time) where `Z` used to open the same picker; `Z` habits are relearned.
+
+## D174: What an email asks is judged per unit of authored text, with speaker, addressee, act and state
+
+**Chosen**: The What-it-asks judge splits each email into units (sentences of each zone, plus the subject) and tags each with an act (request, commitment, obligation, offer, question, information, pleasantry, none), an actor (owner, correspondent, a third party, everyone, nobody), a state (pending, done, failed, cancelled, conditional, hypothetical), an action and candidate ids for its date and amount. The email's answer aggregates its units (37).
+
+**Considered**: Patching `todo::detect` and the commitments prompt one failure at a time; one label per email; a language model over twelve messages per contact.
+
+**Why**: BK, 2026-10-22: "I do't want quick fixes, I need you to do some comprehensive research on how to do this right and how to improve the classifier so taht it's done right not just monkey patched onto it". On his mail 16 of 40 recent to-dos were wrong and 20 asks were missed, from six causes that one-label, first-match detection can't avoid. Sentence labels train better message detectors (Bennett and Carbonell 2005), and messages carry several acts (Cohen et al. 2004; Wang et al. 2019).
+
+**Trade-offs accepted**: More stored per email (units and tags) and a judge that is larger than today's regex set.
+
+## D175: Zones with their authors, owner identity and recipient role are facts
+
+**Chosen**: The facts record holds each body's zones (authored, greeting and sign-off, quoted, forwarded, signature, disclaimer, advertising) with each zone's author, the account owner's identity set, and the owner's recipient role. Quoted and forwarded text is context, never the speaker's act, unless the owner's own text delegates it.
+
+**Considered**: Leaving zoning to each consumer; telling a model to work out who is who.
+
+**Why**: Keeping only the sender's own text cut request-detection error by more than 41% (Lampert et al., NAACL 2010). The owner's requests read as their promises, and forwarded letters read as their words, because the commitments prompt never names the owner (`crates/relationship/src/commitments.rs:22, 109-112`).
+
+**Trade-offs accepted**: Zoning errors propagate to every tag, so zoning is measured on its own (37, spike S6).
+
+## D176: Organisational obligations come from a document reading with required fields
+
+**Chosen**: Machine mail gets a document kind (bill, statement, payment confirmation, autopay notice, failed payment, credit note, quote or marketing, booking, other) and a payment status (schema.org's due, past due, declined, complete, automatically applied, or none). A pay or fix to-do needs an actionable status and its required fields (an amount due above zero or stated by authenticated markup, and a due date or "now"). Without them, nothing is created.
+
+**Considered**: Phrase lists with negative vetoes (today); treating any date plus amount as a bill.
+
+**Why**: Google's Juicer surfaces only reminder and overdue bill subtypes and "If any of the required fields for a vertical fail to extract, we discard the other field values and generate nothing" (KDD 2018). Credit notes, £0.00 due, direct-debit offers and "final reminder" deadlines all became bills on BK's mail.
+
+**Trade-offs accepted**: A real bill written with no amount and no date doesn't become a to-do on its words alone; it can still reach the not-sure line through its units.
+
+## D177: Rules vote or abstain per unit
+
+**Chosen**: Every rule (today's to-do regexes, `directed_request`, `billing_document`, the schema.org reader) returns a vote for one tag field with its evidence, or abstains. A negative clue votes against one unit, never the email. Genre gates vote first. Votes are combined by precision measured on the corpus; a label model estimates rule accuracy on real mail.
+
+**Considered**: Keeping the ordered cascade and reordering it; removing rules in favour of a model.
+
+**Why**: First-match-wins made a parking sentence beat a waiver, and whole-email vetoes hid a real bill behind a direct-debit offer. Data programming turns rules into training data without giving up rules first (Ratner et al. 2016; DryBell, 2019), and Juicer's migration found "Oftentimes, fixing error cases results in breaking correct cases" (CIDR 2020).
+
+**Trade-offs accepted**: Rules need ids, versions and measured precision; a rule that never wins stops paying its way and is removed.
+
+## D178: Each model step runs on the tier its difficulty needs
+
+**Chosen**: Code for zones, identity, candidates and templates. A local unit classifier in-process through `ort` for bulk tagging and the history backfill (a linear head on BGE-small first, then a fine-tuned small encoder). A language model only for the band the classifier is unsure of, selecting from candidates under a JSON schema; the recommended model for that band is a cloud fast tier on the user's own key (Claude Haiku 5.5 or gpt-6-luna), with a local model through Ollama supported and "not sure" when neither is configured. A strong cloud tier only for labelling synthetic mail, writing twins and audit.
+
+**Considered**: A local LLM for everything; a cloud model for every email; no model.
+
+**Why**: BK, 2026-10-22: "We don't have to rely on a local model. if this is a task that needs more intelligence then we can suggest that maybe this needs a cloud model or something." Indirect and multi-party person requests are where small models fail; a fast cloud tier costs about $0.23 per 1,000 emails. A local 7B model would need about 78 hours for a 50,000-email backfill on an M2 Pro. BK's fit rule puts code first and picks each model by fit, never to save money. BK also decided on 2026-10-22, as recorded in the classifier run's ledger, that the model may judge requests on all non-list inbound mail on loopback, and reaches the cloud only under the existing `allow_cloud_background_classification` rule.
+
+**Trade-offs accepted**: Three model paths to version and evaluate; the training pipeline runs at build time on synthetic data only.
+
+## D179: Scores stay inside the judge
+
+**Chosen**: The unit classifier compares its score with a per-class threshold set on held-out corpus data (the lowest threshold whose precision meets the class target) and emits a claim with evidence or abstains. Two-sided bands for high-consequence classes. Only the outcome, the judge version and the threshold version are stored; the screen shows the claim and its quoted evidence, or "not sure".
+
+**Considered**: Showing confidence; one global threshold; trusting a model's self-reported confidence.
+
+**Why**: D119 rejected confidence on screen, and that stands. Selective classification gives a precision target with stated coverage (Geifman and El-Yaniv 2017). Automatic creation (BK's rule) needs a higher precision bar than suggestions (SmartMail, 2004).
+
+**Trade-offs accepted**: Thresholds are tied to a judge version and are re-set when it changes.
+
+## D180: A to-do's identity is counterparty, kind, reference and due period
+
+**Chosen**: Items are keyed by counterparty, kind, reference (account, invoice or policy number when present, else the object) and due period. A reminder or overdue notice with the same identity updates the row, marks it overdue and brings it back to Now. A payment confirmation or the owner's later "done" offers looks done; closing stays a suggestion.
+
+**Considered**: Today's key of sender domain, counterparty and due day.
+
+**Why**: Two accounts billed by one sender on one day were merged, and late-payment notices escalated nothing.
+
+**Trade-offs accepted**: A sender that puts no reference in its mail still merges two accounts with the same due day; the not-sure path is the fallback.
+
+## D181: The eval grades asks per kind and field on the positives
+
+**Chosen**: Label schema v2 lists every expected item with kind, verb, object, actor, direction, state, counterparty, amount and due words. `classify eval` reports per-kind precision and recall, field exact-match, duplicates, abstention, twin pair accuracy, slices by sender kind, locale, template family, zone, thread position and rule abstention, and held-out phrasings, template families and `--set mine` separately. A surface-only baseline must fail the twins. Model calls are recorded and replayed in CI. Accuracy is not reported.
+
+**Considered**: Keeping the yes-or-no to-do question with more scenarios.
+
+**Why**: The eval read 99.8% while recall on live asks was 7 of 98, because 99.7% of the set has no ask and the question ignores kind, actor and fields. Pooled metrics hide rare-class failure (Jeong et al. 2009: micro-F1 78.9 against macro-F1 37.4), and every published system lost precision on unseen senders or templates (Juicer 84.6% to 66.8%).
+
+**Trade-offs accepted**: Writing label schema v2 for the existing scenarios is real work before any detection improves.
+
+## D182: One asks judge serves To do, Your turn, Waiting on and promises
+
+**Chosen**: The judge's answer feeds To do (asks you, you promised), Messages' Your turn (asks you to reply) and Waiting on (you asked them, they promised you). `todo::detect`'s cascade, `mail_kind::directed_request` and `billing_document`, and the relationship worker's commitment extraction retire into it.
+
+**Considered**: Keeping a Messages request detector and a To do detector side by side.
+
+**Why**: Today two request detectors and two bill detectors disagree, and 32 already asks for one judge per question.
+
+**Trade-offs accepted**: The relationship profile changes source to read commitments from assessments.
+
+## D183: Correcting a to-do says what was wrong
+
+**Chosen**: `X` on a to-do offers Not a to-do, Not mine, Already done and Wrong details. Each is its own teaching event and label (R3).
+
+**Considered**: One "not a to-do" dismissal; learning from ticks.
+
+**Why**: On 2026-10-22 BK ticked ten wrong rows off as done, which taught mxr nothing. The four answers map to the judge's act, actor, state and field errors, so each correction points at the part that was wrong.
+
+**Trade-offs accepted**: One more choice after `X`.
+
+## D184: Five rungs extend the classifier ladder
+
+**Chosen**: R1c (measure asks by kind and field) before R2; R2c (rules as voting units, zones, the document reading, item identity, the correction picker; no model), R2d (the language-model band) and R2e (the local unit classifier) after R2; R3e (per-user thresholds) after R3.
+
+**Considered**: Fixing To do inside R2; waiting for R9.
+
+**Why**: R2 leaves the aspect detectors alone, and R9 waits for fallback rates, so no planned rung touched To do accuracy before R3. R1b's own baseline already shows the evidence R9's gate asks for: 46 of 46 colleague requests missed.
+
+**Trade-offs accepted**: R2c depends on R2's assessment schema, so the visible improvement comes after R2.
+
+## D185: A request that names a task becomes a to-do labelled with who asked
+
+**Chosen**: When a person or organisation asks the owner to do something with an action and an object ("send your meter readings", "upload your CV", "sign the consent form"), the asks judge creates a to-do labelled with who asked. A request whose whole job is a reply stays in Messages as Your turn.
+
+**Considered**: Keeping requests out of To do (Messages only); every request in To do.
+
+**Why**: BK, 2026-10-22, as recorded in the classifier run's ledger. Blueprint 22 already planned "[name] asked" rows beside promises, and R1b's corpus marks colleagues' dated requests as a policy call that this settles. On BK's mail, eight requests in 60 days made no to-do.
+
+**Trade-offs accepted**: More To do rows from person mail, so the request classes carry the 90% precision target in 37 and reach the not-sure line below it.

@@ -26,6 +26,21 @@ pub struct BackupManifest {
     pub exclusions: Vec<String>,
 }
 
+/// Migration 093's backfill, reading the attached source's event_log. Keep the
+/// selection in step with `migrations/093_unsubscribe_receipts.sql`.
+const PRE_RECEIPT_BACKFILL: &str = "INSERT OR IGNORE INTO main.unsubscribe_receipts (message_id, account_id, method, sent_at)
+SELECT message_id, account_id, 'unknown', timestamp
+FROM (
+    SELECT e.message_id,
+           COALESCE(e.account_id, m.account_id) AS account_id,
+           e.timestamp,
+           ROW_NUMBER() OVER (PARTITION BY e.message_id ORDER BY e.timestamp ASC, e.id ASC) AS row_rank
+    FROM source.event_log e
+    INNER JOIN main.messages m ON m.id = e.message_id
+    WHERE e.category = 'mutation' AND e.summary LIKE '%unsubscrib%'
+)
+WHERE row_rank = 1";
+
 const TABLES: &[&str] = &[
     "accounts",
     "labels",
@@ -529,6 +544,23 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
             "rowid,"
         };
         sqlx::query(AssertSqlSafe(format!("INSERT INTO main.\"{table}\" ({rowid}{columns}) SELECT {rowid}{columns} FROM source.\"{table}\""))).execute(&mut *connection).await.map_err(|e|format!("Copying durable table {table}: {e}"))?;
+    }
+    let receipts_in_source: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM source.sqlite_schema WHERE type='table' AND name='unsubscribe_receipts')",
+    )
+    .fetch_one(&mut *connection)
+    .await?;
+    if !receipts_in_source {
+        // Schema 92 predates receipts. Rebuild them from its event_log with
+        // migration 093's rules, so a message unsubscribed before this backup
+        // stays protected after restore.
+        sqlx::query("DELETE FROM main.unsubscribe_receipts")
+            .execute(&mut *connection)
+            .await?;
+        sqlx::query(PRE_RECEIPT_BACKFILL)
+            .execute(&mut *connection)
+            .await
+            .map_err(|e| format!("Backfilling unsubscribe receipts: {e}"))?;
     }
     sqlx::query("DETACH DATABASE source")
         .execute(&mut *connection)

@@ -3515,6 +3515,53 @@ async fn unsubscribe_purge_commit_sends_once_after_event_log_is_purged() {
     );
 }
 
+/// Another attempt holds a live claim on the sender's mail. The commit must
+/// report the failure and neither send nor archive: the other attempt decides
+/// whether the unsubscribe goes out.
+#[tokio::test]
+async fn unsubscribe_purge_commit_stops_when_an_attempt_is_in_progress() {
+    let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+    state
+        .sync_engine
+        .sync_account(state.default_provider().as_ref())
+        .await
+        .unwrap();
+    let state = Arc::new(state);
+    let initial = sender_unsubscribe_result(sender_unsubscribe(&state, true, false, None).await);
+    for id in &initial.message_ids {
+        let mut envelope = state.store.get_envelope(id).await.unwrap().unwrap();
+        envelope.unsubscribe = mxr_core::types::UnsubscribeMethod::Mailto {
+            address: "busy@example.test".into(),
+            subject: None,
+        };
+        state.store.upsert_envelope(&envelope).await.unwrap();
+        state
+            .store
+            .claim_unsubscribe(
+                id,
+                &state.default_account_id(),
+                chrono::Utc::now().timestamp(),
+            )
+            .await
+            .unwrap();
+    }
+
+    let preview = sender_unsubscribe_result(sender_unsubscribe(&state, true, false, None).await);
+    let token = preview.preview_token.clone().unwrap();
+    let result =
+        sender_unsubscribe_result(sender_unsubscribe(&state, false, true, Some(token)).await);
+    assert!(
+        matches!(
+            result.status,
+            mxr_protocol::UnsubscribePurgeStatusData::Failed
+        ),
+        "{result:?}"
+    );
+    assert_eq!(result.archived_count, 0, "{result:?}");
+    assert!(result.mutation_id.is_none(), "{result:?}");
+    assert!(fake.sent_drafts().is_empty());
+}
+
 #[tokio::test]
 async fn unsubscribe_preview_token_allows_only_one_parallel_commit() {
     let (state, fake) = AppState::in_memory_with_fake().await.unwrap();

@@ -18,7 +18,7 @@ use mxr_protocol::{
     MutationResultData, ReplyContext, ResponseData, UnsubscribePurgeResultData,
     UnsubscribePurgeStatusData,
 };
-use mxr_store::{EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
+use mxr_store::{Claim, EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -488,9 +488,8 @@ async fn log_mutation(
         .map_err(|e| e.to_string())
 }
 
-/// Claims the message before anything is sent. `Ok(false)` means a receipt or
-/// another in-flight claim exists, so nothing may be sent.
-async fn claim_unsubscribe(state: &AppState, envelope: &Envelope) -> Result<bool, HandlerError> {
+/// Claims the message before anything is sent. Only a granted claim may send.
+async fn claim_unsubscribe(state: &AppState, envelope: &Envelope) -> Result<Claim, HandlerError> {
     Ok(state
         .store
         .claim_unsubscribe(
@@ -501,9 +500,29 @@ async fn claim_unsubscribe(state: &AppState, envelope: &Envelope) -> Result<bool
         .await?)
 }
 
+/// Grants this attempt the right to send. `Ok(None)` means an unsubscribe was
+/// already confirmed, so the request is acknowledged without sending. A live
+/// claim held by another attempt is a retryable error, never an acknowledgement:
+/// that attempt may still fail and release its claim.
+async fn claim_for_send(
+    state: &AppState,
+    envelope: &Envelope,
+) -> Result<Option<i64>, HandlerError> {
+    match claim_unsubscribe(state, envelope).await? {
+        Claim::Claimed { claimed_at } => Ok(Some(claimed_at)),
+        Claim::Confirmed => Ok(None),
+        Claim::InProgress => Err(HandlerError::UnsubscribeAttempt {
+            message: "An unsubscribe for this message is already in progress. Retry in a few minutes if it does not finish.".into(),
+            code: "unsubscribe_in_progress",
+            kind: IpcErrorKind::Provider,
+            retryable: true,
+        }),
+    }
+}
+
 /// Records a send that happened. The claim stays in place, so a retry is
-/// acknowledged without sending; the error is not retryable because a retry
-/// would report success for an unsubscribe that was never recorded.
+/// acknowledged without sending. Not retryable: a retry would report success
+/// for an unsubscribe that was never recorded.
 async fn confirm_unsubscribe(
     state: &AppState,
     envelope: &Envelope,
@@ -515,7 +534,7 @@ async fn confirm_unsubscribe(
         .await
         .map_err(|error| HandlerError::UnsubscribeAttempt {
             message: format!(
-                "The unsubscribe was sent, but mxr could not record it. mxr keeps the message marked as unsubscribed and will not send again, so retrying will report success without sending. Recording error: {error}"
+                "The unsubscribe was sent, but mxr could not record it, so the message stays marked as in progress. Do not retry; check with the sender before assuming it did not go through. Recording error: {error}"
             ),
             code: "unsubscribe_sent_not_recorded",
             kind: IpcErrorKind::Store,
@@ -523,61 +542,40 @@ async fn confirm_unsubscribe(
         })
 }
 
-/// The send certainly did not happen: drop the claim so a retry can send.
-/// If the claim cannot be dropped, keep it and treat the outcome as unknown,
-/// because not sending twice matters more than retrying.
-async fn settle_unsent(state: &AppState, envelope: &Envelope, failure: &str) -> HandlerError {
-    match state.store.release_unsubscribe_claim(&envelope.id).await {
+/// The attempt did not confirm an unsubscribe, so its claim is released and a
+/// retry may send. `reason` is shown to the user and logged, so it must never
+/// carry a URL or an address. If the release itself fails, the claim stays and
+/// the error says so: a stuck marker is safer than a second send.
+async fn not_confirmed(
+    state: &AppState,
+    envelope: &Envelope,
+    claimed_at: i64,
+    reason: &str,
+) -> HandlerError {
+    match state
+        .store
+        .release_unsubscribe_claim(&envelope.id, claimed_at)
+        .await
+    {
         Ok(()) => HandlerError::UnsubscribeAttempt {
             message: format!(
-                "The unsubscribe was not sent: {failure}. Nothing was sent, so you can retry."
+                "The unsubscribe was not confirmed: {reason}. A retry may send it again if the first attempt actually reached the sender."
             ),
-            code: "unsubscribe_not_sent",
+            code: "unsubscribe_not_confirmed",
             kind: IpcErrorKind::Provider,
             retryable: true,
         },
         Err(release_error) => {
-            tracing::warn!(%release_error, "could not release unsubscribe claim after an unsent failure");
-            unknown_outcome(failure, &release_error.to_string())
+            tracing::warn!(%release_error, "could not release unsubscribe claim");
+            HandlerError::UnsubscribeAttempt {
+                message: format!(
+                    "The unsubscribe was not confirmed: {reason}. mxr could not clear its attempt marker, so it kept the attempt marked and won't resend it."
+                ),
+                code: "unsubscribe_release_failed",
+                kind: IpcErrorKind::Store,
+                retryable: false,
+            }
         }
-    }
-}
-
-/// The send may have reached the sender. The claim stays, and the method is
-/// marked `<method>_unknown` for the record.
-async fn settle_unknown(
-    state: &AppState,
-    envelope: &Envelope,
-    method: &str,
-    failure: &str,
-) -> HandlerError {
-    if let Err(error) = state
-        .store
-        .confirm_unsubscribe(
-            &envelope.id,
-            &format!("{method}_unknown"),
-            chrono::Utc::now().timestamp(),
-        )
-        .await
-    {
-        tracing::warn!(%error, "could not mark unsubscribe outcome as unknown; the claim still blocks a resend");
-    }
-    unknown_outcome(failure, "")
-}
-
-fn unknown_outcome(failure: &str, detail: &str) -> HandlerError {
-    let detail = if detail.is_empty() {
-        String::new()
-    } else {
-        format!(" ({detail})")
-    };
-    HandlerError::UnsubscribeAttempt {
-        message: format!(
-            "mxr can't tell whether the unsubscribe went through, so it won't send it again. Check with the sender before assuming it did. Send error: {failure}{detail}"
-        ),
-        code: "unsubscribe_outcome_unknown",
-        kind: IpcErrorKind::Provider,
-        retryable: false,
     }
 }
 
@@ -4683,10 +4681,8 @@ pub(super) async fn unsubscribe(
 // Execute the envelope snapshot validated against the preview, even if sync
 // changes its stored header while this external operation awaits.
 async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerResult {
-    // Each attempt claims the message before its send, so two requests cannot
-    // both send. A claim is kept unless the send certainly did not happen; a
-    // claim that exists means an unsubscribe was sent or may have been, and
-    // the request is acknowledged without sending anything.
+    // Only the attempt holding the claim sends. Any failure releases the claim
+    // so a retry can send again; a confirmed unsubscribe is never sent again.
     match &envelope.unsubscribe {
         UnsubscribeMethod::Mailto { address, subject } => {
             let sender = state.send_provider_for_account(&envelope.account_id)?;
@@ -4727,21 +4723,33 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
                 updated_at: now,
             };
             let rfc2822_message_id = mxr_outbound::email::generate_message_id(&from);
-            if !claim_unsubscribe(state, envelope).await? {
+            let Some(claimed_at) = claim_for_send(state, envelope).await? else {
                 return Ok(ResponseData::Ack);
-            }
+            };
+            // The provider's error text can carry the recipient address, so
+            // only the failure kind is kept.
             match sender
                 .send_classified(&draft, &from, &rfc2822_message_id)
                 .await
             {
                 Ok(_) => {}
-                Err(mxr_core::SendFailure::NotAccepted(error)) => {
-                    return Err(settle_unsent(state, envelope, &error.to_string()).await);
+                Err(mxr_core::SendFailure::NotAccepted(_)) => {
+                    return Err(not_confirmed(
+                        state,
+                        envelope,
+                        claimed_at,
+                        "the mail server refused the unsubscribe email",
+                    )
+                    .await);
                 }
-                Err(mxr_core::SendFailure::Unknown(error)) => {
-                    return Err(
-                        settle_unknown(state, envelope, "mailto", &error.to_string()).await,
-                    );
+                Err(mxr_core::SendFailure::Unknown(_)) => {
+                    return Err(not_confirmed(
+                        state,
+                        envelope,
+                        claimed_at,
+                        "the mail server did not confirm that it accepted the unsubscribe email",
+                    )
+                    .await);
                 }
             }
             confirm_unsubscribe(state, envelope, "mailto").await?;
@@ -4765,9 +4773,9 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
         )),
         _ => {
             let method = unsubscribe_method_label(&envelope.unsubscribe);
-            if !claim_unsubscribe(state, envelope).await? {
+            let Some(claimed_at) = claim_for_send(state, envelope).await? else {
                 return Ok(ResponseData::Ack);
-            }
+            };
             let client = reqwest::Client::new();
             match crate::unsubscribe::execute_unsubscribe(&envelope.unsubscribe, &client).await {
                 crate::unsubscribe::UnsubscribeResult::Success(result) => {
@@ -4784,17 +4792,16 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
                     }
                     Ok(ResponseData::Ack)
                 }
-                crate::unsubscribe::UnsubscribeResult::Failed {
-                    message,
-                    outcome: crate::unsubscribe::FailureOutcome::NotSent,
-                } => Err(settle_unsent(state, envelope, &message).await),
-                crate::unsubscribe::UnsubscribeResult::Failed {
-                    message,
-                    outcome: crate::unsubscribe::FailureOutcome::Unknown,
-                } => Err(settle_unknown(state, envelope, method, &message).await),
-                crate::unsubscribe::UnsubscribeResult::NoMethod => {
-                    Err(settle_unsent(state, envelope, "no unsubscribe method available").await)
+                crate::unsubscribe::UnsubscribeResult::Failed(message) => {
+                    Err(not_confirmed(state, envelope, claimed_at, &message).await)
                 }
+                crate::unsubscribe::UnsubscribeResult::NoMethod => Err(not_confirmed(
+                    state,
+                    envelope,
+                    claimed_at,
+                    "no unsubscribe method available",
+                )
+                .await),
             }
         }
     }

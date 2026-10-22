@@ -559,6 +559,73 @@ async fn exact_schema_92_backup_without_unsubscribe_receipts_remains_inspectable
 }
 
 #[tokio::test]
+async fn schema_92_source_backfills_receipts_from_its_event_log() {
+    let source = tempfile::tempdir().unwrap();
+    let stage = tempfile::tempdir().unwrap();
+    let store = Store::fresh_backup(&source.path().join("mxr.db"))
+        .await
+        .unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let mut envelope = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    envelope.provider_id = "pre-093-unsubscribed".into();
+    store
+        .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO event_log (timestamp, level, category, account_id, message_id, summary)
+         VALUES (5, 'info', 'mutation', ?, ?, 'Unsubscribed via one-click')",
+    )
+    .bind(account.id.as_str())
+    .bind(envelope.id.as_str())
+    .execute(store.writer())
+    .await
+    .unwrap();
+    store.writer().close().await;
+
+    // Make the source look like schema 92: no receipts table at all.
+    let mut db = SqliteConnection::connect_with(
+        &SqliteConnectOptions::new().filename(source.path().join("mxr.db")),
+    )
+    .await
+    .unwrap();
+    sqlx::raw_sql(
+        "DROP TABLE unsubscribe_receipts; DELETE FROM schema_migrations WHERE version=93;",
+    )
+    .execute(&mut db)
+    .await
+    .unwrap();
+    db.close().await.unwrap();
+
+    let manifest = write_manifest(
+        stage.path(),
+        populate(source.path(), stage.path()).await.unwrap(),
+    );
+    assert_eq!(manifest.schema_version, 93);
+    inspect(stage.path()).await.unwrap();
+
+    let mut staged = SqliteConnection::connect_with(
+        &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
+    )
+    .await
+    .unwrap();
+    let rows: Vec<(String, String, i64)> =
+        sqlx::query_as("SELECT message_id, method, sent_at FROM unsubscribe_receipts")
+            .fetch_all(&mut staged)
+            .await
+            .unwrap();
+    assert_eq!(
+        rows,
+        vec![(envelope.id.as_str().to_string(), "unknown".to_string(), 5)],
+        "the pre-093 unsubscribe must still block a second send after restore"
+    );
+    staged.close().await.unwrap();
+}
+
+#[tokio::test]
 async fn inspect_rejects_unrecognized_schema_objects_in_supported_bundle() {
     let source = tempfile::tempdir().unwrap();
     let stage = tempfile::tempdir().unwrap();

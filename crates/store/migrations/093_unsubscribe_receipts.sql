@@ -1,9 +1,13 @@
--- Receipts for unsubscribes mxr sent or may have sent, one per message. Kept
--- apart from event_log so purging history never lets a second unsubscribe go
--- out. No subject, sender or URL: a receipt says only that an unsubscribe
--- happened, and how. A row exists before the send (method 'pending') so two
--- requests cannot both send; it is confirmed after, or released if the send
--- certainly did not happen. Rows go with their message.
+-- Receipts for unsubscribes mxr sent, one per message. Kept apart from
+-- event_log so purging history never lets a second unsubscribe go out. No
+-- subject, sender or URL: a receipt says only that an unsubscribe happened,
+-- and how.
+--
+-- An attempt claims its message before it sends (method 'pending'), so two
+-- requests cannot both send. A confirmed send is recorded with its method. Any
+-- failed attempt releases its claim, so a retry may send again; a pending row
+-- older than ten minutes is abandoned and taken over. Once confirmed, a
+-- message is never sent again. Rows go with their message.
 CREATE TABLE IF NOT EXISTS unsubscribe_receipts (
     message_id  TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
     account_id  TEXT NOT NULL,

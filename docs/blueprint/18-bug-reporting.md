@@ -266,13 +266,17 @@ Users should understand how much disk space logs consume and how to manage them.
 | Text log files | 10 total including active | 250 MiB each (2,500 MiB named-file cap) |
 | event_log table | Manual purge at 90 days | No automatic size/age bound added by text rotation |
 | sync_log / ai_usage | Automatic retention remains a separate follow-up | Not pruned by `mxr logs --purge` |
-| unsubscribe_receipts | Kept until the message is deleted | One row per message an unsubscribe was sent for, or may have been; never pruned by `mxr logs --purge` |
+| unsubscribe_receipts | Kept until the message is deleted | One row per message an unsubscribe was confirmed for, or has in flight; a stale in-flight claim expires after 10 minutes; never pruned by `mxr logs --purge` |
 
 Purging event_log does not affect unsubscribe safety. mxr checks
-`unsubscribe_receipts`, not event_log, before it sends an unsubscribe again. A
-receipt holds only the message id, account, method and time, and is removed when
-its message or account is deleted. An unsubscribe whose outcome mxr cannot tell
-is never sent again; the error says so.
+`unsubscribe_receipts`, not event_log, before it sends an unsubscribe. Once an
+unsubscribe is confirmed, mxr does not send it again. A failed attempt releases
+its claim, so a retry can send again; if the first attempt did reach the sender,
+the sender gets a second unsubscribe. A claim left by an attempt that stopped
+expires after 10 minutes. A receipt holds only the message id, account, method
+and time, and is removed when its message or account is deleted. A send whose
+confirmation cannot be written stays marked for those 10 minutes and then expires,
+so a retry after that can send again.
 
 ### Pruning
 

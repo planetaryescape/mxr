@@ -1,27 +1,44 @@
 //! Receipts for unsubscribes mxr has sent, or may have sent, for a message.
 //!
-//! The daemon claims a message before it sends, so two requests cannot both
-//! send. The claim is a row with method `pending`. A claim becomes a receipt
-//! when the send is confirmed, or stays as the record of an outcome mxr cannot
-//! tell. Only a send that certainly did not happen releases its claim.
+//! An attempt claims its message before it sends, so two requests cannot both
+//! send. The claim is a row with method `pending`. A confirmed send replaces
+//! it with the real method and time. A failed attempt releases its claim, so
+//! a retry can go out. A claim older than `STALE_CLAIM_SECS` is treated as
+//! abandoned (a crash mid-send) and taken over.
+//!
 //! Receipts live in their own table so that purging event_log history cannot
 //! make a second unsubscribe go out.
 
 use mxr_core::id::{AccountId, MessageId};
 
-/// Method stored while a send is in flight or its outcome is unknown.
+/// Method stored while an attempt is in flight.
 pub const PENDING_METHOD: &str = "pending";
 
+/// How long a pending claim holds the message before another attempt may take
+/// it over.
+pub const STALE_CLAIM_SECS: i64 = 600;
+
+/// What a claim attempt found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Claim {
+    /// This attempt owns the message and may send. `claimed_at` identifies
+    /// the claim for `release_unsubscribe_claim`.
+    Claimed { claimed_at: i64 },
+    /// A confirmed receipt exists. Nothing may be sent.
+    Confirmed,
+    /// Another attempt holds a live claim. Nothing may be sent now.
+    InProgress,
+}
+
 impl super::Store {
-    /// Claims the message for a send. Returns `false` when a receipt or
-    /// another claim already exists, in which case nothing may be sent.
+    /// Claims the message for a send, or reports why it cannot be claimed.
     pub async fn claim_unsubscribe(
         &self,
         message_id: &MessageId,
         account_id: &AccountId,
         now: i64,
-    ) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query(
+    ) -> Result<Claim, sqlx::Error> {
+        let inserted = sqlx::query(
             "INSERT OR IGNORE INTO unsubscribe_receipts (message_id, account_id, method, sent_at)
              VALUES (?, ?, ?, ?)",
         )
@@ -31,7 +48,36 @@ impl super::Store {
         .bind(now)
         .execute(self.writer())
         .await?;
-        Ok(result.rows_affected() == 1)
+        if inserted.rows_affected() == 1 {
+            return Ok(Claim::Claimed { claimed_at: now });
+        }
+
+        let taken_over = sqlx::query(
+            "UPDATE unsubscribe_receipts SET sent_at = ?
+             WHERE message_id = ? AND method = ? AND sent_at < ?",
+        )
+        .bind(now)
+        .bind(message_id.as_str())
+        .bind(PENDING_METHOD)
+        .bind(now - STALE_CLAIM_SECS)
+        .execute(self.writer())
+        .await?;
+        if taken_over.rows_affected() == 1 {
+            return Ok(Claim::Claimed { claimed_at: now });
+        }
+
+        // Neither insert nor takeover won: a confirmed receipt, or a live
+        // claim. A row released between the two statements reads as a live
+        // claim, which is safe: the caller only gets a retryable error.
+        let method: Option<String> =
+            sqlx::query_scalar("SELECT method FROM unsubscribe_receipts WHERE message_id = ?")
+                .bind(message_id.as_str())
+                .fetch_optional(self.writer())
+                .await?;
+        Ok(match method.as_deref() {
+            Some(PENDING_METHOD) | None => Claim::InProgress,
+            Some(_) => Claim::Confirmed,
+        })
     }
 
     /// Replaces this message's claim with the final method and time. Fails
@@ -56,17 +102,23 @@ impl super::Store {
         Ok(())
     }
 
-    /// Removes a claim whose send certainly did not happen. A confirmed
-    /// receipt is never removed here.
+    /// Removes this attempt's claim after a failed send. Matches the claim's
+    /// time, so a claim taken over from this attempt is left alone. A
+    /// confirmed receipt is never removed here.
     pub async fn release_unsubscribe_claim(
         &self,
         message_id: &MessageId,
+        claimed_at: i64,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM unsubscribe_receipts WHERE message_id = ? AND method = ?")
-            .bind(message_id.as_str())
-            .bind(PENDING_METHOD)
-            .execute(self.writer())
-            .await?;
+        sqlx::query(
+            "DELETE FROM unsubscribe_receipts
+             WHERE message_id = ? AND method = ? AND sent_at = ?",
+        )
+        .bind(message_id.as_str())
+        .bind(PENDING_METHOD)
+        .bind(claimed_at)
+        .execute(self.writer())
+        .await?;
         Ok(())
     }
 
@@ -296,60 +348,144 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn a_claim_is_taken_once_and_confirmed_in_place() {
-        let store = Store::in_memory().await.unwrap();
+    async fn fresh_message(store: &Store) -> (AccountId, MessageId) {
         let account = test_account();
         store.insert_account(&account).await.unwrap();
         let id = MessageId::new();
-        insert_message(&store, &account.id, &id).await;
+        insert_message(store, &account.id, &id).await;
+        (account.id, id)
+    }
 
-        assert!(store.claim_unsubscribe(&id, &account.id, 10).await.unwrap());
-        assert!(
-            !store.claim_unsubscribe(&id, &account.id, 11).await.unwrap(),
-            "a second claim must not be granted"
+    #[tokio::test]
+    async fn a_live_claim_blocks_others_and_confirmation_ends_them() {
+        let store = Store::in_memory().await.unwrap();
+        let (account, id) = fresh_message(&store).await;
+
+        assert_eq!(
+            store.claim_unsubscribe(&id, &account, 10).await.unwrap(),
+            Claim::Claimed { claimed_at: 10 }
         );
-        assert!(store.has_unsubscribe_receipt(&id).await.unwrap());
+        assert_eq!(
+            store.claim_unsubscribe(&id, &account, 11).await.unwrap(),
+            Claim::InProgress,
+            "a second attempt inside the window must not be granted or confirmed"
+        );
 
         store.confirm_unsubscribe(&id, "mailto", 20).await.unwrap();
+        assert_eq!(
+            store.claim_unsubscribe(&id, &account, 21).await.unwrap(),
+            Claim::Confirmed
+        );
         let rows = receipts(&store).await;
         assert_eq!(rows.len(), 1);
         assert_eq!((rows[0].2.as_str(), rows[0].3), ("mailto", 20));
     }
 
     #[tokio::test]
-    async fn releasing_removes_only_a_pending_claim() {
+    async fn a_pending_claim_older_than_ten_minutes_is_taken_over_once() {
         let store = Store::in_memory().await.unwrap();
-        let account = test_account();
-        store.insert_account(&account).await.unwrap();
-        let pending = MessageId::new();
-        let confirmed = MessageId::new();
-        for id in [&pending, &confirmed] {
-            insert_message(&store, &account.id, id).await;
-        }
+        let (account, id) = fresh_message(&store).await;
+        store.claim_unsubscribe(&id, &account, 1_000).await.unwrap();
 
-        store
-            .claim_unsubscribe(&pending, &account.id, 1)
-            .await
-            .unwrap();
-        store.release_unsubscribe_claim(&pending).await.unwrap();
-        assert!(!store.has_unsubscribe_receipt(&pending).await.unwrap());
-        assert!(store
-            .claim_unsubscribe(&pending, &account.id, 2)
-            .await
-            .unwrap());
+        // Exactly 600 seconds old is not yet stale: the boundary is strict.
+        assert_eq!(
+            store
+                .claim_unsubscribe(&id, &account, 1_000 + STALE_CLAIM_SECS)
+                .await
+                .unwrap(),
+            Claim::InProgress
+        );
 
+        let later = 1_000 + STALE_CLAIM_SECS + 1;
+        assert_eq!(
+            store.claim_unsubscribe(&id, &account, later).await.unwrap(),
+            Claim::Claimed { claimed_at: later },
+            "a stale claim must be taken over"
+        );
+        assert_eq!(
+            store
+                .claim_unsubscribe(&id, &account, later + 1)
+                .await
+                .unwrap(),
+            Claim::InProgress,
+            "the takeover is itself a live claim"
+        );
+    }
+
+    #[tokio::test]
+    async fn releasing_a_claim_lets_a_retry_send() {
+        let store = Store::in_memory().await.unwrap();
+        let (account, id) = fresh_message(&store).await;
+
+        let Claim::Claimed { claimed_at } =
+            store.claim_unsubscribe(&id, &account, 1).await.unwrap()
+        else {
+            panic!("first claim must be granted");
+        };
         store
-            .claim_unsubscribe(&confirmed, &account.id, 1)
+            .release_unsubscribe_claim(&id, claimed_at)
             .await
             .unwrap();
-        store
-            .confirm_unsubscribe(&confirmed, "one_click", 3)
-            .await
-            .unwrap();
-        store.release_unsubscribe_claim(&confirmed).await.unwrap();
+        assert!(!store.has_unsubscribe_receipt(&id).await.unwrap());
+        assert!(matches!(
+            store.claim_unsubscribe(&id, &account, 2).await.unwrap(),
+            Claim::Claimed { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_stale_attempts_late_release_cannot_remove_the_takeover() {
+        let store = Store::in_memory().await.unwrap();
+        let (account, id) = fresh_message(&store).await;
+
+        // The first attempt stalls holding its claim.
+        let Claim::Claimed {
+            claimed_at: stalled,
+        } = store.claim_unsubscribe(&id, &account, 1).await.unwrap()
+        else {
+            panic!("first claim must be granted");
+        };
+        let later = 1 + STALE_CLAIM_SECS + 1;
+        let Claim::Claimed {
+            claimed_at: takeover,
+        } = store.claim_unsubscribe(&id, &account, later).await.unwrap()
+        else {
+            panic!("stale claim must be taken over");
+        };
+
+        // The stalled attempt finally fails and releases with its own time.
+        store.release_unsubscribe_claim(&id, stalled).await.unwrap();
         assert!(
-            store.has_unsubscribe_receipt(&confirmed).await.unwrap(),
+            store.has_unsubscribe_receipt(&id).await.unwrap(),
+            "a stale attempt's release must not remove the takeover"
+        );
+
+        store
+            .release_unsubscribe_claim(&id, takeover)
+            .await
+            .unwrap();
+        assert!(!store.has_unsubscribe_receipt(&id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_release_never_removes_a_confirmed_receipt() {
+        let store = Store::in_memory().await.unwrap();
+        let (account, id) = fresh_message(&store).await;
+        let Claim::Claimed { claimed_at } =
+            store.claim_unsubscribe(&id, &account, 1).await.unwrap()
+        else {
+            panic!("first claim must be granted");
+        };
+        store
+            .confirm_unsubscribe(&id, "one_click", 3)
+            .await
+            .unwrap();
+        store
+            .release_unsubscribe_claim(&id, claimed_at)
+            .await
+            .unwrap();
+        assert!(
+            store.has_unsubscribe_receipt(&id).await.unwrap(),
             "a confirmed receipt must survive a release"
         );
     }

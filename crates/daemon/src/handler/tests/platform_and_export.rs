@@ -370,7 +370,24 @@ async fn synced_state() -> (Arc<AppState>, Arc<mxr_provider_fake::FakeProvider>)
     (Arc::new(state), fake)
 }
 
-/// Two requests in flight at once must produce one send.
+fn error_message(response: &Response) -> &str {
+    match response {
+        Response::Error { message, .. } => message.as_str(),
+        other => panic!("expected an error response, got {other:?}"),
+    }
+}
+
+fn is_ack(response: &Response) -> bool {
+    matches!(
+        response,
+        Response::Ok {
+            data: ResponseData::Ack
+        }
+    )
+}
+
+/// Two requests in flight at once must produce one send. The loser either
+/// finds the winner's confirmed receipt (Ack) or its live claim (retryable).
 #[tokio::test]
 async fn concurrent_unsubscribes_send_exactly_once() {
     let (state, fake) = synced_state().await;
@@ -381,20 +398,16 @@ async fn concurrent_unsubscribes_send_exactly_once() {
     );
     for response in [&first, &second] {
         assert!(
-            matches!(
-                response,
-                Response::Ok {
-                    data: ResponseData::Ack
-                }
-            ),
-            "both requests ack, got {response:?}"
+            is_ack(response) || expect_error(response) == ("unsubscribe_in_progress", true),
+            "{response:?}"
         );
     }
     assert_eq!(fake.sent_drafts().len(), 1, "only the claimant sends");
 }
 
-/// Recording the send fails after it went out. The claim stays, and the
-/// error must not be retryable: a retry would ack without sending.
+/// Recording the send fails after it went out. The error is not retryable,
+/// and the message stays claimed, so a request inside the claim window must
+/// not send again.
 #[tokio::test]
 async fn a_send_that_cannot_be_recorded_is_not_retryable_and_never_resent() {
     let (state, fake) = synced_state().await;
@@ -420,50 +433,138 @@ async fn a_send_that_cannot_be_recorded_is_not_retryable_and_never_resent() {
         .await
         .unwrap();
     let retry = unsubscribe_request(&state, &id).await;
-    assert!(matches!(
-        retry,
-        Response::Ok {
-            data: ResponseData::Ack
-        }
-    ));
+    assert_eq!(
+        expect_error(&retry),
+        ("unsubscribe_in_progress", true),
+        "{retry:?}"
+    );
     assert_eq!(fake.sent_drafts().len(), 1, "a retry must not send again");
 }
 
-/// The provider accepted the mail and then failed. The outcome is unknown:
-/// the claim stays, is marked `_unknown`, and a retry does not send.
+/// The provider fails after accepting the mail. The attempt is not confirmed,
+/// so its claim is released and a retry may send again. The error names no
+/// recipient.
 #[tokio::test]
-async fn an_unknown_send_outcome_keeps_the_claim() {
+async fn a_failed_send_releases_the_claim_and_a_retry_may_send_again() {
     let (state, fake) = synced_state().await;
     let id = mailto_fixture(&state).await;
+    let address = mailto_address(&state, &id).await;
     fake.fail_sends_after_accepting(true);
 
     let response = unsubscribe_request(&state, &id).await;
     assert_eq!(
         expect_error(&response),
-        ("unsubscribe_outcome_unknown", false),
+        ("unsubscribe_not_confirmed", true),
         "{response:?}"
     );
-    let method: String =
-        sqlx::query_scalar("SELECT method FROM unsubscribe_receipts WHERE message_id = ?")
+    let message = error_message(&response);
+    assert!(!message.contains(&address), "{message}");
+    assert!(!message.contains("mailto"), "{message}");
+
+    let receipts: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM unsubscribe_receipts WHERE message_id = ?")
             .bind(id.as_str())
             .fetch_one(state.store.reader())
             .await
             .unwrap();
-    assert_eq!(method, "mailto_unknown");
+    assert_eq!(receipts, 0, "the claim is released");
 
     fake.fail_sends_after_accepting(false);
+    let before_retry = fake.sent_drafts().len();
     let retry = unsubscribe_request(&state, &id).await;
-    assert!(matches!(
-        retry,
-        Response::Ok {
-            data: ResponseData::Ack
-        }
-    ));
-    assert_eq!(fake.sent_drafts().len(), 1, "a retry must not send again");
+    assert!(is_ack(&retry), "{retry:?}");
+    assert_eq!(
+        fake.sent_drafts().len(),
+        before_retry + 1,
+        "the retry sends once"
+    );
 }
 
-/// The server refuses the first POST with a 500, so nothing was applied: the
-/// claim is released and the retry goes out.
+async fn mailto_address(state: &Arc<AppState>, id: &mxr_core::MessageId) -> String {
+    state
+        .store
+        .list_envelopes_by_account(&state.default_account_id(), 200, 0)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|envelope| &envelope.id == id)
+        .and_then(|envelope| match envelope.unsubscribe {
+            UnsubscribeMethod::Mailto { address, .. } => Some(address),
+            _ => None,
+        })
+        .expect("mailto address")
+}
+
+/// Another attempt holds a live claim. This request must neither send nor
+/// acknowledge: the other attempt may still fail and release the claim.
+#[tokio::test]
+async fn a_live_claim_from_another_attempt_is_retryable_and_never_acknowledged() {
+    let (state, fake) = synced_state().await;
+    let id = mailto_fixture(&state).await;
+    state
+        .store
+        .claim_unsubscribe(
+            &id,
+            &state.default_account_id(),
+            chrono::Utc::now().timestamp(),
+        )
+        .await
+        .unwrap();
+
+    let response = unsubscribe_request(&state, &id).await;
+    assert_eq!(
+        expect_error(&response),
+        ("unsubscribe_in_progress", true),
+        "{response:?}"
+    );
+    assert!(fake.sent_drafts().is_empty());
+}
+
+/// The send fails and the claim cannot be released. The attempt stays
+/// marked, the error says so and is not retryable, and nothing is sent again.
+#[tokio::test]
+async fn a_failed_send_whose_claim_cannot_be_released_is_not_retryable() {
+    let (state, fake) = synced_state().await;
+    let id = mailto_fixture(&state).await;
+    fake.fail_sends_after_accepting(true);
+    sqlx::query(
+        "CREATE TRIGGER fail_release BEFORE DELETE ON unsubscribe_receipts
+         BEGIN SELECT RAISE(ABORT, 'injected release failure'); END",
+    )
+    .execute(state.store.writer())
+    .await
+    .unwrap();
+
+    let response = unsubscribe_request(&state, &id).await;
+    assert_eq!(
+        expect_error(&response),
+        ("unsubscribe_release_failed", false),
+        "{response:?}"
+    );
+    assert!(error_message(&response).contains("won't resend it"));
+
+    fake.fail_sends_after_accepting(false);
+    sqlx::query("DROP TRIGGER fail_release")
+        .execute(state.store.writer())
+        .await
+        .unwrap();
+    let retry = unsubscribe_request(&state, &id).await;
+    assert_eq!(
+        expect_error(&retry),
+        ("unsubscribe_in_progress", true),
+        "{retry:?}"
+    );
+    assert_eq!(
+        fake.sent_drafts().len(),
+        1,
+        "the kept claim blocks a resend"
+    );
+}
+
+/// The server refuses the first POST with a 500, so the attempt is not
+/// confirmed: its claim is released and the retry goes out. A third request
+/// finds the confirmed receipt and acknowledges without sending. The error
+/// names neither the URL nor the server's address.
 #[tokio::test]
 async fn a_server_refusal_is_retryable_and_the_retry_sends() {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -515,22 +616,29 @@ async fn a_server_refusal_is_retryable_and_the_retry_sends() {
     let refused = unsubscribe_request(&state, &envelope.id).await;
     assert_eq!(
         expect_error(&refused),
-        ("unsubscribe_not_sent", true),
+        ("unsubscribe_not_confirmed", true),
         "{refused:?}"
     );
+    let message = error_message(&refused);
+    assert!(message.contains("answered 500"), "{message}");
+    assert!(!message.contains(&addr.to_string()), "{message}");
+    assert!(!message.contains("/unsubscribe"), "{message}");
     assert_eq!(posts.load(Ordering::SeqCst), 1);
 
     let retry = unsubscribe_request(&state, &envelope.id).await;
-    assert!(matches!(
-        retry,
-        Response::Ok {
-            data: ResponseData::Ack
-        }
-    ));
+    assert!(is_ack(&retry), "{retry:?}");
     assert_eq!(
         posts.load(Ordering::SeqCst),
         2,
         "the retry reaches the server"
+    );
+
+    let third = unsubscribe_request(&state, &envelope.id).await;
+    assert!(is_ack(&third), "{third:?}");
+    assert_eq!(
+        posts.load(Ordering::SeqCst),
+        2,
+        "a confirmed unsubscribe is acknowledged without sending"
     );
 }
 

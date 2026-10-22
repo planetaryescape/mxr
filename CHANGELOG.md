@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.140](https://github.com/planetaryescape/mxr/compare/v0.6.139...v0.6.140) (2026-10-22)
+
+
+### Features
+
+* show a card when hovering an email or person link in the assistant ([#613](https://github.com/planetaryescape/mxr/issues/613)) ([ac24399](https://github.com/planetaryescape/mxr/commit/ac243993327cbf462eca1eadd8d710893dc96059))
+
+
+### Bug Fixes
+
+* show when an email arrived in local time across the TUI ([#619](https://github.com/planetaryescape/mxr/issues/619)) ([4457c06](https://github.com/planetaryescape/mxr/commit/4457c06cdb61c2a623fa005e4ef287200574b85b))
+
 ## [0.6.139](https://github.com/planetaryescape/mxr/compare/v0.6.138...v0.6.139) (2026-10-22)
 
 

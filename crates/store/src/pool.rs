@@ -357,6 +357,15 @@ impl Store {
         &self.writer
     }
 
+    /// A writer connection is checked out, so a transaction may be mid-commit.
+    ///
+    /// The change feed counts a commit in SQLite's commit hook, before readers
+    /// can see it. The writer pool has one connection, held until the commit
+    /// lands, so once it is back in the pool every counted commit is visible.
+    pub fn writer_busy(&self) -> bool {
+        usize::try_from(self.writer.size()).unwrap_or(usize::MAX) > self.writer.num_idle()
+    }
+
     pub fn reader(&self) -> &SqlitePool {
         &self.reader
     }

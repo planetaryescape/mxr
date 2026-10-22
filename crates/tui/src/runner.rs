@@ -2075,6 +2075,7 @@ pub async fn run() -> anyhow::Result<()> {
                         account_id: None,
                         person: row_id.clone(),
                         topic: topic.clone(),
+                        conversation: true,
                     },
                 )
                 .await;

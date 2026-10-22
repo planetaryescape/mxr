@@ -52,6 +52,13 @@ struct PersonQuery {
     person: String,
     #[serde(default)]
     topic: Option<ThreadId>,
+    /// `false` returns the profile only, with no conversation or message text.
+    #[serde(default = "conversation_by_default")]
+    conversation: bool,
+}
+
+fn conversation_by_default() -> bool {
+    true
 }
 
 async fn person(
@@ -68,6 +75,7 @@ async fn person(
             account_id,
             person: query.person,
             topic: query.topic,
+            conversation: query.conversation,
         },
     )
     .await?;

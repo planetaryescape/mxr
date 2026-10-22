@@ -1091,6 +1091,7 @@ fn mail_people() {}
     params(
         ("person" = String, Query, description = "A row id (`person:<email>`, `group:<thread>`) or an address"),
         ("topic" = Option<String>, Query, description = "Thread id of the conversation to show"),
+        ("conversation" = Option<bool>, Query, description = "`false` returns the profile only, with no conversation or message text; default true"),
         ("account" = Option<String>, Query, description = "Account id; omitted searches every account"),
     ),
     responses(

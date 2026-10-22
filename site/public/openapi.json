@@ -3996,6 +3996,15 @@
             }
           },
           {
+            "name": "conversation",
+            "in": "query",
+            "description": "`false` returns the profile only, with no conversation or message text; default true",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "account",
             "in": "query",
             "description": "Account id; omitted searches every account",
@@ -30214,6 +30223,10 @@
                 "enum": [
                   "GetPerson"
                 ]
+              },
+              "conversation": {
+                "type": "boolean",
+                "description": "False returns only the profile (row, relationship line, topics):\nno conversation and no message text, as a hover card needs."
               },
               "person": {
                 "type": "string"

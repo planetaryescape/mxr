@@ -1987,6 +1987,7 @@ impl MxrMcpServer {
             account_id: parse_optional_id(input.account_id)?,
             person: input.person,
             topic: parse_optional_id(input.topic)?,
+            conversation: true,
         })
         .await
     }

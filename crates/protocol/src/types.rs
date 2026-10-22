@@ -124,6 +124,10 @@ fn default_corrections_limit() -> u32 {
     50
 }
 
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
 fn default_true() -> bool {
     true
 }
@@ -2238,6 +2242,10 @@ pub enum Request {
         person: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         topic: Option<ThreadId>,
+        /// False returns only the profile (row, relationship line, topics):
+        /// no conversation and no message text, as a hover card needs.
+        #[serde(default = "default_true", skip_serializing_if = "is_true")]
+        conversation: bool,
     },
     /// Got it: a short acknowledgement on `thread_id`, in your usual
     /// greeting and sign-off for that person, built from a template with

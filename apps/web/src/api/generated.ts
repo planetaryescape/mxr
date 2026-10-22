@@ -11635,6 +11635,11 @@ export interface components {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "GetPerson";
+                  /**
+                   * @description False returns only the profile (row, relationship line, topics):
+                   *     no conversation and no message text, as a hover card needs.
+                   */
+                  conversation?: boolean;
                   person: string;
                   topic?: components["schemas"]["ThreadId"] | null;
               }
@@ -19660,6 +19665,8 @@ export interface operations {
                 person: string;
                 /** @description Thread id of the conversation to show */
                 topic?: string;
+                /** @description `false` returns the profile only, with no conversation or message text; default true */
+                conversation?: boolean;
                 /** @description Account id; omitted searches every account */
                 account?: string;
             };

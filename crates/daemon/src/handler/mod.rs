@@ -1805,7 +1805,17 @@ async fn dispatch(
             account_id,
             person,
             topic,
-        } => messages::get_person(state, account_id.as_ref(), person, topic.as_ref()).await,
+            conversation,
+        } => {
+            messages::get_person(
+                state,
+                account_id.as_ref(),
+                person,
+                topic.as_ref(),
+                *conversation,
+            )
+            .await
+        }
         Request::AckMessage {
             thread_id,
             dry_run,

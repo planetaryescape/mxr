@@ -1,7 +1,7 @@
 //! The six graders. Each reads a case's requirements and an output and
 //! returns one grade that names what was required and what happened.
 
-use super::text::{copied_run, gap_texts, invented_numbers, normalise, sentences, words};
+use super::text::{contains_phrase, copied_run, gap_texts, invented_numbers, sentences, words};
 use super::{Check, Grade, Output, Requirements};
 use std::collections::HashSet;
 
@@ -23,11 +23,12 @@ pub(super) fn kept(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
                 .join(", ")
         )
     };
-    let draft = normalise(output.text);
+    // Whole sentences: a typed sentence embedded in a changed one is not kept.
+    let draft_sentences: HashSet<String> = sentences(output.text).into_iter().collect();
     let draft_words: HashSet<String> = words(output.text).into_iter().collect();
     let mut problems = Vec::new();
     for sentence in &typed {
-        if draft.contains(sentence.as_str()) {
+        if draft_sentences.contains(sentence) {
             continue;
         }
         let sentence_words = words(sentence);
@@ -59,7 +60,7 @@ pub(super) fn kept(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
 }
 
 pub(super) fn answers(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
-    let draft = normalise(output.text);
+    let draft_words = words(output.text);
     let requirement = if req.answers.is_empty() {
         "no question to answer".to_string()
     } else {
@@ -82,7 +83,7 @@ pub(super) fn answers(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
             !answer
                 .any_of
                 .iter()
-                .any(|phrase| draft.contains(&normalise(phrase)))
+                .any(|phrase| contains_phrase(&draft_words, phrase))
         })
         .map(|answer| answer.question)
         .collect();
@@ -107,10 +108,7 @@ pub(super) fn gaps(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
         .gaps
         .iter()
         .copied()
-        .filter(|fact| {
-            let fact = normalise(fact);
-            !gaps.iter().any(|gap| gap.contains(&fact))
-        })
+        .filter(|fact| !gaps.iter().any(|gap| contains_phrase(&words(gap), fact)))
         .collect();
     let requirement = if req.gaps.is_empty() {
         "no missing fact to leave open".to_string()
@@ -165,6 +163,29 @@ pub(super) fn length(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
     }
 }
 
+/// A line that talks about the draft rather than being part of the email:
+/// "Sure, here's a draft of your reply.", "Here is the reply:". The lead
+/// word alone is not enough ("Sure, Friday works") because a real email can
+/// open that way; the line must also name the draft or end like a label.
+fn is_preamble(line: &str) -> bool {
+    let lower = line.to_lowercase();
+    let leads = [
+        "sure",
+        "here",
+        "certainly",
+        "of course",
+        "okay",
+        "ok,",
+        "absolutely",
+        "below",
+        "alright",
+    ];
+    let names_the_draft = ["draft", "reply", "email", "message", "version", "response"]
+        .iter()
+        .any(|word| lower.contains(word));
+    leads.iter().any(|lead| lower.starts_with(lead)) && (names_the_draft || lower.ends_with(':'))
+}
+
 /// What clean-up had to remove, what a sign-off repeated, and whether a
 /// run of the thread was copied back. Read from the raw output.
 pub(super) fn leftovers(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
@@ -184,6 +205,16 @@ pub(super) fn leftovers(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
         .find(|line| line.to_lowercase().starts_with("subject:"));
     if let Some(subject) = subject {
         problems.push(format!("subject line: \"{subject}\""));
+    }
+    // Read from the raw output, so a preamble that clean-up would also have
+    // stripped still counts, and one it would keep is caught too.
+    if let Some(line) = output
+        .raw
+        .lines()
+        .map(str::trim)
+        .find(|line| is_preamble(line))
+    {
+        problems.push(format!("preamble: \"{line}\""));
     }
     if !removed.is_empty() {
         problems.push(format!(
@@ -449,5 +480,59 @@ mod tests {
         assert_eq!(a.passed(Check::Answers), b.passed(Check::Answers));
         assert_eq!(a.grades[1].detail, "not addressed: where");
         assert_eq!(b.grades[1].detail, "not addressed: where");
+    }
+
+    #[test]
+    fn a_typed_sentence_inside_a_changed_sentence_is_not_kept() {
+        // The sentence survives as words, but it now says the opposite.
+        let requirements = req("Paid today, thanks.", &[], &[]);
+        let report = run(&requirements, "Hi Alex,\n\nNot paid today, thanks.\n\nAlex");
+        assert_eq!(report.passed(Check::Kept), Some(false));
+        assert!(
+            report.grades[0]
+                .detail
+                .contains("changed: \"paid today, thanks\""),
+            "{:?}",
+            report.grades[0]
+        );
+    }
+
+    #[test]
+    fn an_answer_is_a_whole_word_so_now_does_not_answer_no() {
+        let answers = [Answer {
+            question: "will Priya join",
+            any_of: &["no", "not"],
+        }];
+        let requirements = req("", &answers, &[]);
+        assert_eq!(
+            run(&requirements, "3pm works; Priya will join now.").passed(Check::Answers),
+            Some(false)
+        );
+        assert_eq!(
+            run(&requirements, "3pm works. Priya can't make it, no.").passed(Check::Answers),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn a_preamble_is_a_leftover_even_when_clean_up_would_keep_it() {
+        // clean_draft keeps this line (it ends in a full stop, not a colon), so
+        // only the raw output shows it.
+        let requirements = req("", &[], &[]);
+        let text = "Sure, here's a draft of your reply.\n\nHi Alex,\n\nFriday works.\n\nAlex";
+        let report = grade(&requirements, &Output { raw: text, text });
+        assert_eq!(report.passed(Check::Leftovers), Some(false));
+        assert!(report.grades[5]
+            .detail
+            .contains("preamble: \"Sure, here's a draft of your reply.\""));
+    }
+
+    #[test]
+    fn a_real_email_that_opens_with_sure_is_not_a_preamble() {
+        let requirements = req("", &[], &[]);
+        assert_eq!(
+            run(&requirements, "Sure, Friday works for me.\n\nAlex").passed(Check::Leftovers),
+            Some(true)
+        );
     }
 }

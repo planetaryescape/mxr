@@ -5,7 +5,7 @@
 mod graders;
 mod text;
 
-pub use text::invented_numbers;
+pub use text::{invented_numbers, replay_invented_numbers};
 
 /// The question a case asks of the target message, and the words a reply
 /// that addresses it would contain (any one of them is enough).

@@ -126,10 +126,16 @@ pub(super) const CASES: &[Case] = &[
         draft: DraftState::Empty,
         instruction: "say yes to Friday 2pm and that I'll bring the deck",
         expect: expect(FRIDAY, &[], (8, 60)),
-        recorded: &[Recording {
-            name: "good",
-            text: "Hi Sam,\n\nFriday at 2pm works. I'll bring the deck.\n\nAlex",
-        }],
+        recorded: &[
+            Recording {
+                name: "good",
+                text: "Hi Sam,\n\nFriday at 2pm works. I'll bring the deck.\n\nAlex",
+            },
+            Recording {
+                name: "bad: preamble",
+                text: "Sure, here's a draft of your reply.\n\nHi Sam,\n\nFriday at 2pm works. I'll bring the deck.\n\nAlex",
+            },
+        ],
     },
     Case {
         id: "price-typed",

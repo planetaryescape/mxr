@@ -24,9 +24,11 @@ fn prompts_report() -> String {
     let mut system_written = false;
     for case in compose::cases() {
         let assembled = assemble(case, TODAY);
+        // The system message as the model receives it: the base task plus the
+        // untrusted-mail guard, exactly as the draft path appends it.
         if !system_written {
-            out.push_str("SYSTEM (the same for every case)\n");
-            out.push_str(&assembled.prompt.system);
+            out.push_str("SYSTEM MESSAGE (the same for every case)\n");
+            out.push_str(&mxr_llm::guarded_system_prompt(&assembled.prompt.system));
             out.push_str("\n\n");
             system_written = true;
         }
@@ -133,8 +135,10 @@ fn check_for(defect: &str) -> Option<Check> {
         "bad: subject line" | "bad: recap of thread" | "bad: duplicate signature" => {
             Some(Check::Leftovers)
         }
-        "bad: dropped typed sentence" => Some(Check::Kept),
+        "bad: dropped typed sentence" | "bad: reversed typed sentence" => Some(Check::Kept),
         "bad: invented price" => Some(Check::Invented),
+        "bad: preamble" => Some(Check::Leftovers),
+        "bad: now for no" => Some(Check::Answers),
         _ => None,
     }
 }

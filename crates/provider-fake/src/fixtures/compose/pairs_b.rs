@@ -153,6 +153,10 @@ pub(super) const CASES: &[Case] = &[
                 name: "bad: invented price",
                 text: "Hi Priya,\n\nPaid today, thanks. The £1,200 is on its way.\n\nAlex",
             },
+            Recording {
+                name: "bad: reversed typed sentence",
+                text: "Hi Priya,\n\nNot paid today, thanks.\n\nAlex",
+            },
         ],
     },
     Case {
@@ -348,7 +352,16 @@ pub(super) const CASES: &[Case] = &[
         draft: DraftState::Empty,
         instruction: "3pm works; Priya can't make it",
         expect: expect(TWO_QUESTIONS, &[], (5, 50)),
-        recorded: &[],
+        recorded: &[
+            Recording {
+                name: "good",
+                text: "Hi Sam,\n\n3pm works for me. Priya can't make it.\n\nAlex",
+            },
+            Recording {
+                name: "bad: now for no",
+                text: "Hi Sam,\n\n3pm works for me. Priya will join now.\n\nAlex",
+            },
+        ],
     },
     Case {
         id: "rate-from-instruction",

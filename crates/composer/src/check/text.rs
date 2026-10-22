@@ -39,6 +39,16 @@ pub(super) fn sentences(typed: &str) -> Vec<String> {
         .collect()
 }
 
+/// Whether `phrase` appears in `draft_words` as a run of whole words. "no"
+/// does not match inside "now", and "not able" needs both words in order.
+pub(super) fn contains_phrase(draft_words: &[String], phrase: &str) -> bool {
+    let phrase = words(phrase);
+    !phrase.is_empty()
+        && draft_words
+            .windows(phrase.len())
+            .any(|run| run == phrase.as_slice())
+}
+
 /// The text inside each `[[?: …]]` gap, normalised.
 pub(super) fn gap_texts(text: &str) -> Vec<String> {
     text.split("[[?:")
@@ -60,11 +70,28 @@ pub(super) fn copied_run(draft: &str, conversation: &str) -> Option<String> {
         .map(|run| run.join(" "))
 }
 
-/// Numbers (prices, times, dates, counts) in the draft that the model could
-/// not have seen: none of their digits appear in `known`, the text of the
-/// conversation, the typed text and the instruction. Matching on digits means
-/// "$5,000" is known when the conversation has "5000" or "5,000".
+/// Numbers (prices, times, dates, counts) in the draft that no input carries.
+/// A draft number is known when its complete token matches one in `known`
+/// after normalisation: thousands commas are dropped and case is ignored, so
+/// "£1200" matches "£1,200", but "£200" does not, "2pm" does not match "12pm",
+/// and "$45" does not match "$450".
 pub fn invented_numbers(draft: &str, known: &str) -> Vec<String> {
+    let known_keys: HashSet<String> = number_tokens(known).iter().map(|t| number_key(t)).collect();
+    let mut out: Vec<String> = Vec::new();
+    for token in number_tokens(draft) {
+        let key = number_key(token);
+        if !known_keys.contains(&key) && !out.iter().any(|seen| number_key(seen) == key) {
+            out.push(token.to_string());
+        }
+    }
+    out
+}
+
+/// The replay's rule, kept as it was so `mxr draft eval --set mine` reports
+/// what it reported before: a number is known when its digits appear
+/// anywhere in the known text, so "£200" passes against "£1,200". Quick uses
+/// [`invented_numbers`].
+pub fn replay_invented_numbers(draft: &str, known: &str) -> Vec<String> {
     let mut out = Vec::new();
     for token in
         draft.split(|c: char| c.is_whitespace() || matches!(c, ';' | '(' | ')' | '!' | '?'))
@@ -84,6 +111,21 @@ pub fn invented_numbers(draft: &str, known: &str) -> Vec<String> {
     out
 }
 
+/// The tokens of a text that carry a digit, split on the marks that join
+/// numbers in ranges and dates ("4,000-5,000", "10/12") so each part is
+/// compared on its own.
+fn number_tokens(text: &str) -> Vec<&str> {
+    text.split(|c: char| c.is_whitespace() || matches!(c, ';' | '(' | ')' | '!' | '?' | '/' | '-'))
+        .map(|token| token.trim_matches(|c: char| !c.is_alphanumeric()))
+        .filter(|token| token.chars().any(|c| c.is_ascii_digit()))
+        .collect()
+}
+
+/// A number in its comparable form: thousands commas removed, case folded.
+fn number_key(token: &str) -> String {
+    token.replace(',', "").to_lowercase()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,5 +135,28 @@ mod tests {
         let known = "Can we meet on the 14th at 3pm? Budget is $4,000.";
         let draft = "Yes, the 14th at 3pm works. I can do $5,000 and 20 seats.";
         assert_eq!(invented_numbers(draft, known), vec!["5,000", "20"]);
+    }
+
+    #[test]
+    fn a_number_is_known_only_when_its_whole_token_is() {
+        let known = "The fee is £1,200 for 12pm sessions.";
+        assert_eq!(
+            invented_numbers("£1200 is fine", known),
+            Vec::<String>::new()
+        );
+        assert_eq!(invented_numbers("£200 is fine", known), vec!["200"]);
+        assert_eq!(invented_numbers("the 2pm slot", "at 12pm"), vec!["2pm"]);
+        assert_eq!(invented_numbers("$45", "$450"), vec!["45"]);
+        assert_eq!(invented_numbers("$450", "$45"), vec!["450"]);
+    }
+
+    #[test]
+    fn the_replay_rule_is_unchanged_and_still_matches_digits_inside_a_number() {
+        // `--set mine` keeps the rule it has always reported under.
+        assert_eq!(
+            replay_invented_numbers("£200", "£1,200"),
+            Vec::<String>::new()
+        );
+        assert_eq!(replay_invented_numbers("$45", "$450"), Vec::<String>::new());
     }
 }

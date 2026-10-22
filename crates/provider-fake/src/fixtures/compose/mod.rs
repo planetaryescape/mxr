@@ -313,6 +313,9 @@ mod tests {
             "bad: dropped typed sentence",
             "bad: invented price",
             "bad: duplicate signature",
+            "bad: reversed typed sentence",
+            "bad: preamble",
+            "bad: now for no",
         ] {
             assert!(bad_names.contains(&class), "no recording for {class}");
         }

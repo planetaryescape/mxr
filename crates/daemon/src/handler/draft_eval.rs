@@ -12,7 +12,7 @@
 use super::draft_compose::{draft_in_thread, DraftRequest};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
-use mxr_composer::check::invented_numbers;
+use mxr_composer::check::replay_invented_numbers;
 use mxr_core::id::AccountId;
 use mxr_protocol::{DraftEvalCaseData, DraftEvalSummaryData, ResponseData};
 use mxr_relationship::{analyse_habits, clean_for_voice};
@@ -129,7 +129,7 @@ async fn replay(
             model.clone_from(&used);
             case.draft_words = body.split_whitespace().count() as u32;
             case.placeholders = body.matches("[[?:").count() as u32;
-            case.invented_numbers = invented_numbers(&body, &known);
+            case.invented_numbers = replay_invented_numbers(&body, &known);
             let names: Vec<&str> = Vec::new();
             let mine = analyse_habits(&[case.actual.as_str()], &names);
             let theirs = analyse_habits(&[body.as_str()], &names);

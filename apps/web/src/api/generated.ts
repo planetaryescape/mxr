@@ -7353,6 +7353,29 @@ export interface components {
         };
         /** @enum {string} */
         JobStatusData: "queued" | "running" | "succeeded" | "failed";
+        /** @description One thing a key can do, and the keys each client binds it to. */
+        KeyActionData: {
+            /** @description `tui`, `web`, or both. */
+            clients: string[];
+            description?: string | null;
+            group: string;
+            id: string;
+            /** @description Web keys, primary first. */
+            keys?: string[];
+            label: string;
+            /** @description Web keys bound on macOS only. */
+            mac_keys?: string[];
+            /** @description Why the clients' keys differ, when they do. */
+            note?: string | null;
+            palette_only?: boolean;
+            /** @description Web scopes the web keys are live in. */
+            scopes?: string[];
+            tui?: components["schemas"]["TuiKeysData"][];
+        };
+        /** @description Returned in `ResponseData::Keymap`. */
+        KeymapData: {
+            actions: components["schemas"]["KeyActionData"][];
+        };
         /**
          * @description Which rule decided a message's kind, most decisive first. `Decision`
          *     means the user moved the sender; everything else is automatic.
@@ -11640,6 +11663,10 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  cmd: "GetKeymap";
+              }
+            | {
+                  /** @enum {string} */
                   cmd: "GetModeGuide";
                   mode?: string | null;
               }
@@ -13141,6 +13168,11 @@ export interface components {
                   catchup: components["schemas"]["TodoCatchupData"];
                   /** @enum {string} */
                   kind: "TodoCatchup";
+              }
+            | {
+                  keymap: components["schemas"]["KeymapData"];
+                  /** @enum {string} */
+                  kind: "Keymap";
               }
             | {
                   guides: components["schemas"]["ModeGuideData"][];
@@ -14894,6 +14926,13 @@ export interface components {
             footer?: boolean;
             quote: boolean;
             signature: boolean;
+        };
+        /** @description Keys the TUI binds to an action, and where. */
+        TuiKeysData: {
+            contexts: string[];
+            keys: string[];
+            /** @description The TUI action its dispatcher returns. */
+            name: string;
         };
         UnsubscribeMethod:
             | {

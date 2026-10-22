@@ -55,7 +55,7 @@ vi.mock("@/features/modes/api", async (original) => ({
   useModeGuide: () => ({}),
 }));
 vi.mock("@/features/modes/membership", () => ({ useThreadModesMap: () => ({}) }));
-const lowTide = vi.hoisted(() => vi.fn((..._args: unknown[]) => false));
+const lowTide = vi.hoisted(() => vi.fn<(...args: unknown[]) => boolean>(() => false));
 const layout = vi.hoisted(() => ({ wide: true }));
 vi.mock("@/features/low-tide/lowTideMemory", () => ({ useLowTide: lowTide }));
 vi.mock("@/hooks/useMediaQuery", () => ({ useMediaQuery: () => layout.wide }));

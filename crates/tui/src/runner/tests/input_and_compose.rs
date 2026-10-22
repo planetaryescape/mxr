@@ -2694,3 +2694,20 @@ fn cleanup_submission_failure_releases_file_without_deleting_it() {
         matches!(app.compose.pending_compose,Some(ComposeAction::EditDraft{path:opened,..}) if opened==path)
     );
 }
+
+/// Ctrl-z suspends like any terminal program (blueprint 35): it asks the
+/// runner to suspend from anywhere, text fields included, and types nothing.
+#[cfg(unix)]
+#[test]
+fn ctrl_z_asks_the_runner_to_suspend_even_from_a_text_field() {
+    let ctrl_z = KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL);
+    let mut app = App::new();
+    assert_eq!(app.handle_key(ctrl_z), None);
+    assert!(app.pending_suspend);
+
+    let mut app = App::new();
+    app.search.bar.activate();
+    assert_eq!(app.handle_key(ctrl_z), None);
+    assert!(app.pending_suspend);
+    assert_eq!(app.search.bar.query, "");
+}

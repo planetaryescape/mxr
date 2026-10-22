@@ -154,17 +154,17 @@ fn modal_lines(
 
     match pending.mode {
         PendingSendMode::SendOrSave if blocked => {
-            lines.push("[e] edit again   [O] override + send   [Esc] discard".to_string());
+            lines.push("[e/Esc] edit again   [O] override + send   [#] discard draft".to_string());
         }
         PendingSendMode::SendOrSave => {
             lines.push("[s] send   [a] send at   [n] remind   [d] save draft".to_string());
-            lines.push("[r] refine   [e] edit again   [Esc] discard".to_string());
+            lines.push("[r] refine   [e/Esc] edit again   [#] discard draft".to_string());
         }
         PendingSendMode::DraftOnlyNoRecipients => {
-            lines.push("[d] save draft   [e] edit again   [Esc] discard".to_string());
+            lines.push("[d] save draft   [e/Esc] edit again   [#] discard draft".to_string());
         }
         PendingSendMode::Unchanged => {
-            lines.push("[e] edit again   [Esc] discard".to_string());
+            lines.push("[e/Esc] edit again   [#] discard draft".to_string());
         }
     }
     lines
@@ -341,7 +341,7 @@ mod tests {
         });
         assert!(rendered.contains("Safety: SAFE"), "got:\n{rendered}");
         assert!(
-            rendered.contains("[r] refine") && rendered.contains("[Esc] discard"),
+            rendered.contains("[r] refine") && rendered.contains("[#] discard draft"),
             "the action row must stay visible at 120x20; got:\n{rendered}"
         );
     }
@@ -366,7 +366,7 @@ mod tests {
         assert!(rendered.contains("Humanizer: scored on AI draft outputs"));
         assert!(rendered.contains("[s] send   [a] send at   [n] remind   [d] save draft"));
         assert!(rendered.contains("[r] refine"));
-        assert!(rendered.contains("[Esc] discard"));
+        assert!(rendered.contains("[#] discard draft"));
     }
 
     #[test]
@@ -439,7 +439,7 @@ mod tests {
         });
 
         assert!(rendered.contains("No recipients yet. Save as draft?"));
-        assert!(rendered.contains("[d] save draft   [e] edit again   [Esc] discard"));
+        assert!(rendered.contains("[d] save draft   [e/Esc] edit again   [#] discard draft"));
         assert!(!rendered.contains("[s] send"));
     }
 
@@ -642,7 +642,7 @@ mod tests {
         });
 
         assert!(rendered.contains("Draft unchanged. Discard or keep editing?"));
-        assert!(rendered.contains("[e] edit again   [Esc] discard"));
+        assert!(rendered.contains("[e/Esc] edit again   [#] discard draft"));
         assert!(!rendered.contains("[s] send"));
         assert!(!rendered.contains("[d] save draft"));
     }

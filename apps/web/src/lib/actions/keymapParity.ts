@@ -306,7 +306,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     context: "*",
     keys: ["q"],
     bound: "tui",
-    why: "q quits the TUI; a browser tab has nothing to quit",
+    why: "q quits the TUI at its root; a browser tab has nothing to quit",
   },
   {
     context: "*",
@@ -357,12 +357,6 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     keys: ["o"],
     bound: "both",
     why: "The web collapses messages and o toggles one, as in Gmail; the TUI shows every message and o opens the original, like O",
-  },
-  {
-    context: "reader",
-    keys: ["q"],
-    bound: "both",
-    why: "q quits the TUI; a browser tab has nothing to quit, so the web reader closes with q, like Esc",
   },
   {
     context: "reader",

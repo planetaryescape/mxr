@@ -35,6 +35,8 @@ pub struct RulesPageState {
     pub status: Option<String>,
     pub refresh_pending: bool,
     pub form: RuleFormState,
+    /// The rule `#` asked to delete (id, name), waiting for its confirm.
+    pub delete_confirm: Option<(String, String)>,
 }
 
 impl Default for RulesPageState {
@@ -54,6 +56,7 @@ impl Default for RulesPageState {
                 priority: "100".to_string(),
                 ..RuleFormState::default()
             },
+            delete_confirm: None,
         }
     }
 }

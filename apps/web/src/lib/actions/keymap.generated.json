@@ -1591,6 +1591,202 @@
       "palette_only": true
     },
     {
+      "id": "compose.send",
+      "label": "Send",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Enter"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.send-and-archive",
+      "label": "Send and archive",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+Enter"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.send-later",
+      "label": "Send later…",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+l"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.save",
+      "label": "Save draft",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+s"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.save-to-server",
+      "label": "Save to server draft",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+s"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.refresh",
+      "label": "Refresh from daemon",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+r"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.discard",
+      "label": "Discard draft",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Backspace",
+        "Mod+Shift+Backspace"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.add-cc",
+      "label": "Add Cc",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+c"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.add-bcc",
+      "label": "Add Bcc",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+b"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.attach",
+      "label": "Attach files",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+a"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.signature",
+      "label": "Insert signature",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+g"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.snippets",
+      "label": "Insert snippet",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+;"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "compose.fullscreen",
+      "label": "Toggle fullscreen",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+Shift+f"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
       "id": "mail.archive",
       "label": "Archive",
       "group": "Mail",

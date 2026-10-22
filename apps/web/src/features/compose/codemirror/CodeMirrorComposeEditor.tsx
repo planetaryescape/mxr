@@ -5,7 +5,12 @@ import { getCM, Vim, vim } from "@replit/codemirror-vim";
 import { basicSetup } from "codemirror";
 import { useEffect, useRef, useState } from "react";
 
-import { isComposeChord } from "@/features/compose/session/composeShortcuts";
+import {
+  codeMirrorKey,
+  composeCommandOf,
+  isComposeChord,
+} from "@/features/compose/session/composeShortcuts";
+import { definedShortcut } from "@/lib/actions/definition";
 
 interface CodeMirrorComposeEditorProps {
   value: string;
@@ -130,7 +135,7 @@ export function CodeMirrorComposeEditor({
           tokenTheme,
           keymap.of([
             {
-              key: "Mod-s",
+              key: codeMirrorKey(definedShortcut("compose.save")),
               run: () => {
                 callbacksRef.current.onSave();
                 return true;
@@ -194,10 +199,8 @@ export function CodeMirrorComposeEditor({
   );
 }
 
-/** ⌘Enter or Ctrl+Enter alone: send. With Shift it is send and archive,
- * which the compose surface handles. */
+/** The send chord (⌘Enter or Ctrl+Enter) without Alt. With Shift it is
+ * send and archive, which the compose surface handles. */
 function isSendChord(event: KeyboardEvent): boolean {
-  return (
-    event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey
-  );
+  return composeCommandOf(event) === "requestSend" && !event.altKey;
 }

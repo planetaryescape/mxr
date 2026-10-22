@@ -75,6 +75,11 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
     match: (action) => inScope(action, "reading-reader"),
   },
   { title: "Archive", intro: "", match: (action) => inScope(action, "archive") },
+  {
+    title: "Compose",
+    intro: "While writing a message. ⌘ and Ctrl both work, on every platform.",
+    match: (action) => inScope(action, "compose"),
+  },
 ];
 
 function isGlobal(action: Action): boolean {
@@ -94,13 +99,17 @@ function inScope(action: Action, scope: ActionScope): boolean {
   return scopesOf(action).includes(scope) && !isMailAction(action);
 }
 
-/** Platform-neutral key label for docs: "Mod+k" → "⌘K / Ctrl+K". */
+/** Platform-neutral key label for docs: "Mod+k" → "⌘K / Ctrl+K", "Mod+Shift+c" → "⌘⇧C / Ctrl+Shift+C". */
 export function docChord(chord: string): string {
   return parseChord(chord)
     .map((token) => {
       if (token.startsWith("Mod+")) {
-        const key = token.slice(4).toUpperCase();
-        return `⌘${key} / Ctrl+${key}`;
+        const rest = token.slice(4);
+        const shift = rest.startsWith("Shift+");
+        const name = shift ? rest.slice(6) : rest;
+        // Letters print as capitals; named keys (Enter, Backspace) as they are.
+        const key = name.length === 1 ? name.toUpperCase() : name;
+        return shift ? `⌘⇧${key} / Ctrl+Shift+${key}` : `⌘${key} / Ctrl+${key}`;
       }
       if (token.startsWith("Ctrl+")) return `Ctrl+${token.slice(5).toUpperCase()}`;
       if (token === "Escape") return "Esc";

@@ -26,7 +26,7 @@ pub const TUI_CONTEXTS: [&str; 13] = [
 ];
 
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).
-pub const WEB_SCOPES: [&str; 15] = [
+pub const WEB_SCOPES: [&str; 16] = [
     "global",
     "sidebar",
     "list",
@@ -42,6 +42,7 @@ pub const WEB_SCOPES: [&str; 15] = [
     "archive",
     "reading",
     "reading-reader",
+    "compose",
 ];
 
 /// The shipped definition, parsed once. The file is compiled in and

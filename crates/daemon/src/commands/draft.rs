@@ -57,13 +57,19 @@ pub async fn run(
                 }
                 _ => None,
             };
-            let resp = client
-                .request(Request::DraftEval {
-                    account_id,
-                    limit,
-                    set,
-                })
-                .await?;
+            let request = Request::DraftEval {
+                account_id,
+                limit,
+                set,
+            };
+            // Quick makes one model call per case, so the whole run can take
+            // minutes: it takes the no-deadline path that long operations use
+            // (`request_with_events`, which passes no timeout). Mine keeps the
+            // default deadline, as before.
+            let resp = match set {
+                DraftEvalSet::Quick => client.request_with_events(request, |_| {}).await?,
+                DraftEvalSet::Mine => client.request(request).await?,
+            };
             match resp {
                 Response::Ok {
                     data: ResponseData::DraftEval { cases, summary },

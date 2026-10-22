@@ -116,9 +116,13 @@ export function AssistantSidebar() {
         </HeaderButton>
       </header>
 
+      {/* One arrow over the whole transcript: left to `auto`, the cursor
+          flips between I-beam over each line of a reply and arrow in the
+          gaps as the pointer moves. Text still selects; links and step
+          rows keep the pointer. */}
       <ScrollToEnd
         watch={[data, live.writing]}
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-5"
+        className="min-h-0 flex-1 cursor-default overflow-y-auto px-4 py-5"
       >
         {history ? (
           <History

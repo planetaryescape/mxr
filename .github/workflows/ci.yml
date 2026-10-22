@@ -338,11 +338,6 @@ jobs:
       - name: Install dependencies
         id: install
         run: npm ci
-      # Known failure from 2026-10-21: two moderate Vitest advisories, whose
-      # fix (vitest 4.1.12) is held back by the 7-day min-release-age rule.
-      # This step's failure alone doesn't block a merge. Don't exempt vitest
-      # or retry it; see docs/issues/web-vitest-advisories.md. Remove this
-      # comment with that file once vitest is bumped.
       - name: Audit dependencies
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm audit --audit-level=moderate

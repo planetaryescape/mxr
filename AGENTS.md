@@ -26,6 +26,9 @@ queues builds/checks/tests automatically; explicitly wrap toolchain-specific Car
 and native build scripts. Inside a queued command, run children directly.
 Keep build, libtest, nextest and Rayon workers at five or fewer. Keep each
 worktree's target directory separate and preserve sccache.
+Hold a slot only while something builds: queue one heavy command per job and
+keep waits, polling, reading results and edits outside the queue; `agent-work`
+ends a job that sits idle for 3 minutes.
 Use `agent-work status` and `agent-work cancel <id>` for your own job; never kill
 Cargo/rustc or test daemons globally to free a slot. Build persistent daemons in
 the queue, then launch the binary outside it. Setup and limits:

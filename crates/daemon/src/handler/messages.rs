@@ -543,11 +543,19 @@ pub(super) async fn messages_at(
     rank_your_turn(&mut your_turn);
     let mut your_turn: Vec<MessagesRowData> = your_turn.into_iter().map(|(row, _)| row).collect();
     rank_by_recency(&mut pinned);
-    pinned.truncate(PINNED_CAP);
     rank_by_recency(&mut recent);
     rank_by_recency(&mut quiet);
+    // The header counts keep Pinned's cap. The filter sees every pinned
+    // person, and the cap applies to what it keeps.
     let row_count = u32::try_from(your_turn.len() + recent.len() + quiet.len()).unwrap_or(u32::MAX)
-        + u32::try_from(pinned.iter().filter(|r| !r.your_turn).count()).unwrap_or(0);
+        + u32::try_from(
+            pinned
+                .iter()
+                .take(PINNED_CAP)
+                .filter(|r| !r.your_turn)
+                .count(),
+        )
+        .unwrap_or(0);
     match filter.turn {
         Some(MessagesTurnData::Mine) => {
             recent.clear();
@@ -568,7 +576,7 @@ pub(super) async fn messages_at(
         None => {}
     }
     // Toggles narrow every band, so the counts a list is limited by are
-    // the filtered ones. Pinned has its own cap, applied above.
+    // the filtered ones.
     let keep = |row: &MessagesRowData| {
         (!filter.unread || row.unread) && (!filter.past_pace || row.overdue)
     };
@@ -578,6 +586,7 @@ pub(super) async fn messages_at(
         recent.retain(keep);
         quiet.retain(keep);
     }
+    pinned.truncate(PINNED_CAP);
     let matched = distinct_rows(&[&your_turn, &pinned, &recent, &quiet]);
     let recent_total = u32::try_from(recent.len()).unwrap_or(u32::MAX);
     let quiet_total = u32::try_from(quiet.len()).unwrap_or(u32::MAX);
@@ -648,13 +657,14 @@ pub(super) async fn messages_at(
     })
 }
 
-/// Rows across bands, once each: a pinned row also sits in its own band.
+/// Rows across bands, once each: a pinned row also sits in its own band. A
+/// person id is an address, so the same person in two accounts is two rows.
 fn distinct_rows(bands: &[&Vec<MessagesRowData>]) -> u32 {
-    let ids: HashSet<&str> = bands
+    let rows: HashSet<(&AccountId, &str)> = bands
         .iter()
-        .flat_map(|band| band.iter().map(|row| row.id.as_str()))
+        .flat_map(|band| band.iter().map(|row| (&row.account_id, row.id.as_str())))
         .collect();
-    u32::try_from(ids.len()).unwrap_or(u32::MAX)
+    u32::try_from(rows.len()).unwrap_or(u32::MAX)
 }
 
 /// The line under each shown row: for Your turn, the ask from the

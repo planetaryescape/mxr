@@ -1628,3 +1628,138 @@ fn each_filter_is_its_own_mode_cache_entry() {
         "the legacy top-level turn and the filter's turn are the same view"
     );
 }
+
+/// `who` wrote, then you replied, so they wait on you not and the row is
+/// waiting on them. The message they wrote is unread unless `read`.
+async fn waiting_on(fx: &Fixture, who: &str, unread: bool, reply_age: Duration) -> Envelope {
+    let thread = ThreadId::new();
+    let mut asked = fx
+        .message(&thread, who, ME, reply_age + Duration::hours(2), None)
+        .await;
+    if !unread {
+        asked.flags = mxr_core::MessageFlags::READ;
+        fx.store_envelope(&asked, MessageDirection::Inbound).await;
+    }
+    fx.message(
+        &thread,
+        ME,
+        who,
+        reply_age,
+        asked.message_id_header.as_deref(),
+    )
+    .await;
+    asked
+}
+
+/// Pinning a person in Messages is adding them to the cadence watchlist.
+async fn pin(fx: &Fixture, email: &str) {
+    match request(
+        fx,
+        Request::WatchCadence {
+            account_id: fx.account.clone(),
+            email: email.to_string(),
+            expected_days: None,
+            note: None,
+            allow_list_sender: false,
+        },
+    )
+    .await
+    {
+        ResponseData::Ack => {}
+        other => panic!("expected Ack, got {other:?}"),
+    }
+}
+
+fn pinned_ids(messages: &MessagesData) -> Vec<String> {
+    let mut ids: Vec<String> = messages.pinned.iter().map(|row| row.id.clone()).collect();
+    ids.sort();
+    ids
+}
+
+#[tokio::test]
+async fn a_pinned_unread_person_past_the_cap_shows_under_unread() {
+    let fx = Fixture::new().await;
+    // Ten pinned people, newest first: the tenth is past Pinned's nine, and
+    // the only one with unread mail from them.
+    let mut ids = Vec::new();
+    for n in 0..10 {
+        let who = format!("pinned{n}@cap.example");
+        waiting_on(&fx, &who, n == 9, Duration::hours(n + 1)).await;
+        pin(&fx, &who).await;
+        ids.push(format!("person:{who}"));
+    }
+    ids.sort();
+
+    let all = filtered(&fx, None, MessagesFilterData::default()).await;
+    assert_eq!(
+        pinned_ids(&all),
+        ids[..9].to_vec(),
+        "unfiltered Pinned keeps nine"
+    );
+    assert_eq!(all.row_count, 9);
+
+    let unread = filtered(
+        &fx,
+        None,
+        MessagesFilterData {
+            unread: true,
+            ..Default::default()
+        },
+    )
+    .await;
+    let tenth = format!("person:pinned9@cap.example");
+    assert!(!all.pinned.iter().any(|row| row.id == tenth));
+    assert_eq!(
+        pinned_ids(&unread),
+        vec![tenth],
+        "the filter sees every pinned person"
+    );
+    assert_eq!(unread.matched, 1);
+    assert!(
+        unread.empty_state.is_none(),
+        "a matching row is not an empty view"
+    );
+    assert_eq!(unread.row_count, 9, "header counts ignore the filter");
+}
+
+#[tokio::test]
+async fn one_correspondent_in_two_accounts_is_two_rows_and_matched_counts_both() {
+    let fx = Fixture::new().await;
+    let other = mxr_core::Account {
+        id: mxr_core::AccountId::new(),
+        name: "Other".into(),
+        email: "other@example.com".into(),
+        sync_backend: None,
+        send_backend: None,
+        enabled: true,
+    };
+    fx.state
+        .store
+        .insert_account(&other)
+        .await
+        .expect("account");
+    let maya = "maya@orbit.example";
+    fx.message(&ThreadId::new(), ME, maya, Duration::hours(2), None)
+        .await;
+    let mut there = fx
+        .message(&ThreadId::new(), ME, maya, Duration::hours(3), None)
+        .await;
+    there.id = MessageId::new();
+    there.account_id = other.id.clone();
+    there.provider_id = format!("other-{}", there.id);
+    there.message_id_header = Some(format!("<{}@other>", there.id));
+    fx.store_envelope(&there, MessageDirection::Outbound).await;
+
+    let all = filtered(&fx, None, MessagesFilterData::default()).await;
+    let maya_rows = all
+        .recent
+        .iter()
+        .filter(|row| row.id == format!("person:{maya}"))
+        .count();
+    assert_eq!(maya_rows, 2, "one row per account");
+    assert_eq!(all.row_count, 2);
+    assert_eq!(
+        all.matched, 2,
+        "no filter matches every row, once per account"
+    );
+}

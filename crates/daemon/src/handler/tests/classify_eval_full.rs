@@ -189,14 +189,18 @@ type Cluster = (u32, u32, bool);
 /// grouped by what was expected and what was said. Never one line per email:
 /// a 50,000-email set is reviewed by cluster. Rule wording is left out so a
 /// reworded reason is not a diff but a changed answer is.
+///
+/// `placed_live` is left out on purpose. A message counts as an arrival during
+/// an account's first sync only if its date is within 30 days of the moment it
+/// is stored (the `arrivals_on_message_insert` trigger), and the demo's mail is
+/// dated from the moment the provider was built, so the number of emails
+/// dated near that line depends on how long the run took: 34,121 and 34,122 on
+/// the same code. Those emails are placed live by the same rules, so no graded
+/// answer changes. The CLI still prints the count.
 fn report(summary: &ClassifyEvalSummaryData, mismatches: &[ClassifyEvalMismatchData]) -> String {
     let mut out = format!(
-        "label schema v{}\n{} labelled emails graded, {} stored emails unlabelled, {} placed live, {} not placed\n\n",
-        summary.label_schema_version,
-        summary.present,
-        summary.unlabelled,
-        summary.placed_live,
-        summary.not_placed
+        "label schema v{}\n{} labelled emails graded, {} stored emails unlabelled, {} not placed\n\n",
+        summary.label_schema_version, summary.present, summary.unlabelled, summary.not_placed
     );
     out.push_str(&question_lines(&summary.questions));
     out.push_str(&format!(
@@ -356,4 +360,24 @@ async fn the_full_set_labels_the_curated_mail_with_the_quick_sets_labels() {
             quick.question
         );
     }
+}
+
+#[test]
+fn the_snapshot_report_does_not_depend_on_how_long_the_run_took() {
+    let summary = |placed_live| ClassifyEvalSummaryData {
+        set: ClassifyEvalSetData::Full,
+        label_schema_version: 1,
+        labelled_in_set: 10,
+        present: 10,
+        placed_live,
+        not_placed: 0,
+        unlabelled: 3,
+        questions: Vec::new(),
+        held_out_present: 0,
+        held_out_questions: Vec::new(),
+        home_projection: String::new(),
+        message: None,
+    };
+    assert_eq!(report(&summary(7), &[]), report(&summary(8), &[]));
+    assert!(!report(&summary(7), &[]).contains("placed live"));
 }

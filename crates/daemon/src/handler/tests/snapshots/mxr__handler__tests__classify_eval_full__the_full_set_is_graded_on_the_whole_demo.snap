@@ -3,7 +3,7 @@ source: crates/daemon/src/handler/tests/classify_eval_full.rs
 expression: "report(&summary, &mismatches)"
 ---
 label schema v1
-38747 labelled emails graded, 11253 stored emails unlabelled, 34121 placed live, 0 not placed
+38747 labelled emails graded, 11253 stored emails unlabelled, 0 not placed
 
 who      35791/38747   92.4%
 home     36671/38747   94.6%

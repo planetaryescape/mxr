@@ -162,7 +162,7 @@ There are two sets:
 
 | Set | Grades | Takes | Run it |
 |---|---|---|---|
-| `--set quick` (the default) | the 184 labelled emails of the hand-written demo mail and the near-miss twins | seconds | after every change to sorting |
+| `--set quick` (the default) | the 185 labelled emails of the hand-written demo mail and the near-miss twins | seconds | after every change to sorting |
 | `--set full` | every labelled email in the mailbox: on the 50,000-message demo, the hand-written mail plus all of the generated mail (about 38,700 emails across both accounts) | tens of seconds once the demo is seeded | before you open a PR that can move an answer; CI runs it |
 
 ```bash
@@ -192,16 +192,25 @@ direction (the table that maps today's to-do kinds to these is
   kind of ask, and for all kinds together;
 - exact match for the amount (value and currency), the due date and the
   counterparty on the matched items, split into missing, wrong and spurious.
-  A stated date is checked for presence, because dates in the corpus follow the
-  seed clock; clock-free words ("Friday") are checked against the row's words;
+  A due date is graded by its value: a label states it as hours after the
+  email's own date (`Due::AfterSent`), because dates in the corpus follow the
+  seed clock, and the eval compares that day with the day the row resolved to
+  (in the daemon's time zone, `handler/todos.rs` `pass_config`). Weekday words
+  (`Due::Words("Friday")`) are read by the to-do code's own date reader from the
+  email's date, so they grade the row against that reader. A value the eval
+  cannot resolve is reported as `present`, never as exact;
 - duplicates (two rows for one expected item) and merges (one row standing for
   two accounts of one sender, which today's dedup key does);
-- twin-pair accuracy, where both members of a pair must be right on what they
-  ask, and the same over the pairs whose members ask different things;
+- twin-pair accuracy, where both members of a pair must be right: no missed
+  item, no extra row, every matched field exact, and the reply owed as
+  labelled. The same is reported over the pairs whose members ask different
+  things (an item, a reply owed, or both);
 - reply owed, graded as its own question against Your turn as the desk reads
-  it for one message: a request directed to you (`needs_reply`, the signal the
-  You owe lane uses) with nothing you sent after it in the thread. The lane's
-  other gates (copied threads, decay, snoozes, the screener) are not mirrored;
+  it for one message: `mail_kind::requires_reply` (a request directed to you from
+  a sender that classifies as a person, `mail_kind.rs:408-418`, the call at
+  `desk_lanes.rs:483`) with nothing you sent after it in the thread
+  (`desk_lanes.rs:438`: a latest message of yours is Waiting). The lane's other
+  gates (copied threads, decay, snoozes, the screener) are not mirrored;
 - slices by sender kind (person, organisation, platform, list), locale (en-GB,
   en-ZA, en-US), template family and visible against held-out phrasing.
 
@@ -246,7 +255,8 @@ They are in `crates/provider-fake/src/fixtures/scenarios/`:
 - `leak_guard.rs` is the leak guard: a baseline that reads only the surface of
   an email (its subject words with digits masked, its sender and a length
   bucket), trained on every other labelled email, must not get both members of
-  more than 40% of the twin pairs whose answers differ. If it does, the corpus
+  more than 40% of the twin pairs whose answers differ (an item, a reply owed,
+  or both). If it does, the corpus
   gives its answer away and a judge could score well without reading the mail.
 - `bulk/` builds the rest of the generated demo from scenario families. A
   family is a kind of mail (a colleague's thread, a thread you were only copied
@@ -260,8 +270,8 @@ They are in `crates/provider-fake/src/fixtures/scenarios/`:
 An item's counterparty, amount and due words are what the email says, never
 what the code finds: Review any label that rests on a judgement call. A date
 written from the seed clock cannot be a label, so an item says only that a
-dated deadline is stated (`Due::Stated`), or names clock-free words
-(`Due::Words("Friday")`).
+dated deadline is stated as hours after the email's own date
+(`Due::AfterSent`), or names clock-free words (`Due::Words("Friday")`).
 
 Dated asks need care. A to-do is shown only while its deadline is open, so a
 family that asks for something by a date puts one thread in thirty in the last
@@ -307,7 +317,9 @@ and recall each kind of ask reached, for the quick and the full set. The quick
 snapshot test and the full-set test (which CI runs) fail when any kind falls
 below its floor, so a change cannot lose recall on one kind behind a gain on
 another. A kind with no expected items, or nothing found, has no floor for the
-number that is undefined.
+number that is undefined. A kind that found nothing when the floor was set may
+gain true positives, but a false positive in it fails, so a new wrong row
+cannot hide behind a gain elsewhere.
 
 The floor only goes up. After a change that improves a kind, raise it:
 

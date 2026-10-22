@@ -957,7 +957,7 @@ R1c stops grading the to-do as a yes or no. Each label (schema v2) lists the
 items the email should make, and `mxr classify eval` reports precision and
 recall per kind of ask from chapter 37's vocabulary, the exact match of the
 amount, due and counterparty on matched items, duplicates, merges, twin pairs
-and slices. The quick set is now 184 labelled emails (the 147 and 37 more in
+and slices. The quick set is now 185 labelled emails (the 147 and 38 more in
 twins for every shape chapter 37 lists, en-ZA phrasings, a multi-account
 sender and two held-out template families). The full set is 38,748, one more
 than before because the owner's sent promise is labelled. Who, home and record
@@ -996,20 +996,25 @@ What the figures say:
   platform webinar that says "RSVP". The same sender's real invoice is found.
 - Fields on matched items: the amount, due and counterparty are exact on all 7
   matched pairs of the full set, and the amount is right on 16 of 20 quick-set
-  pairs. The misses are the amount of a failed payment (not read), a euro
+  pairs. The due date is graded by value (the day the row resolved to against
+  the day the label derives from the email's own date): 19 of 20 on the quick
+  set, the twentieth being a calendar invite that gets no due date. The misses are the amount of a failed payment (not read), a euro
   amount written "€1.234,56" read as 1.23 EUR, and rand amounts ("R1 234,56")
   not read at all, because the money parser reads only £, $ and €.
 - One merge: the second of two service charges from one managing agent
   replaces the first, because today's dedup key (sender domain, object, due
   day) has no account reference.
-- Twin pairs: both members right in 27 of 42 pairs, and in 8 of the 22 pairs
-  whose members ask different things. A surface-only baseline gets 2 of the 21
-  such pairs (10%, bar 40%), so the pairs are not separable by subject
-  words, sender or length.
-- Your turn (reply owed) is graded as the desk reads it for one message: a
-  request directed to you (`needs_reply`) with nothing you sent after it in the
-  thread. On the quick set that is 40.0% precision and 15.4% recall; on the
-  full set 2 found, both right, of 4 expected. The lane's other gates are not mirrored.
+- Twin pairs: both members right (no missed item, no extra row, every matched
+  field exact, the reply owed as labelled) in 14 of 43 pairs, and in 6 of the 32
+  pairs whose members ask different things (an item, a reply owed, or both). A
+  surface-only baseline gets 3 of those 31 pairs (10%, bar 40%), so the pairs
+  are not separable by subject words, sender or length.
+- Your turn (reply owed) is graded as the desk reads it for one message:
+  `requires_reply` (a request directed to you from a sender that classifies as
+  a person, `mail_kind.rs:408-418`, called at `desk_lanes.rs:483`) with nothing
+  you sent after it in the thread. On the quick set that is 40.0% precision and
+  15.4% recall; on the full set 2 found, both right, of 4 expected. The lane's
+  other gates are not mirrored.
 - Held-out: on the full set 16 held-out asks, none found; on the quick set
   the two held-out families are both missed.
 - Your promises in sent mail are never found. Promise rows are mirrored from

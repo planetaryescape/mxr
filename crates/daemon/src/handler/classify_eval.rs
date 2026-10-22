@@ -447,7 +447,7 @@ async fn mail_reads(
                     // Your turn: a request directed to you that you have not
                     // answered. The desk puts a thread in You owe only when
                     // its latest stored message is not yours
-                    // (`desk_lanes.rs:428`: an outbound latest is Waiting)
+                    // (`desk_lanes.rs:438`: an outbound latest is Waiting)
                     // and the inbound one passes `requires_reply`
                     // (`desk_lanes.rs:483`), which is `reply_request` and a
                     // sender that classifies as a person

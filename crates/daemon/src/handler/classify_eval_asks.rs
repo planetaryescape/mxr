@@ -24,7 +24,7 @@ use mxr_todo::TodoKind;
 use std::collections::BTreeMap;
 
 /// What the Your turn answer reads, for the output.
-pub(super) const REPLY_PROJECTION: &str = "Your turn as the desk reads it for one message: `mail_kind::requires_reply` (a request directed to you, `reply_request`, from a sender that classifies as a person, mail_kind.rs:408-418, the call the You owe lane makes at desk_lanes.rs:483) with nothing you sent after it in the thread (desk_lanes.rs:428, an outbound latest message is Waiting). The lane's other gates (copied threads, decay, snoozes, the screener) are not mirrored";
+pub(super) const REPLY_PROJECTION: &str = "Your turn as the desk reads it for one message: `mail_kind::requires_reply` (a request directed to you, `reply_request`, from a sender that classifies as a person, mail_kind.rs:408-418, the call the You owe lane makes at desk_lanes.rs:483) with nothing you sent after it in the thread (desk_lanes.rs:438, an outbound latest message is Waiting). The lane's other gates (copied threads, decay, snoozes, the screener) are not mirrored";
 
 /// The mismatch questions the asks add, in the order they are listed.
 pub(super) const ASK_QUESTIONS: [&str; 5] = ["ask", "amount", "due", "counterparty", "reply"];

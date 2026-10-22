@@ -11877,7 +11877,7 @@
           "exact": {
             "type": "integer",
             "format": "int32",
-            "description": "Pairs where the row's field equals the label's, an absent value on\nboth sides counting as equal.",
+            "description": "Pairs where the row's field equals the label's, an absent value on\nboth sides counting as equal. A due date is exact only when the row's\nday is the day the label names.",
             "minimum": 0
           },
           "exact_percent": {
@@ -11898,6 +11898,12 @@
             "type": "integer",
             "format": "int32",
             "description": "Matched items: the ones this field is compared on.",
+            "minimum": 0
+          },
+          "present": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The label states a value the eval cannot resolve to an exact one, and\nthe row has one. Counted apart and never as exact.",
             "minimum": 0
           },
           "spurious": {

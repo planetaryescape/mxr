@@ -5839,7 +5839,8 @@ export interface components {
             /**
              * Format: int32
              * @description Pairs where the row's field equals the label's, an absent value on
-             *     both sides counting as equal.
+             *     both sides counting as equal. A due date is exact only when the row's
+             *     day is the day the label names.
              */
             exact: number;
             /** Format: double */
@@ -5856,6 +5857,12 @@ export interface components {
              * @description Matched items: the ones this field is compared on.
              */
             pairs: number;
+            /**
+             * Format: int32
+             * @description The label states a value the eval cannot resolve to an exact one, and
+             *     the row has one. Counted apart and never as exact.
+             */
+            present?: number;
             /**
              * Format: int32
              * @description The label states none and the row has one.

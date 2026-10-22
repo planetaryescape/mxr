@@ -47,7 +47,9 @@ help modal (`?`).
 | `Ctrl-z` | Suspend the TUI to the shell; `fg` brings it back |
 
 Pasted text types into the focused text field. With no field focused, the
-TUI drops it, so a paste never runs as shortcuts.
+TUI drops it, so a paste never runs as shortcuts. In terminals that support
+the kitty keyboard protocol, `Esc` also acts at once instead of waiting to
+see whether it starts an `Alt` key; every key works without it.
 
 ## Mail list
 

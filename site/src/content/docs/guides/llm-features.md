@@ -401,9 +401,11 @@ must be no subject line, preamble, repeated sign-off or run of the thread
 copied back. The output counts how many drafts passed each check. Each draft
 also gets a style score, which is reported and not graded.
 
-Both sets call your LLM once per case and save nothing. `--set quick` takes a
-while on a slow local model. Use `--format jsonl` for one line per case, and
-run either again after changing models to compare.
+Both sets save nothing. Each case starts with one LLM call. A draft that hits
+the token limit is retried with more room, so a case can make more than one
+call, and each retry adds to the time and any model charges. `--set quick`
+takes a while on a slow local model. Use `--format jsonl` for one line per
+case, and run either again after changing models to compare.
 
 ### See where a draft came from
 

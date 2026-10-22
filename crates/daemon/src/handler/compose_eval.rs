@@ -5,6 +5,7 @@
 //! pass does not run, so the numbers are the draft pass alone.
 
 use super::compose_corpus;
+use super::diagnostics_impl::emit_operation_event;
 use super::draft_compose::complete_with_retry;
 use super::draft_output;
 use super::draft_provenance::DraftPolicy;
@@ -14,13 +15,17 @@ use crate::state::AppState;
 use mxr_composer::check::Check;
 use mxr_llm::{LlmFeature, PinnedLlm};
 use mxr_protocol::{
-    DraftEvalCheckCountData, DraftEvalCheckData, DraftEvalQuickCaseData, DraftEvalQuickSummaryData,
-    ResponseData,
+    DaemonEvent, DraftEvalCheckCountData, DraftEvalCheckData, DraftEvalQuickCaseData,
+    DraftEvalQuickSummaryData, ResponseData,
 };
 use mxr_provider_fake::fixtures::compose;
 
 const NO_MODEL: &str = "Draft eval --set quick needs a model: no model is set up for drafting. \
 Configure one under [llm], then run it again. `--set mine` also needs a model.";
+
+/// The operation name on each progress event, so a client can tell this run's
+/// events from any other operation's.
+pub(crate) const PROGRESS_OPERATION: &str = "draft-eval-quick";
 
 pub(super) async fn quick(state: &AppState) -> HandlerResult {
     let policy = DraftPolicy::pin(state, LlmFeature::DraftAssist);
@@ -35,8 +40,23 @@ pub(super) async fn quick(state: &AppState) -> HandlerResult {
     let today = draft_voice::today();
     let mut model = String::new();
     let mut cases = Vec::new();
-    for case in compose::cases() {
+    let total = u32::try_from(compose::cases().count()).unwrap_or(u32::MAX);
+    let operation_id = uuid::Uuid::now_v7().to_string();
+    for (index, case) in compose::cases().enumerate() {
         cases.push(draft_case(&policy.llm, case, &today, &mut model).await);
+        // One event per case, after its draft is graded, so a client can show
+        // progress through a run that takes minutes.
+        emit_operation_event(
+            state,
+            DaemonEvent::OperationProgress {
+                operation_id: operation_id.clone(),
+                operation: PROGRESS_OPERATION.to_string(),
+                account_id: None,
+                current: u32::try_from(index + 1).unwrap_or(u32::MAX),
+                total: Some(total),
+                message: case.id.to_string(),
+            },
+        );
     }
     let summary = summarise(&cases, model);
     Ok(ResponseData::DraftEvalQuick { cases, summary })

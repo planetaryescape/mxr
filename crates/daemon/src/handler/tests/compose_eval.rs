@@ -256,3 +256,33 @@ async fn quick_without_a_model_says_one_is_needed() {
     let error = quick(&state).await.unwrap_err();
     assert!(error.to_string().contains("needs a model"), "{error}");
 }
+
+#[tokio::test]
+async fn the_quick_set_reports_progress_once_per_case_in_order() {
+    let state = AppState::in_memory().await.unwrap();
+    state.llm.replace(Arc::new(Scripted::default()));
+    let mut events = state.event_tx.subscribe();
+    quick(&state).await.unwrap();
+
+    let mut progress = Vec::new();
+    while let Ok(message) = events.try_recv() {
+        if let mxr_protocol::IpcPayload::Event(mxr_protocol::DaemonEvent::OperationProgress {
+            operation,
+            current,
+            total,
+            message,
+            ..
+        }) = message.payload
+        {
+            progress.push((operation, current, total, message));
+        }
+    }
+    let ids: Vec<&str> = compose::cases().map(|case| case.id).collect();
+    assert_eq!(progress.len(), ids.len(), "one event per case");
+    for (index, (operation, current, total, id)) in progress.iter().enumerate() {
+        assert_eq!(operation, "draft-eval-quick");
+        assert_eq!(*current as usize, index + 1);
+        assert_eq!(*total, Some(ids.len() as u32));
+        assert_eq!(id, ids[index]);
+    }
+}

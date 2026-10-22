@@ -25,7 +25,7 @@ mod codes;
 mod commitments;
 mod commitments_extract;
 mod compose_corpus;
-mod compose_eval;
+pub(crate) mod compose_eval;
 mod conversation_shape;
 mod decisions_extract;
 pub(crate) mod deferral;

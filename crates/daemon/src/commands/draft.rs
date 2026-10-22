@@ -3,6 +3,7 @@ use crate::commands::draft_output::{
     draft_suggestion_json, eprint_draft_notes, length_data, register_data, DraftSuggestionView,
 };
 use crate::commands::resolve_account;
+use crate::handler::compose_eval::PROGRESS_OPERATION;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_core::id::DraftId;
@@ -68,9 +69,26 @@ pub async fn run(
                 // take minutes: it takes the no-deadline path that long
                 // operations use (`request_with_events`, which passes no
                 // timeout). It is its own request, so a daemon that predates it
-                // rejects it rather than replaying the user's mail.
+                // rejects it rather than replaying the user's mail. Progress
+                // goes to stderr, so stdout stays clean JSON.
                 let resp = client
-                    .request_with_events(Request::DraftEvalQuick, |_| {})
+                    .request_with_events(Request::DraftEvalQuick, |event| {
+                        if let DaemonEvent::OperationProgress {
+                            operation,
+                            current,
+                            total,
+                            message,
+                            ..
+                        } = event
+                        {
+                            if operation == PROGRESS_OPERATION {
+                                eprintln!(
+                                    "drafted {current}/{} · {message}",
+                                    total.unwrap_or(current)
+                                );
+                            }
+                        }
+                    })
                     .await?;
                 match resp {
                     Response::Ok {

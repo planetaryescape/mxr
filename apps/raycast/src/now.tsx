@@ -4,6 +4,7 @@ import { useState } from "react";
 import { getNow, markDone, tickOffTodo } from "./bridge/modes";
 import type { NowData } from "./bridge/types";
 import { AccountDropdown } from "./components/AccountDropdown";
+import { useAccountBadge } from "./components/accountBadge";
 import { useLiveRefresh } from "./components/live";
 import { SearchSection, useMailSearch } from "./components/MailRow";
 import { ReplyForm } from "./components/ReplyForm";
@@ -18,6 +19,7 @@ export default function Now() {
   const { data, isLoading, revalidate } = useCachedPromise(getNow, [account], {
     keepPreviousData: true,
   });
+  const badge = useAccountBadge(account);
   useLiveRefresh(revalidate);
   const search = useMailSearch(account);
   const { keep } = search;
@@ -56,7 +58,7 @@ export default function Now() {
               icon={row.overdue ? { source: Icon.Clock, tintColor: Color.Orange } : Icon.Person}
               title={row.counterparty_name ?? row.counterparty_email}
               subtitle={row.subject}
-              accessories={[{ text: why }, arrival(row.since)]}
+              accessories={[...badge(row.account_id), { text: why }, arrival(row.since)]}
               actions={
                 <ActionPanel>
                   <ReadAction
@@ -114,7 +116,7 @@ export default function Now() {
               icon={todo.overdue ? { source: Icon.Alarm, tintColor: Color.Red } : Icon.Circle}
               title={todo.title}
               subtitle={todo.when_label ?? undefined}
-              accessories={[{ text: why }]}
+              accessories={[...badge(todo.account_id), { text: why }]}
               actions={
                 <ActionPanel>
                   {open(web.todo(todo.id))}
@@ -166,7 +168,7 @@ export default function Now() {
               icon={Icon.Book}
               title={now.reading.subject}
               subtitle={now.reading.sender_name ?? now.reading.sender_email}
-              accessories={[{ text: now.reading.why }]}
+              accessories={[...badge(now.reading.account_id), { text: now.reading.why }]}
               actions={
                 <ActionPanel>
                   <ReadAction
@@ -195,7 +197,7 @@ export default function Now() {
             ))}
         </List.Section>
       )}
-      <SearchSection search={search} onChange={revalidate} />
+      <SearchSection search={search} badge={badge} onChange={revalidate} />
     </List>
   );
 }

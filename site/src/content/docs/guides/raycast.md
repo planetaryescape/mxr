@@ -74,7 +74,10 @@ open a moment; Mark as Unread (⌘⇧U) puts it back. Reply (⌘R), Reply All
 ## Search and filter by account
 
 Every command has an account filter in the search bar; press ⌘P to open it.
-Each command remembers its choice, and All Accounts is the default.
+Each command remembers its choice, and All Accounts is the default. While a
+list covers every account, each row carries a coloured tag with the account's
+short name (its key in the config, such as `work`); the tooltip has the
+address.
 
 Typing in a mode command does two things. It narrows that mode's own rows,
 and below them, under All Mail, it lists every conversation in the mailbox

@@ -3,6 +3,7 @@ import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import { getRecords } from "./bridge/modes";
 import { AccountDropdown } from "./components/AccountDropdown";
+import { useAccountBadge } from "./components/accountBadge";
 import { useLiveRefresh } from "./components/live";
 import { SearchSection, useMailSearch } from "./components/MailRow";
 import { ReadAction } from "./components/ThreadDetail";
@@ -14,6 +15,7 @@ export default function Archive() {
   const { data, isLoading, revalidate } = useCachedPromise(getRecords, [account], {
     keepPreviousData: true,
   });
+  const badge = useAccountBadge(account);
   useLiveRefresh(revalidate);
   const webBase = useWebBase();
   const search = useMailSearch(account);
@@ -44,6 +46,7 @@ export default function Archive() {
               title={record.issuer ?? record.kind_label}
               subtitle={record.detail_line ?? record.reference ?? undefined}
               accessories={[
+                ...badge(record.account_id),
                 { tag: record.kind_label },
                 ...(record.date ? [arrival(record.date)] : []),
               ]}
@@ -71,7 +74,7 @@ export default function Archive() {
             />
           ))}
       </List.Section>
-      <SearchSection search={search} onChange={revalidate} />
+      <SearchSection search={search} badge={badge} onChange={revalidate} />
     </List>
   );
 }

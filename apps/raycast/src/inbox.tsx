@@ -3,6 +3,7 @@ import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import { PAGE_SIZE, getInbox, searchMail } from "./bridge/mail";
 import { AccountDropdown } from "./components/AccountDropdown";
+import { useAccountBadge } from "./components/accountBadge";
 import { useLiveRefresh } from "./components/live";
 import { MailRowItem } from "./components/MailRow";
 import { web } from "./components/web";
@@ -32,6 +33,7 @@ export default function Inbox() {
   );
   // A conversation can land on two pages when mail arrives between them.
   const rows = [...new Map((data ?? []).map((row) => [row.thread_id, row])).values()];
+  const badge = useAccountBadge(account);
   useLiveRefresh(revalidate, (data?.length ?? 0) <= PAGE_SIZE);
 
   return (
@@ -56,6 +58,7 @@ export default function Inbox() {
           <MailRowItem
             key={row.thread_id}
             row={row}
+            badge={badge(row.account_id)}
             webPath={q ? web.search(row.thread_id) : web.inbox(row.thread_id)}
             onChange={revalidate}
           />

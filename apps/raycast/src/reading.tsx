@@ -4,6 +4,7 @@ import { useState } from "react";
 import { getReading, markDone, saveForLater } from "./bridge/modes";
 import type { ReadingItem } from "./bridge/types";
 import { AccountDropdown } from "./components/AccountDropdown";
+import { useAccountBadge } from "./components/accountBadge";
 import { useLiveRefresh } from "./components/live";
 import { SearchSection, useMailSearch } from "./components/MailRow";
 import { ReadAction } from "./components/ThreadDetail";
@@ -27,6 +28,7 @@ export default function Reading() {
       title={entry.title}
       subtitle={entry.source}
       accessories={[
+        ...badge(entry.account_id),
         ...(entry.fades ? [{ text: entry.fades }] : []),
         { text: `${entry.minutes} min`, tooltip: entry.why },
       ]}
@@ -86,6 +88,7 @@ export default function Reading() {
       }
     />
   );
+  const badge = useAccountBadge(account);
   useLiveRefresh(revalidate);
 
   return (
@@ -107,7 +110,7 @@ export default function Reading() {
       <List.Section title="Later" subtitle={data ? String(data.later_count) : undefined}>
         {shown(data?.later).map((entry) => item(entry, "later"))}
       </List.Section>
-      <SearchSection search={search} onChange={revalidate} />
+      <SearchSection search={search} badge={badge} onChange={revalidate} />
     </List>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { getTodo, tickOffTodo } from "./bridge/modes";
 import type { Todo } from "./bridge/types";
 import { AccountDropdown } from "./components/AccountDropdown";
+import { useAccountBadge } from "./components/accountBadge";
 import { useLiveRefresh } from "./components/live";
 import { SearchSection, useMailSearch } from "./components/MailRow";
 import { ReadAction } from "./components/ThreadDetail";
@@ -26,7 +27,10 @@ export default function TodoCommand() {
       icon={todo.overdue ? { source: Icon.Alarm, tintColor: Color.Red } : Icon.Circle}
       title={todo.title}
       subtitle={todo.counterparty ?? undefined}
-      accessories={[{ text: todo.when_label ?? undefined, tooltip: todo.why ?? undefined }]}
+      accessories={[
+        ...badge(todo.account_id),
+        { text: todo.when_label ?? undefined, tooltip: todo.why ?? undefined },
+      ]}
       actions={
         <ActionPanel>
           <Action
@@ -72,6 +76,7 @@ export default function TodoCommand() {
       }
     />
   );
+  const badge = useAccountBadge(account);
   useLiveRefresh(revalidate);
 
   return (
@@ -95,7 +100,7 @@ export default function TodoCommand() {
       ))}
       <List.Section title="Whenever">{shown(data?.whenever).map(item)}</List.Section>
       <List.Section title="Later">{shown(data?.later).map(item)}</List.Section>
-      <SearchSection search={search} onChange={revalidate} />
+      <SearchSection search={search} badge={badge} onChange={revalidate} />
     </List>
   );
 }

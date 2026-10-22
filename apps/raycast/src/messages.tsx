@@ -4,6 +4,7 @@ import { useState } from "react";
 import { getMessages, markDone } from "./bridge/modes";
 import type { MessagesRow } from "./bridge/types";
 import { AccountDropdown } from "./components/AccountDropdown";
+import { useAccountBadge } from "./components/accountBadge";
 import { useLiveRefresh } from "./components/live";
 import { SearchSection, useMailSearch } from "./components/MailRow";
 import { ReplyForm } from "./components/ReplyForm";
@@ -17,6 +18,7 @@ export default function Messages() {
   const { data, isLoading, revalidate } = useCachedPromise(getMessages, [account], {
     keepPreviousData: true,
   });
+  const badge = useAccountBadge(account);
   useLiveRefresh(revalidate);
   const webBase = useWebBase();
   const search = useMailSearch(account);
@@ -45,6 +47,7 @@ export default function Messages() {
         title={row.title}
         subtitle={topic?.subject}
         accessories={[
+          ...badge(row.account_id),
           ...(row.unread
             ? [{ icon: { source: Icon.Dot, tintColor: Color.Blue }, tooltip: "Unread" }]
             : []),
@@ -149,7 +152,7 @@ export default function Messages() {
       <List.Section title="Quiet" subtitle={data ? String(data.quiet_total) : undefined}>
         {shown(data?.quiet).map((row) => item(row, "quiet"))}
       </List.Section>
-      <SearchSection search={search} onChange={revalidate} />
+      <SearchSection search={search} badge={badge} onChange={revalidate} />
     </List>
   );
 }

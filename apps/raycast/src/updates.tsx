@@ -4,6 +4,7 @@ import { useState } from "react";
 import { getUpdates, letGoDigest, markDone } from "./bridge/modes";
 import type { UpdateLine, UpdatesDigest } from "./bridge/types";
 import { AccountDropdown } from "./components/AccountDropdown";
+import { useAccountBadge } from "./components/accountBadge";
 import { useLiveRefresh } from "./components/live";
 import { SearchSection, useMailSearch } from "./components/MailRow";
 import { ReadAction } from "./components/ThreadDetail";
@@ -41,6 +42,7 @@ export default function Updates() {
       title={line.source_name}
       subtitle={line.fact}
       accessories={[
+        ...badge(line.account_id),
         ...(line.count > 1 ? [{ text: `${line.count}` }] : []),
         arrival(line.latest_at),
       ]}
@@ -94,6 +96,7 @@ export default function Updates() {
       }
     />
   );
+  const badge = useAccountBadge(account);
   useLiveRefresh(revalidate);
 
   return (
@@ -116,7 +119,7 @@ export default function Updates() {
       <List.Section title="Routine">
         {shown(data?.routine).map((line) => item(line, false))}
       </List.Section>
-      <SearchSection search={search} onChange={revalidate} />
+      <SearchSection search={search} badge={badge} onChange={revalidate} />
     </List>
   );
 }

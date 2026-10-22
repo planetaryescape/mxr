@@ -1,4 +1,5 @@
 import { Action, ActionPanel, Color, Icon, Keyboard, List } from "@raycast/api";
+import type { useAccountBadge } from "./accountBadge";
 import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import { type MailRow, searchMail } from "../bridge/mail";
@@ -14,9 +15,12 @@ const MIN_QUERY = 2;
 export function MailRowItem({
   row,
   webPath,
+  badge = [],
   onChange,
 }: {
   row: MailRow;
+  /** The account tag, from `useAccountBadge`. */
+  badge?: List.Item.Accessory[];
   /** Where Open in mxr goes; the search page by default. */
   webPath?: string;
   onChange?: () => void;
@@ -32,6 +36,7 @@ export function MailRowItem({
       subtitle={row.subject}
       keywords={[row.sender_detail ?? "", row.snippet]}
       accessories={[
+        ...badge,
         ...(row.starred
           ? [{ icon: { source: Icon.Star, tintColor: Color.Yellow }, tooltip: "Starred" }]
           : []),
@@ -108,9 +113,11 @@ export function useMailSearch(account: string | undefined) {
 /** "All Mail": what mxr's search found, below a mode's own matches. */
 export function SearchSection({
   search,
+  badge,
   onChange,
 }: {
   search: ReturnType<typeof useMailSearch>;
+  badge: ReturnType<typeof useAccountBadge>;
   onChange?: () => void;
 }) {
   if (!search.searching) return null;
@@ -120,7 +127,12 @@ export function SearchSection({
       subtitle={search.total === undefined ? undefined : `${search.total} found`}
     >
       {search.results.map((row) => (
-        <MailRowItem key={`search-${row.thread_id}`} row={row} onChange={onChange} />
+        <MailRowItem
+          key={`search-${row.thread_id}`}
+          row={row}
+          badge={badge(row.account_id)}
+          onChange={onChange}
+        />
       ))}
     </List.Section>
   );

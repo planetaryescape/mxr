@@ -6,6 +6,10 @@
 # TUI still dispatches from its own code; `cargo test -p mxr-keymap` fails when
 # this file and `docs/reference/tui-keymap.json` or the web registry disagree.
 
+# Global navigation and shell. Chords follow the TUI's live key handler
+# (crates/tui/src/input.rs): g + letter for views, digits for the TUI's tabs.
+# Web-only destinations use letters the TUI leaves free, and every deliberate
+# difference carries a `note` that help displays.
 [[action]]
 id = "shell.command-palette"
 label = "Command palette"
@@ -75,6 +79,7 @@ name = "UndoLastMutation"
 keys = ["u"]
 contexts = ["list", "reader", "place", "todo", "now", "messages", "archive", "reading", "updates"]
 
+# Now and the modes, in rail order. g + letter, as in the TUI.
 [[action]]
 id = "nav.now"
 label = "Go to Now"
@@ -107,6 +112,7 @@ label = "Go to Updates"
 description = "Notifications gathered twice a day: read the digest, then let go"
 group = "Navigate"
 scopes = ["global"]
+# g p opened Paper trail, which is Updates now (blueprint 22).
 keys = ["g u", "g p"]
 retired_keys = ["g P"]
 
@@ -278,6 +284,7 @@ name = "EditConfig"
 keys = ["g c"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
 
+# Web-only views, on letters the TUI does not use.
 [[action]]
 id = "nav.snoozed"
 label = "Go to Snoozed"
@@ -302,6 +309,7 @@ scopes = ["global"]
 keys = ["g !"]
 note = "Web only"
 
+# Triage views. The same chords open the TUI's lenses and modals.
 [[action]]
 id = "nav.reply-queue"
 label = "Reply later"
@@ -345,6 +353,8 @@ description = "Newsletters you chose, as an edition; nothing here is owed"
 group = "Triage"
 scopes = ["global"]
 keys = ["g r"]
+# The web used g R and g P up to 0.6.40, while g r opened Rules.
+# Drop these retired aliases after 0.6.41.
 retired_keys = ["g R"]
 
 [[action.tui]]
@@ -352,6 +362,7 @@ name = "OpenReading"
 keys = ["g r"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "now", "messages", "archive", "reading", "updates"]
 
+# g u opens Updates now; Subscriptions lives under More and the palette.
 [[action]]
 id = "nav.subscriptions"
 label = "Subscriptions"
@@ -378,6 +389,7 @@ group = "Diagnostics"
 scopes = ["global"]
 palette_only = true
 
+# Tabs. 1 to 7 match the TUI's tab bar.
 [[action]]
 id = "nav.tab-mail"
 label = "Mail"
@@ -677,6 +689,8 @@ group = "Compose"
 scopes = ["global"]
 palette_only = true
 
+# Mail verbs. Keys match the TUI's live mail-action handler
+# (crates/tui/src/app/input.rs), bound in both the list and the reader.
 [[action]]
 id = "mail.archive"
 label = "Archive"
@@ -1560,6 +1574,7 @@ label = "Expand or collapse all"
 short_label = "Expand all"
 group = "Read"
 scopes = ["reader"]
+# ";" as in Gmail: X moves the email to another mode (blueprint 22).
 keys = [";"]
 hide_in_palette = true
 note = "Web only"
@@ -1752,6 +1767,8 @@ name = "ToggleFullscreen"
 keys = ["F"]
 contexts = ["list", "reader", "sidebar", "place"]
 
+# The lit row's choice is a number (1 Allow, 2 Deny, 3 Feed, 4 Paper trail),
+# like a new sender's; the TUI modal's letters answer the same way.
 [[action]]
 id = "screener.allow"
 label = "Allow sender"
@@ -1832,6 +1849,7 @@ label = "Focus & reply"
 description = "Reply to everyone waiting on you, one conversation at a time"
 group = "Compose"
 scopes = ["global"]
+# The TUI leaves g+F free; lower-case f is forward.
 keys = ["g F"]
 note = "F in the TUI's reply queue"
 
@@ -1968,6 +1986,7 @@ name = "TogglePin"
 keys = ["p"]
 contexts = ["place"]
 
+# S and A, as in the TUI: s means star in every mail list.
 [[action]]
 id = "place.sweep-bundle"
 label = "Sweep this sender's bundle…"
@@ -2089,6 +2108,7 @@ label = "Done"
 short_label = "Done"
 group = "Triage"
 scopes = ["todo"]
+# Space follows checkbox convention; the e alias matches the TUI.
 keys = ["Space", "e"]
 
 [[action.tui]]

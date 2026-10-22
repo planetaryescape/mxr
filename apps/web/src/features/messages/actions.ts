@@ -9,70 +9,26 @@
 import { Check, Clock, MessageSquarePlus, Pin, Reply, ReplyAll, ThumbsUp } from "lucide-react";
 
 import { newSenderActions } from "@/features/modes/newSenderActions";
-import type { Action, CommandAction } from "@/lib/actions/types";
+import type { ActionBehavior } from "@/lib/actions/types";
 
-function key(
-  id: string,
-  command: string,
-  label: string,
-  shortcut: string,
-  extra: Partial<Omit<CommandAction, "id" | "command" | "run">> = {},
-): CommandAction {
-  return { id, command, label, shortcut, group: "Triage", scopes: ["messages"], ...extra };
-}
-
-export const messagesActions: Action[] = [
-  key("messages.down", "down", "Next person", "j", {
-    group: "Move",
-    aliases: ["ArrowDown"],
-    hideInPalette: true,
-  }),
-  key("messages.up", "up", "Previous person", "k", {
-    group: "Move",
-    aliases: ["ArrowUp"],
-    hideInPalette: true,
-  }),
-  key("messages.open", "open", "Open the person", "Enter", { shortLabel: "Open", group: "Move" }),
-  key("messages.reply", "reply", "Reply", "r", { shortLabel: "Reply", icon: Reply }),
-  key("messages.reply-all", "replyAll", "Reply all", "a", {
-    shortLabel: "Reply all",
-    icon: ReplyAll,
-  }),
-  key("messages.got-it", "gotIt", "Got it: a short thanks, after a countdown", ".", {
-    shortLabel: "Got it",
-    icon: ThumbsUp,
-    tuiNote: "Shows the exact text and counts down; u cancels before it sends",
-  }),
-  key("messages.done", "done", "Done here", "e", { shortLabel: "Done here", icon: Check }),
-  key("messages.to-do", "makeTodo", "Make it a to-do…", "t", { shortLabel: "To do" }),
-  key("messages.reply-later", "replyLater", "Reply later…", "b", {
-    shortLabel: "Reply later",
-    icon: Clock,
-  }),
-  key("messages.pin", "pin", "Pin or unpin this person", "s", { shortLabel: "Pin", icon: Pin }),
-  key("messages.new-topic", "newTopic", "New topic with this person", "c", {
-    shortLabel: "New topic",
-    icon: MessageSquarePlus,
-  }),
-  key("messages.prev-topic", "prevTopic", "Previous topic", "[", { group: "Move" }),
-  key("messages.next-topic", "nextTopic", "Next topic", "]", { group: "Move" }),
-  key("messages.person-page", "personPage", "Go to the person page", "p", { group: "Move" }),
-  key("messages.as-sent", "asSent", "Show the message as sent", "o", {
-    shortLabel: "As sent",
-    aliases: ["v"],
-  }),
-  key(
-    "messages.send-next",
-    "sendNext",
-    "Send, then the next person whose turn it is",
-    "Mod+Enter",
-    {
-      shortLabel: "Send, next",
-    },
-  ),
-  key("messages.escape", "escape", "Dismiss the hint, or back to the people", "Escape", {
-    hideInPalette: true,
-  }),
+export const messagesActions: ActionBehavior[] = [
+  { id: "messages.down", command: "down" },
+  { id: "messages.up", command: "up" },
+  { id: "messages.open", command: "open" },
+  { id: "messages.reply", command: "reply", icon: Reply },
+  { id: "messages.reply-all", command: "replyAll", icon: ReplyAll },
+  { id: "messages.got-it", command: "gotIt", icon: ThumbsUp },
+  { id: "messages.done", command: "done", icon: Check },
+  { id: "messages.to-do", command: "makeTodo" },
+  { id: "messages.reply-later", command: "replyLater", icon: Clock },
+  { id: "messages.pin", command: "pin", icon: Pin },
+  { id: "messages.new-topic", command: "newTopic", icon: MessageSquarePlus },
+  { id: "messages.prev-topic", command: "prevTopic" },
+  { id: "messages.next-topic", command: "nextTopic" },
+  { id: "messages.person-page", command: "personPage" },
+  { id: "messages.as-sent", command: "asSent" },
+  { id: "messages.send-next", command: "sendNext" },
+  { id: "messages.escape", command: "escape" },
   // Last, so the status strip (first five live keys) keeps the page's own verbs.
   ...newSenderActions("messages"),
 ];

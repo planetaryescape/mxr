@@ -3,8 +3,9 @@
 /*
  * The web registry against mxr's one key definition (`crates/keymap/keymap.toml`,
  * blueprint chapter 35). `keymap.generated.json` is written from it by
- * `UPDATE_KEYMAP=1 cargo test -p mxr-keymap`. Until the registry reads its keys
- * from that file, a key changed here must be changed there too.
+ * `UPDATE_KEYMAP=1 cargo test -p mxr-keymap`, and the registry is built from
+ * that file (`fromDefinition`), so this guards the merge: every web action in
+ * the definition has a behaviour, and nothing is lost or changed on the way.
  */
 
 import { describe, expect, test } from "vitest";

@@ -7,7 +7,7 @@ import { toast } from "sonner";
 
 import { listCommitments } from "@/features/mailbox/api";
 import { getActiveQueryClient } from "@/lib/queryClient";
-import type { Action } from "@/lib/actions/types";
+import type { ActionBehavior } from "@/lib/actions/types";
 import { useModals } from "@/state/modalStore";
 
 interface AccountSnapshot {
@@ -32,14 +32,10 @@ function closePalette(): void {
   useModals.getState().setCommandPaletteOpen(false);
 }
 
-export const composeActions: Action[] = [
+export const composeActions: ActionBehavior[] = [
   {
     id: "compose.draft-to",
-    label: "Draft to...",
-    description: "Pick a recipient, then use Draft for me",
-    group: "Compose",
     icon: Mail,
-    paletteOnly: true,
     run: () => {
       closePalette();
       useModals.getState().setComposeLauncherOpen(true);
@@ -47,11 +43,7 @@ export const composeActions: Action[] = [
   },
   {
     id: "compose.show-commitments",
-    label: "Show commitments...",
-    description: "Open unresolved relationship commitments",
-    group: "Compose",
     icon: FileText,
-    paletteOnly: true,
     run: () => {
       closePalette();
       const accountId = defaultAccountId();

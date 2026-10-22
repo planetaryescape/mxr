@@ -1,7 +1,6 @@
 /*
- * Mail verbs on the keyboard. Keys match the TUI's live mail-action handler
- * (crates/tui/src/app/input.rs), bound in both the list and the reader;
- * each view's controller decides what "the target" is.
+ * Mail verbs on the keyboard, bound in both the list and the reader; each
+ * view's controller decides what "the target" is.
  */
 
 import {
@@ -32,91 +31,38 @@ import {
   CornerDownRight,
 } from "lucide-react";
 
-import type { Action, ActionScope } from "@/lib/actions/types";
+import type { ActionBehavior } from "@/lib/actions/types";
 
-const BOTH: ActionScope[] = ["list", "reader"];
-
-function verb(
-  id: string,
-  command: string,
-  label: string,
-  shortcut: string,
-  extra: Partial<Omit<Action, "id" | "command" | "run">> = {},
-): Action {
-  return { id, command, label, shortcut, group: "Mail", scopes: BOTH, ...extra } as Action;
-}
-
-export const mailVerbActions: Action[] = [
-  verb("mail.archive", "archive", "Archive", "e", { icon: Archive }),
-  verb("mail.read-archive", "readArchive", "Mark read and archive", "m", {
-    icon: MailCheck,
-    tuiNote: "Same as the TUI; read/unread are I and U",
-  }),
-  verb("mail.trash", "trash", "Move to Trash", "#", {
-    icon: Trash2,
-    aliases: ["Delete", "Backspace"],
-  }),
-  verb("mail.spam", "spam", "Mark as spam", "!", { icon: ShieldAlert }),
-  verb("mail.star", "toggleStar", "Star or unstar", "s", { icon: Star }),
-  verb("mail.mark-read", "markRead", "Mark read", "I", { icon: MailOpen }),
-  verb("mail.mark-unread", "markUnread", "Mark unread", "U", { icon: Mail }),
-  verb("mail.label", "label", "Labels…", "l", { icon: Tag }),
-  verb("mail.move", "move", "Move to label…", "v", { icon: ArrowRightCircle }),
-  verb("mail.snooze", "snooze", "Snooze…", "Z", { icon: Clock }),
-  verb("mail.unsubscribe", "unsubscribe", "Unsubscribe…", "D", { icon: MailX }),
-  verb("mail.reply-later", "replyLater", "Reply later…", "b", { icon: CornerDownRight }),
-  verb("mail.make-todo", "makeTodo", "Make a to-do from this", "t", {
-    icon: ListTodo,
-    shortLabel: "To-do",
-    description: "Add it to To do as one line: what to do, and when",
-  }),
-  verb("mail.pass-to-mode", "passToMode", "Pass to a mode…", "T", {
-    icon: FolderArchive,
-    shortLabel: "Pass to",
-    description: "File it in Archive as a record, after a preview of the card",
-  }),
-  verb("mail.reply", "reply", "Reply", "r", { icon: Reply, group: "Compose" }),
-  verb("mail.reply-all", "replyAll", "Reply all", "a", { icon: ReplyAll, group: "Compose" }),
-  verb("mail.forward", "forward", "Forward", "f", { icon: Forward, group: "Compose" }),
-  verb("mail.export", "exportThread", "Export as Markdown", "E", { icon: Download }),
-  verb("mail.briefing", "briefing", "Thread briefing", "B", { icon: FileText }),
-  verb("mail.whois", "whois", "Who is this sender?", "W", { icon: UserSearch }),
-  verb("mail.sender-profile", "senderProfile", "Sender profile", "p", { icon: UserRound }),
-  verb("mail.links", "links", "Links in this message", "L", { icon: LinkIcon }),
-  verb("mail.attachments", "attachments", "Attachments", "A", { icon: Paperclip }),
-  verb("invite.accept", "inviteAccept", "Accept invite", "i a", {
-    icon: CalendarCheck,
-    group: "Triage",
-  }),
-  verb("invite.tentative", "inviteTentative", "Maybe (invite)", "i m", { group: "Triage" }),
-  verb("invite.decline", "inviteDecline", "Decline invite", "i d", {
-    icon: CalendarX,
-    group: "Triage",
-  }),
-  verb("invite.accept-comment", "inviteAcceptComment", "Accept with comment", "i A", {
-    group: "Triage",
-  }),
-  verb("invite.tentative-comment", "inviteTentativeComment", "Maybe with comment", "i M", {
-    group: "Triage",
-  }),
-  verb("invite.decline-comment", "inviteDeclineComment", "Decline with comment", "i D", {
-    group: "Triage",
-  }),
-  {
-    id: "mail.cancel-reminder",
-    command: "cancelReminder",
-    label: "Cancel no-reply reminder",
-    description: "Stop the follow-up reminder set when this message was sent",
-    group: "Mail",
-    scopes: BOTH,
-    paletteOnly: true,
-  },
-  {
-    id: "mail.compose-to-sender",
-    command: "composeToSender",
-    label: "Write to sender",
-    group: "Compose",
-    scopes: BOTH,
-    paletteOnly: true,
-  },
+export const mailVerbActions: ActionBehavior[] = [
+  { id: "mail.archive", command: "archive", icon: Archive },
+  { id: "mail.read-archive", command: "readArchive", icon: MailCheck },
+  { id: "mail.trash", command: "trash", icon: Trash2 },
+  { id: "mail.spam", command: "spam", icon: ShieldAlert },
+  { id: "mail.star", command: "toggleStar", icon: Star },
+  { id: "mail.mark-read", command: "markRead", icon: MailOpen },
+  { id: "mail.mark-unread", command: "markUnread", icon: Mail },
+  { id: "mail.label", command: "label", icon: Tag },
+  { id: "mail.move", command: "move", icon: ArrowRightCircle },
+  { id: "mail.snooze", command: "snooze", icon: Clock },
+  { id: "mail.unsubscribe", command: "unsubscribe", icon: MailX },
+  { id: "mail.reply-later", command: "replyLater", icon: CornerDownRight },
+  { id: "mail.make-todo", command: "makeTodo", icon: ListTodo },
+  { id: "mail.pass-to-mode", command: "passToMode", icon: FolderArchive },
+  { id: "mail.reply", command: "reply", icon: Reply },
+  { id: "mail.reply-all", command: "replyAll", icon: ReplyAll },
+  { id: "mail.forward", command: "forward", icon: Forward },
+  { id: "mail.export", command: "exportThread", icon: Download },
+  { id: "mail.briefing", command: "briefing", icon: FileText },
+  { id: "mail.whois", command: "whois", icon: UserSearch },
+  { id: "mail.sender-profile", command: "senderProfile", icon: UserRound },
+  { id: "mail.links", command: "links", icon: LinkIcon },
+  { id: "mail.attachments", command: "attachments", icon: Paperclip },
+  { id: "invite.accept", command: "inviteAccept", icon: CalendarCheck },
+  { id: "invite.tentative", command: "inviteTentative" },
+  { id: "invite.decline", command: "inviteDecline", icon: CalendarX },
+  { id: "invite.accept-comment", command: "inviteAcceptComment" },
+  { id: "invite.tentative-comment", command: "inviteTentativeComment" },
+  { id: "invite.decline-comment", command: "inviteDeclineComment" },
+  { id: "mail.cancel-reminder", command: "cancelReminder" },
+  { id: "mail.compose-to-sender", command: "composeToSender" },
 ];

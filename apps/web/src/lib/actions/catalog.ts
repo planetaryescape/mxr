@@ -1,6 +1,8 @@
 /*
- * Every action in the app, registered once. Feature modules export arrays;
- * importing the registry barrel registers them as a side effect.
+ * Every action in the app, registered once. Feature modules export what
+ * each action does; its label and keys come from the key definition
+ * (`fromDefinition`). Importing the registry barrel registers them as a
+ * side effect.
  */
 
 import { toast } from "sonner";
@@ -28,21 +30,18 @@ import { todoActions } from "@/features/todo/actions";
 import { updatesActions } from "@/features/updates/actions";
 import { getActiveQueryClient } from "@/lib/queryClient";
 
+import { fromDefinition } from "./definition";
 import { installActions } from "./installActions";
 import { navigationActions } from "./navigationActions";
 import { listActions, readerActions, sidebarActions } from "./paneActions";
 import { getRegistry } from "./registry";
 import { getRuntimeNavigate } from "./runtime";
 import { settingsActions } from "./settingsActions";
-import type { Action } from "./types";
+import type { ActionBehavior } from "./types";
 
 /** g 1 … g 9 open the Nth saved search, as in the TUI. */
-const savedSearchJumps: Action[] = Array.from({ length: 9 }, (_, index) => ({
+const savedSearchJumps: ActionBehavior[] = Array.from({ length: 9 }, (_, index) => ({
   id: `nav.saved-search-${index + 1}`,
-  label: `Saved search ${index + 1}`,
-  group: "Navigate" as const,
-  shortcut: `g ${index + 1}`,
-  hideInPalette: true,
   run: () => {
     const shell = getActiveQueryClient()?.getQueryData<ShellResponse>(["shell"]);
     const lens = savedSearchLenses(lensesFromShell(shell))[index];
@@ -54,7 +53,7 @@ const savedSearchJumps: Action[] = Array.from({ length: 9 }, (_, index) => ({
   },
 }));
 
-const featureActions: Action[] = [
+const featureActions: ActionBehavior[] = [
   ...navigationActions,
   ...savedSearchJumps,
   ...settingsActions,
@@ -87,7 +86,7 @@ let registered = false;
 
 export function ensureCatalogRegistered(): void {
   if (registered) return;
-  getRegistry().defineMany(featureActions);
+  getRegistry().defineMany(featureActions.map(fromDefinition));
   registered = true;
 }
 

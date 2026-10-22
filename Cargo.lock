@@ -4668,7 +4668,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-keymap"
-version = "0.6.142"
+version = "0.6.144"
 dependencies = [
  "serde",
  "serde_json",

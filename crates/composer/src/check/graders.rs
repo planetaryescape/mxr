@@ -164,39 +164,66 @@ pub(super) fn length(req: &Requirements<'_>, output: &Output<'_>) -> Grade {
 }
 
 /// A line of commentary about generating the reply: "Sure, here's a draft of
-/// your reply.", "Here is my reply:". It must open like commentary and name
-/// the reply, its draft or its version. A line that only mentions a draft
-/// document ("thanks for the draft roadmap") is part of the email.
+/// your reply.", "Here is the draft reply.", "Here is my reply:". It opens
+/// with a lead word, then says the reply is here, below, or drafted. The
+/// lead must end at a word boundary, and the commentary must be explicit: an
+/// ordinary email sentence such as "Sure, here is the deck you asked for"
+/// or "Sure, thanks for the draft roadmap" is part of the email.
 fn is_preamble(line: &str) -> bool {
-    let lower = line.to_lowercase();
+    // Models and keyboards differ on the apostrophe, so "Here’s" counts.
+    let lower = line.trim().to_lowercase().replace('\u{2019}', "'");
     let leads = [
         "sure",
         "here",
         "certainly",
         "of course",
         "okay",
-        "ok,",
+        "ok",
         "absolutely",
         "below",
         "alright",
     ];
-    let about_the_reply = [
-        "draft of your",
-        "draft reply",
-        "draft:",
-        "drafted",
+    let opens_with_lead = leads.iter().any(|lead| {
+        lower.strip_prefix(lead).is_some_and(|rest| {
+            rest.chars().next().is_none_or(|character| {
+                character.is_whitespace() || character.is_ascii_punctuation()
+            })
+        })
+    });
+    opens_with_lead && says_the_reply_is_here(&lower)
+}
+
+/// Commentary that names the reply or its draft: "here's a draft", "here is
+/// my reply", "below is the reply", or the fixed phrases below.
+fn says_the_reply_is_here(lower: &str) -> bool {
+    const INTRODUCERS: [&str; 3] = ["here's ", "here is ", "below is "];
+    const OBJECTS: [&str; 11] = [
+        "a draft",
+        "the draft",
+        "your draft",
+        "my draft",
+        "a reply",
+        "the reply",
         "your reply",
         "my reply",
-        "this reply",
-        "a reply",
-        "reply:",
+        "a version",
         "your version",
         "my version",
-    ]
-    .iter()
-    .any(|phrase| lower.contains(phrase))
-        || lower.trim_end_matches(['.', '!']).ends_with("a draft");
-    leads.iter().any(|lead| lower.starts_with(lead)) && about_the_reply
+    ];
+    const PHRASES: [&str; 5] = [
+        "draft reply",
+        "draft of your reply",
+        "draft:",
+        "reply:",
+        "your version:",
+    ];
+    let introduces_the_reply = INTRODUCERS.iter().any(|introducer| {
+        lower
+            .find(introducer)
+            .and_then(|at| lower.get(at + introducer.len()..))
+            .is_some_and(|rest| OBJECTS.iter().any(|object| rest.starts_with(object)))
+    });
+    introduces_the_reply || PHRASES.iter().any(|phrase| lower.contains(phrase))
 }
 
 /// What clean-up had to remove, what a sign-off repeated, and whether a
@@ -571,6 +598,41 @@ mod tests {
             "Sure, here's a draft.",
             "Here's the draft:",
         ] {
+            let text = format!("{line}\n\nHi Alex,\n\nFriday works.\n\nAlex");
+            assert_eq!(
+                run(&requirements, &text).passed(Check::Leftovers),
+                Some(false),
+                "{line}"
+            );
+        }
+    }
+
+    #[test]
+    fn ordinary_email_sentences_are_not_preambles() {
+        // The shapes a broad phrase match would have flagged: a lead word, then
+        // a phrase that also appears in email text.
+        let requirements = req("", &[], &[]);
+        for line in [
+            "Sure, here is the deck you asked for.",
+            "Here's the updated pricing sheet.",
+            "Sure, the reply is attached.",
+            "Below is the agenda for Monday.",
+            "Okayish, here's a draft.",
+            "Sure, thanks for the draft roadmap. I will read it properly on Monday.",
+        ] {
+            let text = format!("{line}\n\nAlex");
+            assert_eq!(
+                run(&requirements, &text).passed(Check::Leftovers),
+                Some(true),
+                "{line}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_draft_reply_or_curly_apostrophe_commentary_is_a_preamble() {
+        let requirements = req("", &[], &[]);
+        for line in ["Here’s your draft reply.", "Below is the draft reply:"] {
             let text = format!("{line}\n\nHi Alex,\n\nFriday works.\n\nAlex");
             assert_eq!(
                 run(&requirements, &text).passed(Check::Leftovers),

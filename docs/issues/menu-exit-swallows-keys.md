@@ -1,6 +1,11 @@
 # A closing menu swallows the next key
 
-Status: open. Found while adding the Updates row menu (feat/updates-reel).
+Status: fixed 2026-10-22 on `fix/keys-k2-web` (keyboard blueprint K2):
+`ownsKeyboard` treats a `[data-state="closed"][role="menu"]` like a closing
+dialog, covered by the Vitest case "a menu animating closed does not swallow
+keys" in `apps/web/src/lib/keys/dispatcher.test.ts`. The Playwright journey
+in `verbs.spec.ts` still waits for the menu to detach; dropping that wait is
+the live check. Found while adding the Updates row menu (feat/updates-reel).
 
 ## What happens
 

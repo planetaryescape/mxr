@@ -13,6 +13,7 @@ import { onBareKey, PENDING_CARD_ATTRIBUTE } from "./cardKeys";
 import { KeyChip } from "@/components/KeyChip";
 import { Row } from "@/components/Row";
 import { Button } from "@/components/ui/button";
+import { isComposingKey } from "@/lib/keys/composition";
 
 /** An answer being written: what is chosen and what is typed. */
 interface Draft {
@@ -249,7 +250,7 @@ function QuestionField({
                   })
                 }
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                  if (event.key === "Enter" && !isComposingKey(event)) {
                     event.preventDefault();
                     onSubmit();
                   }

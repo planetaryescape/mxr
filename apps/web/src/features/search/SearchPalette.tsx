@@ -9,6 +9,7 @@ import type { MessageRowView } from "@/features/mailbox/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { isComposingKey } from "@/lib/keys/composition";
 import { runReplaceableQuery } from "@/lib/requestCoordinator";
 import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
@@ -87,6 +88,7 @@ export function SearchPalette() {
   }
 
   function handleKeyDown(event: KeyboardEvent) {
+    if (isComposingKey(event)) return;
     if (event.key === "ArrowDown" || (event.ctrlKey && event.key.toLowerCase() === "j")) {
       event.preventDefault();
       event.stopPropagation();

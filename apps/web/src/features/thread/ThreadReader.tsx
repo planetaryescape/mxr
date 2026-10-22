@@ -419,7 +419,8 @@ export function ThreadReader({
   return (
     <article
       aria-label={`Conversation: ${data.thread.subject || "no subject"}`}
-      className="@container flex min-h-0 min-w-0 flex-1 flex-col border-l border-t border-border/70 bg-surface shadow-[inset_0_1px_0_rgb(255_255_255_/_0.06)]"
+      tabIndex={-1}
+      className="@container flex min-h-0 min-w-0 flex-1 flex-col border-l border-t border-border/70 bg-surface shadow-[inset_0_1px_0_rgb(255_255_255_/_0.06)] outline-none"
       data-active-pane={readerFocused ? "true" : undefined}
       onMouseDown={() => setActivePane("reader")}
     >

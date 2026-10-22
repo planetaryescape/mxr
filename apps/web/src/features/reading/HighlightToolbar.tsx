@@ -2,6 +2,7 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
+import { isComposingKey } from "@/lib/keys/composition";
 
 import type { ReadingHighlight } from "./api";
 import { paragraphOfRangeStart } from "./paragraphAnchor";
@@ -255,8 +256,8 @@ export function NoteComposer({
         onKeyDown={(event) => {
           // The reader's single-letter keys must not fire while typing.
           event.stopPropagation();
-          if (event.key === "Escape") onCancel();
-          if (event.key === "Enter" && !event.shiftKey) {
+          if (event.key === "Escape" && !isComposingKey(event)) onCancel();
+          if (event.key === "Enter" && !event.shiftKey && !isComposingKey(event)) {
             event.preventDefault();
             void save();
           }

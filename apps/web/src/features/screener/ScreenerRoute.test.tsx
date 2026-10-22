@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { getRegistry, snapshotActionContext } from "@/lib/actions";
 import { installKeyDispatcher } from "@/lib/keys/dispatcher";
+import { focusActivePane } from "@/lib/keys/focusPane";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import { ScreenerRoute } from "./ScreenerRoute";
@@ -149,6 +150,15 @@ describe("ScreenerRoute", () => {
         disposition: "allow",
       });
     });
+  });
+
+  test("focus returns to the queue when an overlay closes with nothing to return to", async () => {
+    renderWithQueryClient(<ScreenerRoute />);
+    expect(await screen.findByText("Unknown Sender")).toBeVisible();
+
+    focusActivePane();
+
+    expect(screen.getByRole("list", { name: "Screener queue" })).toHaveFocus();
   });
 
   test("j moves the cursor before deciding, and a failure is reported", async () => {

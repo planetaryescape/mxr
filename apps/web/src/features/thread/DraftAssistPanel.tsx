@@ -18,6 +18,7 @@ import { ToneControls } from "@/features/compose/ToneControls";
 import { replyWithBodyIntent, useComposeUi } from "@/features/compose/composeUiStore";
 import type { DraftLengthHint, VoiceRegister } from "@/features/compose/types";
 import { draftAssistThread, type DraftAssistResponse } from "@/features/mailbox/api";
+import { isComposingKey } from "@/lib/keys/composition";
 
 interface DraftAssistPanelProps {
   threadId: string;
@@ -75,7 +76,7 @@ export function DraftAssistPanel({ threadId, replyToMessageId }: DraftAssistPane
         value={instruction}
         onChange={(e) => setInstruction(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && !generate.isPending) {
+          if (e.key === "Enter" && !generate.isPending && !isComposingKey(e)) {
             e.preventDefault();
             generate.mutate();
           }

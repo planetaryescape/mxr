@@ -71,7 +71,7 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
 │ (D) Diana, Eve                        5d  ●  │ ■ RustConf 2026 invite         your turn 6d  │
 │     Q1 report body text section 3…           │    Hotel for the conference    waiting  2w  │
 │ (U) Uma Designer                new   5d     │ ─────────────────────────────────────────── │
-│ PINNED                                       │  Pat · Mon 09:12                             │
+│ PINNED                                       │  Pat · Mon 20 Oct, 09:12                     │
 │ (M) Maya Ortiz                        1w     │  I asked my manager and they'll cover the    │
 │ RECENT                                       │  ticket. Can you confirm by Friday so I can  │
 │ (I) Iris Chen                         3w     │  book?                     (reading voice)   │
@@ -184,9 +184,9 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
 │ ● (R) Rosa PM                Wed  ▤  │ asks you to merge by Friday.  (long threads)   │
 │     Database migration plan           │ You and Mia: 3 emails · your turn since Wed    │
 │                                       │ ───────────────────────────────────────────── │
-│                                       │ Mia · Wed 10:02            (earlier, folded)   │
-│                                       │ Nate · Wed 11:40           (earlier, folded)   │
-│                                       │ Oscar · Wed 14:15                              │
+│                                       │ Mia · Wed 22 Oct, 10:02    (earlier, folded)   │
+│                                       │ Nate · Wed 22 Oct, 11:40   (earlier, folded)   │
+│                                       │ Oscar · Wed 22 Oct, 14:15                      │
 │                                       │   Full message in the reading voice …         │
 │                                       │ ┌───────────────────────────────────────────┐ │
 │                                       │ │ Reply to all…                    r  R  f  │ │

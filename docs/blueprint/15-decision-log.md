@@ -1177,3 +1177,13 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 **Trade-offs accepted**: A ninth account repeats a colour, and its tag tells it apart. The chip takes about 28px of every marked row's trail. An older daemon sends no identity, so a new client draws no mark until the daemon is updated.
 
+## D148: An open email always shows when it arrived, in plain sight
+
+**Chosen**: Every view where an email is open shows its arrival as an absolute local date and time (`Tue 21 Oct, 14:02`, the year when it isn't this one, "· 2h ago" for today's), in meta type, with no hover or click. Lists keep their compact time, and the lit row no longer hides it. The TUI reader shows local time. Chapter 27, "When an email arrived", is the rule.
+
+**Considered**: Relative times alone ("Mon", "Sep 3"), which is what the reader showed: they can't say which Monday, or what time. The full stamp in a tooltip only, which is what hid it. A large date line, which BK ruled out.
+
+**Why**: BK, 2026-10-22: "sometimes I open an email and I really struggle to figure out when exactly an email was received because some views don't have a date/time shown clearly somewhere on the view. I think this is important information everytime for the way I use email. I'm not asking for it to be a huge text but I want to be able to see it somewhere easily, I don't want to click a button or do something, it should be there." An audit of origin/main 8c05bcb06 found no reader on either client that met that: the web reader showed "Mon" with the date in a tooltip, the Messages conversation never showed a date, Updates showed no time at all, and the TUI reader printed UTC.
+
+**Trade-offs accepted**: Message headers grow by about ten characters. The lit row's actions sit beside the time instead of over it, which leaves less room for actions on narrow screens; the overflow menu takes the rest.
+

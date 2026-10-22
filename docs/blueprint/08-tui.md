@@ -39,7 +39,7 @@ When a message is selected, the right pane shows the message body:
 ┌─ sidebar ─────┬─ message list ──────┬─ message view ──────┐
 │               │                     │ From: alice@ex.com   │
 │ Inbox (12)    │ ★ alice  Deploy..   │ To: team@work.com    │
-│ Starred       │   bob    Q1 Rep..   │ Date: Mar 17, 2026   │
+│ Starred       │   bob    Q1 Rep..   │ Date: 17 Mar 09:12   │
 │ ...           │   news.. This w..   │ Subject: Deployment  │
 │               │ → carol  Invoi..    │                      │
 │               │   dave   Meeti..    │ Hey team,            │

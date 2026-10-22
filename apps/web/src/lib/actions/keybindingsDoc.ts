@@ -25,33 +25,56 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
     title: "Mail actions",
     intro:
       "In the mail list they act on the selection or the row under the cursor; in the reader, on the open conversation.",
-    match: (action) => scopesOf(action).includes("list") && scopesOf(action).includes("reader"),
+    match: isMailAction,
   },
-  { title: "Mail list", intro: "", match: (action) => only(action, "list") },
-  { title: "Reader", intro: "", match: (action) => only(action, "reader") },
-  { title: "Sidebar", intro: "", match: (action) => only(action, "sidebar") },
-  { title: "Screener", intro: "", match: (action) => only(action, "screener") },
+  { title: "Mail list", intro: "", match: (action) => inScope(action, "list") },
+  { title: "Reader", intro: "", match: (action) => inScope(action, "reader") },
+  { title: "Sidebar", intro: "", match: (action) => inScope(action, "sidebar") },
+  { title: "Screener", intro: "", match: (action) => inScope(action, "screener") },
   {
     title: "Focus & reply",
     intro:
       "One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out of the reply (or Esc in the rich-text editor) to use these keys.",
-    match: (action) => only(action, "focus"),
+    match: (action) => inScope(action, "focus"),
   },
   {
-    title: "Reading and Paper trail",
-    intro: "Bundles of mail that isn't from people. The reader keeps its own keys.",
-    match: (action) => only(action, "place"),
+    title: "Now",
+    intro:
+      "On a lit new sender, `1` to `4` answer its question; elsewhere they stay the numbered tabs.",
+    match: (action) => inScope(action, "now"),
   },
+  {
+    title: "Messages",
+    intro:
+      "On a lit new sender, `1` to `4` answer its question; elsewhere they stay the numbered tabs.",
+    match: (action) => inScope(action, "messages"),
+  },
+  { title: "To do", intro: "", match: (action) => inScope(action, "todo") },
+  {
+    title: "To do: catch-up",
+    intro:
+      "The first run's older undated tasks: keep each one, or let it go to the Expired list. `C` on To do opens it.",
+    match: (action) => inScope(action, "catchup"),
+  },
+  {
+    title: "To do: Expired list",
+    intro: "Tasks that expired or were let go. `E` on To do opens it.",
+    match: (action) => inScope(action, "expired"),
+  },
+  { title: "Updates", intro: "", match: (action) => inScope(action, "updates") },
   {
     title: "Reading edition",
-    intro: "Newsletters as an edition. `b`, `e`, `D` and `A` work on the item or link under the cursor; `D` and `A` preview first.",
-    match: (action) => only(action, "reading"),
+    intro:
+      "Newsletters as an edition. `b`, `e`, `D` and `A` work on the item or link under the cursor; `D` and `A` preview first.",
+    match: (action) => inScope(action, "reading"),
   },
   {
     title: "Reading reader",
-    intro: "One item in a 66-character column. The article is fetched only on `L` or the Article tab.",
-    match: (action) => only(action, "reading-reader"),
+    intro:
+      "One item in a 66-character column. The article is fetched only on `L` or the Article tab.",
+    match: (action) => inScope(action, "reading-reader"),
   },
+  { title: "Archive", intro: "", match: (action) => inScope(action, "archive") },
 ];
 
 function isGlobal(action: Action): boolean {
@@ -62,9 +85,13 @@ function isGoTo(action: Action): boolean {
   return action.id.startsWith("nav.");
 }
 
-function only(action: Action, scope: ActionScope): boolean {
-  const scopes = scopesOf(action);
-  return scopes.length === 1 && scopes[0] === scope;
+function isMailAction(action: Action): boolean {
+  return scopesOf(action).includes("list") && scopesOf(action).includes("reader");
+}
+
+/** Live in `scope`; mail actions are left to their own table. */
+function inScope(action: Action, scope: ActionScope): boolean {
+  return scopesOf(action).includes(scope) && !isMailAction(action);
 }
 
 /** Platform-neutral key label for docs: "Mod+k" → "⌘K / Ctrl+K". */
@@ -86,10 +113,21 @@ function escapeCell(value: string): string {
   return value.replaceAll("|", "\\|");
 }
 
-export function renderKeybindingsMarkdown(): string {
-  const actions = getRegistry()
+function boundActions(): Action[] {
+  return getRegistry()
     .all()
     .filter((action) => !action.paletteOnly && chordsOf(action).length > 0);
+}
+
+/** Bound actions that no table lists, such as every key of a scope without a section. */
+export function undocumentedActionIds(): string[] {
+  return boundActions()
+    .filter((action) => !SECTIONS.some((section) => section.match(action)))
+    .map((action) => action.id);
+}
+
+export function renderKeybindingsMarkdown(): string {
+  const actions = boundActions();
   const out: string[] = [];
   for (const section of SECTIONS) {
     const rows = actions.filter(section.match);

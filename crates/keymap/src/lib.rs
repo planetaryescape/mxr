@@ -26,14 +26,13 @@ pub const TUI_CONTEXTS: [&str; 13] = [
 ];
 
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).
-pub const WEB_SCOPES: [&str; 16] = [
+pub const WEB_SCOPES: [&str; 15] = [
     "global",
     "sidebar",
     "list",
     "reader",
     "screener",
     "focus",
-    "place",
     "todo",
     "catchup",
     "expired",

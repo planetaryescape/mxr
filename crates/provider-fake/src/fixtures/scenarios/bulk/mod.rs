@@ -218,6 +218,10 @@ pub(crate) struct Family {
     pub subjects: Subjects,
     /// A second person is copied on every message.
     pub observer_cc: bool,
+    /// Each follow-up carries `In-Reply-To` and `References` to the message
+    /// before it. A conversation does; a store's, biller's or airline's
+    /// notifications do not reply-thread, so their families leave it off.
+    pub reply_headers: bool,
     pub dating: Dating,
     /// Days from an email's date to a date it asks for.
     pub due_days: i64,

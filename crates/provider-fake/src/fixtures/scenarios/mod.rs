@@ -809,4 +809,34 @@ mod tests {
             assert_eq!(labels_at(*clock), first, "labels moved at {clock}");
         }
     }
+
+    /// A conversation replies to the message before it; a store's, biller's
+    /// or airline's notifications, and a list's, do not.
+    #[test]
+    fn only_conversations_link_follow_ups_to_the_message_before() {
+        use crate::fixtures::generate_demo_fixtures;
+        let (envelopes, _, _) = generate_demo_fixtures(&work_account(), 4_000);
+        let (mut conversation, mut machine) = (0, 0);
+        for envelope in &envelopes {
+            let notification = envelope.from.email.ends_with(".demo.mxr.local")
+                && !envelope.from.email.eq_ignore_ascii_case(WORK_EMAIL);
+            if notification {
+                machine += 1;
+                assert!(
+                    envelope.in_reply_to.is_none() && envelope.references.is_empty(),
+                    "{} ({}) from {} reply-threads",
+                    envelope.provider_id,
+                    envelope.subject,
+                    envelope.from.email
+                );
+            } else if envelope.subject.starts_with("Re: ") {
+                conversation += 1;
+                assert!(envelope.in_reply_to.is_some(), "{}", envelope.provider_id);
+            }
+        }
+        assert!(
+            conversation > 500 && machine > 300,
+            "{conversation}, {machine}"
+        );
+    }
 }

@@ -848,7 +848,7 @@ impl DemoFixtureStream {
             scenarios::render_bulk(&self.self_addr, self.now, thread_num, reply_idx, thread_len);
         // Messages of a thread occupy consecutive indices, so the parent
         // and root headers follow from this message's own index.
-        let (in_reply_to, references) = if reply_idx == 0 {
+        let (in_reply_to, references) = if reply_idx == 0 || !rendered.reply_headers {
             (None, Vec::new())
         } else {
             (

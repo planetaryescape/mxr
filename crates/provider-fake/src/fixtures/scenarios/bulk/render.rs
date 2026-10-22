@@ -26,6 +26,8 @@ pub(crate) struct Rendered {
     pub style: usize,
     pub unsubscribe: UnsubscribeMethod,
     pub provider_labels: Vec<String>,
+    /// The message replies to the one before it, in its headers.
+    pub reply_headers: bool,
 }
 
 /// Minutes between the seed clock and a thread's first message.
@@ -265,6 +267,7 @@ pub(crate) fn render(
         style: (family.style)(thread_num),
         unsubscribe,
         provider_labels,
+        reply_headers: family.reply_headers,
     }
 }
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.132](https://github.com/planetaryescape/mxr/compare/v0.6.131...v0.6.132) (2026-10-22)
+
+
+### Bug Fixes
+
+* always show when an open email arrived in the web app ([#598](https://github.com/planetaryescape/mxr/issues/598)) ([32f508a](https://github.com/planetaryescape/mxr/commit/32f508ab5f178f2be35c59114e8b8c57655de42a))
+
+
+### Documentation
+
+* give each account one colour and tag, owned by the daemon ([#596](https://github.com/planetaryescape/mxr/issues/596)) ([8c05bcb](https://github.com/planetaryescape/mxr/commit/8c05bcb066c478c7abd678aec4cd53525b57c6ad))
+* hold a build slot only while something builds ([3bc28e3](https://github.com/planetaryescape/mxr/commit/3bc28e3443086a550f2d623dfc421aff53ffae21))
+* show when an open email arrived, always and in plain sight ([#597](https://github.com/planetaryescape/mxr/issues/597)) ([e7ecc14](https://github.com/planetaryescape/mxr/commit/e7ecc1410335f2bca460bc341d2fedefe78107e6))
+
 ## [0.6.131](https://github.com/planetaryescape/mxr/compare/v0.6.130...v0.6.131) (2026-10-22)
 
 

@@ -970,7 +970,7 @@ pub(crate) mod tests {
     pub(crate) fn page(runway: TodoRunwayData, hints_seen: bool) -> TodoPageState {
         TodoPageState {
             runway: Some(runway),
-            guide: Some(TODO_GUIDE.to_data(|_| hints_seen.then(Utc::now))),
+            guide: Some(TODO_GUIDE.to_data(|_| hints_seen.then(Utc::now), &mxr_keymap::guide_key)),
             ..TodoPageState::default()
         }
     }

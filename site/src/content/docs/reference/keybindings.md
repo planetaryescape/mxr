@@ -762,6 +762,7 @@ On a lit new sender, `1` to `4` answer its question; elsewhere they stay the num
 | `Enter` | Open in its mode |  |
 | `e` | Done here |  |
 | `r` | Reply |  |
+| `t` | Make it a to-do |  |
 | `o` | Open the email |  |
 | `A` | Let go of the Updates digest… | Previews the daemon's dry run first; undo afterwards |
 | `Esc` | Dismiss the hint |  |

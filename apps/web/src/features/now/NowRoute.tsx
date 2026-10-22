@@ -23,6 +23,8 @@ import { useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 import type { LampVia } from "@/components/Row";
+import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
+import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { useLitReason } from "@/state/litReasonStore";
 import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
@@ -237,6 +239,28 @@ function NowBody({ now }: { now: Now }) {
       .getState()
       .openCompose(replyIntent(item.person.row.message_id, "single"), "overlay");
   }, []);
+  // `t` on a person or the reading pick, as in the TUI: a to-do and an
+  // email are already one each on the other rows.
+  const makeTodo = useCallback((item: NowItem) => {
+    if (item.kind !== "person" && item.kind !== "reading") return;
+    if (refuseWhileDaemonDown("add a to-do")) return;
+    if (item.kind === "person") {
+      const first = rowPerson(item.person.row).split(/\s+/)[0];
+      openMailDialog({
+        kind: "todo-make",
+        messageId: item.person.row.message_id,
+        suggestion: first ? `Reply to ${first}` : "",
+        subject: item.person.row.subject,
+      });
+      return;
+    }
+    openMailDialog({
+      kind: "todo-make",
+      messageId: item.pick.message_id,
+      suggestion: "",
+      subject: item.pick.subject,
+    });
+  }, []);
   const select = useCallback(
     (item: NowItem, how: LampVia) => {
       via.current = how;
@@ -270,6 +294,7 @@ function NowBody({ now }: { now: Now }) {
     openEmail: () => current && current.kind !== "updates" && open(current, { email: true }),
     done: () => current && done(current, "key"),
     reply: () => current && reply(current),
+    makeTodo: () => current && makeTodo(current),
     letGoDigest: now.updates ? letGoDigest : undefined,
     closeHint,
     ...newSenderCommands(litSender, litPerson ? rowPerson(litPerson.person.row) : ""),

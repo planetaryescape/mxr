@@ -694,7 +694,10 @@ pub(crate) mod tests {
     }
 
     fn seen_guide() -> mxr_protocol::ModeGuideData {
-        UPDATES_GUIDE.to_data(|_| Some(Utc.with_ymd_and_hms(2026, 10, 1, 0, 0, 0).unwrap()))
+        UPDATES_GUIDE.to_data(
+            |_| Some(Utc.with_ymd_and_hms(2026, 10, 1, 0, 0, 0).unwrap()),
+            &mxr_keymap::guide_key,
+        )
     }
 
     #[test]
@@ -721,7 +724,7 @@ pub(crate) mod tests {
     fn updates_lens_clear_at_three_widths() {
         let page = UpdatesPageState {
             digest: Some(clear()),
-            guide: Some(UPDATES_GUIDE.to_data(|_| None)),
+            guide: Some(UPDATES_GUIDE.to_data(|_| None, &mxr_keymap::guide_key)),
             ..Default::default()
         };
         for width in [60, 80, 120] {

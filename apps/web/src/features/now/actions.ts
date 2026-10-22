@@ -16,6 +16,7 @@ export const nowActions: ActionBehavior[] = [
   { id: "now.open", command: "open" },
   { id: "now.done", command: "done", icon: Check },
   { id: "now.reply", command: "reply", icon: Reply },
+  { id: "now.to-do", command: "makeTodo" },
   { id: "now.open-email", command: "openEmail" },
   { id: "now.let-go-digest", command: "letGoDigest" },
   { id: "now.close-hint", command: "closeHint" },

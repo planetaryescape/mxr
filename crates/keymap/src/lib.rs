@@ -20,9 +20,21 @@ pub const DEFAULT_KEYMAP: &str = include_str!("../keymap.toml");
 
 /// The mail contexts the TUI's keymap probe covers. A TUI binding with
 /// `contexts = "all"` is live in every one of them.
-pub const TUI_CONTEXTS: [&str; 13] = [
-    "list", "reader", "sidebar", "place", "screener", "todo", "catchup", "expired", "now",
-    "messages", "archive", "reading", "updates",
+pub const TUI_CONTEXTS: [&str; 14] = [
+    "list",
+    "reader",
+    "sidebar",
+    "place",
+    "screener",
+    "todo",
+    "catchup",
+    "expired",
+    "now",
+    "messages",
+    "archive",
+    "reading",
+    "reading-reader",
+    "updates",
 ];
 
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).
@@ -45,6 +57,25 @@ pub const WEB_SCOPES: [&str; 17] = [
     "compose",
     "arrivals",
 ];
+
+/// The key a mode guide shows for an action: the first web key the TUI also
+/// binds, so the line is true in both clients; failing that, the TUI's or the
+/// web's own key. `None` for an action with no key.
+pub fn guide_key(id: &str) -> Option<String> {
+    let action = defaults().get(id)?;
+    let tui: Vec<&String> = action
+        .tui
+        .iter()
+        .flat_map(|binding| &binding.keys)
+        .collect();
+    action
+        .keys
+        .iter()
+        .find(|key| tui.contains(key))
+        .or_else(|| tui.first().copied())
+        .or_else(|| action.keys.first())
+        .cloned()
+}
 
 /// The shipped definition, parsed once. The file is compiled in and
 /// checked by this crate's tests, so a parse failure is a build defect.

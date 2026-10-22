@@ -671,7 +671,7 @@ pub(crate) mod tests {
     pub(crate) fn page(now: NowData, hints_seen: bool) -> NowPageState {
         NowPageState {
             now: Some(now),
-            guide: Some(NOW_GUIDE.to_data(|_| hints_seen.then(Utc::now))),
+            guide: Some(NOW_GUIDE.to_data(|_| hints_seen.then(Utc::now), &mxr_keymap::guide_key)),
             ..NowPageState::default()
         }
     }

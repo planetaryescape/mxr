@@ -431,6 +431,12 @@
     ],
     "key": "r"
   },
+  "now.to-do": {
+    "modifiers": [
+      "cmd"
+    ],
+    "key": "t"
+  },
   "reader.bottom": {
     "modifiers": [
       "cmd",

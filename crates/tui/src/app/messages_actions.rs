@@ -7,7 +7,8 @@ use super::key_dispatch::DefinedKey;
 use super::*;
 use crate::app::list_advance::next_after_removal;
 use crate::app::state::{
-    row_key, AckCountdown, DoneNote, MessagesFocus, MessagesItem, MessagesRowKey,
+    row_key, AckCountdown, DoneNote, MessagesFilterPicker, MessagesFocus, MessagesItem,
+    MessagesRowKey,
 };
 use crate::ui::messages_lens::topic_label;
 use chrono::Offset as _;
@@ -45,6 +46,9 @@ impl App {
                 }
             }
             Action::MessagesAsSent => self.messages_as_sent(),
+            Action::MessagesFilter => {
+                self.modals.messages_filter = Some(MessagesFilterPicker::default());
+            }
             Action::MessagesBack => self.messages_back(),
             _ => {}
         }
@@ -613,6 +617,52 @@ impl App {
     }
 
     /// Key handling for the Messages lens.
+    /// Keys while the filter picker is open. It applies each choice at once:
+    /// the list refetches with the filter it now holds.
+    pub(super) fn messages_filter_picker_key(&mut self, key: crossterm::event::KeyEvent) {
+        let Some(picker) = self.modals.messages_filter else {
+            return;
+        };
+        let plain = key.modifiers == KeyModifiers::NONE;
+        match key.code {
+            KeyCode::Esc => self.modals.messages_filter = None,
+            KeyCode::Char('f') if key.modifiers == KeyModifiers::CONTROL => {
+                self.modals.messages_filter = None;
+            }
+            KeyCode::Char('j') | KeyCode::Down if plain => {
+                self.set_messages_filter_cursor(
+                    (picker.cursor + 1).min(MessagesFilterPicker::LAST),
+                );
+            }
+            KeyCode::Char('k') | KeyCode::Up if plain => {
+                self.set_messages_filter_cursor(picker.cursor.saturating_sub(1));
+            }
+            KeyCode::Enter | KeyCode::Char(' ') if plain => {
+                self.apply_messages_filter_choice(picker.cursor);
+            }
+            _ => {}
+        }
+    }
+
+    fn set_messages_filter_cursor(&mut self, cursor: usize) {
+        self.modals.messages_filter = Some(MessagesFilterPicker { cursor });
+    }
+
+    /// Rows 0 to 2 pick the turn (All, Your turn, Waiting on them); 3 and 4
+    /// flip Unread and Past your pace.
+    fn apply_messages_filter_choice(&mut self, cursor: usize) {
+        let page = &mut self.mailbox.messages_page;
+        match cursor {
+            0 => page.filter.turn = None,
+            1 => page.filter.turn = Some(mxr_protocol::MessagesTurnData::Mine),
+            2 => page.filter.turn = Some(mxr_protocol::MessagesTurnData::Theirs),
+            3 => page.filter.unread = !page.filter.unread,
+            4 => page.filter.past_pace = !page.filter.past_pace,
+            _ => return,
+        }
+        page.pending_refresh = true;
+    }
+
     pub(super) fn messages_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let plain = key.modifiers == KeyModifiers::NONE;
         let page = &self.mailbox.messages_page;

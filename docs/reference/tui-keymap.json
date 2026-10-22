@@ -373,6 +373,7 @@
     "ArrowUp": "MoveUp",
     "Ctrl+a": "ToggleAssistant",
     "Ctrl+d": "PageDown",
+    "Ctrl+f": "MessagesFilter",
     "Ctrl+p": "OpenCommandPalette",
     "Ctrl+u": "PageUp",
     "Enter": "MessagesOpen",

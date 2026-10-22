@@ -3164,6 +3164,20 @@ keys = ["o", "v"]
 contexts = ["messages"]
 
 [[action]]
+id = "messages.filter"
+label = "Filter the people list: turn, unread, past your pace"
+short_label = "Filter"
+group = "View"
+scopes = ["messages"]
+keys = ["g f"]
+note = "Ctrl+f in the TUI opens the same picker; the web filters with g f because Ctrl+f is the browser's Find"
+
+[[action.tui]]
+name = "MessagesFilter"
+keys = ["Ctrl+f"]
+contexts = ["messages"]
+
+[[action]]
 id = "messages.send-next"
 label = "Send, then the next person whose turn it is"
 short_label = "Send, next"

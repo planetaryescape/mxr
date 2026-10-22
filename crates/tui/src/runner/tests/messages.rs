@@ -5,6 +5,7 @@
 
 use super::*;
 use crate::app::{ComposeAction, MessagesFocus};
+use crate::runner::list_messages_request;
 use crate::ui::messages_lens::tests::{page, populated, samir_page};
 use mxr_protocol::{AckPlanData, ModeKindData};
 
@@ -683,4 +684,66 @@ fn another_modes_done_never_borrows_messages_words() {
             if msg.starts_with("Done: Contract renewal. Next: Launch checklist.")),
         "{named:?}"
     );
+}
+
+fn press_ctrl(app: &mut App, c: char) {
+    if let Some(action) = app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)) {
+        app.apply(action);
+    }
+}
+
+#[test]
+fn ctrl_f_picks_unread_and_the_list_request_carries_it() {
+    let mut app = messages_app(true);
+    press_ctrl(&mut app, 'f');
+    assert!(
+        app.modals.messages_filter.is_some(),
+        "Ctrl-f opens the picker"
+    );
+
+    // Rows: All, Your turn, Waiting on them, Unread, Past your pace.
+    for _ in 0..3 {
+        press(&mut app, KeyCode::Char('j'));
+    }
+    press(&mut app, KeyCode::Enter);
+    let filter = app.mailbox.messages_page.filter;
+    assert!(filter.unread && filter.turn.is_none() && !filter.past_pace);
+    assert!(
+        app.mailbox.messages_page.pending_refresh,
+        "the list refetches"
+    );
+    assert!(matches!(
+        list_messages_request(filter),
+        Request::ListMessages { turn: None, filter: sent, .. } if sent.unread && !sent.past_pace
+    ));
+
+    // Enter on the toggle again turns it off, and the picker stays open.
+    press(&mut app, KeyCode::Enter);
+    assert!(!app.mailbox.messages_page.filter.unread);
+    assert!(app.modals.messages_filter.is_some());
+
+    press(&mut app, KeyCode::Esc);
+    assert!(
+        app.modals.messages_filter.is_none(),
+        "Esc closes the picker"
+    );
+}
+
+#[test]
+fn the_picker_sets_the_turn_and_pace_without_leaving_messages() {
+    let mut app = messages_app(true);
+    press_ctrl(&mut app, 'f');
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(
+        app.mailbox.messages_page.filter.turn,
+        Some(mxr_protocol::MessagesTurnData::Mine)
+    );
+    for _ in 0..3 {
+        press(&mut app, KeyCode::Char('j'));
+    }
+    press(&mut app, KeyCode::Char(' '));
+    let filter = app.mailbox.messages_page.filter;
+    assert!(filter.past_pace, "Space toggles like Enter");
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::People);
 }

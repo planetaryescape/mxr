@@ -851,6 +851,13 @@ impl App {
 
         // Analytics filter modal overlay
         ui::analytics_filter_modal::draw(frame, area, self.modals.analytics_filter.as_ref(), theme);
+        ui::messages_filter_modal::draw(
+            frame,
+            area,
+            self.modals.messages_filter,
+            self.mailbox.messages_page.filter,
+            theme,
+        );
 
         // Draft options (tone/length) modal overlay
         ui::draft_options_modal::draw(frame, area, &self.modals.draft_options, theme);

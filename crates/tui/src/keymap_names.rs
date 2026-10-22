@@ -43,6 +43,7 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
         "MessagesAsSent" => Action::MessagesAsSent,
         "MessagesBack" => Action::MessagesBack,
         "MessagesDone" => Action::MessagesDone,
+        "MessagesFilter" => Action::MessagesFilter,
         "MessagesNewTopic" => Action::MessagesNewTopic,
         "MessagesNextTopic" => Action::MessagesNextTopic,
         "MessagesOpen" => Action::MessagesOpen,

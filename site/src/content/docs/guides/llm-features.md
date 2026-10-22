@@ -12,7 +12,7 @@ in mxr uses it. Each feature has its own guide:
 |---|---|---|
 | `mxr summarize` | this page | thread → Markdown summary |
 | `mxr draft-assist` | this page | thread + instruction → draft body in your voice |
-| `mxr draft eval` | [this page](#check-how-close-drafts-get) | replay your recent replies and compare drafts with what you sent |
+| `mxr draft eval` | [this page](#check-how-close-drafts-get) | replay your recent replies (`--set mine`), or grade drafts on the labelled set (`--set quick`) |
 | `mxr send --check` answer coverage | [Pre-send safety](/guides/pre-send-safety/#answer-coverage) | extract asks from thread, judge whether the draft addresses each |
 | `mxr send --check` commitment candidates | [Forgotten work](/guides/forgotten-work/#commitments-promises-you-made) | extract "I'll send the deck Friday" promises from drafts |
 | `mxr ask` | [Archive intelligence](/guides/archive-intelligence/) | retrieval-grounded answer over local mail, every claim cited |
@@ -381,16 +381,29 @@ with more room rather than handed over half-written.
 ### Check how close drafts get
 
 ```bash
-mxr draft eval --limit 20
+mxr draft --format json eval --limit 20
+mxr draft --format json eval --set quick
 ```
 
-`mxr draft eval` replays your most recent replies. For each one it rebuilds
-the conversation and your voice examples as they were just before you
-replied, drafts a reply through the same path the web, TUI and CLI use, and
-compares it with what you actually sent: greeting and sign-off match, length
-ratio, and numbers the draft invented. It calls your LLM once per reply and
-saves nothing. Use `--format json` or `--format jsonl` to keep the results,
-and run it again after changing models to compare.
+`--set mine` is the default. It replays your most recent replies. For each
+one it rebuilds the conversation and your voice examples as they were just
+before you replied, drafts a reply through the same path the web, TUI and
+CLI use, and compares it with what you actually sent: greeting and sign-off
+match, length ratio, and numbers the draft invented.
+
+`--set quick` drafts the labelled drafting set instead: 40 synthetic cases,
+each a short thread, a few emails in a sample voice, and sometimes text
+already typed or an instruction. Every draft is graded against what its case
+required. The typed sentences must survive, each question must be answered,
+facts nobody has given must be left as `[[?: …]]` gaps, no number may appear
+that no input carries, the length must fall in the case's band, and there
+must be no subject line, preamble, repeated sign-off or run of the thread
+copied back. The output counts how many drafts passed each check. Each draft
+also gets a style score, which is reported and not graded.
+
+Both sets call your LLM once per case and save nothing. `--set quick` takes a
+while on a slow local model. Use `--format jsonl` for one line per case, and
+run either again after changing models to compare.
 
 ### See where a draft came from
 

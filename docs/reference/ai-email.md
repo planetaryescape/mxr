@@ -82,6 +82,7 @@ already existed when this work started:
 | LLM calls | `mxr-llm`, feature-specific runtime overrides |
 | Thread synthesis | `handler/summarize.rs`, `thread_summaries` table |
 | Draft generation | `draft-assist`, `draft-new`, `draft-refine` handlers |
+| Drafting measured | `draft_eval.rs` (replay), `compose_corpus.rs` and `compose_eval.rs` (labelled set), `mxr-composer` graders |
 | Voice and tone | `mxr-relationship`, `contact_style`, `user_voice_profile` |
 | Commitments | `contact_commitments`, relationship service extraction |
 | Response timing | `reply_pairs`, `mxr response-time` |

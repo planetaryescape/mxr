@@ -463,15 +463,56 @@ line, a recap of the thread, a dropped sentence of yours, an invented
 price, a duplicated signature. Every prompt or rule change then shows up
 as a reviewed diff, with no model in CI.
 
-`mxr draft eval --set quick --model <id>` runs the live layer on this
-machine. It drafts every case with a real model and grades it with the
-same checks, and is the number that goes in this chapter as the
-baseline. `--set mine` is today's replay of your own recent replies. It
-stays on this machine, and no longer calls the rewrite model unless asked.
+`mxr draft eval --set quick` runs the live layer on this machine with the
+drafting model you have configured. It drafts every case with a real model
+and grades it with the same checks, and its numbers are the live baseline.
+Choosing the model per run (`--model`) waits for rung C2. `--set mine` is
+today's replay of your own recent replies. It stays on this machine, and no
+longer calls the rewrite model unless asked.
 
 `composer_version` combines the prompt's version and the catalogue's, and
 goes into every proposal's provenance, so a bad draft can be traced to
 the composer that wrote it.
+
+### Baseline: today's drafting on the quick set
+
+The snapshot layer is measured by `scripts/cargo-test -p mxr --lib -- handler::tests::compose_eval`.
+Its record is in `crates/daemon/src/handler/tests/snapshots/`: the prompt
+today's code builds for each of the 40 cases, and the grade table for 26
+recorded model outputs. The corpus is `crates/provider-fake/src/fixtures/compose/`:
+40 cases in 20 near-miss pairs, 22 with typed text (two of them with a
+selection) and 18 without.
+
+The 26 outputs are one good output and one bad one for each defect, so the
+counts show what the checks catch. They do not say how often a model writes
+the defect.
+
+| Check | Passed | Of |
+|---|---|---|
+| Kept: typed sentences survive | 25 | 26 |
+| Answers: each question from the target is addressed | 25 | 26 |
+| Gaps: facts nobody gave are left as gaps | 25 | 26 |
+| Invented: no number outside the inputs | 23 | 26 |
+| Length: inside the case's word band | 25 | 26 |
+| Leftovers: no subject, preamble, repeated sign-off or copied run | 23 | 26 |
+
+Every good output passes all six checks. Every bad output fails the check it
+is recorded for: a dropped typed sentence (kept), an invented price
+(invented, and gaps or answers where the price was the answer), a subject
+line, a recap of the thread and a repeated sign-off (leftovers).
+
+Today's request has no field for typed text or a selection, so neither
+reaches the prompt. Each typed case's prompt in the snapshot says so. That
+is the gap the next rung closes, and `kept` is the check it should move.
+
+Two checks are judgement calls. A leftover is a run of eight words copied
+from the thread, which catches a recap that quotes the thread but not one
+written in the model's own words; length is the only check that catches
+that. A repeated sign-off is the same short line appearing twice in the last
+four lines of the output.
+
+The live baseline (`mxr draft eval --set quick` against a real model) is not
+yet recorded in this chapter.
 
 ## The compose screen: your page under the lamp, help as a proof
 

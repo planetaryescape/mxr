@@ -24,6 +24,7 @@ import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 import type { LampVia } from "@/components/Row";
 import { useLitReason } from "@/state/litReasonStore";
+import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { rowPerson } from "@/features/desk/deskCopy";
 
@@ -69,16 +70,16 @@ function reasonOf(item: NowItem | undefined): string | null {
   }
 }
 
-/** The verbs the status strip shows for the lit item (action ids from features/now/actions.ts). */
+/** The status strip for the lit item (`[[strip]]` in crates/keymap/keymap.toml). */
 function keysOf(item: NowItem | undefined): readonly string[] {
   switch (item?.kind) {
     case "person":
-      return ["now.open", "now.reply", "now.done", "now.open-email"];
+      return stripKeys("now.person");
     case "updates":
-      return ["now.open", "now.let-go-digest"];
+      return stripKeys("now.updates");
     case "todo":
     case "reading":
-      return ["now.open", "now.done", "now.open-email"];
+      return stripKeys("now.item");
     default:
       return [];
   }

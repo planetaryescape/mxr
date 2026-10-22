@@ -6898,5 +6898,156 @@
         }
       ]
     }
+  ],
+  "strip": [
+    {
+      "id": "list",
+      "actions": [
+        "list.down",
+        "list.open",
+        "mail.archive",
+        "mail.reply",
+        "mail.snooze"
+      ]
+    },
+    {
+      "id": "list.read-only",
+      "actions": [
+        "list.down",
+        "list.open",
+        "list.row-action"
+      ]
+    },
+    {
+      "id": "now.person",
+      "actions": [
+        "now.open",
+        "now.reply",
+        "now.done",
+        "now.open-email"
+      ]
+    },
+    {
+      "id": "now.updates",
+      "actions": [
+        "now.open",
+        "now.let-go-digest"
+      ]
+    },
+    {
+      "id": "now.item",
+      "actions": [
+        "now.open",
+        "now.done",
+        "now.open-email"
+      ]
+    },
+    {
+      "id": "messages",
+      "actions": [
+        "messages.reply",
+        "messages.got-it",
+        "messages.done",
+        "messages.to-do",
+        "messages.pin"
+      ]
+    },
+    {
+      "id": "messages.empty",
+      "actions": [
+        "messages.open"
+      ]
+    },
+    {
+      "id": "todo",
+      "actions": [
+        "todo.done",
+        "todo.open-email",
+        "todo.schedule",
+        "todo.dismiss",
+        "todo.edit"
+      ]
+    },
+    {
+      "id": "todo.done",
+      "actions": [
+        "todo.primary"
+      ]
+    },
+    {
+      "id": "catchup",
+      "actions": [
+        "todo.catchup-keep",
+        "todo.catchup-let-go",
+        "todo.catchup-let-go-all",
+        "todo.catchup-back"
+      ]
+    },
+    {
+      "id": "expired",
+      "actions": [
+        "todo.restore",
+        "todo.expired-back"
+      ]
+    },
+    {
+      "id": "updates",
+      "actions": [
+        "updates.copy-code",
+        "updates.peek",
+        "updates.let-go-source",
+        "updates.needs-me",
+        "updates.open-email",
+        "updates.let-go-all"
+      ]
+    },
+    {
+      "id": "reading",
+      "actions": [
+        "reading.read",
+        "reading.later",
+        "reading.let-go",
+        "reading.unsubscribe",
+        "reading.later-shelf"
+      ]
+    },
+    {
+      "id": "reading-reader",
+      "actions": [
+        "reading.reader-next",
+        "reading.reader-later",
+        "reading.reader-let-go",
+        "reading.reader-highlight",
+        "reading.reader-back"
+      ]
+    },
+    {
+      "id": "archive",
+      "actions": [
+        "archive.ask",
+        "archive.open-email",
+        "archive.open-document",
+        "archive.copy-reference",
+        "archive.filter"
+      ]
+    },
+    {
+      "id": "archive.subscriptions",
+      "actions": [
+        "archive.ask",
+        "archive.open-email",
+        "archive.issuer",
+        "archive.filter"
+      ]
+    },
+    {
+      "id": "screener",
+      "actions": [
+        "screener.allow",
+        "screener.deny",
+        "screener.feed",
+        "screener.paper-trail"
+      ]
+    }
   ]
 }

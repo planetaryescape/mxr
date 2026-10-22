@@ -27,6 +27,7 @@ import { pickSearch, useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { formatLongDate } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
+import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -254,13 +255,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     back,
   });
 
-  usePageKeys([
-    "reading.reader-next",
-    "reading.reader-later",
-    "reading.reader-let-go",
-    "reading.reader-highlight",
-    "reading.reader-back",
-  ]);
+  usePageKeys(stripKeys("reading-reader"));
   const highlights = detail.highlights;
   const shownView = showingArticle ? "article" : "issue";
   const marks = useMemo(() => marksForView(highlights, shownView), [highlights, shownView]);

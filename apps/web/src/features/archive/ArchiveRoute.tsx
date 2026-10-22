@@ -56,6 +56,7 @@ import { AnswerCard, LedgerRow, MatchesHeader, RecordCard } from "./RecordParts"
 import { SubscriptionCard, SubscriptionsList } from "./Subscriptions";
 import { subscriptionAmountCopy } from "./subscriptionRows";
 import { useLitReason } from "@/state/litReasonStore";
+import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { SectionHeading } from "@/components/SectionHeading";
 
@@ -466,14 +467,8 @@ function Ledger({
     emailOpen || ledger.total === 0
       ? []
       : showingSubscriptions
-        ? ["archive.ask", "archive.open-email", "archive.issuer", "archive.filter"]
-        : [
-            "archive.ask",
-            "archive.open-email",
-            ...(current?.pdf ? ["archive.open-document"] : []),
-            "archive.copy-reference",
-            "archive.filter",
-          ],
+        ? stripKeys("archive.subscriptions")
+        : stripKeys("archive", current?.pdf ? [] : ["archive.open-document"]),
   );
   useShortcutScope("archive", !params.threadId || activePane !== "reader");
   useScopeController("archive", {

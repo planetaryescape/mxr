@@ -55,6 +55,17 @@ pub fn defaults() -> &'static Keymap {
 pub struct Keymap {
     #[serde(rename = "action")]
     pub actions: Vec<KeyAction>,
+    /// The verbs the status bar offers for each state (D130).
+    #[serde(rename = "strip", default, skip_serializing_if = "Vec::is_empty")]
+    pub strips: Vec<Strip>,
+}
+
+/// The status bar's verbs for one state, in order. A client drops a member
+/// that doesn't apply to the lit item, and one it has no key for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Strip {
+    pub id: String,
+    pub actions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -202,6 +213,10 @@ impl Keymap {
         toml::from_str(text)
     }
 
+    pub fn strip(&self, id: &str) -> Option<&Strip> {
+        self.strips.iter().find(|strip| strip.id == id)
+    }
+
     pub fn get(&self, id: &str) -> Option<&KeyAction> {
         self.actions.iter().find(|action| action.id == id)
     }
@@ -297,6 +312,17 @@ impl Keymap {
                             problems.push(format!("{id}: unknown TUI context `{context}`"));
                         }
                     }
+                }
+            }
+        }
+        let mut strip_ids = BTreeSet::new();
+        for strip in &self.strips {
+            if !strip_ids.insert(strip.id.as_str()) {
+                problems.push(format!("strip {}: defined twice", strip.id));
+            }
+            for id in &strip.actions {
+                if !ids.contains(id.as_str()) {
+                    problems.push(format!("strip {}: no action `{id}`", strip.id));
                 }
             }
         }

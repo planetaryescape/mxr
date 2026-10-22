@@ -25,6 +25,7 @@ import { plural } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useLitReason } from "@/state/litReasonStore";
+import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -69,16 +70,6 @@ export function useRunway() {
 
 /** The list's view, row cursor and open source, kept while an email opens. */
 const TODO_LIST_SEARCH = ["view", "row", "source"] as const;
-
-/** The action ids the status strip names for a lit to-do, in the order they drop from the end. */
-const TODO_KEYS_LIT = [
-  "todo.done",
-  "todo.open-email",
-  "todo.schedule",
-  "todo.dismiss",
-  "todo.edit",
-];
-const TODO_KEYS_DONE = ["todo.primary"];
 
 /**
  * To do: things email asked you to do, as a runway of instructions
@@ -387,9 +378,7 @@ function Bands({
   useLitReason(current?.todo.why);
   // While the open email has focus these keys aren't live, so the strip doesn't offer them.
   const listLive = !params.threadId || activePane !== "reader";
-  usePageKeys(
-    current && listLive ? (current.band === "done" ? TODO_KEYS_DONE : TODO_KEYS_LIT) : [],
-  );
+  usePageKeys(current && listLive ? stripKeys(current.band === "done" ? "todo.done" : "todo") : []);
 
   const { byBand, position } = useMemo(() => {
     const grouped: Record<RunwayItem["band"], RunwayItem[]> = {

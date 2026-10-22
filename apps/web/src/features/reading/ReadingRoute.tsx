@@ -22,6 +22,7 @@ import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useLitReason } from "@/state/litReasonStore";
+import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { useThreadModesMap } from "@/features/modes/membership";
 import type { LampVia } from "@/components/Row";
@@ -414,13 +415,10 @@ function Bands({
     // The email's reader owns the keys while it has focus, as it owns the scope.
     entries.length === 0 || (params.threadId && activePane === "reader")
       ? []
-      : [
-          "reading.read",
-          "reading.later",
-          "reading.let-go",
-          ...(litItem?.unsubscribe_offer && view !== "later" ? ["reading.unsubscribe"] : []),
-          "reading.later-shelf",
-        ],
+      : stripKeys(
+          "reading",
+          litItem?.unsubscribe_offer && view !== "later" ? [] : ["reading.unsubscribe"],
+        ),
   );
   // The marks for "also in" modes, from the daemon's membership.
   const memberThreads = useMemo(

@@ -32,6 +32,7 @@ import { useSelection } from "@/state/selectionStore";
 import { cn } from "@/lib/utils";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import type { LampVia } from "@/components/Row";
+import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 
 export interface MailboxListProps {
@@ -445,10 +446,8 @@ export function MailboxList({
   // The status strip: motion, open and the verbs the lit row shows.
   usePageKeys(
     readOnly
-      ? rowAction
-        ? ["list.down", "list.open", "list.row-action"]
-        : ["list.down", "list.open"]
-      : ["list.down", "list.open", "mail.archive", "mail.reply", "mail.snooze"],
+      ? stripKeys("list.read-only", rowAction ? [] : ["list.row-action"])
+      : stripKeys("list"),
   );
 
   useScopeController("list", {

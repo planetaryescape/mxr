@@ -3631,3 +3631,76 @@ clients = ["tui"]
 name = "RecordsNextKind"
 keys = ["g f"]
 contexts = ["archive"]
+
+# Status strips: the three to five verbs the status bar offers for what is lit
+# (D130). Each client picks the strip for its state and drops a member that
+# doesn't apply to the lit item (no PDF, no code, no unsubscribe offer), so the
+# same state shows the same verbs in the TUI and the web app.
+[[strip]]
+id = "list"
+actions = ["list.down", "list.open", "mail.archive", "mail.reply", "mail.snooze"]
+
+[[strip]]
+id = "list.read-only"
+actions = ["list.down", "list.open", "list.row-action"]
+
+[[strip]]
+id = "now.person"
+actions = ["now.open", "now.reply", "now.done", "now.open-email"]
+
+[[strip]]
+id = "now.updates"
+actions = ["now.open", "now.let-go-digest"]
+
+# A to-do or a reading item lit in Now.
+[[strip]]
+id = "now.item"
+actions = ["now.open", "now.done", "now.open-email"]
+
+[[strip]]
+id = "messages"
+actions = ["messages.reply", "messages.got-it", "messages.done", "messages.to-do", "messages.pin"]
+
+[[strip]]
+id = "messages.empty"
+actions = ["messages.open"]
+
+[[strip]]
+id = "todo"
+actions = ["todo.done", "todo.open-email", "todo.schedule", "todo.dismiss", "todo.edit"]
+
+[[strip]]
+id = "todo.done"
+actions = ["todo.primary"]
+
+[[strip]]
+id = "catchup"
+actions = ["todo.catchup-keep", "todo.catchup-let-go", "todo.catchup-let-go-all", "todo.catchup-back"]
+
+[[strip]]
+id = "expired"
+actions = ["todo.restore", "todo.expired-back"]
+
+[[strip]]
+id = "updates"
+actions = ["updates.copy-code", "updates.peek", "updates.let-go-source", "updates.needs-me", "updates.open-email", "updates.let-go-all"]
+
+[[strip]]
+id = "reading"
+actions = ["reading.read", "reading.later", "reading.let-go", "reading.unsubscribe", "reading.later-shelf"]
+
+[[strip]]
+id = "reading-reader"
+actions = ["reading.reader-next", "reading.reader-later", "reading.reader-let-go", "reading.reader-highlight", "reading.reader-back"]
+
+[[strip]]
+id = "archive"
+actions = ["archive.ask", "archive.open-email", "archive.open-document", "archive.copy-reference", "archive.filter"]
+
+[[strip]]
+id = "archive.subscriptions"
+actions = ["archive.ask", "archive.open-email", "archive.issuer", "archive.filter"]
+
+[[strip]]
+id = "screener"
+actions = ["screener.allow", "screener.deny", "screener.feed", "screener.paper-trail"]

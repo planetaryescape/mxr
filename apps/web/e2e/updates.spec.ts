@@ -125,6 +125,7 @@ test("let go of all acts on exactly the previewed cut, and u puts it back", asyn
   ).result;
   expect(preview.message_count).toBeGreaterThan(0);
 
+  const full = (await bridge<DigestAnswer>(page, "/api/v1/mail/updates")).digest.message_count;
   await openApp(page, "/updates");
   await expect(page.getByTestId("update-line").first()).toBeVisible();
   await page.keyboard.press("A");
@@ -148,12 +149,15 @@ test("let go of all acts on exactly the previewed cut, and u puts it back", asyn
   ).toHaveCount(0);
 
   await page.keyboard.press("u");
+  // Undo puts the messages back over about two seconds (the digest grows from
+  // a few to all of them), so wait for every one, not just the first, before
+  // asking the page: CI read it mid-restore and failed.
   await expect
     .poll(
       async () => (await bridge<DigestAnswer>(page, "/api/v1/mail/updates")).digest.message_count,
       { timeout: 30_000 },
     )
-    .toBeGreaterThan(0);
+    .toBe(full);
   await expect(page.getByTestId("update-line").filter({ hasText: "Strava" })).toBeVisible();
 });
 

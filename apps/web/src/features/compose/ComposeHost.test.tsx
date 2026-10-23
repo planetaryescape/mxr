@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { BridgeRequestError } from "@/api/client";
+import { PHONE_QUERY } from "@/hooks/useMediaQuery";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useConnectionStore } from "@/state/connectionStore";
 import { useUndo } from "@/state/undoStore";
@@ -1078,5 +1079,53 @@ describe("saved draft discard preview", () => {
     });
     expect(screen.queryByText("Discard draft?")).not.toBeInTheDocument();
     expect(api.discardComposeSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("ComposeHost docked without a thread", () => {
+  const realMatchMedia = window.matchMedia;
+
+  function screenWidth(phone: boolean) {
+    window.matchMedia = ((query: string) => ({
+      matches: phone && query === PHONE_QUERY,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+  }
+
+  function openDockedReply() {
+    act(() => {
+      useComposeUi
+        .getState()
+        .openCompose({ key: "compose:new:new", title: "New message", kind: "new" }, "inline");
+    });
+  }
+
+  afterEach(() => {
+    window.matchMedia = realMatchMedia;
+  });
+
+  test("on a phone it is the title bar alone, so the list stays usable", async () => {
+    screenWidth(true);
+    renderHost();
+    openDockedReply();
+    const dock = await screen.findByRole("dialog", { name: "New message" });
+    await waitFor(() => expect(api.startComposeSession).toHaveBeenCalled());
+    expect(within(dock).getByRole("button", { name: "Fullscreen (⇧⌘F)" })).toBeInTheDocument();
+    expect(within(dock).getByRole("button", { name: "Close composer (saves draft)" })).toBeInTheDocument();
+    expect(within(dock).queryAllByRole("textbox")).toHaveLength(0);
+  });
+
+  test("on a wider screen it keeps the whole editor in the corner", async () => {
+    screenWidth(false);
+    renderHost();
+    openDockedReply();
+    const dock = await screen.findByRole("dialog", { name: "New message" });
+    await waitFor(() => expect(within(dock).getAllByRole("textbox").length).toBeGreaterThan(0));
   });
 });

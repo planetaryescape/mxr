@@ -273,6 +273,8 @@ fn plain_error(raw: &str) -> String {
         "The model's provider is limiting requests right now. Wait a moment, then send your message again.".to_string()
     } else if has("timed out") {
         format!("The model took too long to answer. Send your message again, or switch to a faster model in {settings}.")
+    } else if has("402") && (has("credits") || has("payment required")) {
+        format!("The model's provider wants more credits for this request. Add credits with your provider, or switch models in {settings}.")
     } else if has("authentication failed") {
         format!("The model's provider didn't accept the API key. Check it in {settings}.")
     } else if has("privacy policy") {
@@ -285,10 +287,17 @@ fn plain_error(raw: &str) -> String {
         format!("This model can't use mxr's tools. Choose another in {settings}.")
     } else if has("tools didn't start") {
         "The assistant's tools didn't start. Send your message again; if it keeps happening, restart mxr.".to_string()
+    } else if raw.len() > UNKNOWN_ERROR_SHOWN_CHARS || raw.contains('{') {
+        // A provider's error body (often JSON, kilobytes of it) is no
+        // sentence; it stays readable under Details.
+        format!("The model's provider returned an error. Send your message again, or switch models in {settings}.")
     } else {
         crate::output::terminal_text(raw).into_owned()
     }
 }
+
+/// An unknown failure this short, with no error body in it, is shown as it is.
+const UNKNOWN_ERROR_SHOWN_CHARS: usize = 200;
 
 /// Note on each reply the steps right before it that failed and that no
 /// later step among them redid. A retry counts when it is the same tool
@@ -866,6 +875,20 @@ mod tests {
             .starts_with("mxr couldn't reach"));
         assert!(plain_error("LLM request timed out after 120s").contains("too long"));
         assert_eq!(plain_error("something new broke"), "something new broke");
+    }
+
+    #[test]
+    fn a_provider_error_body_never_becomes_the_sentence() {
+        let credits = r#"LLM error: 402 Payment Required: {"error":{"message":"This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 62047.","code":402}}"#;
+        assert_eq!(
+            plain_error(credits),
+            "The model's provider wants more credits for this request. Add credits with your provider, or switch models in Settings › Language model."
+        );
+        let body =
+            r#"LLM error: 500 Internal Server Error: {"error":{"message":"upstream failed"}}"#;
+        assert!(plain_error(body).starts_with("The model's provider returned an error."));
+        assert!(plain_error(&"x".repeat(UNKNOWN_ERROR_SHOWN_CHARS + 1))
+            .starts_with("The model's provider returned an error."));
     }
 
     #[test]

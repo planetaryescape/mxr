@@ -3,20 +3,22 @@ title: Why mxr
 description: Compare an agent connector with a local mail runtime for synced history.
 ---
 
-mxr is a local mail runtime for you and your agents. A Gmail connector gives
-an agent access to Gmail; mxr syncs mail from connected accounts into a
-local mailbox that you, your scripts, and your agents can use through common
-mail operations. A person and an agent using the same local daemon work with the
-same mailbox state, while client paths can expose different operations and
-authority. A client built on the daemon can reuse its existing sync, search,
-mail operations, and applicable policy checks instead of reimplementing
-those paths.
+mxr keeps a synced mailbox on your computer. Search your history, analyse it
+with a script, or let your agent work with it. You, your tools and mxr's own
+clients all use the same local mailbox.
 
-The provider remains part of the system: mxr syncs new mail and sends or
-applies provider-backed changes through it. Synced messages and locally
-cached content can be read from this machine; sync, sending, uncached
+A connector may be all you need to use Gmail inside your agent. Choose mxr
+when you also want the synced mailbox on your computer, available to your own
+tools and to clients you can use yourself.
+
+The daemon handles sync, storage, search and mail operations. The web app,
+terminal interface, CLI and agent interfaces call it. Build another client
+without rebuilding the mail engine.
+
+Synced messages and locally cached content can be read from this machine.
+Initial sync can take time; sync, sending, provider-backed changes, uncached
 attachments, remote articles, and configured model endpoints may use the
-network. Initial sync can take time. The demo uses isolated synthetic mail.
+network. The demo uses isolated synthetic mail.
 
 After [installing mxr](/getting-started/install/), try it with synthetic mail:
 
@@ -30,14 +32,7 @@ The result is a limited candidate set. By default the query returns up to
 `opened_count` is the number currently marked READ, not a count of tracked
 opens.
 
-## mxr keeps your mail local and works it by what you do with it
-
-mxr is a local mail runtime. It syncs provider mail into SQLite, indexes
-synced messages locally, and exposes daemon-backed state through human and
-machine interfaces. Local search and cached-mail reads do not need a
-provider request; sync, sending, provider-backed changes, uncached
-attachments, remote articles, and configured model endpoints can still use
-the network.
+## Five modes put mail into your day
 
 On top of that store, mxr treats email as five jobs: conversations with
 people, things to do, updates to glance at, reading you chose, and records

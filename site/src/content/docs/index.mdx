@@ -8,15 +8,15 @@ hero:
     <span class="hero-accent">history to work.</span>
   image:
     html: '<p class="hero-category">A local mail runtime for you and your agents</p>'
-  tagline: "A Gmail connector gives your agent access to Gmail. mxr syncs connected mail into a local mailbox, where you, your scripts, and your agents can reuse its mail operations while your provider keeps syncing."
+  tagline: "mxr keeps a synced mailbox on your computer. Search your history, analyse it with a script, or let your agent work with it. You, your tools and mxr's own clients all use the same local mailbox."
   actions:
     - text: Try it with demo mail
       link: /getting-started/quick-start/#1-try-the-demo-inbox
       variant: primary
-    - text: For agents
+    - text: Use it with your agent
       link: /guides/for-agents/
       variant: secondary
-    - text: See the human workflow
+    - text: See how people use mxr
       link: /guides/your-day/
       variant: minimal
 ---
@@ -27,36 +27,6 @@ hero:
   <button class="hero-install-copy" type="button" data-copy-target="install-cmd" aria-label="Copy install command">copy</button>
   <span class="hero-install-alt">Other install methods <a href="/getting-started/install/">available</a></span>
 </div>
-
-<section class="home-proof" aria-labelledby="home-proof-title">
-  <div class="home-proof-head">
-    <span class="home-proof-label">ONE SYNTHETIC TASK · LOCAL EVIDENCE → AGENT PROPOSAL → YOUR REVIEW</span>
-    <span class="home-proof-account">personal · example account</span>
-  </div>
-  <h2 id="home-proof-title">Find subscriptions to review</h2>
-  <p class="home-proof-intro">The daemon reads synced message state; an agent proposes what to review; you decide whether to act.</p>
-
-  <div class="home-proof-mailbox">
-    <span><small>CONNECTED ACCOUNT</small><strong>Gmail · personal</strong></span>
-    <span class="home-proof-arrow" aria-hidden="true">→</span>
-    <span><small>LOCAL MAILBOX</small><strong>messages + READ state</strong></span>
-  </div>
-
-  <div class="home-proof-result">
-    <div class="home-proof-result-head"><span>LOCAL RESULT · ILLUSTRATION</span><code>{`mxr subscriptions --account personal --limit 200 --rank`}</code></div>
-    <div class="home-proof-row"><span><strong>Field Notes</strong><small>6 messages in this sender bucket</small></span><span class="home-proof-rate">2 / 6 <em>READ</em></span></div>
-    <div class="home-proof-row"><span><strong>Weekly Brief</strong><small>8 messages in this sender bucket</small></span><span class="home-proof-rate">6 / 8 <em>READ</em></span></div>
-  </div>
-
-  <div class="home-proof-proposal"><small>AGENT PROPOSAL</small><strong>Review Field Notes first · 2 of 6 messages are marked READ.</strong></div>
-
-  <p class="home-proof-limit">Synthetic example, not observed output. The unscoped command uses the configured default account. It considers at most 200 eligible sender buckets before ranking; counts reflect current READ flags, not tracked opens or every newsletter.</p>
-
-  <div class="home-proof-review">
-    <span class="home-proof-review-mark" aria-hidden="true">◇</span>
-    <span><small>HUMAN REVIEW</small><strong>Preview an unsubscribe, then choose whether to apply it.</strong></span>
-  </div>
-</section>
 
 <div class="hero-providers" aria-label="Mail provider support">
   <div class="hero-provider-row">
@@ -71,17 +41,6 @@ hero:
     <span class="hero-provider-key">extend</span>
     <a href="/reference/adapters/">Build another provider adapter →</a>
   </div>
-</div>
-
-<div class="home-runtime" aria-label="How mxr connects mail and clients">
-  <div class="home-runtime-flow">
-    <div><span>CONNECTED ACCOUNTS</span><strong>Gmail · Outlook · IMAP</strong></div>
-    <span class="home-runtime-arrow" aria-hidden="true">↔</span>
-    <div><span>LOCAL MAILBOX</span><strong>synced history and search</strong></div>
-    <span class="home-runtime-arrow" aria-hidden="true">↔</span>
-    <div><span>CLIENTS</span><strong>mxr · scripts · agents</strong></div>
-  </div>
-  <p>mxr keeps the working mailbox on your machine and continues syncing with the provider. Local search and cached mail reads use that state; sync, sends, provider-backed changes, uncached attachments, and configured model endpoints can still use the network.</p>
 </div>
 
 <div class="hero-cast" aria-label="mxr demos in the CLI, TUI, and an AI agent" aria-roledescription="carousel">
@@ -124,6 +83,11 @@ hero:
     </div>
   </div>
   <div class="hero-cast-cap">Use mxr from the TUI, CLI, or your agent. Subscription counts use current READ flags, not tracked opens. <a href="/examples/">See examples →</a></div>
+</div>
+
+<div class="home-runtime" aria-label="How mxr fits with mail connectors and other clients">
+  <p>A connector may be all you need to use Gmail inside your agent. Choose mxr when you also want the synced mailbox on your computer, available to your own tools and to clients you can use yourself.</p>
+  <p>The daemon handles sync, storage, search and mail operations. The web app, terminal interface, CLI and agent interfaces call it. Build another client without rebuilding the mail engine.</p>
 </div>
 
 <div class="landing-section tryit-section">

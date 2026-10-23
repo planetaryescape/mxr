@@ -376,51 +376,22 @@ body {
   .hero-install-alt { font-size: 0.7rem; }
 }
 
-/* Provider support sits in the main hero reading path. Three unboxed rows
-   separate sync, send, and extension support without another feature list. */
+/* The connector choice and daemon reuse answer follow the opening in plain text. */
 .home-runtime {
   max-width: 76rem;
-  margin: 0 auto clamp(1.25rem, 2vw, 2rem);
+  margin: 0 auto clamp(1.5rem, 3vw, 2.5rem);
   padding: 0 clamp(1.25rem, 4vw, 4rem);
-}
-
-.home-runtime-flow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0.9rem;
-  border-block: 1px solid var(--rule);
-  padding-block: 0.9rem;
-}
-
-.home-runtime-flow div { display: grid; gap: 0.18rem; }
-.home-runtime-flow div span {
-  color: var(--paper-mute);
-  font-family: var(--font-mono);
-  font-variation-settings: var(--rec-meta);
-  font-size: 0.67rem;
-  letter-spacing: 0.04em;
-}
-.home-runtime-flow strong {
-  color: var(--paper);
-  font-size: clamp(0.8rem, 1.1vw, 0.95rem);
-  font-variation-settings: var(--rec-body-em);
-  font-weight: normal;
-}
-.home-runtime-arrow { color: var(--signal); font-family: var(--font-mono); }
-.home-runtime > p {
-  max-width: 68rem;
-  margin: 0.75rem 0 0;
   color: var(--paper-soft);
-  font-size: 0.88rem;
-  line-height: 1.55;
+  font-size: 0.92rem;
+  line-height: 1.6;
 }
 
-@media (max-width: 640px) {
-  .home-runtime { margin-top: 1.25rem; }
-  .home-runtime-flow { grid-template-columns: 1fr; gap: 0.55rem; }
-  .home-runtime-arrow { transform: rotate(90deg); justify-self: start; }
+.home-runtime p {
+  max-width: 72ch;
+  margin: 0;
 }
+
+.home-runtime p + p { margin-top: 0.8rem; }
 
 .hero-providers {
   max-width: 84rem;
@@ -465,128 +436,6 @@ body {
 .hero-provider-row a:hover {
   text-decoration-color: var(--signal);
 }
-
-/* A single synthetic task makes local evidence and the person's review
-   visible beside the opening promise without relying on a widget. */
-.home-proof {
-  max-width: 84rem;
-  margin: 0 auto clamp(1.5rem, 3vw, 2.5rem);
-  padding: 0 clamp(1.25rem, 4vw, 4rem);
-  color: var(--paper);
-}
-
-.home-proof-head,
-.home-proof-result-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.home-proof-label,
-.home-proof-account,
-.home-proof-result-head,
-.home-proof-mailbox small,
-.home-proof-review small {
-  font-family: var(--font-mono);
-  font-variation-settings: var(--rec-meta);
-  font-size: 0.68rem;
-  letter-spacing: 0.025em;
-}
-
-.home-proof-label { color: var(--signal); }
-.home-proof-account { color: var(--paper-mute); }
-
-.home-proof h2 {
-  margin: 0.9rem 0 0.25rem;
-  color: var(--paper);
-  font-family: var(--font-display);
-  font-size: clamp(1.2rem, 1.6vw, 1.55rem);
-  font-variation-settings: var(--rec-display);
-}
-
-.home-proof-intro {
-  margin: 0 0 1rem;
-  color: var(--paper-soft);
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-
-.home-proof-mailbox {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr);
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.65rem 0;
-  border-block: 1px solid var(--rule);
-}
-
-.home-proof-mailbox > span:not(.home-proof-arrow) {
-  display: grid;
-  gap: 0.15rem;
-}
-
-.home-proof-mailbox small { color: var(--paper-mute); }
-.home-proof-mailbox strong { font-size: 0.82rem; font-weight: 500; }
-.home-proof-arrow { color: var(--signal); font-family: var(--font-mono); }
-
-.home-proof-result { margin-top: 0.9rem; }
-.home-proof-result-head { color: var(--paper-mute); padding-bottom: 0.35rem; }
-.home-proof-result-head code { color: var(--paper-soft); font-size: 0.68rem; overflow-wrap: anywhere; }
-
-.home-proof-proposal {
-  display: grid;
-  gap: 0.15rem;
-  margin-top: 0.55rem;
-  padding-top: 0.55rem;
-  border-top: 1px solid var(--rule);
-}
-
-.home-proof-proposal small {
-  color: var(--signal);
-  font-family: var(--font-mono);
-  font-variation-settings: var(--rec-meta);
-  font-size: 0.68rem;
-}
-
-.home-proof-proposal strong { font-size: 0.8rem; font-weight: 500; }
-
-.home-proof-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.55rem 0;
-  border-top: 1px solid var(--rule);
-}
-
-.home-proof-row > span:first-child { display: grid; gap: 0.1rem; }
-.home-proof-row strong { font-size: 0.84rem; font-weight: 500; }
-.home-proof-row small { color: var(--paper-mute); font-size: 0.7rem; }
-.home-proof-rate { white-space: nowrap; font-family: var(--font-mono); font-size: 0.75rem; }
-.home-proof-rate em { color: var(--quiet); font-style: normal; }
-
-.home-proof-limit {
-  margin: 0.45rem 0 0;
-  color: var(--paper-mute);
-  font-size: 0.7rem;
-  line-height: 1.45;
-}
-
-.home-proof-review {
-  display: grid;
-  grid-template-columns: 1rem minmax(0, 1fr);
-  gap: 0.65rem;
-  margin-top: 0.85rem;
-  padding-top: 0.65rem;
-  border-top: 1px solid var(--rule);
-}
-
-.home-proof-review-mark,
-.home-proof-review small { color: var(--quiet); }
-.home-proof-review > span:last-child { display: grid; gap: 0.12rem; }
-.home-proof-review strong { font-size: 0.8rem; font-weight: 500; }
 
 /* Hero terminal demo — a real VHS recording of mxr against the
    seeded demo inbox. Framed like the code blocks elsewhere: a thin
@@ -1998,13 +1847,12 @@ body {
    these, in keeping with the no-cards house style.
    ========================================================== */
 
-/* The first screen pairs the promise with a static, illustrative task proof.
-   The existing recordings follow below as optional product tours. */
+/* The opening pairs its promise with the existing real product recording. */
 @media (min-width: 1100px) {
   main:has(.hero-cast) .content-panel > .sl-container {
     display: grid;
     grid-template-columns: minmax(20rem, 0.95fr) minmax(32rem, 1.05fr);
-    grid-template-rows: auto auto auto auto auto;
+    grid-template-rows: auto auto auto auto;
     column-gap: clamp(2.5rem, 5vw, 5.5rem);
     max-width: 92rem;
     margin-inline: auto;
@@ -2037,15 +1885,6 @@ body {
     max-width: 50ch;
   }
 
-  main:has(.hero-cast) .hero-providers {
-    grid-column: 1;
-    grid-row: 3;
-    align-self: start;
-    max-width: none;
-    margin: 1rem 0 0;
-    padding: 0.75rem 0 0;
-  }
-
   main:has(.hero-cast) .hero-install {
     grid-column: 1;
     grid-row: 2;
@@ -2064,33 +1903,31 @@ body {
     padding-left: 1.8rem;
   }
 
+  main:has(.hero-cast) .hero-providers {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: start;
+    max-width: none;
+    margin: 1rem 0 0;
+    padding: 0.75rem 0 0;
+  }
+
+  main:has(.hero-cast) .hero-cast {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    align-self: center;
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
   main:has(.hero-cast) .home-runtime {
     grid-column: 1 / -1;
     grid-row: 4;
     max-width: none;
     width: 100%;
     padding-inline: 0;
-  }
-
-  main:has(.hero-cast) .home-proof {
-    grid-column: 2;
-    grid-row: 1 / 4;
-    align-self: start;
-    max-width: none;
-    width: 100%;
-    margin: 0;
-    padding: 0 0 0 clamp(1.5rem, 3vw, 3rem);
-    border-left: 1px solid var(--rule);
-  }
-
-  main:has(.hero-cast) .hero-cast {
-    grid-column: 1 / -1;
-    grid-row: 5;
-    align-self: start;
-    max-width: none;
-    width: 100%;
-    margin: clamp(1.5rem, 3vw, 2.5rem) 0 0;
-    padding: 0;
   }
 
   main:has(.hero-cast) .landing-section {

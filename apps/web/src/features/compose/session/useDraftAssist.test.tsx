@@ -236,6 +236,34 @@ describe("useDraftAssist", () => {
     expect(init.body.draft).toMatchObject({ kind: "forward", message_id: "m9" });
   });
 
+  test("a stale proof is asked again with the action the live text calls for", async () => {
+    apiFetch.mockResolvedValue(proposal("Hi", [{ kind: "added", text: "Hi" }]));
+    const { result } = renderHook(() => useHarness(draftWith("")), { wrapper });
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
+    act(() =>
+      result.current.setDraft((draft) =>
+        draft ? { ...draft, bodyMarkdown: "I cannot make Thursday" } : draft,
+      ),
+    );
+    expect(result.current.assist.stale).toBe(true);
+    act(() => result.current.assist.again());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
+    const [, init] = apiFetch.mock.calls[1] as [string, { body: Record<string, unknown> }];
+    expect(init.body).toMatchObject({ action: "finish", text: "I cannot make Thursday" });
+  });
+
+  test("an unchanged proof repeats its own action", async () => {
+    apiFetch.mockResolvedValue(proposal("Hi", [{ kind: "added", text: "Hi" }]));
+    const { result } = renderHook(() => useHarness(draftWith("")), { wrapper });
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
+    act(() => result.current.assist.again());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
+    const [, init] = apiFetch.mock.calls[1] as [string, { body: Record<string, unknown> }];
+    expect(init.body).toMatchObject({ action: "write" });
+  });
+
   test("a forward sends its recipients as address objects", async () => {
     apiFetch.mockResolvedValue(proposal("FYI", [{ kind: "added", text: "FYI" }]));
     const forward: ComposeIntent = { key: "f", title: "Forward", kind: "forward", messageId: "m2" };

@@ -242,13 +242,18 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
   }
 
   /**
-   * Run the proof again. A note asks for a revision of the user's text with
-   * the help line's current action; no note repeats the earlier request.
+   * Run the proof again. A note asks for a revision with the help line's
+   * current action. With no note, a proof whose text has changed is asked
+   * again with the action the live text calls for: the stored action was
+   * chosen for text that is no longer there. An unchanged proof repeats its
+   * own request.
    */
   function again(note?: string) {
     if (!version) return;
     const trimmed = note?.trim() ?? "";
-    if (trimmed) run(helpAction(helpStateNow()), trimmed);
+    const current = draftRef.current;
+    const stale = version.sentText !== (current ? splitTextRegion(current.bodyMarkdown).text : "");
+    if (trimmed || stale) run(helpAction(helpStateNow()), trimmed || version.instruction);
     else run(version.action, version.instruction);
   }
 

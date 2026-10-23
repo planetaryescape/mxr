@@ -139,18 +139,28 @@ body {
   max-width: 84rem;
   margin-inline: auto;
   padding-inline: clamp(1.25rem, 4vw, 4rem);
-  /* Starlight ships .hero as a 2-col grid that pairs the copy
-     stack with an image slot. mxr's hero has no image, so we
-     collapse to a single column and let .copy take full width. */
+  /* Starlight ships .hero as a 2-col grid for copy and a media slot.
+     mxr uses the slot for its category line and keeps one column. */
   grid-template-columns: 1fr !important;
+  /* A percentage row gap can overflow the hero's intrinsic height. */
+  row-gap: 1rem;
 }
 
 .hero .stack { width: 100%; }
 .hero .copy { max-width: none !important; }
 
-.hero::before {
-  content: 'mxr ◈ Gmail, Outlook and IMAP';
-  display: block;
+.hero > .hero-html {
+  order: 0 !important;
+  grid-column: 1;
+  width: 100% !important;
+  height: auto !important;
+  margin: 0 !important;
+  justify-content: flex-start;
+}
+
+.hero-category {
+  width: 100%;
+  margin: 0;
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-meta);
   font-size: 0.78rem;
@@ -366,8 +376,23 @@ body {
   .hero-install-alt { font-size: 0.7rem; }
 }
 
-/* Provider support sits in the main hero reading path. Three unboxed rows
-   separate sync, send, and extension support without another feature list. */
+/* The connector choice and daemon reuse answer follow the opening in plain text. */
+.home-runtime {
+  max-width: 76rem;
+  margin: 0 auto clamp(1.5rem, 3vw, 2.5rem);
+  padding: 0 clamp(1.25rem, 4vw, 4rem);
+  color: var(--paper-soft);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.home-runtime p {
+  max-width: 72ch;
+  margin: 0;
+}
+
+.home-runtime p + p { margin-top: 0.8rem; }
+
 .hero-providers {
   max-width: 84rem;
   margin: clamp(-1.5rem, -2vw, -0.5rem) auto clamp(1rem, 2vw, 1.5rem);
@@ -1822,13 +1847,12 @@ body {
    these, in keeping with the no-cards house style.
    ========================================================== */
 
-/* The first screen is a split product demo: the promise, provider support,
-   and install path on the left, with a real recording on the right. */
+/* The opening pairs its promise with the existing real product recording. */
 @media (min-width: 1100px) {
   main:has(.hero-cast) .content-panel > .sl-container {
     display: grid;
-    grid-template-columns: minmax(20rem, 0.78fr) minmax(36rem, 1.22fr);
-    grid-template-rows: auto auto auto;
+    grid-template-columns: minmax(20rem, 0.95fr) minmax(32rem, 1.05fr);
+    grid-template-rows: auto auto auto auto;
     column-gap: clamp(2.5rem, 5vw, 5.5rem);
     max-width: 92rem;
     margin-inline: auto;
@@ -1848,34 +1872,25 @@ body {
     display: contents;
   }
 
-  main:has(.hero-cast) .hero::before {
+  main:has(.hero-cast) .hero-category {
     margin-bottom: clamp(1.25rem, 2.5vw, 2.25rem);
   }
 
   main:has(.hero-cast) .hero h1 {
-    max-width: 10ch;
-    font-size: clamp(3.4rem, 4.6vw, 5.25rem);
+    max-width: none;
+    font-size: clamp(3rem, 4vw, 4rem);
   }
 
   main:has(.hero-cast) .hero .tagline {
-    max-width: 43ch;
-  }
-
-  main:has(.hero-cast) .hero-providers {
-    grid-column: 1;
-    grid-row: 2;
-    align-self: start;
-    max-width: none;
-    margin: clamp(1.25rem, 2.5vw, 2rem) 0 0;
-    padding: 0.75rem 0 0;
+    max-width: 50ch;
   }
 
   main:has(.hero-cast) .hero-install {
     grid-column: 1;
-    grid-row: 3;
+    grid-row: 2;
     align-self: start;
     max-width: none;
-    margin: clamp(1.25rem, 2.5vw, 2rem) 0 0;
+    margin: 1rem 0 0;
     padding: 0;
   }
 
@@ -1888,6 +1903,15 @@ body {
     padding-left: 1.8rem;
   }
 
+  main:has(.hero-cast) .hero-providers {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: start;
+    max-width: none;
+    margin: 1rem 0 0;
+    padding: 0.75rem 0 0;
+  }
+
   main:has(.hero-cast) .hero-cast {
     grid-column: 2;
     grid-row: 1 / 4;
@@ -1895,8 +1919,15 @@ body {
     max-width: none;
     width: 100%;
     margin: 0;
-    padding: 0 0 0 clamp(1.5rem, 3vw, 3rem);
-    border-left: 1px solid var(--rule);
+    padding: 0;
+  }
+
+  main:has(.hero-cast) .home-runtime {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    max-width: none;
+    width: 100%;
+    padding-inline: 0;
   }
 
   main:has(.hero-cast) .landing-section {

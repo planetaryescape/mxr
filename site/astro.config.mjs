@@ -11,7 +11,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'mxr',
-      description: 'Local email for humans and agents. Sync Gmail, Outlook, or any IMAP account; send through Gmail, Outlook, or SMTP. Search and work offline from your shell or agent.',
+      description: 'A local mail runtime for you and your agents. Work with synced mail history and shared local state.',
       disable404Route: true,
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/planetaryescape/mxr' },
@@ -42,9 +42,9 @@ export default defineConfig({
         { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
         { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
         { tag: 'meta', attrs: { property: 'og:image:type', content: 'image/png' } },
-        { tag: 'meta', attrs: { property: 'og:image:alt', content: 'mxr: Talk to your whole inbox from the TUI, CLI, or your agent.' } },
+        { tag: 'meta', attrs: { property: 'og:image:alt', content: 'mxr syncs connected mail into a local mailbox for people, scripts, and agents to use.' } },
         { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://mxr.sh/og.png' } },
-        { tag: 'meta', attrs: { name: 'twitter:image:alt', content: 'mxr: Talk to your whole inbox from the TUI, CLI, or your agent.' } },
+        { tag: 'meta', attrs: { name: 'twitter:image:alt', content: 'mxr syncs connected mail into a local mailbox for people, scripts, and agents to use.' } },
         { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' } },
         { tag: 'meta', attrs: { name: 'author', content: 'planetaryescape' } },
         { tag: 'meta', attrs: { name: 'keywords', content: 'email client, local-first email, CLI email, terminal email client, TUI email, Gmail CLI, Outlook CLI, IMAP client, SMTP, Rust, MCP server, agent email, offline email, self-hosted email' } },

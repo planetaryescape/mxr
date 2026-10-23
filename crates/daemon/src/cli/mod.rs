@@ -2411,7 +2411,7 @@ pub enum ComposeAction {
     /// with a selection it rewrites only that part. Anything only you can
     /// decide comes back as a `[[?: ...]]` gap, and a draft with a gap can't be
     /// sent. Calls your LLM once; takes as long as the model does.
-    Assist(ComposeAssistArgs),
+    Assist(Box<ComposeAssistArgs>),
     /// Write an accepted proposal into a stored draft. Refused if the draft's
     /// text has changed since the proposal was made. Signature and forward
     /// header stay as they are.

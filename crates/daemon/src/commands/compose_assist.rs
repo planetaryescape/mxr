@@ -21,7 +21,7 @@ use std::str::FromStr;
 
 pub async fn run(action: ComposeAction, parent_format: Option<OutputFormat>) -> anyhow::Result<()> {
     match action {
-        ComposeAction::Assist(args) => assist(args, parent_format).await,
+        ComposeAction::Assist(args) => assist(*args, parent_format).await,
         ComposeAction::Apply {
             proposal_id,
             draft,

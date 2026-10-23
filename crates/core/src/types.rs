@@ -1807,6 +1807,12 @@ pub enum DraftSafetyIssueCode {
     AnswerCoverage,
     CommitmentCandidate,
     SendTimeNote,
+    /// A `[[?: …]]` gap from writing help is still in the draft. A client that
+    /// predates this code cannot decode a safety report that holds it and gets
+    /// an error instead of a send, which fails safe: nothing is sent. Nothing
+    /// else in the protocol gives a response enum an unknown-value fallback, so
+    /// this one does not either.
+    UnfilledGap,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

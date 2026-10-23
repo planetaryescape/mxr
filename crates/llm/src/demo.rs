@@ -67,6 +67,8 @@ enum FeatureKind {
     Briefing,
     DraftAssist,
     DraftNew,
+    /// Writing help on text the user already typed.
+    ComposeFinish,
     VoiceMatch,
     HumanizeRewrite,
     AnswerCoverage,
@@ -78,6 +80,37 @@ enum FeatureKind {
     Generic,
 }
 
+/// The heading of the block that carries what the user has typed.
+const TYPED_DRAFT_HEADING: &str = "[MY DRAFT SO FAR]\n";
+
+/// Finish what was typed the way writing help does: the typed text kept word
+/// for word, a greeting and sign-off around it, and one gap for the one thing
+/// only the user can decide. A selection comes back unchanged.
+fn demo_compose_finish(user: &str) -> String {
+    let typed = typed_draft(user);
+    if user.contains("[EDIT ONLY THIS]") {
+        return typed;
+    }
+    format!(
+        "Hi,\n\n{typed}\n\nWhat date do you need it by? [[?: the date they need it by]]\n\nAlex"
+    )
+}
+
+/// The text inside the `[MY DRAFT SO FAR]` block of a writing-help prompt.
+fn typed_draft(user: &str) -> String {
+    let Some(at) = user.find(TYPED_DRAFT_HEADING) else {
+        return String::new();
+    };
+    let after = &user[at + TYPED_DRAFT_HEADING.len()..];
+    let inside = after
+        .split_once('\n')
+        .map_or("", |(_begin_marker, rest)| rest);
+    inside
+        .split_once("\n=====")
+        .map_or(inside, |(typed, _end_marker)| typed)
+        .to_string()
+}
+
 fn classify(req: &CompletionRequest) -> FeatureKind {
     let system = req
         .messages
@@ -86,9 +119,15 @@ fn classify(req: &CompletionRequest) -> FeatureKind {
         .map(|message| message.content.to_ascii_lowercase())
         .unwrap_or_default();
 
+    let user_has_typed_text = req.messages.iter().any(|message| {
+        matches!(message.role, ChatRole::User) && message.content.contains(TYPED_DRAFT_HEADING)
+    });
+
     // Order matters: more-specific phrases first so e.g. "draft a briefing"
     // doesn't get caught by the draft branch.
-    if system.contains("reader gist") {
+    if system.contains("ghostwriting") && user_has_typed_text {
+        FeatureKind::ComposeFinish
+    } else if system.contains("reader gist") {
         FeatureKind::ThreadGist
     } else if system.contains("briefing") {
         FeatureKind::Briefing
@@ -158,6 +197,7 @@ fn render(kind: FeatureKind, req: &CompletionRequest) -> String {
              I'll have the Friday cut ready and will loop you in once the migration window is locked. \
              If anything shifts, I'll send a follow-up before EOD Thursday so we have a clean handoff."
             .to_string(),
+        FeatureKind::ComposeFinish => demo_compose_finish(user),
         FeatureKind::VoiceMatch => {
             // Echo the user input lightly massaged so voice-match feels real.
             format!(
@@ -291,6 +331,51 @@ mod tests {
             max_tokens: None,
             temperature: None,
         }
+    }
+
+    #[tokio::test]
+    async fn typed_text_is_finished_not_echoed_with_a_gap_left() {
+        let provider = DemoLlmProvider::new();
+        let user = format!(
+            "[ABOUT ME]\nI am Alex.\n\n[MY DRAFT SO FAR]\n{}\nThursday works.\nnumbers by wed\n{}\n\n[TASK]\nFinish my reply.",
+            crate::UNTRUSTED_MAIL_BEGIN,
+            crate::UNTRUSTED_MAIL_END,
+        );
+        let resp = provider
+            .complete(req(
+                "You are ghostwriting a reply to the message marked TARGET as Alex. Write exactly what Alex would send: the same voice",
+                &user,
+            ))
+            .await
+            .expect("complete ok");
+        assert_eq!(
+            resp.content,
+            "Hi,\n\nThursday works.\nnumbers by wed\n\nWhat date do you need it by? [[?: the date they need it by]]\n\nAlex"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_selection_comes_back_unchanged_and_nothing_typed_keeps_the_old_script() {
+        let provider = DemoLlmProvider::new();
+        let system = "You are ghostwriting a reply as Alex: the same voice";
+        let user = format!(
+            "[MY DRAFT SO FAR]\n{}\nOne. Two.\n{}\n\n[EDIT ONLY THIS]\n{}\nTwo.\n{}",
+            crate::UNTRUSTED_MAIL_BEGIN,
+            crate::UNTRUSTED_MAIL_END,
+            crate::UNTRUSTED_MAIL_BEGIN,
+            crate::UNTRUSTED_MAIL_END,
+        );
+        let edited = provider.complete(req(system, &user)).await.expect("ok");
+        assert_eq!(edited.content, "One. Two.");
+        let written = provider
+            .complete(req(system, "[TASK]\nWrite my reply."))
+            .await
+            .expect("ok");
+        assert!(
+            written.content.starts_with("Voice-matched draft:"),
+            "{}",
+            written.content
+        );
     }
 
     #[tokio::test]

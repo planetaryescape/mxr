@@ -855,6 +855,16 @@ keys = ["Mod+Shift+f"]
 hide_in_palette = true
 clients = ["web"]
 
+[[action]]
+id = "compose.draft-for-me"
+label = "Draft for me"
+description = "Open the help line; in a proof, revise it"
+group = "Compose"
+scopes = ["compose"]
+keys = ["Mod+j"]
+hide_in_palette = true
+clients = ["web"]
+
 # Mail verbs. Keys match the TUI's live mail-action handler
 # (crates/tui/src/app/input.rs), bound in both the list and the reader.
 [[action]]

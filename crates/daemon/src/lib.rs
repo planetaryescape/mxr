@@ -1105,34 +1105,39 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             format,
             check,
             no_llm,
+            action,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            let options = commands::mutations::ComposeOptions {
-                to,
-                cc,
-                bcc,
-                subject,
-                body,
-                body_stdin,
-                html_file,
-                html_stdin,
-                text_file,
-                inline,
-                signature_html,
-                attach,
-                from,
-                account,
-                signature,
-                no_signature,
-                yes,
-                draft,
-                dry_run,
-                format,
-            };
-            if check {
-                commands::mutations::compose_check(options, no_llm).await?;
+            if let Some(action) = action {
+                commands::compose_assist::run(*action, format).await?;
             } else {
-                commands::mutations::compose(options).await?;
+                let options = commands::mutations::ComposeOptions {
+                    to,
+                    cc,
+                    bcc,
+                    subject,
+                    body,
+                    body_stdin,
+                    html_file,
+                    html_stdin,
+                    text_file,
+                    inline,
+                    signature_html,
+                    attach,
+                    from,
+                    account,
+                    signature,
+                    no_signature,
+                    yes,
+                    draft,
+                    dry_run,
+                    format,
+                };
+                if check {
+                    commands::mutations::compose_check(options, no_llm).await?;
+                } else {
+                    commands::mutations::compose(options).await?;
+                }
             }
         }
         Some(Command::Reply {

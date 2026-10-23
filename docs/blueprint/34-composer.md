@@ -543,6 +543,38 @@ Runs vary by up to four cases per check. `kept` fails for most typed cases
 because typed text is not sent yet; the 18 cases with nothing typed pass it by
 construction.
 
+### After rung C1: the typed text is sent
+
+`ComposeAssist` sends the typed text (Finish) and the selection (Edit
+selection), and `mxr draft eval --set quick` now drafts every case through the
+same plan. The prompt snapshot shows the change: each typed case gains a
+`[MY DRAFT SO FAR]` block inside the untrusted-mail markers (a selection also
+gains `[EDIT ONLY THIS]`), and its task now says to keep every sentence word
+for word instead of asking for a fresh reply.
+
+Two live runs on 2026-10-23 with `gemma4:latest` through the same local
+Ollama endpoint, graded with the rules above, before the check stage touches
+the answer (the grades measure the model and the prompt; the check stage is
+the safety net on top):
+
+| Check | Baseline | Run 1 | Run 2 | Of |
+|---|---|---|---|---|
+| Kept: typed sentences survive | 20 | 40 | 40 | 40 |
+| Answers: each question from the target is addressed | 29 | 39 | 40 | 40 |
+| Gaps: facts nobody gave are left as gaps | 38 | 37 | 37 | 40 |
+| Invented: no number outside the inputs | 40 | 40 | 40 | 40 |
+| Length: inside the case's word band | 40 | 40 | 40 | 40 |
+| Leftovers: no subject, preamble, repeated sign-off or copied run | 40 | 40 | 40 | 40 |
+
+`kept` moved from 20 to 40: all 22 typed cases now keep their sentences, the
+18 empty ones pass it by construction. `answers` moved from 29 to 39 and 40,
+which is mostly the same cause: a typed answer now reaches the model instead of
+being dropped. Gaps did not move. The three cases that miss it in both runs
+(`date-open`, `seats-open`, `rate-open`) are ones where the model left a gap
+that does not name the fact ("by [[?: time]]" for a date, "[[?: number]]
+seats") or wrote around it with no gap at all ("the rate per person"). Rung
+C3's repair pass is the place to move it. Style mean was 98.7 and 99.0.
+
 ## The compose screen: your page under the lamp, help as a proof
 
 The screens are drawn, with every state, key and check, in

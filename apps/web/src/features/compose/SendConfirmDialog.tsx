@@ -25,9 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { ComposeFrontmatter, DraftSafetyReport, SuggestedCollaborator } from "./api";
-import { DraftQualityBadges } from "./DraftQualityBadges";
 import { splitAddresses } from "./session/composeDraft";
-import type { DraftSuggestionResponse } from "./types";
 
 interface SendConfirmDialogProps {
   open: boolean;
@@ -35,7 +33,6 @@ interface SendConfirmDialogProps {
   frontmatter: ComposeFrontmatter;
   /** Address the message goes out from (the selected alias or account). */
   fromAddress: string;
-  suggestion: DraftSuggestionResponse | null;
   sending: boolean;
   safetyReport: DraftSafetyReport | null;
   safetyCheckError: string | null;
@@ -50,7 +47,6 @@ export function SendConfirmDialog({
   onOpenChange,
   frontmatter,
   fromAddress,
-  suggestion,
   sending,
   safetyReport,
   safetyCheckError,
@@ -205,7 +201,6 @@ export function SendConfirmDialog({
           )
         ) : null}
 
-        <DraftQualityBadges suggestion={suggestion} />
         <AlertDialogFooter>
           <AlertDialogCancel variant="outline" disabled={sending}>
             {blocked ? "Back to draft" : "Cancel"}

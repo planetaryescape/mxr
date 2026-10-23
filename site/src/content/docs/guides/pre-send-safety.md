@@ -4,7 +4,7 @@ description: Catch wrong recipients, missing attachments, leaked secrets, and un
 ---
 
 mxr runs a deterministic safety pipeline against every draft before it
-hits the provider. Six checks total — five run with zero LLM calls; one
+hits the provider. Seven checks total — six run with zero LLM calls; one
 (answer-coverage) uses your configured LLM. Each check produces an
 issue with a severity:
 
@@ -25,7 +25,7 @@ but it never edits your recipients or your body. You either fix the
 draft, supply an override token, or kill the draft.
 :::
 
-## The six checks
+## The seven checks
 
 | Code | Severity | Reads | LLM? |
 |---|---|---|---|
@@ -35,6 +35,7 @@ draft, supply an override token, or kill the draft.
 | `PiiSecret` | Warning (cards/SSNs) or Blocker (private keys, common API tokens) | draft body | No |
 | `ToneMismatch` | Warning | `contact_style` baseline (>= 3 prior messages) | No |
 | `AnswerCoverage` | Warning (or `Info` if LLM disabled) | parent thread | Yes |
+| `UnfilledGap` | Blocker, no override | subject + body, quoted text and signature included | No |
 
 ## Quick start
 
@@ -254,6 +255,24 @@ Configure the LLM in `[llm]`. Per-feature overrides:
 [llm.overrides.answer_coverage]
 model = "gpt-5-mini"
 ```
+
+## Unfilled gap
+
+[Writing help](/guides/llm-features/#draft-for-me-builds-on-what-you-typed) marks
+what only you can decide as `[[?: the date]]`. A draft that still has one
+cannot be sent: the check finds `[[?:` anywhere in the subject or body and
+names each gap.
+
+```bash
+mxr send DRAFT_ID --check
+# [BLOCK] UnfilledGap: 2 gaps left: the date, the price
+```
+
+Fill them in and send again. This blocker mints no override token and no
+token covers it, because nobody means to send `[[?: the date]]`. Someone who
+writes `[[?:` on purpose can't send it either. A scheduled send with a gap
+is handled like any other blocker (see below): the draft stays, the
+schedule is cleared.
 
 ## The override flow
 

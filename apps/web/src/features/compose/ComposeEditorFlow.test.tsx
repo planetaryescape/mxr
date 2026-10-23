@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { useUiPrefs } from "@/state/uiPrefsStore";
 import { ComposeHost } from "./ComposeHost";
 import { draftIntent, newMessageIntent, useComposeUi } from "./composeUiStore";
 import type { ComposeIntent } from "./useComposeSession";
@@ -68,16 +69,45 @@ vi.mock("./api", () => ({
   uploadComposeAttachment: api.uploadComposeAttachment,
 }));
 
-vi.mock("./tiptap/TiptapComposeEditor", () => ({
-  TiptapComposeEditor: ({ autoFocus }: { autoFocus?: boolean }) => (
-    <textarea aria-label="Message body" autoFocus={autoFocus} />
-  ),
+// Stand-ins for the editors (see testing/EditorStub.tsx).
+vi.mock("./tiptap/TiptapComposeEditor", async () => ({
+  TiptapComposeEditor: (await import("./testing/EditorStub")).EditorStub,
 }));
 
-vi.mock("./codemirror/CodeMirrorComposeEditor", () => ({
-  CodeMirrorComposeEditor: ({ autoFocus }: { autoFocus?: boolean }) => (
-    <textarea aria-label="Message body" autoFocus={autoFocus} />
-  ),
+vi.mock("./codemirror/CodeMirrorComposeEditor", async () => ({
+  CodeMirrorComposeEditor: (await import("./testing/EditorStub")).EditorStub,
+}));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+  return {
+    ...actual,
+    useNavigate: () => router.navigate,
+    useRouterState: ({
+      select,
+    }: {
+      select: (state: { location: typeof router.location }) => unknown;
+    }) => select({ location: router.location }),
+  };
+});
+
+vi.mock("@/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/client")>()),
+  apiFetch: rawApi.fetch,
+}));
+
+vi.mock("./api", () => ({
+  discardComposeSession: api.discardComposeSession,
+  fetchAccounts: api.fetchAccounts,
+  fetchContactsAutocomplete: api.fetchContactsAutocomplete,
+  refreshComposeSession: api.refreshComposeSession,
+  restoreComposeSession: api.restoreComposeSession,
+  saveComposeSession: api.saveComposeSession,
+  sendComposeSession: api.sendComposeSession,
+  startComposeSession: api.startComposeSession,
+  suggestComposeCollaborators: api.suggestComposeCollaborators,
+  updateComposeSession: api.updateComposeSession,
+  uploadComposeAttachment: api.uploadComposeAttachment,
 }));
 
 vi.mock("sonner", () => ({
@@ -102,6 +132,13 @@ function renderCompose(intent: ComposeIntent = newMessageIntent()) {
 
 const composeSession: ComposeSessionResponse = {
   session: {
+    binding: {
+      target: window.location.origin,
+      workspace: {
+        workspace_id: "compose-flow-owner",
+        recovery_generation: "compose-flow-generation",
+      },
+    },
     draftPath: "/tmp/mxr-compose.md",
     rawContent: "",
     frontmatter: { to: "", cc: "", bcc: "", subject: "", from: "me@example.com", attach: [] },
@@ -343,5 +380,133 @@ describe("Compose opening a saved draft that has an HTML body", () => {
     // The raw error sits under Details, not in the headline.
     expect(screen.getByText(/failed to connect to mxr daemon/i)).not.toBeVisible();
     expect(screen.queryByText(/This draft has an HTML body/i)).not.toBeInTheDocument();
+  });
+});
+
+/** A proof that adds " there" to "Hi". */
+const hiThereProposal = {
+  proposal: {
+    proposal_id: "p-1",
+    action: "finish",
+    base: "hash",
+    text: "Hi there",
+    changes: [
+      { kind: "kept", text: "Hi" },
+      { kind: "added", text: " there" },
+    ],
+    gaps: [],
+    provenance: null,
+    yours_changed: [],
+    composer_version: "1",
+  },
+};
+
+/** Open the help line with ⌘J and submit it with ↵. */
+async function askForHelp() {
+  const editor = await screen.findByRole("textbox", { name: "Message body" });
+  fireEvent.keyDown(editor, { key: "j", metaKey: true });
+  const input = await screen.findByRole("textbox", { name: "Draft instruction" });
+  fireEvent.keyDown(input, { key: "Enter" });
+  return screen.findByRole("region", { name: "Draft proof" });
+}
+
+describe("Draft for me in the sheet", () => {
+  beforeEach(() => {
+    // A new message needs a recipient before it can be drafted.
+    api.startComposeSession.mockResolvedValue({
+      session: {
+        ...composeSession.session,
+        frontmatter: { ...composeSession.session.frontmatter, to: "pat@example.com" },
+      },
+    });
+    rawApi.fetch.mockImplementation(async (path: string) =>
+      path.includes("/mail/compose/assist") ? hiThereProposal : { snippets: [] },
+    );
+  });
+
+  test("the rich editor never offers selection editing, even after a selection in the Markdown editor", async () => {
+    api.startComposeSession.mockResolvedValue({
+      session: {
+        ...composeSession.session,
+        frontmatter: { ...composeSession.session.frontmatter, to: "pat@example.com" },
+        bodyMarkdown: "Hi",
+      },
+    });
+    useUiPrefs.setState({ composeEditor: "codemirror-vim" });
+    renderCompose(newMessageIntent());
+    const editor = await screen.findByRole("textbox", { name: "Message body" });
+    fireEvent.keyDown(editor, { key: "j", metaKey: true });
+    const input = await screen.findByRole("textbox", { name: "Draft instruction" });
+
+    (editor as HTMLTextAreaElement).setSelectionRange(0, 2);
+    fireEvent.select(editor);
+    expect(input).toHaveAttribute("placeholder", "Edit the selection: say how");
+
+    act(() => useUiPrefs.getState().setComposeEditor("tiptap"));
+
+    expect(input).toHaveAttribute("placeholder", "Finish my draft, or say what to change");
+  });
+
+  test("Esc on a proof keeps the user's text and leaves the sheet open", async () => {
+    // A saved body that nobody has touched: dismissing it would close the sheet at once.
+    api.startComposeSession.mockResolvedValue({
+      session: {
+        ...composeSession.session,
+        frontmatter: { ...composeSession.session.frontmatter, to: "pat@example.com" },
+        bodyMarkdown: "Hi",
+      },
+    });
+    renderCompose(newMessageIntent());
+    const proof = await askForHelp();
+
+    fireEvent.keyDown(proof, { key: "Escape" });
+
+    expect(screen.queryByRole("region", { name: "Draft proof" })).not.toBeInTheDocument();
+    // A dismissal would save and close; give that path time to finish.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(useComposeUi.getState().intent).not.toBeNull();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message body" })).toHaveValue("Hi");
+  });
+
+  test("Esc on the help line closes the line and leaves the sheet open", async () => {
+    api.startComposeSession.mockResolvedValue({
+      session: {
+        ...composeSession.session,
+        frontmatter: { ...composeSession.session.frontmatter, to: "pat@example.com" },
+        bodyMarkdown: "Hi",
+      },
+    });
+    renderCompose(newMessageIntent());
+    const editor = await screen.findByRole("textbox", { name: "Message body" });
+    fireEvent.keyDown(editor, { key: "j", metaKey: true });
+    const input = await screen.findByRole("textbox", { name: "Draft instruction" });
+
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(screen.queryByRole("textbox", { name: "Draft instruction" })).not.toBeInTheDocument();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(useComposeUi.getState().intent).not.toBeNull();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  test("accepting a proof returns focus to the body, so ⌘Z takes the accept back", async () => {
+    renderCompose(newMessageIntent());
+    const typed = await screen.findByRole("textbox", { name: "Message body" });
+    fireEvent.change(typed, { target: { value: "Hi" } });
+    const proof = await askForHelp();
+
+    fireEvent.keyDown(proof, { key: "Enter" });
+    const editor = await screen.findByRole("textbox", { name: "Message body" });
+    expect(editor).toHaveValue("Hi there");
+    await waitFor(() => expect(editor).toHaveFocus());
+
+    fireEvent.keyDown(document.activeElement ?? editor, { key: "z", metaKey: true });
+
+    expect(screen.getByRole("textbox", { name: "Message body" })).toHaveValue("Hi");
   });
 });

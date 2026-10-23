@@ -12,7 +12,7 @@ Email clients don't ship this. Gmail logs IPs for compliance admins. mxr logs *i
 State-changing or intent-expressing actions:
 
 - **Mail**: `mail.read`, `mail.archive`, `mail.trash`, `mail.star`, `mail.label`, `mail.move`, `mail.snooze`, `mail.unsubscribe`, `mail.mark_spam`.
-- **Send**: `mail.send`, `mail.reply`, `mail.forward`, `draft.create`, `draft.discard`, scheduled sends.
+- **Send**: `mail.send`, `mail.reply`, `mail.forward`, `draft.create`, `draft.assist` (the action, model and how much came back, never the text), `draft.discard`, scheduled sends.
 - **Search**: `search.run`, `search.save`, `search.delete`, `saved.open`.
 - **Threads**: `thread.open`, `thread.summarize`, `thread.flag_reply_later`.
 - **Accounts**: `account.add`, `account.remove`, `account.signin`, `account.sync`.

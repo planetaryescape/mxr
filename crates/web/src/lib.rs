@@ -11,6 +11,7 @@ mod arrival_routes;
 mod assistant_routes;
 mod chime_routes;
 mod chrome;
+mod compose_assist_routes;
 mod envelope_list;
 mod freshness_routes;
 mod insight_routes;
@@ -3309,6 +3310,10 @@ async fn restore_saved_draft_session(
     session["cursorLine"] = json!(cursor_line);
     session["accountId"] = json!(account.account_id);
     session["kind"] = json!("new");
+    // `kind` stays `new` for the flows that read it; what the draft is (a reply,
+    // a forward) rides beside it, so a client can ask for help with the stored
+    // draft instead of a new message that carries mail's subject.
+    session["draftIntent"] = json!(draft.intent);
     session["editorCommand"] = json!(resolved_editor_command());
     Ok(RestoredComposeSession::Editable(session))
 }

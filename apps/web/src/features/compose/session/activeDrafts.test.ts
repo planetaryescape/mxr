@@ -23,6 +23,7 @@ function draft(): ComposeDraftState {
     rawContent: "",
     issues: [],
     kind: "new",
+    draftIntent: "forward",
     binding: {
       target: "http://127.0.0.1:7777",
       workspace: { workspace_id: "owner-a", recovery_generation: "generation-a" },
@@ -47,6 +48,7 @@ test("reload retains actual private text and original owner without contacting a
   expect(rememberActiveDraft(intent.key, original)).toBe(true);
   const loaded = await loadInitialComposeSession(intent);
   expect(loaded.session.bodyMarkdown).toBe(original.bodyMarkdown);
+  expect(loaded.session.draftIntent).toBe("forward");
   expect(loaded.session.binding).toEqual(original.binding);
   expect(loaded.session.frontmatter.attach).toEqual(original.frontmatter.attach);
   expect(loaded.retainedSnapshot).toBe(true);

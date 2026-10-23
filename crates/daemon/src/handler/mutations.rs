@@ -159,6 +159,21 @@ async fn enforce_draft_safety_with_override(
         .map(|i| i.code)
         .collect();
 
+    // An unfilled gap is never overridden: the text isn't finished, and no
+    // reviewed token can make `[[?: the date]]` something to send.
+    if blocker_kinds.contains(&DraftSafetyIssueCode::UnfilledGap) {
+        let messages = report
+            .issues
+            .iter()
+            .filter(|issue| issue.severity == DraftSafetySeverity::Blocker)
+            .map(|issue| issue.message.as_str())
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!(
+            "draft safety blocked send: {messages}; fill them in, then send again"
+        ));
+    }
+
     if let Some(token) = override_token {
         match state.store.consume_safety_override(token).await {
             Ok(Some(allowed_kinds)) => {
@@ -421,7 +436,9 @@ pub(crate) async fn check_draft_safety_request(
             .filter(|i| i.severity == DraftSafetySeverity::Blocker)
             .map(|i| i.code)
             .collect();
-        if !blocker_kinds.is_empty() {
+        // No token for a draft with an unfilled gap: nothing overrides it.
+        if !blocker_kinds.is_empty() && !blocker_kinds.contains(&DraftSafetyIssueCode::UnfilledGap)
+        {
             match state
                 .store
                 .mint_safety_override(Some(&draft.id), &blocker_kinds)

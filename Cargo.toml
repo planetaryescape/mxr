@@ -300,6 +300,8 @@ chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"
 bitflags = { version = "2", features = ["serde"] }
 sha2 = "0.11"
+# Word-level diffs for writing-help proposals (already in the lockfile via insta).
+similar = "2"
 base16ct = { version = "1.0", features = ["alloc"] }
 
 # Error handling

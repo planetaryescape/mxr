@@ -398,7 +398,7 @@
       "cmd",
       "shift"
     ],
-    "key": "k"
+    "key": "p"
   },
   "now.done": {
     "modifiers": [
@@ -417,7 +417,7 @@
       "cmd",
       "shift"
     ],
-    "key": "a"
+    "key": "e"
   },
   "now.open-email": {
     "modifiers": [
@@ -587,21 +587,21 @@
       "cmd",
       "shift"
     ],
-    "key": "a"
+    "key": "e"
   },
   "reading.marginalia": {
     "modifiers": [
       "cmd",
       "shift"
     ],
-    "key": "m"
+    "key": "o"
   },
   "reading.move-sender": {
     "modifiers": [
       "cmd",
       "shift"
     ],
-    "key": "k"
+    "key": "p"
   },
   "reading.open-email": {
     "modifiers": [
@@ -629,12 +629,6 @@
     ],
     "key": "j"
   },
-  "reading.reader-highlight": {
-    "modifiers": [
-      "cmd"
-    ],
-    "key": "h"
-  },
   "reading.reader-issue": {
     "modifiers": [
       "cmd",
@@ -659,7 +653,7 @@
       "cmd",
       "shift"
     ],
-    "key": "m"
+    "key": "o"
   },
   "reading.reader-next": {
     "modifiers": [
@@ -767,7 +761,7 @@
       "cmd",
       "shift"
     ],
-    "key": "a"
+    "key": "e"
   },
   "todo.details": {
     "modifiers": [
@@ -832,7 +826,7 @@
       "cmd",
       "shift"
     ],
-    "key": "a"
+    "key": "e"
   },
   "updates.let-go-source": {
     "modifiers": [
@@ -877,6 +871,6 @@
       "cmd",
       "shift"
     ],
-    "key": "k"
+    "key": "p"
   }
 }

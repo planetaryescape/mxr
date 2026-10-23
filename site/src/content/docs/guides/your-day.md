@@ -47,7 +47,7 @@ mxr todo
 
 Press `g x`. Read the action title, amount and dates, then use the row's
 primary action or open its source email. In the web app, tick the checkbox
-on the left or press `Space` on the selected row when you have finished.
+on the left or press `e` on the selected row when you have finished.
 Schedule work for later without changing its due date, or correct what mxr
 read. [Act on To dos](/guides/todo/) shows those steps.
 

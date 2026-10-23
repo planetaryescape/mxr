@@ -93,7 +93,7 @@ keys = ["g h"]
 [[action.tui]]
 name = "OpenNow"
 keys = ["g h"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
 
 [[action]]
 id = "nav.messages"
@@ -2137,7 +2137,7 @@ clients = ["tui"]
 [[action.tui]]
 name = "OpenSenderKindMenu"
 keys = ["K"]
-contexts = ["place", "reading-reader"]
+contexts = ["place"]
 
 [[action]]
 id = "place.unsubscribe"
@@ -2218,12 +2218,17 @@ short_label = "Done"
 group = "Triage"
 scopes = ["todo"]
 # Space follows checkbox convention; the e alias matches the TUI.
-keys = ["Space", "e"]
+keys = ["e"]
 
 [[action.tui]]
 name = "TodoDone"
 keys = ["e"]
 contexts = ["todo"]
+
+[[action.moved]]
+key = "Space"
+contexts = ["todo"]
+until = "0.6.180"
 
 [[action]]
 id = "todo.schedule"
@@ -2382,13 +2387,18 @@ label = "Let go of all…"
 short_label = "Let go of all"
 group = "Triage"
 scopes = ["catchup"]
-keys = ["A"]
+keys = ["E"]
 note = "Previews the daemon's dry run first; undo afterwards"
 
 [[action.tui]]
 name = "CatchupLetGoAll"
-keys = ["A"]
+keys = ["E"]
 contexts = ["catchup"]
+
+[[action.moved]]
+key = "A"
+contexts = ["catchup"]
+until = "0.6.180"
 
 [[action]]
 id = "todo.catchup-back"
@@ -2542,13 +2552,17 @@ label = "Open the email"
 short_label = "Email"
 group = "Triage"
 scopes = ["archive"]
-keys = ["o", "e"]
-note = "Archive has no done: records stay, so e opens the email too"
+keys = ["o"]
 
 [[action.tui]]
 name = "RecordsOpenEmail"
-keys = ["e", "o"]
+keys = ["o"]
 contexts = ["archive"]
+
+[[action.moved]]
+key = "e"
+contexts = ["archive"]
+until = "0.6.180"
 
 [[action]]
 id = "archive.issuer"
@@ -2568,24 +2582,34 @@ id = "archive.prev-year"
 label = "Previous year"
 group = "Move"
 scopes = ["archive"]
-keys = ["["]
+keys = ["{"]
 
 [[action.tui]]
 name = "RecordsPrevYear"
-keys = ["["]
+keys = ["{"]
 contexts = ["archive"]
+
+[[action.moved]]
+key = "["
+contexts = ["archive"]
+until = "0.6.180"
 
 [[action]]
 id = "archive.next-year"
 label = "Next year"
 group = "Move"
 scopes = ["archive"]
-keys = ["]"]
+keys = ["}"]
 
 [[action.tui]]
 name = "RecordsNextYear"
-keys = ["]"]
+keys = ["}"]
 contexts = ["archive"]
+
+[[action.moved]]
+key = "]"
+contexts = ["archive"]
+until = "0.6.180"
 
 [[action]]
 id = "archive.edit"
@@ -2786,13 +2810,18 @@ label = "Let go of everything shown…"
 short_label = "Let go of all"
 group = "Read"
 scopes = ["reading"]
-keys = ["A"]
+keys = ["E"]
 note = "Previews the daemon's dry run first; undo afterwards"
 
 [[action.tui]]
 name = "ReadingLetGoAll"
-keys = ["A"]
+keys = ["E"]
 contexts = ["reading", "reading-reader"]
+
+[[action.moved]]
+key = "A"
+contexts = ["reading", "reading-reader"]
+until = "0.6.180"
 
 [[action]]
 id = "reading.open-email"
@@ -2813,12 +2842,17 @@ label = "This sender here: move to…"
 description = "People, Reading, Paper trail, Screened out or automatic, for their future mail too"
 group = "Read"
 scopes = ["reading"]
-keys = ["K"]
+keys = ["P"]
 
 [[action.tui]]
 name = "OpenSenderKindMenu"
-keys = ["K"]
-contexts = ["reading"]
+keys = ["P"]
+contexts = ["reading", "reading-reader"]
+
+[[action.moved]]
+key = "K"
+contexts = ["reading", "reading-reader"]
+until = "0.6.180"
 
 [[action]]
 id = "reading.later-shelf"
@@ -2840,12 +2874,17 @@ short_label = "Marginalia"
 description = "Sends the item's text to Marginalia the first time, then opens it there"
 group = "Read"
 scopes = ["reading"]
-keys = ["M"]
+keys = ["O"]
 
 [[action.tui]]
 name = "ReadingMarginalia"
-keys = ["M"]
+keys = ["O"]
 contexts = ["reading", "reading-reader"]
+
+[[action.moved]]
+key = "M"
+contexts = ["reading"]
+until = "0.6.180"
 
 [[action]]
 id = "reading.close-hint"
@@ -2925,12 +2964,17 @@ label = "Highlight the selection"
 short_label = "Highlight"
 group = "Read"
 scopes = ["reading-reader"]
-keys = ["h"]
+keys = ["\""]
 
 [[action.tui]]
 name = "ReadingHighlight"
-keys = ["h"]
+keys = ["\""]
 contexts = ["reading-reader"]
+
+[[action.moved]]
+key = "h"
+contexts = ["reading-reader"]
+until = "0.6.180"
 
 [[action]]
 id = "reading.reader-unsubscribe"
@@ -2955,7 +2999,12 @@ short_label = "Marginalia"
 description = "Sends the item's text to Marginalia the first time, then opens it there"
 group = "Read"
 scopes = ["reading-reader"]
-keys = ["M"]
+keys = ["O"]
+
+[[action.moved]]
+key = "M"
+contexts = ["reading-reader"]
+until = "0.6.180"
 
 [[action]]
 id = "reading.reader-back"
@@ -3080,13 +3129,18 @@ label = "Let go of the Updates digest…"
 short_label = "Let go of digest"
 group = "Triage"
 scopes = ["now"]
-keys = ["A"]
+keys = ["E"]
 note = "Previews the daemon's dry run first; undo afterwards"
 
 [[action.tui]]
 name = "NowLetGoDigest"
-keys = ["A"]
+keys = ["E"]
 contexts = ["now"]
+
+[[action.moved]]
+key = "A"
+contexts = ["now"]
+until = "0.6.180"
 
 [[action]]
 id = "now.close-hint"
@@ -3286,24 +3340,34 @@ id = "messages.prev-topic"
 label = "Previous topic"
 group = "Move"
 scopes = ["messages"]
-keys = ["["]
+keys = ["{"]
 
 [[action.tui]]
 name = "MessagesPrevTopic"
-keys = ["["]
+keys = ["{"]
 contexts = ["messages"]
+
+[[action.moved]]
+key = "["
+contexts = ["messages"]
+until = "0.6.180"
 
 [[action]]
 id = "messages.next-topic"
 label = "Next topic"
 group = "Move"
 scopes = ["messages"]
-keys = ["]"]
+keys = ["}"]
 
 [[action.tui]]
 name = "MessagesNextTopic"
-keys = ["]"]
+keys = ["}"]
 contexts = ["messages"]
+
+[[action.moved]]
+key = "]"
+contexts = ["messages"]
+until = "0.6.180"
 
 [[action]]
 id = "messages.person-page"
@@ -3323,12 +3387,17 @@ label = "Show the message as sent"
 short_label = "As sent"
 group = "Triage"
 scopes = ["messages"]
-keys = ["o", "v"]
+keys = ["o"]
 
 [[action.tui]]
 name = "MessagesAsSent"
-keys = ["o", "v"]
+keys = ["o"]
 contexts = ["messages"]
+
+[[action.moved]]
+key = "v"
+contexts = ["messages"]
+until = "0.6.180"
 
 [[action]]
 id = "messages.filter"
@@ -3444,13 +3513,18 @@ label = "Let go of the digest…"
 short_label = "Let go of digest"
 group = "Triage"
 scopes = ["updates"]
-keys = ["A"]
+keys = ["E"]
 note = "Previews the daemon's dry run first; undo afterwards"
 
 [[action.tui]]
 name = "UpdatesLetGoAll"
-keys = ["A"]
+keys = ["E"]
 contexts = ["updates"]
+
+[[action.moved]]
+key = "A"
+contexts = ["updates"]
+until = "0.6.180"
 
 [[action]]
 id = "updates.let-go-source"
@@ -3484,12 +3558,17 @@ label = "Tune this source…"
 short_label = "Tune"
 group = "Triage"
 scopes = ["updates"]
-keys = ["K"]
+keys = ["P"]
 
 [[action.tui]]
 name = "UpdatesTune"
-keys = ["K"]
+keys = ["P"]
 contexts = ["updates"]
+
+[[action.moved]]
+key = "K"
+contexts = ["updates"]
+until = "0.6.180"
 
 [[action]]
 id = "updates.link"
@@ -3548,12 +3627,17 @@ label = "Pin or unpin this source's latest email"
 short_label = "Pin"
 group = "Triage"
 scopes = ["updates"]
-keys = ["p"]
+keys = ["s"]
 
 [[action.tui]]
 name = "TogglePin"
-keys = ["p"]
+keys = ["s"]
 contexts = ["updates"]
+
+[[action.moved]]
+key = "p"
+contexts = ["updates"]
+until = "0.6.180"
 
 [[action]]
 id = "updates.sweep"
@@ -3603,15 +3687,20 @@ short_label = "Move sender"
 description = "Messages, Updates or Reading, for their mail from now on"
 group = "Triage"
 scopes = ["now", "messages", "list", "arrivals"]
-keys = ["K"]
+keys = ["P"]
 
 [[action.tui]]
 name = "OpenSenderMoveMenu"
-keys = ["K"]
+keys = ["P"]
 contexts = ["list", "now", "messages"]
 
 # The emails behind one count of Now's arrivals line (/now/arrivals). The TUI
-# has no such page, so these are the web's alone; X and K above work there too.
+# has no such page, so these are the web's alone; X and P above work there too.
+
+[[action.moved]]
+key = "K"
+contexts = ["arrivals", "list", "messages", "now"]
+until = "0.6.180"
 [[action]]
 id = "arrivals.down"
 label = "Next"

@@ -331,17 +331,18 @@ describe("installKeyDispatcher", () => {
     expect(pageDown).toHaveBeenCalledTimes(1);
   });
 
-  test("Space and e tick off the focused to-do once per press", () => {
+  test("e ticks off the focused to-do once per press, and Space says it moved", () => {
     registry.defineMany(todoActions.map(fromDefinition));
     const done = vi.fn<() => void>();
     setController("todo", { done });
     scopes = ["todo", "global"];
 
-    expect(press({ key: " " })).toBe(false);
     expect(press({ key: "e" })).toBe(false);
-    expect(press({ key: " ", repeat: true })).toBe(false);
+    expect(press({ key: "e", repeat: true })).toBe(false);
+    press({ key: " " });
 
-    expect(done).toHaveBeenCalledTimes(2);
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(movedNotices).toEqual(["Done is now e"]);
   });
 
   test("Space on a focused checkbox keeps its native toggle", () => {

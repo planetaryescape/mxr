@@ -448,12 +448,6 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     bound: "web",
     why: "Compose works everywhere on the web; the TUI lens keeps c free",
   },
-  {
-    context: "todo",
-    keys: ["Space"],
-    bound: "web",
-    why: "Space ticks off the focused web to-do; the TUI keeps its To do shortcut on e",
-  },
   // Now.
   {
     context: "now",

@@ -46,7 +46,7 @@ Commands:
   code                The one-time code from your latest sign-in email, ready to paste
   now                 The few things that need you now, from every mode.
   arrivals            Where every email that arrived went, counted once each
-  reclassify          Move one email to a mode (X), or with --sender all of its sender's mail (K). To do and Archive add the email there. Undo with `mxr corrections undo <id>`
+  reclassify          Move one email to a mode (X), or with --sender all of its sender's mail (P). To do and Archive add the email there. Undo with `mxr corrections undo <id>`
   corrections         Every move, sender mode and Not-sure answer, newest first
   desk                What needs you, not what arrived: replies you owe, promises coming due, threads waiting on someone, and new mail from people, each with the reason it is there. Everything else is summarised as counts
   reading             Reading: newsletters you chose, as an edition. Read when you like. Newest since your last visit first, the sources you read most on top, and nothing owed: items fade unless you keep them on Later

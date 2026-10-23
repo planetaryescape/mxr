@@ -15,21 +15,23 @@ describe("Reading's keys", () => {
     expect(keys.get("e")).toBe("reading.let-go");
     expect(keys.get("D")).toBe("reading.unsubscribe");
     expect(keys.get("R")).toBe("reading.original");
-    expect(keys.get("A")).toBe("reading.let-go-all");
+    expect(keys.get("E")).toBe("reading.let-go-all");
+    expect(keys.get("A")).toBeUndefined();
     expect(keys.get("o")).toBe("reading.open-email");
     expect(keys.get("j")).toBe("reading.down");
     // g r opens Reading from anywhere.
     expect(keys.get("g r")).toBe("nav.reading");
   });
 
-  test("the reader highlights with h and fetches the article with L", () => {
+  test('the reader highlights with " and fetches the article with L', () => {
     const reader = getRegistry()
       .bindings()
-      .filter((binding) => binding.scope === "reading-reader")
+      // A moved key stays bound only to announce its new key.
+      .filter((binding) => binding.scope === "reading-reader" && !binding.moved)
       .map((binding) => [binding.chord, binding.action.id]);
     expect(reader).toEqual(
       expect.arrayContaining([
-        ["h", "reading.reader-highlight"],
+        ['"', "reading.reader-highlight"],
         ["L", "reading.reader-article"],
         ["b", "reading.reader-later"],
         ["e", "reading.reader-let-go"],

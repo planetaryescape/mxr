@@ -16,7 +16,7 @@ In the web app and TUI, press `g x`. The runway groups tasks into `Now`,
 `Coming up`, `Later`, `Whenever` and `Done this week`. A web row is a
 checkbox, the task, who it is from ("Frank Billing · from Mon", or "from you"
 for a promise you made) and its window in words ("act by Fri"). The window
-turns amber on the day and after. The lit row's keys, `Space` done and `o`
+turns amber on the day and after. The lit row's keys, `e` done and `o`
 email, take the window's place on the same line, and the same keys show in
 the status bar with the reason the task is here. The act-by date is the
 last date to act and still meet the due date; mxr can surface the task earlier
@@ -83,7 +83,7 @@ mxr todo done TODO_ID
 ```
 
 On the web, use the checkbox on the left, or light the row and press
-`Space` (`e` works too, as in the TUI). The row folds away and the next one
+`e`, as in the TUI. The row folds away and the next one
 lights. In the TUI, `e` ticks it off. App shortcuts do not interpret
 ordinary typing in a text input or composer as task actions.
 

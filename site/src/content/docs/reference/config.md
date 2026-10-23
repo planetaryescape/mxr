@@ -837,7 +837,7 @@ mxr updates --format json | jq '.cut'   # the cut in use, and every cut of the d
 
 ## `reading`
 
-Where Reading items open with `M`: [Marginalia](/guides/marginalia/). Set
+Where Reading items open with `O`: [Marginalia](/guides/marginalia/). Set
 by `mxr reading marginalia connect` or **Settings → Marginalia**, which
 check the token with Marginalia first.
 

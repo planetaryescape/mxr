@@ -1,6 +1,5 @@
 ---
 source: crates/tui/src/ui/now_lens.rs
-assertion_line: 715
 expression: rendered
 ---
 "╭ Now ─ The few things that need you now, from every mode. ────────────────────────────────────────────────────────────╮"
@@ -35,5 +34,5 @@ expression: rendered
 "│                                                                                                                      │"
 "│                                                                                                                      │"
 "│ Here because: your turn since Wednesday                                                                              │"
-"│ ↵ open in its mode  e done here  t make it a to-do  r reply  o open the email  A let go of digest  u undo  ? keys    │"
+"│ ↵ open in its mode  e done here  t make it a to-do  r reply  o open the email  E let go of digest  u undo  ? keys    │"
 "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯"

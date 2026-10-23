@@ -65,7 +65,7 @@ describe("ArrivalsRoute keys", () => {
     useModals.getState().setHelpOpen(false);
   });
 
-  test("j, Enter, X and K act on the row under the cursor", () => {
+  test("j, Enter, X and P act on the row under the cursor", () => {
     render(<ArrivalsRoute />);
     const rows = screen.getAllByTestId("arrival-row");
     expect(rows[0]?.getAttribute("aria-current")).toBe("true");
@@ -79,6 +79,8 @@ describe("ArrivalsRoute keys", () => {
       false,
     );
     fireEvent.keyDown(window, { key: "K" });
+    expect(moves.openMovePicker).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(window, { key: "P" });
     expect(moves.openMovePicker).toHaveBeenLastCalledWith(
       expect.objectContaining({ messageId: "msg-b" }),
       true,

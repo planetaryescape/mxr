@@ -1530,12 +1530,14 @@ impl App {
             return action;
         }
 
-        // Remaps are authoritative only in mail panes, after all modal/text
-        // owners. Explicit keys also beat lens-specific single-key defaults.
+        // A key that moved away from the list, reader or sidebar says where
+        // it went (the modes do this in `defined_key`).
         if self.announce_moved_key(key) {
             return None;
         }
 
+        // Remaps are authoritative only in mail panes, after all modal/text
+        // owners. Explicit keys also beat lens-specific single-key defaults.
         // A mode takes its remaps from its own keys.toml section, so
         // `[mail_list]` stays out of it.
         if self.mode_key_context().is_none()
@@ -1707,7 +1709,8 @@ impl App {
                 (KeyCode::Char('X'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenMoveMenu)
                 }
-                (KeyCode::Char('K'), modifiers) if plain_or_shift(modifiers) => {
+                // P: this sender, always (blueprint 35's Shift on p).
+                (KeyCode::Char('P'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenSenderMoveMenu)
                 }
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),

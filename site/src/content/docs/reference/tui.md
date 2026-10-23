@@ -80,15 +80,15 @@ Waiting on and New from people lanes. See the
 
 **Updates** (`gu`) is the briefing lens: the latest digest in Needs a look,
 Changed and Routine, one line per source, with what arrived after the cut
-below it ([Read Updates as a briefing](/guides/updates/)). `A` lets go of
+below it ([Read Updates as a briefing](/guides/updates/)). `E` lets go of
 the digest after a preview, `e` lets go of one source, `t` makes a to-do
-from a line, `K` tunes the source, `L` opens the line's link and `o` the
+from a line, `P` tunes the source, `L` opens the line's link and `o` the
 email. The keys are in the [keybindings reference](/reference/keybindings/#updates).
 
 ## Reading and Paper trail
 
 Reading (`gr`) is the [edition](/guides/reading/): the bands, a reader, the
-Later shelf (`B`) and highlights (`h` and `H` in the reader). Its keys are in
+Later shelf (`B`) and highlights (`"` and `H` in the reader). Its keys are in
 the [keybindings reference](/reference/keybindings/#reading).
 
 Paper trail is a lens

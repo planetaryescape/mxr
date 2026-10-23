@@ -234,6 +234,8 @@ fn a_letting_go_of_the_digest_is_previewed_and_commits_what_was_previewed() {
         .thread_ids
         .clone();
     press(&mut app, KeyCode::Char('A'));
+    assert!(!app.mailbox.now_page.pending_digest_preview);
+    press(&mut app, KeyCode::Char('E'));
     assert!(
         queued(&app).is_empty(),
         "nothing changes before the preview"

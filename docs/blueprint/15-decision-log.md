@@ -1417,7 +1417,7 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 
 ## D171: Retired keys show where their action went, and never run it
 
-**Chosen**: For two releases after a key moves, pressing the old key shows "Let go of all is now `E`" and does nothing else. An action run from the palette or by click shows "Next time: `e`" once per action and profile.
+**Chosen**: For 30 patch releases after a key moves, pressing the old key shows "Let go of all is now `E`" and does nothing else. Each move is an `[[action.moved]]` entry in `keymap.toml` with an `until` version, and the definition check fails once mxr reaches it, so the entry is deleted rather than kept forever. (Amended 2026-10-23: the first draft said two releases, but mxr ships several releases a day.) An action run from the palette or by click shows "Next time: `e`" once per action and profile.
 
 **Considered**: Keeping old keys as working aliases (`retiredAliases`); silent removal.
 

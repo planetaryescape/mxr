@@ -1,6 +1,5 @@
 ---
 source: crates/tui/src/ui/records_lens/tests.rs
-assertion_line: 391
 expression: rendered
 ---
 "╭ Archive ─ Receipts, orders, bookings and documents. Ask for what you need. ──────────────────────────────────────────╮"
@@ -35,5 +34,5 @@ expression: rendered
 "│                                                                                                                      │"
 "│                                                                                                                      │"
 "│ Here because: order confirmation with schema.org markup (checked).                                                   │"
-"│ / ask  y copy reference  Y copy amount  Enter open document  o the email  p issuer page  [ previous year  ] next ye… │"
+"│ / ask  y copy reference  Y copy amount  Enter open document  o the email  p issuer page  { previous year  } next ye… │"
 "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯"

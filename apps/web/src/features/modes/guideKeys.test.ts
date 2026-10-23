@@ -18,7 +18,6 @@ describe("mode guide keys", () => {
 
     expect(keys).toEqual([
       { key: "j", verb: "next" },
-      { key: "Space", verb: "tick off" },
       { key: "e", verb: "tick off" },
     ]);
   });

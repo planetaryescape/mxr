@@ -52,28 +52,43 @@ impl App {
             return None;
         }
         self.mode_key_context().or(match self.mailbox.active_pane {
+            ActivePane::MailList if matches!(self.mailbox.mailbox_view, MailboxView::Place(_)) => {
+                Some("place")
+            }
             ActivePane::MailList => Some("list"),
             ActivePane::MessageView => Some("reader"),
             ActivePane::Sidebar => Some("sidebar"),
         })
     }
 
-    /// A key that moved away from here in a recent release says where its
-    /// action went and runs nothing (D171). Returns true when it did.
+    /// A key that moved away from the list, reader, sidebar or place view
+    /// says where its action went and runs nothing (D171). The modes do this
+    /// in `defined_key`, after their own states have had the key. Returns
+    /// true when it did.
     pub(crate) fn announce_moved_key(&mut self, key: KeyEvent) -> bool {
+        if self.mode_key_context().is_some() {
+            return false;
+        }
         let (Some(place), Some(chord)) = (self.key_place(), spelling(key)) else {
             return false;
         };
+        // With a prefix waiting, only the whole sequence counts: `A` moved
+        // away, but `g A` still opens Analytics.
+        let keys = match self.input.pending_prefix() {
+            Some(first) => format!("{first} {chord}"),
+            None => chord,
+        };
+        let announced = self.announce_moved(place, &keys);
+        if announced {
+            self.input.reset();
+        }
+        announced
+    }
+
+    /// Show "<action> is now <key>" when `keys` moved away from `place`.
+    fn announce_moved(&mut self, place: &str, keys: &str) -> bool {
         let keymap = mxr_keymap::defaults();
-        let sequence = self
-            .input
-            .pending_prefix()
-            .map(|first| format!("{first} {chord}"));
-        let Some(action) = sequence
-            .as_deref()
-            .and_then(|seq| keymap.moved_from(place, seq))
-            .or_else(|| keymap.moved_from(place, &chord))
-        else {
+        let Some(action) = keymap.moved_from(place, keys) else {
             return false;
         };
         let now = action
@@ -83,10 +98,14 @@ impl App {
             .or_else(|| action.tui.first())
             .and_then(|binding| binding.keys.first())
             .or_else(|| action.keys.first());
-        self.input.reset();
+        let name = action
+            .short_label
+            .as_deref()
+            .unwrap_or(&action.label)
+            .trim_end_matches('…');
         self.status_message = Some(match now {
-            Some(now) => format!("{} is now {now}", action.label),
-            None => format!("{} has no key now; find it in the palette", action.label),
+            Some(now) => format!("{name} is now {now}"),
+            None => format!("{name} has no key now; find it in the palette"),
         });
         true
     }
@@ -100,10 +119,13 @@ impl App {
             return DefinedKey::Unbound;
         };
         if let Some(first) = self.input.take_waiting_first() {
-            if let Some(hit) = self.bound_key(context, &format!("{first} {chord}")) {
+            let sequence = format!("{first} {chord}");
+            if let Some(hit) = self.bound_key(context, &sequence) {
                 return hit;
             }
-            self.input.cancel_prefix(first, key);
+            if !self.announce_moved(context, &sequence) {
+                self.input.cancel_prefix(first, key);
+            }
             return DefinedKey::Unbound;
         }
         if let Some(hit) = self.bound_key(context, &chord) {
@@ -118,6 +140,9 @@ impl App {
                 return DefinedKey::Waiting;
             }
         }
+        // Only now, once the mode's own states and bindings had the key, so
+        // a moved letter typed into the ask box still types.
+        self.announce_moved(context, &chord);
         DefinedKey::Unbound
     }
 

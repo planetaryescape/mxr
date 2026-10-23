@@ -55,9 +55,9 @@ fn select_source(app: &mut App, name: &str) {
 }
 
 #[test]
-fn a_lets_go_of_the_digest_only_after_the_preview_and_commits_that_selection() {
+fn shift_e_lets_go_of_the_digest_only_after_the_preview_and_commits_that_selection() {
     let mut app = updates_app();
-    press(&mut app, KeyCode::Char('A'));
+    press(&mut app, KeyCode::Char('E'));
     assert!(
         queued(&app).is_empty(),
         "nothing changes before the preview"
@@ -154,10 +154,10 @@ fn t_makes_a_to_do_from_the_line_unless_it_is_already_in_to_do() {
 }
 
 #[test]
-fn k_tunes_a_source_and_u_sets_it_back() {
+fn shift_p_tunes_a_source_and_u_sets_it_back() {
     let mut app = updates_app();
     select_source(&mut app, "Vercel");
-    press(&mut app, KeyCode::Char('K'));
+    press(&mut app, KeyCode::Char('P'));
     assert!(app.mailbox.updates_page.tune.is_some());
     let rendered = render_to_string(100, 30, |frame| app.draw(frame));
     assert!(rendered.contains("Tune Vercel"), "{rendered}");
@@ -198,7 +198,7 @@ fn k_tunes_a_source_and_u_sets_it_back() {
 }
 
 #[test]
-fn p_pins_only_the_latest_email_and_u_restores_its_prior_value() {
+fn s_pins_only_the_latest_email_and_u_restores_its_prior_value() {
     let mut app = updates_app();
     select_source(&mut app, "Stripe (stripe.com)");
     let message_id = match app.selected_updates_row().unwrap() {
@@ -206,6 +206,8 @@ fn p_pins_only_the_latest_email_and_u_restores_its_prior_value() {
         _ => unreachable!(),
     };
     press(&mut app, KeyCode::Char('p'));
+    assert!(queued(&app).is_empty(), "p moved to s and pins nothing");
+    press(&mut app, KeyCode::Char('s'));
     assert!(matches!(
         queued(&app).as_slice(),
         [Request::PinMessages { message_ids, pinned: true }]
@@ -263,7 +265,7 @@ fn p_pins_only_the_latest_email_and_u_restores_its_prior_value() {
 }
 
 #[test]
-fn p_unpins_and_undo_restores_the_pinned_value() {
+fn s_unpins_and_undo_restores_the_pinned_value() {
     let mut app = updates_app();
     let digest = app.mailbox.updates_page.digest.as_mut().unwrap();
     let line = digest
@@ -274,7 +276,7 @@ fn p_unpins_and_undo_restores_the_pinned_value() {
     line.latest_message_pinned = true;
     let message_id = line.latest_message_id.clone().unwrap();
     select_source(&mut app, "Stripe (stripe.com)");
-    press(&mut app, KeyCode::Char('p'));
+    press(&mut app, KeyCode::Char('s'));
     assert!(matches!(
         queued(&app).as_slice(),
         [Request::PinMessages { message_ids, pinned: false }]
@@ -300,10 +302,10 @@ fn p_unpins_and_undo_restores_the_pinned_value() {
 }
 
 #[test]
-fn p_does_not_pin_a_tracker_without_a_latest_message() {
+fn s_does_not_pin_a_tracker_without_a_latest_message() {
     let mut app = updates_app();
     select_source(&mut app, "Bookshop");
-    press(&mut app, KeyCode::Char('p'));
+    press(&mut app, KeyCode::Char('s'));
     assert!(queued(&app).is_empty());
     assert_eq!(
         app.status_message.as_deref(),

@@ -504,6 +504,19 @@ impl Keymap {
                 }
             }
         }
+        let mut moved_places = BTreeSet::new();
+        for action in &self.actions {
+            for moved in &action.moved {
+                for context in &moved.contexts {
+                    if !moved_places.insert((context.as_str(), moved.key.as_str())) {
+                        problems.push(format!(
+                            "{}: `{}` in {context} is announced as moved by two actions",
+                            action.id, moved.key
+                        ));
+                    }
+                }
+            }
+        }
         let mut strip_ids = BTreeSet::new();
         for strip in &self.strips {
             if !strip_ids.insert(strip.id.as_str()) {

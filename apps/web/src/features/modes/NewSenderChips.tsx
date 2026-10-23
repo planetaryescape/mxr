@@ -96,7 +96,8 @@ export function NewSenderChips({
 /**
  * Scope-controller commands for keys 1 to 4 while a new sender's row is lit.
  * Empty otherwise, so a scoped binding without a command stays unresolved and
- * the digits keep their global meaning (the numbered tabs).
+ * the digits keep their global meaning (the retired tab keys say where the
+ * tabs went until 0.6.180).
  */
 export function newSenderCommands(
   question: ScreenerQuestion | null | undefined,

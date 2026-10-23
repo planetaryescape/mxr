@@ -23,7 +23,7 @@ interface DefinedAction {
   hide_in_palette?: boolean;
   note?: string;
   clients?: string[];
-  moved?: { key: string; contexts: string[]; until: string }[];
+  moved?: { key: string; contexts: string[]; until: string; to?: string }[];
 }
 
 // Records rather than arrays so the compiler fails when a group or scope is
@@ -113,10 +113,12 @@ export function fromDefinition(behavior: ActionBehavior): Action {
     aliases: aliases.length > 0 ? aliases : undefined,
     macAliases: defined.mac_keys,
     retiredAliases: defined.retired_keys,
-    movedAliases: defined.moved?.map(({ key, contexts }) => ({
+    movedAliases: defined.moved?.map(({ key, contexts, to }) => ({
       chord: key,
-      // TUI-only places in the list (none today) are not web scopes.
+      // TUI-only places in the list ("place") are not web scopes.
       scopes: contexts.filter(isScope),
+      // The key to name when the action has none left (digit 1 → g i).
+      to: to === undefined ? undefined : webActions.get(to)?.keys?.[0],
     })),
     paletteOnly: defined.palette_only,
     hideInPalette: defined.hide_in_palette,

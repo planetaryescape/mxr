@@ -2,13 +2,13 @@ use super::*;
 
 fn tab_titles() -> [&'static str; 7] {
     [
-        "1 Mailbox",
-        "2 Search",
-        "3 Rules",
-        "4 Accounts",
-        "5 Diagnostics",
-        "6 Analytics",
-        "7 Deliveries",
+        "g i Mailbox",
+        "/ Search",
+        "g R Rules",
+        "g C Accounts",
+        "g D Diagnostics",
+        "g A Analytics",
+        "g P Deliveries",
     ]
 }
 
@@ -993,17 +993,17 @@ mod tests {
     use super::{selected_tab, tab_titles, Screen};
 
     #[test]
-    fn tab_titles_include_numeric_shortcuts() {
+    fn tab_titles_name_each_screens_key() {
         assert_eq!(
             tab_titles(),
             [
-                "1 Mailbox",
-                "2 Search",
-                "3 Rules",
-                "4 Accounts",
-                "5 Diagnostics",
-                "6 Analytics",
-                "7 Deliveries",
+                "g i Mailbox",
+                "/ Search",
+                "g R Rules",
+                "g C Accounts",
+                "g D Diagnostics",
+                "g A Analytics",
+                "g P Deliveries",
             ]
         );
     }

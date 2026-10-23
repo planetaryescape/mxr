@@ -72,13 +72,13 @@ mxr doctor --semantic-status
 - Center list: threads by default
 - Right pane: preview or thread view
 - First-run walkthrough after account setup, plus `o` from Help to reopen it later
-- `1`-`7`: switch Mailbox, Search, Rules, Accounts, Diagnostics, Analytics, Deliveries
+- `g` then a capital: open a tool: `gR` Rules, `gC` Accounts and settings, `gD` Diagnostics, `gA` Analytics, `gP` Deliveries (`gi` returns to the Mailbox)
 - `g` then a letter: go to a place, such as the [desk](/guides/now/) or [Reading and Paper trail](/guides/reading-and-paper-trail/); the [keybindings reference](/reference/keybindings/#go-to) lists them
-- `Ctrl-p`: command palette
+- `:` or `Ctrl-k`: command palette
 - `?`: full help modal
 - `/`: full-index Search
 - `Ctrl-f`: filter only the current mailbox
-- `gc`: edit config from anywhere
+- **Edit Config** in the palette: open `config.toml` in `$EDITOR`
 
 ## If something looks wrong
 

@@ -42,6 +42,19 @@ fn g_view_chord(second: char) -> Option<Action> {
     }
 }
 
+/// `g` + capital: the tools (blueprint 35, D166), in place of the digit
+/// tabs. Each opens the same screen its tab does.
+fn g_tool_chord(second: char) -> Option<Action> {
+    match second {
+        'R' => Some(Action::OpenTab3),
+        'C' => Some(Action::OpenTab4),
+        'D' => Some(Action::OpenTab5),
+        'P' => Some(Action::OpenTab7),
+        'Y' => Some(Action::OpenActivityScreen),
+        _ => None,
+    }
+}
+
 #[derive(Debug)]
 pub enum KeyState {
     Normal,
@@ -356,13 +369,13 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::GoToLabel)
             }
-            (
-                KeyState::WaitingForSecond { first: 'g', .. },
-                KeyCode::Char('c'),
-                KeyModifiers::NONE,
-            ) => {
+            // g + a capital opens a tool (blueprint 35, D166). The TUI's
+            // settings live on its Accounts screen, so g C opens that.
+            (KeyState::WaitingForSecond { first: 'g', .. }, KeyCode::Char(c), modifiers)
+                if plain_or_shift(modifiers) && g_tool_chord(c).is_some() =>
+            {
                 self.state = KeyState::Normal;
-                Some(Action::EditConfig)
+                g_tool_chord(c)
             }
             (KeyState::WaitingForSecond { first: 'g', .. }, KeyCode::Char('L'), modifiers)
                 if plain_or_shift(modifiers) =>
@@ -376,7 +389,6 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::OpenAnalyticsScreen)
             }
-            // g r / g p: Reading and Paper trail.
             (
                 KeyState::WaitingForSecond { first: 'g', .. },
                 KeyCode::Char('r'),
@@ -384,15 +396,6 @@ impl InputHandler {
             ) => {
                 self.state = KeyState::Normal;
                 Some(Action::OpenReading)
-            }
-            (
-                KeyState::WaitingForSecond { first: 'g', .. },
-                KeyCode::Char('p'),
-                KeyModifiers::NONE,
-            ) => {
-                self.state = KeyState::Normal;
-                // Paper trail became Updates (blueprint 22's key map).
-                Some(Action::OpenUpdates)
             }
             // g h: Now, the front page. `g d` stays Drafts.
             (
@@ -402,20 +405,6 @@ impl InputHandler {
             ) => {
                 self.state = KeyState::Normal;
                 Some(Action::OpenNow)
-            }
-            (KeyState::WaitingForSecond { first: 'g', .. }, KeyCode::Char('E'), modifiers)
-                if plain_or_shift(modifiers) =>
-            {
-                self.state = KeyState::Normal;
-                Some(Action::OpenStoredDrafts)
-            }
-            (
-                KeyState::WaitingForSecond { first: 'g', .. },
-                KeyCode::Char('y'),
-                KeyModifiers::NONE,
-            ) => {
-                self.state = KeyState::Normal;
-                Some(Action::OpenActivityScreen)
             }
             // The same views the web app opens with these chords.
             (KeyState::WaitingForSecond { first: 'g', .. }, KeyCode::Char(c), modifiers)
@@ -437,21 +426,14 @@ impl InputHandler {
                 Some(Action::OpenSavedSearchByIndex(index))
             }
 
-            // Multi-key: zz
+            // `z z` retired (blueprint 35). `z` still waits until 0.6.180 so
+            // the whole `z z` reaches the moved-key notice; it runs nothing.
             (KeyState::Normal, KeyCode::Char('z'), KeyModifiers::NONE) => {
                 self.state = KeyState::WaitingForSecond {
                     first: 'z',
                     deadline: Instant::now() + MULTI_KEY_TIMEOUT,
                 };
                 None
-            }
-            (
-                KeyState::WaitingForSecond { first: 'z', .. },
-                KeyCode::Char('z'),
-                KeyModifiers::NONE,
-            ) => {
-                self.state = KeyState::Normal;
-                Some(Action::CenterCurrent)
             }
 
             // Multi-key: i-prefix for iCal invite responses.
@@ -545,6 +527,17 @@ impl InputHandler {
                 None
             }
 
+            // Command palette: `:` and Ctrl-k, as in the web app; Ctrl-p
+            // stays as an alias. Before `k`, which ignores modifiers.
+            (KeyState::Normal, KeyCode::Char(':'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::OpenCommandPalette)
+            }
+            (KeyState::Normal, KeyCode::Char('k' | 'p'), KeyModifiers::CONTROL) => {
+                Some(Action::OpenCommandPalette)
+            }
+            (KeyState::Normal, KeyCode::Char('@'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::ToggleAssistant)
+            }
             // Single keys
             (KeyState::Normal, KeyCode::Char('j') | KeyCode::Down, _) => Some(Action::MoveDown),
             (KeyState::Normal, KeyCode::Char('k') | KeyCode::Up, _) => Some(Action::MoveUp),
@@ -553,15 +546,6 @@ impl InputHandler {
             }
             (KeyState::Normal, KeyCode::Char('d'), KeyModifiers::CONTROL) => Some(Action::PageDown),
             (KeyState::Normal, KeyCode::Char('u'), KeyModifiers::CONTROL) => Some(Action::PageUp),
-            (KeyState::Normal, KeyCode::Char('H'), modifiers) if plain_or_shift(modifiers) => {
-                Some(Action::ViewportTop)
-            }
-            (KeyState::Normal, KeyCode::Char('M'), modifiers) if plain_or_shift(modifiers) => {
-                Some(Action::ViewportMiddle)
-            }
-            (KeyState::Normal, KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => {
-                Some(Action::ViewportBottom)
-            }
             (KeyState::Normal, KeyCode::Tab, _) => Some(Action::SwitchPane),
             (KeyState::Normal, KeyCode::Enter, _)
             | (KeyState::Normal, KeyCode::Char('o'), KeyModifiers::NONE) => {
@@ -574,25 +558,12 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('b'), KeyModifiers::NONE) => {
                 Some(Action::FlagReplyLater)
             }
-            (KeyState::Normal, KeyCode::Char('1'), KeyModifiers::NONE) => Some(Action::OpenTab1),
-            (KeyState::Normal, KeyCode::Char('2'), KeyModifiers::NONE) => Some(Action::OpenTab2),
-            (KeyState::Normal, KeyCode::Char('3'), KeyModifiers::NONE) => Some(Action::OpenTab3),
-            (KeyState::Normal, KeyCode::Char('4'), KeyModifiers::NONE) => Some(Action::OpenTab4),
-            (KeyState::Normal, KeyCode::Char('5'), KeyModifiers::NONE) => Some(Action::OpenTab5),
-            (KeyState::Normal, KeyCode::Char('6'), KeyModifiers::NONE) => Some(Action::OpenTab6),
-            (KeyState::Normal, KeyCode::Char('7'), KeyModifiers::NONE) => Some(Action::OpenTab7),
-
             // Search navigation
             (KeyState::Normal, KeyCode::Char('n'), KeyModifiers::NONE) => {
                 Some(Action::NextSearchResult)
             }
             (KeyState::Normal, KeyCode::Char('N'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::PrevSearchResult)
-            }
-
-            // Command palette
-            (KeyState::Normal, KeyCode::Char('p'), KeyModifiers::CONTROL) => {
-                Some(Action::OpenCommandPalette)
             }
 
             // Shared selection / layout
@@ -713,16 +684,25 @@ mod tests {
         assert!(!input.is_pending());
     }
 
-    /// Slice 1 / B1.4: a single press of '6' from the normal state
-    /// dispatches `OpenTab6` so users can reach the analytics screen
-    /// from any other top-level view via the same numeric pattern as
-    /// tabs 1-5. Catches "we added the tab to the bar but forgot to
-    /// route the keystroke" regressions.
+    /// Tools open with `g` + a capital (blueprint 35, D166), each to the
+    /// screen its old digit tab opened.
     #[test]
-    fn pressing_six_returns_open_tab_6() {
-        let mut input = InputHandler::new();
-        let action = input.handle_key(key(KeyCode::Char('6')));
-        assert_eq!(action, Some(Action::OpenTab6));
+    fn chord_g_then_a_capital_opens_a_tool() {
+        for (second, expected) in [
+            ('R', Action::OpenTab3),
+            ('C', Action::OpenTab4),
+            ('D', Action::OpenTab5),
+            ('P', Action::OpenTab7),
+            ('Y', Action::OpenActivityScreen),
+        ] {
+            let mut input = InputHandler::new();
+            assert_eq!(input.handle_key(key(KeyCode::Char('g'))), None);
+            assert_eq!(
+                input.handle_key(key_with(KeyCode::Char(second), KeyModifiers::SHIFT)),
+                Some(expected),
+                "g {second}"
+            );
+        }
     }
 
     /// Slice 1 / B1.5: the chord `g` then `A` (capital, mirroring the
@@ -755,17 +735,12 @@ mod tests {
     }
 
     #[test]
-    fn chord_g_then_r_or_p_opens_reading_or_paper_trail() {
+    fn chord_g_then_r_opens_reading() {
         let mut input = InputHandler::new();
         let _ = input.handle_key(key(KeyCode::Char('g')));
         assert_eq!(
             input.handle_key(key(KeyCode::Char('r'))),
             Some(Action::OpenReading)
-        );
-        let _ = input.handle_key(key(KeyCode::Char('g')));
-        assert_eq!(
-            input.handle_key(key(KeyCode::Char('p'))),
-            Some(Action::OpenUpdates)
         );
     }
 
@@ -790,15 +765,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn chord_g_then_capital_e_opens_local_drafts() {
-        let mut input = InputHandler::new();
-        let first = input.handle_key(key(KeyCode::Char('g')));
-        assert_eq!(first, None, "g alone must wait, not act");
-        let second = input.handle_key(key_with(KeyCode::Char('E'), KeyModifiers::SHIFT));
-        assert_eq!(second, Some(Action::OpenStoredDrafts));
-    }
-
     /// Slice 1 / B1.5 (continued): lowercase `g a` must keep its
     /// existing meaning (GoToAllMail). Guards against accidentally
     /// stealing a Gmail navigation chord when adding the analytics
@@ -809,18 +775,6 @@ mod tests {
         let _ = input.handle_key(key(KeyCode::Char('g')));
         let action = input.handle_key(key(KeyCode::Char('a')));
         assert_eq!(action, Some(Action::GoToAllMail));
-    }
-
-    /// `g y` opens the activity log modal. The activity chord used to be
-    /// documented as `g a`, which collided with GoToAllMail and never
-    /// actually dispatched — this is the working binding.
-    #[test]
-    fn chord_g_then_y_opens_activity_screen() {
-        let mut input = InputHandler::new();
-        let first = input.handle_key(key(KeyCode::Char('g')));
-        assert_eq!(first, None, "g alone must wait, not act");
-        let action = input.handle_key(key(KeyCode::Char('y')));
-        assert_eq!(action, Some(Action::OpenActivityScreen));
     }
 
     /// `g <digit>` jumps to the corresponding saved-search tab. `g 1`
@@ -851,14 +805,41 @@ mod tests {
         assert_eq!(action, Some(Action::OpenSavedSearchByIndex(0)));
     }
 
-    /// Bare digits keep their existing meaning (screen tabs). The
-    /// chord-prefix is required for saved-search navigation. Guards
-    /// against stealing the existing `1`-`6` screen-tab muscle memory.
+    /// Bare digits no longer open screens (D166); saved searches still
+    /// need the `g` prefix.
     #[test]
-    fn bare_digit_still_opens_screen_tab_not_saved_search() {
+    fn bare_digit_opens_no_screen_or_saved_search() {
         let mut input = InputHandler::new();
-        let action = input.handle_key(key(KeyCode::Char('1')));
-        assert_eq!(action, Some(Action::OpenTab1));
+        assert_eq!(input.handle_key(key(KeyCode::Char('1'))), None);
+    }
+
+    #[test]
+    fn colon_and_ctrl_k_open_the_palette_and_at_the_assistant() {
+        for (code, modifiers, expected) in [
+            (
+                KeyCode::Char(':'),
+                KeyModifiers::SHIFT,
+                Action::OpenCommandPalette,
+            ),
+            (
+                KeyCode::Char('k'),
+                KeyModifiers::CONTROL,
+                Action::OpenCommandPalette,
+            ),
+            (
+                KeyCode::Char('p'),
+                KeyModifiers::CONTROL,
+                Action::OpenCommandPalette,
+            ),
+            (
+                KeyCode::Char('@'),
+                KeyModifiers::SHIFT,
+                Action::ToggleAssistant,
+            ),
+        ] {
+            let mut input = InputHandler::new();
+            assert_eq!(input.handle_key(key_with(code, modifiers)), Some(expected));
+        }
     }
 
     /// `i` followed by `a`/`m`/`d` fires the auto-confirm invite RSVP path.

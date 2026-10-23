@@ -100,8 +100,9 @@ interface ActionBase {
   /**
    * Keys this action had until a recent release, by scope. Pressing one
    * says where the action went and runs nothing (blueprint 35, D171).
+   * `to` is the key to name instead when the action has no key left.
    */
-  movedAliases?: { chord: ShortcutChord; scopes: ActionScope[] }[];
+  movedAliases?: { chord: ShortcutChord; scopes: ActionScope[]; to?: ShortcutChord }[];
   /** Listed in the palette but never bound to a key. */
   paletteOnly?: boolean;
   /** Scopes the binding is live in; defaults to ["global"]. */

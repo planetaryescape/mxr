@@ -788,7 +788,7 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                 vec![if loading {
                     "Loading activity...".into()
                 } else {
-                    "No recent activity. Open the activity modal with `g y` to fetch.".into()
+                    "No recent activity. Open the activity modal with `g Y` to fetch.".into()
                 }]
             } else {
                 let needle = state.activity_search.trim().to_lowercase();

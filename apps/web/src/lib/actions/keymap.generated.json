@@ -16,11 +16,13 @@
         "Ctrl+p"
       ],
       "hide_in_palette": true,
-      "note": "Ctrl+P works on macOS only, where it is not the browser's Print",
+      "note": "Ctrl+P works on macOS only, where it is not the browser's Print; the TUI's Mod+K is Ctrl+k",
       "tui": [
         {
           "name": "OpenCommandPalette",
           "keys": [
+            ":",
+            "Ctrl+k",
             "Ctrl+p"
           ],
           "contexts": [
@@ -250,17 +252,12 @@
         "global"
       ],
       "keys": [
-        "g u",
-        "g p"
-      ],
-      "retired_keys": [
-        "g P"
+        "g u"
       ],
       "tui": [
         {
           "name": "OpenUpdates",
           "keys": [
-            "g p",
             "g u"
           ],
           "contexts": [
@@ -278,6 +275,28 @@
             "reading-reader",
             "updates"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "g p",
+          "contexts": [
+            "global",
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -471,10 +490,9 @@
         "global"
       ],
       "keys": [
-        "g d",
-        "g E"
+        "g d"
       ],
-      "note": "One page here; in the TUI g d is the Drafts mailbox and g E its local drafts",
+      "note": "One page here; in the TUI g d is the Drafts mailbox, and its local drafts are in the palette",
       "tui": [
         {
           "name": "GoToDrafts",
@@ -496,13 +514,13 @@
             "reading-reader",
             "updates"
           ]
-        },
+        }
+      ],
+      "moved": [
         {
-          "name": "OpenStoredDrafts",
-          "keys": [
-            "g E"
-          ],
+          "key": "g E",
           "contexts": [
+            "global",
             "list",
             "reader",
             "sidebar",
@@ -516,7 +534,8 @@
             "reading",
             "reading-reader",
             "updates"
-          ]
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -631,13 +650,13 @@
         "global"
       ],
       "keys": [
-        "g y"
+        "g Y"
       ],
       "tui": [
         {
           "name": "OpenActivityScreen",
           "keys": [
-            "g y"
+            "g Y"
           ],
           "contexts": [
             "list",
@@ -654,6 +673,28 @@
             "reading-reader",
             "updates"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "g y",
+          "contexts": [
+            "global",
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -699,15 +740,14 @@
         "global"
       ],
       "keys": [
-        "g c",
-        "0"
+        "g C"
       ],
-      "note": "The TUI opens config.toml in $EDITOR; the web opens Settings",
+      "note": "The TUI opens its Accounts screen, where its settings live; Edit config is in its palette",
       "tui": [
         {
-          "name": "EditConfig",
+          "name": "OpenTab4",
           "keys": [
-            "g c"
+            "g C"
           ],
           "contexts": [
             "list",
@@ -724,6 +764,35 @@
             "reading-reader",
             "updates"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "g c",
+          "contexts": [
+            "global",
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates"
+          ],
+          "until": "0.6.180"
+        },
+        {
+          "key": "0",
+          "contexts": [
+            "global"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -839,8 +908,7 @@
         "global"
       ],
       "keys": [
-        "g v",
-        "9"
+        "g v"
       ],
       "tui": [
         {
@@ -864,6 +932,15 @@
             "updates"
           ]
         }
+      ],
+      "moved": [
+        {
+          "key": "9",
+          "contexts": [
+            "global"
+          ],
+          "until": "0.6.180"
+        }
       ]
     },
     {
@@ -876,9 +953,6 @@
       ],
       "keys": [
         "g r"
-      ],
-      "retired_keys": [
-        "g R"
       ],
       "tui": [
         {
@@ -921,8 +995,7 @@
         "global"
       ],
       "keys": [
-        "g S",
-        "8"
+        "g S"
       ],
       "tui": [
         {
@@ -946,6 +1019,15 @@
             "updates"
           ]
         }
+      ],
+      "moved": [
+        {
+          "key": "8",
+          "contexts": [
+            "global"
+          ],
+          "until": "0.6.180"
+        }
       ]
     },
     {
@@ -964,17 +1046,12 @@
       "scopes": [
         "global"
       ],
-      "keys": [
-        "1"
-      ],
       "hide_in_palette": true,
-      "tui": [
+      "moved": [
         {
-          "name": "OpenTab1",
-          "keys": [
-            "1"
-          ],
+          "key": "1",
           "contexts": [
+            "global",
             "list",
             "reader",
             "sidebar",
@@ -982,13 +1059,13 @@
             "todo",
             "catchup",
             "expired",
-            "now",
-            "messages",
             "archive",
             "reading",
             "reading-reader",
             "updates"
-          ]
+          ],
+          "until": "0.6.180",
+          "to": "nav.inbox"
         }
       ]
     },
@@ -999,16 +1076,11 @@
       "scopes": [
         "global"
       ],
-      "keys": [
-        "2"
-      ],
-      "tui": [
+      "moved": [
         {
-          "name": "OpenTab2",
-          "keys": [
-            "2"
-          ],
+          "key": "2",
           "contexts": [
+            "global",
             "list",
             "reader",
             "sidebar",
@@ -1016,13 +1088,13 @@
             "todo",
             "catchup",
             "expired",
-            "now",
-            "messages",
             "archive",
             "reading",
             "reading-reader",
             "updates"
-          ]
+          ],
+          "until": "0.6.180",
+          "to": "shell.search-palette"
         }
       ]
     },
@@ -1034,13 +1106,13 @@
         "global"
       ],
       "keys": [
-        "3"
+        "g R"
       ],
       "tui": [
         {
           "name": "OpenTab3",
           "keys": [
-            "3"
+            "g R"
           ],
           "contexts": [
             "list",
@@ -1058,6 +1130,26 @@
             "updates"
           ]
         }
+      ],
+      "moved": [
+        {
+          "key": "3",
+          "contexts": [
+            "global",
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates"
+          ],
+          "until": "0.6.180"
+        }
       ]
     },
     {
@@ -1067,16 +1159,11 @@
       "scopes": [
         "global"
       ],
-      "keys": [
-        "4"
-      ],
-      "tui": [
+      "moved": [
         {
-          "name": "OpenTab4",
-          "keys": [
-            "4"
-          ],
+          "key": "4",
           "contexts": [
+            "global",
             "list",
             "reader",
             "sidebar",
@@ -1084,13 +1171,13 @@
             "todo",
             "catchup",
             "expired",
-            "now",
-            "messages",
             "archive",
             "reading",
             "reading-reader",
             "updates"
-          ]
+          ],
+          "until": "0.6.180",
+          "to": "nav.settings"
         }
       ]
     },
@@ -1102,13 +1189,13 @@
         "global"
       ],
       "keys": [
-        "5"
+        "g D"
       ],
       "tui": [
         {
           "name": "OpenTab5",
           "keys": [
-            "5"
+            "g D"
           ],
           "contexts": [
             "list",
@@ -1126,26 +1213,12 @@
             "updates"
           ]
         }
-      ]
-    },
-    {
-      "id": "nav.tab-analytics",
-      "label": "Analytics (tab)",
-      "group": "Analytics",
-      "scopes": [
-        "global"
       ],
-      "keys": [
-        "6"
-      ],
-      "hide_in_palette": true,
-      "tui": [
+      "moved": [
         {
-          "name": "OpenTab6",
-          "keys": [
-            "6"
-          ],
+          "key": "5",
           "contexts": [
+            "global",
             "list",
             "reader",
             "sidebar",
@@ -1159,7 +1232,41 @@
             "reading",
             "reading-reader",
             "updates"
-          ]
+          ],
+          "until": "0.6.180"
+        }
+      ]
+    },
+    {
+      "id": "nav.tab-analytics",
+      "label": "Analytics (tab)",
+      "short_label": "Analytics",
+      "group": "Analytics",
+      "scopes": [
+        "global"
+      ],
+      "hide_in_palette": true,
+      "moved": [
+        {
+          "key": "6",
+          "contexts": [
+            "global",
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates"
+          ],
+          "until": "0.6.180",
+          "to": "nav.analytics"
         }
       ]
     },
@@ -1171,13 +1278,13 @@
         "global"
       ],
       "keys": [
-        "7"
+        "g P"
       ],
       "tui": [
         {
           "name": "OpenTab7",
           "keys": [
-            "7"
+            "g P"
           ],
           "contexts": [
             "list",
@@ -1194,6 +1301,28 @@
             "reading-reader",
             "updates"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "7",
+          "contexts": [
+            "global",
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -3036,16 +3165,10 @@
       "scopes": [
         "list"
       ],
-      "keys": [
-        "H"
-      ],
       "hide_in_palette": true,
-      "tui": [
+      "moved": [
         {
-          "name": "ViewportTop",
-          "keys": [
-            "H"
-          ],
+          "key": "H",
           "contexts": [
             "list",
             "sidebar",
@@ -3058,7 +3181,8 @@
             "archive",
             "reading",
             "updates"
-          ]
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -3069,17 +3193,10 @@
       "scopes": [
         "list"
       ],
-      "keys": [
-        "M"
-      ],
       "hide_in_palette": true,
-      "note": "L (bottom of screen) opens links, as in the TUI's list pane",
-      "tui": [
+      "moved": [
         {
-          "name": "ViewportMiddle",
-          "keys": [
-            "M"
-          ],
+          "key": "M",
           "contexts": [
             "list",
             "sidebar",
@@ -3091,7 +3208,8 @@
             "messages",
             "archive",
             "updates"
-          ]
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -3929,10 +4047,17 @@
       "scopes": [
         "reader"
       ],
-      "keys": [
-        "g H"
-      ],
-      "note": "CLI `mxr cat --view headers`; not in the TUI"
+      "palette_only": true,
+      "note": "CLI `mxr cat --view headers`; not in the TUI",
+      "moved": [
+        {
+          "key": "g H",
+          "contexts": [
+            "reader"
+          ],
+          "until": "0.6.180"
+        }
+      ]
     },
     {
       "id": "reader.open-original",
@@ -3975,20 +4100,16 @@
       "scopes": [
         "reader"
       ],
-      "keys": [
-        "y"
-      ],
-      "tui": [
+      "moved": [
         {
-          "name": "SummarizeCurrentThread",
-          "keys": [
-            "y"
-          ],
+          "key": "y",
           "contexts": [
             "list",
             "reader",
             "place"
-          ]
+          ],
+          "until": "0.6.180",
+          "to": "mail.briefing"
         }
       ]
     },
@@ -7346,9 +7467,33 @@
         "global"
       ],
       "keys": [
+        "@",
         "Mod+."
       ],
-      "note": "Ctrl+a in the TUI, where terminals don't pass Ctrl+. through"
+      "note": "Mod+. also works from a text field; terminals don't pass it through",
+      "tui": [
+        {
+          "name": "ToggleAssistant",
+          "keys": [
+            "@"
+          ],
+          "contexts": [
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates"
+          ]
+        }
+      ]
     },
     {
       "id": "assistant.new",
@@ -7397,12 +7542,9 @@
       "clients": [
         "tui"
       ],
-      "tui": [
+      "moved": [
         {
-          "name": "ToggleAssistant",
-          "keys": [
-            "Ctrl+a"
-          ],
+          "key": "Ctrl+a",
           "contexts": [
             "list",
             "reader",
@@ -7417,7 +7559,9 @@
             "reading",
             "reading-reader",
             "updates"
-          ]
+          ],
+          "until": "0.6.180",
+          "to": "assistant.toggle"
         }
       ]
     },
@@ -7520,12 +7664,9 @@
       "clients": [
         "tui"
       ],
-      "tui": [
+      "moved": [
         {
-          "name": "CenterCurrent",
-          "keys": [
-            "z z"
-          ],
+          "key": "z z",
           "contexts": [
             "list",
             "reader",
@@ -7540,7 +7681,8 @@
             "reading",
             "reading-reader",
             "updates"
-          ]
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -7551,12 +7693,9 @@
       "clients": [
         "tui"
       ],
-      "tui": [
+      "moved": [
         {
-          "name": "ViewportBottom",
-          "keys": [
-            "L"
-          ],
+          "key": "L",
           "contexts": [
             "sidebar",
             "todo",
@@ -7565,7 +7704,8 @@
             "now",
             "messages",
             "archive"
-          ]
+          ],
+          "until": "0.6.180"
         }
       ]
     },

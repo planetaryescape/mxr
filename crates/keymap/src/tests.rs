@@ -334,3 +334,66 @@ fn a_moved_key_must_be_free_where_it_moved_and_expires() {
     .expect("parses");
     assert!(expired.problems()[0].contains("delete the entry"));
 }
+
+#[test]
+fn a_moved_key_can_name_another_actions_key() {
+    let keymap = Keymap::parse(
+        r#"
+        [[action]]
+        id = "nav.tab-mail"
+        label = "Mail"
+        group = "Navigate"
+        [[action.moved]]
+        key = "1"
+        contexts = ["list"]
+        until = "99.0.0"
+        to = "nav.inbox"
+
+        [[action]]
+        id = "nav.inbox"
+        label = "Go to Inbox"
+        group = "Navigate"
+        keys = ["g i"]
+
+        [[action]]
+        id = "tui.center-current"
+        label = "Center current"
+        group = "TUI"
+        clients = ["tui"]
+        [[action.moved]]
+        key = "z z"
+        contexts = ["list"]
+        until = "99.0.0"
+        "#,
+    )
+    .expect("parses");
+    assert_eq!(
+        keymap.problems(),
+        Vec::<String>::new(),
+        "a keyless action may keep its moved keys"
+    );
+    let (action, moved) = keymap.moved_entry("list", "1").expect("1 moved");
+    assert_eq!(action.id, "nav.tab-mail");
+    assert_eq!(keymap.moved_target(action, moved).id, "nav.inbox");
+    assert!(keymap.moved_starts_sequence("list", "z"));
+    assert!(!keymap.moved_starts_sequence("now", "z"));
+
+    let dangling = Keymap::parse(
+        r#"
+        [[action]]
+        id = "x"
+        label = "X"
+        group = "Mail"
+        [[action.moved]]
+        key = "1"
+        contexts = ["list"]
+        until = "99.0.0"
+        to = "nowhere"
+        "#,
+    )
+    .expect("parses");
+    assert_eq!(
+        dangling.problems(),
+        vec!["x: the move of `1` points to no action `nowhere`".to_string()]
+    );
+}

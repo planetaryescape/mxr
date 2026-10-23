@@ -98,9 +98,9 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
         HelpSection {
             title: "Start Here".into(),
             entries: vec![
-                ("Ctrl-p".into(), "Open command palette".into()),
-                ("Ctrl-a".into(), "Show or hide the assistant".into()),
-                ("gc".into(), "Edit config in $EDITOR".into()),
+                (":".into(), "Open command palette".into()),
+                ("@".into(), "Show or hide the assistant".into()),
+                ("gC".into(), "Accounts and settings".into()),
                 ("?".into(), "Toggle Help".into()),
                 ("Esc".into(), "Back / Close".into()),
                 ("q".into(), "Quit".into()),
@@ -115,7 +115,7 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             entries: vec![
                 (
                     "Add an account".into(),
-                    "4 → n (or palette: New IMAP/SMTP Account)".into(),
+                    "g C → n (or palette: New IMAP/SMTP Account)".into(),
                 ),
                 (
                     "Compose and send".into(),
@@ -127,7 +127,7 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
                 ),
                 (
                     "Manage rules".into(),
-                    "3 → n new / E edit / D dry-run / palette: Refresh Rules".into(),
+                    "g R → n new / E edit / D dry-run / palette: Refresh Rules".into(),
                 ),
                 (
                     "Reset local state".into(),
@@ -135,7 +135,7 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
                 ),
                 (
                     "Repair an unhealthy account".into(),
-                    "4 → select account → r when [unhealthy] indicator shown".into(),
+                    "g C → select account → r when [unhealthy] indicator shown".into(),
                 ),
                 (
                     "Open analytics".into(),
@@ -213,7 +213,7 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
                 "Enter/y confirm, Esc/n cancel".into(),
             ),
             (
-                "Assistant (Ctrl-a)".into(),
+                "Assistant (@)".into(),
                 "Enter send, Esc pane keys: y/n approve/reject, 1-9 choose (or open a reply link), s skip, N new, L history, T trust, D delete, Ctrl-c stop".into(),
             ),
         ],
@@ -343,7 +343,7 @@ fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
         UiContext::MailboxSidebar | UiContext::MailboxList | UiContext::MailboxMessage => vec![
             ("/".into(), "Search all indexed mail".into()),
             ("Ctrl-f".into(), "Filter current mailbox only".into()),
-            ("Ctrl-p".into(), "Open command palette".into()),
+            (":".into(), "Open command palette".into()),
         ],
         UiContext::SearchEditor => vec![
             ("Enter".into(), "Run search now".into()),
@@ -391,7 +391,7 @@ fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
             ("r".into(), "Resolve (mark delivered)".into()),
             ("d".into(), "Dismiss (false positive)".into()),
             ("D".into(), "Cycle filter".into()),
-            ("g".into(), "Refresh".into()),
+            ("R".into(), "Refresh".into()),
         ],
     };
 
@@ -539,7 +539,7 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                 ("r".into(), "Resolve (mark delivered)".into()),
                 ("d".into(), "Dismiss (false positive)".into()),
                 ("D".into(), "Cycle filter".into()),
-                ("g".into(), "Refresh".into()),
+                ("R".into(), "Refresh".into()),
             ],
         }],
     }
@@ -1070,15 +1070,15 @@ mod tests {
 
     #[test]
     fn help_search_fuzzy_matches_shortcuts() {
-        let state = help_state(UiContext::MailboxList, "gc");
+        let state = help_state(UiContext::MailboxList, "gC");
         let results = search_results(&state);
-        assert_eq!(results[0].row.shortcut, "gc");
-        assert!(results[0].row.label.contains("Edit config"));
+        assert_eq!(results[0].row.shortcut, "gC");
+        assert!(results[0].row.label.contains("Accounts and settings"));
     }
 
     #[test]
     fn help_short_queries_drop_weak_fuzzy_tail() {
-        let state = help_state(UiContext::MailboxList, "gc");
+        let state = help_state(UiContext::MailboxList, "gC");
         let labels: Vec<String> = search_results(&state)
             .into_iter()
             .map(|result| result.row.label)
@@ -1118,7 +1118,7 @@ mod tests {
             draw(
                 frame,
                 Rect::new(0, 0, 100, 28),
-                help_state(UiContext::MailboxList, "gc"),
+                help_state(UiContext::MailboxList, "gC"),
                 &crate::theme::Theme::default(),
             );
         });

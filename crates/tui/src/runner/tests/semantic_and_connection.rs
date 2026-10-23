@@ -753,7 +753,7 @@ fn opening_analytics_cancels_pending_preview_read() {
     }
 }
 
-/// Slice 1 / B1.2: the top tab bar must include `"6 Analytics"`
+/// Slice 1 / B1.2: the top tab bar must include `"g A Analytics"`
 /// alongside the existing five tabs. Without this the analytics
 /// screen has no surface presence and stays buried in the command
 /// palette.
@@ -762,8 +762,8 @@ fn tab_bar_renders_six_analytics_tab() {
     let mut app = App::new();
     let snapshot = mxr_test_support::render_to_string(120, 24, |frame| app.draw(frame));
     assert!(
-        snapshot.contains("6 Analytics"),
-        "tab bar must include '6 Analytics'; got:\n{snapshot}"
+        snapshot.contains("g A Analytics"),
+        "tab bar must include 'g A Analytics'; got:\n{snapshot}"
     );
 }
 

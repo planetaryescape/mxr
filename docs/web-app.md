@@ -170,7 +170,7 @@ row per conversation, so waking a row wakes every snoozed message in it.
 - Right rail: context panels (sender, briefing, attachments, whois, ask the
   archive). Below 1024 px it overlays.
 - Assistant: `features/assistant/`, a resizable pane beside the whole shell
-  (`AssistantSplit`, parked while closed), closed until opened with `Mod+.` or
+  (`AssistantSplit`, parked while closed), closed until opened with `@`, `Mod+.` or
   the topbar button and kept across pages; an overlay drawer below 1024 px.
   Turns run in the daemon; the pane refetches on `AssistantUpdated` events.
   See [blueprint 25](blueprint/25-assistant.md).
@@ -375,8 +375,8 @@ for motion), implement the command in the view's controller, done.
 - Inline `cid:` images load through `GET /mail/messages/{id}/inline-image?source=`,
   which serves only parts the daemon materialized for that message, and become
   `data:` URIs.
-- Links (`L`), raw headers (`g H`), open original (`O`), export (`E`),
-  summary (`y`, automatic for long threads only when an LLM is configured).
+- Links (`L`), raw headers (palette), open original (`O`), export (`E`),
+  summary (palette, automatic for long threads only when an LLM is configured).
 
 ## Compose
 

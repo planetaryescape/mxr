@@ -1,20 +1,20 @@
 ---
 source: crates/tui/src/ui/help_modal.rs
-assertion_line: 846
+assertion_line: 1125
 expression: snapshot
 ---
 "                                                                                                    "
 "                                                                                                    "
 "      ╭ Help ────────────────────────────────────────────────────────────────────────────────╮      "
-"      │╭ Query  2 matches  Mailbox / List ──────────────────────────────────────────────────╮│      "
-"      ││> gc                                                                                ││      "
+"      │╭ Query  5 matches  Mailbox / List ──────────────────────────────────────────────────╮│      "
+"      ││> gC                                                                                ││      "
 "      │╰────────────────────────────────────────────────────────────────────────────────────╯│      "
 "      │╭ Matches ───────────────────────────────────────────────────────────────────────────╮│      "
-"      ││gc                   Edit config in $EDITOR                 Start Here              ││      "
-"      ││gc                   Edit Config                            Mailbox List            ││      "
-"      ││                                                                                    ││      "
-"      ││                                                                                    ││      "
-"      ││                                                                                    ││      "
+"      ││gC                   Accounts and settings                  Start Here              ││      "
+"      ││gC                   Accounts Page                          Mailbox List            ││      "
+"      ││gC                   Open Accounts Tab                      Commands: Navigation    ││      "
+"      ││Add an account       g C → n (or palette: New IMAP/SMTP Acc How do I…               ││      "
+"      ││Repair an unhealthy  g C → select account → r when [unhealt How do I…               ││      "
 "      ││                                                                                    ││      "
 "      ││                                                                                    ││      "
 "      ││                                                                                    ││      "
@@ -26,7 +26,7 @@ expression: snapshot
 "      ││                                                                                    ││      "
 "      │╰────────────────────────────────────────────────────────────────────────────────────╯│      "
 "      │╭────────────────────────────────────────────────────────────────────────────────────╮│      "
-"      ││type search   ↑↓ move   enter close   Edit config in $EDITOR · gc · Start Here      ││      "
+"      ││type search   ↑↓ move   enter close   Accounts and settings · gC · Start Here       ││      "
 "      │╰────────────────────────────────────────────────────────────────────────────────────╯│      "
 "      ╰──────────────────────────────────────────────────────────────────────────────────────╯      "
 "                                                                                                    "

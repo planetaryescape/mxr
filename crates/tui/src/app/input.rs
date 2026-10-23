@@ -332,7 +332,6 @@ impl App {
             // Same keys as the web app. Reading and Paper trail take `p`
             // for pin before these mail keys are consulted.
             (KeyCode::Char('p'), KeyModifiers::NONE) => Some(Action::OpenSenderView),
-            (KeyCode::Char('y'), KeyModifiers::NONE) => Some(Action::SummarizeCurrentThread),
             _ => None,
         }
     }
@@ -1502,8 +1501,8 @@ impl App {
             }
         }
 
-        // The assistant pane, once no modal above it wants the key: Ctrl-a
-        // anywhere, and every key while the pane has focus.
+        // The assistant pane, once no modal above it wants the key: every
+        // key while the pane has focus.
         if let Some(action) = self.assistant_key(key) {
             return action;
         }
@@ -1570,6 +1569,8 @@ impl App {
             ActivePane::MessageView => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
+                // The palette's Ctrl-k, before `k` scrolls (it ignores modifiers).
+                (KeyCode::Char('k'), KeyModifiers::CONTROL) => Some(Action::OpenCommandPalette),
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
                     self.move_message_view_down();
                     None
@@ -1633,6 +1634,8 @@ impl App {
             ActivePane::Sidebar => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
+                // The palette's Ctrl-k, before `k` moves (it ignores modifiers).
+                (KeyCode::Char('k'), KeyModifiers::CONTROL) => Some(Action::OpenCommandPalette),
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
                     self.sidebar_move_down();
                     None
@@ -1787,6 +1790,14 @@ impl App {
     }
 
     fn handle_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        // The palette's Ctrl-k, before a screen's `k` (which ignores
+        // modifiers) moves; a text field keeps it.
+        let typing = (self.screen == Screen::Rules && self.rules.page.form.visible)
+            || (self.screen == Screen::Accounts && self.accounts.page.form.editing_field)
+            || (self.screen == Screen::Search && self.search.page.editing);
+        if key.code == KeyCode::Char('k') && key.modifiers == KeyModifiers::CONTROL && !typing {
+            return Some(Action::OpenCommandPalette);
+        }
         match self.screen {
             Screen::Search => self.handle_search_screen_key(key),
             Screen::Rules => self.handle_rules_screen_key(key),
@@ -1820,8 +1831,9 @@ impl App {
                 self.deliveries.select_prev();
                 None
             }
-            (KeyCode::Char('g'), _) => {
-                // Refresh the list.
+            // Refresh the list. `R`, since `r` resolves and `g` starts the
+            // `g` + capital tool chords.
+            (KeyCode::Char('R'), modifiers) if plain_or_shift(modifiers) => {
                 self.deliveries.loading = true;
                 self.pending_deliveries_refresh = true;
                 None
@@ -1945,7 +1957,8 @@ impl App {
             {
                 Some(Action::CycleStorageMode)
             }
-            (KeyCode::Char('g'), KeyModifiers::NONE)
+            // `b` for group by: `g` starts the `g` + capital tool chords.
+            (KeyCode::Char('b'), KeyModifiers::NONE)
                 if view == crate::app::AnalyticsView::Storage
                     && storage_mode == crate::app::StorageMode::Breakdown =>
             {

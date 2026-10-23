@@ -45,6 +45,7 @@ export const SAME_ACTION: Record<string, string[]> = {
   "shell.search-palette": ["OpenGlobalSearch"],
   "shell.help": ["Help"],
   "shell.compose": ["Compose"],
+  "assistant.toggle": ["ToggleAssistant"],
   "mail.undo": ["UndoLastMutation"],
   "nav.now": ["OpenNow"],
   "nav.messages": ["OpenMessages"],
@@ -59,18 +60,15 @@ export const SAME_ACTION: Record<string, string[]> = {
   "nav.analytics": ["OpenAnalyticsScreen"],
   "nav.activity": ["OpenActivityScreen"],
   "nav.logs": ["OpenLogs"],
-  "nav.settings": ["EditConfig"],
+  // The TUI's settings live on its Accounts screen.
+  "nav.settings": ["OpenTab4"],
   "nav.reply-queue": ["OpenReplyQueue"],
   "nav.owed": ["OpenOwedReplies"],
   "nav.invites": ["OpenCalendarInvites"],
   "nav.reading": ["OpenReading"],
   "nav.screener": ["OpenScreenerQueue"],
-  "nav.tab-mail": ["OpenTab1"],
-  "nav.search-page": ["OpenTab2"],
   "nav.rules": ["OpenTab3"],
-  "nav.accounts": ["OpenTab4"],
   "nav.diagnostics": ["OpenTab5"],
-  "nav.tab-analytics": ["OpenTab6"],
   "nav.deliveries": ["OpenTab7"],
   ...Object.fromEntries(
     Array.from({ length: 9 }, (_, index) => [
@@ -116,8 +114,6 @@ export const SAME_ACTION: Record<string, string[]> = {
   "list.bottom": ["JumpBottom"],
   "list.page-down": ["PageDown"],
   "list.page-up": ["PageUp"],
-  "list.viewport-top": ["ViewportTop"],
-  "list.viewport-middle": ["ViewportMiddle"],
   "list.open": ["OpenSelected"],
   "list.sidebar": ["inline:focus_sidebar"],
   "list.toggle-select": ["ToggleSelect"],
@@ -144,7 +140,6 @@ export const SAME_ACTION: Record<string, string[]> = {
   "reader.remote": ["ToggleRemoteContent"],
   "reader.signature": ["ToggleSignature"],
   "reader.open-original": ["OpenInBrowser"],
-  "reader.summary": ["SummarizeCurrentThread"],
   "reader.fullscreen": ["ToggleFullscreen"],
   "screener.allow": ["ScreenerDisposeAllow"],
   "screener.deny": ["ScreenerDisposeDeny"],
@@ -253,25 +248,19 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     context: "*",
     keys: ["Mod+."],
     bound: "web",
-    why: "Shows or hides the assistant in the browser; terminals don't pass Ctrl+. through reliably, so the TUI uses Ctrl+a",
+    why: "The browser also shows or hides the assistant with Mod+., which works from a text field; terminals don't pass Ctrl+. through, and @ works in both",
   },
   {
     context: "*",
-    keys: ["Ctrl+a"],
+    keys: ["Mod+k"],
+    bound: "web",
+    why: "Mod+K is the palette in every client; the TUI spells it Ctrl+k",
+  },
+  {
+    context: "*",
+    keys: ["Ctrl+k"],
     bound: "tui",
-    why: "Shows or hides the TUI's assistant pane; the browser keeps Ctrl+a for select-all and uses Mod+.",
-  },
-  {
-    context: "*",
-    keys: ["Mod+k", ":"],
-    bound: "web",
-    why: "Extra palette keys for the browser; Ctrl+p opens the palette in both",
-  },
-  {
-    context: "*",
-    keys: ["0", "8", "9"],
-    bound: "web",
-    why: "Web shortcuts to Settings, Screener and Invites (g c, g S, g v in both); the TUI's tabs stop at 7",
+    why: "The TUI's Mod+K; the browser spells it Mod+k and keeps Ctrl+k for text fields on macOS",
   },
   {
     context: "*",
@@ -289,13 +278,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
     context: "*",
     keys: ["z"],
     bound: "web",
-    why: "z also undoes on the web, for Gmail muscle memory; in the TUI it starts z z",
-  },
-  {
-    context: "*",
-    keys: ["z z"],
-    bound: "tui",
-    why: "The TUI centers the row; the browser keeps it in view",
+    why: "z also undoes on the web, for Gmail muscle memory; in the TUI it waits so the retired z z can say it moved",
   },
   {
     context: "*",
@@ -360,7 +343,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   },
   {
     context: "list",
-    keys: ["F", "O", "R", "S", "y"],
+    keys: ["F", "O", "R", "S"],
     bound: "tui",
     why: "The TUI reader is a preview beside the list, so its keys work from the list; the web opens the reader first",
   },
@@ -379,9 +362,9 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   },
   {
     context: "reader",
-    keys: ["Q", ";", "[", "]", "g H"],
+    keys: ["Q", ";", "[", "]"],
     bound: "web",
-    why: "Web reader features: quoted text, collapse all, archive and step, raw headers",
+    why: "Web reader features: quoted text, collapse all, archive and step",
   },
   {
     context: "reader",
@@ -400,7 +383,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "sidebar",
     // prettier-ignore
-    keys: ["A", "E", "F", "H", "L", "M", "V", "b", "x", "Escape", "Ctrl+d", "Ctrl+u", "Ctrl+f", "i a", "i m", "i d", "i A", "i M", "i D"],
+    keys: ["A", "E", "F", "V", "b", "x", "Escape", "Ctrl+d", "Ctrl+u", "Ctrl+f", "i a", "i m", "i d", "i A", "i M", "i D"],
     bound: "tui",
     why: "The TUI sidebar passes list keys to the mail list beside it; the web sidebar keeps its own",
   },
@@ -426,7 +409,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "todo",
     // prettier-ignore
-    keys: ["G", "g g", "H", "L", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    keys: ["G", "g g", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
     bound: "tui",
     why: "The TUI lens shares the list's motions and pane keys; the web runway moves with j and k",
   },
@@ -452,7 +435,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "now",
     // prettier-ignore
-    keys: ["G", "g g", "H", "L", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    keys: ["G", "g g", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
     bound: "tui",
     why: "The TUI lens shares the list's motions and pane keys; the web Now moves with j and k",
   },
@@ -471,14 +454,14 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "now",
     keys: ["1", "2", "3", "4"],
-    bound: "both",
-    why: "On a lit new sender the web answers its question with 1 to 4 (Messages, Updates, Reading, Block); everywhere else they stay the numbered tabs, and the TUI keeps them as tabs",
+    bound: "web",
+    why: "Both clients answer a lit new sender's question with 1 to 4 (Messages, Updates, Reading, Block); the TUI's probe has no new sender lit, so it shows no key",
   },
   // Messages.
   {
     context: "messages",
     // prettier-ignore
-    keys: ["G", "g g", "H", "L", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft", "z z", "q"],
+    keys: ["G", "g g", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft", "q"],
     bound: "tui",
     why: "The TUI lens shares the list's motions and pane keys; the web Messages moves with j and k",
   },
@@ -491,8 +474,8 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "messages",
     keys: ["1", "2", "3", "4"],
-    bound: "both",
-    why: "On a lit new sender the web answers its question with 1 to 4 (Messages, Updates, Reading, Block); everywhere else they stay the numbered tabs, and the TUI keeps them as tabs",
+    bound: "web",
+    why: "Both clients answer a lit new sender's question with 1 to 4 (Messages, Updates, Reading, Block); the TUI's probe has no new sender lit, so it shows no key",
   },
   {
     context: "messages",
@@ -510,7 +493,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "archive",
     // prettier-ignore
-    keys: ["G", "g g", "H", "L", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft", "ArrowRight"],
+    keys: ["G", "g g", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft", "ArrowRight"],
     bound: "tui",
     why: "The TUI lens shares the list's motions and pane keys, and Right opens the card; the web shows the card beside the ledger",
   },
@@ -530,7 +513,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "updates",
     // prettier-ignore
-    keys: ["G", "g g", "H", "M", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    keys: ["G", "g g", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
     bound: "tui",
     why: "The TUI lens shares the list's motions and pane keys; the web briefing moves with j and k",
   },
@@ -556,7 +539,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "reading",
     // prettier-ignore
-    keys: ["G", "g g", "H", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    keys: ["G", "g g", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
     bound: "tui",
     why: "The TUI lens shares the list's motions and pane keys; the web edition moves with j and k",
   },

@@ -187,7 +187,7 @@ fn hints_with_keybindings(
             if hints.is_empty() {
                 hints = display_bindings_for_actions(
                     ViewContext::ThreadView,
-                    &["reply", "summarize_current_thread", "archive"],
+                    &["reply", "thread_briefing", "archive"],
                 );
             }
             hints
@@ -197,7 +197,7 @@ fn hints_with_keybindings(
             &[
                 "reply",
                 "reply_all",
-                "summarize_current_thread",
+                "thread_briefing",
                 "archive",
                 "open_links",
             ],

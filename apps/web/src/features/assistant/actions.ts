@@ -6,12 +6,17 @@
 import { CircleDot, SquarePen } from "lucide-react";
 
 import { useAssistantUi } from "./assistantStore";
-import { definedShortcut } from "@/lib/actions/definition";
+import { definedKeys, definedShortcut } from "@/lib/actions/definition";
 import type { ActionBehavior } from "@/lib/actions/types";
 import { useModals } from "@/state/modalStore";
 
-/** The toggle's key, for the sidebar's own hints. */
-export const ASSISTANT_SHORTCUT = definedShortcut("assistant.toggle");
+/**
+ * The toggle's key for the sidebar's own hints: the modifier chord, since
+ * the sidebar's message box types `@`.
+ */
+export const ASSISTANT_SHORTCUT =
+  definedKeys("assistant.toggle").find((key) => key.startsWith("Mod+")) ??
+  definedShortcut("assistant.toggle");
 
 export const assistantActions: ActionBehavior[] = [
   {

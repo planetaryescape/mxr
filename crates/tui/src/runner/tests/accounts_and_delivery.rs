@@ -1512,7 +1512,7 @@ fn mail_list_l_opens_label_picker_not_message() {
 }
 
 #[test]
-fn input_gc_opens_config_editor() {
+fn input_g_shift_c_opens_accounts_and_settings() {
     let mut h = InputHandler::new();
 
     assert_eq!(
@@ -1520,8 +1520,8 @@ fn input_gc_opens_config_editor() {
         None
     );
     assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
-        Some(Action::EditConfig)
+        h.handle_key(KeyEvent::new(KeyCode::Char('C'), KeyModifiers::SHIFT)),
+        Some(Action::OpenTab4)
     );
 }
 
@@ -2215,11 +2215,11 @@ fn deliveries_screen_does_not_trap_global_navigation() {
     let mut app = App::new();
     app.screen = Screen::Deliveries;
 
-    let action = app.handle_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+    let action = app.handle_key(KeyEvent::new(KeyCode::Char(':'), KeyModifiers::SHIFT));
     assert_eq!(
         action,
-        Some(Action::OpenTab1),
-        "a tab digit must still switch screens from Deliveries"
+        Some(Action::OpenCommandPalette),
+        "the palette key must still work from Deliveries"
     );
 }
 
@@ -2439,5 +2439,32 @@ async fn auth_session_poller_aborts_after_max_consecutive_failures() {
     assert!(
         got_account_op_err,
         "poller must deliver AccountOperation(Err) after 5 consecutive failures"
+    );
+}
+
+/// `g` + a capital opens a tool from the Deliveries screen and Analytics'
+/// storage breakdown too: refresh and group by moved off `g` to `R` and `b`.
+#[test]
+fn g_and_a_capital_leave_deliveries_and_the_storage_breakdown() {
+    let shift = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
+    let plain = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
+
+    let mut app = App::new();
+    app.screen = Screen::Deliveries;
+    assert_eq!(app.handle_key(plain('g')), None);
+    assert_eq!(app.handle_key(shift('R')), Some(Action::OpenTab3));
+    assert!(!app.pending_deliveries_refresh, "g R refreshed the list");
+    let _ = app.handle_key(shift('R'));
+    assert!(app.pending_deliveries_refresh, "R refreshes the list");
+
+    let mut app = App::new();
+    app.screen = Screen::Analytics;
+    app.analytics.view = crate::app::AnalyticsView::Storage;
+    app.analytics.storage_mode = crate::app::StorageMode::Breakdown;
+    assert_eq!(app.handle_key(plain('g')), None);
+    assert_eq!(app.handle_key(shift('R')), Some(Action::OpenTab3));
+    assert_eq!(
+        app.handle_key(plain('b')),
+        Some(Action::CycleStorageGroupBy)
     );
 }

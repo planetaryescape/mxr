@@ -17,17 +17,18 @@ The session retains its first workspace owner across background requests, reply 
 
 ## Screens
 
-The TUI has seven top-level screens, one per digit key:
+The TUI has seven top-level screens. Tools open with `g` and a capital:
 
-- Mailbox (`1`)
-- Search (`2`)
-- Rules (`3`)
-- Accounts (`4`)
-- Diagnostics (`5`)
-- Analytics (`6`)
-- Deliveries (`7`)
+- Mailbox (`gi`)
+- Search (`/`)
+- Rules (`gR`)
+- Accounts, where the TUI's settings live (`gC`)
+- Diagnostics (`gD`)
+- Analytics (`gA`)
+- Deliveries (`gP`)
 
-The command palette (`Ctrl-p`) opens each by name too. Rebind the keys in
+The digits that used to open them say where each went until 0.6.180. The
+command palette (`:` or `Ctrl-k`) opens each by name too. Rebind the keys in
 `keys.toml` next to the file printed by `mxr config path` (see
 [Custom keybindings](/reference/config/#custom-keybindings)).
 Restart the TUI to load changes. Mail lists, single-message readers and
@@ -40,7 +41,7 @@ field still enters text.
 Three places to find a key without memorising:
 
 - **`?`** opens the help modal, which shows every key bound in the current view.
-- **`Ctrl-p`** opens the command palette, which fuzzy-matches every action by name.
+- **`:`** (or `Ctrl-k`) opens the command palette, which fuzzy-matches every action by name.
 - **The hint bar at the bottom** of every screen surfaces the most relevant shortcuts for the current selection.
 
 The keybindings reference page lists every default; the help modal is faster while you're using the TUI.
@@ -123,7 +124,7 @@ it as a record after showing the card. The keys are in the
 [keybindings reference](/reference/keybindings/#archive).
 
 Mailbox Archive is a separate provider action. Open the command palette with
-`Ctrl-p` and choose **Preview Archive selection** for the selected messages.
+`:` and choose **Preview Archive selection** for the selected messages.
 The palette also lists query and submit commands for retained operation IDs.
 After a lost response, query the same ID. Submitting that ID can resume only
 `pending` items; an `unknown` effect is not repeated. This does not file a
@@ -141,8 +142,8 @@ not ask the model about every row. The CLI equivalent is
 
 ## Thread summaries
 
-Press `y` or run `Ctrl-p` → **Summarize Thread** from the mailbox, message, or
-thread view. The LLM request runs in the background, so navigation, body loads,
+Run `:` → **Summarize Thread** from the mailbox, message, or thread view. Its
+old key, `y`, now points you at the thread briefing (`B`). The LLM request runs in the background, so navigation, body loads,
 and other mail actions keep working.
 
 Cached summaries appear above the message body when a thread opens. If a long
@@ -201,7 +202,7 @@ Same surface as the CLI analytics commands (`mxr storage`,
 Six views:
 
 - **Storage**: sender / mimetype / label rollups (`m` toggles to
-  Largest Messages mode; `g` cycles `group_by` while in Breakdown).
+  Largest Messages mode; `b` cycles `group_by` while in Breakdown).
 - **Stale Threads**: threads waiting on a reply (`p` toggles
   perspective, `[`/`]` adjusts `older_than_days`, `{`/`}` adjusts
   `within_days`).
@@ -292,4 +293,4 @@ Two cross-view interactions:
 - Command palette: broad action surface
 - Help modal: context-aware keybinding reference
 - Hint bar: context-sensitive shortcuts, including selection-aware actions
-- `gc`: edit config globally
+- `gC`: accounts and settings; **Edit Config** in the palette opens `config.toml` in `$EDITOR`

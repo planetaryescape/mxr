@@ -88,16 +88,19 @@ impl App {
     /// Show "<action> is now <key>" when `keys` moved away from `place`.
     fn announce_moved(&mut self, place: &str, keys: &str) -> bool {
         let keymap = mxr_keymap::defaults();
-        let Some(action) = keymap.moved_from(place, keys) else {
+        let Some((action, moved)) = keymap.moved_entry(place, keys) else {
             return false;
         };
-        let now = action
+        // A retired key whose action has none left names where to go
+        // instead (`1` → `g i`), under the old action's name.
+        let target = keymap.moved_target(action, moved);
+        let now = target
             .tui
             .iter()
             .find(|binding| binding.contexts.includes(place))
             .or_else(|| action.tui.first())
             .and_then(|binding| binding.keys.first())
-            .or_else(|| action.keys.first());
+            .or_else(|| target.keys.first());
         let name = action
             .short_label
             .as_deref()
@@ -133,7 +136,11 @@ impl App {
         }
         let mut chars = chord.chars();
         if let (Some(first), None) = (chars.next(), chars.next()) {
-            if mxr_keymap::defaults().tui_starts_sequence(context, &chord)
+            let keymap = mxr_keymap::defaults();
+            // A retired sequence (`z z`) still waits for its second key
+            // while its move is announced.
+            if keymap.tui_starts_sequence(context, &chord)
+                || keymap.moved_starts_sequence(context, &chord)
                 || self.keybindings.modes.starts_sequence(context, &chord)
             {
                 self.input.wait_for_second(first);

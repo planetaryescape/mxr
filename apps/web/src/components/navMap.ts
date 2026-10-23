@@ -163,7 +163,8 @@ export const TOOL_ENTRIES: NavEntry[] = [
     to: "/search",
     label: "Search",
     Icon: Search,
-    shortcut: definedShortcut("nav.search-page"),
+    // The digit that opened the page retired; / searches from anywhere.
+    shortcut: definedShortcut("shell.search-palette"),
   },
   {
     key: "analytics",
@@ -184,7 +185,6 @@ export const TOOL_ENTRIES: NavEntry[] = [
     to: "/accounts",
     label: "Accounts",
     Icon: Users,
-    shortcut: definedShortcut("nav.accounts"),
   },
   {
     key: "activity",

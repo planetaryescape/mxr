@@ -222,21 +222,24 @@ fn visual_count_is_dropped_by_escape_and_by_other_keys() {
 }
 
 #[test]
-fn digits_keep_their_tab_meaning_outside_visual_mode() {
+fn digits_outside_visual_mode_say_where_the_tab_went() {
     let mut app = mail_list_app(3);
     assert_eq!(
         app.handle_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE)),
-        Some(Action::OpenTab1)
+        None
     );
+    assert_eq!(app.status_message.as_deref(), Some("Mail is now g i"));
 
     press(&mut app, 'V');
     press(&mut app, 'V');
     assert!(!app.mailbox.visual_mode);
+    app.status_message = None;
     assert_eq!(
         app.handle_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE)),
-        Some(Action::OpenTab1),
-        "after visual mode is left, 1 opens tab 1 again"
+        None,
+        "after visual mode is left, 1 is the retired tab key again"
     );
+    assert_eq!(app.status_message.as_deref(), Some("Mail is now g i"));
 }
 
 #[test]

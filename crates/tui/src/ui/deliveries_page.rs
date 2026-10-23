@@ -99,7 +99,7 @@ fn draw_footer(
     let help = if state.preview_active {
         "j/k move · o open · ^d/^u scroll · Esc close · r resolve · d dismiss"
     } else {
-        "j/k move · o open · r resolve · d dismiss · D filter · g refresh"
+        "j/k move · o open · r resolve · d dismiss · D filter · R refresh"
     };
     let p = Paragraph::new(help).style(Style::default().fg(theme.text_muted));
     frame.render_widget(p, area);

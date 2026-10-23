@@ -296,7 +296,7 @@ pub enum Action {
     // Command palette
     OpenCommandPalette,
     CloseCommandPalette,
-    /// Ctrl-a: open the assistant pane, move the keys into it, or hide it.
+    /// `@`: open the assistant pane, move the keys into it, or hide it.
     ToggleAssistant,
     NewAssistantConversation,
     OpenAssistantConversations,
@@ -346,7 +346,7 @@ pub enum Action {
     /// Close the screener triage modal (Esc).
     CloseScreenerModal,
     /// Open the local activity log modal (Phase 5).
-    /// Chord: `g y` (g-prefix for "go to"; `g a` is GoToAllMail) ·
+    /// Chord: `g Y` (g + a capital opens a tool) ·
     /// palette: View activity.
     OpenActivityScreen,
     /// Close the activity log modal (Esc).

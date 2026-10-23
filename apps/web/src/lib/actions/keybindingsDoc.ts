@@ -18,7 +18,8 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
   },
   {
     title: "Go to",
-    intro: "`g` then a letter, as in the TUI. Digits match the TUI's tabs.",
+    intro:
+      "`g` then a letter, as in the TUI: lowercase for mail places and modes, a capital for tools.",
     match: (action) => isGlobal(action) && isGoTo(action),
   },
   {
@@ -39,14 +40,12 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
   },
   {
     title: "Now",
-    intro:
-      "On a lit new sender, `1` to `4` answer its question; elsewhere they stay the numbered tabs.",
+    intro: "On a lit new sender, `1` to `4` answer its question.",
     match: (action) => inScope(action, "now"),
   },
   {
     title: "Messages",
-    intro:
-      "On a lit new sender, `1` to `4` answer its question; elsewhere they stay the numbered tabs.",
+    intro: "On a lit new sender, `1` to `4` answer its question.",
     match: (action) => inScope(action, "messages"),
   },
   { title: "To do", intro: "", match: (action) => inScope(action, "todo") },

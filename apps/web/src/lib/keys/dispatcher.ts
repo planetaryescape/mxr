@@ -62,8 +62,11 @@ export interface DispatcherOptions {
   onPendingChange?: (prefix: string | null) => void;
   /** Reports a prefix and a key that complete nothing ("g U"), for the status bar. */
   onDeadEnd?: (sequence: string) => void;
-  /** A key that moved away in a recent release: say where its action went. */
-  onMoved?: (action: Action) => void;
+  /**
+   * A key that moved away in a recent release: say where its action went,
+   * naming `key`, its new key (null when it has none).
+   */
+  onMoved?: (action: Action, key: string | null) => void;
   /** Extra veto, e.g. while compose owns the page. */
   isSuspended?: () => boolean;
   mac?: boolean;
@@ -105,8 +108,11 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
 
   /** Run a binding, or announce it when its key moved away. */
   const fire = (binding: Binding, ctx: ActionContext) => {
-    if (binding.moved) options.onMoved?.(binding.action);
-    else invokeAction(binding.action, ctx);
+    if (binding.moved) {
+      options.onMoved?.(binding.action, binding.movedTo ?? binding.action.shortcut ?? null);
+    } else {
+      invokeAction(binding.action, ctx);
+    }
   };
 
   const run = (scopes: ActionScope[], chord: string, ctx: ActionContext): boolean => {

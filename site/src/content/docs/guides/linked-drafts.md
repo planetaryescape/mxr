@@ -51,7 +51,7 @@ For a linked draft, mxr updates Gmail first and commits the local edit only
 after Gmail accepts it. If Gmail fails, mxr returns an error and leaves the
 local draft unchanged.
 
-You can do the same thing in the TUI (`gE`, then `e`) or the web app's
+You can do the same thing in the TUI (palette: **Drafts**, then `e`) or the web app's
 **Drafts** view. All three clients call the same daemon operation.
 
 ## Pull an edit from Gmail

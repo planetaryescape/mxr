@@ -291,13 +291,6 @@ async fn configured_retired_prefixes_are_bounded() {
 
     let mut app = remapped_app("list", "[mail_list]\n\";\" = \"center_current\"\n");
     assert_eq!(press_char(&mut app, ';'), Some(Action::CenterCurrent));
-    for _ in 0..4 {
-        assert_eq!(press_char(&mut app, 'z'), None);
-        assert!(
-            !app.input_pending(),
-            "a retired lone prefix must be consumed"
-        );
-    }
     assert_eq!(press_char(&mut app, ';'), Some(Action::CenterCurrent));
     assert_eq!(press_char(&mut app, 'j'), Some(Action::MoveDown));
     let mut app = remapped_app(
@@ -352,10 +345,12 @@ async fn configured_retired_prefixes_are_bounded() {
             mxr_protocol::CalendarInviteActionData::Tentative
         ))
     );
+    // `z z` retired: `z` still waits so the pair can say so, and runs nothing.
     let mut defaults = app_in("list");
     assert_eq!(press_char(&mut defaults, 'z'), None);
     assert!(defaults.input_pending());
-    assert_eq!(press_char(&mut defaults, 'z'), Some(Action::CenterCurrent));
+    assert_eq!(press_char(&mut defaults, 'z'), None);
+    assert!(!defaults.input_pending());
 }
 
 fn rendered_help_lines(app: &mut App, query: &str) -> Vec<String> {
@@ -518,8 +513,12 @@ fn configured_plain_a_remap_preserves_unrelated_ctrl_a() {
     assert_eq!(press_char(&mut app, ';'), Some(Action::ReplyAll));
     assert_eq!(
         app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)),
-        Some(Action::ToggleAssistant),
-        "retiring plain a must not retire the unrelated Ctrl-a shortcut"
+        None
+    );
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Toggle assistant is now @"),
+        "retiring plain a must not swallow Ctrl-a's move notice"
     );
 }
 
@@ -529,8 +528,12 @@ fn configured_plain_a_unbind_preserves_unrelated_ctrl_a() {
     assert_eq!(press_char(&mut app, 'a'), None);
     assert_eq!(
         app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)),
-        Some(Action::ToggleAssistant),
-        "unbinding plain a must not unbind Ctrl-a"
+        None
+    );
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Toggle assistant is now @"),
+        "unbinding plain a must not swallow Ctrl-a's move notice"
     );
 }
 
@@ -1231,4 +1234,115 @@ fn a_moved_key_names_its_new_key_and_runs_nothing() {
         app.handle_key(shifted('P')),
         Some(Action::OpenSenderMoveMenu)
     );
+}
+
+/// The second wave of moves (blueprint 35's `g` table): tools take `g` and
+/// a capital, duplicates retire, and each old key names the key to use, in
+/// the mailbox panes and in the modes alike.
+#[test]
+fn retired_tab_digits_and_chords_name_their_new_keys() {
+    let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
+    for (context, keys, notice) in [
+        ("list", vec![press_of('1')], "Mail is now g i"),
+        ("list", vec![press_of('2')], "Search page is now /"),
+        ("sidebar", vec![press_of('3')], "Rules is now g R"),
+        ("reader", vec![press_of('4')], "Accounts is now g C"),
+        ("todo", vec![press_of('5')], "Diagnostics is now g D"),
+        ("now", vec![press_of('6')], "Analytics is now g A"),
+        ("archive", vec![press_of('7')], "Deliveries is now g P"),
+        (
+            "list",
+            vec![press_of('g'), press_of('c')],
+            "Settings is now g C",
+        ),
+        (
+            "updates",
+            vec![press_of('g'), press_of('y')],
+            "Activity log is now g Y",
+        ),
+        (
+            "list",
+            vec![press_of('g'), shifted('E')],
+            "Go to Drafts is now g d",
+        ),
+        ("reader", vec![press_of('y')], "Summarize thread is now B"),
+        (
+            "list",
+            vec![shifted('H')],
+            "Top of screen has no key now; find it in the palette",
+        ),
+        (
+            "todo",
+            vec![press_of('z'), press_of('z')],
+            "Center current has no key now; find it in the palette",
+        ),
+        (
+            "messages",
+            vec![KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)],
+            "Toggle assistant is now @",
+        ),
+    ] {
+        let mut app = app_in(context);
+        let mut action = None;
+        for key in &keys {
+            action = app.handle_key(*key);
+        }
+        assert_eq!(action, None, "{keys:?} in {context} ran something");
+        assert!(!app.input_pending(), "{keys:?} in {context} left a prefix");
+        assert_eq!(app.status_message.as_deref(), Some(notice), "{context}");
+    }
+
+    for (keys, expected) in [
+        (vec![press_of('g'), shifted('R')], Action::OpenTab3),
+        (vec![press_of('g'), shifted('C')], Action::OpenTab4),
+        (vec![press_of('g'), shifted('D')], Action::OpenTab5),
+        (vec![press_of('g'), shifted('P')], Action::OpenTab7),
+        (
+            vec![press_of('g'), shifted('Y')],
+            Action::OpenActivityScreen,
+        ),
+        (vec![shifted(':')], Action::OpenCommandPalette),
+        (
+            vec![KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL)],
+            Action::OpenCommandPalette,
+        ),
+        (vec![shifted('@')], Action::ToggleAssistant),
+    ] {
+        for context in ["list", "reader", "todo"] {
+            assert_eq!(
+                press(context, &keys),
+                Ok(Some(expected.clone())),
+                "{context} {keys:?}"
+            );
+        }
+    }
+}
+
+fn press_of(c: char) -> KeyEvent {
+    KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
+}
+
+/// Ctrl-k is the palette on the tool screens too, though their lists move
+/// with `k` whatever the modifiers; a form's text field keeps it.
+#[test]
+fn ctrl_k_opens_the_palette_on_a_tool_screen_but_not_in_its_form() {
+    let ctrl_k = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL);
+    for screen in [
+        Screen::Rules,
+        Screen::Accounts,
+        Screen::Diagnostics,
+        Screen::Deliveries,
+    ] {
+        let mut app = App::new();
+        app.screen = screen;
+        assert_eq!(
+            app.handle_key(ctrl_k),
+            Some(Action::OpenCommandPalette),
+            "{screen:?}"
+        );
+    }
+    let mut app = App::new();
+    app.screen = Screen::Rules;
+    app.rules.page.form.visible = true;
+    assert_ne!(app.handle_key(ctrl_k), Some(Action::OpenCommandPalette));
 }

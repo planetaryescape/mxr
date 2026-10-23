@@ -83,24 +83,32 @@ test("reader views switch with R and H", async ({ page }) => {
   await expect(views.getByRole("radio", { name: "Formatted" })).toBeChecked();
 });
 
-test("number keys jump between the TUI tabs", async ({ page }) => {
+test("g and a capital open the tools, and an old tab digit says where it went", async ({
+  page,
+}) => {
   await openList(page, "/m/inbox");
 
-  const tabs: [string, RegExp][] = [
-    ["2", /\/search$/],
-    ["3", /\/rules$/],
-    ["4", /\/accounts$/],
-    ["5", /\/diagnostics$/],
-    ["6", /\/analytics(\/storage)?$/],
-    ["7", /\/deliveries$/],
-    ["1", /\/m\/inbox$/],
+  const tools: [string, RegExp][] = [
+    ["R", /\/rules$/],
+    ["D", /\/diagnostics$/],
+    ["A", /\/analytics(\/storage)?$/],
+    ["P", /\/deliveries$/],
+    ["Y", /\/activity$/],
+    ["S", /\/screener$/],
+    ["C", /\/settings\/theme$/],
   ];
-  for (const [key, url] of tabs) {
-    // The search page focuses its query box when empty; leave it first.
-    if (new URL(page.url()).pathname === "/search") await page.keyboard.press("Escape");
+  for (const [key, url] of tools) {
+    await page.keyboard.press("g");
     await page.keyboard.press(key);
-    await expect(page, `digit ${key}`).toHaveURL(url);
+    await expect(page, `g ${key}`).toHaveURL(url);
   }
+
+  await openList(page, "/m/inbox");
+  await page.keyboard.press("3");
+  await expect(page.getByText(/Rules is now/)).toBeVisible();
+  await expect(page).toHaveURL(/\/m\/inbox$/);
+  await page.keyboard.press("@");
+  await expect(page.getByLabel("Message the assistant")).toBeVisible();
 });
 
 test("g chords jump to the TUI's views", async ({ page }) => {
@@ -110,17 +118,12 @@ test("g chords jump to the TUI's views", async ({ page }) => {
     ["t", /\/m\/sent$/],
     ["a", /\/m\/archive$/],
     ["d", /\/drafts$/],
-    ["E", /\/drafts$/],
     ["h", /\/now$/],
     ["m", /\/messages$/],
     ["x", /\/todo$/],
     ["u", /\/updates$/],
     ["e", /\/archive$/],
     ["r", /\/reading$/],
-    ["p", /\/updates$/],
-    // Retired web chords keep working for one release.
-    ["R", /\/reading$/],
-    ["P", /\/updates$/],
     ["w", /\/messages\?turn=theirs$/],
     ["n", /\/snoozed$/],
     ["q", /\/reply-queue$/],

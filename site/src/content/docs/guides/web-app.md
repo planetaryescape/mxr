@@ -570,6 +570,9 @@ was used. **Sources** lists those emails and the messages it read from the
 conversation; each opens in a new tab on that message
 ([where a draft came from](/guides/llm-features/#see-where-a-draft-came-from)).
 
+When you reopen a saved reply or forward from Drafts, Draft for me keeps that
+stored intent. A new message uses its current recipients and subject.
+
 ### Recipients
 
 To, Cc and Bcc hold each address as a chip. Type, then press `Enter`, `,` or

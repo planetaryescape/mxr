@@ -132,6 +132,13 @@ function renderCompose(intent: ComposeIntent = newMessageIntent()) {
 
 const composeSession: ComposeSessionResponse = {
   session: {
+    binding: {
+      target: window.location.origin,
+      workspace: {
+        workspace_id: "compose-flow-owner",
+        recovery_generation: "compose-flow-generation",
+      },
+    },
     draftPath: "/tmp/mxr-compose.md",
     rawContent: "",
     frontmatter: { to: "", cc: "", bcc: "", subject: "", from: "me@example.com", attach: [] },

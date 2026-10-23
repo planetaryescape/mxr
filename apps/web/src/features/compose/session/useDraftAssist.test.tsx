@@ -2,11 +2,20 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { useState, useRef, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { RawFetchOpts } from "@/api/client";
+import {
+  assertWorkspaceBinding,
+  observeWorkspace,
+  resetWorkspaceOwnerForTest,
+  WorkspaceConflictError,
+} from "@/lib/workspaceOwner";
 
 import type { ComposeDraftState, ComposeIntent } from "./composeDraft";
 import { useDraftAssist } from "./useDraftAssist";
 
-const apiFetch = vi.hoisted(() => vi.fn<(path: string, init?: unknown) => Promise<unknown>>());
+const apiFetch = vi.hoisted(() =>
+  vi.fn<(path: string, init?: RawFetchOpts) => Promise<ReturnType<typeof proposal>>>(),
+);
 vi.mock("@/api/client", () => ({ apiFetch }));
 vi.mock("sonner", () => ({
   toast: { error: vi.fn<() => void>(), success: vi.fn<() => void>(), info: vi.fn<() => void>() },
@@ -30,9 +39,15 @@ function draftWith(body: string, extra: Partial<ComposeDraftState> = {}): Compos
     issues: [],
     accountId: "acc",
     kind: "reply",
+    binding: ownerA,
     ...extra,
   };
 }
+
+const ownerA = {
+  target: window.location.origin,
+  workspace: { workspace_id: "owner-a", recovery_generation: "generation-a" },
+};
 
 function useHarness(initial: ComposeDraftState, intent: ComposeIntent = REPLY) {
   const [draft, setDraft] = useState<ComposeDraftState | null>(initial);
@@ -67,6 +82,7 @@ function wrapper({ children }: { children: ReactNode }) {
 
 beforeEach(() => {
   apiFetch.mockReset();
+  resetWorkspaceOwnerForTest();
   queryClient.clear();
 });
 
@@ -92,6 +108,78 @@ describe("useDraftAssist", () => {
       adjust: { shorter: false, warmer: false, more_formal: false, proofread: false },
     });
     expect(init.body).not.toHaveProperty("instruction");
+  });
+
+  test("an assist stays with its original workspace and fails closed after ownership changes", async () => {
+    observeWorkspace(ownerA);
+    let networkRequests = 0;
+    apiFetch.mockImplementation((path, options) => {
+      const binding = options?.binding;
+      if (binding) assertWorkspaceBinding(binding);
+      networkRequests += 1;
+      return Promise.resolve(proposal("Hi", [{ kind: "added", text: "Hi" }]));
+    });
+    const { result } = renderHook(
+      () => useHarness(draftWith("private draft", { binding: ownerA })),
+      { wrapper },
+    );
+    observeWorkspace({
+      target: ownerA.target,
+      workspace: { workspace_id: "owner-b", recovery_generation: "generation-b" },
+    });
+
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledOnce());
+    await waitFor(() => expect(apiFetch.mock.results[0]?.type).toBe("throw"));
+    expect(networkRequests).toBe(0);
+    expect(apiFetch.mock.results[0]?.value).toBeInstanceOf(WorkspaceConflictError);
+    expect(result.current.assist.proofOpen).toBe(false);
+    expect(result.current.draft?.bodyMarkdown).toBe("private draft");
+  });
+
+  test("an assist request carries its original binding while that owner is current", async () => {
+    observeWorkspace(ownerA);
+    apiFetch.mockResolvedValue(proposal("Hi", [{ kind: "added", text: "Hi" }]));
+    const { result } = renderHook(
+      () => useHarness(draftWith("private draft", { binding: ownerA })),
+      { wrapper },
+    );
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledOnce());
+    expect(apiFetch.mock.calls[0]?.[1]).toMatchObject({ binding: ownerA });
+    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
+  });
+
+  test("a response that arrives after an owner transition cannot become the shown proof", async () => {
+    observeWorkspace(ownerA);
+    let resolve!: (value: ReturnType<typeof proposal>) => void;
+    const pending = new Promise<ReturnType<typeof proposal>>((accept) => {
+      resolve = accept;
+    });
+    apiFetch.mockImplementation(async (_path, options) => {
+      const response = await pending;
+      const binding = options?.binding;
+      if (binding) assertWorkspaceBinding(binding);
+      return response;
+    });
+    const { result } = renderHook(
+      () => useHarness(draftWith("private draft", { binding: ownerA })),
+      { wrapper },
+    );
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledOnce());
+    observeWorkspace({
+      target: ownerA.target,
+      workspace: { workspace_id: "owner-b", recovery_generation: "generation-b" },
+    });
+    await act(async () => {
+      resolve(proposal("Changed private text", [{ kind: "added", text: "Changed private text" }]));
+      await pending;
+    });
+
+    expect(result.current.assist.proofOpen).toBe(false);
+    expect(result.current.assist.version).toBeNull();
+    expect(result.current.draft?.bodyMarkdown).toBe("private draft");
   });
 
   test("accepting writes the proof text back and keeps the signature; ⌘Z restores the text in one step", async () => {
@@ -311,7 +399,15 @@ describe("useDraftAssist", () => {
     };
     const { result } = renderHook(
       () =>
-        useHarness(draftWith("Hi", { draftId: "reply-1", revision: 3, kind: "reply" }), reopened),
+        useHarness(
+          draftWith("Hi", {
+            draftId: "reply-1",
+            revision: 3,
+            kind: "new",
+            draftIntent: "reply",
+          }),
+          reopened,
+        ),
       { wrapper },
     );
     act(() => result.current.assist.submit());
@@ -330,7 +426,15 @@ describe("useDraftAssist", () => {
     };
     const { result } = renderHook(
       () =>
-        useHarness(draftWith("FYI", { draftId: "fwd-1", revision: 5, kind: "forward" }), reopened),
+        useHarness(
+          draftWith("FYI", {
+            draftId: "fwd-1",
+            revision: 5,
+            kind: "new",
+            draftIntent: "forward",
+          }),
+          reopened,
+        ),
       { wrapper },
     );
     act(() => result.current.assist.submit());
@@ -388,6 +492,159 @@ describe("useDraftAssist", () => {
     expect(init.body).toMatchObject({ action: "write" });
   });
 
+  test("revising the displayed version sends its id and original request text and action", async () => {
+    apiFetch.mockResolvedValueOnce(
+      proposal("Decline Thursday and suggest Friday.", [
+        { kind: "added", text: "Decline Thursday and suggest Friday." },
+      ]),
+    );
+    apiFetch.mockResolvedValueOnce(
+      proposal("Friday works instead.", [{ kind: "added", text: "Friday works instead." }]),
+    );
+    const { result } = renderHook(
+      () =>
+        useHarness(
+          draftWith("", {
+            frontmatter: { ...draftWith("").frontmatter, to: "pat@example.com" },
+          }),
+          { key: "new", title: "New", kind: "new" },
+        ),
+      { wrapper },
+    );
+    act(() => {
+      result.current.assist.setInstruction("Decline Thursday and suggest Friday");
+      result.current.assist.submit();
+    });
+    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
+    act(() => result.current.assist.setInstruction("Remove the last sentence of this proof"));
+    act(() => result.current.assist.again("Remove the last sentence of this proof"));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
+    expect(apiFetch.mock.calls[1]?.[1]).toMatchObject({
+      body: {
+        draft: {
+          kind: "new",
+          account_id: "acc",
+          to: [{ name: null, email: "pat@example.com" }],
+        },
+        text: "",
+        action: "write",
+        instruction: "Remove the last sentence of this proof",
+        revise: "p1",
+      },
+    });
+  });
+
+  test("a revision keeps the original UTF-8 selection even if the editor selection moves", async () => {
+    apiFetch.mockResolvedValueOnce({
+      proposal: {
+        ...proposal("café Friday", [{ kind: "kept", text: "café Friday" }]).proposal,
+        proposal_id: "selected-proof",
+      },
+    });
+    apiFetch.mockResolvedValueOnce(proposal("café works", [{ kind: "kept", text: "café works" }]));
+    const body = "café maybe Friday";
+    const { result } = renderHook(() => useHarness(draftWith(body)), { wrapper });
+    act(() => result.current.assist.setSelection({ from: 5, to: 10 }));
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
+    act(() => result.current.assist.setSelection({ from: 11, to: body.length }));
+    act(() => result.current.assist.again("Replace the selected phrase"));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
+    expect(apiFetch.mock.calls[1]?.[1]).toMatchObject({
+      body: {
+        text: body,
+        action: "edit_selection",
+        selection: { start: 6, end: 11 },
+        revise: "selected-proof",
+        instruction: "Replace the selected phrase",
+      },
+    });
+  });
+
+  test("version navigation makes the displayed proposal the revision target", async () => {
+    apiFetch.mockResolvedValueOnce({
+      proposal: {
+        ...proposal("First answer", [{ kind: "added", text: "First answer" }]).proposal,
+        proposal_id: "p-first",
+      },
+    });
+    apiFetch.mockResolvedValueOnce({
+      proposal: {
+        ...proposal("Second answer", [{ kind: "added", text: "Second answer" }]).proposal,
+        proposal_id: "p-second",
+      },
+    });
+    apiFetch.mockResolvedValueOnce(
+      proposal("Revised first answer", [{ kind: "added", text: "Revised first answer" }]),
+    );
+    const { result } = renderHook(() => useHarness(draftWith("")), { wrapper });
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
+    act(() => result.current.assist.again());
+    await waitFor(() => expect(result.current.assist.versionCount).toBe(2));
+    act(() => result.current.assist.stepVersion(-1));
+    expect(result.current.assist.version?.proposal.proposal_id).toBe("p-first");
+    act(() => result.current.assist.again("Keep the first answer concise"));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(3));
+    expect(apiFetch.mock.calls[2]?.[1]).toMatchObject({
+      body: { revise: "p-first", text: "", action: "write" },
+    });
+  });
+
+  test.each(["reply", "reply_all", "forward"] as const)(
+    "a reopened %s draft keeps its stored intent",
+    async (draftIntent) => {
+      apiFetch.mockResolvedValue(proposal("Hi", [{ kind: "added", text: "Hi" }]));
+      const restored = draftWith("existing text", {
+        draftId: "saved-1",
+        revision: 4,
+        draftIntent,
+        kind: "new",
+        frontmatter: { ...draftWith("").frontmatter, subject: "Ignore this incoming subject" },
+      });
+      const { result } = renderHook(
+        () => useHarness(restored, { key: "saved", title: "Saved draft", kind: "new" }),
+        { wrapper },
+      );
+      act(() => result.current.assist.submit());
+      await waitFor(() => expect(apiFetch).toHaveBeenCalledOnce());
+      expect(apiFetch.mock.calls[0]?.[1]).toMatchObject({
+        body: { draft: { kind: "stored", draft_id: "saved-1" } },
+      });
+      expect(apiFetch.mock.calls[0]?.[1]?.body).not.toHaveProperty("draft.subject");
+    },
+  );
+
+  test("a genuinely new draft still uses its live recipient and subject", async () => {
+    apiFetch.mockResolvedValue(proposal("Hi", [{ kind: "added", text: "Hi" }]));
+    const newEmail: ComposeIntent = { key: "n", title: "New", kind: "new" };
+    const { result } = renderHook(
+      () =>
+        useHarness(
+          draftWith("", {
+            frontmatter: {
+              ...draftWith("").frontmatter,
+              to: "new@example.com",
+              subject: "Live subject",
+            },
+          }),
+          newEmail,
+        ),
+      { wrapper },
+    );
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledOnce());
+    expect(apiFetch.mock.calls[0]?.[1]).toMatchObject({
+      body: {
+        draft: {
+          kind: "new",
+          to: [{ name: null, email: "new@example.com" }],
+          subject: "Live subject",
+        },
+      },
+    });
+  });
+
   test("accepting a greeting and sign-off keeps the mark on an unedited model sentence", async () => {
     const marked = "Friday works.";
     apiFetch.mockResolvedValue({
@@ -404,7 +661,7 @@ describe("useDraftAssist", () => {
         gaps: [],
         provenance: null,
         yours_changed: [],
-        composer_version: "1",
+        composer_version: 1,
       },
     });
     const { result } = renderHook(
@@ -439,7 +696,7 @@ describe("useDraftAssist", () => {
         gaps: [],
         provenance: null,
         yours_changed: [],
-        composer_version: "1",
+        composer_version: 1,
       },
     });
     const { result } = renderHook(

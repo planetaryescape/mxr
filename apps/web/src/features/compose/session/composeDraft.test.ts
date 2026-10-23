@@ -1,7 +1,12 @@
 import { describe, expect, test } from "vitest";
 
 import { replyWithBodyIntent } from "../composeUiStore";
-import { addressList, applyPrefill, type ComposeDraftState } from "./composeDraft";
+import {
+  addressList,
+  applyPrefill,
+  draftFromSession,
+  type ComposeDraftState,
+} from "./composeDraft";
 
 function draft(bodyMarkdown: string): ComposeDraftState {
   return {
@@ -35,6 +40,31 @@ describe("applyPrefill", () => {
   test("each AI reply gets its own session", () => {
     expect(replyWithBodyIntent("m-1", "a").key).toMatch(/^compose:reply:m-1:draft-/);
   });
+});
+
+test("session hydration keeps the saved reply or forward intent beside editable kind", () => {
+  const savedSession = {
+    draftPath: "/tmp/saved-forward.md",
+    rawContent: "",
+    bodyMarkdown: "Forward note",
+    frontmatter: {
+      to: "pat@example.com",
+      cc: "",
+      bcc: "",
+      subject: "Forwarded subject",
+      from: "me@example.com",
+      attach: [],
+    },
+    previewHtml: "",
+    issues: [],
+    kind: "new",
+    draftId: "saved-forward",
+    revision: 2,
+    draftIntent: "forward" as const,
+  };
+  const restoredDraft = draftFromSession(savedSession);
+  expect(restoredDraft.kind).toBe("new");
+  expect(restoredDraft.draftIntent).toBe("forward");
 });
 
 describe("addressList", () => {

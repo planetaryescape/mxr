@@ -50,6 +50,14 @@ export interface AssistVersion {
   sentText: string;
   action: ComposeAssistAction;
   instruction: string;
+  /** Original selection in UTF-8 bytes, so a revision uses the same region. */
+  selection?: { start: number; end: number };
+}
+
+interface RevisionBaseline {
+  proposalId: string;
+  sentText: string;
+  selection?: AssistVersion["selection"];
 }
 
 /** What accepting replaced, so ⌘Z can put it back in one step. */
@@ -105,7 +113,12 @@ function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAs
   }
   // A reply or forward reopened from Drafts has no message in the session: the
   // daemon resolves its conversation from the stored reply headers.
-  if (draft.draftId && draft.revision != null && REPLY_OR_FORWARD.has(draft.kind)) {
+  if (
+    draft.draftId &&
+    draft.revision != null &&
+    draft.draftIntent != null &&
+    REPLY_OR_FORWARD.has(draft.draftIntent)
+  ) {
     return { kind: "stored", draft_id: draft.draftId };
   }
   // A new message is always sent with its live recipients and subject. A saved
@@ -181,10 +194,15 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
 
   const inFlight = useRef(false);
   const ask = useMutation({
-    mutationFn: async (input: { action: ComposeAssistAction; instruction: string }) => {
+    mutationFn: async (input: {
+      action: ComposeAssistAction;
+      instruction: string;
+      revision?: RevisionBaseline;
+    }) => {
       const current = draftRef.current;
       if (!current) throw new Error("No draft is open");
       const live = splitTextRegion(current.bodyMarkdown);
+      const sentText = input.revision?.sentText ?? live.text;
       const to = firstAddress(current.frontmatter.to);
       if (!intent.messageId && !to) throw new Error("Add a recipient before drafting");
       const subject = current.frontmatter.subject.trim();
@@ -194,11 +212,13 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
       const range = selectedRegionRange(live, selection);
       const request: ComposeAssistRequest = {
         draft: assistDraft(intent, current),
-        text: live.text,
+        text: sentText,
         action: input.action,
         adjust,
       };
-      if (range) {
+      const selected = input.revision?.selection;
+      if (selected) request.selection = selected;
+      else if (!input.revision && range) {
         request.selection = {
           start: utf8Offset(live.text, range.from),
           end: utf8Offset(live.text, range.to),
@@ -206,20 +226,24 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
       }
       const note = input.instruction.trim();
       if (note) request.instruction = note;
-      const response = await requestComposeAssist(request);
+      if (input.revision) request.revise = input.revision.proposalId;
+      if (!current.binding) throw new Error("Draft has no workspace owner; reopen it explicitly");
+      const response = await requestComposeAssist(request, current.binding);
       return {
         response,
-        sentText: live.text,
+        sentText,
         action: input.action,
         instruction: input.instruction,
+        selection: request.selection ?? undefined,
       };
     },
-    onSuccess: ({ response, sentText, action, instruction: asked }) => {
+    onSuccess: ({ response, sentText, action, instruction: asked, selection: selected }) => {
       const next: AssistVersion = {
         proposal: response.proposal,
         sentText,
         action,
         instruction: asked,
+        selection: selected,
       };
       setProof((current) => ({
         versions: [...current.versions, next],
@@ -230,12 +254,15 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     onError: (error) => toast.error("Draft failed", { description: errorMessage(error) }),
   });
 
-  function run(action: ComposeAssistAction, note: string) {
+  function run(action: ComposeAssistAction, note: string, revision?: RevisionBaseline) {
     // A ref, not `ask.isPending`: two presses before the next render both see
     // "idle" in the closure, and only the ref is set synchronously.
     if (inFlight.current) return;
     inFlight.current = true;
-    ask.mutate({ action, instruction: note }, { onSettled: () => (inFlight.current = false) });
+    ask.mutate(
+      { action, instruction: note, revision },
+      { onSettled: () => (inFlight.current = false) },
+    );
   }
 
   /** ↵ in the help line: finish, edit the selection, or write. */
@@ -258,18 +285,24 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
   }
 
   /**
-   * Run the proof again. A note asks for a revision with the help line's
-   * current action. With no note, a proof whose text has changed is asked
-   * again with the action the live text calls for: the stored action was
-   * chosen for text that is no longer there. An unchanged proof repeats its
-   * own request.
+   * A note revises the displayed proposal against the text and selection it
+   * was made from. With no note, a stale proof runs again against live text;
+   * an unchanged proof repeats its own request.
    */
   function again(note?: string) {
     if (!version) return;
     const trimmed = note?.trim() ?? "";
+    if (trimmed) {
+      run(version.action, trimmed, {
+        proposalId: version.proposal.proposal_id,
+        sentText: version.sentText,
+        selection: version.selection,
+      });
+      return;
+    }
     const current = draftRef.current;
     const stale = version.sentText !== (current ? splitTextRegion(current.bodyMarkdown).text : "");
-    if (trimmed || stale) run(helpAction(helpStateNow()), trimmed || version.instruction);
+    if (stale) run(helpAction(helpStateNow()), version.instruction);
     else run(version.action, version.instruction);
   }
 

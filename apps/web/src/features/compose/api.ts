@@ -19,6 +19,8 @@ export interface ComposeIssue {
 export type ComposeSession = components["schemas"]["ComposeSessionData"] & {
   workspace?: WorkspaceBinding["workspace"] | null;
   binding?: WorkspaceBinding;
+  /** Intent supplied when restoring a saved reply or forward. */
+  draftIntent?: ComposeDraftIntent | null;
 };
 export type ComposeSessionResponse = Omit<
   components["schemas"]["ComposeSessionResponse"],
@@ -52,6 +54,9 @@ export type ComposeAttachmentUploadResponse =
   components["schemas"]["ComposeAttachmentUploadResponse"];
 
 export type ComposeKind = "new" | "reply" | "reply_all" | "forward";
+
+/** Stored draft intent added by the restore route beside its editable `kind`. */
+export type ComposeDraftIntent = components["schemas"]["DraftIntent"];
 
 /** Calendar invite response carried by an `invite_reply` compose session. */
 export type InviteReplyAction = "accept" | "tentative" | "decline";

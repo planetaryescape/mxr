@@ -6,6 +6,7 @@
 
 import type {
   ComposeFrontmatter,
+  ComposeDraftIntent,
   ComposeIssue,
   ComposeSession,
   ComposeSessionKind,
@@ -31,6 +32,7 @@ export interface ComposeDraftState {
   issues: ComposeIssue[];
   accountId: string;
   kind: string;
+  draftIntent?: ComposeDraftIntent;
   editorCommand?: string;
   cursorLine?: number;
 }
@@ -123,6 +125,7 @@ export function draftFromSession(
     issues: session.issues ?? [],
     accountId: session.accountId ?? fallbackAccountId,
     kind: session.kind ?? "new",
+    draftIntent: session.draftIntent ?? undefined,
     editorCommand: session.editorCommand ?? undefined,
     cursorLine: session.cursorLine ?? undefined,
   };

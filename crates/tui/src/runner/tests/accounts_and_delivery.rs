@@ -236,7 +236,10 @@ fn search_preview_shift_o_opens_in_browser_and_o_says_so() {
     // `o` opened the original until K3 (blueprint 35): it says where it went.
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
     assert_eq!(action, None);
-    assert_eq!(app.status_message.as_deref(), Some("Open in browser is now O"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Open in browser is now O")
+    );
 }
 
 #[test]
@@ -1050,7 +1053,10 @@ fn stored_drafts_edit_key_queues_pending_edit_for_selected_draft() {
 
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
     assert_eq!(action, None, "e retired as an alias of Enter");
-    assert_eq!(app.status_message.as_deref(), Some("Edit draft is now Enter"));
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Edit draft is now Enter")
+    );
     let action = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     assert_eq!(action, Some(Action::StoredDraftsModalEdit));
     app.apply(action.unwrap());

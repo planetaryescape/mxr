@@ -551,8 +551,8 @@ impl Keymap {
                         && self.web_bindings().iter().any(|b| {
                             b.chord == moved.key && (b.scope == *context || b.scope == "global")
                         });
-                    let tui_bound =
-                        action.is_for(Client::Tui) && self.tui_binding(context, &moved.key).is_some();
+                    let tui_bound = action.is_for(Client::Tui)
+                        && self.tui_binding(context, &moved.key).is_some();
                     if web_bound || tui_bound {
                         problems.push(format!(
                             "{}: `{}` moved away in {context} but is still bound there",

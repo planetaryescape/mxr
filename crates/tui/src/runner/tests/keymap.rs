@@ -1346,25 +1346,57 @@ fn third_wave_keys_name_their_new_keys() {
     let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
     let palette = "has no key now; find it in the palette";
     for (context, key, notice) in [
-        ("reader", press_of('o'), "Open in browser is now O".to_string()),
-        ("list", shifted('E'), format!("Export as Markdown {palette}")),
-        ("reader", shifted('E'), format!("Export as Markdown {palette}")),
-        ("sidebar", press_of('['), "Collapse section is now Enter".into()),
-        ("sidebar", press_of(']'), "Expand section is now Enter".into()),
+        (
+            "reader",
+            press_of('o'),
+            "Open in browser is now O".to_string(),
+        ),
+        (
+            "list",
+            shifted('E'),
+            format!("Export as Markdown {palette}"),
+        ),
+        (
+            "reader",
+            shifted('E'),
+            format!("Export as Markdown {palette}"),
+        ),
+        (
+            "sidebar",
+            press_of('['),
+            "Collapse section is now Enter".into(),
+        ),
+        (
+            "sidebar",
+            press_of(']'),
+            "Expand section is now Enter".into(),
+        ),
         ("sidebar", press_of('n'), "New saved search is now c".into()),
         ("place", press_of('p'), "Pin is now s".into()),
         ("place", shifted('K'), "Move sender to is now P".into()),
         ("place", shifted('S'), format!("Sweep sender {palette}")),
         ("place", shifted('A'), "Sweep all is now E".into()),
-        ("place", press_of('>'), format!("More senders in this place {palette}")),
-        ("place", press_of('+'), format!("More from this sender {palette}")),
+        (
+            "place",
+            press_of('>'),
+            format!("More senders in this place {palette}"),
+        ),
+        (
+            "place",
+            press_of('+'),
+            format!("More from this sender {palette}"),
+        ),
         ("archive", shifted('E'), format!("Export {palette}")),
         ("archive", press_of('v'), "Checked is now ,".into()),
         ("todo", press_of('v'), "Details is now ,".into()),
         ("updates", shifted('S'), format!("Sweep sender {palette}")),
     ] {
         let mut app = app_in(context);
-        assert_eq!(app.handle_key(key), None, "{key:?} in {context} ran something");
+        assert_eq!(
+            app.handle_key(key),
+            None,
+            "{key:?} in {context} ran something"
+        );
         assert_eq!(
             app.status_message.as_deref(),
             Some(notice.as_str()),
@@ -1376,10 +1408,18 @@ fn third_wave_keys_name_their_new_keys() {
         ("place", vec![press_of('s')], Action::TogglePin),
         ("place", vec![shifted('P')], Action::OpenSenderKindMenu),
         ("place", vec![shifted('E')], Action::SweepPlace),
-        ("sidebar", vec![press_of('c')], Action::OpenSavedSearchFormNew),
+        (
+            "sidebar",
+            vec![press_of('c')],
+            Action::OpenSavedSearchFormNew,
+        ),
         ("reader", vec![shifted('O')], Action::OpenInBrowser),
     ] {
-        assert_eq!(press(context, &keys), Ok(Some(expected.clone())), "{context}");
+        assert_eq!(
+            press(context, &keys),
+            Ok(Some(expected.clone())),
+            "{context}"
+        );
     }
 }
 
@@ -1391,7 +1431,9 @@ fn sidebar_headers_hold_the_cursor_and_fold_their_section() {
     assert_eq!(press_char(&mut app, '}'), None);
     assert!(matches!(
         app.selected_sidebar_item(),
-        Some(crate::app::SidebarItem::Header(crate::app::SidebarHeader::More))
+        Some(crate::app::SidebarItem::Header(
+            crate::app::SidebarHeader::More
+        ))
     ));
     let header = app.mailbox.sidebar_selected;
     assert!(app.mailbox.sidebar_system_expanded);
@@ -1402,7 +1444,10 @@ fn sidebar_headers_hold_the_cursor_and_fold_their_section() {
     assert_eq!(app.handle_key(enter), None);
     assert!(app.mailbox.sidebar_system_expanded, "Enter unfolds it");
     assert_eq!(press_char(&mut app, '{'), None);
-    assert_eq!(app.mailbox.sidebar_selected, 0, "{{ from the first header goes to the top");
+    assert_eq!(
+        app.mailbox.sidebar_selected, 0,
+        "{{ from the first header goes to the top"
+    );
 }
 
 /// Screens and overlays that still read their own keys say where a moved

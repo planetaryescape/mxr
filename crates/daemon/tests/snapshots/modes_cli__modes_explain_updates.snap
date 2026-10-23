@@ -1,5 +1,6 @@
 ---
 source: crates/daemon/tests/modes_cli.rs
+assertion_line: 171
 expression: "serde_json::to_string_pretty(&updates).unwrap()"
 ---
 [
@@ -53,10 +54,6 @@ expression: "serde_json::to_string_pretty(&updates).unwrap()"
       {
         "key": "s",
         "verb": "pin latest email"
-      },
-      {
-        "key": "S",
-        "verb": "sweep sender"
       },
       {
         "key": "t",

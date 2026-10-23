@@ -17,7 +17,10 @@ impl App {
                         let Some(review) = self.compose.assist_review.as_ref().cloned() else {
                             return None;
                         };
-                        let Some(proposal) = review.proposal() else {
+                        let Some((proposal_action, proposal_id)) = review
+                            .proposal()
+                            .map(|proposal| (proposal.action, proposal.proposal_id.clone()))
+                        else {
                             return None;
                         };
                         let instruction = review.note_input.unwrap_or_default();
@@ -30,10 +33,10 @@ impl App {
                             },
                             text,
                             selection: None,
-                            action: Some(proposal.action),
+                            action: Some(proposal_action),
                             instruction: Some(instruction),
                             adjust: mxr_protocol::AssistAdjustData::default(),
-                            revise: Some(proposal.proposal_id.clone()),
+                            revise: Some(proposal_id),
                         };
                         self.queue_platform_request(
                             request,
@@ -203,7 +206,7 @@ fn proof_action_for_key(key: crossterm::event::KeyEvent) -> Option<&'static str>
     let spelling = crate::app::key_dispatch::spelling(key)?;
     let (_, binding) = mxr_keymap::defaults().tui_binding("compose-assist-proof", &spelling)?;
     let action = binding.name.as_str();
-    match action.as_str() {
+    match action {
         "ComposeProofAccept" => Some("ComposeProofAccept"),
         "ComposeProofAcceptEdit" => Some("ComposeProofAcceptEdit"),
         "ComposeProofRevise" => Some("ComposeProofRevise"),

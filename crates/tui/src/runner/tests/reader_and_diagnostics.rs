@@ -1570,6 +1570,7 @@ fn proof_history_selects_revision_and_escape_keeps_original_review() {
         Request::ComposeAssist { text, revise: Some(proposal), instruction: Some(note), .. }
             if text == "Original text." && proposal == "proposal-1" && note == "Tighten it"
     ));
+    app.modals.platform.close();
     app.compose
         .assist_review
         .as_mut()

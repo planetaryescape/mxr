@@ -588,10 +588,8 @@ mod tests {
         assert!(rendered.contains("Override token: tok-abc-123"));
         assert!(rendered.contains("[O] override + send"));
         assert!(rendered.contains("Press O to override and send"));
-        // A block without a token offers editing only; it cannot be overridden.
+        // A tokenized blocker still exposes its one-use override path.
         assert!(!rendered.contains("[s] send"));
-        assert!(!rendered.contains("[O] override + send"));
-        assert!(rendered.contains("[e/Esc] edit again"));
         insta::assert_snapshot!("safety_modal_blocker", rendered);
     }
 

@@ -229,7 +229,7 @@ fn append_segment(
 ) {
     let mut segment_start = 0usize;
     let mut warning_active = false;
-    for (index, ch) in text
+    for (index, _) in text
         .char_indices()
         .chain(std::iter::once((text.len(), '\0')))
     {
@@ -274,11 +274,9 @@ fn append_segment(
                 } else {
                     base_style
                 };
-                lines
-                    .last_mut()
-                    .expect("proof starts with a line")
-                    .spans
-                    .push(Span::styled(rendered, style));
+                if let Some(line) = lines.last_mut() {
+                    line.spans.push(Span::styled(rendered, style));
+                }
             }
             segment_start = index;
             warning_active = is_gap;

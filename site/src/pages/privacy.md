@@ -4,9 +4,9 @@ layout: ../layouts/legal.astro
 ---
 
 **Effective date**: 2026-03-18
-**Last updated**: 2026-07-29
+**Last updated**: 2026-10-23
 
-mxr is a local-first, open-source email client. Your mail data is stored on your machine, and mxr does not run a hosted relay, analytics service, or remote database.
+mxr is a local mail runtime for you and your agents. Synced mail and search indexes are stored on your machine. mxr does not run a hosted relay, analytics service, or remote database.
 
 ## Data Storage
 
@@ -65,6 +65,10 @@ mxr makes network requests for the following:
 - IMAP connections to configured mail servers.
 - SMTP connections to configured mail servers.
 - Microsoft identity/OAuth calls for Outlook-style OAuth accounts.
+- The linked article's site, when you ask Reading to fetch it or send an
+  unsaved digest link to Marginalia.
+- Your configured Marginalia server, when you connect it, send a Reading
+  item, or read its highlights back manually or after a mail sync.
 - Remote images in HTML messages, fetched from whatever URLs the message carries.
 - Unsubscribe requests to the endpoint or link a message supplies.
 - Embedding model downloads from Hugging Face for semantic search.

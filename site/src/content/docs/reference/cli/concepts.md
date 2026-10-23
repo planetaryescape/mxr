@@ -3,6 +3,11 @@ title: CLI concepts
 description: Query operators, search modes, JSON output, IPC buckets. The parts that are shared across commands.
 ---
 
+The CLI is one client for mxr's daemon-backed mailbox; the web app, TUI
+and authorized agent surfaces use the same runtime with client-specific
+authority. Start from [Now and the five modes](/guides/your-day/) for the
+human workflow, or see [how an existing agent connects](/getting-started/agent-quick-start/).
+
 The per-command pages are auto-generated. The shared parts live here: query syntax, search modes, output formats, the IPC contract.
 
 ## The one line that does most of it

@@ -1,5 +1,5 @@
-I built mxr so I could ask my agent questions about my actual inbox. It searches the local copy of my mail, so the only part I wait for is the model.
+In this recorded session, an agent searches a synthetic inbox for likely phishing and scam mail, then checks selected message headers. It returns senders to verify and changes nothing.
 
-This run uses the synthetic demo inbox and does not change anything.
+The capture shows GPT-5.5; its date and mxr version are not identified. This excerpt is not a test of current model quality.
 
 https://mxr.sh/

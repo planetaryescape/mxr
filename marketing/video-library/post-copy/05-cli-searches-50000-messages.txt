@@ -1,3 +1,3 @@
-mxr keeps a local search index for the whole mailbox. This demo searches 50,000 synthetic messages from the shell. Search is fast enough that I barely notice it.
+This CLI capture searches a synthetic dataset of 50,000 messages for contract-renewal mail. One page shows 50 results from 97 matches; the recording makes no timing claim.
 
 https://mxr.sh/

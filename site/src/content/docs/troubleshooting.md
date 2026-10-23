@@ -34,7 +34,7 @@ Generate the app password at <https://myaccount.google.com/apppasswords> (requir
 
 ## Sync hangs or never completes
 
-`mxr sync` acks as soon as the sync has started, so "hanging" is really "the account never goes idle". Watch it with a wait long enough to outlast a backfill:
+`mxr sync` acks as soon as the sync has started, so "hanging" is really "the account never goes idle". Watch it with a wait long enough to outlast a backfill. [First sync](/getting-started/first-sync/) explains what you can search while it runs and how to verify local mail.
 
 ```bash
 mxr sync --wait --wait-timeout-secs 900
@@ -118,6 +118,12 @@ Then verify:
 ```bash
 mxr count "your query"
 ```
+
+If the search is limited to the wrong account, check [account selection](/guides/accounts/#selecting-an-account) and the [CLI account-scope rules](/reference/cli/concepts/#account-selection).
+
+## Agent access or model feature is refused
+
+For an agent tool refusal, check [agent and MCP profile scope](/guides/for-agents/#safety-primitives-all-the-time) and [paired-client authority](/guides/pairing-authority/). For a native mxr model feature that is disabled or uses a different endpoint, use [LLM feature setup and routing](/guides/llm-features/).
 
 ## Daemon won't start
 

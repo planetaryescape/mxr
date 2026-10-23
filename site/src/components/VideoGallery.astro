@@ -2,93 +2,171 @@
 const clips = [
   {
     id: '01-agent-checks-suspicious-mail',
-    title: 'Agent checks suspicious mail',
+    title: 'Ask an agent to inspect suspicious mail',
     duration: '43s',
-    description: 'A complete agent run that searches the local mailbox, inspects messages, and answers without changing anything.',
+    description: 'A recorded agent session searches a synthetic inbox, checks message headers, and reports suspicious senders.',
+    provenance: 'Excerpt from a recorded synthetic-inbox session. GPT-5.5 is visible in the capture; the recording date and mxr version are not identified.',
+    steps: [
+      'The prompt asks for likely phishing or scam senders and says not to change anything.',
+      'The agent searches inbox messages for suspicious phrases and inspects selected headers.',
+      'It returns a short list of senders to verify; the clip does not establish current model quality.',
+    ],
   },
   {
     id: '02-agent-searches-local-mail',
-    title: 'Agent searches local mail',
+    title: 'Have an agent search the synthetic inbox',
     duration: '20s',
-    description: 'The agent searches the same local mailbox used by the CLI and TUI.',
+    description: 'An excerpt shows an agent form a mail search and inspect matching messages from a synthetic inbox.',
+    provenance: 'Excerpt from the same recorded synthetic-inbox agent session as clips 01, 03, and 04. GPT-5.5 is visible; date and mxr version are not identified.',
+    steps: [
+      'The agent receives a request to check the inbox for likely phishing or scam senders.',
+      'It runs an mxr search for suspicious wording and reads the returned matches.',
+      'This is a recorded excerpt, not a current capability or model-quality test.',
+    ],
   },
   {
     id: '03-agent-builds-a-query',
-    title: 'Agent builds a query',
+    title: 'Let an agent compose a search pipeline',
     duration: '23s',
-    description: 'The agent composes an mxr query and a jq pipeline.',
+    description: 'The capture shows an agent combining an mxr JSON search with jq to inspect message fields.',
+    provenance: 'Excerpt from a recorded synthetic-inbox agent session. GPT-5.5 is visible; date and mxr version are not identified.',
+    steps: [
+      'The agent searches inbox mail and asks mxr for JSON output.',
+      'A jq expression selects message details for the suspicious-sender review.',
+      'The capture shows shell composition; it does not measure time saved or model accuracy.',
+    ],
   },
   {
     id: '04-agent-answers-read-only',
-    title: 'Agent answers read-only',
+    title: 'Review a read-only agent answer',
     duration: '20s',
-    description: 'The agent gives a useful answer from the inbox without changing the mailbox.',
+    description: 'The agent reads synthetic messages, inspects headers, and gives a suspicious-sender summary without changing mail.',
+    provenance: 'Excerpt from a recorded synthetic-inbox agent session. GPT-5.5 is visible; date and mxr version are not identified.',
+    steps: [
+      'The agent searches matching inbox messages and fetches selected headers.',
+      'It summarizes the possible scam messages and advises verifying shipping notices independently.',
+      'The closing text says it checked read-only and changed nothing; this is a recorded answer, not a live model evaluation.',
+    ],
   },
   {
     id: '05-cli-searches-50000-messages',
-    title: 'CLI searches 50,000 messages',
+    title: 'Search a 50,000-message synthetic mailbox',
     duration: '16s',
-    description: 'Local search across a mailbox containing 50,000 synthetic messages.',
+    description: 'A CLI search for contract-renewal mail displays 50 results from 97 matches in the synthetic dataset.',
+    provenance: 'Recorded CLI capture against a synthetic 50,000-message dataset. The clip shows one result page, not a search benchmark.',
+    steps: [
+      'The command searches for contract-renewal messages.',
+      'The terminal reports 50 results on this page and 97 total matches.',
+      'No timing comparison or performance measurement is shown.',
+    ],
   },
   {
     id: '06-cli-pipes-mail-through-jq',
-    title: 'CLI pipes mail through jq',
+    title: 'Combine mail search with jq and subscription ranking',
     duration: '21s',
-    description: 'Structured mailbox output composed with jq.',
+    description: 'The shell capture pipes search JSON through jq, then runs the CLI subscription-ranking command.',
+    provenance: 'Recorded CLI capture against synthetic mail. The displayed open-rate label is a local READ-state proxy, not tracked opens.',
+    steps: [
+      'The command searches newsletter and digest messages and pipes JSON fields through jq.',
+      'A second command lists subscription candidates in rank order.',
+      'The displayed rate is based on current READ flags and applies only to candidates returned for ranking.',
+    ],
   },
   {
     id: '07-cli-ranks-newsletters',
-    title: 'CLI ranks newsletters',
+    title: 'Rank returned subscription candidates by read state',
     duration: '17s',
-    description: 'Local mailbox history used to rank subscriptions by opens.',
+    description: 'The CLI ranks a limited set of subscription candidates using the share of messages currently marked READ.',
+    provenance: 'Recorded CLI capture against synthetic mail. Its on-screen “open-rate” wording is a legacy label for current READ state, not distinct message opens.',
+    steps: [
+      'A separate search displays newsletter and digest matches from the synthetic mailbox.',
+      'The subscription command ranks its returned candidates. No explicit account selector or candidate limit is shown.',
+      'The numerator is the current local READ flag; mxr does not track whether a person opened a message.',
+    ],
   },
   {
     id: '08-tui-searches-local-mail',
-    title: 'TUI searches local mail',
+    title: 'Search local mail in an older TUI layout',
     duration: '13s',
-    description: 'The Vim-friendly TUI searches a local mailbox containing 50,000 synthetic messages.',
+    description: 'This historical TUI capture searches a synthetic 50,000-message mailbox and opens a matching thread.',
+    provenance: 'Recorded synthetic-mail TUI capture. The panels and navigation are from an older interface and do not show the current default navigation.',
+    steps: [
+      'The search view loads results for a query across the local mailbox.',
+      'The recording shows a matching result selected beside its message content.',
+      'The screen is a historical layout, not a guide to the current default navigation.',
+    ],
   },
   {
     id: '09-tui-mail-tools',
-    title: 'TUI mail tools',
+    title: 'Inspect a rule in an older TUI workspace',
     duration: '14s',
-    description: 'Accounts, rules, and analytics in the terminal interface.',
+    description: 'A historical TUI capture opens the Rules workspace and shows the overview for a demo newsletter rule.',
+    provenance: 'Recorded synthetic-mail TUI capture. Its multi-panel navigation is historical and differs from the current default navigation.',
+    steps: [
+      'The capture opens the older Rules workspace and selects a demo rule.',
+      'The overview displays a sample condition and says no action was recorded.',
+      'It does not demonstrate applying the rule or current TUI navigation.',
+    ],
   },
   {
     id: '10-one-mailbox-three-interfaces',
-    title: 'One mailbox, three interfaces',
+    title: 'See separate TUI, CLI, and agent recordings',
     duration: '35s',
-    description: 'The TUI, CLI, and an agent use one long-running mxr daemon.',
+    description: 'An edited montage cuts between a TUI mailbox, a CLI search, and a recorded agent session.',
+    provenance: 'Composite of separate TUI, CLI, and agent captures using synthetic mail. The edits do not show a continuous handoff or prove shared-state synchronization; the web client is not shown.',
+    steps: [
+      'The first segment shows the TUI mailbox and a selected message.',
+      'A separate segment shows a shell search and its results.',
+      'The final segment shows an agent prompt and search. Treat these as distinct recordings, not one continuous session.',
+    ],
   },
   {
     id: '11-mxr-is-written-in-rust',
-    title: 'mxr is written in Rust',
+    title: 'A montage of mxr client screens',
     duration: '32s',
-    description: 'The Rust implementation uses Ratatui, SQLite, and Tantivy behind several clients.',
+    description: 'This composite cuts between TUI, CLI, and agent screens; it does not show source code or a live client handoff.',
+    provenance: 'Composite of separate synthetic-mail TUI, CLI, and agent recordings. The web client is not shown, and the recording does not demonstrate the Rust implementation.',
+    steps: [
+      'The montage shows a TUI mailbox and message view.',
+      'It cuts to a separate CLI search and a recorded agent search.',
+      'The sequence is illustrative editing, not a continuous session or implementation walkthrough.',
+    ],
   },
   {
     id: '12-agent-previews-a-change',
-    title: 'Agent previews a change',
+    title: 'Preview an archive selection in the CLI',
     duration: '12s',
-    description: 'A dry run resolves a search and lists the exact messages before a mailbox change.',
+    description: 'The CLI dry-runs an archive search and lists the two selected threads and two messages before any change.',
+    provenance: 'Recorded CLI capture against synthetic mail. Despite the old asset name, no agent appears in this clip.',
+    steps: [
+      'The command selects unread messages from a synthetic notes-list address.',
+      'The --dry-run output says it would archive two threads containing two messages.',
+      'The preview does not apply the archive action.',
+    ],
   },
   {
     id: '13-two-accounts-one-mailbox',
-    title: 'Two accounts, one mailbox',
+    title: 'List two synthetic accounts, then search one address',
     duration: '14s',
-    description: 'Two synthetic accounts share the same command interface.',
-  },
-  {
-    id: '14-local-sender-analytics',
-    title: 'Local sender analytics',
-    duration: '13s',
-    description: 'Volume, dates, and open threads for one synthetic sender.',
+    description: 'The CLI lists two synthetic accounts and then searches messages from one demo address.',
+    provenance: 'Recorded CLI capture using two synthetic accounts with fake sync and send settings.',
+    steps: [
+      'The accounts command lists Demo Personal and Demo Work.',
+      'A separate search uses the notes address and displays matching rows.',
+      'The search does not specify an account, so this clip does not establish combined cross-account scope or real-provider behavior.',
+    ],
   },
   {
     id: '15-searches-attachments',
-    title: 'Searches attachments',
+    title: 'Find messages with attachments',
     duration: '12s',
-    description: 'Attachment-aware local search against synthetic messages.',
+    description: 'A CLI search filters synthetic mail for one sender and messages with attachments, returning two rows.',
+    provenance: 'Recorded CLI capture against synthetic mail. It demonstrates search results only, not downloading or filing an attachment.',
+    steps: [
+      'The query combines a sender filter with has:attachment.',
+      'The terminal lists two matching messages with subjects and dates.',
+      'No attachment is downloaded, opened, or added to a manifest in this recording.',
+    ],
   },
 ];
 ---
@@ -101,7 +179,7 @@ const clips = [
         playsinline
         preload="none"
         poster={`/videos/${clip.id}.jpg`}
-        aria-label={`${clip.title} demo`}
+        aria-label={`${clip.title} recording`}
       >
         <source src={`/videos/${clip.id}.mp4`} type="video/mp4" />
         <p>Your browser cannot play this video. <a href={`/videos/${clip.id}.mp4`}>Open the recording</a>.</p>
@@ -111,6 +189,13 @@ const clips = [
         <span>{clip.duration}</span>
       </div>
       <p>{clip.description}</p>
+      <p class="video-gallery-provenance">{clip.provenance}</p>
+      <details>
+        <summary>Read the recording notes</summary>
+        <ol>
+          {clip.steps.map((step) => <li>{step}</li>)}
+        </ol>
+      </details>
       <a href={`/videos/${clip.id}.mp4`}>Open video: {clip.title}</a>
     </article>
   ))}

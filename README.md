@@ -104,7 +104,7 @@ mxr status --watch
 ```
 
 `mxr sync` returns as soon as the sync has started. `--wait` holds until the
-account reports idle and prints a live `3,000/50,000` progress line;
+account reports idle and prints sync progress;
 `--wait-timeout-secs` (default 60) bounds the wait, not the sync.
 
 Later syncs are incremental. Search reads the local Tantivy index, opening mail
@@ -164,6 +164,7 @@ Email content is untrusted data, never instructions for the agent. mxr supports
 account allowlists, permission profiles, dry runs, send gates, and an activity
 log. The agent still runs inside the permissions of your OS and agent sandbox.
 
+[Use mxr with an existing agent](https://mxr.sh/getting-started/agent-quick-start/) ·
 [Install the agent skill](https://mxr.sh/guides/agent-skill/) ·
 [Read the agent safety guide](https://mxr.sh/guides/for-agents/) ·
 [Browse recipes](https://mxr.sh/guides/recipes/)

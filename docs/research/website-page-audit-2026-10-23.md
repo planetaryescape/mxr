@@ -115,3 +115,22 @@ Use the [navigation map](../website-refresh/blueprint/07-guides-and-navigation.m
 ## This inventory is also the coverage check
 
 Before handoff, compare the table paths to `rg --files site/src/content/docs` excluding generated files. When the baseline moves, add new authored routes to this table and the appropriate navigation group rather than silently omitting them.
+
+## Final discovery and documentation dispositions
+
+The final discovery pass used fetched `main` at `cd08cfe5eb72b0959bc623ad15439bbf09cbe2c3` on 2026-10-23, plus the R5 source/media map and root correction in `36db26ab80ccc68e6cb7a4a4bc82787b409c2c81:docs/website-refresh/evidence/rung5-discovery-media-map.md`. These are scoped dispositions, not a replay of every guide or runtime journey.
+
+| Surface | Final disposition | Evidence boundary |
+|---|---|---|
+| `PRODUCT.md` | Align audience order, category, local mailbox limits and site principles with the approved runtime direction. | Strategic copy only; no claim about visitor comprehension. |
+| `DESIGN.md` | Keep the website's Recursive typography and describe the existing-agent visitor; do not imply an application redesign. | Website design guidance only. |
+| `README.md` | Existing category, local-runtime description, five modes, Now and synthetic 50,000-message demo remain current; add a direct existing-agent walkthrough link. | Source prose and existing route; no timing claim added. |
+| `site/public/llms.txt` | Keep the curated category and existing-agent links; retain its authored source. | Reviewed links are checked during site build/output validation. |
+| `site/scripts/generate-llms-txt.mjs` | Correct the comment: the script writes the docs root to `dist/index.md`; inspect the generated text, but do not add a conversion pipeline without a demonstrated consumer failure. | Generator source and the root correction's built-output inspection; HTML residue alone is not a failure. |
+| `site/scripts/generate-cli-reference.mjs` | Expand only the subscription command's use text to state the local READ-state proxy, bounded candidate set and account scope. | At `cd08cfe5`, the handler resolves an omitted account to the default and applies the limit before CLI-side rank sorting. |
+| `getting-started/first-sync.md`, `guides/mailbox.md`, `guides/web-app.md` | Clarify client choice, arrival-order mailbox versus Now/modes, and shared daemon state; link to current canonical routes. | Existing guide/source claims only; no full first-sync runtime replay. |
+| `guides/linked-drafts.md`, `guides/assistant.md`, `reference/cli/concepts.md`, `troubleshooting.md` | Keep Gmail linked-draft scope explicit; distinguish the optional built-in assistant from existing agents; add current runtime and canonical troubleshooting links. | No claim that all providers support linked drafts or that every agent has the same authority. |
+| `site/src/pages/privacy.md` | Use the current product category and disclose user-requested linked-article and configured Marginalia network paths already described by the security guide. | Reading article fetch and Marginalia sends are user-triggered; highlight read-back can also run after mail sync; this is not a new legal promise. |
+| `site/src/content/docs/videos.mdx`, media assets and `VideoGallery.astro` | Reserved to the media implementation owner. | No media, caption or gallery changes in this discovery slice. |
+
+The built homepage Markdown export is present at the site root. The older statement that the generator skips that page was corrected at the time of the R5 audit; the remaining question is how useful its HTML-bearing output is to a particular consumer. No consumer task failure has been demonstrated, so the implementation keeps the existing export behavior.

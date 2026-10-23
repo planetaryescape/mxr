@@ -1,3 +1,5 @@
-I asked my agent to inspect the inbox and tell me what looked suspicious. It searched and read the relevant messages, then stopped at an answer. Nothing in the mailbox changed.
+An agent searches synthetic mail, checks selected headers, and summarizes suspicious senders. The recorded answer says it checked read-only and changed nothing.
+
+The capture shows GPT-5.5; its date and mxr version are not identified. It is not a live model-quality test.
 
 https://mxr.sh/

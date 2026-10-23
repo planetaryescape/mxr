@@ -12,57 +12,49 @@ work right now.
 
 ## Users
 
-Technical users who already use the terminal as a primary work
-surface. Three profiles, in rough order of priority:
+The primary audience is people who already use an agent and want it to
+work with a mailbox they own locally. The website should explain that
+path first, then make the human and developer surfaces clear. Three
+profiles, in rough order of priority:
 
-1. **Power-user developers** — work in vim/neovim, tmux, fish/zsh,
-   know what BM25 is, build on top of CLI tools, keep email open
-   all day. They've tried mutt or aerc; some have moved on, some
-   still use them. They distrust SaaS that holds their data.
-2. **AI agent operators** — running coding agents (Claude, Cursor,
-   Aider) and want their agent to do email properly. Will install
-   a tool because their agent will run it, not because they will.
-3. **Self-hosters and offline-first folks** — value data sovereignty,
-   plane-friendly tools, no telemetry. Adjacent to the homelab
-   community.
+1. Existing-agent users want an agent to search and work with synced
+   mail, then review shared work in a human client.
+2. People who want a local mail runtime want provider mail on their
+   computer and a human interface alongside scripts or agents.
+3. Tool builders want to reuse the daemon's sync, search, mail
+   operations and applicable policy when they add another client.
 
-What they share: command line is home, JSON is the lingua franca,
-every tool earns its keep, "blazing fast" is an insult.
+Some users prefer the terminal; the product and website do not assume
+it is everyone's primary interface.
 
 ## Purpose
 
-mxr gives technical users their entire email locally — searchable,
-scriptable, pipeable, agent-operable, offline-capable — without
-forcing a switch away from Gmail or whatever IMAP server they
-already use. It's a client that keeps a live two-way sync, plus a
-daemon that exposes that mailbox to the TUI, the CLI, an HTTP
-bridge, and any other surface the user wants to build.
+mxr is a local mail runtime for you and your agents. It keeps a local
+mailbox of synced provider mail while the provider continues to sync
+and receive supported changes. A daemon exposes shared mail operations
+to the CLI, TUI, web app, MCP server and scripts; each client keeps its
+own authority. Search and cached mail can be used locally. How much
+history and which attachments are available depends on sync completion
+and what has been cached.
 
 ## Outcomes the page must produce
 
 In priority order:
 
-1. **Visitor installs mxr.** Install is reachable in two scrolls;
-   the three install methods (Homebrew, Cargo, prebuilt) are visible
-   without leaving the page; the first-run command sequence is
-   one block away.
-2. **Visitor understands the four superpowers** — offline-capable
-   archive, local-fast search and analytics, agent-operable, no
-   lock-in either way. Each one resonates with a concrete scenario,
-   not a feature list.
-3. **Visitor sees the lineage.** mxr is the next step after mutt /
-   neomutt / aerc / himalaya, not a replacement for them. We honor
-   the work each contributed.
-4. **Visitor with deeper questions has somewhere to go.** Technical
-   detail (daemon architecture, search engine, provider adapters,
-   pipeable JSON) lives in deeper sections for readers who care.
+1. A visitor with an existing agent understands that agent and human
+   clients can use the same daemon-backed mailbox, each with its own
+   authority.
+2. A visitor sees a task over synced mail and understands the limits
+   of incomplete sync and uncached content.
+3. A visitor can try the synthetic demo and existing-agent walkthrough
+   before connecting a personal account.
+4. A visitor can choose a client and find install and reference details.
 
 ## Brand personality
 
-- **Terminal-native, deliberately so.** Monospace as accent
-  typography, shell-prompt motifs (`> ` headers, `$` prompts),
-  and ruled lines. The visual vocabulary nods to old hardware
-  without playing dress-up.
+- **Editorial, with technical detail in its place.** The website
+  presents the runtime in plain language, then uses command examples
+  and references where readers need them. Readers can choose a client.
 - **Restrained, then sharply punctuated.** Deep blue and pale blue
   surfaces with cyan and small yellow accents. Color earns its place.
 - **Honest, not performative.** "Show, don't compare." Concrete
@@ -86,9 +78,8 @@ these, restart that section.
   imagery.
 - **Hero-metric template.** Big number, small caption, three
   supporting stats below, gradient accent. The SaaS cliché.
-- **Generic developer-tool fonts.** Inter, Space Grotesk, Roboto
-  Mono everywhere. Use IBM Plex (already loaded) or earn a
-  different distinctive choice.
+- **Generic developer-tool fonts.** The site uses its self-hosted
+  Recursive variable font across display, body and code roles.
 - **Comparison matrices that pit mxr against named competitors.**
   Adversarial framing tests as bad positioning. Lineage section
   replaces this.
@@ -100,10 +91,10 @@ these, restart that section.
 
 From CLAUDE.md and confirmed in this session.
 
-1. **Sell the fireball, not the flower.** Lead with user
-   superpowers (offline archive, instant search, agent-operable,
-   survives Gmail outages). The daemon, Tantivy, OpenAPI etc. are
-   how — not what. Technical detail goes deeper, not at the top.
+1. **Lead with the runtime's user value.** Explain local ownership,
+   synced history, common mail operations and human review. The daemon,
+   search index and protocol are the mechanism; introduce them after
+   the visitor understands the task.
 2. **Trade-off test on every claim.** Could a credible competitor
    claim the opposite? "Local-first" passes (cloud-first is a
    real choice). "Fast" fails (no one says "we're slow"). Fail
@@ -117,14 +108,14 @@ From CLAUDE.md and confirmed in this session.
 5. **No lock-in framing in both directions.** "Gmail can die
    without you" + "you can keep using Gmail" form a pair. Both
    are about user control of their data.
-6. **Local ownership and agent access lead together.** Keeping the
-   whole mailbox local makes fast search, analytics, and useful agent
-   workflows possible. The first screen shows that relationship.
+6. **Local ownership and agent access lead together.** A synced local
+   mailbox gives people, scripts and agents shared mail state. State
+   these benefits without measured speed or development-cost promises.
 
 ## Accessibility & inclusivity needs
 
-- **Keyboard-first.** The TUI is the product; the site can match
-  in spirit. No mouse-only interactions on the landing page.
+- **Keyboard access.** Keep the website usable from the keyboard, and
+  present the TUI alongside other product surfaces.
 - **prefers-reduced-motion respected.** The lineage section's
   staggered reveal already honors it; any new motion must too.
 - **Light + dark themes.** The site already supports both via
@@ -136,19 +127,9 @@ From CLAUDE.md and confirmed in this session.
   even though the product itself runs on a laptop. Mobile users
   read the marketing site too.
 
-## Open questions for confirmation
+## Current direction
 
-These were inferred from project context. Confirm or correct.
-
-1. **Anti-reference visual examples** — the list above is implicit
-   in CLAUDE.md but never stated as a blocked aesthetic family.
-   Add or remove entries.
-2. **Aesthetic ambition for v0.5 landing** — the existing site is
-   already terminal-utilitarian and distinctive. Do we want to
-   *amplify* that direction (more retro, more CRT, more ASCII art),
-   *refine* it (same vocabulary, sharper execution), or
-   *contrast against it* (introduce a new feel for marketing while
-   keeping product UI as is)? Default assumption: **refine.**
-3. **Mascot / wordmark** — does mxr have a logo, mark, or
-   typographic treatment? Not present in repo. Not required for
-   this pass.
+The approved category is “A local mail runtime for you and your
+agents.” The homepage headline is “Put your whole mail history to
+work.” Existing-agent visitors come first. Website design guidance
+applies to the site and does not imply a redesign of the application.

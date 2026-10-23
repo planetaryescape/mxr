@@ -92,7 +92,8 @@ function buildMarkdownSiblings() {
     const raw = readFileSync(file, 'utf8');
     const { body, title, description } = stripFrontmatter(raw);
     const rel = relative(DOCS_ROOT, file).replace(/\.(md|mdx)$/, '').replace(/\\/g, '/');
-    // Skip the docs root index — Astro's index page is the homepage.
+    // Export the docs root at the site root; inspect its Markdown because
+    // Astro does not turn the homepage's HTML layout into a clean narrative.
     const target = rel === 'index'
       ? join(DIST_ROOT, 'index.md')
       : join(DIST_ROOT, rel + '.md');

@@ -3,7 +3,7 @@ title: Talk to Your Mail with the Assistant
 description: Ask questions about your email, or have the assistant sort, archive and draft. Every change waits for your approval.
 ---
 
-The assistant is a chat you have with your mailbox. Ask it what needs a reply this week, what a thread decided, or which newsletters you never open. Ask it to archive every shipping notice older than a month, move a sender to Reading, or draft a reply. It works through the same tools mxr's MCP server offers agents, so anything mxr can do, it can do.
+The optional built-in assistant is one way to work with your mailbox. Ask it what needs a reply this week, what a thread decided, or which newsletters you never open. Ask it to archive every shipping notice older than a month, move a sender to Reading, or draft a reply. It uses the same daemon-backed tools as mxr's MCP server. An existing agent can connect separately through [MCP or the CLI skill](/guides/for-agents/).
 
 It reads and searches on its own. Every change it wants to make stops and waits for you, with a preview of exactly what it will touch. When it needs you to choose (which account, which of three matching emails, how wide a cleanup) it asks with a card of options.
 

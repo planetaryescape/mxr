@@ -14,11 +14,11 @@ publishing-meets-shell: column rules, section folios (`§ 01`),
 shell prompts, monospace as texture, no cards, no grain, no
 gradients.
 
-The scene sentence: *a developer at 11pm with the TUI in one tmux
-pane and the marketing site open in their browser at 70% screen
-width, deciding whether to install.* Both panes should feel like
-they belong in the same project. The site is the documentation of
-the tool, in prose form.
+The scene sentence: *someone whose agent already handles coding opens
+mxr's site to see whether that agent can work with a mailbox they own.
+They should understand the local runtime, then see where the human
+client and client-specific permissions fit.* The site explains the
+runtime; it does not prescribe a redesign of the application.
 
 ## Color
 

@@ -7,6 +7,10 @@ mxr keeps one local draft linked to one Gmail draft. Push it once. After that,
 editing from mxr updates the same Gmail draft, while `mxr sync` pulls Gmail
 edits and deletions back into the local store.
 
+This workflow describes Gmail's linked-draft support. For an agent to save a
+local draft that you review in mxr's web app or TUI, follow [the existing-agent
+walkthrough](/getting-started/agent-quick-start/).
+
 :::note[One draft, two views]
 mxr's local store is the canonical client store. The Gmail draft ID is a link,
 not a second mxr draft. There is no field-by-field merge: a successful local

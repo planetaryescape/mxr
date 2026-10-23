@@ -10,27 +10,14 @@ After [installing](/getting-started/install/), use `mxr` to inspect synthetic ma
 Start with a realistic local demo before connecting your own mail:
 
 ```bash
-mxr demo
+mxr demo --no-tui
 ```
 
 This creates a separate demo config, database, socket, and daemon. It seeds a two-account synthetic inbox. The demo profile is separate from your real profile and uses a canned model provider for model-assisted demo results. Those results demonstrate the workflow, not model quality.
 
-`mxr demo` reports its progress and opens the demo TUI when seeding finishes. To leave the terminal available for another client, run `mxr demo --no-tui`. The demo supports a smaller seed with `mxr demo --messages 5000`.
+The command reports progress and leaves the terminal available for local queries and other clients. To open the demo TUI, run `mxr`. The demo supports a smaller seed with `mxr demo --messages 5000 --no-tui`.
 
-**Demo mode is sticky.** Subsequent `mxr` commands target the demo profile until you stop it. The TUI and web app show a `DEMO` marker. Check the selected profile with `mxr demo status`. Exit with:
-
-```bash
-mxr demo stop
-```
-
-Other demo subcommands:
-
-```bash
-mxr demo status        # is demo active? where are its files?
-mxr demo reset         # wipe demo data so the next `mxr demo` re-seeds from scratch
-mxr demo --reset       # equivalent: reset + restart in one step
-mxr demo --no-tui      # seed + sync without launching the TUI
-```
+**Demo mode is sticky.** Subsequent `mxr` commands target the demo profile until you stop it. Keep it active for the following query and client choices. The TUI and web app show a `DEMO` marker; check the selected profile with `mxr demo status`.
 
 Query local synthetic mail before choosing a client:
 
@@ -38,11 +25,15 @@ Query local synthetic mail before choosing a client:
 mxr search "is:unread" --format json --limit 10
 ```
 
-The result is local mailbox data. For the five mail modes and Now, continue to [Work through your day](/guides/your-day/).
+The result is local mailbox data. Open the browser client with `mxr web`, the TUI with `mxr`, or follow [Use mxr with an existing agent](/getting-started/agent-quick-start/). For the five mail modes and Now, continue to [Work through your day](/guides/your-day/).
 
 :::caution[Stop demo mode before connecting your mail]
-Demo mode remains active for later `mxr` commands until you run `mxr demo stop`. Stop it before adding or connecting a real account.
+Finish the synthetic-mail walkthrough before adding or connecting a real account. The following command exits demo mode; later commands will use your normal profile.
 :::
+
+```bash
+mxr demo stop
+```
 
 ## 2. Add your account
 

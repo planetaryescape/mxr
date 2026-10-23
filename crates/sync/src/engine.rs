@@ -105,24 +105,25 @@ impl SyncEngine {
         }
     }
 
-    /// Returns the direction for a sender email based on the configured
-    /// address lookup. The sender is only outbound when it is an owned address
-    /// of the *receiving* `account_id` — matching against another account's
-    /// addresses would misclassify a genuine inbound message. Falls back to
-    /// `Unknown` when the lookup hasn't been loaded yet — the doctor
-    /// `--rebuild-analytics` command reclassifies.
-    fn classify_direction(&self, account_id: &AccountId, from_email: &str) -> MessageDirection {
+    /// Returns the direction for a message under [`MessageDirection::for_message`].
+    /// The From counts only when it is an owned address of the *receiving*
+    /// `account_id` — matching against another account's addresses would
+    /// misclassify a genuine inbound message. Falls back to `Unknown` when the
+    /// lookup hasn't been loaded yet — the doctor `--rebuild-analytics` command
+    /// reclassifies.
+    fn classify_direction(
+        &self,
+        account_id: &AccountId,
+        from_email: &str,
+        flags: MessageFlags,
+    ) -> MessageDirection {
         if !self.address_lookup.is_loaded() {
             return MessageDirection::Unknown;
         }
-        if self
+        let from_owned = self
             .address_lookup
-            .is_account_address(account_id, from_email)
-        {
-            MessageDirection::Outbound
-        } else {
-            MessageDirection::Inbound
-        }
+            .is_account_address(account_id, from_email);
+        MessageDirection::for_message(from_owned, flags)
     }
 
     /// Account labels keyed by provider id, read once per batch instead of
@@ -196,8 +197,11 @@ impl SyncEngine {
         let mut body = synced.body.clone();
         body.ensure_best_effort_readable();
 
-        let direction =
-            self.classify_direction(&synced.envelope.account_id, &synced.envelope.from.email);
+        let direction = self.classify_direction(
+            &synced.envelope.account_id,
+            &synced.envelope.from.email,
+            synced.envelope.flags,
+        );
         let mut envelope = self
             .apply_screener_decision(synced.envelope.clone(), direction)
             .await?;
@@ -400,8 +404,11 @@ impl SyncEngine {
                 let mut body = synced.body;
                 body.ensure_best_effort_readable();
 
-                let direction = self
-                    .classify_direction(&synced.envelope.account_id, &synced.envelope.from.email);
+                let direction = self.classify_direction(
+                    &synced.envelope.account_id,
+                    &synced.envelope.from.email,
+                    synced.envelope.flags,
+                );
                 let mut envelope = self
                     .apply_screener_decision(synced.envelope, direction)
                     .await?;

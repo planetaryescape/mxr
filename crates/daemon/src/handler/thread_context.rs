@@ -67,8 +67,13 @@ pub(super) async fn build_thread_context(
         Some(MessageDirection::Outbound) => true,
         Some(MessageDirection::Inbound) => false,
         // Rows synced before the address table existed: fall back to the
-        // owned addresses the direction column would have used.
-        _ => owned.contains(&envelope.from.email.to_ascii_lowercase()),
+        // rule the direction column would have used.
+        _ => {
+            MessageDirection::for_message(
+                owned.contains(&envelope.from.email.to_ascii_lowercase()),
+                envelope.flags,
+            ) == MessageDirection::Outbound
+        }
     };
 
     let mut newest_first: Vec<&Envelope> = envelopes.iter().collect();

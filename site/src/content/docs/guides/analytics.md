@@ -20,9 +20,10 @@ upgrade, three commands prime the pipeline:
 
 ```bash
 # 1. Tell mxr which addresses are *yours* — direction inference depends
-#    on this. `MessageFlags::SENT` is unreliable across providers
-#    (Gmail = label-based, IMAP = mailbox-name-based), so mxr classifies
-#    inbound vs outbound by comparing `from_email` against this set.
+#    on this. mxr classifies inbound vs outbound by comparing `from_email`
+#    against this set, and treats mail the provider filed as sent (Gmail's
+#    SENT label, IMAP's Sent folder) as outbound even when its sender is not
+#    in the set.
 mxr accounts addresses add you@example.com --primary
 mxr accounts addresses add aliased@you-own.com   # repeat for each alias
 
@@ -38,7 +39,7 @@ mxr doctor --rebuild-analytics
 progress:
 
 1. **Reclassify directions** — every `direction='unknown'` row gets
-   inbound/outbound based on the address set.
+   inbound/outbound based on the address set and the provider's sent mark.
 2. **Backfill `list_id`** — promotes `List-Id` from cached body metadata
    into an indexed column.
 3. **Backfill reply pairs from messages** — scans every classified

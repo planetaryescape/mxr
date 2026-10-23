@@ -282,7 +282,7 @@ async fn gather(state: &AppState, target: &DraftTargetData) -> Result<Gathered, 
                 (Some(parent), _) => in_conversation(state, &parent.id, None).await?,
                 (None, _) => {
                     let to = recipient.ok_or_else(no_recipient)?;
-                    new_message(state, draft.account_id.clone(), &to)
+                    new_message(draft.account_id.clone(), &to)
                 }
             };
             gathered.draft_id = Some(draft_id.clone());
@@ -295,7 +295,7 @@ async fn gather(state: &AppState, target: &DraftTargetData) -> Result<Gathered, 
         }
         DraftTargetData::New { account_id, to, .. } => {
             let to = to.first().ok_or_else(no_recipient)?;
-            Ok(new_message(state, account_id.clone(), to))
+            Ok(new_message(account_id.clone(), to))
         }
     }
 }
@@ -350,7 +350,7 @@ async fn in_conversation(
     })
 }
 
-fn new_message(_state: &AppState, account_id: AccountId, to: &Address) -> Gathered {
+fn new_message(account_id: AccountId, to: &Address) -> Gathered {
     let counterparty = Counterparty {
         email: to.email.to_ascii_lowercase(),
         name: to.name.clone(),

@@ -37,18 +37,27 @@ pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
     )]
 }
 
-/// The label of each `[[?: …]]` in `text`, in order. A marker left open names
-/// the rest of its line. An empty label is a gap all the same.
+/// The label of each `[[?: …]]` in `text`, in order. A marker left open ends
+/// where the next one starts or at the end of its line, whichever comes first.
+/// An empty label is a gap all the same.
 fn gap_labels(text: &str) -> Vec<String> {
     let mut labels = Vec::new();
     let mut rest = text;
     while let Some(at) = rest.find(OPEN) {
         let after = &rest[at + OPEN.len()..];
-        let (inside, next) = match after.find("]]") {
-            Some(close) => (&after[..close], &after[close + 2..]),
-            None => {
-                let line_end = after.find('\n').unwrap_or(after.len());
-                (&after[..line_end], &after[line_end..])
+        let close = after.find("]]");
+        let reopened = after.find(OPEN);
+        let (inside, next) = match close {
+            Some(close) if reopened.is_none_or(|reopened| close < reopened) => {
+                (&after[..close], &after[close + 2..])
+            }
+            _ => {
+                let stop = [reopened, after.find('\n')]
+                    .into_iter()
+                    .flatten()
+                    .min()
+                    .unwrap_or(after.len());
+                (&after[..stop], &after[stop..])
             }
         };
         let label = inside.split_whitespace().collect::<Vec<_>>().join(" ");

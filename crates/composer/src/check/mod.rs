@@ -7,10 +7,8 @@ mod proposal;
 mod regions;
 mod text;
 
-pub use proposal::{
-    check_proposal, gap_spans, sentences_changed, word_changes, Checked, Fixes, ProposalInput,
-};
-pub use regions::{split_body, text_hash, BodyRegions, FORWARD_HEADER};
+pub use proposal::{check_proposal, Checked, Fixes, ProposalInput};
+pub use regions::{split_body, text_hash, BodyRegions};
 pub use text::{invented_numbers, replay_invented_numbers};
 
 /// The question a case asks of the target message, and the words a reply

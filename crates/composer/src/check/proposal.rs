@@ -6,9 +6,11 @@
 use super::regions::split_body;
 use super::text::{invented_spans, sentences};
 use mxr_protocol::{AssistActionData, GapData, TextChangeData, TextChangeKindData};
-use similar::{ChangeTag, DiffOp, DiffTag, TextDiff};
+use similar::{ChangeTag, DiffTag, TextDiff};
 use std::collections::HashSet;
 use std::ops::Range;
+
+const OPEN_GAP: &str = "[[?:";
 
 /// What the check stage reads.
 #[derive(Debug, Clone)]
@@ -79,7 +81,7 @@ pub fn check_proposal(input: &ProposalInput<'_>) -> Checked {
 /// The user's sentences (counted as `check` counts them: split at `.`, `!`,
 /// `?` and line breaks, empty ones skipped) that `text` no longer has as
 /// whole sentences.
-pub fn sentences_changed(typed: &str, text: &str) -> Vec<u32> {
+fn sentences_changed(typed: &str, text: &str) -> Vec<u32> {
     let now: HashSet<String> = sentences(text).into_iter().collect();
     sentences(typed)
         .iter()
@@ -89,21 +91,28 @@ pub fn sentences_changed(typed: &str, text: &str) -> Vec<u32> {
         .collect()
 }
 
-/// Every `[[?: …]]` in `text` with its byte range. A marker the model left
-/// open runs to the end of its line.
-pub fn gap_spans(text: &str) -> Vec<GapData> {
+/// Every `[[?: …]]` in `text` with its byte range. A marker left open ends
+/// where the next one starts or at the end of its line, whichever comes first.
+fn gap_spans(text: &str) -> Vec<GapData> {
     let mut gaps = Vec::new();
     let mut from = 0;
-    while let Some(found) = text[from..].find("[[?:") {
+    while let Some(found) = text[from..].find(OPEN_GAP) {
         let start = from + found;
-        let inner_start = start + "[[?:".len();
-        let (inner_end, end) = match text[inner_start..].find("]]") {
-            Some(close) => (inner_start + close, inner_start + close + 2),
-            None => {
-                let line_end = text[inner_start..]
-                    .find('\n')
-                    .map_or(text.len(), |newline| inner_start + newline);
-                (line_end, line_end)
+        let inner_start = start + OPEN_GAP.len();
+        let rest = &text[inner_start..];
+        let close = rest.find("]]");
+        let reopened = rest.find(OPEN_GAP);
+        let (inner_end, end) = match close {
+            Some(close) if reopened.is_none_or(|reopened| close < reopened) => {
+                (inner_start + close, inner_start + close + 2)
+            }
+            _ => {
+                let stop = [reopened, rest.find('\n')]
+                    .into_iter()
+                    .flatten()
+                    .min()
+                    .unwrap_or(rest.len());
+                (inner_start + stop, inner_start + stop)
             }
         };
         gaps.push(GapData {
@@ -117,7 +126,7 @@ pub fn gap_spans(text: &str) -> Vec<GapData> {
 }
 
 /// Word-level changes from `from` to `to`, runs of the same kind merged.
-pub fn word_changes(from: &str, to: &str) -> Vec<TextChangeData> {
+fn word_changes(from: &str, to: &str) -> Vec<TextChangeData> {
     let diff = TextDiff::from_words(from, to);
     let mut out: Vec<TextChangeData> = Vec::new();
     for change in diff.iter_all_changes() {
@@ -177,7 +186,7 @@ fn keep_edit_inside(original: &str, selection: Range<usize>, output: &str) -> (S
     let mut out = String::with_capacity(output.len());
     let mut reverted = false;
     for op in diff.ops() {
-        let (tag, old_range, new_range) = op_ranges(op);
+        let (tag, old_range, new_range) = op.as_tag_tuple();
         let keep_new = match tag {
             DiffTag::Equal => false,
             _ => {
@@ -197,10 +206,6 @@ fn keep_edit_inside(original: &str, selection: Range<usize>, output: &str) -> (S
         }
     }
     (out, reverted)
-}
-
-fn op_ranges(op: &DiffOp) -> (DiffTag, Range<usize>, Range<usize>) {
-    op.as_tag_tuple()
 }
 
 /// Replace each figure no input carries with a gap that shows the figure the
@@ -329,6 +334,38 @@ mod tests {
     }
 
     #[test]
+    fn a_sentence_turned_into_its_opposite_is_one_the_user_must_look_at() {
+        let checked = finish(
+            "I can't make Thursday. Numbers by wed.",
+            "Hi,\n\nI can make Thursday. Numbers by wed.",
+            "",
+        );
+        assert_eq!(checked.yours_changed, [0]);
+    }
+
+    #[test]
+    fn a_selection_in_multibyte_text_edits_without_splitting_a_character() {
+        let typed = "Café works. numbers by wed ✓ Thanks é.";
+        let start = typed.find("numbers").unwrap();
+        let end = typed.find(" Thanks").unwrap();
+        let output = "Café is fine. I'll send the numbers by Wednesday ✓ Thanks é.";
+        let checked = check(
+            AssistActionData::EditSelection,
+            typed,
+            Some(start..end),
+            output,
+            "",
+        );
+        assert!(checked.text.starts_with("Café works. "), "{}", checked.text);
+        assert!(checked.text.ends_with(" Thanks é."), "{}", checked.text);
+        assert!(checked.text.contains("Wednesday"), "{}", checked.text);
+        for gap in &checked.gaps {
+            assert!(checked.text.is_char_boundary(gap.start as usize));
+            assert!(checked.text.is_char_boundary(gap.end as usize));
+        }
+    }
+
+    #[test]
     fn a_signature_or_forward_header_the_model_wrote_is_removed() {
         let output =
             "Thursday works.\n\n-- \nAlex Demo\n\n---------- Forwarded message ----------\nFrom: x";
@@ -397,6 +434,23 @@ mod tests {
             "[[?: the time]]"
         );
         assert_eq!(&text[gaps[1].start as usize..], "[[?: your name]]");
+    }
+
+    #[test]
+    fn a_marker_left_open_stops_where_the_next_one_starts() {
+        let text = "Meet [[?: the time\nThanks [[?: your name]]";
+        let gaps = gap_spans(text);
+        assert_eq!(gaps.len(), 2);
+        assert_eq!(gaps[0].label, "the time");
+        assert_eq!(gaps[1].label, "your name");
+        let same_line = gap_spans("a [[?: one b [[?: two]]");
+        assert_eq!(
+            same_line
+                .iter()
+                .map(|gap| gap.label.as_str())
+                .collect::<Vec<_>>(),
+            ["one b", "two"]
+        );
     }
 
     #[test]

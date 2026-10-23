@@ -100,15 +100,19 @@ pub struct GapData {
 pub struct ComposeProposalData {
     pub proposal_id: String,
     pub action: AssistActionData,
-    /// Hex SHA-256 of the request text: the text region the proposal was
-    /// written against. Applying refuses when the draft no longer hashes to it.
+    /// Hex SHA-256 of the request text with trailing blank space ignored: the
+    /// text region the proposal was written against. Applying refuses when the
+    /// draft's text region no longer hashes to it.
     pub base: String,
     pub text: String,
     pub changes: Vec<TextChangeData>,
     pub gaps: Vec<GapData>,
+    /// Always filled: the model that answered, where it ran and what it read.
     pub provenance: DraftProvenanceData,
-    /// Indices (in order, from zero) of the user's sentences that the
-    /// proposal changed or dropped.
+    /// Positions, from zero, of the user's sentences that the proposal changed
+    /// or dropped. Sentences are the request text split at `.`, `!`, `?` and
+    /// line breaks, with empty ones skipped; case and spacing do not count as a
+    /// change.
     pub yours_changed: Vec<u32>,
     /// Version of the rules that checked this proposal.
     pub composer_version: String,

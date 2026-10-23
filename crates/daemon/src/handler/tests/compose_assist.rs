@@ -529,6 +529,57 @@ async fn a_proposal_for_one_draft_cannot_be_applied_to_another() {
 }
 
 #[tokio::test]
+async fn an_older_proposal_cannot_overwrite_a_newer_one_that_was_applied() {
+    let state = AppState::in_memory().await.unwrap();
+    let draft = stored_draft(&state, "Thursday works.");
+    state.store.insert_draft(&draft).await.unwrap();
+    let target = DraftTargetData::Stored {
+        draft_id: draft.id.clone(),
+    };
+    state
+        .llm
+        .replace(Scripted::new("Thursday works. First version."));
+    let older = assist(&state, &target, &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+    state
+        .llm
+        .replace(Scripted::new("Thursday works. Second version."));
+    let newer = assist(&state, &target, &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+
+    apply(&state, &newer.proposal_id, &draft.id).await.unwrap();
+    let error = apply(&state, &older.proposal_id, &draft.id)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("changed since"), "{error}");
+    assert_eq!(
+        stored_body(&state, &draft.id).await,
+        "Thursday works. Second version."
+    );
+}
+
+#[tokio::test]
+async fn a_draft_saved_with_windows_line_endings_still_applies() {
+    let state = AppState::in_memory().await.unwrap();
+    state.llm.replace(Scripted::new("Hi,\n\nOne.\nTwo."));
+    let draft = stored_draft(&state, "One.\r\nTwo.\r\n");
+    state.store.insert_draft(&draft).await.unwrap();
+    let target = DraftTargetData::Stored {
+        draft_id: draft.id.clone(),
+    };
+    let proposal = assist(&state, &target, &Ask::text("One.\nTwo.\n"))
+        .await
+        .unwrap();
+    apply(&state, &proposal.proposal_id, &draft.id)
+        .await
+        .unwrap();
+    assert_eq!(stored_body(&state, &draft.id).await, "Hi,\n\nOne.\nTwo.");
+}
+
+#[tokio::test]
 async fn an_unknown_or_expired_proposal_is_a_clear_error() {
     let state = AppState::in_memory().await.unwrap();
     let draft = stored_draft(&state, "Thursday works.");
@@ -649,4 +700,49 @@ async fn an_unfilled_gap_blocks_a_stored_send_and_a_scheduled_send() {
         Some(mxr_core::types::DraftStatus::Draft),
         "with the gaps filled the draft sends"
     );
+}
+
+#[tokio::test]
+async fn the_activity_log_learns_the_counts_and_never_the_text() {
+    let state = AppState::in_memory().await.unwrap();
+    state.llm.replace(Scripted::new(
+        "Thursday works. The fee is £40. SECRET-MODEL-OUTPUT",
+    ));
+    let ask = Ask {
+        instruction: Some("SECRET-INSTRUCTION"),
+        ..Ask::text("Thursday works. SECRET-TYPED-TEXT")
+    };
+    assist(&state, &new_message(&state), &ask).await.unwrap();
+
+    // A pause edge is an ordered barrier behind the write.
+    state.activity.pause(None);
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while !state.activity.pause_status().0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let rows = state
+        .store
+        .list_activity(&mxr_store::ActivityFilter::default(), 10, None)
+        .await
+        .unwrap()
+        .rows;
+    let row = rows
+        .iter()
+        .find(|row| row.action == "draft.assist")
+        .expect("the request is logged");
+    let context = row.context_json.as_deref().unwrap();
+    let value: serde_json::Value = serde_json::from_str(context).unwrap();
+    assert_eq!(value["action"], "finish");
+    assert_eq!(value["model"], "scripted");
+    assert_eq!(value["figures_to_gaps"], 1);
+    for secret in [
+        "SECRET-TYPED-TEXT",
+        "SECRET-INSTRUCTION",
+        "SECRET-MODEL-OUTPUT",
+    ] {
+        assert!(!context.contains(secret), "{context}");
+    }
 }

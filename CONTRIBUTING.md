@@ -105,6 +105,12 @@ and dependency policy. CI runs the workspace checks, tests, SQLx offline check,
 Rustdoc and builds when the changed paths require them. Use `--full` only to
 reproduce a CI failure that cannot be narrowed to one crate.
 
+When adding an MCP tool, register its authority in
+`crates/assistant/src/gate.rs` and its step wording in
+`crates/daemon/src/assistant/titles.rs`. Run
+`scripts/cargo-test -p mxr --lib assistant::` as well as the MCP crate tests;
+the host checks that every exposed tool has both entries.
+
 On a shared agent workstation, queue heavy commands with
 `agent-work run -- <command>` and keep workers at four or fewer. The dotfiles
 Cargo wrapper already queues Cargo; do not nest another queue around it.

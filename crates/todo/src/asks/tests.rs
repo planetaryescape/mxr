@@ -70,6 +70,7 @@ fn judge_complete(
             is_owner: &matcher,
             sent: Utc
                 .with_ymd_and_hms(2026, 10, 23, 23, 50, 0)
+                .single()
                 .expect("resolved asks fixture"),
             predecessor: None,
             owner_replied_afterwards: replied,

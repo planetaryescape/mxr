@@ -65,7 +65,7 @@ export function DraftHelpLine({
             type="button"
             variant="ghost"
             size="sm"
-            className="gap-1.5 text-text-3"
+            className="gap-1.5 text-muted-foreground"
             onClick={onOpen}
             aria-keyshortcuts="Meta+J"
             title="Draft for me (⌘J)"

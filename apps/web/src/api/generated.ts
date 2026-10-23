@@ -5751,6 +5751,129 @@ export interface components {
             quote: string;
             thread_id?: string | null;
         };
+        /** @description Precision and recall for one kind of ask. */
+        ClassifyEvalAskKindData: {
+            counts: components["schemas"]["ClassifyEvalCountsData"];
+            /** @description `asks_you` (inbound mail asks) or `you_promised` (your sent mail). */
+            direction: string;
+            /**
+             * @description A kind from blueprint 37: `pay`, `fix_payment`, `sign`, `verify`,
+             *     `reply`, `send`, `provide`, `upload`, `book`, `attend`,
+             *     `renew_or_cancel`, `register`, `contact` or `other`.
+             */
+            kind: string;
+        };
+        /** @description What the emails ask of you: to-do rows against the labelled items. */
+        ClassifyEvalAsksData: {
+            /**
+             * Format: int32
+             * @description Matched items with two rows for one expected item.
+             */
+            duplicates: number;
+            /**
+             * Format: int32
+             * @description Labelled emails graded on what they ask.
+             */
+            emails: number;
+            /** @description Exact match per field on matched items. */
+            fields: components["schemas"]["ClassifyEvalFieldData"][];
+            /**
+             * @description Per kind of ask. Every kind a person can be asked for is listed (with
+             *     zero counts when nothing was expected or found), then any kind of
+             *     promise that appeared.
+             */
+            kinds: components["schemas"]["ClassifyEvalAskKindData"][];
+            /**
+             * Format: int32
+             * @description Expected items absorbed into another email's row of the same sender,
+             *     kind and counterparty (two accounts from one sender).
+             */
+            merges: number;
+            reply_owed: components["schemas"]["ClassifyEvalReplyData"];
+            slices: components["schemas"]["ClassifyEvalSliceData"][];
+            /** @description All kinds together. */
+            total: components["schemas"]["ClassifyEvalCountsData"];
+            twins: components["schemas"]["ClassifyEvalTwinsData"];
+        };
+        /** @description How many items were expected, found and matched. */
+        ClassifyEvalCountsData: {
+            /**
+             * Format: int32
+             * @description Items the labels expect.
+             */
+            expected: number;
+            /**
+             * Format: int32
+             * @description Expected items nothing matched.
+             */
+            false_negatives: number;
+            /**
+             * Format: int32
+             * @description Found items that match no expected item.
+             */
+            false_positives: number;
+            /**
+             * Format: int32
+             * @description Items (to-do rows) the classifier made.
+             */
+            found: number;
+            /**
+             * Format: double
+             * @description `true_positives / found` as a percentage with one decimal; absent when
+             *     nothing was found, because precision is then undefined.
+             */
+            precision_percent?: number | null;
+            /**
+             * Format: double
+             * @description `true_positives / expected`; absent when nothing was expected.
+             */
+            recall_percent?: number | null;
+            /**
+             * Format: int32
+             * @description Found items that match an expected item by kind and direction.
+             */
+            true_positives: number;
+        };
+        /** @description How often one field of a matched item is exactly right. */
+        ClassifyEvalFieldData: {
+            /**
+             * Format: int32
+             * @description Pairs where the row's field equals the label's, an absent value on
+             *     both sides counting as equal. A due date is exact only when the row's
+             *     day is the day the label names.
+             */
+            exact: number;
+            /** Format: double */
+            exact_percent: number;
+            /** @description `amount`, `due` or `counterparty`. */
+            field: string;
+            /**
+             * Format: int32
+             * @description The label states a value and the row has none.
+             */
+            missing: number;
+            /**
+             * Format: int32
+             * @description Matched items: the ones this field is compared on.
+             */
+            pairs: number;
+            /**
+             * Format: int32
+             * @description The label states a value the eval cannot resolve to an exact one, and
+             *     the row has one. Counted apart and never as exact.
+             */
+            present?: number;
+            /**
+             * Format: int32
+             * @description The label states none and the row has one.
+             */
+            spurious: number;
+            /**
+             * Format: int32
+             * @description Both have a value and they differ.
+             */
+            wrong: number;
+        };
         /** @description One wrong answer. */
         ClassifyEvalMismatchData: {
             /** @description The answer today's code gave. */
@@ -5777,7 +5900,10 @@ export interface components {
             /** @description The scenario this one is a near-miss twin of. */
             twin_of?: string | null;
         };
-        /** @description Accuracy on one question about an email. */
+        /**
+         * @description Accuracy on one question about an email. What an email asks of you (to-dos)
+         *     is not one of these: it is graded in [`ClassifyEvalAsksData`].
+         */
         ClassifyEvalQuestionData: {
             /**
              * Format: double
@@ -5793,8 +5919,23 @@ export interface components {
              *     whose home cannot be worked out is not asked about its home).
              */
             evaluated: number;
-            /** @description `who`, `home`, `todo` or `record`. */
+            /** @description `who`, `home` or `record`. */
             question: string;
+        };
+        /** @description Whether a reply is owed, graded as its own question. */
+        ClassifyEvalReplyData: {
+            /** @description `expected` emails owe a reply, `found` are marked as needing one. */
+            counts: components["schemas"]["ClassifyEvalCountsData"];
+            /**
+             * Format: int32
+             * @description Emails graded on it.
+             */
+            emails: number;
+            /**
+             * @description What the classifier's answer reads, so the number is not taken for
+             *     more than it is.
+             */
+            projection: string;
         };
         /**
          * @description Which labelled set to measure. `Mine` arrives with corrections
@@ -5802,7 +5943,21 @@ export interface components {
          * @enum {string}
          */
         ClassifyEvalSetData: "quick" | "full";
+        /** @description The ask results over one slice of the emails. */
+        ClassifyEvalSliceData: {
+            counts: components["schemas"]["ClassifyEvalCountsData"];
+            /** @description `sender_kind`, `locale`, `template_family` or `phrasing`. */
+            dimension: string;
+            /**
+             * Format: int32
+             * @description Labelled emails in the slice.
+             */
+            emails: number;
+            /** @description For example `person`, `en-ZA`, `bill-due`, `held_out`. */
+            value: string;
+        };
         ClassifyEvalSummaryData: {
+            asks?: components["schemas"]["ClassifyEvalAsksData"] | null;
             /**
              * Format: int32
              * @description Of the present emails, the ones worded in a held-out phrasing. A
@@ -5855,6 +6010,24 @@ export interface components {
              * @description Stored emails in scope that no scenario labels.
              */
             unlabelled: number;
+        };
+        /** @description Twin pairs, where both members must be right on what they ask. */
+        ClassifyEvalTwinsData: {
+            /** Format: int32 */
+            both_right: number;
+            /** Format: int32 */
+            differing_both_right: number;
+            /**
+             * Format: int32
+             * @description Of those, pairs whose members expect different asks (one asks
+             *     something and the other nothing, or different kinds).
+             */
+            differing_pairs: number;
+            /**
+             * Format: int32
+             * @description Pairs with both members present.
+             */
+            pairs: number;
         };
         /**
          * @description Originating client for an IPC request. Carried on the envelope so the

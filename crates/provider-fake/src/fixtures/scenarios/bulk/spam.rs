@@ -43,7 +43,7 @@ pub(super) static SPAM_PRIZE: Family = Family {
     turns: &[Turn::them(
         "bulk-spam-in-spam-folder",
         "A scam the provider filed under Spam",
-        expect(Who::Machine, Home::Spam, false, false),
+        expect(Who::Machine, Home::Spam, false),
     )
     .reviewed(
         &["who"],
@@ -105,7 +105,7 @@ pub(super) static PHISHING: Family = Family {
     turns: &[Turn::them(
         "bulk-phishing-in-inbox",
         "A phishing lookalike that urges you to act, which the provider left in the inbox",
-        expect(Who::Machine, Home::Updates, false, false),
+        expect(Who::Machine, Home::Updates, false),
     )
     .reviewed(
         &["who", "home", "todo"],

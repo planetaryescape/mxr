@@ -40,6 +40,14 @@ fn offset_minutes(family: &Family, thread_num: usize) -> i64 {
     }
 }
 
+/// The amount a thread's mail names, in pence. The label states the same
+/// number, so the two are one function.
+pub(crate) fn amount_minor(thread_num: usize) -> i64 {
+    let pounds = 12 + (thread_num * 31) % 480;
+    let pence = (thread_num * 17) % 100;
+    (pounds * 100 + pence) as i64
+}
+
 /// The words a template may name.
 struct Fill {
     name: String,
@@ -162,8 +170,8 @@ pub(crate) fn render(
         ),
         amount: format!(
             "£{}.{:02}",
-            12 + (thread_num * 31) % 480,
-            (thread_num * 17) % 100
+            amount_minor(thread_num) / 100,
+            amount_minor(thread_num) % 100
         ),
         date: date.format("%-d %B").to_string(),
         due: (date + Duration::days(family.due_days + (thread_num % 5) as i64))

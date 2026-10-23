@@ -2365,10 +2365,12 @@ pub enum DraftsAction {
 #[derive(Debug, Clone, Subcommand)]
 pub enum ClassifyAction {
     /// Grade the mail already in this mailbox against labelled scenarios:
-    /// per question (who sent it, which mode it goes to, whether it makes a
-    /// to-do, whether it makes a record) how often today's rules agree, and
-    /// every email they get wrong. Read-only and local. Run `mxr demo`
-    /// first to get mail with labels.
+    /// how often today's rules agree on who sent it, which mode it goes to
+    /// and whether it makes a record; for what an email asks of you,
+    /// precision and recall per kind of ask and how often the amount, due
+    /// date and counterparty are exactly right; and every email they get
+    /// wrong. Read-only and local. Run `mxr demo` first to get mail with
+    /// labels.
     Eval {
         /// Which labelled set to grade against.
         #[arg(long, value_enum, default_value_t = ClassifySetArg::Quick)]

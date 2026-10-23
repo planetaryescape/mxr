@@ -21,6 +21,7 @@ mod briefing;
 pub(crate) mod categories;
 pub(crate) mod category_rules;
 mod classify_eval;
+mod classify_eval_asks;
 mod codes;
 mod commitments;
 mod commitments_extract;

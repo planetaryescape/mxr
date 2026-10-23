@@ -8,8 +8,9 @@ use crate::commands::{expect_response, resolve_optional_account};
 use crate::ipc_client::IpcClient;
 use crate::output::{resolve_format, terminal_text};
 use mxr_protocol::{
-    ClassifyEvalMismatchData, ClassifyEvalQuestionData, ClassifyEvalSetData,
-    ClassifyEvalSummaryData, Request, Response, ResponseData,
+    ClassifyEvalAsksData, ClassifyEvalCountsData, ClassifyEvalMismatchData,
+    ClassifyEvalQuestionData, ClassifyEvalSetData, ClassifyEvalSummaryData, Request, Response,
+    ResponseData,
 };
 use std::fmt::Write as _;
 
@@ -137,6 +138,97 @@ fn write_accuracy(out: &mut String, questions: &[ClassifyEvalQuestionData]) {
     }
 }
 
+fn percent(value: Option<f64>) -> String {
+    value.map_or_else(|| "-".to_string(), |v| format!("{v:.1}%"))
+}
+
+fn write_counts(out: &mut String, label: &str, counts: &ClassifyEvalCountsData) {
+    let _ = writeln!(
+        out,
+        "{label:<28} {:>8} {:>6} {:>5} {:>5} {:>5} {:>9} {:>7}",
+        counts.expected,
+        counts.found,
+        counts.true_positives,
+        counts.false_positives,
+        counts.false_negatives,
+        percent(counts.precision_percent),
+        percent(counts.recall_percent)
+    );
+}
+
+/// What the emails ask of you, kind by kind and field by field. There is no
+/// accuracy line: nearly every email asks nothing, so accuracy would measure
+/// how many true negatives the set has.
+fn write_asks(out: &mut String, asks: &ClassifyEvalAsksData) {
+    let _ = writeln!(
+        out,
+        "What emails ask of you ({} emails; a to-do row is found when it matches an expected item by kind)",
+        asks.emails
+    );
+    let _ = writeln!(
+        out,
+        "{:<28} {:>8} {:>6} {:>5} {:>5} {:>5} {:>9} {:>7}",
+        "kind", "expected", "found", "tp", "fp", "fn", "precision", "recall"
+    );
+    for kind in &asks.kinds {
+        let label = if kind.direction == "asks_you" {
+            kind.kind.clone()
+        } else {
+            format!("you promised: {}", kind.kind)
+        };
+        write_counts(out, &label, &kind.counts);
+    }
+    write_counts(out, "all kinds", &asks.total);
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "Fields of matched items (exact match; a missing value on both sides matches)"
+    );
+    for field in &asks.fields {
+        let _ = writeln!(
+            out,
+            "{:<14} {:>5} matched, {:>5} exact ({:.1}%): {} missing, {} wrong, {} spurious",
+            field.field,
+            field.pairs,
+            field.exact,
+            field.exact_percent,
+            field.missing,
+            field.wrong,
+            field.spurious
+        );
+    }
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "Duplicates (two rows for one expected item): {}. Merges (one row for two accounts of one sender): {}.",
+        asks.duplicates, asks.merges
+    );
+    let _ = writeln!(
+        out,
+        "Twin pairs, both members right: {} of {}; of the {} pairs that ask different things, {}.",
+        asks.twins.both_right,
+        asks.twins.pairs,
+        asks.twins.differing_pairs,
+        asks.twins.differing_both_right
+    );
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "Reply owed ({} emails; {})",
+        asks.reply_owed.emails, asks.reply_owed.projection
+    );
+    write_counts(out, "reply owed", &asks.reply_owed.counts);
+    let _ = writeln!(out);
+    let _ = writeln!(out, "Slices");
+    for slice in &asks.slices {
+        write_counts(
+            out,
+            &format!("{} {} ({})", slice.dimension, slice.value, slice.emails),
+            &slice.counts,
+        );
+    }
+}
+
 fn render_table(
     out: &mut String,
     summary: &ClassifyEvalSummaryData,
@@ -155,6 +247,10 @@ fn render_table(
     let _ = writeln!(out, "home = {}", summary.home_projection);
     let _ = writeln!(out);
     write_accuracy(out, &summary.questions);
+    if let Some(asks) = &summary.asks {
+        let _ = writeln!(out);
+        write_asks(out, asks);
+    }
     if !summary.held_out_questions.is_empty() {
         let _ = writeln!(out);
         let _ = writeln!(
@@ -307,7 +403,7 @@ mod tests {
     fn summary(present: u32) -> ClassifyEvalSummaryData {
         ClassifyEvalSummaryData {
             set: ClassifyEvalSetData::Quick,
-            label_schema_version: 1,
+            label_schema_version: 2,
             labelled_in_set: 10,
             present,
             placed_live: 0,
@@ -322,6 +418,7 @@ mod tests {
             held_out_present: 0,
             held_out_questions: Vec::new(),
             home_projection: "arrivals".into(),
+            asks: None,
             message: (present == 0).then(|| "No labelled mail here; run mxr demo".into()),
         }
     }

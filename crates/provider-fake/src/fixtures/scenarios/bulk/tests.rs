@@ -231,11 +231,11 @@ fn an_ask_is_dated_to_match_whether_its_deadline_is_open() {
         } else {
             assert!(age > chrono::Duration::days(59), "{thread_num}: {age}");
         }
-        let expected_todo = label(thread_num, 0).expect("the ask").expect.todo;
-        assert_eq!(
-            expected_todo,
-            asks_recent(thread_num) && family.turns[0].expect.todo
-        );
+        let asks = !items(thread_num, 0).is_empty();
+        assert!(label(thread_num, 0).is_some(), "the ask is labelled");
+        // An ask thread asks something only while its deadline is open, and
+        // not at all when its phrasing's ask is a reply.
+        assert!(!asks || (asks_recent(thread_num) && family.turns[0].ask.is_some()));
     }
     assert!(recent > 4, "only {recent} live asks");
     // The first threads, which the web e2e suite reads, carry no live ask.
@@ -337,8 +337,10 @@ fn every_ask_thread_is_dated_to_its_label_at_every_clock() {
             continue;
         }
         let len = thread_len(thread_num);
-        let live = label(thread_num, 0).is_some_and(|l| l.expect.todo);
-        assert_eq!(live, asks_recent(thread_num));
+        // Dated live whether or not the phrasing's ask is an item (a request
+        // to confirm is a reply, so it is no item but still arrives live).
+        let live = asks_recent(thread_num);
+        assert!(!items(thread_num, 0).is_empty() <= live);
         for clock in clocks() {
             let age = clock - render(&me(), clock, thread_num, 0, len).date;
             if live {

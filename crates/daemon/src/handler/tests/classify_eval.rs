@@ -2,8 +2,11 @@
 //! synced the curated demo mail and every near-miss twin, run through the
 //! same post-sync work a real sync runs (to-dos, records, deliveries,
 //! arrivals placement), then graded. The snapshot is the classifier's
-//! measured behaviour: any change to sorting shows up as a reviewed diff.
+//! measured behaviour: any change to sorting shows up as a reviewed diff, and
+//! no kind of ask may fall below its checked-in floor
+//! (`classify_eval_floor.rs`).
 
+use super::classify_eval_floor;
 use super::*;
 use crate::handler::classify_eval::classify_eval;
 use chrono::Utc;
@@ -40,9 +43,20 @@ async fn scenario_state() -> (Arc<AppState>, AccountId) {
             .await
             .unwrap(),
     );
+    // As the daemon sets up a sync, and as `classify_eval_full.rs` does: an
+    // engine that knows the accounts' addresses, so every message has a
+    // direction and sender histories and contacts aggregate. The test state's
+    // own engine has no address lookup and leaves every direction unknown.
+    crate::state::load_account_address_registry(&state.store, &state.account_addresses)
+        .await
+        .unwrap();
+    let engine = mxr_sync::SyncEngine::with_address_lookup(
+        state.store.clone(),
+        state.search.clone(),
+        state.account_addresses.clone() as Arc<dyn mxr_core::types::AccountAddressLookup>,
+    );
     loop {
-        let outcome = state
-            .sync_engine
+        let outcome = engine
             .sync_account_with_outcome(provider.as_ref())
             .await
             .unwrap();
@@ -59,6 +73,10 @@ async fn scenario_state() -> (Arc<AppState>, AccountId) {
             break;
         }
     }
+    // The whole-table analytics repair the daemon runs at the end of a
+    // backfill (directions, list ids, reply pairs), then the contacts
+    // refresh its worker does a few seconds later.
+    crate::loops::run_analytics_repair(&state, &account_id).await;
     state.store.refresh_contacts().await.unwrap();
     (state, account_id)
 }
@@ -92,6 +110,10 @@ fn report(summary: &ClassifyEvalSummaryData, mismatches: &[ClassifyEvalMismatchD
             q.question, q.correct, q.evaluated, q.accuracy_percent
         ));
     }
+    out.push('\n');
+    out.push_str(&classify_eval_floor::report(
+        summary.asks.as_ref().expect("the asks were graded"),
+    ));
     out.push_str(&format!("\n{} mismatches\n", mismatches.len()));
     for m in mismatches {
         out.push_str(&format!(
@@ -120,6 +142,15 @@ async fn the_quick_set_is_graded_and_every_mismatch_is_listed() {
     assert_eq!(summary.present, summary.labelled_in_set);
     assert_eq!(summary.not_placed, 0);
     assert_eq!(summary.message, None);
+    // The desk's Your turn needs a sender that classifies as a person, so a
+    // question from a no-reply address is not owed a reply.
+    assert!(
+        mismatches
+            .iter()
+            .all(|m| !(m.scenario == "no-reply-vendor-question" && m.question == "reply")),
+        "{mismatches:?}"
+    );
+    classify_eval_floor::check("quick", summary.asks.as_ref().expect("asks"));
     insta::assert_snapshot!(report(&summary, &mismatches));
 }
 
@@ -142,6 +173,8 @@ async fn a_mailbox_with_no_labelled_mail_says_so_and_lists_nothing() {
         Some("No labelled mail here; run mxr demo")
     );
     assert!(summary.questions.iter().all(|q| q.evaluated == 0));
+    // Nothing graded, so no asks section and no zero rates.
+    assert_eq!(summary.asks, None);
 }
 
 #[tokio::test]
@@ -228,7 +261,7 @@ async fn a_to_do_that_was_already_over_when_found_is_not_a_to_do() {
     assert!(
         mismatches
             .iter()
-            .all(|m| !(m.scenario == "todo-event-already-over" && m.question == "todo")),
+            .all(|m| !(m.scenario == "todo-event-already-over" && m.question == "ask")),
         "a born-expired to-do is not counted as a to-do: {mismatches:?}"
     );
 }

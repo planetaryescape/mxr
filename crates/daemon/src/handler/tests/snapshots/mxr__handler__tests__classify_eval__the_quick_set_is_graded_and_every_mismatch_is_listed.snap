@@ -86,7 +86,7 @@ application-auto-ack demo-msg-148 who: expected machine, got list [label to chec
 application-auto-ack demo-msg-148 home: expected updates, got reading [label to check]
 ask-to-you-alone demo-msg-184 ask: expected book, got no row
 bill-with-a-direct-debit-offer demo-msg-165 ask: expected pay, got no row
-calendar-invite demo-msg-128 due: expected 7 days after it was sent, got none [label to check]
+calendar-invite demo-msg-128 due: expected 7 days 11 hours after it was sent, got none [label to check]
 card-expiring demo-msg-152 ask: expected fix_payment, got no row
 cold-intro-in-inbox demo-msg-161 reply: expected owed, got none owed
 colleague-asks demo-msg-112 ask: expected send, got no row [label to check]

@@ -486,7 +486,7 @@ case, and run either again after changing models to compare.
 
 With `--format table`, each case prints its six checks, then the draft, and the
 run ends with the counts. This is the shape, from the demo profile's built-in
-script, which echoes its prompt instead of drafting, so most checks fail:
+script, which finishes typed text but echoes its prompt for everything else, so some checks fail:
 
 ```text
 ── price-open · 79 words · A price nobody has given: leave a gap, invent nothing
@@ -498,12 +498,12 @@ script, which echoes its prompt instead of drafting, so most checks fail:
   pass leftovers no subject line, preamble, fence or placeholder, no repeated sign-off, and no run of 8 words copied from the thread; clean
        draft: Voice-matched draft: / ...
 
-40 cases (0 did not draft) with mxr-demo-canned; style score mean 91 (humanizer score: 100 reads plain, lower reads more like AI; reported, not graded)
-kept      18/40 passed
-answers   19/40 passed
+40 cases (0 did not draft) with mxr-demo-canned; style score mean 95 (humanizer score: 100 reads plain, lower reads more like AI; reported, not graded)
+kept      40/40 passed
+answers   32/40 passed
 gaps      36/40 passed
-invented  0/40 passed
-length    0/40 passed
+invented  22/40 passed
+length    22/40 passed
 leftovers 40/40 passed
 ```
 

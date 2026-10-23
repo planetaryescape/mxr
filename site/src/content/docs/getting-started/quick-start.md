@@ -3,7 +3,7 @@ title: Quick start
 description: Try mxr safely, then connect your own inbox.
 ---
 
-After [installing](/getting-started/install/), you have one binary: `mxr`. The TUI is what you'll use most; the CLI handles scripting and one-off operations. Both talk to the same daemon.
+After [installing](/getting-started/install/), use `mxr` to inspect synthetic mail on this computer. Then choose the CLI, web app, TUI, or an agent; they use the same local daemon.
 
 ## 1. Try the demo inbox
 
@@ -13,13 +13,11 @@ Start with a realistic local demo before connecting your own mail:
 mxr demo
 ```
 
-This creates a separate `mxr-demo` config, database, socket, and daemon. It seeds a 50k-message, two-account synthetic inbox with repeat senders, threads, attachments, links, images, newsletters, promos, spam, suspicious inbox mail, receipts, alerts, and demo rules. You get search, labels, summaries, sender profiles, analytics, and keyboard triage without granting access to your real inbox.
+This creates a separate demo config, database, socket, and daemon. It seeds a two-account synthetic inbox. The demo profile is separate from your real profile and uses a canned model provider for model-assisted demo results. Those results demonstrate the workflow, not model quality.
 
-`mxr demo` prints progress and waits on progress, not on a wall clock: the seed and sync waits give up only if nothing has moved for ten minutes, however long the work itself takes, and the analytics prewarm streams progress with no deadline at all. Expect a couple of minutes end to end on a laptop, longer on a small cloud VM; the mailbox is seeded and the demo is announced as active around the 30–45 second mark. After that it prewarms analytics and Wrapped so the first click on each surface is instant, and watches semantic indexing briefly (about 90 seconds) before handing over. Embedding 50k messages takes far longer than anyone should wait, so it reports how far it got and continues in the background (`mxr semantic status`). Search works throughout; semantic results sharpen as vectors land. Press Ctrl-C any time during the prewarm phase and start using the demo. Pass `--messages` for a smaller mailbox (`mxr demo --messages 5000`).
+`mxr demo` reports its progress and opens the demo TUI when seeding finishes. To leave the terminal available for another client, run `mxr demo --no-tui`. The demo supports a smaller seed with `mxr demo --messages 5000`.
 
-The demo also pre-seeds every "empty queue" surface so the first click on any feature shows something useful: snippets, signatures, custom labels, saved searches, screener decisions, snoozed messages, reply-later flags, and a couple of in-progress drafts. LLM-backed features (summarize, briefing, ask, draft-assist, voice, decisions, commitments) are answered by an in-process **canned provider**, so the demo works fully offline: no `OPENAI_API_KEY` needed, and your real LLM credentials are never invoked even if `[llm]` is configured.
-
-**Demo mode is sticky.** Once `mxr demo` finishes, every subsequent `mxr` command (`mxr search`, `mxr cat`, `mxr archive`, `mxr web`, ...) automatically targets the demo profile. The TUI status bar and the web app's topbar both show a `DEMO` chip so you always know which profile you're on. Exit with:
+**Demo mode is sticky.** Subsequent `mxr` commands target the demo profile until you stop it. The TUI and web app show a `DEMO` marker. Check the selected profile with `mxr demo status`. Exit with:
 
 ```bash
 mxr demo stop
@@ -33,6 +31,18 @@ mxr demo reset         # wipe demo data so the next `mxr demo` re-seeds from scr
 mxr demo --reset       # equivalent: reset + restart in one step
 mxr demo --no-tui      # seed + sync without launching the TUI
 ```
+
+Query local synthetic mail before choosing a client:
+
+```bash
+mxr search "is:unread" --format json --limit 10
+```
+
+The result is local mailbox data. For the five mail modes and Now, continue to [Work through your day](/guides/your-day/).
+
+:::caution[Stop demo mode before connecting your mail]
+Demo mode remains active for later `mxr` commands until you run `mxr demo stop`. Stop it before adding or connecting a real account.
+:::
 
 ## 2. Add your account
 
@@ -150,5 +160,6 @@ Most read/list/status/mutation surfaces accept `--format json`; the generated [C
 - [Configure rules](/guides/rules/) for declarative filing.
 - [Write a saved search](/guides/search/) for your daily inbox lens.
 - [Hand mxr to an LLM](/guides/agent-skill/): the same CLI is the agent surface.
+- [Use mxr with an existing agent](/getting-started/agent-quick-start/): connect local Codex with MCP or use the CLI skill.
 
 Run into something? See [Troubleshooting](/troubleshooting/).

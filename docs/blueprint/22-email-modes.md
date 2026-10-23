@@ -595,7 +595,7 @@ present it as the full message.
 |           |   "Can you take a look and   |----------------------------------------------|
 |           |    reply with the next..."   | TOPICS  Contract renewal     your turn · 16h |
 |           | Jon Bell               8h *  |         Launch checklist     waiting · 1d    |
-|           |   "Does the pricing copy..." |         with Ruth: Pricing   quiet · 3d      |
+|           |   "Does the pricing copy..." |         with Ruth: Pricing            3d    |
 |           | Samir, Ruth            2d *  |----------------------------------------------|
 |           |   Contract renewal           | Samir · Yesterday 18:02                      |
 |           | PINNED  Maya · Ari           | Can you take a look and reply with           |
@@ -607,6 +607,9 @@ present it as the full message.
 +-----------+------------------------------+----------------------------------------------+
   Mod+Enter send, next   . got it   e done here   t to do   b reply later   c new topic
 ```
+
+In the web topic list, quiet topics show recency without repeating the quiet
+state. Quiet remains a separate person band.
 
 **View and actions.** Length decides shape, not the medium: three lines or
 fewer render compactly like chat, longer ones as a letter block with "Read

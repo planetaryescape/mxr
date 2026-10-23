@@ -50,10 +50,44 @@ describe("ConversationView", () => {
         <ConversationView conversation={conversation} asSent={null} onToggleAsSent={() => {}} />
       </QueryClientProvider>,
     );
-    const line = screen.getByTestId("conversation-message").querySelector("p");
+    const line = screen.getByTestId("message-meta");
     // The fixture is from 2026-10-06, so the line carries the date and the time.
-    expect(line?.textContent).toMatch(/^Samir · .*6.*Oct.*\d{1,2}:\d{2}/);
+    expect(line.textContent).toMatch(/Samir.*6.*Oct.*\d{1,2}:\d{2}/);
     expect(line?.textContent).not.toMatch(/ago|just now/);
+  });
+
+  test("the sender disclosure uses the original address, not a merged identity", async () => {
+    const messageFromAlias: Conversation = {
+      ...conversation,
+      messages: [
+        {
+          ...conversation.messages[0]!,
+          from: { name: "Samir Patel", email: "samir.p@home.example" },
+        },
+        {
+          ...conversation.messages[0]!,
+          message_id: "m2",
+          from: { name: "Samir Parker", email: "samir.p@example.net" },
+        },
+      ],
+    };
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationView conversation={messageFromAlias} asSent={null} onToggleAsSent={() => {}} />
+      </QueryClientProvider>,
+    );
+    const senderButtons = screen.getAllByRole("button", {
+      name: /Show original sender address for Samir/,
+    });
+    const infoButtons = screen.getAllByRole("button", { name: /Message info for Samir/ });
+    expect(senderButtons).toHaveLength(2);
+    expect(infoButtons).toHaveLength(2);
+    expect(infoButtons[0]?.getAttribute("aria-label")).not.toBe(
+      infoButtons[1]?.getAttribute("aria-label"),
+    );
+    fireEvent.click(senderButtons[0]!);
+    expect(await screen.findByText("samir.p@home.example")).toBeInTheDocument();
+    expect(screen.queryByText("samir@launchpad.example")).toBeNull();
   });
 
   test("a quote-only message says so and offers the message as sent", () => {

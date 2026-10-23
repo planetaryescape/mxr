@@ -37,6 +37,19 @@ pub const TUI_CONTEXTS: [&str; 14] = [
     "updates",
 ];
 
+/// TUI screens and overlays that still read their own keys. A moved key there
+/// is announced by name from the screen's handler (`App::announce_moved`).
+pub const SCREEN_CONTEXTS: [&str; 8] = [
+    "accounts",
+    "assistant",
+    "categories",
+    "drafts",
+    "invites",
+    "rules",
+    "saved-searches",
+    "todo-microsoft",
+];
+
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).
 pub const WEB_SCOPES: [&str; 17] = [
     "global",
@@ -543,6 +556,18 @@ impl Keymap {
                         "{}: the move of `{}` names malformed key `{key}`",
                         action.id, moved.key
                     ));
+                }
+                // A misspelt place would never announce the move.
+                for context in &moved.contexts {
+                    let known = TUI_CONTEXTS.contains(&context.as_str())
+                        || WEB_SCOPES.contains(&context.as_str())
+                        || SCREEN_CONTEXTS.contains(&context.as_str());
+                    if !known {
+                        problems.push(format!(
+                            "{}: the move of `{}` names unknown context `{context}`",
+                            action.id, moved.key
+                        ));
+                    }
                 }
                 // Only the clients the action is for: the TUI reader's `o`
                 // moved while the web reader keeps `o` for its own verb.

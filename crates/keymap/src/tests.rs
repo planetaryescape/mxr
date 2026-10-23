@@ -464,3 +464,26 @@ fn a_tui_only_move_may_keep_a_key_the_web_binds_there() {
         vec!["reader.open-original: `o` moved away in reader but is still bound there".to_string()]
     );
 }
+
+#[test]
+fn a_moved_key_names_a_known_place() {
+    let keymap = Keymap::parse(
+        r##"
+        [[action]]
+        id = "tui.drafts-delete"
+        label = "Delete draft"
+        group = "Compose"
+        clients = ["tui"]
+        [[action.moved]]
+        key = "d"
+        contexts = ["drafts", "draft"]
+        until = "99.0.0"
+        to_key = "#"
+        "##,
+    )
+    .expect("parses");
+    assert_eq!(
+        keymap.problems(),
+        vec!["tui.drafts-delete: the move of `d` names unknown context `draft`".to_string()]
+    );
+}

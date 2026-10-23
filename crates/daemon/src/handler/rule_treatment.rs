@@ -167,6 +167,9 @@ async fn selection(
                 (treatment.as_str().into(), winner.name.clone()),
             );
         }
+        // A candidate rule is a resolver input, so the hypothetical answer
+        // cannot reuse the assessment of the current rule set.
+        let current_assessments = std::mem::take(&mut senders.assessments);
         let after = arrivals::place_message(
             message,
             &thread,
@@ -175,6 +178,7 @@ async fn selection(
             shape,
             envelope.flags.contains(mxr_core::MessageFlags::SPAM),
         );
+        senders.assessments = current_assessments;
         senders.treatments.remove(&envelope.id);
         if let Some(prior) = prior {
             senders.treatments.insert(envelope.id.clone(), prior);

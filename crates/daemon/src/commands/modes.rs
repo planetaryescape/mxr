@@ -184,6 +184,13 @@ fn membership_text(thread: &ThreadModesData) -> String {
         let _ = writeln!(out, "  {:<9} {}{early}", entry.name, entry.key);
         let _ = writeln!(out, "    {}", terminal_text(&entry.reason));
     }
+    for assessment in thread.assessments.iter().filter(|a| a.not_sure.is_some()) {
+        let _ = writeln!(
+            out,
+            "  Not sure: {}",
+            terminal_text(&assessment.deciding.reason)
+        );
+    }
     if !thread.done_in.is_empty() {
         let names: Vec<&str> = thread.done_in.iter().map(|mode| mode.name()).collect();
         let _ = writeln!(out, "  Done in: {}", names.join(", "));

@@ -270,6 +270,10 @@ They extend 32's ladder with letters (D184). R1c runs before R2, and the rest af
 
 **Left out:** any change to detection.
 
+R2 stores home assessments while keeping the existing
+asks detectors and To do/Archive aspects. The unit-level asks changes below
+remain the next separate rung; R2 does not raise their measured baseline.
+
 ### R2c: Every to-do is something an email asks you, with whose move it is
 
 **Previously:** marketing and credit notes make bills, your requests make your promises, and requests to you make nothing. **Now:** to-dos come from units the owner must act on, with the asking sentence as the reason.

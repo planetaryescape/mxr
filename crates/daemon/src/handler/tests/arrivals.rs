@@ -1638,3 +1638,1048 @@ async fn undoing_an_older_sender_move_is_refused_while_a_newer_one_stands() {
     undo(&fx, to_updates.correction_id.unwrap()).await;
     assert_eq!(chip(&fx, &a.id).await.0, ArrivalBucketData::Reading);
 }
+
+#[tokio::test]
+async fn assessment_body_replacement_changes_stored_home_and_every_projection() {
+    let fx = Fixture::new().await;
+    let mail = inbound(&fx, "sam@studio.example", false).await;
+    cached_content(&fx, &mail, "", Some("Thanks Sam. That works for me.")).await;
+    membership(&fx, &mail.thread_id).await;
+    let before = fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap()
+        .remove(&mail.id)
+        .unwrap();
+    assert_eq!(before.home, "messages");
+    cached_content(
+        &fx,
+        &mail,
+        "",
+        Some("FYI: the report is ready. No action is required."),
+    )
+    .await;
+    let held = membership(&fx, &mail.thread_id).await;
+    let after = fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap()
+        .remove(&mail.id)
+        .unwrap();
+    assert_eq!(after.home, "updates");
+    assert_ne!(after.input_fingerprint, before.input_fingerprint);
+    assert_eq!(
+        held.assessments.iter().find(|a| a.message_id == mail.id),
+        Some(&after)
+    );
+    assert_eq!(chip(&fx, &mail.id).await.0, ArrivalBucketData::Updates);
+    assert!(held
+        .modes
+        .iter()
+        .any(|m| m.mode == ModeKindData::Updates && m.reason.contains(&after.deciding.reason)));
+}
+
+#[tokio::test]
+async fn stale_assessment_cannot_overwrite_a_newer_body_decision() {
+    let fx = Fixture::new().await;
+    let mail = inbound(&fx, "sam@studio.example", false).await;
+    membership(&fx, &mail.thread_id).await;
+    let revision = fx.state.store.assessment_input_revision().await.unwrap();
+    let stale = fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap()
+        .remove(&mail.id)
+        .unwrap();
+    cached_content(
+        &fx,
+        &mail,
+        "Auto-Submitted: auto-generated\r\n",
+        Some("Your receipt is available."),
+    )
+    .await;
+    membership(&fx, &mail.thread_id).await;
+    assert!(!fx
+        .state
+        .store
+        .save_assessment(&stale, revision)
+        .await
+        .unwrap());
+    let current = fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap()
+        .remove(&mail.id)
+        .unwrap();
+    assert_eq!(current.home, "updates");
+    assert_ne!(current.input_fingerprint, stale.input_fingerprint);
+}
+
+#[tokio::test]
+async fn classifier_report_and_eval_do_not_materialize_missing_assessments() {
+    let fx = Fixture::new().await;
+    inbound(&fx, "stranger@studio.example", false).await;
+    let revision = fx.state.store.change_feed().seq();
+    let response = request(
+        &fx,
+        Request::ClassifyReport {
+            account_id: Some(fx.account.clone()),
+            limit: 20,
+        },
+    )
+    .await;
+    let ResponseData::ClassifyReport { report } = response else {
+        panic!("classifier report");
+    };
+    assert_eq!(report.missing, 1);
+    crate::handler::classify_eval::classify_eval(
+        &fx.state,
+        Some(&fx.account),
+        mxr_protocol::ClassifyEvalSetData::Quick,
+    )
+    .await
+    .unwrap();
+    assert_eq!(fx.state.store.change_feed().seq(), revision);
+    assert!(fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn read_only_reports_mark_changed_inputs_pending_without_invalidating_other_accounts() {
+    let fx = Fixture::new().await;
+    let mail = inbound(&fx, "sam@studio.example", false).await;
+    membership(&fx, &mail.thread_id).await;
+    let mut other = fx
+        .state
+        .store
+        .get_account(&fx.account)
+        .await
+        .unwrap()
+        .unwrap();
+    other.id = mxr_core::AccountId::new();
+    other.email = "other@example.org".into();
+    fx.state.store.insert_account(&other).await.unwrap();
+    let read_report =
+        || crate::handler::classifier_report::report(&fx.state, Some(&fx.account), 20);
+    let ResponseData::ClassifyReport { report } = read_report().await.unwrap() else {
+        panic!("report");
+    };
+    assert_eq!((report.missing, report.stale), (0, 0));
+    request(
+        &fx,
+        Request::SetScreenerDecision {
+            account_id: fx.account.clone(),
+            sender_email: mail.from.email.clone(),
+            disposition: mxr_protocol::ScreenerDispositionData::Feed,
+            route_label: None,
+        },
+    )
+    .await;
+    let before = fx.state.store.change_feed().seq();
+    let ResponseData::ClassifyReport { report } = read_report().await.unwrap() else {
+        panic!("report");
+    };
+    assert_eq!((report.missing, report.stale), (0, 1));
+    assert_eq!(fx.state.store.change_feed().seq(), before);
+    crate::handler::assessments::reconcile_account(&fx.state, &fx.account)
+        .await
+        .unwrap();
+    let ResponseData::ClassifyReport { report } = read_report().await.unwrap() else {
+        panic!("report");
+    };
+    assert_eq!((report.missing, report.stale), (0, 0));
+    let stored = fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap();
+    assert_eq!(stored.get(&mail.id).unwrap().home, "reading");
+}
+
+#[tokio::test]
+async fn delivery_and_invite_share_the_updates_home_without_duplicate_parcel_rows() {
+    let fx = Fixture::new().await;
+    let delivery = inbound(&fx, "tracking@shop.example", false).await;
+    let invite = inbound(&fx, "sam@studio.example", false).await;
+    let delivery_id = mxr_core::DeliveryId::new();
+    sqlx::query("INSERT INTO deliveries (id, account_id, dedup_key, status, source, thread_id, last_event_at, created_at, updated_at) VALUES (?, ?, 'synthetic-parcel', 'in_transit', 'heuristic', ?, ?, ?, ?)")
+        .bind(delivery_id.as_str()).bind(fx.account.as_str()).bind(delivery.thread_id.as_str())
+        .bind(Utc::now().timestamp()).bind(Utc::now().timestamp()).bind(Utc::now().timestamp())
+        .execute(fx.state.store.writer()).await.unwrap();
+    fx.state
+        .store
+        .link_delivery_message(
+            &delivery_id,
+            &delivery.id,
+            Some(&delivery.thread_id),
+            Some("shipped"),
+            Utc::now(),
+        )
+        .await
+        .unwrap();
+    fx.state
+        .store
+        .insert_body(&mxr_core::MessageBody {
+            message_id: invite.id.clone(),
+            text_plain: Some("Calendar invitation for tomorrow".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: Utc::now(),
+            metadata: mxr_core::MessageMetadata {
+                calendar: Some(mxr_core::CalendarMetadata {
+                    method: Some("REQUEST".into()),
+                    summary: Some("Planning".into()),
+                    uid: Some("synthetic-planning".into()),
+                    starts_at: Some((Utc::now() + Duration::days(1)).to_rfc3339()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+    for message in [&delivery, &invite] {
+        let held = membership(&fx, &message.thread_id).await;
+        assert!(held
+            .modes
+            .iter()
+            .any(|mode| mode.mode == ModeKindData::Updates));
+        assert_eq!(
+            held.assessments
+                .iter()
+                .find(|a| a.message_id == message.id)
+                .unwrap()
+                .home,
+            "updates"
+        );
+        assert_eq!(chip(&fx, &message.id).await.0, ArrivalBucketData::Updates);
+    }
+    let ResponseData::UpdatesDigest { digest } = request(
+        &fx,
+        Request::GetUpdatesDigest {
+            account_id: Some(fx.account.clone()),
+            cut: None,
+            mark_seen: false,
+            expired: false,
+        },
+    )
+    .await
+    else {
+        panic!("updates digest");
+    };
+    let lines: Vec<_> = digest
+        .needs_a_look
+        .iter()
+        .chain(&digest.changed)
+        .chain(&digest.routine)
+        .chain(&digest.since.lines)
+        .collect();
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|line| line.message_ids.contains(&delivery.id))
+            .count(),
+        1
+    );
+    assert!(lines
+        .iter()
+        .any(|line| line.message_ids.contains(&invite.id)));
+    let before = fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE deliveries SET delivered_at = ?, status = 'delivered' WHERE id = ?")
+        .bind((Utc::now() - Duration::days(2)).timestamp())
+        .bind(delivery_id.as_str())
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    assert!(!membership(&fx, &delivery.thread_id)
+        .await
+        .modes
+        .iter()
+        .any(|mode| mode.mode == ModeKindData::Updates));
+    let after = fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap();
+    assert_eq!(before[&delivery.id].home, after[&delivery.id].home);
+}
+
+#[tokio::test]
+async fn unknown_person_and_machine_get_named_fallbacks_and_observed_fact_clusters() {
+    let fx = Fixture::new().await;
+    let person = inbound(&fx, "stranger@studio.example", false).await;
+    let machine = inbound(&fx, "no-reply@service.example", false).await;
+    for message in [&person, &machine] {
+        cached_content(&fx, message, "", None).await;
+        membership(&fx, &message.thread_id).await;
+    }
+    let stored = fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap();
+    assert_eq!(stored[&person.id].home, "messages");
+    assert_eq!(stored[&machine.id].home, "updates");
+    for message in [&person, &machine] {
+        let assessment = &stored[&message.id];
+        assert!(assessment.fallback && assessment.pending_body);
+        assert_eq!(assessment.not_sure.as_deref(), Some("fallback"));
+        assert_eq!(assessment.deciding.rule, "fallback");
+    }
+    let ResponseData::ClassifyReport { report } = request(
+        &fx,
+        Request::ClassifyReport {
+            account_id: Some(fx.account.clone()),
+            limit: 20,
+        },
+    )
+    .await
+    else {
+        panic!("report");
+    };
+    assert_eq!(report.fallback, 2);
+    assert_eq!(report.clusters.len(), 2);
+    assert_ne!(
+        report.clusters[0].facts.sender_shape,
+        report.clusters[1].facts.sender_shape
+    );
+}
+
+#[tokio::test]
+async fn policy_comparison_only_uses_retained_answers_and_never_invents_a_baseline() {
+    let fx = Fixture::new().await;
+    let mail = inbound(&fx, "sam@studio.example", false).await;
+    membership(&fx, &mail.thread_id).await;
+    let request_for = |policy: &str| Request::ClassifyCompare {
+        account_id: Some(fx.account.clone()),
+        policy_version: policy.into(),
+        limit: 20,
+    };
+    let ResponseData::ClassifyCompare { comparison } = request(&fx, request_for("pre-r2")).await
+    else {
+        panic!("comparison");
+    };
+    assert!(!comparison.available);
+    assert!(comparison.changes.is_empty());
+    let mut retained = fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap()
+        .remove(&mail.id)
+        .unwrap();
+    retained.policy_version = "retained-test-policy".into();
+    retained.home = "updates".into();
+    retained.input_fingerprint = "retained-runtime-answer".into();
+    let revision = fx.state.store.assessment_input_revision().await.unwrap();
+    assert!(fx
+        .state
+        .store
+        .save_assessment(&retained, revision)
+        .await
+        .unwrap());
+    let new_mail = inbound(&fx, "new@studio.example", false).await;
+    membership(&fx, &new_mail.thread_id).await;
+    let before = fx.state.store.change_feed().seq();
+    let ResponseData::ClassifyCompare { comparison } =
+        request(&fx, request_for("retained-test-policy")).await
+    else {
+        panic!("comparison");
+    };
+    assert!(comparison.available);
+    assert_eq!(comparison.compared, 1);
+    assert_eq!(comparison.missing_previous_assessments, 1);
+    assert_eq!(comparison.changes.len(), 1);
+    assert_eq!(comparison.changes[0].previous_home, "updates");
+    assert_eq!(comparison.changes[0].current_home, "messages");
+    assert_eq!(fx.state.store.change_feed().seq(), before);
+}
+
+#[tokio::test]
+async fn copied_mail_projects_its_stored_home_and_reason_without_judging_again() {
+    let fx = Fixture::new().await;
+    let mail = mail(
+        &fx,
+        &ThreadId::new(),
+        "sam@studio.example",
+        &["ruth@studio.example"],
+        &[ME],
+        false,
+        Duration::minutes(5),
+    )
+    .await;
+    cached_content(&fx, &mail, "", None).await;
+    membership(&fx, &mail.thread_id).await;
+    let mut assessment = fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap()
+        .remove(&mail.id)
+        .unwrap();
+    assert_eq!(assessment.home, "updates");
+    assert_eq!(assessment.deciding.rule, "copied");
+    assert!(
+        !assessment.fallback,
+        "being copied is affirmative evidence, even without a body"
+    );
+    assessment.deciding.reason = "stored copied placement from the resolver".into();
+    sqlx::query("UPDATE mail_assessments SET assessment_json = ? WHERE message_id = ? AND policy_version = ?")
+        .bind(serde_json::to_string(&assessment).unwrap()).bind(mail.id.as_str())
+        .bind(mxr_core::assessment::CLASSIFIER_POLICY_VERSION).execute(fx.state.store.writer()).await.unwrap();
+    let held = membership(&fx, &mail.thread_id).await;
+    assert_eq!(modes(&held), vec![ModeKindData::Updates]);
+    assert!(held.modes[0].reason.contains(&assessment.deciding.reason));
+    let placed =
+        crate::handler::places::placed_inbox(&fx.state, std::slice::from_ref(&fx.account), None)
+            .await
+            .unwrap();
+    assert_eq!(
+        placed
+            .iter()
+            .find(|row| row.message.id == mail.id)
+            .unwrap()
+            .kind
+            .reason,
+        assessment.deciding.reason
+    );
+}
+
+#[tokio::test]
+async fn top_level_why_returns_stored_evidence_for_historical_archived_mail() {
+    let fx = Fixture::new().await;
+    let mail = mail(
+        &fx,
+        &ThreadId::new(),
+        "sam@studio.example",
+        &[ME],
+        &[],
+        false,
+        Duration::days(45),
+    )
+    .await;
+    fx.state
+        .store
+        .remove_message_label(&mail.id, &fx.inbox, mxr_core::EventSource::User)
+        .await
+        .unwrap();
+    let ResponseData::MessageKind {
+        assessment: Some(assessment),
+        mail_kind,
+        ..
+    } = request(
+        &fx,
+        Request::GetMessageKind {
+            message_id: mail.id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("why includes assessment");
+    };
+    let stored = fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap();
+    assert_eq!(stored.get(&mail.id), Some(&assessment));
+    assert_eq!(mail_kind.reason, assessment.deciding.reason);
+    assert!(!assessment.deciding.evidence.is_empty());
+    assert!(
+        fx.state
+            .store
+            .arrivals_by_ids(&[mail.id])
+            .await
+            .unwrap()
+            .is_empty(),
+        "historical mail needs no arrival to have an assessment"
+    );
+}
+
+#[tokio::test]
+async fn assessment_cas_ignores_unrelated_threads_and_live_bookkeeping() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let fx = Fixture::new().await;
+    let wanted = inbound(&fx, "sam@studio.example", false).await;
+    let other = inbound(&fx, "other@studio.example", false).await;
+    let attempts = AtomicUsize::new(0);
+    let answers = crate::handler::assessments::materialize_threads(
+        &fx.state,
+        &fx.account,
+        std::slice::from_ref(&wanted.thread_id),
+        || {
+            attempts.fetch_add(1, Ordering::SeqCst);
+            async {
+                cached_content(&fx, &other, "", Some("An unrelated new body")).await;
+                sqlx::query("UPDATE messages SET flags = flags | 1 WHERE id = ?")
+                    .bind(wanted.id.as_str())
+                    .execute(fx.state.store.writer())
+                    .await?;
+                sqlx::query("UPDATE accounts SET sync_cursor = 'next-page'")
+                    .execute(fx.state.store.writer())
+                    .await?;
+                sqlx::query("UPDATE arrivals SET mode = 'updates', placed_at = 1")
+                    .execute(fx.state.store.writer())
+                    .await?;
+                Ok(())
+            }
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    let persisted = fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap();
+    assert_eq!(answers[&wanted.id], persisted[&wanted.id]);
+}
+
+#[tokio::test]
+async fn assessment_race_returns_only_committed_answers_or_bounded_pending() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let fx = Fixture::new().await;
+    let wanted = inbound(&fx, "sam@studio.example", false).await;
+    cached_content(&fx, &wanted, "", Some("Thanks. That works for me.")).await;
+    membership(&fx, &wanted.thread_id).await;
+    let policy = mxr_core::assessment::CLASSIFIER_POLICY_VERSION;
+    let previous = fx
+        .state
+        .store
+        .assessments(&fx.account, policy)
+        .await
+        .unwrap();
+    let attempts = AtomicUsize::new(0);
+    let pending = crate::handler::assessments::materialize_threads(
+        &fx.state,
+        &fx.account,
+        std::slice::from_ref(&wanted.thread_id),
+        || {
+            attempts.fetch_add(1, Ordering::SeqCst);
+            async {
+                sqlx::query(
+                    "UPDATE bodies SET text_plain = text_plain || ' changed' WHERE message_id = ?",
+                )
+                .bind(wanted.id.as_str())
+                .execute(fx.state.store.writer())
+                .await?;
+                Ok(())
+            }
+        },
+    )
+    .await
+    .unwrap();
+    assert!(pending.is_empty());
+    assert_eq!(attempts.load(Ordering::SeqCst), 3);
+    assert_eq!(
+        fx.state
+            .store
+            .assessments(&fx.account, policy)
+            .await
+            .unwrap(),
+        previous
+    );
+    assert!(
+        crate::handler::assessments::fresh_stored(&fx.state, &fx.account, previous)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let attempts = AtomicUsize::new(0);
+    let answers = crate::handler::assessments::materialize_threads(
+        &fx.state,
+        &fx.account,
+        std::slice::from_ref(&wanted.thread_id),
+        || {
+            let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+            let fx = &fx;
+            let wanted = &wanted;
+            async move {
+                if attempt == 0 {
+                    cached_content(
+                        fx,
+                        wanted,
+                        "Auto-Submitted: auto-generated\r\n",
+                        Some("Your receipt is available."),
+                    )
+                    .await;
+                }
+                Ok(())
+            }
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    assert_eq!(answers[&wanted.id].home, "updates");
+    assert_eq!(
+        answers,
+        fx.state
+            .store
+            .assessments(&fx.account, policy)
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn assessment_dirty_queue_covers_sender_history_aliases_and_rethreading() {
+    let fx = Fixture::new().await;
+    let a = inbound(&fx, "sam@studio.example", false).await;
+    let b = inbound(&fx, "SAM@studio.example", false).await;
+    let c = inbound(&fx, "other@studio.example", false).await;
+    crate::handler::assessments::reconcile_account(&fx.state, &fx.account)
+        .await
+        .unwrap();
+    assert!(fx
+        .state
+        .store
+        .dirty_assessment_threads(&fx.account, None)
+        .await
+        .unwrap()
+        .is_empty());
+    cached_content(&fx, &a, "X-SG-EID: bulk\r\n", Some("body")).await;
+    let dirty = fx
+        .state
+        .store
+        .dirty_assessment_threads(&fx.account, None)
+        .await
+        .unwrap();
+    assert!(dirty.contains(&a.thread_id) && dirty.contains(&b.thread_id));
+    assert!(!dirty.contains(&c.thread_id));
+    crate::handler::assessments::reconcile_account(&fx.state, &fx.account)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO account_addresses(account_id, email, is_primary) VALUES (?, 'alias@example.com', 0)")
+        .bind(fx.account.as_str()).execute(fx.state.store.writer()).await.unwrap();
+    assert_eq!(
+        fx.state
+            .store
+            .dirty_assessment_threads(&fx.account, None)
+            .await
+            .unwrap()
+            .len(),
+        3
+    );
+    crate::handler::assessments::reconcile_account(&fx.state, &fx.account)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE messages SET thread_id = ? WHERE id = ?")
+        .bind(c.thread_id.as_str())
+        .bind(a.id.as_str())
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    let dirty = fx
+        .state
+        .store
+        .dirty_assessment_threads(&fx.account, None)
+        .await
+        .unwrap();
+    assert!(dirty.contains(&b.thread_id) && dirty.contains(&c.thread_id));
+}
+
+#[tokio::test]
+async fn concurrent_classification_keeps_pending_mail_visible_then_recovers_stored_agreement() {
+    let fx = Fixture::new().await;
+    let mail = inbound(&fx, "sam@studio.example", false).await;
+    cached_content(&fx, &mail, "", Some("Could you confirm the date?")).await;
+    membership(&fx, &mail.thread_id).await;
+    let policy = mxr_core::assessment::CLASSIFIER_POLICY_VERSION;
+    let before = fx
+        .state
+        .store
+        .assessments(&fx.account, policy)
+        .await
+        .unwrap();
+    let state = fx.state.clone();
+    let id = mail.id.clone();
+    let hook = std::sync::Arc::new(move || {
+        let state = state.clone();
+        let id = id.clone();
+        Box::pin(async move {
+            // A separate writer lands after all resolver reads, before CAS.
+            tokio::spawn(async move {
+                sqlx::query(
+                    "UPDATE bodies SET text_plain = text_plain || ' changed' WHERE message_id = ?",
+                )
+                .bind(id.as_str())
+                .execute(state.store.writer())
+                .await
+            })
+            .await
+            .unwrap()?;
+            Ok(())
+        })
+            as std::pin::Pin<
+                Box<
+                    dyn std::future::Future<Output = Result<(), crate::handler::HandlerError>>
+                        + Send,
+                >,
+            >
+    });
+    crate::handler::assessments::BEFORE_COMMIT
+        .scope(hook, async {
+            let ResponseData::ArrivalModes { items } = request(
+                &fx,
+                Request::GetArrivalModes {
+                    message_ids: vec![mail.id.clone()],
+                },
+            )
+            .await
+            else {
+                panic!("chips");
+            };
+            assert_eq!(items.len(), 1);
+            assert_eq!(items[0].bucket, ArrivalBucketData::Sorting);
+            assert!(items[0].chip.contains("sorting"));
+            let ResponseData::ArrivalList { list } = request(
+                &fx,
+                Request::ListArrivals {
+                    account_id: Some(fx.account.clone()),
+                    bucket: None,
+                    since: Some(Utc::now() - Duration::days(1)),
+                    until: None,
+                    limit: 20,
+                },
+            )
+            .await
+            else {
+                panic!("arrivals");
+            };
+            assert!(list.items.iter().any(
+                |item| item.message_id == mail.id && item.bucket == ArrivalBucketData::Sorting
+            ));
+            let held = membership(&fx, &mail.thread_id).await;
+            assert!(held.assessments.is_empty());
+            assert!(
+                held.modes.is_empty(),
+                "pending cannot invent an independent home"
+            );
+            assert!(held.in_inbox);
+            let why = crate::handler::places::get_message_kind(&fx.state, &mail.id).await.unwrap_err().into_response();
+            assert!(matches!(why, Response::Error { code, retryable: true, .. } if code == "classification_pending"));
+            assert_eq!(
+                fx.state
+                    .store
+                    .assessments(&fx.account, policy)
+                    .await
+                    .unwrap(),
+                before
+            );
+        })
+        .await;
+    let held = membership(&fx, &mail.thread_id).await;
+    let persisted = fx
+        .state
+        .store
+        .assessments(&fx.account, policy)
+        .await
+        .unwrap();
+    assert_eq!(held.assessments, vec![persisted[&mail.id].clone()]);
+    assert_eq!(chip(&fx, &mail.id).await.0, ArrivalBucketData::Messages);
+    assert!(fx
+        .state
+        .store
+        .dirty_assessment_threads(&fx.account, None)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn sync_page_materializes_only_its_threads_and_dirty_backfill_is_bounded() {
+    let fx = Fixture::new().await;
+    let mut historical = Vec::new();
+    for index in 0..105 {
+        historical.push(
+            mail(
+                &fx,
+                &ThreadId::new(),
+                &format!("person{index}@studio.example"),
+                &[ME],
+                &[],
+                false,
+                Duration::days(100),
+            )
+            .await,
+        );
+    }
+    let last = historical.last().unwrap();
+    crate::handler::assessments::reconcile_messages(
+        &fx.state,
+        &fx.account,
+        std::slice::from_ref(&last.id),
+    )
+    .await
+    .unwrap();
+    let policy = mxr_core::assessment::CLASSIFIER_POLICY_VERSION;
+    assert_eq!(
+        fx.state
+            .store
+            .assessments(&fx.account, policy)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        fx.state
+            .store
+            .dirty_assessment_threads(&fx.account, None)
+            .await
+            .unwrap()
+            .len(),
+        100
+    );
+    let cursor = crate::handler::assessments::reconcile_dirty_page(&fx.state, &fx.account, None)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        fx.state
+            .store
+            .assessments(&fx.account, policy)
+            .await
+            .unwrap()
+            .len(),
+        101
+    );
+    crate::handler::assessments::reconcile_dirty_page(&fx.state, &fx.account, Some(&cursor))
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.state
+            .store
+            .assessments(&fx.account, policy)
+            .await
+            .unwrap()
+            .len(),
+        105
+    );
+    assert!(fx
+        .state
+        .store
+        .dirty_assessment_threads(&fx.account, None)
+        .await
+        .unwrap()
+        .is_empty());
+    let revision = fx.state.store.assessment_input_revision().await.unwrap();
+    sqlx::query("UPDATE messages SET flags = flags | 1")
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    sqlx::query("UPDATE accounts SET sync_cursor = 'page-2', updated_at = updated_at + 1")
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    fx.state.store.refresh_contacts().await.unwrap();
+    crate::handler::assessments::reconcile_account(&fx.state, &fx.account)
+        .await
+        .unwrap();
+    let revision_after_contacts = fx.state.store.assessment_input_revision().await.unwrap();
+    assert!(
+        revision_after_contacts >= revision,
+        "new contact existence is relevant"
+    );
+    fx.state.store.refresh_contacts().await.unwrap();
+    assert_eq!(
+        fx.state.store.assessment_input_revision().await.unwrap(),
+        revision_after_contacts
+    );
+    assert!(fx
+        .state
+        .store
+        .dirty_assessment_threads(&fx.account, None)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn assessment_dependencies_cover_sent_recipients_and_account_deletion_cascades() {
+    let fx = Fixture::new().await;
+    let a = inbound(&fx, "sam@studio.example", false).await;
+    let b = inbound(&fx, "other@studio.example", false).await;
+    crate::handler::assessments::reconcile_account(&fx.state, &fx.account)
+        .await
+        .unwrap();
+    let sent = mail(
+        &fx,
+        &ThreadId::new(),
+        ME,
+        &["sam@studio.example"],
+        &[],
+        false,
+        Duration::minutes(1),
+    )
+    .await;
+    let dirty = fx
+        .state
+        .store
+        .dirty_assessment_threads(&fx.account, None)
+        .await
+        .unwrap();
+    assert!(dirty.contains(&a.thread_id) && dirty.contains(&sent.thread_id));
+    assert!(!dirty.contains(&b.thread_id));
+    sqlx::query("DELETE FROM accounts WHERE id = ?")
+        .bind(fx.account.as_str())
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    let generations: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM assessment_thread_inputs WHERE account_id = ?")
+            .bind(fx.account.as_str())
+            .fetch_one(fx.state.store.reader())
+            .await
+            .unwrap();
+    assert_eq!(generations, 0);
+    assert!(fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn deleting_the_last_thread_message_during_classification_is_pending_not_a_foreign_key_error()
+{
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let fx = Fixture::new().await;
+    let mail = inbound(&fx, "sam@studio.example", false).await;
+    let deleted = AtomicBool::new(false);
+    let answers = crate::handler::assessments::materialize_threads(
+        &fx.state,
+        &fx.account,
+        std::slice::from_ref(&mail.thread_id),
+        || async {
+            if !deleted.swap(true, Ordering::SeqCst) {
+                sqlx::query("DELETE FROM messages WHERE id = ?")
+                    .bind(mail.id.as_str())
+                    .execute(fx.state.store.writer())
+                    .await?;
+            }
+            Ok(())
+        },
+    )
+    .await
+    .unwrap();
+    assert!(answers.is_empty());
+    assert!(fx
+        .state
+        .store
+        .assessments(&fx.account, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn a_recipient_decision_invalidates_other_senders_thread_geometry() {
+    let fx = Fixture::new().await;
+    let mail = mail(
+        &fx,
+        &ThreadId::new(),
+        "sam@studio.example",
+        &[ME, "participant@studio.example"],
+        &[],
+        false,
+        Duration::minutes(5),
+    )
+    .await;
+    crate::handler::assessments::reconcile_account(&fx.state, &fx.account)
+        .await
+        .unwrap();
+    let old = fx
+        .state
+        .store
+        .assessment_thread_revisions(&fx.account, std::slice::from_ref(&mail.thread_id))
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO screener_decisions(account_id, sender_email, disposition, decided_at) VALUES (?, 'participant@studio.example', 'paper_trail', 1)")
+        .bind(fx.account.as_str()).execute(fx.state.store.writer()).await.unwrap();
+    assert_ne!(
+        old,
+        fx.state
+            .store
+            .assessment_thread_revisions(&fx.account, std::slice::from_ref(&mail.thread_id))
+            .await
+            .unwrap()
+    );
+    assert!(fx
+        .state
+        .store
+        .dirty_assessment_threads(&fx.account, None)
+        .await
+        .unwrap()
+        .contains(&mail.thread_id));
+}
+
+#[tokio::test]
+async fn idle_assessment_projection_completes_while_a_writer_is_held() {
+    let mut fx = Fixture::new().await;
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(
+        mxr_store::Store::new(&dir.path().join("idle-projection.db"))
+            .await
+            .unwrap(),
+    );
+    let account = fx
+        .state
+        .store
+        .get_account(&fx.account)
+        .await
+        .unwrap()
+        .unwrap();
+    let inbox = fx
+        .state
+        .store
+        .list_labels_by_account(&fx.account)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|label| label.id == fx.inbox)
+        .unwrap();
+    store.insert_account(&account).await.unwrap();
+    store.upsert_label(&inbox).await.unwrap();
+    Arc::get_mut(&mut fx.state).unwrap().store = store.clone();
+    let mail = inbound(&fx, "sam@studio.example", false).await;
+    let expected = membership(&fx, &mail.thread_id).await;
+    let tx = store.writer().begin_with("BEGIN IMMEDIATE").await.unwrap();
+    let actual = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        membership(&fx, &mail.thread_id),
+    )
+    .await
+    .expect("settled mode membership must not wait for the SQLite writer");
+    assert_eq!(actual, expected);
+    tx.rollback().await.unwrap();
+}

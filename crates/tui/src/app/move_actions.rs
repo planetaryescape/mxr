@@ -51,6 +51,7 @@ pub(crate) fn chip_label(item: &ArrivalItemData) -> &'static str {
         Some(mode) => mode.name(),
         None => match item.bucket {
             ArrivalBucketData::Spam => "Spam",
+            ArrivalBucketData::Trash => "Trash",
             ArrivalBucketData::ScreenedOut => "Screened out",
             _ => "Sorting",
         },

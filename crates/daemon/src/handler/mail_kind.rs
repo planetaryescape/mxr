@@ -358,6 +358,7 @@ pub(super) fn looks_automated(email: &str) -> bool {
 /// Everything about one message and its sender that decides its kind.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct KindSignals<'a> {
+    pub assessment: Option<&'a mxr_core::assessment::MailAssessment>,
     pub evidence: &'a mxr_core::mail_evidence::MailEvidence,
     pub reply_request: bool,
     pub recipients: usize,
@@ -392,6 +393,7 @@ pub(super) struct Classification {
 /// response (and thereby clear a waiting timer).
 pub(super) fn human_response(signals: &KindSignals<'_>) -> bool {
     let automatic = classify(&KindSignals {
+        assessment: None,
         moved: None,
         decision: None,
         treatment: None,
@@ -408,6 +410,7 @@ pub(super) fn human_response(signals: &KindSignals<'_>) -> bool {
 pub(super) fn requires_reply(signals: &KindSignals<'_>) -> bool {
     signals.reply_request
         && classify(&KindSignals {
+            assessment: None,
             moved: None,
             decision: None,
             treatment: None,
@@ -423,6 +426,34 @@ enum MessagePurpose {
     Informational,
     BillingDocument,
     Unknown,
+}
+
+pub(super) fn observed_facts(signals: &KindSignals<'_>) -> mxr_core::assessment::AssessmentFacts {
+    mxr_core::assessment::AssessmentFacts {
+        sender_shape: if no_reply_address(signals.email) {
+            "no-reply address"
+        } else if role_address(signals.email) {
+            "role address"
+        } else if address_hint(signals.email).is_some() {
+            "notifying or list address"
+        } else {
+            "person-like address"
+        }
+        .into(),
+        has_list_id: signals.has_list_id,
+        has_unsubscribe: signals.has_unsubscribe,
+        auto_generated: signals.evidence.auto_generated,
+        bulk: signals.evidence.bulk,
+        templated_sender: signals.sender.templated,
+        written_to: signals.written_to || signals.sender.wrote_to,
+        body_cached: signals.evidence.text.is_some(),
+        recipients: signals.recipients,
+        addressed: signals.addressed,
+    }
+}
+
+pub(super) fn unknown_purpose(signals: &KindSignals<'_>) -> bool {
+    purpose_evidence(signals).purpose == MessagePurpose::Unknown
 }
 
 struct PurposeEvidence {
@@ -924,6 +955,24 @@ pub(super) fn directed_to_owner(
 }
 
 pub(super) fn classify(signals: &KindSignals<'_>) -> Classification {
+    if let Some(assessment) = signals.assessment {
+        let described = super::assessments::describe(assessment);
+        return Classification {
+            kind: match described.kind {
+                SenderKindData::People => SenderKind::Person,
+                SenderKindData::Reading => SenderKind::List,
+                SenderKindData::PaperTrail => SenderKind::Automated,
+                SenderKindData::ScreenedOut => SenderKind::Denied,
+            },
+            rule: described.rule,
+        };
+    }
+    if signals.decision == Some(ScreenerDisposition::Deny) {
+        return Classification {
+            kind: SenderKind::Denied,
+            rule: KindRuleData::Decision,
+        };
+    }
     if let Some(kind) = signals.moved {
         return Classification {
             kind,
@@ -1028,6 +1077,7 @@ fn reason(signals: &KindSignals<'_>, classification: Classification) -> String {
         ""
     };
     match classification.rule {
+        KindRuleData::Fallback => "No rule decided".into(),
         KindRuleData::Decision => match classification.kind {
             SenderKind::Person => "you marked this sender as a person",
             SenderKind::List => "you moved this sender to Reading",
@@ -1082,6 +1132,7 @@ fn reason(signals: &KindSignals<'_>, classification: Classification) -> String {
 /// The rule in one word, for an arrival's line: "→ Updates · automated".
 pub(super) const fn rule_tag(rule: KindRuleData) -> &'static str {
     match rule {
+        KindRuleData::Fallback => "not sure",
         KindRuleData::Decision => "chosen",
         KindRuleData::Delivery => "delivery",
         KindRuleData::Invite => "invite",
@@ -1117,6 +1168,9 @@ pub(super) fn describe_classified(
     signals: &KindSignals<'_>,
     classification: Classification,
 ) -> MailKindData {
+    if let Some(assessment) = signals.assessment {
+        return super::assessments::describe(assessment);
+    }
     MailKindData {
         kind: classification.kind.to_data(),
         rule: classification.rule,
@@ -1134,6 +1188,7 @@ mod tests {
 
     fn signals(email: &str) -> KindSignals<'_> {
         KindSignals {
+            assessment: None,
             evidence: Lazy::force(&EMPTY_EVIDENCE),
             reply_request: false,
             recipients: 1,

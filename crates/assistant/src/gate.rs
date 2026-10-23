@@ -62,6 +62,7 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_category_rule", Rule::PreviewToken),
     ("mxr_category_undo", Rule::Always),
     ("mxr_category_why", Rule::Read),
+    ("mxr_classify_report", Rule::Read),
     ("mxr_copy_draft_to_provider", Rule::Confirm),
     ("mxr_corrections", Rule::Read),
     ("mxr_delete_draft", Rule::Confirm),
@@ -131,6 +132,7 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_update_draft", Rule::Always),
     ("mxr_updates_digest", Rule::Read),
     ("mxr_updates_let_go_preview", Rule::Read),
+    ("mxr_why", Rule::Read),
     ("mxr_workspace", Rule::Read),
 ];
 
@@ -262,6 +264,8 @@ mod tests {
     #[test]
     fn reads_run_and_unknown_tools_wait() {
         assert_eq!(classify("mxr_search", &json!({"query": "x"})), Gate::Run);
+        assert_eq!(classify("mxr_classify_report", &json!({})), Gate::Run);
+        assert_eq!(classify("mxr_why", &json!({"message_id": "a"})), Gate::Run);
         assert_eq!(
             classify("mxr_new_thing", &json!({})),
             Gate::Approve { preview: None }

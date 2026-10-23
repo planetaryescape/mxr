@@ -17,6 +17,8 @@ pub(crate) enum HandlerError {
     /// string-sniffed into `Internal`.
     #[error("{0}")]
     InvalidRequest(String),
+    #[error("Classification pending: this email is still sorting")]
+    ClassificationPending,
     #[error("Draft revision conflict: expected {expected:?}, current {current:?}; unsent edits were not saved")]
     DraftConflict {
         expected: Option<i64>,
@@ -67,6 +69,10 @@ impl HandlerError {
     /// substring classifier in `Response::error`.
     pub(crate) fn into_response(self) -> Response {
         match self {
+            Self::ClassificationPending => Response::Error {
+                message: self.to_string(), kind: IpcErrorKind::InvalidRequest,
+                code: "classification_pending".into(), retryable: true, details: None,
+            },
             Self::RemoteResponse(response) => *response,
             Self::PortableDraft => Response::Error {
                 message: self.to_string(), kind: IpcErrorKind::InvalidRequest,

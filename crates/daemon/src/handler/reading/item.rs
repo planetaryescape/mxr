@@ -4,7 +4,7 @@
 use super::sources::Sources;
 use super::{ensure_items, item_data, item_key, parse_item_key, Context, Issue};
 use crate::handler::places::AccountKinds;
-use crate::handler::{mail_kind, HandlerError, HandlerResult};
+use crate::handler::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::Utc;
 use mxr_core::id::{AccountId, MessageId};
@@ -64,8 +64,7 @@ pub(super) fn article_data(
     })
 }
 
-/// The issue behind an item key, with its classification when it is in
-/// the inbox, and its cached items.
+/// The issue behind an item key, its stored classification and cached items.
 pub(super) async fn load_item(
     state: &AppState,
     key: &str,
@@ -78,13 +77,9 @@ pub(super) async fn load_item(
         .ok_or_else(|| HandlerError::Message(format!("No message for Reading item {key}")))?;
     let mut issue = Issue::from_envelope(&envelope);
     if let Some(message) = state.store.place_message(&message_id).await? {
-        let kinds = AccountKinds::load(
-            state,
-            &issue.account_id,
-            std::slice::from_ref(&issue.sender),
-        )
-        .await?;
-        issue.kind = Some(mail_kind::describe(&kinds.signals(&message)));
+        let kinds =
+            AccountKinds::load(state, &issue.account_id, std::slice::from_ref(&message)).await?;
+        issue.kind = kinds.description(&message);
     }
     let rows = ensure_items(state, &[&issue])
         .await?

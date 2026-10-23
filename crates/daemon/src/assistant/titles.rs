@@ -657,6 +657,8 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
             "letting go of Updates",
         ),
         "mxr_arrivals" => v("Checking", "Checked", "check", "what arrived"),
+        "mxr_classify_report" => v("Checking", "Checked", "check", "your sorting report"),
+        "mxr_why" => v("Checking", "Checked", "check", "why this email is here"),
         "mxr_arrivals_list" => {
             let rest = match text(arguments, "bucket").as_deref() {
                 Some("messages") => "arrivals in Messages".to_string(),

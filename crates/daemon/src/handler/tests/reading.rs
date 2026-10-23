@@ -1360,3 +1360,66 @@ mod marginalia {
         assert!(!secrets.contains(TOKEN), "disconnecting clears the token");
     }
 }
+
+#[tokio::test]
+async fn an_archived_later_item_uses_its_stored_deciding_claim() {
+    let fx = Fixture::new().await;
+    let (id, _) = issue(
+        &fx,
+        ("Local-first Links", "links@links.example"),
+        "Local-first Links #41",
+        DIGEST_HTML,
+        Utc::now() - Duration::days(45),
+    )
+    .await;
+    fx.state
+        .store
+        .remove_message_label(&id, &fx.inbox, mxr_core::EventSource::User)
+        .await
+        .unwrap();
+    let key = format!("{id}:0");
+    // Loading the archived item initializes it without relying on an Inbox visit.
+    let ResponseData::ReadingItem { item } = request(
+        &fx,
+        Request::GetReadingItem {
+            item_key: key.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("item");
+    };
+    let policy = mxr_core::assessment::CLASSIFIER_POLICY_VERSION;
+    let mut stored = fx
+        .state
+        .store
+        .assessments(&fx.account, policy)
+        .await
+        .unwrap()
+        .remove(&id)
+        .unwrap();
+    assert!(
+        item.item.why.contains(&stored.deciding.reason),
+        "{}",
+        item.item.why
+    );
+    stored.deciding.reason = "stored Reading claim for the archived issue".into();
+    sqlx::query("UPDATE mail_assessments SET assessment_json = ? WHERE message_id = ? AND policy_version = ?")
+        .bind(serde_json::to_string(&stored).unwrap()).bind(id.as_str()).bind(policy)
+        .execute(fx.state.store.writer()).await.unwrap();
+    let ResponseData::ReadingItem { item } = request(
+        &fx,
+        Request::GetReadingItem {
+            item_key: key.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("item");
+    };
+    assert!(
+        item.item.why.contains(&stored.deciding.reason),
+        "{}",
+        item.item.why
+    );
+}

@@ -323,11 +323,13 @@ const COMMAND_EXAMPLES = {
     ],
   },
   classify: {
-    use: 'Grade how mxr sorts mail: per question (who sent it, which mode it goes to, whether it makes a to-do, whether it makes a record) how often today\'s rules match labelled scenarios, and every email they get wrong. Read-only. Only the demo mailbox carries labels. See [Measure how well mxr sorts](/guides/email-modes/#measure-how-well-mxr-sorts).',
+    use: 'Grade stored sender, home and record answers against labelled scenarios, and inspect each mismatch. Measure asks with per-kind precision and recall and field exact-match. Read-only. Only the demo mailbox carries labels. See [Measure how well mxr sorts](/guides/email-modes/#measure-how-well-mxr-sorts).',
     examples: [
       'mxr demo --no-tui',
+      'mxr classify report --limit 1000 --format json',
       'mxr classify eval',
       'mxr classify eval --set full',
+      'mxr classify eval --compare POLICY --format json',
       'mxr classify eval --set full --format json   # every mismatch',
       'mxr demo stop',
     ],

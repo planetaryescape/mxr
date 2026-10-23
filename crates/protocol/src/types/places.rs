@@ -34,6 +34,8 @@ pub enum SenderKindData {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum KindRuleData {
+    /// No purpose claim decided; a named home remains accessible.
+    Fallback,
     /// The user put this sender in a kind (a screener decision).
     Decision,
     /// The message is a delivery update.

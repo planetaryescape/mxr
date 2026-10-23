@@ -26,6 +26,7 @@ mod account;
 mod analytics;
 mod arrival_ledger;
 mod arrivals;
+mod assessments;
 mod assistant;
 mod auto_reminders;
 pub mod backup;
@@ -124,6 +125,7 @@ pub use arrival_ledger::{
     ArrivalCounts, ArrivalPlacement, ArrivalRow, Correction, NewCorrection, PendingArrival,
 };
 pub use arrivals::Arrival;
+pub use assessments::assessment_fingerprint;
 pub use assistant::{AssistantConversationRow, AssistantMessageRow};
 pub use auto_reminders::{DeskReminder, ReminderState, ReplyCandidate, TakenTimers};
 pub use calendar::CalendarInviteRecord;

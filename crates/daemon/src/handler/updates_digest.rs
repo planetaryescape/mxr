@@ -124,6 +124,7 @@ pub(super) struct DigestInputs<'a, Tz: TimeZone> {
     /// Open to-dos on the threads in view.
     pub todos: &'a [TodoRecord],
     pub deliveries: &'a [Delivery],
+    pub delivery_sources: &'a HashMap<mxr_core::DeliveryId, HashSet<MessageId>>,
     pub cuts: &'a Cuts,
     pub scope: &'a Scope,
     pub last_seen: Option<DateTime<Utc>>,
@@ -788,7 +789,7 @@ fn parcel_label(status: DeliveryStatus) -> &'static str {
 
 /// A parcel as a tracker line, or nothing once it has left: delivered a
 /// day ago, quiet before this digest, or a problem older than a week.
-fn parcel_line<Tz: TimeZone>(
+pub(super) fn parcel_line<Tz: TimeZone>(
     delivery: &Delivery,
     previous_cut: DateTime<Utc>,
     todos: &[TodoRecord],
@@ -1036,6 +1037,10 @@ where
         .iter()
         .filter(|item| in_scope(item, inputs.scope))
     {
+        // Delivery messages are folded into their existing parcel tracker.
+        if item.message.is_delivery {
+            continue;
+        }
         if let Some(window_end) = item.fact.window.as_ref().filter(|w| w.until < now) {
             expired.push((item, window_end.until, window_end.kind.label()));
             continue;
@@ -1081,7 +1086,27 @@ where
                         .as_ref()
                         .is_none_or(|account| &d.account_id == account)
                 })
-                .filter_map(|d| parcel_line(d, window.previous, inputs.todos, now, tz)),
+                .filter_map(|d| {
+                    let mut line = parcel_line(d, window.previous, inputs.todos, now, tz)?;
+                    let held: Vec<_> = inputs
+                        .items
+                        .iter()
+                        .filter(|item| {
+                            item.message.is_delivery
+                                && item.message.account_id == d.account_id
+                                && inputs
+                                    .delivery_sources
+                                    .get(&d.id)
+                                    .is_some_and(|ids| ids.contains(&item.message.id))
+                        })
+                        .collect();
+                    line.message_ids = held.iter().map(|item| item.message.id.clone()).collect();
+                    line.count = super::now::count(held.len());
+                    if let Some(item) = held.last() {
+                        line.why = format!("Here because: {}.", item.reason);
+                    }
+                    Some(line)
+                }),
         );
     }
     let mut suggested: HashSet<(AccountId, String)> = HashSet::new();

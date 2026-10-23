@@ -71,6 +71,15 @@ pub(super) fn place_message(
     shape: super::conversation_shape::ShapeConfig,
     spam: bool,
 ) -> ArrivalPlacement {
+    if let Some(assessment) = senders.assessments.get(&message.id) {
+        return ArrivalPlacement {
+            message_id: message.id.clone(),
+            mode: assessment.home.clone(),
+            rule: assessment.deciding.rule.clone(),
+            reason: assessment.deciding.reason.clone(),
+            not_sure: assessment.not_sure.clone(),
+        };
+    }
     let placed =
         |mode: &str, rule: String, reason: String, not_sure: Option<String>| ArrivalPlacement {
             message_id: message.id.clone(),
@@ -179,22 +188,14 @@ async fn place_all(
             sorted.sent.push(message_id.clone());
             continue;
         }
+        if !senders.assessments.contains_key(message_id) {
+            continue;
+        }
         sorted.placements.push(place_message(
             message, thread, &senders, &is_self, shape, *spam,
         ));
     }
     Ok(sorted)
-}
-
-/// Where these emails (id, thread, in Spam) go now, placed live by today's
-/// rules without reading or writing their arrivals rows: for mail that has
-/// none, such as history older than 30 days when the account first synced.
-pub(super) async fn place_live(
-    state: &AppState,
-    account_id: &AccountId,
-    wanted: &[(MessageId, ThreadId, bool)],
-) -> Result<Vec<ArrivalPlacement>, HandlerError> {
-    Ok(place_all(state, account_id, wanted).await?.placements)
 }
 
 /// Re-evaluate only the requested cached mail. This is a read projection,
@@ -226,6 +227,12 @@ pub(super) async fn effective_rows(
             row.reason = Some(placement.reason);
             row.rule = Some(placement.rule);
             row.not_sure = placement.not_sure;
+        } else {
+            row.effective = "sorting".into();
+            row.reason = Some("Still sorting".into());
+            row.rule = None;
+            row.not_sure = None;
+            row.moved = false;
         }
     }
     Ok(rows)
@@ -628,7 +635,15 @@ where
         elapsed_ms = started.elapsed().as_secs_f64() * 1000.0,
         "arrivals composed"
     );
+    let ResponseData::ClassifyReport { report } =
+        super::classifier_report::report(state, account_id, 1000).await?
+    else {
+        return Err(HandlerError::from(
+            "unexpected classifier report".to_string(),
+        ));
+    };
     Ok(ArrivalsData {
+        classification_report: Some(report),
         generated_at: now,
         since,
         until,
@@ -673,11 +688,18 @@ async fn not_sure_today<Tz: TimeZone>(
                 .filter(|name| !name.trim().is_empty())
                 .unwrap_or_else(|| row.sender_email.clone());
             Some(NotSureData {
-                line: format!(
-                    "{name} copied you on \"{}\". {} for now.",
-                    row.subject.trim(),
-                    mode.name()
-                ),
+                line: if row.not_sure.as_deref() == Some("fallback") {
+                    format!(
+                        "{name}: {}",
+                        row.reason.as_deref().unwrap_or("No rule decided")
+                    )
+                } else {
+                    format!(
+                        "{name} copied you on \"{}\". {} for now.",
+                        row.subject.trim(),
+                        mode.name()
+                    )
+                },
                 account_id: row.account_id,
                 message_id: row.message_id,
                 thread_id: row.thread_id,
@@ -728,6 +750,7 @@ fn bucket_of(effective: &str) -> ArrivalBucketData {
 fn chip(bucket: ArrivalBucketData, reason: Option<&str>, moved: bool) -> String {
     match bucket {
         ArrivalBucketData::Spam => "In Spam".to_string(),
+        ArrivalBucketData::Trash => "In Trash".to_string(),
         ArrivalBucketData::ScreenedOut => "Screened out".to_string(),
         ArrivalBucketData::Sorting => "Still sorting".to_string(),
         _ => {

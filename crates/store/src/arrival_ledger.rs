@@ -701,7 +701,9 @@ impl super::Store {
             "SELECT {} FROM arrivals a JOIN messages m ON m.id = a.message_id
              WHERE a.account_id IN (SELECT value FROM json_each(?1))
                AND a.first_seen_at >= ?2 AND a.first_seen_at < ?3
-               AND a.not_sure IS NOT NULL
+               AND (a.not_sure IS NOT NULL OR EXISTS (
+                   SELECT 1 FROM mail_assessments assessment WHERE assessment.message_id = a.message_id
+                   AND assessment.policy_version = 'r2-1' AND json_extract(assessment.assessment_json, '$.not_sure') IS NOT NULL))
              ORDER BY a.first_seen_at, a.message_id",
             row_columns()
         );

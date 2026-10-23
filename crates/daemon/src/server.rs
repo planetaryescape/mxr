@@ -321,6 +321,13 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
         });
         state.register_wrapped_warmer(wrapped_warmer_handle);
 
+        // Materialize history too; evaluation never needs to open a mode first.
+        let assessment_state = state.clone();
+        tokio::spawn(async move {
+            let shutdown_rx = assessment_state.shutdown_receiver();
+            crate::handler::assessments::reconciler_loop(assessment_state, shutdown_rx).await;
+        });
+
         // Keeps recently read Now/mode views rebuilt after mail changes.
         // Fire-and-forget like the prune loops: a lost pass costs nothing.
         let mode_cache_state = state.clone();

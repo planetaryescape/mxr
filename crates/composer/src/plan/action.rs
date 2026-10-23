@@ -56,7 +56,7 @@ pub fn resolve(
     // A cursor with nothing selected, or only blank space, is no selection.
     let selection = selection.filter(|range| !text[range.clone()].trim().is_empty());
     let typed = !text.trim().is_empty();
-    let action = explicit.unwrap_or(match (typed, selection.is_some()) {
+    let action = explicit.unwrap_or_else(|| match (typed, selection.is_some()) {
         (false, _) => AssistActionData::Write,
         (true, false) => AssistActionData::Finish,
         (true, true) => AssistActionData::EditSelection,

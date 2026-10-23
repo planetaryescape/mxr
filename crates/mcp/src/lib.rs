@@ -3115,7 +3115,7 @@ mod tests {
             ..
         }] = requests.as_slice()
         else {
-            panic!("expected one ComposeAssist, got {requests:?}");
+            unreachable!("expected one ComposeAssist, got {requests:?}");
         };
         assert_eq!(target, &message_id);
         assert!(!all);
@@ -3196,7 +3196,7 @@ mod tests {
             ..
         }) = asked.last()
         else {
-            panic!("expected ComposeAssist last, got {asked:?}");
+            unreachable!("expected ComposeAssist last, got {asked:?}");
         };
         assert_eq!(message_id, &requester.newest_inbound, "not my own reply");
         assert!(text.is_empty(), "nothing typed means write");

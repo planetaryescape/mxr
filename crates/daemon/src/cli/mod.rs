@@ -1558,8 +1558,10 @@ pub enum Command {
         /// Has no effect on a real send.
         #[arg(long, requires = "check")]
         no_llm: bool,
+        // Boxed: the assist flags would otherwise make `Compose` the largest
+        // variant by far.
         #[command(subcommand)]
-        action: Option<ComposeAction>,
+        action: Option<Box<ComposeAction>>,
     },
     /// Reply to a message
     Reply {

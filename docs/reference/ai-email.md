@@ -108,7 +108,7 @@ blocking navigation.
 
 ## Track 1: Pre-Send Safety
 
-One composable pipeline, six checks. Lives in `crates/safety/` and is invoked
+One composable pipeline, seven checks. Lives in `crates/safety/` and is invoked
 from CLI, TUI compose confirm, `SendDraft`, `SendStoredDraft`, and the
 scheduled-send flusher through `enforce_draft_safety_with_override()` in
 `crates/daemon/src/handler/mutations.rs`. The single shared entry point is
@@ -139,6 +139,14 @@ through it.
   strict JSON of explicit asks with `evidence_msg_id`, validates every id is
   from the retrieved thread, then warns when asks are unaddressed. Lives in
   `handler/safety_llm.rs`. Disabled LLM degrades to Info, not silent pass.
+- **Unfilled Gap** — pure scan of the subject and raw body (quotes and
+  signature included) for `[[?:`, the marker writing help leaves for what only
+  the user can decide (blueprint 34, D159). Blocker naming each gap ("2 gaps
+  left: the date, the price"). Unlike the other blockers it has no override:
+  `enforce_draft_safety_with_override()` refuses even with a token, and
+  `CheckDraftSafety` mints none for a draft that has one. A scheduled send with
+  a gap keeps the draft and clears the schedule like any blocker. Lives in
+  `crates/safety/src/gaps.rs`.
 
 ### Failure-mode invariants
 

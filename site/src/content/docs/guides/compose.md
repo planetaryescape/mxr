@@ -300,9 +300,11 @@ fix or override token before the `s` (send) key is enabled.
 
 ## Pre-send safety
 
-Every send runs through a [six-check safety pipeline](/guides/pre-send-safety/):
+Every send runs through a [seven-check safety pipeline](/guides/pre-send-safety/):
 wrong recipient, missing attachment, reply-all sanity, PII/secrets, tone
-mismatch, and answer-coverage. The pipeline runs in three places:
+mismatch, answer-coverage, and unfilled gaps (a `[[?: …]]` left by
+[writing help](/guides/llm-features/#draft-for-me-builds-on-what-you-typed) blocks
+the send until you fill it in). The pipeline runs in three places:
 
 - The TUI send-confirm modal after `Ctrl-x` (changed draft).
 - The CLI on `mxr send DRAFT_ID` (gates the send) and `mxr send
@@ -520,7 +522,7 @@ full state machine.
 ```text
 "Draft a polite decline to the latest message from acme.com using my
 prior tone. Don't send — write to a draft so I can review with `mxr
-drafts`. Use `mxr draft-assist` for the body."
+drafts`. Use `mxr compose assist` for the body."
 ```
 
 ```text
@@ -531,7 +533,7 @@ days. Use `mxr stale --mine --older-than-days 7 --format ids | xargs
 
 ## See also
 
-- [Pre-send safety](/guides/pre-send-safety/) — the six checks every
+- [Pre-send safety](/guides/pre-send-safety/) — the seven checks every
   draft passes through, plus the override-token flow
 - [Crash-safe drafts](/guides/crash-safe-drafts/)
 - [LLM features — draft assist](/guides/llm-features/)

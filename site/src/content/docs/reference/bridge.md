@@ -441,6 +441,8 @@ emails from sender" and deep-link directly into the matching thread.
 | `POST` | `/mail/threads/draft-assist` | `{thread_id, instruction}` → suggested reply body plus model/humanizer/voice metadata |
 | `POST` | `/mail/drafts/new` | Start an LLM-backed draft from a prompt |
 | `POST` | `/mail/drafts/refine` | Refine draft body with model knobs |
+| `POST` | `/mail/compose/assist` | `{draft, text, selection?, action?, instruction?, adjust?}` → `{proposal}`: writing help for the text in a compose box. `draft` is `{kind: "stored", draft_id}`, `{kind: "reply", message_id, all}`, `{kind: "forward", message_id, to}` or `{kind: "new", account_id, to, subject}`. Changes nothing |
+| `POST` | `/mail/compose/apply` | `{proposal_id, draft_id}` → `{draft_id, text_hash}`: write a proposal into a stored draft's text region; 422 if that text changed since the proposal |
 | `POST` | `/mail/humanizer/score` | Score text against your voice profile |
 | `POST` | `/mail/humanizer/rewrite` | Rewrite toward human-like / on-voice output |
 

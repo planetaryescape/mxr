@@ -12,6 +12,7 @@ in mxr uses it. Each feature has its own guide:
 |---|---|---|
 | `mxr summarize` | this page | thread → Markdown summary |
 | `mxr draft-assist` | this page | thread + instruction → draft body in your voice |
+| `mxr compose assist` | [this page](#draft-for-me-builds-on-what-you-typed) | what you typed + the conversation → a proposal that keeps your sentences, fills in what's missing and shows the diff |
 | `mxr draft eval` | [this page](#check-how-close-drafts-get) | replay your recent replies (`--set mine`), or grade drafts on the labelled set (`--set quick`) |
 | `mxr send --check` answer coverage | [Pre-send safety](/guides/pre-send-safety/#answer-coverage) | extract asks from thread, judge whether the draft addresses each |
 | `mxr send --check` commitment candidates | [Forgotten work](/guides/forgotten-work/#commitments-promises-you-made) | extract "I'll send the deck Friday" promises from drafts |
@@ -349,6 +350,74 @@ request and renders the result in the **AI overview** collapsible above the
 thread. Summarize lost its `y` key to the thread briefing, `B`; pressing `y`
 says so until 0.6.180.
 
+## Draft for me builds on what you typed
+
+`mxr compose assist` asks for writing help and prints a proposal. It changes
+nothing in your draft until you accept it with `mxr compose apply`. What it
+does depends on what you've typed:
+
+| Your text | What happens |
+|---|---|
+| Nothing | Writes the reply, forward note or new message from the conversation and your instruction. |
+| Some text | Finishes it. Your sentences stay word for word. It adds a greeting and sign-off the way you write them, an answer to each question in the message you haven't covered, and a closing line if you'd write one. What only you can decide comes back as a `[[?: …]]` gap. |
+| Some text, part of it selected | Rewrites only the selected part and returns the whole text with the rest exactly as it was. |
+
+`--polish` fixes typos and grammar and tightens what you typed without adding
+anything. `--shorter`, `--warmer`, `--formal` and `--proofread` adjust
+whichever action runs, `--instruction` says what you want said, and
+`--write`, `--finish` or `--polish` overrides the choice.
+
+```bash
+# Finish a reply you've started. --text is a file, or - for stdin.
+mxr compose assist --reply-to MESSAGE_ID --text - <<< "Thursday works. numbers by wed"
+
+# Work on a stored draft; its text (without signature) is read for you.
+mxr compose assist --draft DRAFT_ID --instruction "mention the invoice"
+
+# Change only part of the text, as byte offsets between whole characters.
+mxr compose assist --draft DRAFT_ID --select 16..31 --warmer
+
+# Accept the proposal. Proposal ids are in the output; they last 30 minutes.
+mxr compose apply PROPOSAL_ID --draft DRAFT_ID
+```
+
+The other targets are `--forward MESSAGE_ID --to ADDRESS` and `--new
+--account ACCOUNT --to ADDRESS --subject SUBJECT`. It makes one model call
+and takes as long as the model does; the stage lines ("Reading the
+conversation", "Writing with gemma4", "Checking") go to stderr.
+
+The readable output shows your words plain, what was added in `{+…+}` and
+what was removed in `[-…-]`, then the gaps still to fill and which of your
+sentences changed or were dropped, counted from 1 (sentences split at `.`,
+`!`, `?` and line breaks). `--format json` prints the whole proposal:
+`proposal_id`, `action`, `base` (SHA-256 of the text it was made from, ignoring
+trailing blank space), `text`, `changes`, `gaps` (each with its byte range in
+`text`), `provenance`, `yours_changed` (positions counted from 0) and
+`composer_version`.
+
+The daemon checks the model's answer before you see it:
+
+- A signature or forwarded-message header the model wrote is removed. Yours
+  stay untouched.
+- For a selection, any change outside it is put back.
+- A number, date or amount that appears in neither the conversation, your
+  text nor your instruction becomes a gap that shows the guess, as in
+  `[[?: amount, the draft said £40]]`.
+- A draft that still has a gap [can't be sent](/guides/pre-send-safety/#unfilled-gap).
+
+`mxr compose apply` writes the proposal into the stored draft's text, keeping
+the signature and the forward header, and only while that text still matches
+what the proposal was made from. If you kept typing, it refuses and writes
+nothing, and you ask again. The daemon keeps proposals in memory for 30
+minutes, so a restart loses them. The web app applies a proposal to the text
+in its editor itself; `compose apply` is for the CLI, the TUI and agents, and
+the MCP tool `mxr_draft_assist` asks for the same proposal.
+
+The privacy rules are the other draft commands'. A cloud model sees your
+other emails only with `llm.allow_cloud_relationship_data`, and typed text
+that an earlier suggestion wrote from that history is refused for a cloud
+model without it. `mxr draft-assist` and `mxr draft refine` still work.
+
 ## What the prompts look like
 
 The summarizer asks for concise Markdown that names who said what,
@@ -368,9 +437,14 @@ or a refine) gives the model:
 - **The conversation** as ME and THEM turns with dates, the message being
   answered marked, newest turns kept when it's too long for the model's
   context window.
+- **What you've typed**, when there is any, in a block of its own inside
+  the untrusted-mail markers (a reply you started can quote the email you're
+  answering), and the selected part in a second block. Your instruction
+  stays outside the markers.
 - **The task**: your instruction, the tone you picked (or "match my
-  examples"), and a length in words taken from how much you usually write to
-  this person.
+  examples"), a length in words taken from how much you usually write to
+  this person, and one line for each of `--shorter`, `--warmer`, `--formal`
+  and `--proofread` you asked for.
 
 Your instruction is optional for a reply: the draft answers what the
 message asks, and anything only you can decide comes back as a
@@ -395,7 +469,8 @@ match, length ratio, and numbers the draft invented.
 
 `--set quick` drafts the labelled drafting set instead: 40 synthetic cases,
 each a short thread, a few emails in a sample voice, and sometimes text
-already typed or an instruction. Every draft is graded against what its case
+already typed (finished the way `mxr compose assist` finishes it) or an
+instruction. Every draft is graded against what its case
 required. The typed sentences must survive, each question must be answered,
 facts nobody has given must be left as `[[?: …]]` gaps, no number may appear
 that no input carries, the length must fall in the case's band, and there

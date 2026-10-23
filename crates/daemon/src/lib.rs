@@ -1109,7 +1109,7 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
         }) => {
             crate::server::ensure_daemon_running().await?;
             if let Some(action) = action {
-                commands::compose_assist::run(action, format).await?;
+                commands::compose_assist::run(*action, format).await?;
             } else {
                 let options = commands::mutations::ComposeOptions {
                     to,

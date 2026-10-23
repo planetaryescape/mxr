@@ -218,9 +218,23 @@ The quick set lists every mismatch with the scenario id, provider id, expected
 answer, actual answer and the rule that decided it. The full set can be wrong
 thousands of times, so its table groups mismatches into clusters (same
 scenario, question, expected and actual answer), biggest first, with one
-example each; `--format json` has every one. Home is the arrivals line's
-destination under today's rules; mail with no arrivals row is placed live by
-the same rules. Labels state what mxr should do, not what it does today, so a
+example each; `--format json` has every one. Home is the stored assessment used by the modes, arrivals and Inbox chips,
+including historical mail with no arrivals row. Evaluation never creates or
+repairs assessments: missing or stale answers count as `not_placed`. Startup and ingest
+reconcile historical mail in bounded thread pages. Unit fixtures that bypass
+ingest must explicitly call `assessments::reconcile_account` before grading.
+
+Bump `mxr_core::assessment::CLASSIFIER_POLICY_VERSION` whenever a judge or the
+resolver changes its answer. Matching policy and input fingerprints deliberately
+reuse the stored answer without judging again. Activation selects that version
+and bounded startup/ingest reconciliation; evaluation never repairs it. Old
+version rows remain available for explicit comparisons.
+
+`mxr classify report --limit 1000 --format json` counts stored fallbacks by
+home, sender kind, deciding rule and observed address/header/body facts. `mxr classify eval --compare POLICY`
+compares homes only when that policy version is retained locally. Coverage names compared emails, missing previous answers and pending current assessments. An
+unavailable pre-R2 version is reported as unavailable; source snapshots are
+not executed runtime history. Labels state what mxr should do, not what it does today, so a
 gap shows up as a mismatch.
 
 The full set also reports held-out accuracy on its own line, per question.

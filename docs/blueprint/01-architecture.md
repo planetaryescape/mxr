@@ -310,3 +310,18 @@ These are strict. Violations should be caught in code review:
 | Error handling | `thiserror` + `anyhow` | `thiserror` for typed errors in libraries, `anyhow` for application-level error propagation. |
 | Logging/tracing | `tracing` + `tracing-subscriber` | Structured logging with span support. Better than `log` for async daemon debugging. |
 | HTML to text | `html2text` | Built-in fallback for HTML→plain text conversion. Users can override with external tool (w3m, lynx). |
+
+## Stored home assessments keep projections consistent
+
+The daemon's `handler/assessments.rs` owns canonical home resolution. Core owns
+`MailAssessment`; store persists current and retained policy versions with
+message/account deletion cascades. Arrivals retain immutable first placement
+and first-seen history. Projections apply live inbox, snooze, done and expiry
+state over the stored home.
+
+Input fingerprints include complete thread observations and actual cached body
+and predecessor text values. A SQLite input revision rejects publication if an
+observed input changes during resolution. Assessment writes do not advance that
+revision. Startup and ingest initialize historical mail in bounded pages;
+projection loaders reconcile the threads they need. Evaluation and fallback
+reports only read stored answers and never initialize them.

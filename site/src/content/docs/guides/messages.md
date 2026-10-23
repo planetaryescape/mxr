@@ -23,6 +23,12 @@ The web app starts with the conversation list and no conversation open.
 Choose a person or group to read it. A link to a specific conversation opens
 that conversation directly. Opening Messages from navigation returns to the list.
 
+Possible personal mail with no deciding rule stays in Messages, marked **Not
+sure**, with the reason “No rule decided; Messages for now”. Inspect the stored
+answer with `mxr why MESSAGE_ID --format json`, or measure fallback clusters
+with `mxr classify report --format json`. A stored Messages home does not undo
+a snooze or a done mark.
+
 ## Four bands, closest people first
 
 | Band | Who is in it | Order |

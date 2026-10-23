@@ -206,5 +206,63 @@
     "measured_target_kib": 25166972,
     "measured_runtime_kib": 8084,
     "node_modules_kib": 393196
+  },
+  "round4": {
+    "recorded_at": "2026-10-23T23:59:51.298339+00:00",
+    "started_at": "2026-10-23T23:20:48Z",
+    "deadline": "2026-10-24T00:05:48Z",
+    "canonical_path": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b",
+    "branch": "t3/asks-r2c-to-do-classifier",
+    "source_checkpoint": "a80b75a95ead7282104cd198fc99a3c11b5a7a51",
+    "source_tree": "23fbaccdf081f788615ee1306377eeb5611891c9",
+    "starting_head": "f3fdeb21f2ccbe9a9da0a621cc7a979ec293ef0a",
+    "fresh_main": "5213b493b7e7be40584b7f0bdf8d6a76158cc458",
+    "merge_base": "544da5355fbaa11a7cf64e0fecbd844ca119623a",
+    "target": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b/target-cli",
+    "target_kib": 26841792,
+    "runtime_kib": 68356,
+    "web_dependencies_kib": 415432,
+    "limits": {
+      "target_gib": 60,
+      "run_gib": 100,
+      "workers": 4
+    },
+    "new_workers": 0,
+    "new_checkouts": 0,
+    "new_targets": 0,
+    "active_job": {
+      "queue_id": 252,
+      "session_id": 77251,
+      "command": "agent-work run -- env CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 NEXTEST_TEST_THREADS=4 RAYON_NUM_THREADS=4 scripts/cargo-test -p mxr --lib handler::tests::classify_eval_full::the_full_set_is_graded_on_the_whole_demo -- --ignored --nocapture",
+      "log": "r2c-round4-full50k.log",
+      "started_at": "2026-10-23T23:58:53Z",
+      "build": "18.71s; native test running; result pending"
+    },
+    "parent_owned_runtime": {
+      "daemon_pid": 60822,
+      "bridge_port": 22777,
+      "binary_source": "a866c1ad334809ee5c8767035f5dfd812758315b",
+      "vite_pid": 61080,
+      "web_port": 5573,
+      "released_pid": 29767,
+      "released_port": 21777,
+      "action": "untouched; no replacement/restart"
+    },
+    "checks": {
+      "quick_non_update": "10/10 PASS, build18.54s/tests29.50s, session50479; reviewed snapshot653 + Rust0b",
+      "core_natural_time": "32/32 PASS0.02s",
+      "todo": "109/109 PASS0.17s oncd37; latest110-test suite not rerun",
+      "site_astro": "209pages PASS3.14s; parent dependencies read-only sandbox; output/cache worker-owned",
+      "docs_validate": "PASS267paths",
+      "architecture": "PASS",
+      "rustfmt_touched": "PASS",
+      "full50k": "RUNNING; not passed",
+      "final_scoped_rust_gate": "NOT RUN round4",
+      "final_cli_build": "NOT RUN round4"
+    },
+    "integration": "freshmain5213 not integrated; parent owns integration preserving pushed history",
+    "real_mail": "prohibited/not used; no model calls; synthetic tests only",
+    "temporary_dependencies": "owned site/node_modules and runtime node_modules symlinks unlinked after sitebuild; parent targets untouched",
+    "report": "external evidence/r2c-worker-report.md; prior preserved r2c-worker-round3-report.md"
   }
 }

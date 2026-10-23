@@ -77,3 +77,20 @@ pub(crate) async fn write(
         .bind(answer.account_id.as_str()).bind(answer.message_id.as_str()).bind(encode_json(&current_ids)?).execute(&mut **tx).await?;
     Ok(())
 }
+
+impl crate::Store {
+    /// Resolve the exact canonical owner promise; ambiguous matches stay unlinked.
+    pub async fn asks_owner_commitment_id(
+        &self,
+        answer: &AskAssessment,
+        quote: &str,
+    ) -> Result<Option<String>, sqlx::Error> {
+        let ids: Vec<String> = sqlx::query_scalar("SELECT id FROM contact_commitments WHERE account_id = ? AND evidence_msg_id = ? AND direction = 'yours' AND what = ? AND id LIKE 'ask_%' LIMIT 2")
+            .bind(answer.account_id.as_str()).bind(answer.message_id.as_str()).bind(quote).fetch_all(self.reader()).await?;
+        Ok(if ids.len() == 1 {
+            ids.into_iter().next()
+        } else {
+            None
+        })
+    }
+}

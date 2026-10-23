@@ -307,7 +307,12 @@ where
     };
     let mut current_keys = Vec::new();
     for (_, detection) in detections {
-        let (record, placement) = stored_record(&frozen, row, detection, run_in_progress);
+        let (mut record, placement) = stored_record(&frozen, row, detection, run_in_progress);
+        if record.kind == "promise" {
+            record.commitment_id = store
+                .asks_owner_commitment_id(answer, &record.reason)
+                .await?;
+        }
         current_keys.push(record.reason.clone());
         record_outcome(
             &mut summary,
@@ -332,6 +337,7 @@ where
     Tz::Offset: std::fmt::Display,
 {
     let identity = detection.object_key.clone();
+    let calendar = detection.kind == TodoKind::Rsvp && detection.origin == Origin::Ics;
     let (mut record, placement) = build_record(cfg, row, detection, run_in_progress);
     let due_period = record.due_at.map_or_else(
         || {
@@ -347,10 +353,14 @@ where
     } else {
         record.kind.as_str()
     };
-    record.dedup_key = format!(
-        "asks|{kind_identity}|{}|{due_period}",
-        mxr_store::assessment_fingerprint(&identity)
-    );
+    record.dedup_key = if calendar {
+        format!("asks|rsvp|{}", mxr_store::assessment_fingerprint(&identity))
+    } else {
+        format!(
+            "asks|{kind_identity}|{}|{due_period}",
+            mxr_store::assessment_fingerprint(&identity)
+        )
+    };
     (record, placement)
 }
 

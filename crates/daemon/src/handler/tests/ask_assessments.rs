@@ -528,3 +528,148 @@ async fn stored_reply_debt_respects_questions_cancellation_and_nonreply_senders(
         );
     }
 }
+
+#[tokio::test]
+async fn already_done_correction_and_undo_mirror_the_stored_owner_promise() {
+    let fx = Fixture::new().await;
+    let mail = fx
+        .message(
+            &ThreadId::new(),
+            ME,
+            "alex@example.com",
+            Duration::minutes(5),
+            None,
+        )
+        .await;
+    body(&fx, &mail, "I'll send the report by tomorrow.").await;
+    crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
+    let rows = fx
+        .state
+        .store
+        .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
+        .await
+        .unwrap();
+    let row = rows.first().expect("owner promise task");
+    let commitment = row
+        .commitment_id
+        .as_deref()
+        .expect("canonical commitment link");
+    let ResponseData::TodoChange { change } = request(
+        &fx,
+        Request::CorrectTodo {
+            todo_id: row.id.clone(),
+            reason: mxr_protocol::TodoCorrectionData::AlreadyDone,
+            time_zone: None,
+            edits: vec![],
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!("correction");
+    };
+    assert_eq!(
+        fx.state
+            .store
+            .get_contact_commitment(commitment)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        mxr_store::CommitmentStatus::Resolved
+    );
+    request(
+        &fx,
+        Request::UndoTodoCorrection {
+            todo_id: row.id.clone(),
+            correction_id: change.correction_undo.unwrap(),
+            dry_run: false,
+        },
+    )
+    .await;
+    assert_eq!(
+        fx.state
+            .store
+            .get_contact_commitment(commitment)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        mxr_store::CommitmentStatus::Open
+    );
+    assert_eq!(
+        fx.state.store.get_todo(&row.id).await.unwrap().as_ref(),
+        Some(row)
+    );
+}
+
+#[tokio::test]
+async fn already_done_bill_files_archive_and_undo_removes_only_its_filing() {
+    let fx = Fixture::new().await;
+    let mail = fx
+        .message(
+            &ThreadId::new(),
+            "bills@example.com",
+            ME,
+            Duration::minutes(5),
+            None,
+        )
+        .await;
+    body(
+        &fx,
+        &mail,
+        "Invoice #B123 amount due £25 by 1 November 2026.",
+    )
+    .await;
+    crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
+    let rows = fx
+        .state
+        .store
+        .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
+        .await
+        .unwrap();
+    let row = rows.first().expect("bill task");
+    let ResponseData::TodoChange { change } = request(
+        &fx,
+        Request::CorrectTodo {
+            todo_id: row.id.clone(),
+            reason: mxr_protocol::TodoCorrectionData::AlreadyDone,
+            time_zone: None,
+            edits: vec![],
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!("correction");
+    };
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM records WHERE account_id = ? AND dedup_key = ?")
+            .bind(fx.account.as_str())
+            .bind(mxr_store::todo_record_dedup_key(&row.id))
+            .fetch_one(fx.state.store.reader())
+            .await
+            .unwrap();
+    assert_eq!(count, 1);
+    request(
+        &fx,
+        Request::UndoTodoCorrection {
+            todo_id: row.id.clone(),
+            correction_id: change.correction_undo.unwrap(),
+            dry_run: false,
+        },
+    )
+    .await;
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM records WHERE account_id = ? AND dedup_key = ?")
+            .bind(fx.account.as_str())
+            .bind(mxr_store::todo_record_dedup_key(&row.id))
+            .fetch_one(fx.state.store.reader())
+            .await
+            .unwrap();
+    assert_eq!(count, 0);
+    assert_eq!(
+        fx.state.store.get_todo(&row.id).await.unwrap().as_ref(),
+        Some(row)
+    );
+}

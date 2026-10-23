@@ -479,6 +479,11 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_todo_resolve", &["todo", "resolve", "--help"]),
         ("cli_help_todo_done", &["todo", "done", "--help"]),
         ("cli_help_todo_undo", &["todo", "undo", "--help"]),
+        ("cli_help_todo_correct", &["todo", "correct", "--help"]),
+        (
+            "cli_help_todo_undo_correction",
+            &["todo", "undo-correction", "--help"],
+        ),
         ("cli_help_todo_dismiss", &["todo", "dismiss", "--help"]),
         ("cli_help_todo_snooze", &["todo", "snooze", "--help"]),
         ("cli_help_todo_edit", &["todo", "edit", "--help"]),

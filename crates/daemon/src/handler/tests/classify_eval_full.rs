@@ -65,11 +65,16 @@ fn account(email: &str, name: &str) -> Account {
 /// post-sync time on a 12,000-message demo); and the demo's seeded rules and
 /// screener decisions, which `mxr demo` adds over IPC and the quick-set test
 /// does not have either (CONTRIBUTING says its numbers differ slightly).
+///
+/// The demo is dated, and its to-dos and records are found, as of today at
+/// noon UTC ([`pinned_now`]), not the moment the run starts.
 async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
     let personal = account(SELF_EMAIL, "Alex Demo");
     let work = account(WORK_EMAIL, "Alex Work");
+    let now = pinned_now();
     let personal_provider = Arc::new(
-        FakeProvider::with_demo_dataset(personal.id.clone(), total).with_page_size(PAGE_SIZE),
+        FakeProvider::with_demo_dataset_at(personal.id.clone(), total, now, &[])
+            .with_page_size(PAGE_SIZE),
     );
     let state = Arc::new(
         AppState::in_memory_with_sync_provider(personal.clone(), personal_provider.clone(), None)
@@ -77,8 +82,10 @@ async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
             .unwrap(),
     );
     state.store.insert_account(&work).await.unwrap();
-    let work_provider =
-        Arc::new(FakeProvider::with_demo_dataset(work.id.clone(), total).with_page_size(PAGE_SIZE));
+    let work_provider = Arc::new(
+        FakeProvider::with_demo_dataset_at(work.id.clone(), total, now, &[])
+            .with_page_size(PAGE_SIZE),
+    );
     state.add_sync_provider_for_test(work_provider.clone());
     // Both accounts are stored, so the registry holds both primaries.
     crate::state::load_account_address_registry(&state.store, &state.account_addresses)
@@ -107,6 +114,7 @@ async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
                 provider.as_ref(),
                 &outcome.upserted_message_ids,
                 outcome.has_more,
+                now,
             )
             .await;
             pages += 1;
@@ -125,6 +133,19 @@ async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
     state.store.refresh_contacts().await.unwrap();
     assert_directions_are_known(&state).await;
     (state, personal.id, work.id)
+}
+
+/// Today at 12:00 UTC. A demo bill is due a whole day ("due by Friday 24
+/// October") counted from its email's date and time, and stays open until
+/// that day ends. On the wall clock, which bills had already lapsed depended
+/// on the hour the job ran, and the snapshot moved with it. Pinned to a time
+/// of day, the same mail gets the same answers on any run.
+fn pinned_now() -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc::now()
+        .date_naive()
+        .and_hms_opt(12, 0, 0)
+        .expect("noon is a valid time")
+        .and_utc()
 }
 
 /// The correspondence history the classifier reads exists: every message has

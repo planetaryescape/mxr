@@ -1177,6 +1177,7 @@ pub(crate) async fn post_sync_fanout(
         provider.as_ref(),
         &upserted_message_ids,
         initial_backfill_in_progress,
+        chrono::Utc::now(),
     )
     .await;
 }
@@ -1186,13 +1187,14 @@ pub(crate) async fn post_sync_fanout(
 /// the second half of [`post_sync_fanout`], split out so `mxr classify eval
 /// --set full` can run exactly this over a 50,000-message demo. The indexing
 /// and profile building before it decide nothing the eval grades and are most
-/// of the time.
+/// of the time. The to-do and record scans run as of `now`; the eval pins it.
 pub(crate) async fn post_sync_classification(
     state: &AppState,
     account_id: &AccountId,
     provider: &dyn MailSyncProvider,
     upserted_message_ids: &[mxr_core::MessageId],
     initial_backfill_in_progress: bool,
+    now: chrono::DateTime<chrono::Utc>,
 ) {
     if let Err(error) =
         apply_rules_to_messages(state, account_id, provider, upserted_message_ids).await
@@ -1216,11 +1218,11 @@ pub(crate) async fn post_sync_classification(
 
     // To-dos and confirmations of them in the new mail. Local rules only;
     // windows apply here too, so a backfill page never floods To do.
-    crate::handler::todos::scan_messages(state, upserted_message_ids).await;
+    crate::handler::todos::scan_messages_at(state, upserted_message_ids, now).await;
 
     // Records in the new mail: receipts, orders, bookings, bills. Rules and
     // schema.org only; an order's later emails join its record.
-    crate::handler::records::scan_messages(state, upserted_message_ids).await;
+    crate::handler::records::scan_messages_at(state, upserted_message_ids, now).await;
 
     // Reading: extract the new newsletters and let go of what faded.
     if !initial_backfill_in_progress {

@@ -1807,6 +1807,8 @@ pub enum DraftSafetyIssueCode {
     AnswerCoverage,
     CommitmentCandidate,
     SendTimeNote,
+    /// A `[[?: …]]` gap from writing help is still in the draft.
+    UnfilledGap,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

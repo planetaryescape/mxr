@@ -116,7 +116,6 @@ pub(crate) fn assemble(case: &Case, today: &str) -> Assembled {
         target_words: words,
         instruction: case.instruction,
         subject: "",
-        mail_subject: "",
         help: Help {
             action: resolved.action,
             typed,

@@ -49,11 +49,8 @@ struct Gathered {
     counterparty: Option<Counterparty>,
     turns: Vec<Turn>,
     thread_id: Option<ThreadId>,
-    /// The subject of a new message, which the user wrote.
+    /// The subject line. Whoever wrote it, it reaches the model as data.
     subject: String,
-    /// A subject that came from mail (a stored forward's): data, not the
-    /// user's words.
-    mail_subject: String,
     /// The stored draft the request named, if it did.
     draft_id: Option<DraftId>,
     feature: LlmFeature,
@@ -148,7 +145,6 @@ pub(super) async fn compose_assist(
         target_words: words,
         instruction,
         subject: &gathered.subject,
-        mail_subject: &gathered.mail_subject,
         help: Help {
             action: resolved.action,
             typed: request.text,
@@ -182,7 +178,6 @@ pub(super) async fn compose_assist(
         instruction.to_string(),
         today.clone(),
         gathered.subject.clone(),
-        gathered.mail_subject.clone(),
     ]
     .join("\n");
     let checked = check::check_proposal(&ProposalInput {
@@ -301,15 +296,7 @@ async fn gather(state: &AppState, target: &DraftTargetData) -> Result<Gathered, 
                 // with the `forward` target instead.
                 (None, _) => {
                     let to = recipient.ok_or_else(no_recipient)?;
-                    // Only a message the user began has a subject they wrote;
-                    // a forward's came from the mail it forwards.
-                    let mut gathered = new_message(draft.account_id.clone(), &to, "");
-                    if draft.intent == mxr_core::DraftIntent::New {
-                        gathered.subject = draft.subject.trim().to_string();
-                    } else {
-                        gathered.mail_subject = draft.subject.trim().to_string();
-                    }
-                    gathered
+                    new_message(draft.account_id.clone(), &to, &draft.subject)
                 }
             };
             gathered.draft_id = Some(draft_id.clone());
@@ -377,7 +364,6 @@ async fn in_conversation(
         turns,
         thread_id: Some(thread_id),
         subject: String::new(),
-        mail_subject: String::new(),
         draft_id: None,
         feature: LlmFeature::DraftAssist,
     })
@@ -397,7 +383,6 @@ fn new_message(account_id: AccountId, to: &Address, subject: &str) -> Gathered {
         turns: Vec::new(),
         thread_id: None,
         subject: subject.trim().to_string(),
-        mail_subject: String::new(),
         draft_id: None,
         feature: LlmFeature::DraftNew,
     }

@@ -14,11 +14,11 @@ expression: "serde_json::to_string_pretty(&guide).unwrap()"
         "anchor": "The first topic list on a person's page",
         "id": "messages.topics",
         "key": {
-          "key": "]",
+          "key": "}",
           "verb": "next topic"
         },
         "seen": false,
-        "text": "Every conversation with this person, yours to answer first; ] and [ step through them."
+        "text": "Every conversation with this person, yours to answer first; } and { step through them."
       },
       {
         "anchor": "Got it, the first time it has focus",
@@ -79,11 +79,11 @@ expression: "serde_json::to_string_pretty(&guide).unwrap()"
         "verb": "new topic"
       },
       {
-        "key": "[",
+        "key": "{",
         "verb": "previous topic"
       },
       {
-        "key": "]",
+        "key": "}",
         "verb": "next topic"
       },
       {

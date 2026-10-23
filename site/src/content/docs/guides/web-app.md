@@ -253,8 +253,8 @@ shows as bold rows, but no list carries an unread badge.
 
 Updates (`g u`) is the briefing: the latest digest in Needs a look,
 Changed and Routine, one line per source, with what arrived since the cut
-below it. `A` lets go of the digest after a preview, `e` lets go of one
-source, `t` makes a to-do from a line, `K` tunes the source, `L` opens the
+below it. `E` lets go of the digest after a preview, `e` lets go of one
+source, `t` makes a to-do from a line, `P` tunes the source, `L` opens the
 line's link and `o` the email. **Let go of all** sits in the page header at
 every width; on a phone the sections stack under it. See
 [Read Updates as a briefing](/guides/updates/).
@@ -263,7 +263,7 @@ Rows stay quiet until you are on them. On every list (Now, Messages, To do,
 Updates, Reading, Archive and the Inbox) one row is lit, a lighter surface
 with a thin cyan line on its leading edge. The first row is lit when a page
 opens, and a lit row opens nothing. `j` and `k` move it at once, a click moves
-it with a short fade. The lit row's keys ("r reply", "Space done") take the
+it with a short fade. The lit row's keys ("r reply", "e done") take the
 place of its marks on the same line, and its time stays after them, so no row
 changes height as the lamp moves, and pointing at a row shows its keys
 without lighting it. The
@@ -309,8 +309,8 @@ segmented control (Receipts, Orders, Trips, Bills, Documents), filters (`g f`) a
 ledger by month with totals. Select a record for its card on the right: every
 field with its source on hover, the word "unchecked" beside a field mxr isn't sure of,
 its documents and the emails it came from. `,` fixes a field, `v` marks the
-card checked, `X` says it isn't a record, `p` opens the issuer's page, `[` and
-`]` step through years and `E` exports a CSV after its preview. On any
+card checked, `X` says it isn't a record, `p` opens the issuer's page, `{` and
+`}` step through years and `E` exports a CSV after its preview. On any
 conversation, `T` files it in Archive after showing the card. On a phone,
 Archive is in **More**, and a record's card opens full screen.
 See [Archive](/guides/archive/).

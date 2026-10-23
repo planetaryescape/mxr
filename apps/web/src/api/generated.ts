@@ -1719,7 +1719,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Move one email to a mode (X), or with sender set the sender's mode (K); To do and Archive add it there (dry_run previews) */
+        /** Move one email to a mode (X), or with sender set the sender's mode (P); To do and Archive add it there (dry_run previews) */
         post: operations["mail_message_move"];
         delete?: never;
         options?: never;
@@ -8375,7 +8375,7 @@ export interface components {
         MoveOutcomeData: {
             account_id: components["schemas"]["AccountId"];
             /**
-             * @description "Always for this sender? (K)": asked once after a per-email move to
+             * @description "Always for this sender? (P)": asked once after a per-email move to
              *     Messages, Updates or Reading.
              */
             ask_sender?: string | null;

@@ -96,7 +96,7 @@ fn the_page_follows_the_cursor() {
 }
 
 #[test]
-fn brackets_step_through_the_persons_topics() {
+fn braces_step_through_the_persons_topics() {
     let mut app = messages_app(true);
     let topics = app
         .mailbox
@@ -107,9 +107,11 @@ fn brackets_step_through_the_persons_topics() {
         .topics
         .clone();
     press(&mut app, KeyCode::Char(']'));
+    assert!(app.mailbox.messages_page.pending_person.is_none());
+    press(&mut app, KeyCode::Char('}'));
     let (_, topic) = app.mailbox.messages_page.pending_person.take().unwrap();
     assert_eq!(topic, Some(topics[1].thread_id.clone()));
-    press(&mut app, KeyCode::Char('['));
+    press(&mut app, KeyCode::Char('{'));
     let (_, topic) = app.mailbox.messages_page.pending_person.take().unwrap();
     assert_eq!(
         topic,
@@ -355,7 +357,7 @@ fn switching_topic_mid_countdown_sends_nothing() {
     let mut app = messages_app(true);
     let start = std::time::Instant::now();
     counting_down(&mut app, start);
-    press(&mut app, KeyCode::Char(']'));
+    press(&mut app, KeyCode::Char('}'));
     assert!(app.mailbox.messages_page.ack.is_none());
     app.tick_messages_ack(after_send_at(start));
     assert!(queued(&app).is_empty());

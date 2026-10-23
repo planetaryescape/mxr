@@ -68,7 +68,7 @@ test("the bill waits in Coming up with its act-by date, and rows are instruction
   await expect(now.getByRole("checkbox")).toBeVisible();
 });
 
-test("the lit row names Space done and o email, and the status strip says the same", async ({
+test("the lit row names e done and o email, and the status strip says the same", async ({
   page,
 }) => {
   await waitForRunway(page);
@@ -130,12 +130,12 @@ test("Escape closes an open email even when it was opened from a link", async ({
   expect(new URL(page.url()).searchParams.get("row")).toBe(todo.id);
 });
 
-test("Space ticks off, the light moves on, and u brings it back", async ({ page }) => {
+test("e ticks off, the light moves on, and u brings it back", async ({ page }) => {
   await waitForRunway(page);
   await openApp(page, "/todo");
   const spotify = row(page, "Fix payment for Spotify");
   await expect(spotify).toHaveAttribute("aria-current", "true");
-  await page.keyboard.press("Space");
+  await page.keyboard.press("e");
   // Done in To do, so the toast says where the email still is, or that it
   // was archived; a failed payment fixed files its record in Archive first.
   await expect(
@@ -181,7 +181,7 @@ test("letting go of the whole catch-up changes exactly what its preview listed",
   expect(before.todos.length).toBeGreaterThan(0);
   await openApp(page, "/todo?view=catchup");
   await expect(page.getByTestId("catchup-title")).toContainText("Catch up:");
-  await page.keyboard.press("A");
+  await page.keyboard.press("E");
   const dialog = page.getByTestId("let-go-all-dialog");
   const previewRows = dialog.getByTestId("let-go-preview-row");
   await expect(previewRows).toHaveCount(before.todos.length);

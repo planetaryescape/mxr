@@ -15,6 +15,9 @@ there, for example `mxr keys explain e --context todo`. The Raycast
 extension reads the same definition: its shortcuts are Cmd plus the web app's
 letter, except where Raycast keeps its own key. See [Raycast](/guides/raycast/#what-each-command-shows).
 
+When a default moves, the old key keeps a reminder for 30 releases: pressing
+it shows "<action> is now <key>" in the status bar and does nothing else.
+
 :::tip[The 10 keys that get you 80% of mxr]
 If you only learn ten, learn these:
 
@@ -301,11 +304,11 @@ mode.
 |-----|--------|
 | `j` / `k` | Next / previous row |
 | `Enter` | Open the row in its mode |
-| `e` | Done here (Messages for a person, To do for a due row; on the Updates card, as `A`) |
+| `e` | Done here (Messages for a person, To do for a due row; on the Updates card, as `E`) |
 | `r` | Reply to a person |
 | `o` | Open the email |
 | `t` | Make a to-do from the row's email |
-| `A` | Let go of the Updates digest on the card (previews first) |
+| `E` | Let go of the Updates digest on the card (previews first) |
 | `1`–`4` | Answer a new sender's question, on a row that asks one |
 | `Esc` | Dismiss the hint, when one shows |
 | `u` | Undo |
@@ -325,9 +328,9 @@ People as rows with their topics inside (`gm`). See
 | `b` | Reply later |
 | `s` | Pin or unpin the person |
 | `c` | New topic with this person |
-| `[` / `]` | Previous / next topic |
+| `{` / `}` | Previous / next topic |
 | `p` | The person's page |
-| `o` / `v` | The selected message as sent |
+| `o` | The selected message as sent |
 
 ## To do
 
@@ -336,7 +339,6 @@ Open To do with `gx`. See [Act on To dos](/guides/todo/).
 | Key | Action |
 |-----|--------|
 | `e` | Tick off the selected task |
-| `Space` (web) | Tick off or reopen the selected task |
 | `Enter` | Use the row's primary action |
 | `Z` (web) | Schedule when the task returns |
 | `,` (web) | Edit extracted fields |
@@ -362,12 +364,12 @@ cut below.
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Next / previous line |
-| `A` | Let go of the digest (previews first) |
+| `E` | Let go of the digest (previews first) |
 | `e` | Let go of this source |
 | `t` | This needs me: make a to-do from the line |
-| `p` | Pin or unpin the latest email from this source |
+| `s` | Pin or unpin the latest email from this source |
 | `S` | Preview a sender sweep |
-| `K` | Tune the source: every digest, changes only, muted, breakthrough (always first, with a suggested to-do) |
+| `P` | Tune the source: every digest, changes only, muted, breakthrough (always first, with a suggested to-do) |
 | `L` | Open the line's link (never a pay link) |
 | `o` | Open the email |
 | `u` | Undo |
@@ -385,23 +387,22 @@ reply don't apply here.
 | `b` | Put the item on Later |
 | `B` | Open the Later shelf (`Esc` goes back) |
 | `e` | Let go of the item |
-| `A` | Let go of everything shown (asks first) |
+| `E` | Let go of everything shown (asks first) |
 | `D` | Unsubscribe, with the evidence first |
 | `R` | The sender's own layout |
 | `o` | Open the email |
 | `t` | Make a to-do from the item's email |
-| `K` | Move the sender to another place |
+| `P` | Move the sender to another place |
 | `X` | Move this email to another mode |
-| `M` | Open the item in [Marginalia](/guides/marginalia/), sending it the first time |
+| `O` | Open the item in [Marginalia](/guides/marginalia/), sending it the first time |
 | `u` | Undo |
-| `h` | In the reader: highlight the paragraph at the top |
+| `"` | In the reader: highlight the paragraph at the top |
 | `H` | In the reader: list the item's highlights; `e` edits a note, `x` removes one (it asks first), `u` undoes |
 | `Esc` | In the reader: back to the edition |
 
 ## Archive
 
-The records lens (`ge`), with the answer box focused. Archive has no done:
-records stay, so `e` opens the email like `o`.
+The records lens (`ge`), with the answer box focused.
 
 | Key | Action |
 |-----|--------|
@@ -409,9 +410,9 @@ records stay, so `e` opens the email like `o`.
 | `j` / `k` | Next / previous record |
 | `y` / `Y` | Copy the reference / the amount |
 | `Enter` | Open the record's document (its PDF first) |
-| `o`, `e` | Open the email the record came from |
+| `o` | Open the email the record came from |
 | `p` | The issuer's page: every record from them |
-| `[` / `]` | Previous / next year |
+| `{` / `}` | Previous / next year |
 | `,` | Fix a field or confirm it (previews first) |
 | `v` | Mark the card checked: confirm every unchecked amount and date |
 | `X` | Not a record (the email is untouched) |
@@ -735,7 +736,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `* s` | Select starred |  |
 | `Esc` | Clear selection, then close |  |
 | `g f`, `Ctrl+F` | Filter this list | TUI Ctrl-f; Ctrl+F works on macOS only, where it is not the browser's Find |
-| `K` | Send everything from this sender to… |  |
+| `P` | Send everything from this sender to… |  |
 
 ### Reader
 
@@ -818,13 +819,13 @@ On a lit new sender, `1` to `4` answer its question; elsewhere they stay the num
 | `r` | Reply |  |
 | `t` | Make it a to-do |  |
 | `o` | Open the email |  |
-| `A` | Let go of the Updates digest… | Previews the daemon's dry run first; undo afterwards |
+| `E` | Let go of the Updates digest… | Previews the daemon's dry run first; undo afterwards |
 | `Esc` | Dismiss the hint |  |
 | `1` | New sender: keep in Messages |  |
 | `2` | New sender: keep in Updates |  |
 | `3` | New sender: keep in Reading |  |
 | `4` | New sender: block |  |
-| `K` | Send everything from this sender to… |  |
+| `P` | Send everything from this sender to… |  |
 
 ### Messages
 
@@ -843,10 +844,10 @@ On a lit new sender, `1` to `4` answer its question; elsewhere they stay the num
 | `b` | Reply later… |  |
 | `s` | Pin or unpin this person |  |
 | `c` | New topic with this person |  |
-| `[` | Previous topic |  |
-| `]` | Next topic |  |
+| `{` | Previous topic |  |
+| `}` | Next topic |  |
 | `p` | Go to the person page |  |
-| `o`, `v` | Show the message as sent |  |
+| `o` | Show the message as sent |  |
 | `g f` | Filter the people list: turn, unread, past your pace | Ctrl+f in the TUI opens the same picker; the web filters with g f because Ctrl+f is the browser's Find |
 | `⌘Enter / Ctrl+Enter` | Send, then the next person whose turn it is |  |
 | `Esc` | Dismiss the hint, or back to the people |  |
@@ -854,7 +855,7 @@ On a lit new sender, `1` to `4` answer its question; elsewhere they stay the num
 | `2` | New sender: keep in Updates |  |
 | `3` | New sender: keep in Reading |  |
 | `4` | New sender: block |  |
-| `K` | Send everything from this sender to… |  |
+| `P` | Send everything from this sender to… |  |
 
 ### To do
 
@@ -863,7 +864,7 @@ On a lit new sender, `1` to `4` answer its question; elsewhere they stay the num
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Do it: what the row's button says | Opens a link only when the sender passed the check; otherwise the email |
-| `Space`, `e` | Done |  |
+| `e` | Done |  |
 | `Z` | Schedule… |  |
 | `,` | Edit what mxr read… |  |
 | `X` | Not a to-do |  |
@@ -883,7 +884,7 @@ The first run's older undated tasks: keep each one, or let it go to the Expired 
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Keep: it still needs me |  |
 | `e` | Let go of this one |  |
-| `A` | Let go of all… | Previews the daemon's dry run first; undo afterwards |
+| `E` | Let go of all… | Previews the daemon's dry run first; undo afterwards |
 | `Esc` | Back to To do |  |
 
 ### To do: Expired list
@@ -904,15 +905,15 @@ Tasks that expired or were let go. `E` on To do opens it.
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Show routine |  |
-| `A` | Let go of the digest… | Previews the daemon's dry run first; undo afterwards |
+| `E` | Let go of the digest… | Previews the daemon's dry run first; undo afterwards |
 | `e` | Let go of this source |  |
 | `t` | This needs me: make it a to-do |  |
-| `K` | Tune this source… |  |
+| `P` | Tune this source… |  |
 | `L` | Open the link |  |
 | `y` | Copy the one-time code |  |
 | `o` | Open the email |  |
 | `Space` | Peek at this update under its line |  |
-| `p` | Pin or unpin this source's latest email |  |
+| `s` | Pin or unpin this source's latest email |  |
 | `S` | Sweep this sender out of Updates… | Previews the daemon's dry run first; undo afterwards |
 | `Esc` | Dismiss the hint |  |
 
@@ -930,11 +931,11 @@ Newsletters as an edition. `b`, `e`, `D` and `A` work on the item or link under 
 | `e` | Let go |  |
 | `D` | Unsubscribe… | Shows the evidence and the method first; nothing is sent until you confirm |
 | `R` | Read in the sender's layout |  |
-| `A` | Let go of everything shown… | Previews the daemon's dry run first; undo afterwards |
+| `E` | Let go of everything shown… | Previews the daemon's dry run first; undo afterwards |
 | `o` | Open the email as sent |  |
-| `K` | This sender here: move to… |  |
+| `P` | This sender here: move to… |  |
 | `B` | Open Later |  |
-| `M` | Open in Marginalia |  |
+| `O` | Open in Marginalia |  |
 | `Esc` | Dismiss the hint |  |
 
 ### Reading reader
@@ -951,10 +952,10 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `e` | Let go and go back |  |
 | `n` | Next item |  |
 | `R` | Sender's layout or cleaned |  |
-| `h` | Highlight the selection |  |
+| `"` | Highlight the selection |  |
 | `D` | Unsubscribe… |  |
 | `o` | Open the email as sent |  |
-| `M` | Open in Marginalia |  |
+| `O` | Open in Marginalia |  |
 | `Esc` | Back to the edition |  |
 
 ### Archive
@@ -967,10 +968,10 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `y` | Copy the reference |  |
 | `Y` | Copy the amount |  |
 | `Enter` | Open the document |  |
-| `o`, `e` | Open the email | Archive has no done: records stay, so e opens the email too |
+| `o` | Open the email |  |
 | `p` | This issuer's records |  |
-| `[` | Previous year |  |
-| `]` | Next year |  |
+| `{` | Previous year |  |
+| `}` | Next year |  |
 | `,` | Fix a field… |  |
 | `v` | Mark checked |  |
 | `X` | Not a record |  |
@@ -985,7 +986,7 @@ The emails behind one of Now's arrival counts. `X` (in Mail actions) moves the e
 
 | Key | Action | Note |
 |-----|--------|------|
-| `K` | Send everything from this sender to… |  |
+| `P` | Send everything from this sender to… |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter`, `o` | Open conversation |  |

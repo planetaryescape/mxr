@@ -1,6 +1,5 @@
 ---
 source: crates/tui/src/ui/records_lens/tests.rs
-assertion_line: 435
 expression: rendered
 ---
 "╭ Archive ─ Receipts, orders, bookings and documents. Ask for what you need. ──────────────────────────────────────────╮"
@@ -35,5 +34,5 @@ expression: rendered
 "│             │                                                                                          │             │"
 "│             ╰ y copy ref  Y copy amount  ↵ pdf  o email  , fix  v mark checked  X not a record  Esc clo╯             │"
 "│ Here because: "receipt" in the subject (unchecked).                                                                  │"
-"│ / ask  y copy reference  Y copy amount  Enter open document  o the email  p issuer page  [ previous year  ] next ye… │"
+"│ / ask  y copy reference  Y copy amount  Enter open document  o the email  p issuer page  { previous year  } next ye… │"
 "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯"

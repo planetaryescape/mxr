@@ -57,11 +57,11 @@ expression: "serde_json::to_string_pretty(&guides).unwrap()"
         "verb": "original layout"
       },
       {
-        "key": "A",
+        "key": "E",
         "verb": "let go of everything shown"
       },
       {
-        "key": "h",
+        "key": "\"",
         "verb": "highlight, while reading"
       },
       {

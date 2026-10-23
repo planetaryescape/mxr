@@ -3381,7 +3381,7 @@
     "/api/v1/mail/messages/{message_id}/move": {
       "post": {
         "tags": [],
-        "summary": "Move one email to a mode (X), or with sender set the sender's mode (K); To do and Archive add it there (dry_run previews)",
+        "summary": "Move one email to a mode (X), or with sender set the sender's mode (P); To do and Archive add it there (dry_run previews)",
         "operationId": "mail_message_move",
         "parameters": [
           {
@@ -18946,7 +18946,7 @@
               "string",
               "null"
             ],
-            "description": "\"Always for this sender? (K)\": asked once after a per-email move to\nMessages, Updates or Reading."
+            "description": "\"Always for this sender? (P)\": asked once after a per-email move to\nMessages, Updates or Reading."
           },
           "aspect_id": {
             "type": [

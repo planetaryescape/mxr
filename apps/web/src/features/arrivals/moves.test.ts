@@ -43,7 +43,7 @@ describe("moving an email", () => {
       body: { mode: "reading", sender: false, dry_run: false },
     });
     const [message, options] = toastMock.info.mock.calls[0]!;
-    expect(message).toBe("Moved to Reading. Always for this sender? (K)");
+    expect(message).toBe("Moved to Reading. Always for this sender? (P)");
     expect(options?.description).toMatch(/^X moves just this email/);
     expect(options?.action?.label).toBeTruthy();
     expect(options?.cancel?.label).toBe("Always for this sender");

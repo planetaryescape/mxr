@@ -28,6 +28,7 @@ interface DefinedAction {
   hide_in_palette?: boolean;
   note?: string;
   clients?: string[];
+  moved?: { key: string; contexts: string[] }[];
 }
 
 const defined = (keymap.action as DefinedAction[]).filter(
@@ -45,6 +46,9 @@ function definedBindings(): string[] {
       for (const chord of action.retired_keys ?? []) {
         bindings.push(`${scope}|${chord}|${action.id}|retired`);
       }
+    }
+    for (const { key, contexts } of action.moved ?? []) {
+      for (const scope of contexts) bindings.push(`${scope}|${key}|${action.id}|moved`);
     }
   }
   return bindings;
@@ -103,7 +107,7 @@ describe("the web registry and the key definition", () => {
       .bindings()
       .map(
         (b) =>
-          `${b.scope}|${b.chord}|${b.action.id}${b.macOnly ? "|mac" : ""}${b.retired ? "|retired" : ""}`,
+          `${b.scope}|${b.chord}|${b.action.id}${b.macOnly ? "|mac" : ""}${b.moved ? "|moved" : b.retired ? "|retired" : ""}`,
       )
       .toSorted();
     expect(registered).toEqual(definedBindings().toSorted());

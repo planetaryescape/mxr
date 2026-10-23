@@ -146,7 +146,7 @@ inline answers stay together, and forwarded messages keep their attribution
 and contents. A message with retained context stays expanded.
 
 When something was removed, the message says `trimmed: quote, sig` (or
-`footer`). Select that marker, or press `o` or `v`, to see the message as
+`footer`). Select that marker, or press `o`, to see the message as
 sent. A reply containing only repeated quoted text says `(only quoted text)`.
 The CLI, TUI, web app and MCP use the same extracted text.
 
@@ -206,9 +206,9 @@ emoji reaction. Because it sends mail on one key, mxr guards it:
 | `b` | Reply later |
 | `s` | Pin or unpin the person |
 | `c` | New topic with this person |
-| `[` / `]` | Previous / next topic |
+| `{` / `}` | Previous / next topic |
 | `p` | The person's page |
-| `o` or `v` | The message as sent |
+| `o` | The message as sent |
 | `g f` (web) or `Ctrl-f` (TUI) | Filter the list |
 | `u` | Undo |
 | `?` | What this mode is for, and its keys |

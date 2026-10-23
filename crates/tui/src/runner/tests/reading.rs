@@ -143,6 +143,8 @@ fn outcome(thread_id: ThreadId) -> ModeDoneOutcomeData {
 fn let_go_of_everything_previews_then_commits_the_same_threads() {
     let mut app = reading_app();
     key(&mut app, 'A');
+    assert!(app.mailbox.reading_page.pending_let_go_preview.is_none());
+    key(&mut app, 'E');
     let asked = app
         .mailbox
         .reading_page
@@ -350,7 +352,7 @@ fn e_lets_go_of_the_issue_at_once() {
 }
 
 #[test]
-fn h_in_the_reader_highlights_the_top_paragraph() {
+fn quote_in_the_reader_highlights_the_top_paragraph() {
     let mut app = reading_app();
     let mut detail_item = edition().bands[0].items[0].clone();
     detail_item.words = 50;
@@ -373,7 +375,7 @@ fn h_in_the_reader_highlights_the_top_paragraph() {
         },
     );
     press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
-    key(&mut app, 'h');
+    key(&mut app, '"');
     assert!(queued(&app).iter().any(|request| matches!(
         request,
         Request::SaveHighlight { quote, view: Some(view), .. }
@@ -500,10 +502,10 @@ fn shift_h_with_no_highlights_says_how_to_make_one() {
 }
 
 #[test]
-fn shift_m_sends_the_item_under_the_cursor_to_marginalia() {
+fn shift_o_sends_the_item_under_the_cursor_to_marginalia() {
     let mut app = reading_app();
     let expected = edition().bands[0].items[0].item_key.clone();
-    key(&mut app, 'M');
+    key(&mut app, 'O');
     assert!(queued(&app).iter().any(|request| matches!(
         request,
         Request::SendReadingToMarginalia { item_key, dry_run: false } if *item_key == expected
@@ -525,9 +527,9 @@ fn shift_b_opens_the_later_shelf_and_esc_comes_back() {
 }
 
 #[test]
-fn shift_k_moves_the_items_sender() {
+fn shift_p_moves_the_items_sender() {
     let mut app = reading_app();
-    key(&mut app, 'K');
+    key(&mut app, 'P');
     let menu = app
         .mailbox
         .sender_kind_menu

@@ -200,6 +200,7 @@
             "messages",
             "archive",
             "reading",
+            "reading-reader",
             "updates"
           ]
         }
@@ -4427,8 +4428,7 @@
             "K"
           ],
           "contexts": [
-            "place",
-            "reading-reader"
+            "place"
           ]
         }
       ]
@@ -4580,7 +4580,6 @@
         "todo"
       ],
       "keys": [
-        "Space",
         "e"
       ],
       "tui": [
@@ -4592,6 +4591,15 @@
           "contexts": [
             "todo"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "Space",
+          "contexts": [
+            "todo"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -4875,18 +4883,27 @@
         "catchup"
       ],
       "keys": [
-        "A"
+        "E"
       ],
       "note": "Previews the daemon's dry run first; undo afterwards",
       "tui": [
         {
           "name": "CatchupLetGoAll",
           "keys": [
-            "A"
+            "E"
           ],
           "contexts": [
             "catchup"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "A",
+          "contexts": [
+            "catchup"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -5165,20 +5182,26 @@
         "archive"
       ],
       "keys": [
-        "o",
-        "e"
+        "o"
       ],
-      "note": "Archive has no done: records stay, so e opens the email too",
       "tui": [
         {
           "name": "RecordsOpenEmail",
           "keys": [
-            "e",
             "o"
           ],
           "contexts": [
             "archive"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "e",
+          "contexts": [
+            "archive"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -5213,17 +5236,26 @@
         "archive"
       ],
       "keys": [
-        "["
+        "{"
       ],
       "tui": [
         {
           "name": "RecordsPrevYear",
           "keys": [
-            "["
+            "{"
           ],
           "contexts": [
             "archive"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "[",
+          "contexts": [
+            "archive"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -5235,17 +5267,26 @@
         "archive"
       ],
       "keys": [
-        "]"
+        "}"
       ],
       "tui": [
         {
           "name": "RecordsNextYear",
           "keys": [
-            "]"
+            "}"
           ],
           "contexts": [
             "archive"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "]",
+          "contexts": [
+            "archive"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -5605,19 +5646,29 @@
         "reading"
       ],
       "keys": [
-        "A"
+        "E"
       ],
       "note": "Previews the daemon's dry run first; undo afterwards",
       "tui": [
         {
           "name": "ReadingLetGoAll",
           "keys": [
-            "A"
+            "E"
           ],
           "contexts": [
             "reading",
             "reading-reader"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "A",
+          "contexts": [
+            "reading",
+            "reading-reader"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -5654,17 +5705,28 @@
         "reading"
       ],
       "keys": [
-        "K"
+        "P"
       ],
       "tui": [
         {
           "name": "OpenSenderKindMenu",
           "keys": [
-            "K"
+            "P"
           ],
           "contexts": [
-            "reading"
+            "reading",
+            "reading-reader"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "K",
+          "contexts": [
+            "reading",
+            "reading-reader"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -5702,18 +5764,27 @@
         "reading"
       ],
       "keys": [
-        "M"
+        "O"
       ],
       "tui": [
         {
           "name": "ReadingMarginalia",
           "keys": [
-            "M"
+            "O"
           ],
           "contexts": [
             "reading",
             "reading-reader"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "M",
+          "contexts": [
+            "reading"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -5836,17 +5907,26 @@
         "reading-reader"
       ],
       "keys": [
-        "h"
+        "\""
       ],
       "tui": [
         {
           "name": "ReadingHighlight",
           "keys": [
-            "h"
+            "\""
           ],
           "contexts": [
             "reading-reader"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "h",
+          "contexts": [
+            "reading-reader"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -5884,7 +5964,16 @@
         "reading-reader"
       ],
       "keys": [
-        "M"
+        "O"
+      ],
+      "moved": [
+        {
+          "key": "M",
+          "contexts": [
+            "reading-reader"
+          ],
+          "until": "0.6.180"
+        }
       ]
     },
     {
@@ -6105,18 +6194,27 @@
         "now"
       ],
       "keys": [
-        "A"
+        "E"
       ],
       "note": "Previews the daemon's dry run first; undo afterwards",
       "tui": [
         {
           "name": "NowLetGoDigest",
           "keys": [
-            "A"
+            "E"
           ],
           "contexts": [
             "now"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "A",
+          "contexts": [
+            "now"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -6459,17 +6557,26 @@
         "messages"
       ],
       "keys": [
-        "["
+        "{"
       ],
       "tui": [
         {
           "name": "MessagesPrevTopic",
           "keys": [
-            "["
+            "{"
           ],
           "contexts": [
             "messages"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "[",
+          "contexts": [
+            "messages"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -6481,17 +6588,26 @@
         "messages"
       ],
       "keys": [
-        "]"
+        "}"
       ],
       "tui": [
         {
           "name": "MessagesNextTopic",
           "keys": [
-            "]"
+            "}"
           ],
           "contexts": [
             "messages"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "]",
+          "contexts": [
+            "messages"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -6526,19 +6642,26 @@
         "messages"
       ],
       "keys": [
-        "o",
-        "v"
+        "o"
       ],
       "tui": [
         {
           "name": "MessagesAsSent",
           "keys": [
-            "o",
-            "v"
+            "o"
           ],
           "contexts": [
             "messages"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "v",
+          "contexts": [
+            "messages"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -6732,18 +6855,27 @@
         "updates"
       ],
       "keys": [
-        "A"
+        "E"
       ],
       "note": "Previews the daemon's dry run first; undo afterwards",
       "tui": [
         {
           "name": "UpdatesLetGoAll",
           "keys": [
-            "A"
+            "E"
           ],
           "contexts": [
             "updates"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "A",
+          "contexts": [
+            "updates"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -6802,17 +6934,26 @@
         "updates"
       ],
       "keys": [
-        "K"
+        "P"
       ],
       "tui": [
         {
           "name": "UpdatesTune",
           "keys": [
-            "K"
+            "P"
           ],
           "contexts": [
             "updates"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "K",
+          "contexts": [
+            "updates"
+          ],
+          "until": "0.6.180"
         }
       ]
     },
@@ -6907,17 +7048,26 @@
         "updates"
       ],
       "keys": [
-        "p"
+        "s"
       ],
       "tui": [
         {
           "name": "TogglePin",
           "keys": [
-            "p"
+            "s"
           ],
           "contexts": [
             "updates"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "p",
+          "contexts": [
+            "updates"
+          ],
+          "until": "0.6.180"
         }
       ],
       "raycast_key": "Cmd+."
@@ -7019,19 +7169,31 @@
         "arrivals"
       ],
       "keys": [
-        "K"
+        "P"
       ],
       "tui": [
         {
           "name": "OpenSenderMoveMenu",
           "keys": [
-            "K"
+            "P"
           ],
           "contexts": [
             "list",
             "now",
             "messages"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "K",
+          "contexts": [
+            "arrivals",
+            "list",
+            "messages",
+            "now"
+          ],
+          "until": "0.6.180"
         }
       ]
     },

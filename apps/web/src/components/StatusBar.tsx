@@ -27,6 +27,7 @@ export function StatusBar() {
   const reindex = useConnectionStore((s) => s.semanticReindexProgress);
   const pendingPrefix = useKeyScope((s) => s.pendingPrefix);
   const deadEnd = useKeyScope((s) => s.deadEnd);
+  const moved = useKeyScope((s) => s.moved);
   const setHelpOpen = useModals((s) => s.setHelpOpen);
   const ctx = useActionContext();
   const pageKeys = usePageKeysStore((s) => s.ids);
@@ -85,6 +86,16 @@ export function StatusBar() {
         {pendingPrefix ? (
           <span aria-live="polite" className="inline-flex items-center gap-1 text-foreground">
             <KeyChip className="border-primary/60 text-primary">{pendingPrefix}</KeyChip>…
+          </span>
+        ) : moved ? (
+          <span aria-live="polite" className="inline-flex items-center gap-1 text-foreground">
+            {moved.key ? (
+              <>
+                {moved.label} is now <KeyChip>{moved.key}</KeyChip>
+              </>
+            ) : (
+              <>{moved.label} has no key now; find it in the palette</>
+            )}
           </span>
         ) : deadEnd ? (
           <span aria-live="polite" className="inline-flex items-center gap-1 text-foreground">

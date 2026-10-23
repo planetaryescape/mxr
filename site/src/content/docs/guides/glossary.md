@@ -161,7 +161,7 @@ email stays in your inbox and in search.
 its count is the only one Reading shows. `b` in the apps, `mxr reading
 later` on the command line.
 
-**Highlight**: a passage saved from the reader with `h`, or made in
+**Highlight**: a passage saved from the reader with `"`, or made in
 [Marginalia](/guides/marginalia/) and read back. Found by search and
 exported with `mxr reading export --markdown`.
 
@@ -217,7 +217,7 @@ ships: one field chunk per record email plus its PDF text. The other modes'
 recipes, such as one fact per Updates message, are planned.
 
 **Let go**: Updates' and Reading's word for done. In Reading it is `e`, or
-`A` for everything in the edition, which acts on exactly the set its
+`E` for everything in the edition, which acts on exactly the set its
 preview listed. Letting go of an Updates digest does the same
 (`mxr updates let-go`).
 

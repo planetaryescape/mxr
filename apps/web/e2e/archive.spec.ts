@@ -190,7 +190,7 @@ test("E previews the export's rows, unchecked rows and missing PDFs, then downlo
   expect(lines).toHaveLength(total + 1);
 });
 
-test("p opens the issuer's page and [ steps back a year", async ({ page }) => {
+test("p opens the issuer's page and { steps back a year", async ({ page }) => {
   await waitForRecords(page);
   await openApp(page, "/archive");
   await ask(page).fill("dell");
@@ -201,7 +201,7 @@ test("p opens the issuer's page and [ steps back a year", async ({ page }) => {
   await expect(page.getByTestId("record-row")).toHaveCount(1);
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("issuer-page")).toHaveCount(0);
-  await page.keyboard.press("[");
+  await page.keyboard.press("{");
   await expect(page.getByRole("button", { name: /^Clear \d{4}$/ })).toBeVisible();
 });
 

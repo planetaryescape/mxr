@@ -507,9 +507,10 @@ Choices made while building D119, where the plan above left room:
   standing that changed a mode. Shown only once one exists.
 - **Keys.** `X` opens the picker (`m` `x` `u` `r` `e`; capital `M` `U` `R`
   move the sender) on Now, Messages, Updates, Reading, Inbox and the reader;
-  `K` opens the sender picker where it is free (Now, Messages, Inbox).
-  Updates and Reading keep their `K` sender menu, the reader keeps `K` as
-  previous message, and To do and Archive keep `X` as their dismissal. The
+  `P` opens the sender picker (Now, Messages, Inbox; it was `K` until
+  chapter 35's key moves). Updates and Reading keep their own sender menu,
+  also on `P`; the reader keeps `K` as previous message, and To do and
+  Archive keep `X` as their dismissal. The
   web reader's expand-all moved from `X` to `;`.
 
 ### Rubric v3 X14
@@ -978,7 +979,7 @@ phase (D113).
 
 ## One key map across Now and the modes
 
-> [Chapter 35](35-keyboard.md) keeps this table's verbs and moves some keys: let go of all to `E`, the sender menu to `P`, `T` into `X`, snooze and Later into one `b` picker, groups to `{` `}`, and Not-sure and new-sender answers into the `X` picker. Until K3 ships, this table still describes today's keys.
+> [Chapter 35](35-keyboard.md) keeps this table's verbs and moves some keys: let go of all to `E`, the sender menu to `P`, `T` into `X`, snooze and Later into one `b` picker, groups to `{` `}`, and Not-sure and new-sender answers into the `X` picker. Let go of all (`E`), the sender menu (`P`) and groups (`{` `}`) have already moved; for every other key, this table still describes today's keys until K3 ships.
 
 Checked against `docs/reference/tui-keymap.json` and the web registry
 (`apps/web/src/lib/actions/`, `features/mail-actions/verbActions.ts`,

@@ -6,11 +6,11 @@ description: Send a newsletter or article from Reading to Marginalia, read it wi
 [Marginalia](https://github.com/planetaryescape/marginalia) is a reading app
 with themes, margin notes, a reading companion and highlights. mxr's Reading
 is where your newsletters arrive. When you want Marginalia's tools for an
-item, press `M`: mxr sends the item there and opens it. Highlights you make
+item, press `O`: mxr sends the item there and opens it. Highlights you make
 in Marginalia come back to the same item in mxr, where search and the
 Markdown export find them.
 
-Nothing goes to Marginalia until you press `M` on an item. The first press
+Nothing goes to Marginalia until you press `O` on an item. The first press
 sends that item's text, which gives it to Marginalia and whichever AI
 provider your Marginalia account uses. Every later press only opens it.
 
@@ -47,7 +47,7 @@ Disconnecting removes the token. What you already sent stays in Marginalia.
 
 ## Open an item
 
-In the edition or the reader, press `M`, or choose **Open in Marginalia**
+In the edition or the reader, press `O`, or choose **Open in Marginalia**
 in the reader. The web app opens a new tab; the TUI opens your browser.
 
 What gets sent:
@@ -66,7 +66,7 @@ mxr reading marginalia send ITEM --dry-run
 mxr reading marginalia send ITEM --open
 ```
 
-An item is sent once. Pressing `M` again opens the same article in
+An item is sent once. Pressing `O` again opens the same article in
 Marginalia; `mxr reading open ITEM --format json` shows it under
 `item.marginalia`.
 
@@ -92,7 +92,7 @@ at the next read. Highlights you make in mxr are never changed by this, and
 nothing you do in mxr changes Marginalia.
 
 If you delete an article in Marginalia, mxr notices on the next read and
-forgets that it was sent; pressing `M` again sends a fresh copy. Deleting
+forgets that it was sent; pressing `O` again sends a fresh copy. Deleting
 the email in mxr deletes its highlights in mxr, including the ones read back
 from Marginalia, and leaves the article in Marginalia.
 

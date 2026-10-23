@@ -34,16 +34,16 @@ expression: "serde_json::to_string_pretty(&updates).unwrap()"
         "anchor": "The first \"Let go of this digest\" button",
         "id": "updates.let_go",
         "key": {
-          "key": "A",
+          "key": "E",
           "verb": "let go of digest"
         },
         "seen": false,
-        "text": "A lets go of this digest only; new mail arrives in the next one."
+        "text": "E lets go of this digest only; new mail arrives in the next one."
       }
     ],
     "keys": [
       {
-        "key": "A",
+        "key": "E",
         "verb": "let go of digest"
       },
       {
@@ -51,7 +51,7 @@ expression: "serde_json::to_string_pretty(&updates).unwrap()"
         "verb": "let go of this source"
       },
       {
-        "key": "p",
+        "key": "s",
         "verb": "pin latest email"
       },
       {
@@ -63,7 +63,7 @@ expression: "serde_json::to_string_pretty(&updates).unwrap()"
         "verb": "this needs me"
       },
       {
-        "key": "K",
+        "key": "P",
         "verb": "tune a source"
       },
       {

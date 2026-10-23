@@ -810,10 +810,10 @@ fn the_catch_up_keeps_lets_go_and_lets_go_of_exactly_the_preview() {
     ));
     app.pending_mutation_queue.clear();
 
-    press_shifted(&mut app, 'A');
+    press_shifted(&mut app, 'E');
     assert!(
         app.mailbox.todo_page.pending_catchup_preview,
-        "A asks for a dry run first"
+        "E asks for a dry run first"
     );
     assert!(queued(&app).is_empty());
     app.mailbox.todo_page.pending_catchup_preview = false;

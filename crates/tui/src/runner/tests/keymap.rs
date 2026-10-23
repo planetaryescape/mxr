@@ -1202,3 +1202,33 @@ fn mail_list_remaps_stay_out_of_the_modes() {
     );
     assert_eq!(press_char(&mut app, ';'), None);
 }
+
+/// A key that moved in a recent release says where its action went and
+/// runs nothing (blueprint 35, D171), without breaking a sequence that
+/// starts with a prefix.
+#[test]
+fn a_moved_key_names_its_new_key_and_runs_nothing() {
+    let mut app = app_in("now");
+    let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
+    assert_eq!(app.handle_key(shifted('A')), None);
+    let notice = app.status_message.clone().unwrap_or_default();
+    assert!(notice.ends_with("is now E"), "{notice}");
+    assert_eq!(app.handle_key(shifted('E')), Some(Action::NowLetGoDigest));
+
+    let mut app = app_in("now");
+    assert_eq!(press_char(&mut app, 'g'), None);
+    assert_eq!(
+        app.handle_key(shifted('A')),
+        Some(Action::OpenAnalyticsScreen),
+        "g A is a sequence, not the moved A"
+    );
+
+    let mut app = app_in("list");
+    assert_eq!(app.handle_key(shifted('K')), None);
+    let notice = app.status_message.clone().unwrap_or_default();
+    assert!(notice.ends_with("is now P"), "{notice}");
+    assert_eq!(
+        app.handle_key(shifted('P')),
+        Some(Action::OpenSenderMoveMenu)
+    );
+}

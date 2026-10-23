@@ -53,7 +53,7 @@ describe("pageKeyHints", () => {
       }),
     );
     expect(hints.map((hint) => [hint.keys[0], hint.shortLabel])).toEqual([
-      ["Space", "Done"],
+      ["e", "Done"],
       ["o", "Email"],
     ]);
   });

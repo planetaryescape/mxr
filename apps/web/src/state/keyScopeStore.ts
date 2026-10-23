@@ -17,19 +17,24 @@ export interface KeyScopeState {
   pendingPrefix: string | null;
   /** A prefix and key that completed nothing ("g U"), shown briefly. */
   deadEnd: string | null;
+  /** A key that moved away: the action's label and its key now, shown briefly. */
+  moved: { label: string; key: string | null } | null;
   pushScope: (scope: ActionScope) => void;
   popScope: (scope: ActionScope) => void;
   activeScope: () => ActionScope;
   setPendingPrefix: (prefix: string | null) => void;
   showDeadEnd: (sequence: string) => void;
+  showMoved: (label: string, key: string | null) => void;
 }
 
 let deadEndTimer: ReturnType<typeof setTimeout> | undefined;
+let movedTimer: ReturnType<typeof setTimeout> | undefined;
 
 export const useKeyScope = create<KeyScopeState>((set, get) => ({
   stack: [],
   pendingPrefix: null,
   deadEnd: null,
+  moved: null,
   pushScope: (scope) => set((s) => ({ stack: [...s.stack, scope] })),
   popScope: (scope) =>
     set((s) => {
@@ -45,5 +50,11 @@ export const useKeyScope = create<KeyScopeState>((set, get) => ({
     clearTimeout(deadEndTimer);
     set({ deadEnd: sequence });
     deadEndTimer = setTimeout(() => set({ deadEnd: null }), DEAD_END_NOTICE_MS);
+  },
+  showMoved: (label, key) => {
+    clearTimeout(movedTimer);
+    set({ moved: { label, key } });
+    // Long enough to read a sentence, unlike the two-second dead end.
+    movedTimer = setTimeout(() => set({ moved: null }), DEAD_END_NOTICE_MS * 2);
   },
 }));

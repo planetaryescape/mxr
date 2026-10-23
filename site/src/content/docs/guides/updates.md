@@ -137,21 +137,21 @@ The keys:
 |---|---|
 | `Enter` | Open Routine, when it is collapsed (web) |
 | `Space` | Open or close the details under this line (web) |
-| `A` | Let go of the digest, after a preview |
+| `E` | Let go of the digest, after a preview |
 | `e` | Let go of this source |
 | `t` | This needs me: make a to-do from the line |
-| `K` | Tune this source |
+| `P` | Tune this source |
 | `L` | Open the line's link (a tracker page, a build). Never a pay link |
 | `y` | Copy the line's one-time code |
 | `o` | Open the email itself |
-| `p` | Pin or unpin the latest email behind this line |
+| `s` | Pin or unpin the latest email behind this line |
 | `S` | Preview a sweep of this sender in this account; unavailable for parcels |
 | `u` | Undo |
 | `?` | What Updates is for, then its keys |
 
 ## Pin an email before sweeping its sender
 
-In Updates, `p` pins the selected line's latest email. The pin is local and
+In Updates, `s` pins the selected line's latest email. The pin is local and
 survives reloads; changes made in the CLI, terminal or web app appear when
 the digest refreshes. It protects that email from a sweep, rather than
 pinning every future email from the sender.

@@ -117,16 +117,16 @@ test("no row's preview is the quoted-only placeholder", async ({ page }) => {
   await expect(page.getByTestId("messages-row").filter({ hasText: "only quoted" })).toHaveCount(0);
 });
 
-test("[ and ] step through a person's topics", async ({ page }) => {
+test("{ and } step through a person's topics", async ({ page }) => {
   await waitForPeople(page);
   const contract = await topicOf(page, SAMIR, "Contract renewal");
   await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}&topic=${contract}`);
   const pageView = page.getByTestId("person-page");
   const current = pageView.locator('[data-testid="topic"][aria-current="true"]');
   await expect(current).toContainText("Contract renewal");
-  await page.keyboard.press("]");
+  await page.keyboard.press("}");
   await expect(current).not.toContainText("Contract renewal");
-  await page.keyboard.press("[");
+  await page.keyboard.press("{");
   await expect(current).toContainText("Contract renewal");
 });
 
@@ -162,7 +162,7 @@ test("returning to Messages leaves the previous conversation closed", async ({ p
   expect(personPageRequests).toHaveLength(1);
 });
 
-test("a long reply is a letter, trimmed, and v shows it as sent", async ({ page }) => {
+test("a long reply is a letter, trimmed, and o shows it as sent", async ({ page }) => {
   await waitForPeople(page);
   const contract = await topicOf(page, SAMIR, "Contract renewal");
   await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}&topic=${contract}`);
@@ -179,9 +179,9 @@ test("a long reply is a letter, trimmed, and v shows it as sent", async ({ page 
   // The quote of your own message and Samir's signature are gone.
   await expect(letter).not.toContainText("Could you check it with legal");
   await expect(letter).not.toContainText("+44 20 7946 0102");
-  await page.keyboard.press("v");
+  await page.keyboard.press("o");
   await expect(letter.getByTestId("as-sent")).toBeVisible();
-  await page.keyboard.press("v");
+  await page.keyboard.press("o");
   await expect(letter.getByTestId("as-sent")).toHaveCount(0);
 });
 

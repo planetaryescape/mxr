@@ -711,7 +711,10 @@ impl App {
                     return None;
                 }
                 KeyCode::Esc | KeyCode::Left => return Some(Action::ReadingBack),
-                KeyCode::Char('h') if plain => return Some(Action::ReadingHighlight),
+                // `"` quotes the passage; h stays the move left it is elsewhere.
+                KeyCode::Char('"') if plain_or_shift(key.modifiers) => {
+                    return Some(Action::ReadingHighlight)
+                }
                 KeyCode::Char('H') if shifted => return Some(Action::ReadingHighlights),
                 _ => {}
             }

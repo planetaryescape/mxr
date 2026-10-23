@@ -35,6 +35,7 @@ let scopes: ActionScope[];
 let suspended: boolean;
 let pending: (string | null)[];
 let deadEnds: string[];
+let movedNotices: string[];
 let uninstall: () => void;
 
 function press(keyInit: KeyboardEventInit, target: Element = document.body): boolean {
@@ -48,11 +49,13 @@ beforeEach(() => {
   suspended = false;
   pending = [];
   deadEnds = [];
+  movedNotices = [];
   uninstall = installKeyDispatcher(window, {
     registry,
     context: () => ctxWith(scopes),
     onPendingChange: (prefix) => pending.push(prefix),
     onDeadEnd: (sequence) => deadEnds.push(sequence),
+    onMoved: (action) => movedNotices.push(`${action.label} is now ${action.shortcut}`),
     isSuspended: () => suspended,
     mac: false,
   });
@@ -328,17 +331,18 @@ describe("installKeyDispatcher", () => {
     expect(pageDown).toHaveBeenCalledTimes(1);
   });
 
-  test("Space and e tick off the focused to-do once per press", () => {
+  test("e ticks off the focused to-do once per press, and Space says it moved", () => {
     registry.defineMany(todoActions.map(fromDefinition));
     const done = vi.fn<() => void>();
     setController("todo", { done });
     scopes = ["todo", "global"];
 
-    expect(press({ key: " " })).toBe(false);
     expect(press({ key: "e" })).toBe(false);
-    expect(press({ key: " ", repeat: true })).toBe(false);
+    expect(press({ key: "e", repeat: true })).toBe(false);
+    press({ key: " " });
 
-    expect(done).toHaveBeenCalledTimes(2);
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(movedNotices).toEqual(["Done is now e"]);
   });
 
   test("Space on a focused checkbox keeps its native toggle", () => {
@@ -464,5 +468,23 @@ describe("installKeyDispatcher", () => {
     press({ key: "k", ctrlKey: true });
     press({ key: "k", ctrlKey: true, repeat: true });
     expect(palette.run).toHaveBeenCalledTimes(1);
+  });
+
+  test("a key that moved away says where its action went and runs nothing", () => {
+    const letGo = runAction("updates.let-go-all", "E", {
+      label: "Let go of all",
+      scopes: ["updates"],
+      movedAliases: [{ chord: "A", scopes: ["updates"] }],
+    });
+    registry.define(letGo.action);
+    scopes = ["updates", "global"];
+
+    const notCancelled = press({ key: "A", shiftKey: true });
+
+    expect(letGo.run).not.toHaveBeenCalled();
+    expect(movedNotices).toEqual(["Let go of all is now E"]);
+    expect(notCancelled).toBe(false);
+    press({ key: "E", shiftKey: true });
+    expect(letGo.run).toHaveBeenCalledTimes(1);
   });
 });

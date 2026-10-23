@@ -4,9 +4,9 @@
  * multi-key chords ("g i", "* a") work in every view.
  */
 
-import type { ActionRegistry } from "@/lib/actions/registry";
+import type { ActionRegistry, Binding } from "@/lib/actions/registry";
 import { invokeAction } from "@/lib/actions/registry";
-import type { ActionContext, ActionScope } from "@/lib/actions/types";
+import type { Action, ActionContext, ActionScope } from "@/lib/actions/types";
 
 import { isMacPlatform, tokenFromEvent, type KeyToken } from "./chord";
 import { isComposingKey } from "./composition";
@@ -62,6 +62,8 @@ export interface DispatcherOptions {
   onPendingChange?: (prefix: string | null) => void;
   /** Reports a prefix and a key that complete nothing ("g U"), for the status bar. */
   onDeadEnd?: (sequence: string) => void;
+  /** A key that moved away in a recent release: say where its action went. */
+  onMoved?: (action: Action) => void;
   /** Extra veto, e.g. while compose owns the page. */
   isSuspended?: () => boolean;
   mac?: boolean;
@@ -101,10 +103,16 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
     setPending([]);
   };
 
+  /** Run a binding, or announce it when its key moved away. */
+  const fire = (binding: Binding, ctx: ActionContext) => {
+    if (binding.moved) options.onMoved?.(binding.action);
+    else invokeAction(binding.action, ctx);
+  };
+
   const run = (scopes: ActionScope[], chord: string, ctx: ActionContext): boolean => {
     const binding = registry.resolve(chord, scopes);
     if (!binding) return false;
-    invokeAction(binding.action, ctx);
+    fire(binding, ctx);
     return true;
   };
 
@@ -141,7 +149,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
       // extends a chord. Anything the key would do is still claimed, so the
       // browser doesn't act on it either.
       if (exact || continues) event.preventDefault();
-      if (exact && !continues && REPEATABLE_ACTION_IDS.has(exact.action.id)) {
+      if (exact && !exact.moved && !continues && REPEATABLE_ACTION_IDS.has(exact.action.id)) {
         invokeAction(exact.action, ctx);
       }
       return;
@@ -150,7 +158,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
     if (exact && !continues) {
       event.preventDefault();
       clear();
-      invokeAction(exact.action, ctx);
+      fire(exact, ctx);
       return;
     }
     if (continues) {
@@ -180,7 +188,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
         const single = registry.resolve(token, scopes);
         if (single && !registry.hasContinuation(token, scopes)) {
           event.preventDefault();
-          invokeAction(single.action, ctx);
+          fire(single, ctx);
         }
         return;
       }

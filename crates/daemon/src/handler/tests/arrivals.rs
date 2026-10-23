@@ -957,7 +957,7 @@ async fn a_move_takes_effect_everywhere_at_once_and_undo_puts_it_back() {
     assert_eq!(moved.copy, "Moved to Messages.");
     assert_eq!(
         moved.ask_sender.as_deref(),
-        Some("Always for this sender? (K)")
+        Some("Always for this sender? (P)")
     );
     assert!(moved.hint.is_some());
     let correction = moved.correction_id.expect("a correction to undo");

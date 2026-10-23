@@ -127,7 +127,7 @@ one key:
 | `e` | Archive (files it as a record) |
 
 The move takes effect at once in every client, and the toast asks once:
-"Moved to Reading. Always for this sender? (K)". `K` sends everything from
+"Moved to Reading. Always for this sender? (P)". `P` sends everything from
 that sender to the mode from now on; `u` or **Undo** puts the email back. In
 the picker, a capital `M`, `U` or `R` moves the sender straight away. To do
 and Archive keep their own `X` (not a to-do, not a record).
@@ -171,9 +171,9 @@ emails you moved; mail you never opened isn't checked.
 | `e` | Done here, in the row's mode |
 | `r` | Reply to a person |
 | `o` | Open the email |
-| `A` | Let go of the Updates card, after a preview |
+| `E` | Let go of the Updates card, after a preview |
 | `X` | Move this email to another mode |
-| `K` | Move everything from this sender to a mode |
+| `P` | Move everything from this sender to a mode |
 | `u` | Undo |
 | `?` | What Now is for, then its keys |
 
@@ -196,7 +196,7 @@ In To do, `e` ticks off that one to-do. Another to-do on the same email stays
 open, and the email stays in the inbox until the last one is ticked off. In
 Updates, `e` lets go of one source in the digest.
 
-On the web To do page, press Space or `e` to tick off the focused item. Space
+On the web To do page, press `e` to tick off the focused item. Space
 on the left checkbox ticks it off or reopens it. Click the source chip on its
 date line to see the explanation, arrival time and field evidence.
 
@@ -205,7 +205,7 @@ mxr modes done THREAD_ID --mode todo --todo TODO_ID --dry-run
 mxr modes done --mode updates --sender notifications@github.com --account ACCOUNT_ID --dry-run
 ```
 
-`A` on the Updates card previews what letting go of the digest does ("Let go
+`E` on the Updates card previews what letting go of the digest does ("Let go
 of 11 updates from 4 sources; 1 also in To do stays there.") and lets go of
 exactly that set when you confirm. See
 [Updates](/guides/updates/#let-go-of-the-digest-in-one-key).

@@ -128,7 +128,7 @@ test("let go of all acts on exactly the previewed cut, and u puts it back", asyn
   const full = (await bridge<DigestAnswer>(page, "/api/v1/mail/updates")).digest.message_count;
   await openApp(page, "/updates");
   await expect(page.getByTestId("update-line").first()).toBeVisible();
-  await page.keyboard.press("A");
+  await page.keyboard.press("E");
   const dialog = page.getByTestId("updates-let-go-dialog");
   await expect(dialog).toContainText(
     new RegExp(`^Let go of ${preview.message_count} updates? from`),
@@ -161,14 +161,14 @@ test("let go of all acts on exactly the previewed cut, and u puts it back", asyn
   await expect(page.getByTestId("update-line").filter({ hasText: "Strava" })).toBeVisible();
 });
 
-test("K tunes a source with undo, and e previews then lets go of one source", async ({ page }) => {
+test("P tunes a source with undo, and e previews then lets go of one source", async ({ page }) => {
   await waitForDigest(page);
   await openApp(page, "/updates");
   const plausible = page.getByTestId("update-line").filter({ hasText: "Plausible" });
   // A hover shows a row's actions; the lamp moves on a click (and opens its peek).
   await plausible.click();
   await expect(plausible).toHaveAttribute("data-lit", "true");
-  await page.keyboard.press("K");
+  await page.keyboard.press("P");
   const tune = page.getByTestId("updates-tune-dialog");
   await tune.getByRole("button", { name: "Mute" }).click();
   await expect(page.locator("[data-sonner-toast]").first()).toContainText("Plausible: muted");

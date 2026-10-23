@@ -144,7 +144,7 @@ fn outcome(message_id: MessageId, to: ModeKindData, ask: bool) -> MoveOutcomeDat
         sender: false,
         dry_run: false,
         copy: format!("Moved to {}.", to.name()),
-        ask_sender: ask.then(|| "Always for this sender? (K)".into()),
+        ask_sender: ask.then(|| "Always for this sender? (P)".into()),
         hint: ask.then(|| mxr_protocol::arrivals_copy::MOVE_HINT.into()),
         correction_id: Some(7),
         aspect_id: None,
@@ -182,7 +182,7 @@ fn x_opens_the_move_menu_and_one_key_moves_this_email() {
 }
 
 #[test]
-fn shift_in_the_menu_and_k_move_the_sender_to_a_mode_a_sender_can_live_in() {
+fn shift_in_the_menu_and_p_move_the_sender_to_a_mode_a_sender_can_live_in() {
     let mut app = inbox_app();
     let selected = app.selected_envelope().unwrap().id.clone();
     press(&mut app, KeyCode::Char('X'));
@@ -194,13 +194,13 @@ fn shift_in_the_menu_and_k_move_the_sender_to_a_mode_a_sender_can_live_in() {
 
     let mut app = inbox_app();
     let selected = app.selected_envelope().unwrap().id.clone();
-    press(&mut app, KeyCode::Char('K'));
+    press(&mut app, KeyCode::Char('P'));
     let menu = app
         .mailbox
         .trust
         .move_menu
         .as_ref()
-        .expect("K opens the sender menu");
+        .expect("P opens the sender menu");
     assert!(menu.sender_only);
     // To do and Archive hold one email, never a sender.
     press(&mut app, KeyCode::Char('x'));
@@ -276,7 +276,7 @@ fn u_after_a_move_undoes_it_with_its_correction_id() {
 }
 
 #[test]
-fn after_a_move_k_says_always_for_this_sender_at_once() {
+fn after_a_move_p_says_always_for_this_sender_at_once() {
     let mut app = inbox_app();
     let message = MessageId::new();
     app.after_move(
@@ -285,26 +285,26 @@ fn after_a_move_k_says_always_for_this_sender_at_once() {
     );
     assert!(
         app.mailbox.trust.move_hint_shown,
-        "the first move teaches X and K"
+        "the first move teaches X and P"
     );
-    press(&mut app, KeyCode::Char('K'));
+    press(&mut app, KeyCode::Char('P'));
     assert!(
         app.mailbox.trust.move_menu.is_none(),
-        "no menu: K answered yes"
+        "no menu: P answered yes"
     );
     assert_eq!(
         queued(&app).iter().filter_map(moved).collect::<Vec<_>>(),
         vec![(message, ModeKindData::Reading, true, None)]
     );
 
-    // Any other key lets the question go; a later K opens the menu.
+    // Any other key lets the question go; a later P opens the menu.
     let mut app = inbox_app();
     app.after_move(
         &outcome(MessageId::new(), ModeKindData::Reading, true),
         false,
     );
     press(&mut app, KeyCode::Char('j'));
-    press(&mut app, KeyCode::Char('K'));
+    press(&mut app, KeyCode::Char('P'));
     assert!(app.mailbox.trust.move_menu.is_some());
     assert!(queued(&app).is_empty());
 }
@@ -317,7 +317,7 @@ fn the_move_toast_is_the_daemons_copy_and_its_question() {
             &outcome(message.clone(), ModeKindData::Reading, true),
             false
         ),
-        "Moved to Reading.  Always for this sender? (K)"
+        "Moved to Reading.  Always for this sender? (P)"
     );
     assert_eq!(
         crate::app::move_status(&outcome(message, ModeKindData::Messages, false), true),

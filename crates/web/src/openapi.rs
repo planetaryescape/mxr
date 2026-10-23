@@ -926,7 +926,7 @@ fn mail_arrivals_modes() {}
 #[utoipa::path(
     post,
     path = "/api/v1/mail/messages/{message_id}/move",
-    summary = "Move one email to a mode (X), or with sender set the sender's mode (K); To do and Archive add it there (dry_run previews)",
+    summary = "Move one email to a mode (X), or with sender set the sender's mode (P); To do and Archive add it there (dry_run previews)",
     params(("message_id" = String, Path, description = "The email")),
     request_body = crate::arrival_routes::MoveBody,
     responses(

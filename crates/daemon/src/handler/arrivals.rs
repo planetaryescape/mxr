@@ -1079,7 +1079,11 @@ pub(super) async fn move_message(state: &AppState, request: MoveRequest<'_>) -> 
             modes_changed(state, &account_id);
             Ok(moved(outcome(
                 format!("Moved to {}.", mode.name()),
-                Some(format!("{} (K)", arrivals_copy::ALWAYS_FOR_SENDER)),
+                Some(format!(
+                    "{} ({})",
+                    arrivals_copy::ALWAYS_FOR_SENDER,
+                    mxr_keymap::guide_key("modes.move-sender").unwrap_or_else(|| "P".into())
+                )),
                 Some(id),
                 None,
             )))

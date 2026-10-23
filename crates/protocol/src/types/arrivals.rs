@@ -277,7 +277,7 @@ pub struct MoveOutcomeData {
     /// "Moved to Reading." / "All mail from maya@example.com goes to
     /// Reading." / "Would move to Reading."
     pub copy: String,
-    /// "Always for this sender? (K)": asked once after a per-email move to
+    /// "Always for this sender? (P)": asked once after a per-email move to
     /// Messages, Updates or Reading.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ask_sender: Option<String>,

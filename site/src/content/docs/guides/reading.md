@@ -148,7 +148,7 @@ left open overnight can't skew it.
 
 A digest link or a teaser points at an article on someone else's site. The
 reader's **Article** tab, `L`, or `mxr reading open ITEM --article` fetches
-it. So does `M` (or `mxr reading marginalia send`) on a digest link whose
+it. So does `O` (or `mxr reading marginalia send`) on a digest link whose
 article isn't saved, because Marginalia needs the article first. Nothing else
 fetches one. The client names the site before it
 contacts it ("Fetching from sqlite.org"), because the fetch tells that site
@@ -193,7 +193,7 @@ mxr reading later --remove ITEM
 email, it is archived at your provider, the toast says so, and `u` undoes
 it. This is the same done as every mode ([Email is five apps](/guides/email-modes/)).
 
-`A` lets go of everything in the edition. It always shows the list first,
+`E` lets go of everything in the edition. It always shows the list first,
 and what it lets go of is exactly that list:
 
 ```bash
@@ -222,9 +222,9 @@ issue as opened.
 ## Highlight what you want to keep
 
 In the web reader, select text and a small toolbar appears over the
-selection: **Highlight**, or **Highlight with note**. `h` still highlights
+selection: **Highlight**, or **Highlight with note**. `"` still highlights
 the selection without the toolbar. The TUI saves the paragraph at the top of
-the reader with `h`. The web reader marks a highlight on the passage you
+the reader with `"`. The web reader marks a highlight on the passage you
 selected: it remembers which paragraph you were in, so selecting the second
 of two identical phrases marks the second. Older highlights, highlights made in
 the other view (issue or article), and highlights from Marginalia are
@@ -259,7 +259,7 @@ deletes them, so export what you want to keep elsewhere.
 
 ## Read it in Marginalia
 
-`M` opens the item in [Marginalia](/guides/marginalia/), a reading app with
+`O` opens the item in [Marginalia](/guides/marginalia/), a reading app with
 themes, margin notes and a reading companion, once you have connected it.
 The first press sends the item's text there; the highlights you make in
 Marginalia come back to the item here.
@@ -283,11 +283,11 @@ makes no unsubscribe offers.
 | `e` | Let go |
 | `D` | Unsubscribe, with evidence and a preview |
 | `R` | The sender's own layout |
-| `A` | Let go of everything shown, with a preview |
-| `h` | Highlight the selection |
+| `E` | Let go of everything shown, with a preview |
+| `"` | Highlight the selection |
 | `H` | The TUI reader's highlights: edit a note, remove one |
 | `o` | Open the email itself |
-| `M` | Open in Marginalia, sending it the first time |
+| `O` | Open in Marginalia, sending it the first time |
 | `?` | Help, starting with Reading |
 
 On the web, issues are rows: the title, the dek under it, the source and

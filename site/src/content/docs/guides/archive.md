@@ -341,9 +341,9 @@ the ledger, and `/` focuses the box. The other keys are the same in both:
 | `/` | Ask |
 | `y` / `Y` | Copy the reference / the amount |
 | `Enter` | Open the record's document |
-| `o` or `e` | Open the email it came from |
+| `o` | Open the email it came from |
 | `p` | The issuer's page: every record from them |
-| `[` / `]` | Previous / next year |
+| `{` / `}` | Previous / next year |
 | `,` | Fix a field, or confirm it |
 | `v` | Mark the card checked |
 | `X` | Not a record |

@@ -208,6 +208,8 @@ fn the_verbs_name_their_requests() {
     press(&mut app, KeyCode::Esc);
     assert!(app.mailbox.records_page.filter.issuer.is_none());
     press(&mut app, KeyCode::Char('['));
+    assert!(app.mailbox.records_page.filter.year.is_none());
+    press(&mut app, KeyCode::Char('{'));
     assert_eq!(app.mailbox.records_page.filter.year, Some(2024));
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
     press(&mut app, KeyCode::Char('f'));

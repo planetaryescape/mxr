@@ -517,7 +517,7 @@ where
     )
 }
 
-/// Send every event already waiting for this client, then return. Returns
+/// Send the events already waiting for this client, then return. Returns
 /// `false` when the connection is gone.
 async fn flush_queued_events<W>(
     sink: &mut FramedWrite<W, IpcCodec>,
@@ -528,7 +528,9 @@ async fn flush_queued_events<W>(
 where
     W: tokio::io::AsyncWrite + Unpin,
 {
-    loop {
+    // Only what was queued when the response was ready: a busy sync keeps
+    // emitting, and draining until empty could hold the response back.
+    for _ in 0..event_rx.len() {
         let delivered = match event_rx.try_recv() {
             Ok(event_msg) => forward_event(sink, state, event_profile, event_msg).await,
             Err(broadcast::error::TryRecvError::Lagged(skipped)) => {
@@ -542,6 +544,7 @@ where
             return false;
         }
     }
+    true
 }
 
 /// A lag count covers every account's events, so a profiled connection gets

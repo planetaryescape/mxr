@@ -36,7 +36,7 @@ The Rules page gives you:
 
 Open it from:
 
-- `3`
+- `g` then `R`
 - `Ctrl-p` then `Open Rules Page`
 
 Common actions:

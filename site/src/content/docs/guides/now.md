@@ -254,7 +254,7 @@ The sidebar lists Now, the five modes and Inbox, with their keys:
 | Now | `g h` | The front page; its badge counts people whose turn it is and things to act on |
 | Messages | `g m` | People and groups, with their conversations inside. The count is the people waiting on you, the same as Now |
 | To do | `g x` | Things email asked you to do, by when to act |
-| Updates | `g u` | Notifications as a briefing by source, twice a day. `g p` opens it too |
+| Updates | `g u` | Notifications as a briefing by source, twice a day |
 | Reading | `g r` | Newsletters as an [edition](/guides/reading/), with a Later shelf. No count: nothing in it is owed |
 | Archive | `g e` | Filed receipts, orders, bookings, bills and documents |
 | Inbox | `g i` | Everything, newest first |

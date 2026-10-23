@@ -11,9 +11,9 @@ In the web app the panel reads like a page from a copy desk. Your messages are q
 
 ## Open it
 
-In the web app, press `⌘.` (`Ctrl+.` on Linux and Windows) or the assistant button next to Search. It opens on the right, beside whatever page you're on, and stays as you move between pages. Drag its edge to resize it. Below 1024px wide it opens as a drawer over the page instead. Clicking the button slides the panel in over a fraction of a second; the keyboard shortcut opens it at once, and with reduced motion it only fades. It is closed until you open it, and it remembers whether you left it open.
+In the web app, press `@`, `⌘.` (`Ctrl+.` on Linux and Windows; it works from a text field too) or the assistant button next to Search. It opens on the right, beside whatever page you're on, and stays as you move between pages. Drag its edge to resize it. Below 1024px wide it opens as a drawer over the page instead. Clicking the button slides the panel in over a fraction of a second; the keyboard shortcut opens it at once, and with reduced motion it only fades. It is closed until you open it, and it remembers whether you left it open.
 
-In the TUI, press `Ctrl-a`; see [In the terminal](#in-the-terminal).
+In the TUI, press `@`; see [In the terminal](#in-the-terminal).
 
 From a terminal:
 
@@ -25,7 +25,7 @@ While the turn runs, one line under the command says what the assistant is doing
 
 ## In the terminal
 
-In the TUI, press `Ctrl-a` on any screen. The assistant opens as a pane on the right, or over the right of the screen when the terminal is narrower than 110 columns. It is hidden until you open it. `Ctrl-a` hides it again, or brings the keys back to it after you've moved away. The palette (`Ctrl-p`) has the same commands under "Assistant".
+In the TUI, press `@` on any screen. The assistant opens as a pane on the right, or over the right of the screen when the terminal is narrower than 110 columns. It is hidden until you open it. `@` brings the keys back to it after you've moved away, and hides it again from the pane keys (`Esc` off the message box, where `@` types). The palette (`:`) has the same commands under "Assistant".
 
 While the pane has the keys, everything you type goes to it, not to the screen behind it:
 

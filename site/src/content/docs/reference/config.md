@@ -920,7 +920,7 @@ Unknown action names and invalid key strings are ignored, leaving their defaults
 mxr --help                 # command surface
 # In the TUI:
 ?                          # context-aware help modal
-Ctrl-p                     # command palette searches by action name
+: (or Ctrl-k)              # command palette searches by action name
 ```
 
 Help, the command palette and mail-pane hints show the effective bindings for the focused view. After restarting with the example above, help in a mail list shows `;` for Archive and `wq` for Trash; `e` and `#` no longer run those actions there. The [keybindings reference](/reference/keybindings/) and `mxr keys` list defaults, not your local remaps. Web shortcuts are unchanged by this TUI-only file.

@@ -77,7 +77,7 @@ In `mxr web`, **Drafts** in the sidebar opens this same local list. Open a row
 to edit it, use the confirmed trash action to delete both linked copies, or
 choose **Save to server draft** to create/update the provider link.
 
-In the TUI, open the command palette and choose **Drafts**, or press `gE`.
+In the TUI, open the command palette (`:`) and choose **Drafts**.
 The draft browser uses `e` to edit, `d` to preview and confirm linked deletion,
 and `p` to preview and confirm provider sync. Unsupported accounts are
 refused without changing the local draft. A draft scheduled to send later

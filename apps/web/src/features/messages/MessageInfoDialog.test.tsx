@@ -6,6 +6,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { ThreadResponse } from "@/features/mailbox/types";
 
 import { CopyableAddress } from "./AddressDisclosure";
+import { ConversationPeople } from "./ConversationPeople";
 import { MessageInfoDialog } from "./MessageInfoDialog";
 import { PersonIdentity } from "./PersonIdentity";
 import type { ConversationMessage, MessagesRow } from "./api";
@@ -54,6 +55,7 @@ function threadResponse(): ThreadResponse {
         thread_id: "thread-1",
         provider_id: "p1",
         sender: "Samir Patel",
+        sender_detail: "samir.p@home.example",
         subject: "Different audiences",
         snippet: "First message",
         date: first.date,
@@ -73,6 +75,7 @@ function threadResponse(): ThreadResponse {
         thread_id: "thread-1",
         provider_id: "p2",
         sender: "Samir Patel",
+        sender_detail: "samir.p@home.example",
         subject: "Different audiences",
         snippet: "Second message",
         date: second.date,
@@ -142,6 +145,82 @@ test("shows the exact recorded audience for each message, including available Bc
   expect(screen.getByRole("region", { name: "Bcc" })).toHaveTextContent(
     "Not recorded in this copy",
   );
+});
+
+test("loads conversation people on demand and keeps same-name addresses distinct", async () => {
+  const response = threadResponse();
+  response.messages[1]!.cc = [
+    { name: "Samir Patel", email: "samir.alt@example.net" },
+    { name: "Malformed", email: "not-an-address" },
+  ];
+  http.send.mockResolvedValue(response);
+  render(
+    <QueryClientProvider client={queryClient()}>
+      <ConversationPeople threadId="thread-1" />
+    </QueryClientProvider>,
+  );
+  expect(http.send).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "People in this conversation" }));
+  expect(await screen.findByText("samir.p@home.example")).toBeInTheDocument();
+  expect(screen.getByText("samir.alt@example.net")).toBeInTheDocument();
+  expect(screen.getByText("alex@example.com")).toBeInTheDocument();
+  expect(screen.getByText("jo@example.com")).toBeInTheDocument();
+  expect(screen.getByText("lee@example.com")).toBeInTheDocument();
+  expect(screen.getByText("maya@example.com")).toBeInTheDocument();
+  expect(screen.queryByText("not-an-address")).toBeNull();
+  expect(screen.getByText(/Each message can have a different audience/)).toBeInTheDocument();
+  expect(http.send).toHaveBeenCalledTimes(1);
+});
+
+test("conversation people retry without retaining failed data", async () => {
+  http.send.mockRejectedValueOnce(new Error("offline")).mockResolvedValue(threadResponse());
+  render(
+    <QueryClientProvider client={queryClient()}>
+      <ConversationPeople threadId="thread-1" />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "People in this conversation" }));
+  expect(
+    await screen.findByText("Couldn't load people for this conversation."),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("alex@example.com")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(await screen.findByText("alex@example.com")).toBeInTheDocument();
+  expect(http.send).toHaveBeenCalledTimes(2);
+});
+
+test("conversation people never show a previous topic while a new fetch is pending", async () => {
+  let resolveOld!: (response: ThreadResponse) => void;
+  const oldThread = new Promise<ThreadResponse>((resolve) => {
+    resolveOld = resolve;
+  });
+  const nextThread = threadResponse();
+  nextThread.thread.id = "thread-2";
+  nextThread.messages = [
+    {
+      ...nextThread.messages[0]!,
+      thread_id: "thread-2",
+      to: [{ email: "next-topic@example.com" }],
+      cc: [],
+      bcc: [],
+    },
+  ];
+  http.send.mockReturnValueOnce(oldThread).mockResolvedValueOnce(nextThread);
+  const client = queryClient();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <ConversationPeople threadId="thread-1" />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "People in this conversation" }));
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <ConversationPeople threadId="thread-2" />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByText("next-topic@example.com")).toBeInTheDocument();
+  resolveOld(threadResponse());
+  await waitFor(() => expect(screen.queryByText("alex@example.com")).toBeNull());
 });
 
 test("shows unavailable metadata and offers recovery after a query error", async () => {

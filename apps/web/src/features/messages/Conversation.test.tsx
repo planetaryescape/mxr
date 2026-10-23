@@ -56,6 +56,39 @@ describe("ConversationView", () => {
     expect(line?.textContent).not.toMatch(/ago|just now/);
   });
 
+  test("opens the latest letter in full while keeping older messages folded", () => {
+    const longThread: Conversation = {
+      ...conversation,
+      messages: [
+        {
+          ...conversation.messages[0]!,
+          text: "Older first paragraph.\n\nOlder second paragraph.",
+          only_quoted: false,
+          layout: "letter",
+          paragraphs: 2,
+        },
+        {
+          ...conversation.messages[0]!,
+          message_id: "m2",
+          text: "Hi Alex,\n\nThe main point.\n\nThe final detail.",
+          only_quoted: false,
+          layout: "letter",
+          paragraphs: 3,
+        },
+      ],
+    };
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationView conversation={longThread} asSent={null} onToggleAsSent={() => {}} />
+      </QueryClientProvider>,
+    );
+
+    const [older, latest] = screen.getAllByTestId("conversation-message");
+    expect(older).toHaveTextContent("Read all 2 paragraphs");
+    expect(latest).toHaveTextContent("The final detail.");
+    expect(latest).not.toHaveTextContent("Read all 3 paragraphs");
+  });
+
   test("the sender disclosure uses the original address, not a merged identity", async () => {
     const messageFromAlias: Conversation = {
       ...conversation,
@@ -203,11 +236,15 @@ describe("ConversationView", () => {
       </QueryClientProvider>,
     );
 
-    const readAll = screen.getByRole("button", { name: "Read all 3 paragraphs" });
-    const bodyId = readAll.getAttribute("aria-controls");
-    expect(readAll.getAttribute("aria-expanded")).toBe("false");
+    const showLessInitially = screen.getByRole("button", { name: "Show less" });
+    const bodyId = showLessInitially.getAttribute("aria-controls");
+    expect(showLessInitially.getAttribute("aria-expanded")).toBe("true");
     if (!bodyId) throw new Error("The disclosure button must identify its message body");
     const body = document.getElementById(bodyId);
+    expect(body?.textContent).toBe(text.replaceAll("\n\n", ""));
+    fireEvent.click(showLessInitially);
+    const readAll = screen.getByRole("button", { name: "Read all 3 paragraphs" });
+    expect(readAll.getAttribute("aria-expanded")).toBe("false");
     expect(body?.textContent).toBe("Opening paragraph.");
     readAll.focus();
 

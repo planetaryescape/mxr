@@ -158,7 +158,14 @@ function toast(page: Page, text: RegExp) {
 }
 
 const currentTopic = (page: Page) =>
-  page.locator('[data-testid="person-page"] [data-testid="topic"][aria-current="true"]');
+  page.locator('[data-testid="person-page"] [data-testid="topics-trigger"]');
+
+async function hasCurrentTopic(page: Page) {
+  const current = currentTopic(page);
+  if (!(await current.isVisible())) return false;
+  const label = await current.getAttribute("aria-label");
+  return Boolean(label && !label.includes("Choose a conversation"));
+}
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -207,7 +214,7 @@ test.describe("Messages: done here moves on", () => {
       page,
       `/messages?person=${encodeURIComponent(person!.id)}&topic=${done.thread_id}`,
     );
-    await expect(page.getByTestId("conversation-subject")).toHaveText(done.subject);
+    await expect(currentTopic(page)).toContainText(done.subject);
     await expect(page.getByTestId("topics-left")).toHaveText(
       `${count} topics left with ${person!.title}`,
     );
@@ -218,10 +225,8 @@ test.describe("Messages: done here moves on", () => {
     await page.keyboard.press("e");
     // The topic just done is never the one left open.
     await expect(currentTopic(page)).toContainText(next.subject);
-    await expect(page.getByTestId("conversation-subject")).toHaveText(next.subject);
-    // A "now showing" moment on the topic and the conversation header.
+    // The selected topic control names the one current topic and its arrival.
     await expect(currentTopic(page).getByTestId("arrival")).toHaveCount(1);
-    await expect(page.getByTestId("conversation-subject").getByTestId("arrival")).toHaveCount(1);
     await expect(
       toast(page, new RegExp(`^Done: ${escape(done.subject)}\\. Next: ${escape(next.subject)}\\.`)),
     ).toBeVisible();
@@ -262,7 +267,7 @@ test.describe("Messages: done here moves on", () => {
       page,
       `/messages?person=${encodeURIComponent(person.id)}&topic=${topic.thread_id}`,
     );
-    await expect(page.getByTestId("conversation-subject")).toHaveText(topic.subject);
+    await expect(currentTopic(page)).toContainText(topic.subject);
     await page.keyboard.press("e");
 
     await expect(personRow(page, next.id)).toHaveAttribute("aria-current", "true");
@@ -295,7 +300,7 @@ test.describe("Messages: done here moves on", () => {
       // oxlint-disable-next-line no-await-in-loop
       await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
       // oxlint-disable-next-line no-await-in-loop
-      await expect(page.getByTestId("conversation-subject")).toBeVisible();
+      await expect(currentTopic(page)).toBeVisible();
       // oxlint-disable-next-line no-await-in-loop
       await page.keyboard.press("e");
     }
@@ -309,7 +314,7 @@ test.describe("Messages: done here moves on", () => {
       // oxlint-disable-next-line no-await-in-loop
       await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
       // oxlint-disable-next-line no-await-in-loop
-      if (!(await page.getByTestId("conversation-subject").isVisible())) continue;
+      if (!(await hasCurrentTopic(page))) continue;
       // oxlint-disable-next-line no-await-in-loop
       await page.keyboard.press("e");
       // oxlint-disable-next-line no-await-in-loop
@@ -317,7 +322,7 @@ test.describe("Messages: done here moves on", () => {
     }
     await expect(page.getByTestId("messages-empty")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("messages-empty").getByRole("heading")).toBeVisible();
-    await expect(page.getByTestId("conversation-subject")).toHaveCount(0);
+    await expect(currentTopic(page)).toHaveCount(0);
   });
 
   test("undo after moving on restores the person without pulling you back", async ({ page }) => {
@@ -333,7 +338,7 @@ test.describe("Messages: done here moves on", () => {
       page,
       `/messages?person=${encodeURIComponent(person.id)}&topic=${topic.thread_id}`,
     );
-    await expect(page.getByTestId("conversation-subject")).toHaveText(topic.subject);
+    await expect(currentTopic(page)).toContainText(topic.subject);
     await page.keyboard.press("e");
     await expect(page.getByTestId("person-name")).toHaveText(next.title);
     // Somewhere else before the undo.
@@ -373,7 +378,7 @@ test.describe("Messages: done here moves on", () => {
       page,
       `/messages?person=${encodeURIComponent(person!.id)}&topic=${done.thread_id}`,
     );
-    await expect(page.getByTestId("conversation-subject")).toHaveText(done.subject);
+    await expect(currentTopic(page)).toContainText(done.subject);
     await page.keyboard.press("e");
     await page.keyboard.press("e");
     await expect(toast(page, /^Done: /).first()).toBeVisible();

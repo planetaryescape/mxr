@@ -215,7 +215,7 @@ pub(super) async fn compose_assist(
         yours_changed: checked.yours_changed,
         composer_version: COMPOSER_VERSION.to_string(),
     };
-    record_activity(state, source, account_id, &proposal, &checked.fixes);
+    log_assist(state, source, account_id, &proposal, &checked.fixes);
     state.compose_proposals.insert(StoredProposal {
         account_id: account_id.clone(),
         draft_id: gathered.draft_id,
@@ -226,7 +226,7 @@ pub(super) async fn compose_assist(
 
 /// What the activity log learns: which action ran, on what model and how much
 /// came back. Never the text, the instruction or the conversation.
-fn record_activity(
+fn log_assist(
     state: &AppState,
     source: ClientKind,
     account_id: &AccountId,

@@ -5,6 +5,9 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use std::collections::HashMap;
 
+// An indexed batch avoids rescanning JSON for every thread in the account.
+const ACKNOWLEDGE_BATCH: &str = "WITH expected AS MATERIALIZED (SELECT key, value FROM json_each(?2)) UPDATE assessment_thread_inputs SET dirty = 0, revision = expected.value FROM expected WHERE account_id = ?1 AND thread_id = expected.key AND (dirty != 0 OR revision != expected.value)";
+
 impl super::Store {
     pub async fn assessment_thread_revisions(
         &self,
@@ -51,8 +54,11 @@ impl super::Store {
                 .bind(&answer.input_fingerprint).bind(revisions.values().max().copied().unwrap_or(0))
                 .bind(encode_json(answer)?).execute(&mut *tx).await?;
         }
-        sqlx::query("UPDATE assessment_thread_inputs SET dirty = 0, revision = (SELECT value FROM json_each(?2) WHERE key = thread_id) WHERE account_id = ?1 AND thread_id IN (SELECT key FROM json_each(?2) WHERE assessment_thread_inputs.dirty != 0 OR assessment_thread_inputs.revision != value)")
-            .bind(account.as_str()).bind(&expected).execute(&mut *tx).await?;
+        sqlx::query(ACKNOWLEDGE_BATCH)
+            .bind(account.as_str())
+            .bind(&expected)
+            .execute(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(true)
     }

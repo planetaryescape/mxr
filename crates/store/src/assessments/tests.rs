@@ -33,6 +33,31 @@ async fn acknowledge_all(store: &Store, account: &AccountId) {
 }
 
 #[tokio::test]
+async fn batch_acknowledgement_materializes_json_once_instead_of_correlated_scans() {
+    let store = Store::in_memory().await.unwrap();
+    let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "EXPLAIN QUERY PLAN {}",
+        super::ACKNOWLEDGE_BATCH
+    )))
+    .bind("account")
+    .bind(r#"{"thread":1}"#)
+    .fetch_all(store.reader())
+    .await
+    .unwrap();
+    let details: Vec<_> = plan.iter().map(|row| row.3.as_str()).collect();
+    assert!(
+        details
+            .iter()
+            .any(|step| step.contains("MATERIALIZE expected")),
+        "{details:?}"
+    );
+    assert!(
+        !details.iter().any(|step| step.contains("CORRELATED")),
+        "{details:?}"
+    );
+}
+
+#[tokio::test]
 async fn sender_ingest_writes_scale_linearly_and_lazy_pages_keep_new_mutations() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();

@@ -416,6 +416,53 @@ describe("Draft for me in the sheet", () => {
     );
   });
 
+  test("Esc on a proof keeps the user's text and leaves the sheet open", async () => {
+    // A saved body that nobody has touched: dismissing it would close the sheet at once.
+    api.startComposeSession.mockResolvedValue({
+      session: {
+        ...composeSession.session,
+        frontmatter: { ...composeSession.session.frontmatter, to: "pat@example.com" },
+        bodyMarkdown: "Hi",
+      },
+    });
+    renderCompose(newMessageIntent());
+    const proof = await askForHelp();
+
+    fireEvent.keyDown(proof, { key: "Escape" });
+
+    expect(screen.queryByRole("region", { name: "Draft proof" })).not.toBeInTheDocument();
+    // A dismissal would save and close; give that path time to finish.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(useComposeUi.getState().intent).not.toBeNull();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message body" })).toHaveValue("Hi");
+  });
+
+  test("Esc on the help line closes the line and leaves the sheet open", async () => {
+    api.startComposeSession.mockResolvedValue({
+      session: {
+        ...composeSession.session,
+        frontmatter: { ...composeSession.session.frontmatter, to: "pat@example.com" },
+        bodyMarkdown: "Hi",
+      },
+    });
+    renderCompose(newMessageIntent());
+    const editor = await screen.findByRole("textbox", { name: "Message body" });
+    fireEvent.keyDown(editor, { key: "j", metaKey: true });
+    const input = await screen.findByRole("textbox", { name: "Draft instruction" });
+
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(screen.queryByRole("textbox", { name: "Draft instruction" })).not.toBeInTheDocument();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(useComposeUi.getState().intent).not.toBeNull();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   test("accepting a proof returns focus to the body, so ⌘Z takes the accept back", async () => {
     renderCompose(newMessageIntent());
     const typed = await screen.findByRole("textbox", { name: "Message body" });

@@ -19,12 +19,13 @@ pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
     let body_views: Vec<String> = match &draft.content {
         DraftContent::Markdown { source } => {
             let html = mxr_outbound::render::render_markdown(source).html;
-            vec![source.clone(), visible_text(&html)]
+            vec![source.clone(), visible_text(&html), attribute_text(&html)]
         }
         DraftContent::Html { html, text } => vec![
             html.clone(),
             text.clone().unwrap_or_default(),
             visible_text(html),
+            attribute_text(html),
         ],
     };
     let mut labels = labels_in(std::slice::from_ref(&draft.subject));
@@ -64,6 +65,20 @@ fn labels_in(views: &[String]) -> Vec<String> {
 
 fn squash(text: &str) -> String {
     text.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+/// Every attribute value of an HTML document with its entities decoded, which
+/// is how an image's `alt` or a link's `title` reaches a recipient. Values are
+/// joined by a mark that is not whitespace, so the whitespace-blind scan never
+/// joins the end of one value to the start of the next.
+fn attribute_text(html: &str) -> String {
+    scraper::Html::parse_document(html)
+        .tree
+        .nodes()
+        .filter_map(|node| node.value().as_element())
+        .flat_map(|element| element.attrs().map(|(_, value)| value))
+        .collect::<Vec<_>>()
+        .join("\u{1}")
 }
 
 /// The text of an HTML document as a reader sees it: entities decoded and tags
@@ -253,6 +268,33 @@ mod tests {
             only_message(&markdown("[[?: the price]] and [[  ?: the date]]")),
             "2 gaps left: the price, an unnamed gap"
         );
+    }
+
+    #[test]
+    fn a_gap_in_an_attribute_the_recipient_can_see_is_a_gap() {
+        for html in [
+            r#"<img src="https://example.com/x.png" alt="&#91;&#91;?: the date&#93;&#93;">"#,
+            r#"<a href="https://example.com" title="&#91;&#91;?: the date&#93;&#93;">link</a>"#,
+        ] {
+            let content = DraftContent::html(html, Some("Clean text.".into()));
+            assert_eq!(
+                only_message(&draft("s", content)),
+                "1 gap left: the date",
+                "{html}"
+            );
+        }
+        // Markdown renders an image's description into its `alt`.
+        assert_eq!(
+            only_message(&markdown(
+                "![&#91;&#91;?: the date&#93;&#93;](https://example.com/x.png)"
+            )),
+            "1 gap left: the date"
+        );
+        let clean = DraftContent::html(
+            r#"<img src="https://example.com/x.png" alt="A chart [x] of sales" title="Q3?: ok">"#,
+            Some("Clean.".into()),
+        );
+        assert!(check(&draft("s", clean)).is_empty());
     }
 
     #[test]

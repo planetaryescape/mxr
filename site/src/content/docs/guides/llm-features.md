@@ -394,8 +394,9 @@ what was removed in `[-…-]`, then the gaps still to fill and which of your
 sentences changed or were dropped, counted from 1 (sentences split at `.`,
 `!`, `?` and line breaks). `--format json` prints the whole proposal:
 `proposal_id`, `action`, `base` (SHA-256 of the text it was made from, ignoring
-trailing blank space), `text`, `changes`, `gaps` (each with its byte range in
-`text`), `provenance`, `yours_changed` (positions counted from 0) and
+blank space at both ends and normalizing CRLF to LF), `text`, `changes`,
+`gaps` (each with its byte range in `text`), `provenance`, `yours_changed`
+(positions counted from 0) and
 `composer_version`.
 
 The daemon checks the model's answer before you see it:
@@ -403,9 +404,9 @@ The daemon checks the model's answer before you see it:
 - A signature or forwarded-message header the model wrote is removed. Yours
   stay untouched.
 - For a selection, any change outside it is put back.
-- A number, date or amount that appears in neither the conversation, your
-  text nor your instruction becomes a gap that shows the guess, as in
-  `[[?: amount, the draft said £40]]`.
+- A number, date or amount absent from the conversation, subject, your
+  text, your instruction and today's date becomes a gap that shows the guess,
+  as in `[[?: amount, the draft said £40]]`.
 - A draft that still has a gap [can't be sent](/guides/pre-send-safety/#unfilled-gap).
 
 `mxr compose apply` writes the proposal into the stored draft's text, keeping

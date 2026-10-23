@@ -1,6 +1,6 @@
 # Rung 3 is reviewed locally and ready for its PR
 
-Rung 2 is live on mxr.sh, verified in [its production record](../evidence/rung2-production.md). The task-owned navigation and human mode journey are now integrated locally on `docs/runtime-mode-journeys`, based on freshly fetched main `fe8ea0f1ba4253df34d586c82eb2a58e1a240695`. [Rung 3 evidence](../evidence/rung3-modes-navigation-implementation.md) records the worker candidate and root corrections, build, 80-route navigation coverage, 1,844 link/anchor checks, keyboard disclosures/Search and static phone layouts in both themes.
+Rung 2 is live on mxr.sh, verified in [its production record](../evidence/rung2-production.md). The task-owned navigation and human mode journey are now integrated locally on `docs/runtime-mode-journeys`, rebased onto freshly fetched main `e98f499f8bf9072077a693e3e72d23528fe24fa2` (the v0.6.159 manifest update). [Rung 3 evidence](../evidence/rung3-modes-navigation-implementation.md) records the worker candidate and root corrections, build, 80-route navigation coverage, 1,844 link/anchor checks, keyboard disclosures/Search and static phone layouts in both themes.
 
 The current published binary is v0.6.158 at root's check; the stored classifier and newer Messages identity details were added after it. Touched guides preserve those upstream changes and give a version boundary without claiming they are in v0.6.158. All five modes and Now remain current workflows. Archive records are distinct from provider archiving; completion and preview effects remain mode-specific.
 

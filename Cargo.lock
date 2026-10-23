@@ -4582,7 +4582,15 @@ dependencies = [
 name = "mxr-composer"
 version = "0.6.156"
 dependencies = [
+ "base16ct",
+ "chrono",
+ "mxr-core",
  "mxr-humanizer",
+ "mxr-llm",
+ "mxr-protocol",
+ "sha2 0.11.1",
+ "similar",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

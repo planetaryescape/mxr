@@ -3,6 +3,7 @@
 //! ones because models and keyboards differ on them.
 
 use std::collections::HashSet;
+use std::ops::Range;
 
 /// How many words in a row a draft may copy from the conversation before it
 /// counts as quoting the thread back. Shorter runs are ordinary phrases
@@ -111,39 +112,93 @@ pub fn replay_invented_numbers(draft: &str, known: &str) -> Vec<String> {
     out
 }
 
-/// The tokens of a text that carry a digit, split on the marks that join
-/// numbers in ranges and dates ("4,000-5,000", "10/12") so each part is
-/// compared on its own. A time written with a space ("3 pm") is one token
-/// with its unit ("3pm").
-fn number_tokens(text: &str) -> Vec<String> {
-    let parts: Vec<&str> = text
-        .split(|c: char| c.is_whitespace() || matches!(c, ';' | '(' | ')' | '!' | '?' | '/' | '-'))
-        .map(|token| token.trim_matches(|c: char| !c.is_alphanumeric()))
-        .filter(|token| !token.is_empty())
-        .collect();
+/// A token of a text that carries a digit, and where it sits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct NumberSpan {
+    pub token: String,
+    /// Byte range of the token in the text it came from. A time written with
+    /// a space ("3 pm") covers both parts.
+    pub range: Range<usize>,
+}
+
+/// The pieces of a text between the marks that join numbers in ranges and
+/// dates ("4,000-5,000", "10/12"), trimmed of the punctuation around them,
+/// with where each starts.
+fn pieces(text: &str) -> Vec<(&str, usize)> {
+    let is_mark =
+        |c: char| c.is_whitespace() || matches!(c, ';' | '(' | ')' | '!' | '?' | '/' | '-');
+    let not_alphanumeric = |c: char| !c.is_alphanumeric();
+    let mut out = Vec::new();
+    let mut start = None;
+    for (index, character) in text.char_indices().chain([(text.len(), ' ')]) {
+        match (is_mark(character), start) {
+            (false, None) => start = Some(index),
+            (true, Some(from)) => {
+                let piece = &text[from..index];
+                let trimmed = piece.trim_matches(not_alphanumeric);
+                if !trimmed.is_empty() {
+                    let lead = piece.len() - piece.trim_start_matches(not_alphanumeric).len();
+                    out.push((trimmed, from + lead));
+                }
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// The tokens of a text that carry a digit, each compared on its own. A time
+/// written with a space ("3 pm") is one token with its unit ("3pm").
+pub(super) fn number_spans(text: &str) -> Vec<NumberSpan> {
+    let parts = pieces(text);
     let has_digit = |token: &str| token.chars().any(|c| c.is_ascii_digit());
     let mut out = Vec::new();
     let mut index = 0;
     while index < parts.len() {
-        let part = parts[index];
+        let (part, at) = parts[index];
         let unit = parts
             .get(index + 1)
             .copied()
-            .filter(|next| next.eq_ignore_ascii_case("am") || next.eq_ignore_ascii_case("pm"));
+            .filter(|(next, _)| next.eq_ignore_ascii_case("am") || next.eq_ignore_ascii_case("pm"));
         match unit {
-            Some(unit) if has_digit(part) => {
-                out.push(format!("{part}{unit}"));
+            Some((unit, unit_at)) if has_digit(part) => {
+                out.push(NumberSpan {
+                    token: format!("{part}{unit}"),
+                    range: at..unit_at + unit.len(),
+                });
                 index += 2;
             }
             _ => {
                 if has_digit(part) {
-                    out.push(part.to_string());
+                    out.push(NumberSpan {
+                        token: part.to_string(),
+                        range: at..at + part.len(),
+                    });
                 }
                 index += 1;
             }
         }
     }
     out
+}
+
+fn number_tokens(text: &str) -> Vec<String> {
+    number_spans(text)
+        .into_iter()
+        .map(|span| span.token)
+        .collect()
+}
+
+/// Every place the draft writes a number that no input carries, in text
+/// order. Unlike [`invented_numbers`] it keeps repeats, so each can be
+/// replaced.
+pub(super) fn invented_spans(draft: &str, known: &str) -> Vec<NumberSpan> {
+    let known_keys: HashSet<String> = number_tokens(known).iter().map(|t| number_key(t)).collect();
+    number_spans(draft)
+        .into_iter()
+        .filter(|span| !known_keys.contains(&number_key(&span.token)))
+        .collect()
 }
 
 /// A number in its comparable form: thousands commas removed, case folded,

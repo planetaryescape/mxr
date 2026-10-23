@@ -271,6 +271,7 @@ async fn draft_with(
         target_words,
         instruction: request.instruction,
         subject: "",
+        mail_subject: "",
         help: Help::write(),
         budget_chars,
     });

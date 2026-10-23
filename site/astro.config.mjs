@@ -47,7 +47,7 @@ export default defineConfig({
         { tag: 'meta', attrs: { name: 'twitter:image:alt', content: 'mxr syncs connected mail into a local mailbox for people, scripts, and agents to use.' } },
         { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' } },
         { tag: 'meta', attrs: { name: 'author', content: 'planetaryescape' } },
-        { tag: 'meta', attrs: { name: 'keywords', content: 'email client, local-first email, CLI email, terminal email client, TUI email, Gmail CLI, Outlook CLI, IMAP client, SMTP, Rust, MCP server, agent email, offline email, self-hosted email' } },
+        { tag: 'meta', attrs: { name: 'keywords', content: 'local mail runtime, local mailbox, agent email, MCP server, local-first email, CLI email, TUI email, Gmail, Outlook, IMAP, SMTP, Rust, email client' } },
       ],
       sidebar: [
         {

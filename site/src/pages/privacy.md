@@ -68,7 +68,7 @@ mxr makes network requests for the following:
 - The linked article's site, when you ask Reading to fetch it or send an
   unsaved digest link to Marginalia.
 - Your configured Marginalia server, when you connect it, send a Reading
-  item or sync its highlights.
+  item, or read its highlights back manually or after a mail sync.
 - Remote images in HTML messages, fetched from whatever URLs the message carries.
 - Unsubscribe requests to the endpoint or link a message supplies.
 - Embedding model downloads from Hugging Face for semantic search.

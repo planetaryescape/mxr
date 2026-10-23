@@ -207,7 +207,7 @@ Outlook / Microsoft 365, and generic IMAP remain visible.
 
 ### Client surfaces (§05)
 
-Ruled rows explain the TUI, CLI, HTTP bridge, and MCP / agent
+Ruled rows explain the TUI, CLI, web app, HTTP bridge and MCP / agent
 surfaces. Each row names the interface, its role, and one concrete
 command or request. The section follows sync so the shared daemon
 model answers how all interfaces see the same mailbox.

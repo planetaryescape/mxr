@@ -6,8 +6,8 @@ Strategic context for design work. Answers who, what, why.
 
 **brand** — the landing page, marketing site, splash content, GitHub
 README, install pages. Design IS the product here; the site has to
-do positioning work, not serve a logged-in workflow. The TUI itself
-is a separate **product** register, but it's not the focus of design
+do positioning work, not serve a logged-in workflow. The human clients themselves
+use a separate **product** register, but it's not the focus of design
 work right now.
 
 ## Users

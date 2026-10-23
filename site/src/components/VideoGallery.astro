@@ -79,8 +79,8 @@ const clips = [
     description: 'The CLI ranks a limited set of subscription candidates using the share of messages currently marked READ.',
     provenance: 'Recorded CLI capture against synthetic mail. Its on-screen “open-rate” wording is a legacy label for current READ state, not distinct message opens.',
     steps: [
-      'A search first returns newsletter and digest candidates from the synthetic mailbox.',
-      'The subscription command ranks only the candidate set it receives, with a limit shown in the command.',
+      'A separate search displays newsletter and digest matches from the synthetic mailbox.',
+      'The subscription command ranks its returned candidates. No explicit account selector or candidate limit is shown.',
       'The numerator is the current local READ flag; mxr does not track whether a person opened a message.',
     ],
   },

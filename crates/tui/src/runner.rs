@@ -4840,12 +4840,28 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                             app.modals.platform.close();
                             match result {
-                                Ok(proposal) => app.compose.assist_review = Some(app::ComposeAssistReview {
-                                    pending: *pending,
-                                    proposal,
-                                    note_input: None,
-                                }),
-                                Err(error) => app.report_error("Writing proof failed", error.to_string()),
+                                Ok(proposal) => {
+                                    if let Some(review) = app.compose.assist_review.as_mut().filter(|review| {
+                                        review.pending.draft_path == pending.draft_path
+                                    }) {
+                                        review.push_proposal(proposal);
+                                    } else {
+                                        app.compose.assist_review = Some(app::ComposeAssistReview {
+                                            pending: *pending,
+                                            proposals: vec![proposal],
+                                            current_index: 0,
+                                            note_input: None,
+                                            proof_scroll_offset: 0,
+                                            request_pending: false,
+                                        });
+                                    }
+                                }
+                                Err(error) => {
+                                    if let Some(review) = app.compose.assist_review.as_mut() {
+                                        review.request_pending = false;
+                                    }
+                                    app.report_error("Writing proof failed", error.to_string());
+                                }
                             }
                         }
                         AsyncResult::ComposeAssistAccepted { pending, request_id, reopen_editor, result } => {
@@ -4897,7 +4913,12 @@ pub async fn run() -> anyhow::Result<()> {
                                         app.compose.pending_send_confirm = Some(pending_send);
                                     }
                                 }
-                                Err(error) => app.report_error("Writing proof could not be applied", error.to_string()),
+                                Err(error) => app.report_error(
+                                    "Could not confirm the accepted draft",
+                                    format!(
+                                        "The change may already be saved. Reopen the draft to check its current text before continuing. {error}"
+                                    ),
+                                ),
                             }
                         }
                         AsyncResult::AnalyticsResult { view, result } => {

@@ -17,6 +17,9 @@ impl App {
                         let Some(review) = self.compose.assist_review.as_ref().cloned() else {
                             return None;
                         };
+                        let Some(proposal) = review.proposal() else {
+                            return None;
+                        };
                         let instruction = review.note_input.unwrap_or_default();
                         let text = mxr_composer::check::split_body(&review.pending.body)
                             .text
@@ -27,10 +30,10 @@ impl App {
                             },
                             text,
                             selection: None,
-                            action: Some(review.proposal.action),
+                            action: Some(proposal.action),
                             instruction: Some(instruction),
                             adjust: mxr_protocol::AssistAdjustData::default(),
-                            revise: Some(review.proposal.proposal_id),
+                            revise: Some(proposal.proposal_id.clone()),
                         };
                         self.queue_platform_request(
                             request,
@@ -44,10 +47,19 @@ impl App {
                             dispatch.compose_assist_request_id =
                                 Some(self.compose.assist_request_id);
                         }
+                        if let Some(review) = self.compose.assist_review.as_mut() {
+                            review.note_input = None;
+                            review.request_pending = true;
+                        }
                         None
                     }
                     (KeyCode::Esc, _) => {
                         if let Some(review) = self.compose.assist_review.as_mut() {
+                            if review.request_pending {
+                                self.compose.assist_request_id =
+                                    self.compose.assist_request_id.wrapping_add(1);
+                                review.request_pending = false;
+                            }
                             review.note_input = None;
                         }
                         None
@@ -71,35 +83,36 @@ impl App {
                     _ => None,
                 };
             }
-            return match (key.code, key.modifiers) {
+            let action = proof_action_for_key(key);
+            return match action {
                 // Keep mine: the canonical send review and original editor
                 // file remain untouched until a proposal is accepted.
-                (KeyCode::Esc, _) => {
+                Some("ComposeProofKeep") => {
+                    if self
+                        .compose
+                        .assist_review
+                        .as_ref()
+                        .is_some_and(|review| review.request_pending)
+                    {
+                        self.compose.assist_request_id =
+                            self.compose.assist_request_id.wrapping_add(1);
+                        self.modals.platform.close();
+                    }
                     self.compose.assist_review = None;
                     None
                 }
-                (KeyCode::Char('y'), KeyModifiers::NONE)
-                | (KeyCode::Char('e'), KeyModifiers::NONE) => {
-                    let reopen_editor = matches!(key.code, KeyCode::Char('e'));
+                Some("ComposeProofAccept" | "ComposeProofAcceptEdit") => {
+                    let reopen_editor = action == Some("ComposeProofAcceptEdit");
                     if let Some(review) = self.compose.assist_review.take() {
-                        if !review.proposal.gaps.is_empty() {
-                            let labels = review
-                                .proposal
-                                .gaps
-                                .iter()
-                                .map(|gap| gap.label.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            self.status_message =
-                                Some(format!("Fill these details before accepting: {labels}"));
+                        let Some(proposal) = review.proposal().cloned() else {
                             self.compose.assist_review = Some(review);
                             return None;
-                        }
+                        };
                         let pending = review.pending;
                         let draft_id = pending.draft_id();
                         self.queue_platform_request_after(
                             vec![Request::ApplyComposeProposal {
-                                proposal_id: review.proposal.proposal_id,
+                                proposal_id: proposal.proposal_id,
                                 draft_id: draft_id.clone(),
                             }],
                             Request::GetDraft { draft_id },
@@ -117,9 +130,65 @@ impl App {
                     }
                     None
                 }
-                (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                Some("ComposeProofRevise") => {
                     if let Some(review) = self.compose.assist_review.as_mut() {
                         review.note_input = Some(String::new());
+                    }
+                    None
+                }
+                Some("ComposeProofPrevious") | Some("ComposeProofNext") => {
+                    if let Some(review) = self.compose.assist_review.as_mut() {
+                        let last = review.proposals.len().saturating_sub(1);
+                        let index = if action == Some("ComposeProofPrevious") {
+                            review.current_index.saturating_sub(1)
+                        } else {
+                            review.current_index.saturating_add(1).min(last)
+                        };
+                        review.select_version(index);
+                    }
+                    None
+                }
+                Some("ComposeProofScrollUp") => {
+                    if let Some(review) = self.compose.assist_review.as_mut() {
+                        review.proof_scroll_offset = review.proof_scroll_offset.saturating_sub(1);
+                    }
+                    None
+                }
+                Some("ComposeProofScrollDown") => {
+                    if let Some(review) = self.compose.assist_review.as_mut() {
+                        review.proof_scroll_offset = review.proof_scroll_offset.saturating_add(1);
+                    }
+                    None
+                }
+                Some("ComposeProofPageUp") => {
+                    if let Some(review) = self.compose.assist_review.as_mut() {
+                        review.proof_scroll_offset = review.proof_scroll_offset.saturating_sub(8);
+                    }
+                    None
+                }
+                Some("ComposeProofPageDown") => {
+                    if let Some(review) = self.compose.assist_review.as_mut() {
+                        review.proof_scroll_offset = review.proof_scroll_offset.saturating_add(8);
+                    }
+                    None
+                }
+                Some("ComposeProofScrollTop") => {
+                    if let Some(review) = self.compose.assist_review.as_mut() {
+                        review.proof_scroll_offset = 0;
+                    }
+                    None
+                }
+                Some("ComposeProofScrollBottom") => {
+                    let bottom = self
+                        .compose
+                        .assist_review
+                        .as_ref()
+                        .and_then(|review| review.proposal())
+                        .map(crate::ui::compose_assist_proof::line_count)
+                        .unwrap_or_default()
+                        .saturating_sub(1) as u16;
+                    if let Some(review) = self.compose.assist_review.as_mut() {
+                        review.proof_scroll_offset = bottom;
                     }
                     None
                 }
@@ -127,5 +196,26 @@ impl App {
             };
         }
         None
+    }
+}
+
+fn proof_action_for_key(key: crossterm::event::KeyEvent) -> Option<&'static str> {
+    let spelling = crate::app::key_dispatch::spelling(key)?;
+    let (_, binding) = mxr_keymap::defaults().tui_binding("compose-assist-proof", &spelling)?;
+    let action = binding.name.as_str();
+    match action.as_str() {
+        "ComposeProofAccept" => Some("ComposeProofAccept"),
+        "ComposeProofAcceptEdit" => Some("ComposeProofAcceptEdit"),
+        "ComposeProofRevise" => Some("ComposeProofRevise"),
+        "ComposeProofKeep" => Some("ComposeProofKeep"),
+        "ComposeProofPrevious" => Some("ComposeProofPrevious"),
+        "ComposeProofNext" => Some("ComposeProofNext"),
+        "ComposeProofScrollUp" => Some("ComposeProofScrollUp"),
+        "ComposeProofScrollDown" => Some("ComposeProofScrollDown"),
+        "ComposeProofPageUp" => Some("ComposeProofPageUp"),
+        "ComposeProofPageDown" => Some("ComposeProofPageDown"),
+        "ComposeProofScrollTop" => Some("ComposeProofScrollTop"),
+        "ComposeProofScrollBottom" => Some("ComposeProofScrollBottom"),
+        _ => None,
     }
 }

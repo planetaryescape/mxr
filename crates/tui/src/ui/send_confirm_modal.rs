@@ -154,11 +154,18 @@ fn modal_lines(
 
     match pending.mode {
         PendingSendMode::SendOrSave if blocked => {
-            lines.push("[e/Esc] edit again   [O] override + send   [#] discard draft".to_string());
+            let override_action = if pending.override_token.is_some() {
+                "   [O] override + send"
+            } else {
+                ""
+            };
+            lines.push(format!(
+                "[e/Esc] edit again{override_action}   [#] discard draft"
+            ));
         }
         PendingSendMode::SendOrSave => {
             lines.push("[s] send   [a] send at   [n] remind   [d] save draft".to_string());
-            lines.push("[r] refine   [e/Esc] edit again   [#] discard draft".to_string());
+            lines.push("[r] draft for me   [e/Esc] edit again   [#] discard draft".to_string());
         }
         PendingSendMode::DraftOnlyNoRecipients => {
             lines.push("[d] save draft   [e/Esc] edit again   [#] discard draft".to_string());
@@ -212,6 +219,9 @@ fn push_safety_lines(
 mod tests {
     use super::draw;
     use crate::app::{PendingSend, PendingSendMode};
+    use mxr_core::{
+        DraftSafetyIssue, DraftSafetyIssueCode, DraftSafetyReport, DraftSafetySeverity,
+    };
     use mxr_test_support::render_to_string;
     use ratatui::layout::Rect;
 
@@ -341,7 +351,7 @@ mod tests {
         });
         assert!(rendered.contains("Safety: SAFE"), "got:\n{rendered}");
         assert!(
-            rendered.contains("[r] refine") && rendered.contains("[#] discard draft"),
+            rendered.contains("[r] draft for me") && rendered.contains("[#] discard draft"),
             "the action row must stay visible at 120x20; got:\n{rendered}"
         );
     }
@@ -365,8 +375,34 @@ mod tests {
         assert!(rendered.contains("Voice match: not scored for manual edits"));
         assert!(rendered.contains("Humanizer: scored on AI draft outputs"));
         assert!(rendered.contains("[s] send   [a] send at   [n] remind   [d] save draft"));
-        assert!(rendered.contains("[r] refine"));
+        assert!(rendered.contains("[r] draft for me"));
         assert!(rendered.contains("[#] discard draft"));
+    }
+
+    #[test]
+    fn unfilled_gap_blocks_send_and_offers_edit_without_override() {
+        let mut p = pending(PendingSendMode::SendOrSave);
+        p.safety_report = Some(DraftSafetyReport::from_issues(vec![DraftSafetyIssue::new(
+            DraftSafetyIssueCode::UnfilledGap,
+            DraftSafetySeverity::Blocker,
+            "Fill in the meeting time before sending.",
+        )]));
+        let rendered = render_to_string(120, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 120, 24),
+                Some(&p),
+                None,
+                None,
+                &[],
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(rendered.contains("Safety: BLOCKED"));
+        assert!(rendered.contains("Fill in the meeting time"));
+        assert!(rendered.contains("[e/Esc] edit again"));
+        assert!(!rendered.contains("[s] send"));
+        assert!(!rendered.contains("[O] override + send"));
     }
 
     #[test]
@@ -552,9 +588,10 @@ mod tests {
         assert!(rendered.contains("Override token: tok-abc-123"));
         assert!(rendered.contains("[O] override + send"));
         assert!(rendered.contains("Press O to override and send"));
-        // Blocked verdict suppresses the normal [s] send shortcut and [r] refine.
+        // A block without a token offers editing only; it cannot be overridden.
         assert!(!rendered.contains("[s] send"));
-        assert!(!rendered.contains("[r] refine"));
+        assert!(!rendered.contains("[O] override + send"));
+        assert!(rendered.contains("[e/Esc] edit again"));
         insta::assert_snapshot!("safety_modal_blocker", rendered);
     }
 

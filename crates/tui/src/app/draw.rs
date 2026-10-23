@@ -807,13 +807,17 @@ impl App {
             theme,
         );
         if let Some(review) = self.compose.assist_review.as_ref() {
-            ui::compose_assist_proof::draw(
-                frame,
-                area,
-                &review.proposal,
-                review.note_input.as_deref(),
-                theme,
-            );
+            if let Some(proposal) = review.proposal() {
+                ui::compose_assist_proof::draw(
+                    frame,
+                    area,
+                    proposal,
+                    review.note_input.as_deref(),
+                    (review.current_index, review.proposals.len()),
+                    review.proof_scroll_offset,
+                    theme,
+                );
+            }
         }
 
         // Bulk confirmation overlay

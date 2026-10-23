@@ -77,7 +77,7 @@ pub(super) fn copied_run(draft: &str, conversation: &str) -> Option<String> {
 /// "£1200" matches "£1,200", but "£200" does not, "2pm" does not match "12pm",
 /// and "$45" does not match "$450".
 pub fn invented_numbers(draft: &str, known: &str) -> Vec<String> {
-    let known_keys: HashSet<String> = number_tokens(known).iter().map(|t| number_key(t)).collect();
+    let known_keys = known_keys(known);
     let mut out: Vec<String> = Vec::new();
     for token in number_tokens(draft) {
         let key = number_key(&token);
@@ -194,11 +194,30 @@ fn number_tokens(text: &str) -> Vec<String> {
 /// order. Unlike [`invented_numbers`] it keeps repeats, so each can be
 /// replaced.
 pub(super) fn invented_spans(draft: &str, known: &str) -> Vec<NumberSpan> {
-    let known_keys: HashSet<String> = number_tokens(known).iter().map(|t| number_key(t)).collect();
+    let known_keys = known_keys(known);
     number_spans(draft)
         .into_iter()
         .filter(|span| !known_keys.contains(&number_key(&span.token)))
         .collect()
+}
+
+/// The comparable form of every figure in `known`. A time ("3pm") also makes
+/// its number ("3") known, so a draft that drops the unit does not invent one;
+/// "12pm" still leaves "2pm" unknown.
+fn known_keys(known: &str) -> HashSet<String> {
+    let mut keys = HashSet::new();
+    for token in number_tokens(known) {
+        let key = number_key(&token);
+        if let Some(hour) = key
+            .strip_suffix("am")
+            .or_else(|| key.strip_suffix("pm"))
+            .filter(|hour| !hour.is_empty() && hour.chars().all(|c| c.is_ascii_digit()))
+        {
+            keys.insert(hour.to_string());
+        }
+        keys.insert(key);
+    }
+    keys
 }
 
 /// A number in its comparable form: thousands commas removed, case folded,

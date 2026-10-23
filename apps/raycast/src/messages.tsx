@@ -126,12 +126,7 @@ export default function Messages() {
                 icon={Icon.Reply}
                 shortcut={keyFor("messages.reply")}
                 target={
-                  <ReplyForm
-                    messageId={topic.reply_to_message_id}
-                    threadId={topic.thread_id}
-                    to={name}
-                    onSent={revalidate}
-                  />
+                  <ReplyForm messageId={topic.reply_to_message_id} to={name} onSent={revalidate} />
                 }
               />
             )}
@@ -143,7 +138,6 @@ export default function Messages() {
                 target={
                   <ReplyForm
                     messageId={topic.reply_to_message_id}
-                    threadId={topic.thread_id}
                     kind="reply_all"
                     to={name}
                     onSent={revalidate}

@@ -921,6 +921,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn provider_sent_mail_from_an_unowned_sender_is_outbound() {
+        // Gmail send-as addresses are not registered in mxr, so From is not
+        // owned. The provider still filed the message as sent: that is outbound.
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let account_id = AccountId::new();
+        let engine = SyncEngine::with_address_lookup(
+            store.clone(),
+            search,
+            Arc::new(LoadedAddressLookup::for_account(
+                account_id.clone(),
+                ["me@x.com"],
+            )),
+        );
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        let inbox = make_test_label(&account_id, "Inbox", "INBOX");
+
+        let mut sent = make_test_envelope(&account_id, "sent-as-alias", vec!["SENT".to_string()]);
+        sent.from.email = "alias@send-as.example".to_string();
+        sent.flags = MessageFlags::SENT;
+        let mut received = make_test_envelope(&account_id, "received", vec!["INBOX".to_string()]);
+        received.from.email = "alias@send-as.example".to_string();
+
+        let provider = DeltaLabelProvider::new(
+            account_id.clone(),
+            vec![sent, received],
+            vec![inbox],
+            vec![],
+        );
+        engine.sync_account(&provider).await.unwrap();
+
+        let sent_id = store
+            .get_message_id_by_provider_id(&account_id, "sent-as-alias")
+            .await
+            .unwrap()
+            .unwrap();
+        let received_id = store
+            .get_message_id_by_provider_id(&account_id, "received")
+            .await
+            .unwrap()
+            .unwrap();
+        let directions = store
+            .list_message_directions_by_ids(&[sent_id.clone(), received_id.clone()])
+            .await
+            .unwrap();
+
+        assert_eq!(directions.get(&sent_id), Some(&MessageDirection::Outbound));
+        assert_eq!(
+            directions.get(&received_id),
+            Some(&MessageDirection::Inbound),
+            "without the SENT flag an unowned sender is still inbound"
+        );
+    }
+
+    #[tokio::test]
     async fn delta_sync_applies_label_additions() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();

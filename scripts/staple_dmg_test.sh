@@ -22,7 +22,12 @@ case "$2" in
         echo "$((count + 1))" > "$STAPLE_CASE/count"
         exit "${statuses[$count]:-90}"
         ;;
-    validate) exit "$VALIDATE_STATUS" ;;
+    validate)
+        count="$(cat "$STAPLE_CASE/validate-count")"
+        read -r -a statuses <<< "$VALIDATE_STATUS"
+        echo "$((count + 1))" > "$STAPLE_CASE/validate-count"
+        exit "${statuses[$count]:-90}"
+        ;;
     *) exit 92 ;;
 esac
 FAKE
@@ -40,6 +45,7 @@ run_case() {
     export STAPLE_CASE="$fixture/$name" STAPLE_CODES="$codes" VALIDATE_STATUS="$validation"
     mkdir "$STAPLE_CASE"
     echo 0 > "$STAPLE_CASE/count"
+    echo 0 > "$STAPLE_CASE/validate-count"
     : > "$STAPLE_CASE/calls"
     : > "$STAPLE_CASE/delays"
     PATH="$fixture/bin:$PATH" bash "$repo/scripts/staple_dmg.sh" "$STAPLE_DMG_PATH" > "$STAPLE_CASE/output" 2>&1 || status=$?
@@ -63,5 +69,7 @@ run_case nonretry-error '42' 0 42 $'staple\n' ''
 run_case cancelled-130 '130' 0 130 $'staple\n' ''
 run_case terminated-143 '143' 0 143 $'staple\n' ''
 run_case validation-failure '0' 9 9 $'staple\nvalidate\n' ''
-run_case validation-68-is-not-retried '0' 68 68 $'staple\nvalidate\n' ''
+run_case validation-transient-68 '0' '68 0' 0 $'staple\nvalidate\nvalidate\n' $'5\n'
+run_case validation-exhausted-68 '0' '68 68 68' 68 $'staple\nvalidate\nvalidate\nvalidate\n' $'5\n15\n'
+run_case validation-cancelled '0' 130 130 $'staple\nvalidate\n' ''
 echo 'staple_dmg_test: ok (fake xcrun/sleep only)'

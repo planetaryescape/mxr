@@ -2,139 +2,120 @@
 source: crates/daemon/src/handler/tests/classify_eval.rs
 expression: "report(&summary, &mismatches)"
 ---
-label schema v2; 185 labelled in the set, 185 in the mailbox, 0 not placed
+label schema v3; 185 labelled in the set, 185 in the mailbox, 0 not placed
 who     159/182  87.4%
 home    160/182  87.9%
 record  171/182  94.0%
 
 asks graded on 185 emails
-all                          expected    36 found    22 tp    20 fp     2 fn    16 precision  90.9% recall  55.6%
-pay                          expected    17 found    13 tp    12 fp     1 fn     5 precision  92.3% recall  70.6%
-fix_payment                  expected     5 found     3 tp     3 fp     0 fn     2 precision 100.0% recall  60.0%
-sign                         expected     4 found     3 tp     3 fp     0 fn     1 precision 100.0% recall  75.0%
+all                          expected    36 found    36 tp    36 fp     0 fn     0 precision 100.0% recall 100.0%
+pay                          expected    17 found    17 tp    17 fp     0 fn     0 precision 100.0% recall 100.0%
+fix_payment                  expected     5 found     5 tp     5 fp     0 fn     0 precision 100.0% recall 100.0%
+sign                         expected     4 found     4 tp     4 fp     0 fn     0 precision 100.0% recall 100.0%
 verify                       expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
 reply                        expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
-send                         expected     2 found     0 tp     0 fp     0 fn     2 precision      - recall   0.0%
-provide                      expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
+send                         expected     2 found     2 tp     2 fp     0 fn     0 precision 100.0% recall 100.0%
+provide                      expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 upload                       expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
-book                         expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
-attend                       expected     2 found     3 tp     2 fp     1 fn     0 precision  66.7% recall 100.0%
+book                         expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+attend                       expected     2 found     2 tp     2 fp     0 fn     0 precision 100.0% recall 100.0%
 renew_or_cancel              expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
 register                     expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
 contact                      expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
-other                        expected     2 found     0 tp     0 fp     0 fn     2 precision      - recall   0.0%
-you_promised/send            expected     2 found     0 tp     0 fp     0 fn     2 precision      - recall   0.0%
+other                        expected     2 found     2 tp     2 fp     0 fn     0 precision 100.0% recall 100.0%
+you_promised/send            expected     2 found     2 tp     2 fp     0 fn     0 precision 100.0% recall 100.0%
 
-field amount        pairs    20 exact    16 (80.0%) missing 3 wrong 1 spurious 0
-field due           pairs    20 exact    19 (95.0%) missing 1 wrong 0 spurious 0
-field counterparty  pairs    20 exact    20 (100.0%) missing 0 wrong 0 spurious 0
+field amount        pairs    36 exact    36 (100.0%) missing 0 wrong 0 spurious 0
+field due           pairs    36 exact    35 (97.2%) missing 1 wrong 0 spurious 0
+field counterparty  pairs    36 exact    34 (94.4%) missing 0 wrong 2 spurious 0
+field quote         pairs     1 exact     1 (100.0%) missing 0 wrong 0 spurious 0
+field actor         pairs     1 exact     1 (100.0%) missing 0 wrong 0 spurious 0
+field state         pairs     1 exact     1 (100.0%) missing 0 wrong 0 spurious 0
 
-duplicates 0 merges 1
-twin pairs 43 both right 14; differing pairs 32 both right 6
-reply owed (182 emails) expected    13 found     5 tp     2 fp     3 fn    11 precision  40.0% recall  15.4%
+duplicates 0 merges 0
+twin pairs 43 both right 41; differing pairs 32 both right 30
+reply owed (182 emails) expected    13 found    13 tp    13 fp     0 fn     0 precision 100.0% recall 100.0%
 
-locale           en-GB                              emails    163 expected    32 found    20 tp    18 fp     2 fn    14 precision  90.0% recall  56.3%
+locale           en-GB                              emails    163 expected    32 found    32 tp    32 fp     0 fn     0 precision 100.0% recall 100.0%
 locale           en-US                              emails     18 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
-locale           en-ZA                              emails      4 expected     4 found     2 tp     2 fp     0 fn     2 precision 100.0% recall  50.0%
-phrasing         held_out                           emails      4 expected     2 found     0 tp     0 fp     0 fn     2 precision      - recall   0.0%
-phrasing         visible                            emails    181 expected    34 found    22 tp    20 fp     2 fn    14 precision  90.9% recall  58.8%
-sender_kind      list                               emails     37 expected     0 found     2 tp     0 fp     2 fn     0 precision   0.0% recall      -
-sender_kind      organisation                       emails     85 expected    22 found    16 tp    16 fp     0 fn     6 precision 100.0% recall  72.7%
-sender_kind      person                             emails     43 expected    11 found     2 tp     2 fp     0 fn     9 precision 100.0% recall  18.2%
-sender_kind      platform                           emails     20 expected     3 found     2 tp     2 fp     0 fn     1 precision 100.0% recall  66.7%
-template_family  ask-to-you-alone                   emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
-template_family  bill-with-a-direct-debit-offer     emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
+locale           en-ZA                              emails      4 expected     4 found     4 tp     4 fp     0 fn     0 precision 100.0% recall 100.0%
+phrasing         held_out                           emails      4 expected     2 found     2 tp     2 fp     0 fn     0 precision 100.0% recall 100.0%
+phrasing         visible                            emails    181 expected    34 found    34 tp    34 fp     0 fn     0 precision 100.0% recall 100.0%
+rules_abstained  no                                 emails    167 expected    26 found    26 tp    26 fp     0 fn     0 precision 100.0% recall 100.0%
+rules_abstained  yes                                emails     18 expected    10 found    10 tp    10 fp     0 fn     0 precision 100.0% recall 100.0%
+sender_kind      list                               emails     37 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
+sender_kind      organisation                       emails     85 expected    22 found    22 tp    22 fp     0 fn     0 precision 100.0% recall 100.0%
+sender_kind      person                             emails     43 expected    11 found    11 tp    11 fp     0 fn     0 precision 100.0% recall 100.0%
+sender_kind      platform                           emails     20 expected     3 found     3 tp     3 fp     0 fn     0 precision 100.0% recall 100.0%
+template_family  ask-to-you-alone                   emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+template_family  bill-with-a-direct-debit-offer     emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  calendar-invite                    emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
-template_family  card-expiring                      emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
-template_family  colleague-asks                     emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
-template_family  colleague-asks-about-a-document    emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
+template_family  card-expiring                      emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+template_family  colleague-asks                     emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+template_family  colleague-asks-about-a-document    emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  current-decline                    emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  dated-bill                         emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  direct-parking-charge              emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  final-reminder-money-owed          emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
-template_family  friend-asks-for-an-eft             emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
-template_family  friend-reply-about-a-payment       emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
+template_family  friend-asks-for-an-eft             emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+template_family  friend-reply-about-a-payment       emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  invoice-from-the-same-company      emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  invoice-in-euros                   emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  invoice-in-pounds                  emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  invoice-in-rand                    emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
-template_family  messages-group-thread-ask          emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
+template_family  messages-group-thread-ask          emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  modes-landlord-reply               emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  municipal-account-in-rand          emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
-template_family  owner-promises-something           emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
+template_family  owner-promises-something           emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  payment-failed                     emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  personal-invitation                emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
-template_family  platform-announcement-with-rsvp    emails      1 expected     0 found     1 tp     0 fp     1 fn     0 precision   0.0% recall      -
 template_family  positive-balance-due               emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
-template_family  promo-with-pay-words               emails      1 expected     0 found     1 tp     0 fp     1 fn     0 precision   0.0% recall      -
-template_family  receipt-asks-for-an-address        emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
-template_family  school-trip-consent-form           emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
-template_family  service-charge-first-account       emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
+template_family  receipt-asks-for-an-address        emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+template_family  school-trip-consent-form           emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+template_family  service-charge-first-account       emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  service-charge-second-account      emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  sign-request                       emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  todo-bill-with-due-date            emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  todo-document-to-sign              emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  todo-failed-payment                emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 template_family  todo-overdue-bill-reminder         emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
-template_family  todo-promise-to-send-a-form        emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
-template_family  unconditional-ask                  emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
-template_family  updates-payout-failed              emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
-template_family  vet-balance-now-payable            emails      1 expected     1 found     0 tp     0 fp     0 fn     1 precision      - recall   0.0%
+template_family  todo-promise-to-send-a-form        emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+template_family  unconditional-ask                  emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+template_family  updates-payout-failed              emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+template_family  vet-balance-now-payable            emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+thread_position  first                              emails    166 expected    33 found    33 tp    33 fp     0 fn     0 precision 100.0% recall 100.0%
+thread_position  followed_by_owner                  emails      2 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
+thread_position  reply                              emails     17 expected     3 found     3 tp     3 fp     0 fn     0 precision 100.0% recall 100.0%
+zone             authored+calendar+subject          emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+zone             authored+forwarded+subject         emails      2 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
+zone             authored+quoted+signature+subject  emails      1 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
+zone             authored+subject                   emails    181 expected    35 found    35 tp    35 fp     0 fn     0 precision 100.0% recall 100.0%
 
-93 mismatches
+59 mismatches
 application-auto-ack demo-msg-148 who: expected machine, got list [label to check]
 application-auto-ack demo-msg-148 home: expected updates, got reading [label to check]
-ask-to-you-alone demo-msg-184 ask: expected book, got no row
-bill-with-a-direct-debit-offer demo-msg-165 ask: expected pay, got no row
 calendar-invite demo-msg-128 due: expected 7 days 11 hours after it was sent, got none [label to check]
-card-expiring demo-msg-152 ask: expected fix_payment, got no row
-cold-intro-in-inbox demo-msg-161 reply: expected owed, got none owed
-colleague-asks demo-msg-112 ask: expected send, got no row [label to check]
-colleague-asks demo-msg-112 reply: expected none owed, got owed [label to check]
-colleague-asks-about-a-document demo-msg-150 ask: expected other, got no row [label to check]
 colleague-fyi-no-need-to-reply demo-msg-113 who: expected person, got machine [label to check]
-correspondent-note demo-msg-108 reply: expected owed, got none owed
-current-decline demo-msg-167 amount: expected 34.00 GBP, got none
 direct-parking-charge demo-msg-178 who: expected machine, got person
 direct-parking-charge demo-msg-178 home: expected updates, got messages
 direct-parking-charge demo-msg-178 record: expected yes, got no [label to check]
 final-reminder-money-owed demo-msg-172 record: expected yes, got no
 forwarded-letter-to-someone-else demo-msg-177 who: expected person, got machine
 forwarded-letter-to-someone-else demo-msg-177 home: expected messages, got updates
-friend-asks-for-an-eft demo-msg-196 ask: expected pay, got no row
-friend-reply-about-a-payment demo-msg-125 ask: expected pay, got no row [label to check]
 invoice-in-euros demo-msg-182 who: expected machine, got person
 invoice-in-euros demo-msg-182 home: expected updates, got messages
-invoice-in-euros demo-msg-182 amount: expected 1234.56 EUR, got 1.23 EUR
-invoice-in-rand demo-msg-183 amount: expected 1234.56 ZAR, got none
-messages-group-thread-ask demo-msg-27 ask: expected other, got no row [label to check]
-messages-one-line-question demo-msg-29 reply: expected owed, got none owed
-modes-first-time-sender demo-msg-19 reply: expected owed, got none owed [label to check]
 municipal-account-in-rand demo-msg-195 record: expected yes, got no [label to check]
-municipal-account-in-rand demo-msg-195 amount: expected 2345.10 ZAR, got none
-note-to-you-alone demo-msg-159 reply: expected owed, got none owed
-open-question demo-msg-192 reply: expected owed, got none owed
-owner-promises-something demo-msg-176 ask: expected send (you promised), got no row
 payment-failed demo-msg-132 record: expected no, got yes
-person-writes-directly demo-msg-144 reply: expected owed, got none owed
-platform-announcement-with-rsvp demo-msg-173 ask: expected none, got attend
 positive-balance-due demo-msg-170 record: expected yes, got no
-promo-with-pay-words demo-msg-163 ask: expected none, got pay
-real-question demo-msg-190 reply: expected owed, got none owed
 receipt-asks-for-an-address demo-msg-111 who: expected machine, got person [label to check]
 receipt-asks-for-an-address demo-msg-111 home: expected updates, got messages [label to check]
-receipt-asks-for-an-address demo-msg-111 ask: expected provide, got no row [label to check]
-receipt-asks-for-an-address demo-msg-111 reply: expected none owed, got owed [label to check]
 receipt-with-unsubscribe-header demo-msg-142 who: expected machine, got list
 receipt-with-unsubscribe-header demo-msg-142 home: expected updates, got reading
 records-event-tickets demo-msg-38 who: expected machine, got person
 records-event-tickets demo-msg-38 home: expected updates, got messages
-recruiter-reply-with-opt-out demo-msg-147 reply: expected owed, got none owed
-school-trip-consent-form demo-msg-197 ask: expected sign, got no row
 service-charge-first-account demo-msg-179 who: expected machine, got person
 service-charge-first-account demo-msg-179 home: expected updates, got messages
 service-charge-first-account demo-msg-179 record: expected yes, got no [label to check]
-service-charge-first-account demo-msg-179 ask: expected pay, got no row: merged into another email's row
 service-charge-second-account demo-msg-180 who: expected machine, got person
 service-charge-second-account demo-msg-180 home: expected updates, got messages
 service-charge-second-account demo-msg-180 record: expected yes, got no [label to check]
@@ -142,6 +123,7 @@ sign-completed demo-msg-154 who: expected machine, got person
 sign-completed demo-msg-154 home: expected updates, got messages
 sign-request demo-msg-153 who: expected machine, got person
 sign-request demo-msg-153 home: expected updates, got messages
+sign-request demo-msg-153 counterparty: expected Marlow Ltd, got Marlow Ltd via DocuSign
 subscriptions-disney-cancellation demo-msg-106 who: expected machine, got person
 subscriptions-disney-cancellation demo-msg-106 home: expected updates, got messages
 subscriptions-disney-receipt demo-msg-103 who: expected machine, got person
@@ -150,8 +132,6 @@ subscriptions-disney-receipt demo-msg-104 who: expected machine, got person
 subscriptions-disney-receipt demo-msg-104 home: expected updates, got messages
 subscriptions-disney-receipt demo-msg-105 who: expected machine, got person
 subscriptions-disney-receipt demo-msg-105 home: expected updates, got messages
-support-human-reply demo-msg-119 reply: expected owed, got none owed [label to check]
-thread-names-you-in-to demo-msg-116 reply: expected owed, got none owed
 todo-bill-with-due-date demo-msg-9 who: expected machine, got person
 todo-bill-with-due-date demo-msg-9 home: expected updates, got messages
 todo-council-statement demo-msg-6 who: expected machine, got person
@@ -165,13 +145,9 @@ todo-council-statement demo-msg-8 home: expected updates, got messages
 todo-council-statement demo-msg-8 record: expected yes, got no [label to check]
 todo-document-to-sign demo-msg-16 who: expected machine, got person
 todo-document-to-sign demo-msg-16 home: expected updates, got messages
-todo-promise-to-send-a-form demo-msg-12 ask: expected send (you promised), got no row
+todo-document-to-sign demo-msg-16 counterparty: expected Foxtons, got Foxtons via DocuSign
 todo-statement-ready demo-msg-13 record: expected no, got yes [label to check]
-unconditional-ask demo-msg-187 ask: expected send, got no row
-unconditional-ask demo-msg-187 reply: expected none owed, got owed
-updates-payout-failed demo-msg-78 ask: expected fix_payment, got no row [label to check]
 vet-balance-now-payable demo-msg-199 who: expected machine, got person
 vet-balance-now-payable demo-msg-199 home: expected updates, got messages
-vet-balance-now-payable demo-msg-199 ask: expected pay, got no row
 vet-balance-paid-by-insurer demo-msg-200 who: expected machine, got person
 vet-balance-paid-by-insurer demo-msg-200 home: expected updates, got messages

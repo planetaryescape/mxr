@@ -219,7 +219,7 @@ fn search_preview_attachment_key_opens_modal() {
 }
 
 #[test]
-fn search_preview_o_opens_in_browser() {
+fn search_preview_shift_o_opens_in_browser_and_o_says_so() {
     let mut app = App::new();
     let results = make_test_envelopes(1);
     let env = results[0].clone();
@@ -230,9 +230,16 @@ fn search_preview_o_opens_in_browser() {
     app.mailbox.viewed_thread_messages = vec![env.clone()];
     app.mailbox.viewing_envelope = Some(env);
 
-    let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
-
+    let action = app.handle_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
     assert_eq!(action, Some(Action::OpenInBrowser));
+
+    // `o` opened the original until K3 (blueprint 35): it says where it went.
+    let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
+    assert_eq!(action, None);
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Open in browser is now O")
+    );
 }
 
 #[test]
@@ -1045,6 +1052,12 @@ fn stored_drafts_edit_key_queues_pending_edit_for_selected_draft() {
     app.modals.drafts.select_next();
 
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+    assert_eq!(action, None, "e retired as an alias of Enter");
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Edit draft is now Enter")
+    );
+    let action = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     assert_eq!(action, Some(Action::StoredDraftsModalEdit));
     app.apply(action.unwrap());
 
@@ -1089,6 +1102,9 @@ fn stored_drafts_delete_previews_then_commits_the_captured_draft() {
     app.modals.drafts.set_drafts(drafts);
 
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    assert_eq!(action, None);
+    assert_eq!(app.status_message.as_deref(), Some("Delete draft is now #"));
+    let action = app.handle_key(KeyEvent::new(KeyCode::Char('#'), KeyModifiers::SHIFT));
     assert_eq!(action, Some(Action::StoredDraftsModalPreviewDelete));
     app.apply(action.unwrap());
     assert!(app.pending_draft_operation.is_none());

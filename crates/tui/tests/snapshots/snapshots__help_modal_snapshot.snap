@@ -1,5 +1,6 @@
 ---
 source: crates/tui/tests/snapshots.rs
+assertion_line: 804
 expression: snapshot
 ---
 "                                                                                                    "
@@ -14,11 +15,11 @@ expression: snapshot
 "      │q                   Quit                                                             ║│      "
 "      │                                                                                     ║│      "
 "      │How do I…                                                                            ║│      "
-"      │Add an account      g C → n (or palette: New IMAP/SMTP Account)                      ║│      "
+"      │Add an account      g C → c (or palette: New IMAP/SMTP Account)                      ║│      "
 "      │Compose and send    c → write in $EDITOR → save → s to send                          ║│      "
-"      │Search and save a search/ to query → palette: New Saved Search → n in sidebar to     ║│      "
+"      │Search and save a search/ to query → palette: New Saved Search → c in sidebar to     ║│      "
 "      │refine                                                                               ║│      "
-"      │Manage rules        g R → n new / E edit / D dry-run / palette: Refresh Rules        ║│      "
+"      │Manage rules        g R → c new / E edit / D dry-run / palette: Refresh Rules        ║│      "
 "      │Reset local state   shell: mxr reset --hard (or mxr burn) — keeps config + creds     ║│      "
 "      │Repair an unhealthy accountg C → select account → r when [unhealthy] indicator shown ║│      "
 "      │Open analytics      palette: Analytics: Storage / Stale Threads / Contact Asymmetry /║│      "

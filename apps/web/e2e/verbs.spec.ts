@@ -762,7 +762,12 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     await page.keyboard.press("X");
   }),
   "record-check": recordVerb("record-check", async (page) => {
-    await page.keyboard.press("v");
+    // `,` corrects what mxr read, marking the card checked included.
+    await page.keyboard.press(",");
+    await page
+      .getByTestId("record-edit-dialog")
+      .getByRole("button", { name: "Mark all checked" })
+      .click();
   }),
   "record-fix": recordVerb("record-fix", async (page) => {
     await page.keyboard.press(",");

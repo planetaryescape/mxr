@@ -244,6 +244,10 @@ Below Inbox are four groups, each folded until you open it:
   Settings.
 - **Labels**: your labels, each with a small square in its colour.
 
+From the keyboard (`h` from the list), `j` and `k` stop on each group's
+heading too: `Enter` there opens or folds the group, and `{` and `}` jump
+between headings.
+
 Saved searches and categories follow when you have any. The rail keeps these
 items when the daemon is unreachable: they stay in place and the page shows
 the offline banner. Collapse the rail with the arrows at its foot and it shows
@@ -308,9 +312,10 @@ from and whether it is checked, with `y` to copy it, `Enter` for the PDF and
 segmented control (Receipts, Orders, Trips, Bills, Documents), filters (`g f`) and the
 ledger by month with totals. Select a record for its card on the right: every
 field with its source on hover, the word "unchecked" beside a field mxr isn't sure of,
-its documents and the emails it came from. `,` fixes a field, `v` marks the
+its documents and the emails it came from. `,` fixes a field or marks the
 card checked, `X` says it isn't a record, `p` opens the issuer's page, `{` and
-`}` step through years and `E` exports a CSV after its preview. On any
+`}` step through years, and **Export…** in the palette writes a CSV after its
+preview. On any
 conversation, `T` files it in Archive after showing the card. On a phone,
 Archive is in **More**, and a record's card opens full screen.
 See [Archive](/guides/archive/).

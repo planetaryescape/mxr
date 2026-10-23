@@ -194,14 +194,22 @@ pub enum Action {
     TodoDone,
     /// `Z`: show it on a date you type, previewed as you type.
     TodoSchedule,
-    /// `,`: correct a field as `field=value`.
+    /// `,`: correct a field as `field=value`, or review a later-mail
+    /// resolution first when the to-do has one waiting.
     TodoEdit,
     /// `X`: not a to-do; kept as a correction.
     TodoDismiss,
     /// `o`: open the email the to-do came from.
     TodoOpenEmail,
-    /// `v`: inspect a later-mail resolution, then explicitly accept it.
+    /// Inspect a later-mail resolution, then explicitly accept it (`,` on
+    /// a to-do with one waiting).
     TodoReviewResolution,
+    /// Palette: preview sending the lit to-do to Microsoft To Do; Enter
+    /// in the preview sends it.
+    TodoSendToMicrosoft,
+    /// Palette: preview syncing the lit to-do's linked Microsoft To Do
+    /// task; Enter in the preview syncs it.
+    TodoSyncMicrosoft,
     TodoConfirmResolution,
     TodoDismissResolution,
     TodoUndoResolution,

@@ -317,9 +317,6 @@ impl App {
             (KeyCode::Char('T'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::PassToMode)
             }
-            (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
-                Some(Action::ExportThread)
-            }
             // Slice 5.1 (C2.6): B opens the thread briefing modal.
             (KeyCode::Char('B'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenThreadBriefing)
@@ -645,8 +642,13 @@ impl App {
                 (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseStoredDraftsModal),
                 (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::StoredDraftsModalNext),
                 (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::StoredDraftsModalPrev),
-                (KeyCode::Enter | KeyCode::Char('e'), _) => Some(Action::StoredDraftsModalEdit),
-                (KeyCode::Char('d'), _) => Some(Action::StoredDraftsModalPreviewDelete),
+                (KeyCode::Enter, _) => Some(Action::StoredDraftsModalEdit),
+                (KeyCode::Char('#'), _) => Some(Action::StoredDraftsModalPreviewDelete),
+                // Moved keys (blueprint 35): `#` deletes and Enter edits.
+                (KeyCode::Char(c @ ('d' | 'e')), KeyModifiers::NONE) => {
+                    self.announce_moved("drafts", &c.to_string());
+                    None
+                }
                 (KeyCode::Char('c'), _) => Some(Action::StoredDraftsModalPreviewCancelSchedule),
                 (KeyCode::Char('p'), _) => Some(Action::StoredDraftsModalPreviewPush),
                 _ => None,
@@ -1617,8 +1619,6 @@ impl App {
                     }
                     None
                 }
-                // o = open in browser (message already open in pane)
-                (KeyCode::Char('o'), KeyModifiers::NONE) => Some(Action::OpenInBrowser),
                 // L = open links picker
                 (KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenLinks)
@@ -1644,30 +1644,36 @@ impl App {
                     self.sidebar_move_up();
                     None
                 }
-                (KeyCode::Char('['), _) => {
-                    self.collapse_current_sidebar_section();
+                // { and } jump between sections; Enter on a section's
+                // header folds or unfolds it (blueprint 35).
+                (KeyCode::Char('{'), _) => {
+                    self.sidebar_jump_section(false);
                     None
                 }
-                (KeyCode::Char(']'), _) => {
-                    self.expand_current_sidebar_section();
+                (KeyCode::Char('}'), _) => {
+                    self.sidebar_jump_section(true);
                     None
                 }
-                // n always opens a new saved-search form from the sidebar.
-                // Even on system labels there's no other affordance for `n`.
-                (KeyCode::Char('n'), KeyModifiers::NONE) => Some(Action::OpenSavedSearchFormNew),
-                // e/d only meaningful on a Saved Searches row — a label
-                // can't be edited or deleted from here. When focused on
-                // a non-saved-search row we fall through so e/d retain
-                // any future bindings or contextual behavior.
+                // c creates what this place holds: a saved search.
+                (KeyCode::Char('c'), KeyModifiers::NONE) => Some(Action::OpenSavedSearchFormNew),
+                // e/# only mean something on a Saved Searches row: a label
+                // can't be edited or deleted from here. Elsewhere they fall
+                // through.
                 (KeyCode::Char('e'), KeyModifiers::NONE)
                     if self.current_sidebar_group() == SidebarGroup::SavedSearches =>
                 {
                     Some(Action::OpenSavedSearchFormEdit)
                 }
-                (KeyCode::Char('d'), KeyModifiers::NONE)
+                (KeyCode::Char('#'), _)
                     if self.current_sidebar_group() == SidebarGroup::SavedSearches =>
                 {
                     Some(Action::DeleteSavedSearch)
+                }
+                (KeyCode::Char('d'), KeyModifiers::NONE)
+                    if self.current_sidebar_group() == SidebarGroup::SavedSearches =>
+                {
+                    self.announce_moved("saved-searches", "d");
+                    None
                 }
                 (KeyCode::Enter | KeyCode::Char('o'), _) => self.sidebar_select(),
                 // l = select label and move to mail list
@@ -1722,10 +1728,11 @@ impl App {
         }
     }
 
-    /// Key handling for Reading and Paper trail: pin, move the sender, and
-    /// sweep. S and A mean sweep here (a bundle list has no signature or
-    /// attachments to toggle); other keys fall through to the mail keys,
-    /// which act on the message under the cursor.
+    /// Key handling for Reading and Paper trail: `s` pins, `P` moves the
+    /// sender, `E` sweeps the place (blueprint 35's verbs). Sweeping one
+    /// sender's bundle and loading more senders are in the palette. Other
+    /// keys fall through to the mail keys, which act on the message under
+    /// the cursor.
     fn place_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         match (key.code, key.modifiers) {
             (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
@@ -1734,32 +1741,28 @@ impl App {
                 None
             }
             (KeyCode::Right, KeyModifiers::NONE) => Some(Action::OpenSelected),
-            (KeyCode::Char('p'), KeyModifiers::NONE) => Some(Action::TogglePin),
-            (KeyCode::Char('K'), modifiers) if plain_or_shift(modifiers) => {
+            (KeyCode::Char('s'), KeyModifiers::NONE) => Some(Action::TogglePin),
+            (KeyCode::Char('P'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenSenderKindMenu)
             }
             (KeyCode::Char('X'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenMoveMenu)
             }
-            (KeyCode::Char('S'), modifiers) if plain_or_shift(modifiers) => {
-                Some(Action::SweepBundle)
-            }
-            (KeyCode::Char('A'), modifiers) if plain_or_shift(modifiers) => {
+            (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::SweepPlace)
             }
-            (KeyCode::Char('>'), _) => Some(Action::MorePlaceSenders),
-            (KeyCode::Char('+'), _) => Some(Action::MoreFromSender),
             _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
             _ => self.contextual_input_action(key),
         }
     }
 
     /// Key handling for the calendar-invites lens (a list pane with inline
-    /// RSVP). Single keys a/t/d respond directly; A/T/D respond with a
-    /// comment; enter opens the underlying message. Unhandled keys fall
-    /// through to the shared vim/chord input so j/k/gg/G still navigate.
+    /// RSVP). The `i` chords respond, as everywhere else (`i a`, `i m`,
+    /// `i d`, and with a capital to add a comment); Enter opens the
+    /// underlying message. The bare letters they replaced say so until
+    /// 0.6.185. Unhandled keys fall through to the shared vim/chord input
+    /// so j/k/gg/G still navigate.
     fn calendar_invites_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
-        use mxr_protocol::CalendarInviteActionData as Rsvp;
         match (key.code, key.modifiers) {
             (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
             (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
@@ -1769,21 +1772,13 @@ impl App {
             (KeyCode::Enter | KeyCode::Char('o') | KeyCode::Right, _) => {
                 Some(Action::OpenMessageView)
             }
-            (KeyCode::Char('a'), KeyModifiers::NONE) => Some(Action::RespondInvite(Rsvp::Accept)),
-            (KeyCode::Char('t' | 'm'), KeyModifiers::NONE) => {
-                Some(Action::RespondInvite(Rsvp::Tentative))
-            }
-            (KeyCode::Char('d'), KeyModifiers::NONE) => Some(Action::RespondInvite(Rsvp::Decline)),
             // Cancel a just-issued RSVP while it's still in its send window.
             (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
-            (KeyCode::Char('A'), m) if plain_or_shift(m) => {
-                Some(Action::RespondInviteWithComment(Rsvp::Accept))
-            }
-            (KeyCode::Char('T' | 'M'), m) if plain_or_shift(m) => {
-                Some(Action::RespondInviteWithComment(Rsvp::Tentative))
-            }
-            (KeyCode::Char('D'), m) if plain_or_shift(m) => {
-                Some(Action::RespondInviteWithComment(Rsvp::Decline))
+            (KeyCode::Char(c @ ('a' | 't' | 'm' | 'd' | 'A' | 'T' | 'M' | 'D')), m)
+                if plain_or_shift(m) =>
+            {
+                self.announce_moved("invites", &c.to_string());
+                None
             }
             _ => self.contextual_input_action(key),
         }
@@ -2186,7 +2181,11 @@ impl App {
                     self.search.page.editing = true;
                     None
                 }
-                (KeyCode::Char('o'), KeyModifiers::NONE) => Some(Action::OpenInBrowser),
+                // `o` opened the original, as `O` does; it says so until 0.6.185.
+                (KeyCode::Char('o'), KeyModifiers::NONE) => {
+                    self.announce_moved("reader", "o");
+                    None
+                }
                 (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
                     self.search.page.active_pane = SearchPane::Results;
                     None
@@ -2289,7 +2288,12 @@ impl App {
                 Some(Action::ShowRuleHistory)
             }
             (KeyCode::Char('#'), _) => Some(Action::DeleteRule),
-            (KeyCode::Char('n'), _) => Some(Action::OpenRuleFormNew),
+            // c creates what this place holds (blueprint 35).
+            (KeyCode::Char('c'), KeyModifiers::NONE) => Some(Action::OpenRuleFormNew),
+            (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                self.announce_moved("rules", "n");
+                None
+            }
             (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenRuleFormEdit)
             }
@@ -2610,7 +2614,13 @@ impl App {
                     self.accounts.page.selected_index.saturating_sub(1);
                 None
             }
-            (KeyCode::Char('n'), _) => Some(Action::OpenAccountFormNew),
+            // c creates what this place holds (blueprint 35); Edit Config,
+            // which had c here, is in the palette.
+            (KeyCode::Char('c'), KeyModifiers::NONE) => Some(Action::OpenAccountFormNew),
+            (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                self.announce_moved("accounts", "n");
+                None
+            }
             (KeyCode::Char('r'), _) => {
                 // Phase 2.3: when the selected account is reporting an
                 // unhealthy sync, `r` repairs it instead of refreshing
@@ -2639,7 +2649,6 @@ impl App {
                 None
             }
             (KeyCode::Char('d'), _) => Some(Action::SetDefaultAccount),
-            (KeyCode::Char('c'), _) => Some(Action::EditConfig),
             (KeyCode::Enter | KeyCode::Char('o'), _) => {
                 if let Some(account) = self.selected_account().cloned() {
                     if let Some(config) = account_summary_to_config(&account) {

@@ -172,8 +172,9 @@ read the same `Request::ListInvites`, so the list is identical whether you
 use the CLI, TUI, or web.
 
 - **TUI:** open **Calendar invites** from the sidebar (below Owed). Then
-  `j`/`k` to move, `a` accept · `t` (or `m`) tentative · `d` decline,
-  `A`/`T`/`D` to reply with a comment, `Enter`/`o` to open the underlying
+  `j`/`k` to move, `i a` accept · `i m` tentative · `i d` decline (the same
+  chords as everywhere else), `i A`/`i M`/`i D` to reply with a comment,
+  `Enter`/`o` to open the underlying
   message, `h` back to the sidebar. An RSVP sends after a short window;
   press `u` to undo before it goes out. The row's status refreshes once it
   lands. See [keybindings](/reference/keybindings/#calendar-invites-lens).

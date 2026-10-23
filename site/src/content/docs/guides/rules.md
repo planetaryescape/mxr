@@ -41,7 +41,7 @@ Open it from:
 
 Common actions:
 
-- `n`: new rule
+- `c`: new rule
 - `E`: edit rule
 - `e`: enable or disable
 - `D`: dry-run
@@ -93,7 +93,7 @@ names the source rule and identifies deleted, disabled or earlier versions.
 Account scope covers every action in the rule. Apply changes only sorting;
 label, archive and other existing actions retain their ordinary sync behavior.
 
-In the TUI, choose `n` or `E`, set the account, condition and
+In the TUI, choose `c` or `E`, set the account, condition and
 `treatment:messages`, `treatment:updates` or `treatment:reading`. `Space` cycles
 accounts in the Account field. `Ctrl-d` previews the draft; `D` previews a saved
 rule. Press `A` on the preview to save and apply it. `Ctrl-s` saves for future
@@ -217,7 +217,7 @@ descendants or detached processes. Nonzero exits and timeouts appear in rule his
 
 ## Recommended workflow
 
-1. Create a rule with `mxr rules add` or `n` in the TUI.
+1. Create a rule with `mxr rules add` or `c` in the TUI.
 2. Validate it with `mxr rules validate`.
 3. Dry-run it before save or enable.
 4. Let sync execute it automatically.

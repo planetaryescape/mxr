@@ -40,7 +40,7 @@ const fn early_note(place: MailPlaceData) -> &'static str {
     }
 }
 
-const FOOTER: &str = "  enter open \u{b7} e done here \u{b7} p pin \u{b7} K move sender \u{b7} S sweep sender \u{b7} A sweep all \u{b7} u undo";
+const FOOTER: &str = "  enter open \u{b7} e done here \u{b7} s pin \u{b7} P move sender \u{b7} E sweep all \u{b7} u undo \u{b7} : sweep one sender";
 
 pub fn draw(frame: &mut Frame, area: Rect, view: &PlaceView<'_>, theme: &crate::theme::Theme) {
     let is_focused = *view.active_pane == ActivePane::MailList;
@@ -103,7 +103,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &PlaceView<'_>, theme: &crate::
         let hidden = (bundle.message_count as usize).saturating_sub(bundle.messages.len());
         if hidden > 0 {
             lines.push(Line::from(Span::styled(
-                format!("      and {hidden} more (+ to load)"),
+                format!("      and {hidden} more (palette: More from this sender)"),
                 Style::default().fg(theme.text_muted),
             )));
         }
@@ -113,7 +113,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &PlaceView<'_>, theme: &crate::
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             format!(
-                "  {} more senders (> to load)",
+                "  {} more senders (palette: More senders in this place)",
                 page.total_bundles as usize - page.bundles.len()
             ),
             Style::default().fg(theme.text_muted),
@@ -491,7 +491,7 @@ mod tests {
         assert!(rendered.contains("Shop  4 \u{b7} 1 pinned"));
         assert!(rendered.contains("here because: automated sender, has List-Unsubscribe"));
         assert!(rendered.contains("\u{2022} Receipt 2"), "pinned marker");
-        assert!(rendered.contains("and 2 more (+ to load)"));
+        assert!(rendered.contains("and 2 more (palette: More from this sender)"));
         assert!(!rendered.to_lowercase().contains("unread"));
         assert!(!rendered.contains('\u{2014}'), "no em dashes");
     }

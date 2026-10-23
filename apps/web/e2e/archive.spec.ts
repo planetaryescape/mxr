@@ -5,6 +5,14 @@ import { allowClipboard, readClipboard } from "./helpers/clipboard";
 import { animationsSettled, mailList, openList } from "./helpers/mail";
 import { bridge, openApp } from "./helpers/state";
 
+/** Export is in the palette (blueprint 35: `E` is done for everything in view). */
+async function exportFromPalette(page: Page) {
+  await page.keyboard.press(":");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("combobox").fill("Export");
+  await palette.getByRole("option", { name: /^Export…/ }).click();
+}
+
 test.use({ viewport: { width: 1440, height: 900 } });
 
 interface LedgerAnswer {
@@ -166,13 +174,13 @@ test("Show all turns an answer into the list of its matches, best one marked", a
   await expect(page.getByTestId("answer-list")).toHaveCount(0);
 });
 
-test("E previews the export's rows, unchecked rows and missing PDFs, then downloads that CSV", async ({
+test("Export previews the export's rows, unchecked rows and missing PDFs, then downloads that CSV", async ({
   page,
 }) => {
   const total = await waitForRecords(page);
   await openApp(page, "/archive");
   await expectLedgerOnArrival(page);
-  await page.keyboard.press("E");
+  await exportFromPalette(page);
   const dialog = page.getByTestId("export-dialog");
   await expect(dialog.getByTestId("export-rows")).toHaveText(String(total));
   await expect(dialog.getByTestId("export-unchecked")).toHaveText(/^\d+$/);
@@ -323,7 +331,7 @@ for (const colorScheme of ["dark", "light"] as const) {
       await waitForRecords(page);
       await openApp(page, "/archive");
       await expectLedgerOnArrival(page);
-      await page.keyboard.press("E");
+      await exportFromPalette(page);
       await expect(page.getByTestId("export-preview")).toBeVisible();
       expect(await blockingViolations(page)).toEqual([]);
     });

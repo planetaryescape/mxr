@@ -37,6 +37,19 @@ pub const TUI_CONTEXTS: [&str; 14] = [
     "updates",
 ];
 
+/// TUI screens and overlays that still read their own keys. A moved key there
+/// is announced by name from the screen's handler (`App::announce_moved`).
+pub const SCREEN_CONTEXTS: [&str; 8] = [
+    "accounts",
+    "assistant",
+    "categories",
+    "drafts",
+    "invites",
+    "rules",
+    "saved-searches",
+    "todo-microsoft",
+];
+
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).
 pub const WEB_SCOPES: [&str; 17] = [
     "global",
@@ -249,6 +262,11 @@ pub struct MovedKey {
     /// the old action's label.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub to: Option<String>,
+    /// The key the notice names when the new key belongs to a screen or
+    /// overlay that still reads its own keys (Rules, the drafts list), so
+    /// no action here carries it yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_key: Option<String>,
 }
 
 /// A TUI binding: the action name its dispatcher returns for these keys, in
@@ -533,11 +551,33 @@ impl Keymap {
                         action.id, moved.key, moved.until
                     ));
                 }
+                if let Some(key) = moved.to_key.as_deref().filter(|key| !is_well_formed(key)) {
+                    problems.push(format!(
+                        "{}: the move of `{}` names malformed key `{key}`",
+                        action.id, moved.key
+                    ));
+                }
+                // A misspelt place would never announce the move.
                 for context in &moved.contexts {
-                    let web_bound = self.web_bindings().iter().any(|b| {
-                        b.chord == moved.key && (b.scope == *context || b.scope == "global")
-                    });
-                    let tui_bound = self.tui_binding(context, &moved.key).is_some();
+                    let known = TUI_CONTEXTS.contains(&context.as_str())
+                        || WEB_SCOPES.contains(&context.as_str())
+                        || SCREEN_CONTEXTS.contains(&context.as_str());
+                    if !known {
+                        problems.push(format!(
+                            "{}: the move of `{}` names unknown context `{context}`",
+                            action.id, moved.key
+                        ));
+                    }
+                }
+                // Only the clients the action is for: the TUI reader's `o`
+                // moved while the web reader keeps `o` for its own verb.
+                for context in &moved.contexts {
+                    let web_bound = action.is_for(Client::Web)
+                        && self.web_bindings().iter().any(|b| {
+                            b.chord == moved.key && (b.scope == *context || b.scope == "global")
+                        });
+                    let tui_bound = action.is_for(Client::Tui)
+                        && self.tui_binding(context, &moved.key).is_some();
                     if web_bound || tui_bound {
                         problems.push(format!(
                             "{}: `{}` moved away in {context} but is still bound there",

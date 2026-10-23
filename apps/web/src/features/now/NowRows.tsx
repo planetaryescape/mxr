@@ -11,6 +11,7 @@ import { otherModes, type ThreadModes } from "@/features/modes/membership";
 import { NewSenderChips } from "@/features/modes/NewSenderChips";
 import { displaySourceName } from "@/features/updates/digestView";
 import { useClockLabel } from "@/lib/minuteClock";
+import { definedShortcut } from "@/lib/actions/definition";
 import { cn } from "@/lib/utils";
 
 import { itemTarget, sinceLabel, type NowItem } from "./nowItems";
@@ -291,9 +292,9 @@ export const UpdatesRow = memo(function UpdatesRow({
             onClick={() => state.onOpen(item)}
           />
           <RowVerb
-            keys="A"
+            keys={definedShortcut("now.let-go-digest")}
             label="let go"
-            ariaLabel="Let go of this digest (A)"
+            ariaLabel={`Let go of this digest (${definedShortcut("now.let-go-digest")})`}
             testId="now-let-go"
             onClick={onLetGo}
           />

@@ -584,8 +584,57 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Sweep this place (preview first)".into(),
-            shortcut: "A".into(),
+            shortcut: "E".into(),
             action: Action::SweepPlace,
+            category: "Mail".into(),
+        },
+        // Keys that moved to the palette (blueprint 35, K3's third wave).
+        PaletteCommand {
+            label: "Sweep this sender's bundle (preview first)".into(),
+            shortcut: String::new(),
+            action: Action::SweepBundle,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
+            label: "More senders in this place".into(),
+            shortcut: String::new(),
+            action: Action::MorePlaceSenders,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
+            label: "More from this sender".into(),
+            shortcut: String::new(),
+            action: Action::MoreFromSender,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
+            label: "Updates: sweep this sender out (preview first)".into(),
+            shortcut: String::new(),
+            action: Action::UpdatesSweep,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
+            label: "Archive: export the records in view (preview first)".into(),
+            shortcut: String::new(),
+            action: Action::RecordsExport,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
+            label: "Archive: mark this record checked".into(),
+            shortcut: String::new(),
+            action: Action::RecordsMarkChecked,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
+            label: "To do: send to Microsoft To Do (preview first)".into(),
+            shortcut: String::new(),
+            action: Action::TodoSendToMicrosoft,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
+            label: "To do: sync the linked Microsoft To Do task (preview first)".into(),
+            shortcut: String::new(),
+            action: Action::TodoSyncMicrosoft,
             category: "Mail".into(),
         },
         PaletteCommand {
@@ -638,7 +687,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Export Thread".into(),
-            shortcut: "E".into(),
+            shortcut: String::new(),
             action: Action::ExportThread,
             category: "Mail".into(),
         },
@@ -902,7 +951,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Assistant: delete conversation".into(),
-            shortcut: String::new(),
+            shortcut: "# in the pane".into(),
             action: Action::DeleteAssistantConversation,
             category: "Assistant".into(),
         },

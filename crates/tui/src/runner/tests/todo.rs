@@ -73,7 +73,7 @@ fn microsoft_sync_preview_must_be_rendered_on_the_runway_before_confirmation() {
         },
     });
     let id = app.selected_todo().unwrap().id.clone();
-    press_shifted(&mut app, 'S');
+    app.apply(Action::TodoSyncMicrosoft);
     assert!(matches!(
         app.mailbox.todo_page.pending_microsoft.take(),
         Some(Request::SyncMicrosoftTodos { dry_run: true, .. })
@@ -102,7 +102,7 @@ fn microsoft_sync_preview_must_be_rendered_on_the_runway_before_confirmation() {
         },
     };
     app.microsoft_todo_answer(answer.clone());
-    press_shifted(&mut app, 'S');
+    app.apply(Action::TodoSyncMicrosoft);
     assert!(matches!(
         app.mailbox.todo_page.pending_microsoft.take(),
         Some(Request::SyncMicrosoftTodos { dry_run: true, .. })
@@ -128,7 +128,7 @@ fn microsoft_sync_preview_must_be_rendered_on_the_runway_before_confirmation() {
         })
     };
     render_review(&app, 7);
-    press_shifted(&mut app, 'S');
+    app.apply(Action::TodoSyncMicrosoft);
     assert!(matches!(
         app.mailbox.todo_page.pending_microsoft.take(),
         Some(Request::SyncMicrosoftTodos { dry_run: true, .. })
@@ -137,7 +137,8 @@ fn microsoft_sync_preview_must_be_rendered_on_the_runway_before_confirmation() {
     let visible = render_review(&app, 16);
     assert!(visible.contains("Review pending changes"));
     assert!(visible.contains("After sync: Pay changed title"));
-    press_shifted(&mut app, 'S');
+    // Enter syncs once the preview is on screen (S until K3).
+    press(&mut app, KeyCode::Enter);
     assert!(
         matches!(app.mailbox.todo_page.pending_microsoft.take(), Some(Request::SyncMicrosoftTodos { todo_id: Some(actual), dry_run: false, .. }) if actual == id)
     );
@@ -157,7 +158,7 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
             hint: "Install ms-todo".into(),
         },
     });
-    press_shifted(&mut app, 'M');
+    app.apply(Action::TodoSendToMicrosoft);
     assert!(app.mailbox.todo_page.pending_microsoft.is_none());
     app.mailbox
         .todo_page
@@ -165,7 +166,14 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
         .as_mut()
         .unwrap()
         .installed = true;
+    // M sent it until K3 (blueprint 35); the palette does now.
     press_shifted(&mut app, 'M');
+    assert!(app.mailbox.todo_page.pending_microsoft.is_none());
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Send to Microsoft To Do has no key now; find it in the palette")
+    );
+    app.apply(Action::TodoSendToMicrosoft);
     assert!(matches!(
         app.mailbox.todo_page.pending_microsoft.take(),
         Some(Request::SendTodoToMicrosoft {
@@ -175,7 +183,7 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
         })
     ));
     // No second request may escape while the preview is still loading.
-    press_shifted(&mut app, 'M');
+    app.apply(Action::TodoSendToMicrosoft);
     assert!(app.mailbox.todo_page.pending_microsoft.is_none());
     let id = app.selected_todo().unwrap().id.clone();
     app.microsoft_todo_answer(ResponseData::MicrosoftTodoSend {
@@ -192,8 +200,8 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
             summary: "Shared fields sync both ways".into(),
         },
     });
-    // A second key before the review has actually been rendered cannot commit.
-    press_shifted(&mut app, 'M');
+    // Enter before the review has actually been rendered cannot commit.
+    press(&mut app, KeyCode::Enter);
     assert!(app.mailbox.todo_page.pending_microsoft.is_none());
     mxr_test_support::render_to_string(20, 5, |frame| {
         crate::ui::todo_lens::draw(
@@ -211,7 +219,7 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
             &crate::theme::Theme::default(),
         );
     });
-    press_shifted(&mut app, 'M');
+    press(&mut app, KeyCode::Enter);
     assert!(app.mailbox.todo_page.pending_microsoft.is_none());
     mxr_test_support::render_to_string(80, 12, |frame| {
         crate::ui::todo_lens::draw(
@@ -229,7 +237,7 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
             &crate::theme::Theme::default(),
         );
     });
-    press_shifted(&mut app, 'M');
+    press(&mut app, KeyCode::Enter);
     assert!(
         matches!(app.mailbox.todo_page.pending_microsoft.take(), Some(Request::SendTodoToMicrosoft { todo_id, dry_run: false, fingerprint: Some(fingerprint), .. }) if todo_id == id && fingerprint == "exact-preview")
     );
@@ -305,7 +313,7 @@ fn microsoft_review_scrolls_without_moving_the_task_and_escape_discards_confirma
     press(&mut app, KeyCode::Esc);
     assert!(app.mailbox.todo_page.microsoft_preview.is_none());
     assert!(app.mailbox.todo_page.pending_microsoft.is_none());
-    press_shifted(&mut app, 'M');
+    app.apply(Action::TodoSendToMicrosoft);
     assert!(matches!(
         app.mailbox.todo_page.pending_microsoft.take(),
         Some(Request::SendTodoToMicrosoft {
@@ -335,8 +343,11 @@ fn resolution_requires_preview_and_explicit_accept_and_opens_exact_source() {
         status: "pending".into(),
     });
     app.mailbox.todo_page.runway.as_mut().unwrap().now[0] = row;
-    press(&mut app, KeyCode::Char('v'));
+    // `,` corrects what mxr read: a waiting resolution is reviewed first
+    // (`v` until K3, blueprint 35).
+    press(&mut app, KeyCode::Char(','));
     assert!(app.mailbox.todo_page.pending_resolution.is_some());
+    assert!(app.mailbox.todo_page.prompt.is_none());
     press(&mut app, KeyCode::Char('o'));
     assert_eq!(
         app.mailbox

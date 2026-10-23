@@ -137,6 +137,8 @@ impl App {
             | Action::TodoDismiss
             | Action::TodoOpenEmail
             | Action::TodoReviewResolution
+            | Action::TodoSendToMicrosoft
+            | Action::TodoSyncMicrosoft
             | Action::TodoConfirmResolution
             | Action::TodoDismissResolution
             | Action::TodoUndoResolution

@@ -97,7 +97,7 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
   useEffect(() => {
     const dropRepeats = (event: KeyboardEvent) => {
       if (!event.repeat || ownsKeyboard(event.target)) return;
-      if (event.key === "s" || event.key === "Tab") event.preventDefault();
+      if (event.key === "j" || event.key === "Tab") event.preventDefault();
     };
     window.addEventListener("keydown", dropRepeats, true);
     return () => window.removeEventListener("keydown", dropRepeats, true);
@@ -283,7 +283,7 @@ function FocusKeys({
 }) {
   const keys = [
     ["send", "⌘↵", "Send and next"],
-    ["skip", "s", "Skip"],
+    ["skip", "j", "Skip"],
     ["done", "e", "Done, no reply needed"],
     ["snooze", "Z", "Snooze"],
     ["remind", "w", "Send, remind if no reply"],

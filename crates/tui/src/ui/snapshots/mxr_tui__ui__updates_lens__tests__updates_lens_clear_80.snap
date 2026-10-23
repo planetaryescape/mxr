@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/updates_lens.rs
+assertion_line: 733
 expression: rendered
 ---
 "╭ Updates ─ Notifications gathered twice a day. Read the digest, then let go. ─╮"
@@ -30,5 +31,5 @@ expression: rendered
 "│                                                                              │"
 "│                                                                              │"
 "│                                                                              │"
-"│ E let go of digest  e let go of this source  s pin latest email  S sweep se… │"
+"│ E let go of digest  e let go of this source  s pin latest email  t this nee… │"
 "╰──────────────────────────────────────────────────────────────────────────────╯"

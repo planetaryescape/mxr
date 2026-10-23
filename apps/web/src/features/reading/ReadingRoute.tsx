@@ -58,6 +58,7 @@ import { ModeFrame } from "@/components/ModeFrame";
 import { pageTabClass } from "@/components/Page";
 import { PageFrame } from "@/components/PageFrame";
 import { SectionHeading } from "@/components/SectionHeading";
+import { listMotions } from "@/features/modes/listMotions";
 
 export const EDITION_KEY = (scope: string) => [...READING_KEY, "edition", scope] as const;
 
@@ -435,6 +436,7 @@ function Bands({
   useScopeController("reading", {
     down: () => move(1),
     up: () => move(-1),
+    ...listMotions(move),
     read: () => {
       if (!current) return;
       linkHint.dismiss();

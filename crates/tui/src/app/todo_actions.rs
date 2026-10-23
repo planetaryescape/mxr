@@ -26,6 +26,8 @@ impl App {
             Action::TodoEdit => self.open_todo_prompt(true),
             Action::TodoOpenEmail => self.open_selected_todo_email(),
             Action::TodoReviewResolution => self.review_selected_resolution(),
+            Action::TodoSendToMicrosoft => self.microsoft_todo_request(false),
+            Action::TodoSyncMicrosoft => self.microsoft_todo_request(true),
             Action::TodoConfirmResolution => {
                 self.resolve_selected_suggestion(mxr_protocol::TodoResolutionActionData::Accept);
             }
@@ -639,9 +641,8 @@ impl App {
                 KeyCode::PageUp => page.microsoft_scroll = page.microsoft_scroll.saturating_sub(10),
                 KeyCode::Home => page.microsoft_scroll = 0,
                 KeyCode::End => page.microsoft_scroll = page.microsoft_scroll_max.get(),
-                KeyCode::Char('M')
-                    if plain_or_shift(key.modifiers) && page.microsoft_review_visible.get() =>
-                {
+                // Enter confirms, as in every preview (blueprint 35).
+                KeyCode::Enter if page.microsoft_review_visible.get() => {
                     self.microsoft_todo_request(false);
                 }
                 _ => {}
@@ -657,17 +658,25 @@ impl App {
                     return None;
                 }
             }
+            // Enter syncs once the sync's preview is on screen.
+            if key.code == KeyCode::Enter
+                && page.microsoft_sync_preview.is_some()
+                && page.microsoft_sync_review_visible.get()
+            {
+                self.microsoft_todo_request(true);
+                return None;
+            }
             let installed = page
                 .microsoft_status
                 .as_ref()
                 .is_some_and(|status| status.installed);
-            if key.code == KeyCode::Char('M') && installed {
-                self.microsoft_todo_request(false);
-                return None;
-            }
-            if key.code == KeyCode::Char('S') && installed {
-                self.microsoft_todo_request(true);
-                return None;
+            // Microsoft To Do is in the palette now; M and S say so to the
+            // people who had them.
+            if let KeyCode::Char(c @ ('M' | 'S')) = key.code {
+                if installed {
+                    self.announce_moved("todo-microsoft", &c.to_string());
+                    return None;
+                }
             }
         }
         let page = &self.mailbox.todo_page;
@@ -714,6 +723,16 @@ impl App {
                         .is_some_and(|r| r.status == "accepted") =>
             {
                 Some(Action::TodoUndoResolution)
+            }
+            // `,` corrects what mxr read: a later email's resolution comes
+            // first when one is waiting on the lit to-do.
+            DefinedKey::Action(Action::TodoEdit)
+                if self
+                    .selected_todo()
+                    .and_then(|todo| todo.resolution.as_ref())
+                    .is_some_and(|r| r.status == "pending") =>
+            {
+                Some(Action::TodoReviewResolution)
             }
             defined => self.run_defined_key(defined),
         }

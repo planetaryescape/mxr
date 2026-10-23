@@ -100,9 +100,11 @@ the [keybindings reference](/reference/keybindings/#reading).
 Paper trail is a lens
 ([Clear Reading and Paper trail](/guides/reading-and-paper-trail/)). Mail is
 bundled by sender, each bundle with its "here because" line and no unread
-count. From a bundle you can pin a message, move the sender to another
-place, sweep the sender's bundle or the whole place, and load more senders
-or more of one sender's messages. Every sweep shows its preview first; the
+count. From a bundle, `s` pins a message, `P` moves the sender to another
+place and `E` sweeps the whole place; sweeping one sender's bundle and loading
+more senders, or more of one sender's messages, are in the palette (`:`).
+They were `p`, `K`, `A`, `S`, `>` and `+` until K3, and each old key says
+where it went until 0.6.185. Every sweep shows its preview first; the
 whole-place sweep opens on **Cancel**, so confirming it takes a deliberate
 extra step. Undo reverses every chunk of the last sweep. Mail keys (archive,
 star, trash) act on the message under the cursor. The keys are in the

@@ -646,6 +646,12 @@ impl App {
         };
         match code {
             KeyCode::Esc => self.mailbox.records_page.prompt = None,
+            // Nothing typed: every field is right, so the record is checked
+            // (`,` took over the old `v`, blueprint 35).
+            KeyCode::Enter if prompt.input.trim().is_empty() => {
+                self.mailbox.records_page.prompt = None;
+                self.mark_record_checked();
+            }
             KeyCode::Enter => {
                 let Some((field, value)) = prompt
                     .input

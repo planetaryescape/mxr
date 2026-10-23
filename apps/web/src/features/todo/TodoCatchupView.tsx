@@ -12,6 +12,7 @@ import { getRuntimeNavigate } from "@/lib/actions/runtime";
 import { useScopeController } from "@/lib/keys/controllers";
 import { cn } from "@/lib/utils";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { listMotions } from "@/features/modes/listMotions";
 
 import { useCatchupQuery, useExpiredQuery, type Todo, type TodoRunway } from "./api";
 import { openCount, rowParty } from "./todoRows";
@@ -115,6 +116,7 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
   useScopeController("catchup", {
     down: () => move(1),
     up: () => move(-1),
+    ...listMotions(move),
     keep: () => current && void decideCatchup(account, [current], "keep"),
     letGo: () => current && void decideCatchup(account, [current], "let_go"),
     letGoAll: () => rows.length > 0 && openMailDialog({ kind: "todo-let-go-all", account }),
@@ -230,6 +232,7 @@ export function TodoExpiredView() {
   useScopeController("expired", {
     down: () => move(1),
     up: () => move(-1),
+    ...listMotions(move),
     restore: () => current && void restoreTodos([current]),
     back: () => getRuntimeNavigate().navigate("/todo"),
   });

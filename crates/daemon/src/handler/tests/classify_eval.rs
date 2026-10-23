@@ -430,3 +430,39 @@ async fn a_stored_ask_without_its_item_projection_is_not_graded_as_delivered() {
         "evaluation must not regenerate the missing task"
     );
 }
+
+#[tokio::test]
+async fn linked_product_fields_are_measured_from_the_row_without_repairing_them() {
+    let (state, _) = scenario_state().await;
+    eval(&state, None).await;
+    let changed = sqlx::query("UPDATE todos SET amount_minor = amount_minor + 100, due_at = due_at + 172800 WHERE user_edited = 0 AND source_message_id IN (SELECT id FROM messages WHERE provider_id = 'demo-msg-9')")
+        .execute(state.store.writer()).await.expect("change only projected fields").rows_affected();
+    assert_eq!(changed, 1);
+    let before: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(state.store.writer())
+        .await
+        .expect("changes");
+    let ResponseData::ClassifyEval { mismatches, .. } =
+        classify_eval(&state, None, ClassifyEvalSetData::Quick)
+            .await
+            .expect("stored evaluation")
+    else {
+        panic!("eval response");
+    };
+    for field in ["amount", "due"] {
+        assert!(
+            mismatches
+                .iter()
+                .any(|m| m.provider_id == "demo-msg-9" && m.question == field),
+            "wrong stored {field} must be visible"
+        );
+    }
+    let after: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(state.store.writer())
+        .await
+        .expect("changes");
+    assert_eq!(
+        before, after,
+        "evaluation leaves the erroneous projection unchanged"
+    );
+}

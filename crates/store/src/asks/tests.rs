@@ -419,7 +419,7 @@ async fn evaluation_packet_reads_generation_matched_facets_and_record_in_one_rea
     assert_eq!(packet[0].asks.as_ref(), Some(&ask));
     assert!(packet[0].home.is_none());
     assert!(packet[0].projection_pending);
-    assert!(packet[0].projected_units.is_empty());
+    assert!(packet[0].projected_todos.is_empty());
     let after: i64 = sqlx::query_scalar("SELECT total_changes()")
         .fetch_one(store.writer())
         .await

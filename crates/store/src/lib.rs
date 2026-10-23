@@ -142,7 +142,9 @@ pub use categories::{
     normalize_category_name, CategoryMembershipChange, CategoryMembershipVersion,
 };
 pub use change_feed::ChangeFeed;
-pub use classify_eval::{EvalAspects, EvalCandidate, EvalStoredMessage, EvalTodo};
+pub use classify_eval::{
+    EvalAspects, EvalCandidate, EvalProjectedTodo, EvalStoredMessage, EvalTodo,
+};
 pub use commitment_date_source::{is_actionable_date, ByWhenSource};
 pub use contact_commitments::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
 pub use contact_relationship_summary::ContactRelationshipSummaryRecord;

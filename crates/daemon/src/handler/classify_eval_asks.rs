@@ -112,17 +112,25 @@ impl Row {
     pub(super) fn from_asks(
         answer: &mxr_core::asks::AskAssessment,
         counterparty: &str,
-        projected_units: &std::collections::HashSet<String>,
+        projected_todos: &[mxr_store::EvalProjectedTodo],
     ) -> Vec<Self> {
         use mxr_core::asks::{ActionKind as A, AskAnswer};
+        let mut projected: std::collections::HashMap<&str, Vec<&mxr_store::EvalTodo>> =
+            std::collections::HashMap::new();
+        for item in projected_todos {
+            projected
+                .entry(&item.unit_provenance)
+                .or_default()
+                .push(&item.todo);
+        }
         answer
             .units
             .iter()
             .enumerate()
             .filter_map(|(index, unit)| {
-                if !projected_units
-                    .contains(&mxr_todo::asks::items::unit_provenance(answer, index, unit))
-                {
+                if !projected.contains_key(
+                    mxr_todo::asks::items::unit_provenance(answer, index, unit).as_str(),
+                ) {
                     return None;
                 }
                 let direction = match unit.answer {
@@ -176,6 +184,26 @@ impl Row {
                         answer.facts.zones[d.zone].text[d.span.start..d.span.end].to_string()
                     }),
                 })
+                .map(|row| {
+                    (
+                        row,
+                        mxr_todo::asks::items::unit_provenance(answer, index, unit),
+                    )
+                })
+            })
+            .flat_map(|(row, key)| {
+                projected
+                    .get(key.as_str())
+                    .into_iter()
+                    .flatten()
+                    .map(move |todo| {
+                        let mut actual = row.clone();
+                        actual.counterparty = todo.counterparty.clone();
+                        actual.amount = todo.amount_minor.zip(todo.currency.clone());
+                        actual.due_at = todo.due_at.and_then(|at| DateTime::from_timestamp(at, 0));
+                        actual.due_words = todo.due_words.clone();
+                        actual
+                    })
             })
             .collect()
     }
@@ -352,6 +380,13 @@ impl AskGrader {
                 .filter(|review| review.questions.contains(&"todo"))
                 .map(|review| review.why.to_string()),
         }
+    }
+
+    pub(super) fn corrected(&mut self) {
+        self.slices
+            .entry(("projection", "user_corrected".into()))
+            .or_default()
+            .0 += 1;
     }
 
     pub(super) fn pending(&mut self) {
@@ -1830,11 +1865,20 @@ mod provenance_tests {
                 answer: AskAnswer::AsksYou,
             }],
         };
-        let links = std::collections::HashSet::from([mxr_todo::asks::items::unit_provenance(
-            &a,
-            0,
-            &a.units[0],
-        )]);
+        let links = vec![mxr_store::EvalProjectedTodo {
+            unit_provenance: mxr_todo::asks::items::unit_provenance(&a, 0, &a.units[0]),
+            user_edited: 0,
+            todo: mxr_store::EvalTodo {
+                source_message_id: a.message_id.clone(),
+                kind: "rsvp".into(),
+                title: "Planning".into(),
+                counterparty: Some("Organiser".into()),
+                amount_minor: None,
+                currency: None,
+                due_words: None,
+                due_at: None,
+            },
+        }];
         let calendar = Row::from_asks(&a, "Organiser", &links);
         assert_eq!(calendar[0].kind, AskKind::Attend);
         assert!(mxr_todo::asks::items::is_rsvp(&a, &a.units[0]));

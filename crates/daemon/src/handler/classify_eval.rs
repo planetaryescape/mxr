@@ -316,10 +316,14 @@ pub(super) async fn classify_eval(
     let mut rows = HashMap::new();
     let mut stored_answers = HashMap::new();
     let mut pending_projection = std::collections::HashSet::new();
+    let mut corrected_projection = std::collections::HashSet::new();
     let mut records = std::collections::HashSet::new();
     for entry in packet {
         let message = entry.envelope;
-        if entry.projection_pending {
+        if entry.projected_todos.iter().any(|t| t.user_edited != 0) {
+            corrected_projection.insert(message.id.clone());
+        }
+        if entry.projection_pending || entry.asks.as_ref().is_some_and(|a| a.pending_body) {
             pending_projection.insert(message.id.clone());
         }
         let assessment = entry.home.as_ref();
@@ -370,7 +374,7 @@ pub(super) async fn classify_eval(
                 .unwrap_or_default();
             rows.insert(
                 message.id.clone(),
-                Row::from_asks(&answer, name, &entry.projected_units),
+                Row::from_asks(&answer, name, &entry.projected_todos),
             );
             stored_answers.insert(message.id, answer);
         }
@@ -395,6 +399,10 @@ pub(super) async fn classify_eval(
             record: records.contains(&candidate.message_id),
         };
         grade(label, &actual, &mut tally, &mut mismatches);
+        if corrected_projection.contains(&candidate.message_id) {
+            asks.corrected();
+            continue;
+        }
         if !stored_answers.contains_key(&candidate.message_id)
             || pending_projection.contains(&candidate.message_id)
         {

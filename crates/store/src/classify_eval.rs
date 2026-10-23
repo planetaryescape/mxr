@@ -23,7 +23,7 @@ pub struct EvalCandidate {
 }
 
 /// A to-do row, with what the eval grades about it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct EvalTodo {
     /// The email the row was made from.
     pub source_message_id: MessageId,
@@ -59,6 +59,13 @@ fn candidate(row: &sqlx::sqlite::SqliteRow) -> Result<EvalCandidate, sqlx::Error
     })
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct EvalProjectedTodo {
+    pub unit_provenance: String,
+    pub todo: EvalTodo,
+    pub user_edited: i64,
+}
+
 /// One SQLite statement supplies all the stored facets and evidence for grading.
 #[derive(Debug)]
 pub struct EvalStoredMessage {
@@ -66,7 +73,7 @@ pub struct EvalStoredMessage {
     pub home: Option<mxr_core::assessment::MailAssessment>,
     pub asks: Option<mxr_core::asks::AskAssessment>,
     pub record: bool,
-    pub projected_units: HashSet<String>,
+    pub projected_todos: Vec<EvalProjectedTodo>,
     pub projection_pending: bool,
 }
 
@@ -79,7 +86,7 @@ impl super::Store {
         let rows = sqlx::query("SELECT m.*, COALESCE((SELECT GROUP_CONCAT(l.provider_id, char(31)) FROM message_labels ml JOIN labels l ON l.id = ml.label_id WHERE ml.message_id = m.id), '') AS label_provider_ids,
             h.assessment_json AS home_json, a.assessment_json AS asks_json,
             EXISTS(SELECT 1 FROM record_messages r WHERE r.message_id = m.id) AS is_record,
-            (SELECT json_group_array(json_extract(t.field_sources, '$.asks_provenance.evidence')) FROM todos t WHERE t.account_id = m.account_id AND t.source_message_id = m.id AND t.expired_at_birth = 0 AND json_extract(t.field_sources, '$.asks_fingerprint.evidence') = a.input_fingerprint AND json_extract(t.field_sources, '$.asks_provenance.evidence') IS NOT NULL) AS projected_units,
+            (SELECT json_group_array(json_object('unit_provenance', json_extract(t.field_sources, '$.asks_provenance.evidence'), 'user_edited', t.user_edited, 'todo', json_object('source_message_id', t.source_message_id, 'kind', t.kind, 'title', t.title, 'counterparty', t.counterparty, 'amount_minor', t.amount_minor, 'currency', t.currency, 'due_words', t.due_words, 'due_at', t.due_at))) FROM todos t WHERE t.account_id = m.account_id AND t.source_message_id = m.id AND t.expired_at_birth = 0 AND json_extract(t.field_sources, '$.asks_fingerprint.evidence') = a.input_fingerprint AND json_extract(t.field_sources, '$.asks_provenance.evidence') IS NOT NULL) AS projected_todos,
             EXISTS(SELECT 1 FROM asks_projection_outbox q WHERE q.message_id = m.id AND q.account_id = m.account_id AND q.input_fingerprint = a.input_fingerprint) AS projection_pending
             FROM messages m LEFT JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id
             LEFT JOIN mail_assessments a ON a.message_id = m.id AND a.account_id = m.account_id AND a.policy_version = ?2 AND a.input_revision = i.effective_revision AND json_extract(a.assessment_json, '$.context_token') = ?4
@@ -99,8 +106,8 @@ impl super::Store {
                         .map(|s| crate::decode_json(&s))
                         .transpose()?,
                     record: row.try_get("is_record")?,
-                    projected_units: crate::decode_json(
-                        &row.try_get::<String, _>("projected_units")?,
+                    projected_todos: crate::decode_json(
+                        &row.try_get::<String, _>("projected_todos")?,
                     )?,
                     projection_pending: row.try_get("projection_pending")?,
                 })

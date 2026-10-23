@@ -636,6 +636,7 @@ pub(crate) async fn handle_compose_editor_status(
     status: std::io::Result<std::process::ExitStatus>,
     bg: &mpsc::UnboundedSender<IpcRequest>,
 ) {
+    let assist_after_editor = std::mem::take(&mut app.compose.assist_after_editor);
     match status {
         Ok(s) if s.success() => match pending_send_from_edited_draft(data).await {
             Ok(mut pending) => {
@@ -663,6 +664,9 @@ pub(crate) async fn handle_compose_editor_status(
                 stamp_safety_report(&mut pending, bg).await;
                 stamp_suggestions(&mut pending, bg).await;
                 app.compose.pending_send_confirm = Some(pending);
+                if assist_after_editor {
+                    app.apply(crate::action::Action::RefinePendingDraft);
+                }
             }
             Err(error) => {
                 app.report_error(error.modal_title(), error.modal_detail());

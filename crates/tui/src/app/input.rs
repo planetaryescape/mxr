@@ -450,6 +450,13 @@ impl App {
         if self.modals.platform.visible {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q' | 'x'), _) => {
+                    if self.modals.platform.title == "Accepting writing proof" {
+                        return None;
+                    }
+                    if self.modals.platform.title == "Writing proof" {
+                        self.compose.assist_request_id =
+                            self.compose.assist_request_id.wrapping_add(1);
+                    }
                     self.modals.platform.close();
                     None
                 }
@@ -748,6 +755,10 @@ impl App {
         }
 
         // Route keys to send confirmation prompt
+        if self.compose.assist_review.is_some() {
+            return self.handle_compose_assist_key(key);
+        }
+
         if self.compose.pending_send_confirm.is_some() {
             if self.compose.pending_remind_at_input.is_some() {
                 match (key.code, key.modifiers) {

@@ -236,9 +236,14 @@ Two cross-view interactions:
 - Label picker
 - Compose confirmation: `[s]` sends, `[a]` schedules send-later,
   `[n]` sends and sets a follow-up reminder, `[d]` saves a draft,
-  `[r]` refines, `[e]` or `Esc` reopens `$EDITOR` on the draft, and
+  `[r]` opens a writing proof for the current body, `[e]` or `Esc` reopens `$EDITOR` on the draft, and
   `[#]` discards it. When the safety check blocks the draft, `[O]`
   overrides the block and sends once.
+- Writing proof: additions are highlighted and removals are struck through;
+  set `NO_COLOR` to show `[-removed-]{+added+}` marks. `Esc` keeps the
+  original draft. `[y]` accepts the proposal, `[e]` accepts and opens
+  `$EDITOR`, and `[n]` enters a revision note. A proof with gaps cannot be
+  accepted.
 - Bulk confirmation
 - Attachment modal
 - Snooze modal: preset list plus a **Custom…** entry that opens a

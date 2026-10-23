@@ -43,6 +43,13 @@ pub struct PendingSend {
     pub resolved_from: Option<mxr_core::types::Address>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ComposeAssistReview {
+    pub pending: PendingSend,
+    pub proposal: mxr_protocol::ComposeProposalData,
+    pub note_input: Option<String>,
+}
+
 impl PendingSend {
     pub(crate) fn draft_id(&self) -> mxr_core::DraftId {
         mxr_core::DraftId::from_provider_id("compose-file", &self.draft_path.to_string_lossy())
@@ -139,6 +146,9 @@ pub struct ComposeState {
     pub active_draft_cleanup: std::collections::HashSet<std::path::PathBuf>,
     pub pending_compose: Option<ComposeAction>,
     pub pending_send_confirm: Option<PendingSend>,
+    pub assist_review: Option<ComposeAssistReview>,
+    pub assist_request_id: u64,
+    pub assist_after_editor: bool,
     pub pending_send_at_input: Option<String>,
     pub pending_remind_at_input: Option<String>,
     /// The send-at / remind prompt's previewed time and selected reading.

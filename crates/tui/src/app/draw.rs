@@ -806,6 +806,15 @@ impl App {
             &time_preview,
             theme,
         );
+        if let Some(review) = self.compose.assist_review.as_ref() {
+            ui::compose_assist_proof::draw(
+                frame,
+                area,
+                &review.proposal,
+                review.note_input.as_deref(),
+                theme,
+            );
+        }
 
         // Bulk confirmation overlay
         ui::bulk_confirm_modal::draw(

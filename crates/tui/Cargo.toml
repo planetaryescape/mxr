@@ -15,6 +15,7 @@ workspace = true
 anyhow = { workspace = true }
 mxr-client = { workspace = true }
 mxr-compose = { workspace = true }
+mxr-composer = { workspace = true }
 mxr-config = { workspace = true }
 mxr-core = { workspace = true }
 mxr-mail-parse = { workspace = true }

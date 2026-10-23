@@ -1705,6 +1705,10 @@ pub async fn run() -> anyhow::Result<()> {
         for pending in platform_dispatch {
             let bg = bg.clone();
             let title = pending.title.clone();
+            let compose_assist = pending.compose_assist.clone();
+            let compose_assist_request_id = pending.compose_assist_request_id.unwrap_or_default();
+            let compose_assist_accept = pending.compose_assist_accept.clone();
+            let compose_assist_reopen_editor = pending.compose_assist_reopen_editor;
             let result_tx_inner = result_tx.clone();
             let _ = submit_task(&queued, async move {
                 let mut pending = pending;
@@ -1729,14 +1733,84 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                         }
                     }
-                    let resp = ipc_call(&bg, pending.request).await;
-                    match resp {
-                        Ok(Response::Ok { data }) => Ok(format_platform_response(&data)),
-                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                        Err(e) => Err(e),
-                    }
+                    ipc_call(&bg, pending.request).await
                 }
                 .await;
+                if let Some(compose) = compose_assist {
+                    let proposal = match result {
+                        Ok(Response::Ok {
+                            data: ResponseData::ComposeProposal { proposal },
+                        }) => Ok(proposal),
+                        Ok(Response::Ok { .. }) => Err(MxrError::Ipc(
+                            "The daemon returned no writing proposal".into(),
+                        )),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(error) => Err(error),
+                    };
+                    return AsyncResult::ComposeAssistLoaded {
+                        pending: compose,
+                        request_id: compose_assist_request_id,
+                        result: proposal,
+                    };
+                }
+                if let Some(compose) = compose_assist_accept {
+                    let accepted = match result {
+                        Ok(Response::Ok {
+                            data: ResponseData::Draft { draft },
+                        }) => {
+                            let context = mxr_protocol::DraftSafetyContextData {
+                                mode: mxr_protocol::DraftSafetyModeData::Check,
+                                reply_all: matches!(
+                                    compose.intent,
+                                    mxr_core::DraftIntent::ReplyAll
+                                ),
+                                original_message_id: None,
+                                thread_id: compose
+                                    .fm
+                                    .thread_id
+                                    .as_ref()
+                                    .and_then(|id| id.parse().ok()),
+                                allow_llm: true,
+                                proposed_send_at: Some(chrono::Utc::now()),
+                            };
+                            let safety = match ipc_call(
+                                &bg,
+                                Request::CheckDraftSafety {
+                                    draft: draft.clone(),
+                                    context,
+                                },
+                            )
+                            .await
+                            {
+                                Ok(Response::Ok {
+                                    data: ResponseData::DraftSafetyReportResponse { report },
+                                }) => Ok(report),
+                                Ok(Response::Ok { .. }) => Err(MxrError::Ipc(
+                                    "The daemon returned no safety report for the accepted draft"
+                                        .into(),
+                                )),
+                                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                                Err(error) => Err(error),
+                            };
+                            Ok((draft, safety))
+                        }
+                        Ok(Response::Ok { .. }) => Err(MxrError::Ipc(
+                            "The daemon returned no accepted draft".into(),
+                        )),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(error) => Err(error),
+                    };
+                    return AsyncResult::ComposeAssistAccepted {
+                        pending: compose,
+                        request_id: compose_assist_request_id,
+                        reopen_editor: compose_assist_reopen_editor,
+                        result: accepted,
+                    };
+                }
+                let result = result.and_then(|response| match response {
+                    Response::Ok { data } => Ok(format_platform_response(&data)),
+                    Response::Error { message, .. } => Err(MxrError::Ipc(message)),
+                });
                 AsyncResult::PlatformModalLoaded {
                     compose,
                     title,
@@ -4299,6 +4373,7 @@ pub async fn run() -> anyhow::Result<()> {
                             handle_compose_editor_status(&mut app, &data, status, &bg).await;
                         }
                         AsyncResult::ComposeReady(Err(e)) => {
+                            app.compose.assist_after_editor = false;
                             app.status_message = Some(format!("Compose error: {e}"));
                         }
                         AsyncResult::DraftEditReady(Ok(data)) => {
@@ -4752,6 +4827,77 @@ pub async fn run() -> anyhow::Result<()> {
                             match result {
                                 Ok(body) => app.modals.platform.set_body(body),
                                 Err(e) => app.modals.platform.set_error(e.to_string()),
+                            }
+                        }
+                        AsyncResult::ComposeAssistLoaded { pending, request_id, result } => {
+                            let current_matches = app.compose.pending_send_confirm.as_ref()
+                                .is_some_and(|current| current.draft_path == pending.draft_path);
+                            if !current_matches
+                                || !app.modals.platform.visible
+                                || app.compose.assist_request_id != request_id
+                            {
+                                continue;
+                            }
+                            app.modals.platform.close();
+                            match result {
+                                Ok(proposal) => app.compose.assist_review = Some(app::ComposeAssistReview {
+                                    pending: *pending,
+                                    proposal,
+                                    note_input: None,
+                                }),
+                                Err(error) => app.report_error("Writing proof failed", error.to_string()),
+                            }
+                        }
+                        AsyncResult::ComposeAssistAccepted { pending, request_id, reopen_editor, result } => {
+                            if app.compose.assist_request_id != request_id {
+                                continue;
+                            }
+                            app.modals.platform.close();
+                            match result {
+                                Ok((draft, safety)) => {
+                                    let Some(body) = draft.content.markdown_source().map(str::to_owned) else {
+                                        app.report_error("Accepted draft cannot be edited", "The stored draft is not Markdown.");
+                                        continue;
+                                    };
+                                    let mut pending_send = *pending;
+                                    pending_send.body = body;
+                                    pending_send.mode = app::PendingSendMode::SendOrSave;
+                                    match safety {
+                                        Ok(report) => {
+                                            pending_send.override_token = report.issues.iter().find_map(|issue| issue.override_token.clone());
+                                            pending_send.safety_report = Some(report);
+                                            pending_send.safety_check_failed = None;
+                                        }
+                                        Err(error) => {
+                                            pending_send.override_token = None;
+                                            pending_send.safety_report = None;
+                                            pending_send.safety_check_failed = Some(error.to_string());
+                                        }
+                                    }
+                                    let content = match mxr_compose::draft_codec::draft_to_compose_file(&draft, &pending_send.fm.from) {
+                                        Ok(content) => content,
+                                        Err(error) => {
+                                            app.compose.pending_send_confirm = Some(pending_send);
+                                            app.report_error("Accepted draft cannot be reopened", error.to_string());
+                                            continue;
+                                        }
+                                    };
+                                    if let Err(error) = std::fs::write(&pending_send.draft_path, content) {
+                                        app.compose.pending_send_confirm = Some(pending_send);
+                                        app.report_error("Accepted draft file could not be updated", error.to_string());
+                                        continue;
+                                    }
+                                    if reopen_editor {
+                                        app.compose.pending_send_confirm = None;
+                                        app.compose.pending_compose = Some(app::ComposeAction::EditDraft {
+                                            path: pending_send.draft_path,
+                                            account_id: pending_send.account_id,
+                                        });
+                                    } else {
+                                        app.compose.pending_send_confirm = Some(pending_send);
+                                    }
+                                }
+                                Err(error) => app.report_error("Writing proof could not be applied", error.to_string()),
                             }
                         }
                         AsyncResult::AnalyticsResult { view, result } => {

@@ -181,7 +181,7 @@ test("letting go of the whole catch-up changes exactly what its preview listed",
   expect(before.todos.length).toBeGreaterThan(0);
   await openApp(page, "/todo?view=catchup");
   await expect(page.getByTestId("catchup-title")).toContainText("Catch up:");
-  await page.keyboard.press("A");
+  await page.keyboard.press("E");
   const dialog = page.getByTestId("let-go-all-dialog");
   const previewRows = dialog.getByTestId("let-go-preview-row");
   await expect(previewRows).toHaveCount(before.todos.length);

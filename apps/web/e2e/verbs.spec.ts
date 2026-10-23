@@ -683,7 +683,7 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     await openApp(page, "/now");
     const card = page.getByTestId("now-section-updates");
     await expect(card).toBeVisible();
-    await page.keyboard.press("A");
+    await page.keyboard.press("E");
     const dialog = page.getByTestId("updates-let-go-dialog");
     await expect(dialog).toContainText(/^Let go of \d+ updates? from/);
     await dialog.getByRole("button", { name: "Let go", exact: true }).click();

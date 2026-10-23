@@ -710,7 +710,9 @@ pub(super) async fn scan(
         let kinds = AccountKinds::load(state, &account, &messages).await?;
         let updates: Vec<&PlaceMessage> = messages
             .iter()
-            .filter(|m| !m.is_delivery && !m.is_invite && !kinds.is_outbound(m))
+            .filter(|m| {
+                !m.is_delivery && !m.is_invite && !kinds.is_outbound(m) && kinds.has_assessment(m)
+            })
             .filter(|m| {
                 super::mail_kind::classify(&kinds.signals(m)).kind.to_data()
                     == SenderKindData::PaperTrail

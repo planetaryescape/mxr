@@ -157,6 +157,7 @@ async fn gather(
     // borrows `dyn Fn`) is alive.
     let (mut topics, threads, names, outbound) = {
         let inputs = AccountInputs {
+            pending_threads: &senders.pending_threads(&messages, &is_self),
             assessments: &senders.assessments,
             account_id,
             messages: &messages,
@@ -192,6 +193,9 @@ async fn gather(
         let mut names: HashMap<String, (DateTime<Utc>, String)> = HashMap::new();
         let mut outbound = HashSet::new();
         for thread in messages.chunk_by(|a, b| a.thread_id == b.thread_id) {
+            if inputs.pending_threads.contains(&thread[0].thread_id) {
+                continue;
+            }
             let thread_id = thread[0].thread_id.clone();
             for message in thread {
                 if is_outbound(message, &is_self) {

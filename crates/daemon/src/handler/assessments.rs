@@ -14,6 +14,19 @@ use mxr_protocol::{KindRuleData, SenderKindData};
 use mxr_store::DeskMessage;
 use std::collections::HashMap;
 
+#[cfg(test)]
+type BeforeCommit = std::sync::Arc<
+    dyn Fn()
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), HandlerError>> + Send>>
+        + Send
+        + Sync,
+>;
+
+#[cfg(test)]
+tokio::task_local! {
+    pub(super) static BEFORE_COMMIT: BeforeCommit;
+}
+
 pub(super) fn describe(assessment: &MailAssessment) -> mxr_protocol::MailKindData {
     let kind = match assessment.home.as_str() {
         "reading" => SenderKindData::Reading,
@@ -111,7 +124,10 @@ pub(super) async fn fresh_stored(
     threads.sort_by_key(mxr_core::ThreadId::as_str);
     threads.dedup();
     for _ in 0..3 {
-        let revision = state.store.assessment_input_revision().await?;
+        let revision = state
+            .store
+            .assessment_thread_revisions(account, &threads)
+            .await?;
         let mut messages = Vec::new();
         for chunk in threads.chunks(super::modes::MEMBERSHIP_MAX_THREADS) {
             messages.extend(state.store.desk_messages_in_threads(account, chunk).await?);
@@ -134,7 +150,12 @@ pub(super) async fn fresh_stored(
                     .map(|m| m.id.clone()),
             );
         }
-        if revision == state.store.assessment_input_revision().await? {
+        if revision
+            == state
+                .store
+                .assessment_thread_revisions(account, &threads)
+                .await?
+        {
             stored.retain(|id, _| valid.contains(id));
             return Ok(stored);
         }
@@ -150,12 +171,35 @@ pub(super) async fn materialize(
     account: &AccountId,
     requested: &[DeskMessage],
 ) -> Result<HashMap<MessageId, MailAssessment>, HandlerError> {
-    let _config = state.assessment_config_gate.read().await;
     let mut threads: Vec<_> = requested.iter().map(|m| m.thread_id.clone()).collect();
     threads.sort_by_key(mxr_core::ThreadId::as_str);
     threads.dedup();
+    materialize_threads(state, account, &threads, || async {
+        #[cfg(test)]
+        if let Ok(hook) = BEFORE_COMMIT.try_with(std::sync::Arc::clone) {
+            hook().await?;
+        }
+        Ok(())
+    })
+    .await
+}
+
+pub(super) async fn materialize_threads<F, Fut>(
+    state: &AppState,
+    account: &AccountId,
+    threads: &[mxr_core::ThreadId],
+    mut before_commit: F,
+) -> Result<HashMap<MessageId, MailAssessment>, HandlerError>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<(), HandlerError>>,
+{
+    let _config = state.assessment_config_gate.read().await;
     for _ in 0..3 {
-        let revision = state.store.assessment_input_revision().await?;
+        let revision = state
+            .store
+            .assessment_thread_revisions(account, threads)
+            .await?;
         let mut messages = Vec::new();
         for chunk in threads.chunks(super::modes::MEMBERSHIP_MAX_THREADS) {
             messages.extend(state.store.desk_messages_in_threads(account, chunk).await?);
@@ -165,7 +209,7 @@ pub(super) async fn materialize(
         let is_self = self_matcher(state, account).await?;
         let shape = super::conversation_shape::shape_config(state);
         let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
-        let mut stored = state
+        let stored = state
             .store
             .assessments_for_messages(account, CLASSIFIER_POLICY_VERSION, &ids)
             .await?;
@@ -271,25 +315,40 @@ pub(super) async fn materialize(
                 answers.push(assessment);
             }
         }
-        if revision != state.store.assessment_input_revision().await? {
+        before_commit().await?;
+        if !state
+            .store
+            .save_assessment_batch(account, &revision, &answers)
+            .await?
+        {
             continue;
         }
-        for assessment in answers {
-            if stored.get(&assessment.message_id) != Some(&assessment) {
-                state.store.save_assessment(&assessment, revision).await?;
-                stored.insert(assessment.message_id.clone(), assessment);
-            }
-        }
-        if revision == state.store.assessment_input_revision().await? {
-            return Ok(stored);
+        let mut persisted = state
+            .store
+            .assessments_for_messages(account, CLASSIFIER_POLICY_VERSION, &ids)
+            .await?;
+        let inbound: std::collections::HashSet<_> = messages
+            .iter()
+            .filter(|m| !is_outbound(m, &is_self))
+            .map(|m| &m.id)
+            .collect();
+        persisted.retain(|id, _| inbound.contains(id));
+        if revision
+            == state
+                .store
+                .assessment_thread_revisions(account, threads)
+                .await?
+        {
+            return Ok(persisted);
         }
     }
-    Err(HandlerError::from(
-        "Mail changed during classification; retry once sync settles".to_string(),
-    ))
+    // Relevant inputs kept moving. Readers must expose pending, never a
+    // newly computed home or a stale stored answer. Dirty work stays queued.
+    Ok(HashMap::new())
 }
 
-/// Startup/ingest reconciliation includes historical mail without arrivals.
+/// Synthetic fixtures that bypass sync also cover historical/no-arrivals mail.
+#[cfg(test)]
 pub(crate) async fn reconcile_account(
     state: &AppState,
     account: &AccountId,
@@ -304,11 +363,7 @@ pub(crate) async fn reconcile_account(
             break;
         };
         after = Some(last.as_str());
-        let messages = state
-            .store
-            .desk_messages_in_threads(account, &threads)
-            .await?;
-        materialize(state, account, &messages).await?;
+        materialize_threads(state, account, &threads, || async { Ok(()) }).await?;
         tokio::task::yield_now().await;
     }
     Ok(())
@@ -326,34 +381,79 @@ pub(crate) async fn reconciler_loop(
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(2));
-    let mut previous = None;
+    let mut previous_shape = None;
     loop {
         tokio::select! { _ = tick.tick() => {}, changed = shutdown.changed() => {
             if changed.is_err() || *shutdown.borrow_and_update() { break; } continue;
         }}
-        let revision = match state.store.assessment_input_revision().await {
-            Ok(revision) => revision,
-            Err(error) => {
-                tracing::warn!(%error, "assessment revision unavailable");
+        let shape = super::conversation_shape::shape_config(&state);
+        if previous_shape != Some(shape) {
+            if let Err(error) = state.store.invalidate_all_assessments().await {
+                tracing::warn!(%error, "assessment initialization pending");
                 continue;
             }
-        };
-        let shape = super::conversation_shape::shape_config(&state);
-        if previous == Some((revision, shape)) {
-            continue;
+            previous_shape = Some(shape);
         }
         let Ok(accounts) = state.store.list_accounts().await else {
             continue;
         };
-        let mut complete = true;
         for account in accounts {
-            if let Err(error) = reconcile_account(&state, &account.id).await {
-                tracing::warn!(account = %account.id, %error, "assessment reconciliation pending");
-                complete = false;
+            // A busy early page must not starve later pages or accounts.
+            let mut after = None;
+            loop {
+                let result = reconcile_dirty_page(&state, &account.id, after.as_deref()).await;
+                match result {
+                    Ok(Some(last)) => after = Some(last),
+                    Ok(None) => break,
+                    Err(error) => {
+                        tracing::warn!(account = %account.id, %error, "assessment reconciliation pending");
+                        break;
+                    }
+                }
+                if *shutdown.borrow() {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+            if let Err(error) = arrivals::place_pending(&state, &account.id).await {
+                tracing::warn!(account = %account.id, %error, "arrival placement pending after assessment reconciliation");
             }
         }
-        if complete {
-            previous = Some((revision, shape));
-        }
     }
+}
+
+pub(super) async fn reconcile_dirty_page(
+    state: &AppState,
+    account: &AccountId,
+    after: Option<&str>,
+) -> Result<Option<String>, HandlerError> {
+    let threads = state.store.dirty_assessment_threads(account, after).await?;
+    let Some(last) = threads.last().map(mxr_core::ThreadId::as_str) else {
+        return Ok(None);
+    };
+    materialize_threads(state, account, &threads, || async { Ok(()) }).await?;
+    Ok(Some(last))
+}
+
+/// The sync page pays only for its threads; sender-history dependencies are
+/// durably queued by the same transaction that changed the input.
+pub(crate) async fn reconcile_messages(
+    state: &AppState,
+    account: &AccountId,
+    ids: &[MessageId],
+) -> Result<(), HandlerError> {
+    let mut threads: Vec<_> = state
+        .store
+        .list_envelopes_by_ids(ids)
+        .await?
+        .into_iter()
+        .filter(|m| &m.account_id == account)
+        .map(|m| m.thread_id)
+        .collect();
+    threads.sort_by_key(mxr_core::ThreadId::as_str);
+    threads.dedup();
+    for chunk in threads.chunks(100) {
+        materialize_threads(state, account, chunk, || async { Ok(()) }).await?;
+    }
+    Ok(())
 }

@@ -70,6 +70,10 @@ mail goes to Updates, marked **Not sure**. A missing body remains pending.
 Open `mxr why MESSAGE_ID --format json` for the stored assessment and evidence,
 or `mxr classify report --format json` for bounded fallback counts and clusters.
 
+While sync changes the evidence, an email can briefly be still sorting. It
+stays in Inbox and arrivals while its mode waits for a stored answer. If
+`mxr why` returns `classification_pending`, retry once sorting finishes.
+
 A home describes the email's purpose. Inbox membership, snoozes, done marks and
 expiry still decide whether it appears as open work. Inspect a message's
 placement before correcting it:

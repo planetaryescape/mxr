@@ -124,6 +124,16 @@ impl AccountKinds {
         })
     }
 
+    pub(super) fn has_assessment(&self, message: &PlaceMessage) -> bool {
+        self.assessments.contains_key(&message.id)
+    }
+
+    pub(super) fn description(&self, message: &PlaceMessage) -> Option<MailKindData> {
+        self.assessments
+            .get(&message.id)
+            .map(super::assessments::describe)
+    }
+
     pub(super) fn is_self(&self, email: &str) -> bool {
         self.owned.contains(email)
     }
@@ -218,6 +228,7 @@ pub(super) async fn placed_inbox(
                 || kinds.released.contains(&message.id)
                 || !same_sender(&message, sender_email)
                 || kinds.is_outbound(&message)
+                || !kinds.has_assessment(&message)
             {
                 continue;
             }
@@ -427,6 +438,11 @@ pub(super) async fn get_message_kind(state: &AppState, message_id: &MessageId) -
         .iter()
         .find(|m| &m.id == message_id)
         .ok_or_else(|| HandlerError::from(format!("Message not found: {message_id}")))?;
+    if !super::desk_lanes::is_outbound(message, &own)
+        && !senders.assessments.contains_key(message_id)
+    {
+        return Err(HandlerError::ClassificationPending);
+    }
     Ok(ResponseData::MessageKind {
         assessment: senders.assessments.get(message_id).cloned(),
         account_id: envelope.account_id,

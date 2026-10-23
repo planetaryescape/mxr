@@ -4,7 +4,7 @@
 use super::sources::Sources;
 use super::{ensure_items, item_data, item_key, parse_item_key, Context, Issue};
 use crate::handler::places::AccountKinds;
-use crate::handler::{mail_kind, HandlerError, HandlerResult};
+use crate::handler::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::Utc;
 use mxr_core::id::{AccountId, MessageId};
@@ -79,7 +79,7 @@ pub(super) async fn load_item(
     if let Some(message) = state.store.place_message(&message_id).await? {
         let kinds =
             AccountKinds::load(state, &issue.account_id, std::slice::from_ref(&message)).await?;
-        issue.kind = Some(mail_kind::describe(&kinds.signals(&message)));
+        issue.kind = kinds.description(&message);
     }
     let rows = ensure_items(state, &[&issue])
         .await?

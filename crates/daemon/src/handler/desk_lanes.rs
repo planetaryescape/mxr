@@ -107,6 +107,7 @@ pub(super) fn thread_starred(thread: &[DeskMessage]) -> bool {
 
 /// Everything the lane rules need about one account.
 pub(super) struct AccountInputs<'a> {
+    pub pending_threads: &'a HashSet<ThreadId>,
     pub assessments: &'a HashMap<MessageId, mxr_core::assessment::MailAssessment>,
     pub account_id: &'a AccountId,
     /// Messages of recently active threads, ordered by thread then date.
@@ -338,7 +339,7 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
     let facts = WindowFacts::from_inputs(inputs);
 
     for thread in inputs.messages.chunk_by(|a, b| a.thread_id == b.thread_id) {
-        if thread.is_empty() {
+        if thread.is_empty() || inputs.pending_threads.contains(&thread[0].thread_id) {
             continue;
         }
 
@@ -964,6 +965,7 @@ mod tests {
         let is_self = |email: &str| email.eq_ignore_ascii_case(ME);
         let moves = HashMap::new();
         thread_lanes(&AccountInputs {
+            pending_threads: &HashSet::new(),
             assessments: &HashMap::new(),
             account_id: &account,
             messages,

@@ -149,6 +149,7 @@ pub(super) async fn place_threads(
         .cloned()
         .collect();
     let lanes = thread_lanes(&AccountInputs {
+        pending_threads: &senders.pending_threads(&messages, &is_self),
         assessments: &senders.assessments,
         account_id,
         messages: &lane_messages,
@@ -297,7 +298,10 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     let inbound = |m: &&DeskMessage| !is_outbound(m, inputs.is_self) && !m.trashed;
     let mut by_kind: HashMap<SenderKindData, Vec<&DeskMessage>> = HashMap::new();
     for message in thread.iter().filter(inbound) {
-        if !message.in_inbox || message.snoozed {
+        if !message.in_inbox
+            || message.snoozed
+            || !inputs.senders.assessments.contains_key(&message.id)
+        {
             continue;
         }
         let kind = mail_kind::classify(&signals(message, inputs.senders, inputs.is_self))
@@ -430,6 +434,7 @@ fn quiet<'a>(inputs: &PlaceInputs<'a>) -> Option<&'a DeskMessage> {
     thread
         .iter()
         .filter(|m| m.in_inbox && !m.trashed && !m.snoozed && !is_outbound(m, inputs.is_self))
+        .filter(|m| inputs.senders.assessments.contains_key(&m.id))
         .filter(|m| {
             mail_kind::classify(&signals(m, inputs.senders, inputs.is_self)).kind
                 == mail_kind::SenderKind::Person
@@ -446,6 +451,7 @@ fn new_sender(inputs: &PlaceInputs<'_>) -> Option<mxr_protocol::ScreenerQuestion
         .iter()
         .filter(|m| !is_outbound(m, inputs.is_self) && !m.trashed)
         .max_by_key(|m| (m.date, m.seq))?;
+    let assessment = inputs.senders.assessments.get(&latest.id)?;
     let key = latest.from.email.to_ascii_lowercase();
     if inputs
         .senders
@@ -465,12 +471,7 @@ fn new_sender(inputs: &PlaceInputs<'_>) -> Option<mxr_protocol::ScreenerQuestion
     }
     // Only a person is asked about. A machine's mail goes to its mode
     // silently, and its row's why line says which rule put it there.
-    let kind = mail_kind::classify(&signals(latest, inputs.senders, inputs.is_self)).kind;
-    let person = inputs
-        .senders
-        .assessments
-        .get(&latest.id)
-        .map_or(kind == mail_kind::SenderKind::Person, |a| a.who == "person");
+    let person = assessment.who == "person";
     if !person {
         return None;
     }
@@ -689,7 +690,7 @@ pub(super) async fn quiet_count(
         let mut seen: HashSet<&ThreadId> = HashSet::new();
         let mut threads: Vec<ThreadId> = Vec::new();
         for message in &candidates {
-            if message.snoozed || kinds.is_outbound(message) {
+            if message.snoozed || kinds.is_outbound(message) || !kinds.has_assessment(message) {
                 continue;
             }
             if mail_kind::classify(&kinds.signals(message)).kind == mail_kind::SenderKind::Person

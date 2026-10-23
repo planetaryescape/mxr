@@ -188,6 +188,9 @@ async fn place_all(
             sorted.sent.push(message_id.clone());
             continue;
         }
+        if !senders.assessments.contains_key(message_id) {
+            continue;
+        }
         sorted.placements.push(place_message(
             message, thread, &senders, &is_self, shape, *spam,
         ));
@@ -224,6 +227,12 @@ pub(super) async fn effective_rows(
             row.reason = Some(placement.reason);
             row.rule = Some(placement.rule);
             row.not_sure = placement.not_sure;
+        } else {
+            row.effective = "sorting".into();
+            row.reason = Some("Still sorting".into());
+            row.rule = None;
+            row.not_sure = None;
+            row.moved = false;
         }
     }
     Ok(rows)

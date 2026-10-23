@@ -6,6 +6,67 @@ use sqlx::Row;
 use std::collections::HashMap;
 
 impl super::Store {
+    pub async fn assessment_thread_revisions(
+        &self,
+        account: &AccountId,
+        threads: &[ThreadId],
+    ) -> Result<HashMap<ThreadId, i64>, sqlx::Error> {
+        let rows: Vec<(String, i64)> = sqlx::query_as("SELECT w.value, COALESCE(i.revision, -1) FROM json_each(?2) w LEFT JOIN assessment_thread_inputs i ON i.account_id = ?1 AND i.thread_id = w.value")
+            .bind(account.as_str()).bind(encode_json(&threads)?).fetch_all(self.reader()).await?;
+        rows.into_iter()
+            .map(|(id, revision)| Ok((crate::decode_id(&id)?, revision)))
+            .collect()
+    }
+
+    /// Commit one coherent batch or none of it. A rejected CAS is pending,
+    /// whereas a SQL failure remains an error. Never return computed rows.
+    pub async fn save_assessment_batch(
+        &self,
+        account: &AccountId,
+        revisions: &HashMap<ThreadId, i64>,
+        answers: &[MailAssessment],
+    ) -> Result<bool, sqlx::Error> {
+        let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
+        let changed: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM json_each(?2) expected LEFT JOIN assessment_thread_inputs i ON i.account_id = ?1 AND i.thread_id = expected.key WHERE COALESCE(i.revision, -1) != expected.value)")
+            .bind(account.as_str()).bind(encode_json(revisions)?).fetch_one(&mut *tx).await?;
+        if changed {
+            tx.rollback().await?;
+            return Ok(false);
+        }
+        for answer in answers {
+            sqlx::query("INSERT INTO mail_assessments (message_id, account_id, policy_version, input_fingerprint, input_revision, assessment_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                ON CONFLICT(message_id, policy_version) DO UPDATE SET input_fingerprint = excluded.input_fingerprint, input_revision = excluded.input_revision, assessment_json = excluded.assessment_json
+                WHERE mail_assessments.input_fingerprint != excluded.input_fingerprint")
+                .bind(answer.message_id.as_str()).bind(account.as_str()).bind(&answer.policy_version)
+                .bind(&answer.input_fingerprint).bind(revisions.values().max().copied().unwrap_or(0))
+                .bind(encode_json(answer)?).execute(&mut *tx).await?;
+        }
+        sqlx::query("UPDATE assessment_thread_inputs SET dirty = 0 WHERE dirty != 0 AND account_id = ?1 AND thread_id IN (SELECT key FROM json_each(?2))")
+            .bind(account.as_str()).bind(encode_json(revisions)?).execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    pub async fn dirty_assessment_threads(
+        &self,
+        account: &AccountId,
+        after: Option<&str>,
+    ) -> Result<Vec<ThreadId>, sqlx::Error> {
+        let ids: Vec<String> = sqlx::query_scalar("SELECT thread_id FROM assessment_thread_inputs WHERE account_id = ?1 AND dirty = 1 AND (?2 IS NULL OR thread_id > ?2) ORDER BY thread_id LIMIT 100")
+            .bind(account.as_str()).bind(after).fetch_all(self.reader()).await?;
+        ids.iter().map(|id| crate::decode_id(id)).collect()
+    }
+
+    /// Startup and config changes must also cover historical/no-arrivals mail.
+    pub async fn invalidate_all_assessments(&self) -> Result<(), sqlx::Error> {
+        let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
+        sqlx::query("UPDATE assessment_inputs SET revision = revision + 1 WHERE id = 1")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO assessment_thread_inputs (account_id, thread_id, revision, dirty) SELECT DISTINCT account_id, thread_id, (SELECT revision FROM assessment_inputs WHERE id = 1), 1 FROM messages WHERE 1 ON CONFLICT(account_id, thread_id) DO UPDATE SET revision = excluded.revision, dirty = 1")
+            .execute(&mut *tx).await?;
+        tx.commit().await
+    }
     pub async fn assessment_report_rows(
         &self,
         accounts: &[AccountId],

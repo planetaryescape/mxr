@@ -24,6 +24,8 @@ const IGNORED_TABLES: &[&str] = &[
     "semantic_embeddings",
     "semantic_profiles",
     "update_facts",
+    "assessment_inputs",
+    "assessment_thread_inputs",
     "history_text_fingerprints",
     "assistant_conversations",
     "assistant_messages",

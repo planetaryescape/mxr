@@ -183,6 +183,7 @@ pub(super) async fn thread_turn(
     let is_self = self_matcher(state, account_id).await?;
     let dismissed = super::modes::messages_dismissals(state, account_id).await?;
     let lanes = thread_lanes(&AccountInputs {
+        pending_threads: &senders.pending_threads(&messages, &is_self),
         assessments: &senders.assessments,
         account_id,
         messages: &messages,
@@ -344,6 +345,18 @@ impl Senders {
         })
     }
 
+    pub(super) fn pending_threads(
+        &self,
+        messages: &[DeskMessage],
+        is_self: &dyn Fn(&str) -> bool,
+    ) -> HashSet<ThreadId> {
+        messages
+            .iter()
+            .filter(|m| !is_outbound(m, is_self) && !self.assessments.contains_key(&m.id))
+            .map(|m| m.thread_id.clone())
+            .collect()
+    }
+
     /// The kind signals for one of these messages.
     pub(super) fn signals<'a>(
         &'a self,
@@ -423,6 +436,7 @@ async fn account_desk(
     let is_self = self_matcher(state, account_id).await?;
     let dismissed = super::modes::messages_dismissals(state, account_id).await?;
     let mut lanes = thread_lanes(&AccountInputs {
+        pending_threads: &senders.pending_threads(&messages, &is_self),
         assessments: &senders.assessments,
         account_id,
         messages: &messages,

@@ -231,6 +231,21 @@ for both who and home accuracy. Startup and ingest
 reconcile historical mail in bounded thread pages. Unit fixtures that bypass
 ingest must explicitly call `assessments::reconcile_account` before grading.
 
+Sync materializes only the upserted messages' threads. SQLite input triggers
+queue other affected threads, including a sender's history dependants and mail
+whose sender you just wrote to. Aliases and teaching-rule changes can invalidate
+many threads. The background reconciler drains bounded dirty pages and retries
+pending arrivals; startup also covers historical mail. Read flags, inbox changes,
+arrival placement and contact refresh timestamps do not change a home. Changes
+to Spam/Trash boundaries still do.
+
+Assessment batches compare the affected thread generations and commit atomically.
+After three input races, projections show pending: Inbox and arrivals retain the
+email as sorting, while modes wait for a stored answer. The single-message kind
+request returns retryable `classification_pending` rather than guessing a kind.
+Database failures remain errors. Keep the concurrent-mutation regressions in
+`handler/tests/arrivals.rs` green when changing inputs or projection loaders.
+
 Bump `mxr_core::assessment::CLASSIFIER_POLICY_VERSION` whenever a judge or the
 resolver changes its answer. Matching policy and input fingerprints deliberately
 reuse the stored answer without judging again. Activation selects that version

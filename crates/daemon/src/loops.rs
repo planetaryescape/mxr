@@ -1241,7 +1241,10 @@ pub(crate) async fn post_sync_classification(
 
     // Where each new arrival went (D119). Last, so a delivery or a record
     // found above is placed as one.
-    if let Err(error) = crate::handler::assessments::reconcile_account(state, account_id).await {
+    if let Err(error) =
+        crate::handler::assessments::reconcile_messages(state, account_id, upserted_message_ids)
+            .await
+    {
         tracing::warn!(account = %account_id, %error, "assessment reconciliation pending after sync");
     }
     if let Err(error) = crate::handler::arrivals::place_pending(state, account_id).await {

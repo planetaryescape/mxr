@@ -1179,6 +1179,74 @@ async fn scenario_13_shutdown_closes_connections<H: Harness>() {
     state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
 }
 
+/// Scenario 14 — every progress event a long request emitted reaches the
+/// client before that request's response. The response is written the moment
+/// its task finishes; events still queued from the last moments of the task
+/// used to be left behind it, so a client that stops reading at the response
+/// (`request_with_events`) lost the last progress lines.
+async fn scenario_14_progress_events_arrive_before_the_final_response<H: Harness>() {
+    use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
+
+    /// Answers at once, so the run emits its events as fast as it can.
+    struct InstantLlm;
+
+    #[async_trait]
+    impl LlmProvider for InstantLlm {
+        async fn complete(&self, _: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+            Ok(CompletionResponse {
+                content: "Hi,\n\nSounds good.\n\nAlex".into(),
+                model: "instant".into(),
+                finish_reason: Some("stop".into()),
+            })
+        }
+
+        fn capabilities(&self) -> LlmCapabilities {
+            LlmCapabilities {
+                context_window: 8192,
+                supports_streaming: false,
+            }
+        }
+
+        fn model_name(&self) -> &str {
+            "instant"
+        }
+    }
+
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    state.llm.replace(Arc::new(InstantLlm));
+    let (hot, bulk) = lanes();
+    let h = H::start().await;
+    let mut served = serve(&h, state.clone(), hot, bulk).await;
+    let cases = mxr_provider_fake::fixtures::compose::cases().count();
+
+    for round in 1..=3u64 {
+        served.send(round, Request::DraftEvalQuick).await;
+        let mut progress = 0;
+        loop {
+            let frame = served.recv().await;
+            match frame.payload {
+                IpcPayload::Event(DaemonEvent::OperationProgress { operation, .. })
+                    if operation == "draft-eval-quick" =>
+                {
+                    progress += 1;
+                }
+                IpcPayload::Event(_) => {}
+                IpcPayload::Response(_) => {
+                    assert_eq!(frame.id, round);
+                    break;
+                }
+                other => panic!("unexpected frame {other:?}"),
+            }
+        }
+        assert_eq!(
+            progress, cases,
+            "round {round}: every progress event precedes the response"
+        );
+    }
+
+    finish(&state, served).await;
+}
+
 /// Scenario 14 — the auth matrix (phase 5). Split into the no-auth pin for
 /// implicit-trust transports (below, run per local harness) and the TCP token
 /// matrix (`mod auth_matrix`). The generic `run_on_all_transports!` macro does
@@ -1671,6 +1739,7 @@ run_on_all_transports! {
     scenario_11_disconnect_with_inflight_request_frees_permit,
     scenario_12_handler_panic_recovers,
     scenario_13_shutdown_closes_connections,
+    scenario_14_progress_events_arrive_before_the_final_response,
 }
 
 /// A connection that has identified itself as a scoped client (here MCP,

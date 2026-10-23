@@ -273,6 +273,21 @@ pub(crate) async fn serve_client_connection<S>(
                 match joined {
                     Some(Ok(response)) if can_send => {
                         let id = response.id;
+                        // Events a request emitted before it returned are already
+                        // queued. This arm outranks the event arm, so without
+                        // this they would go out after the response, and a
+                        // client that stops reading at the response (a CLI
+                        // following a long operation) would never see the last
+                        // of them.
+                        if accept_requests
+                            && !shutdown_requested
+                            && auth.is_authenticated()
+                            && !flush_queued_events(&mut sink, &state, event_profile, &mut event_rx).await
+                        {
+                            can_send = false;
+                            accept_requests = false;
+                            continue;
+                        }
                         match send_frame(&mut sink, response).await {
                             FrameSend::Sent => {}
                             // The response could not be framed — almost always
@@ -410,60 +425,19 @@ pub(crate) async fn serve_client_connection<S>(
                 }
             }
             event = event_rx.recv(), if accept_requests && can_send && !shutdown_requested && auth.is_authenticated() => {
-                match event {
-                    Ok(event_msg) => {
-                        let event_msg = match event_profile {
-                            Some(name) => match scope_event_frame(&state, name, event_msg).await {
-                                Some(event_msg) => event_msg,
-                                None => continue,
-                            },
-                            None => event_msg,
-                        };
-                        match send_frame(&mut sink, event_msg).await {
-                            FrameSend::Sent => {}
-                            // An event whose payload will not fit a frame is
-                            // the event's problem, not the connection's — and
-                            // dropping the connection over it also drops the
-                            // in-flight request's response, which is how a
-                            // 27k-envelope `NewMessages` used to kill
-                            // `mxr demo` (#179). Skip the event and tell the
-                            // client to resync: same contract as a lagged
-                            // stream, which is what this effectively is.
-                            FrameSend::Unencodable(error) => {
-                                tracing::warn!(%error, "daemon event could not be framed; dropped it and signalled resync");
-                                if !matches!(
-                                    send_frame(&mut sink, events_lagged_frame(scoped_lag_count(event_profile, 1))).await,
-                                    FrameSend::Sent
-                                ) {
-                                    can_send = false;
-                                    accept_requests = false;
-                                }
-                            }
-                            FrameSend::Disconnected(error) => {
-                                tracing::warn!(%error, "dropping client connection: event send failed");
-                                can_send = false;
-                                accept_requests = false;
-                            }
-                        }
-                    }
+                let delivered = match event {
+                    Ok(event_msg) => forward_event(&mut sink, &state, event_profile, event_msg).await,
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                        // The per-client channel filled and the broadcast
-                        // dropped `skipped` events for this client. It can't
-                        // know what it missed, so tell it to resync rather
-                        // than silently leaving its views stale. Sent only to
-                        // this client — it is not a broadcast event.
-                        tracing::debug!(skipped, "client event stream lagged; signalling resync");
-                        if !matches!(
-                            send_frame(&mut sink, events_lagged_frame(scoped_lag_count(event_profile, skipped))).await,
-                            FrameSend::Sent
-                        ) {
-                            can_send = false;
-                            accept_requests = false;
-                        }
+                        signal_lagged(&mut sink, event_profile, skipped).await
                     }
                     Err(broadcast::error::RecvError::Closed) => {
                         accept_requests = false;
+                        true
                     }
+                };
+                if !delivered {
+                    can_send = false;
+                    accept_requests = false;
                 }
             }
         }
@@ -474,6 +448,100 @@ pub(crate) async fn serve_client_connection<S>(
     }
 
     tracing::debug!("Client disconnected");
+}
+
+/// Send one daemon event to this client, cut to the client's profile. Returns
+/// `false` when the connection is gone.
+async fn forward_event<W>(
+    sink: &mut FramedWrite<W, IpcCodec>,
+    state: &AppState,
+    event_profile: Option<&'static str>,
+    event_msg: IpcMessage,
+) -> bool
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    let event_msg = match event_profile {
+        Some(name) => match scope_event_frame(state, name, event_msg).await {
+            Some(event_msg) => event_msg,
+            None => return true,
+        },
+        None => event_msg,
+    };
+    match send_frame(sink, event_msg).await {
+        FrameSend::Sent => true,
+        // An event whose payload will not fit a frame is the event's problem,
+        // not the connection's — and dropping the connection over it also
+        // drops the in-flight request's response, which is how a 27k-envelope
+        // `NewMessages` used to kill `mxr demo` (#179). Skip the event and
+        // tell the client to resync: same contract as a lagged stream, which
+        // is what this effectively is.
+        FrameSend::Unencodable(error) => {
+            tracing::warn!(%error, "daemon event could not be framed; dropped it and signalled resync");
+            matches!(
+                send_frame(
+                    sink,
+                    events_lagged_frame(scoped_lag_count(event_profile, 1))
+                )
+                .await,
+                FrameSend::Sent
+            )
+        }
+        FrameSend::Disconnected(error) => {
+            tracing::warn!(%error, "dropping client connection: event send failed");
+            false
+        }
+    }
+}
+
+/// The per-client channel filled and the broadcast dropped `skipped` events
+/// for this client. It can't know what it missed, so tell it to resync rather
+/// than silently leaving its views stale. Sent only to this client — it is not
+/// a broadcast event. Returns `false` when the connection is gone.
+async fn signal_lagged<W>(
+    sink: &mut FramedWrite<W, IpcCodec>,
+    event_profile: Option<&'static str>,
+    skipped: u64,
+) -> bool
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    tracing::debug!(skipped, "client event stream lagged; signalling resync");
+    matches!(
+        send_frame(
+            sink,
+            events_lagged_frame(scoped_lag_count(event_profile, skipped))
+        )
+        .await,
+        FrameSend::Sent
+    )
+}
+
+/// Send every event already waiting for this client, then return. Returns
+/// `false` when the connection is gone.
+async fn flush_queued_events<W>(
+    sink: &mut FramedWrite<W, IpcCodec>,
+    state: &AppState,
+    event_profile: Option<&'static str>,
+    event_rx: &mut broadcast::Receiver<IpcMessage>,
+) -> bool
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    loop {
+        let delivered = match event_rx.try_recv() {
+            Ok(event_msg) => forward_event(sink, state, event_profile, event_msg).await,
+            Err(broadcast::error::TryRecvError::Lagged(skipped)) => {
+                signal_lagged(sink, event_profile, skipped).await
+            }
+            Err(broadcast::error::TryRecvError::Empty | broadcast::error::TryRecvError::Closed) => {
+                return true
+            }
+        };
+        if !delivered {
+            return false;
+        }
+    }
 }
 
 /// A lag count covers every account's events, so a profiled connection gets

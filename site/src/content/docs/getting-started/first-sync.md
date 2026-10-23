@@ -26,7 +26,9 @@ mxr sync --status                         # check progress at any time
 mxr status --watch                        # live daemon status
 ```
 
-`--wait` prints sync progress on stderr and exits non-zero if the sync it started failed. Search can use only mail already synced while the backfill continues. Message bodies are stored with their envelopes; file attachments may be fetched later when you open or save them. Reaching idle ends the current sync pass for the selected account, not sync for every account or attachment caching.
+`--wait` prints sync progress on stderr and reports detected sync failures with a non-zero exit. Failure detection depends on reading status before starting the sync; if that read fails, a later sync failure can be missed. Check `mxr sync --status` for the account's last error.
+
+Search can use only mail already synced while the backfill continues. Message bodies are stored with their envelopes; file attachments may be fetched later when you open or save them. Reaching idle ends the current sync pass for the selected account, not sync for every account or attachment caching.
 
 `--wait-timeout-secs` (default 60) bounds only the wait, not the sync. If the wait expires, check status later; the sync continues.
 

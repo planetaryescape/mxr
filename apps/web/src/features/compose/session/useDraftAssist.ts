@@ -73,8 +73,13 @@ const NO_ADJUST: ComposeAssistAdjust = {
   proofread: false,
 };
 
+/**
+ * What the help is about. A reply or forward always names its message: a
+ * stored draft's metadata can exist before the daemon has any copy, so the
+ * message is the context. A stored draft is named only once a save has put
+ * a revision on the daemon; a draft nobody has saved yet is a new message.
+ */
 function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAssistDraft {
-  if (draft.draftId) return { kind: "stored", draft_id: draft.draftId };
   if (intent.messageId) {
     if (intent.kind === "forward") {
       return {
@@ -88,6 +93,9 @@ function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAs
       message_id: intent.messageId,
       all: intent.kind === "reply_all",
     };
+  }
+  if (draft.draftId && draft.revision != null) {
+    return { kind: "stored", draft_id: draft.draftId };
   }
   return {
     kind: "new",

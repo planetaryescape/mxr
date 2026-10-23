@@ -14,8 +14,9 @@ vi.mock("sonner", () => ({
 
 const REPLY: ComposeIntent = { key: "k", title: "Reply", kind: "reply", messageId: "m1" };
 
-function draftWith(body: string): ComposeDraftState {
+function draftWith(body: string, extra: Partial<ComposeDraftState> = {}): ComposeDraftState {
   return {
+    ...extra,
     draftPath: "",
     rawContent: "",
     frontmatter: {
@@ -186,6 +187,53 @@ describe("useDraftAssist", () => {
     });
     await waitFor(() => expect(apiFetch).toHaveBeenCalled());
     expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("a new email with a metadata id but no daemon save is sent as new, not stored", async () => {
+    apiFetch.mockResolvedValue(proposal("Hi", [{ kind: "added", text: "Hi" }]));
+    const newEmail: ComposeIntent = { key: "n", title: "New", kind: "new" };
+    const { result } = renderHook(
+      () => useHarness(draftWith("Hi", { draftId: "meta-1", revision: null }), newEmail),
+      { wrapper },
+    );
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
+    const [, init] = apiFetch.mock.calls[0] as [string, { body: Record<string, unknown> }];
+    expect(init.body.draft).toMatchObject({ kind: "new", account_id: "acc" });
+  });
+
+  test("a new email the daemon has saved is sent as stored", async () => {
+    apiFetch.mockResolvedValue(proposal("Hi", [{ kind: "added", text: "Hi" }]));
+    const newEmail: ComposeIntent = { key: "n", title: "New", kind: "new" };
+    const { result } = renderHook(
+      () => useHarness(draftWith("Hi", { draftId: "saved-1", revision: 2 }), newEmail),
+      { wrapper },
+    );
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
+    const [, init] = apiFetch.mock.calls[0] as [string, { body: Record<string, unknown> }];
+    expect(init.body.draft).toEqual({ kind: "stored", draft_id: "saved-1" });
+  });
+
+  test("a saved forward still names its message, not the stored draft", async () => {
+    apiFetch.mockResolvedValue(proposal("FYI", [{ kind: "added", text: "FYI" }]));
+    const forward: ComposeIntent = { key: "f", title: "Forward", kind: "forward", messageId: "m9" };
+    const { result } = renderHook(
+      () =>
+        useHarness(
+          draftWith("", {
+            draftId: "saved-2",
+            revision: 4,
+            frontmatter: { ...draftWith("").frontmatter, to: "pat@example.com" },
+          }),
+          forward,
+        ),
+      { wrapper },
+    );
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
+    const [, init] = apiFetch.mock.calls[0] as [string, { body: Record<string, unknown> }];
+    expect(init.body.draft).toMatchObject({ kind: "forward", message_id: "m9" });
   });
 
   test("a forward sends its recipients as address objects", async () => {

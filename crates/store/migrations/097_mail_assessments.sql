@@ -39,7 +39,7 @@ SELECT i.*, max(i.revision, COALESCE((
     WHERE m.account_id = i.account_id AND m.thread_id = i.thread_id
 ), -1)) AS effective_revision
 FROM assessment_thread_inputs i;
-INSERT INTO assessment_thread_inputs(account_id, thread_id, revision)
+INSERT OR IGNORE INTO assessment_thread_inputs(account_id, thread_id, revision)
 SELECT DISTINCT account_id, thread_id, 0 FROM messages;
 CREATE TRIGGER IF NOT EXISTS assessment_input_messages_insert AFTER INSERT ON messages
 

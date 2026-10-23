@@ -33,7 +33,19 @@ where
             });
         }
         for matched in DUE.find_iter(&source.text) {
-            if let Some(date) = find_due(matched.as_str(), &DUE, &anchor, order_for(email)) {
+            if let Some(date) = find_due(
+                matched.as_str(),
+                &DUE,
+                &anchor,
+                order_for(
+                    &crate::action_link::email_domain(email).unwrap_or_default(),
+                    facts
+                        .amounts
+                        .iter()
+                        .find(|a| a.zone == zone)
+                        .map(|a| a.currency.as_str()),
+                ),
+            ) {
                 facts.dates.push(AskDate {
                     zone,
                     span: AskSpan {

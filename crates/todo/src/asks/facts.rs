@@ -1,6 +1,6 @@
 use super::AskInput;
 use mxr_core::asks::*;
-use mxr_reader::new_text::{authored_text, EarlierMessage};
+use mxr_reader::{authored_text, EarlierMessage};
 use once_cell::sync::Lazy;
 use regex::Regex;
 

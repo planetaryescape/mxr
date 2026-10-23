@@ -48,8 +48,10 @@ pub(crate) async fn write(
         let object = tags
             .reference
             .and_then(|i| answer.facts.references.get(i))
-            .map(|r| format!("{}:{}", r.kind, r.value))
-            .unwrap_or_else(|| quote.to_lowercase());
+            .map_or_else(
+                || quote.to_lowercase(),
+                |r| format!("{}:{}", r.kind, r.value),
+            );
         let period = due
             .map(|d| d.at.format("%Y-%m").to_string())
             .unwrap_or_default();

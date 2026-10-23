@@ -1155,6 +1155,20 @@ impl MxrMcpServer {
     }
 
     #[tool(
+        name = "mxr_why",
+        description = "Read an email's stored home, deciding claim, evidence, overridden claims and uncertainty. Local only; no full body is returned."
+    )]
+    pub async fn why(
+        &self,
+        Parameters(input): Parameters<WhyInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::GetMessageKind {
+            message_id: parse_id::<MessageId>(&input.message_id)?,
+        })
+        .await
+    }
+
+    #[tool(
         name = "mxr_read_thread",
         description = "Read a thread summary/envelopes. This does not return full bodies."
     )]
@@ -1422,6 +1436,21 @@ impl MxrMcpServer {
             filter,
             attachments_dir: None,
             dry_run: true,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_classify_report",
+        description = "Count stored fallback classifications by home, sender kind and deciding rule. Bounded, account scoped, read-only; never creates or repairs assessments."
+    )]
+    pub async fn classify_report(
+        &self,
+        Parameters(input): Parameters<ArrivalsInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::ClassifyReport {
+            account_id: parse_optional_id(input.account_id)?,
+            limit: 1000,
         })
         .await
     }
@@ -2323,6 +2352,11 @@ pub struct AttachmentChunkInput {
 pub struct ReadMessageInput {
     pub message_id: String,
     pub include_body: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WhyInput {
+    pub message_id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

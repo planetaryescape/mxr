@@ -1,7 +1,7 @@
 //! `mxr classify`: measure how well mxr sorts mail (blueprint 32). Today
-//! only `eval`, which grades the mail in this mailbox against labelled
-//! scenarios. No MCP, TUI or web surface, as for `mxr draft eval`: it is a
-//! development measurement, not a mailbox action.
+//! `eval` grades stored answers; `report` groups fallback observations.
+//! Both are local reads. Reports also appear through the existing sorting
+//! disclosure, HTTP bridge and MCP.
 
 use crate::cli::{ClassifyAction, ClassifySetArg, OutputFormat};
 use crate::commands::{expect_response, resolve_optional_account};
@@ -30,11 +30,65 @@ pub async fn run(
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     match action {
-        ClassifyAction::Eval { set } => {
+        ClassifyAction::Report { limit } => {
+            let response = client
+                .request(Request::ClassifyReport { account_id, limit })
+                .await?;
+            let report = expect_response(response, |response| match response {
+                Response::Ok {
+                    data: ResponseData::ClassifyReport { report },
+                } => Some(report),
+                _ => None,
+            })?;
+            match format {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&report)?),
+                OutputFormat::Jsonl => {
+                    for cluster in &report.clusters {
+                        println!("{}", serde_json::to_string(cluster)?);
+                    }
+                    println!("{}", serde_json::json!({"summary": report}));
+                }
+                OutputFormat::Csv => {
+                    let mut writer = csv::Writer::from_writer(std::io::stdout());
+                    writer.write_record(["home", "who", "rule", "count", "facts", "examples"])?;
+                    for cluster in report.clusters {
+                        writer.write_record([
+                            cluster.home,
+                            cluster.who,
+                            cluster.rule,
+                            cluster.count.to_string(),
+                            serde_json::to_string(&cluster.facts)?,
+                            serde_json::to_string(&cluster.examples)?,
+                        ])?;
+                    }
+                    writer.flush()?;
+                }
+                OutputFormat::Ids => {
+                    for cluster in report.clusters {
+                        for id in cluster.examples {
+                            println!("{id}");
+                        }
+                    }
+                }
+                OutputFormat::Table => {
+                    println!("{} fallback decisions in {} emails; {} missing assessments; {} stale assessments; {} pending bodies{}", report.fallback, report.examined, report.missing, report.stale, report.pending_body, if report.truncated { "; report limit reached" } else { "" });
+                    for cluster in report.clusters {
+                        println!(
+                            "{}  {}  {}  {}",
+                            cluster.count, cluster.home, cluster.who, cluster.rule
+                        );
+                    }
+                }
+            }
+        }
+        ClassifyAction::Eval { set, compare } => {
+            if compare.is_some() && matches!(format, OutputFormat::Csv | OutputFormat::Ids) {
+                anyhow::bail!("--compare supports table, json and jsonl output");
+            }
             let (summary, mismatches) = expect_response(
                 client
                     .request(Request::ClassifyEval {
-                        account_id,
+                        account_id: account_id.clone(),
                         set: set_data(set),
                     })
                     .await?,
@@ -49,7 +103,53 @@ pub async fn run(
                     _ => None,
                 },
             )?;
-            print!("{}", render_eval(&summary, &mismatches, &format)?);
+            let comparison = if let Some(policy_version) = compare {
+                Some(expect_response(
+                    client
+                        .request(Request::ClassifyCompare {
+                            account_id,
+                            policy_version,
+                            limit: 10_000,
+                        })
+                        .await?,
+                    |response| match response {
+                        Response::Ok {
+                            data: ResponseData::ClassifyCompare { comparison },
+                        } => Some(comparison),
+                        _ => None,
+                    },
+                )?)
+            } else {
+                None
+            };
+            if let Some(comparison) = comparison {
+                if matches!(format, OutputFormat::Json) {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(
+                            &serde_json::json!({"summary": summary, "mismatches": mismatches, "comparison": comparison})
+                        )?
+                    );
+                } else {
+                    print!("{}", render_eval(&summary, &mismatches, &format)?);
+                    if matches!(format, OutputFormat::Jsonl) {
+                        println!("{}", serde_json::json!({"comparison": comparison}));
+                    } else if comparison.available {
+                        println!(
+                            "{} changed homes among {} compared against {}; {} have no previous answer; {} current assessments pending",
+                            comparison.changes.len(),
+                            comparison.compared,
+                            comparison.requested_version,
+                            comparison.missing_previous_assessments,
+                            comparison.pending_assessments
+                        );
+                    } else {
+                        println!("Policy {} is unavailable; retained versions: {}. Pre-R2 source snapshots are not runtime history.", comparison.requested_version, comparison.available_versions.join(", "));
+                    }
+                }
+            } else {
+                print!("{}", render_eval(&summary, &mismatches, &format)?);
+            }
         }
     }
     Ok(())
@@ -276,7 +376,7 @@ fn render_table(
     if summary.not_placed > 0 {
         let _ = writeln!(
             out,
-            "{} could not be placed at all and are not graded on home.",
+            "{} have no current stored assessment and are not graded on home.",
             summary.not_placed
         );
     }

@@ -358,7 +358,9 @@ pub fn map_request(
         Request::DraftEvalQuick => {
             skip_activity!("draft_eval_quick", "local evaluation; creates nothing")
         }
-        Request::ClassifyEval { .. } => {
+        Request::ClassifyReport { .. }
+        | Request::ClassifyCompare { .. }
+        | Request::ClassifyEval { .. } => {
             skip_activity!("classify_eval", "local evaluation; reads only")
         }
         Request::DraftRefine { .. } => ("draft.update", Some("draft"), None, None),

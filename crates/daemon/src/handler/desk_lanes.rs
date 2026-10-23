@@ -107,6 +107,7 @@ pub(super) fn thread_starred(thread: &[DeskMessage]) -> bool {
 
 /// Everything the lane rules need about one account.
 pub(super) struct AccountInputs<'a> {
+    pub assessments: &'a HashMap<MessageId, mxr_core::assessment::MailAssessment>,
     pub account_id: &'a AccountId,
     /// Messages of recently active threads, ordered by thread then date.
     pub messages: &'a [DeskMessage],
@@ -198,6 +199,7 @@ impl AccountInputs<'_> {
             .get(&message.id)
             .and_then(|(mode, name)| Some((mail_kind::kind_for_stored_mode(mode)?, name.as_str())));
         signals.written_to |= self.written_to.contains(&email.to_ascii_lowercase());
+        signals.assessment = self.assessments.get(&message.id);
         signals
     }
 
@@ -213,6 +215,18 @@ impl AccountInputs<'_> {
 
     /// The thread's shape, judged by the shared rule (`conversation_shape`).
     pub(super) fn shape(&self, thread: &[DeskMessage]) -> Shape {
+        let assessed: Vec<_> = thread
+            .iter()
+            .filter_map(|m| self.assessments.get(&m.id))
+            .collect();
+        if !assessed.is_empty() && !assessed.iter().any(|a| a.home == "messages") {
+            return if assessed.iter().any(|a| a.deciding.rule == "copied") {
+                Shape::Copied
+            } else {
+                Shape::NotConversation
+            };
+        }
+        // Geometry only: membership was already decided by stored homes.
         let person_sender = |m: &DeskMessage| self.sender_kind(m) == SenderKind::Person;
         let human_address = |email: &str| self.human_address(email);
         let kept = |m: &DeskMessage| mail_kind::kept_in_messages(&self.signals(m));
@@ -250,6 +264,7 @@ pub(super) fn desk_signals<'a>(
     is_self: &dyn Fn(&str) -> bool,
 ) -> KindSignals<'a> {
     KindSignals {
+        assessment: None,
         evidence: &message.evidence,
         reply_request: mail_kind::needs_reply(message, is_self),
         recipients: message.to.len() + message.cc.len(),
@@ -949,6 +964,7 @@ mod tests {
         let is_self = |email: &str| email.eq_ignore_ascii_case(ME);
         let moves = HashMap::new();
         thread_lanes(&AccountInputs {
+            assessments: &HashMap::new(),
             account_id: &account,
             messages,
             contacts: &contacts,

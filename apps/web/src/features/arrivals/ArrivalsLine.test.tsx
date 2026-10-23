@@ -43,6 +43,54 @@ function openSortingDetails() {
 }
 
 describe("Now's arrivals line", () => {
+  test("keeps provisional placement counts in the existing disclosure", () => {
+    render(
+      <ArrivalsView
+        nowWaiting
+        arrivals={arrivals({
+          classification_report: {
+            policy_version: "r2-1",
+            examined: 1000,
+            missing: 0,
+            stale: 0,
+            pending_body: 2,
+            fallback: 2,
+            truncated: true,
+            clusters: [
+              {
+                home: "messages",
+                who: "person",
+                rule: "person",
+                count: 2,
+                examples: ["message-1"],
+                facts: {
+                  sender_shape: "person-like address",
+                  has_list_id: false,
+                  has_unsubscribe: false,
+                  auto_generated: false,
+                  bulk: false,
+                  templated_sender: false,
+                  written_to: false,
+                  body_cached: false,
+                  recipients: 1,
+                  addressed: true,
+                },
+              },
+            ],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByTestId("classification-report")).not.toBeVisible();
+    openSortingDetails();
+    expect(screen.getByTestId("classification-report")).toHaveTextContent(
+      "2 emails placed provisionally in this sample.",
+    );
+    expect(screen.getByTestId("classification-report")).toHaveTextContent(
+      "2 need more of the email.",
+    );
+  });
+
   test("keeps the headline and correction count visible, with sorting details closed", () => {
     render(
       <ArrivalsView

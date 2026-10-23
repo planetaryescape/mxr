@@ -40,7 +40,7 @@ function ChipQuery({
  * Where an email went, as the mode's mark (docs/blueprint/26 "Show it's also
  * elsewhere"): the mode's glyph in the row's trail, with the daemon's line
  * ("→ Updates · automated sender") as its tooltip and accessible name. It
- * reads the arrival as stored, so archived mail still says where it went.
+ * reads the stored assessment, so archived mail still says where it belongs.
  */
 export function ModeChip({ messageId }: { messageId: string }) {
   const item = useContext(ChipContext)?.get(messageId);
@@ -54,12 +54,15 @@ export function ModeChip({ messageId }: { messageId: string }) {
       className="inline-flex shrink-0"
     >
       <ModeMark mode={item.bucket} />
+      {item.not_sure ? <span className="type-meta ml-1 text-text-3">Not sure</span> : null}
     </span>
   );
 }
 
 function isMode(bucket: ArrivalBucket): bucket is ModeId {
-  return bucket !== "screened_out" && bucket !== "spam" && bucket !== "sorting";
+  return (
+    bucket !== "screened_out" && bucket !== "spam" && bucket !== "trash" && bucket !== "sorting"
+  );
 }
 
 /**

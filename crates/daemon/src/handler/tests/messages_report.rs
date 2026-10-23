@@ -170,6 +170,7 @@ async fn messages_report() {
         let mut people_threads = Vec::new();
         {
             let inputs = AccountInputs {
+                assessments: &HashMap::new(),
                 account_id: account,
                 messages: &messages,
                 contacts: &senders.contacts,

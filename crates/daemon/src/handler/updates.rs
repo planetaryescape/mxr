@@ -255,8 +255,23 @@ where
             todos.extend(state.store.open_todos_for_threads(account, chunk).await?);
         }
     }
+    let mut delivery_sources = HashMap::new();
     for delivery in all_deliveries {
-        if accounts.contains(&delivery.account_id) && delivery.dismissed_at.is_none() {
+        if !accounts.contains(&delivery.account_id) || delivery.dismissed_at.is_some() {
+            continue;
+        }
+        let sources: HashSet<_> = state
+            .store
+            .delivery_message_ids(&delivery.id)
+            .await?
+            .into_iter()
+            .collect();
+        if sources.is_empty()
+            || items
+                .iter()
+                .any(|item| item.message.is_delivery && sources.contains(&item.message.id))
+        {
+            delivery_sources.insert(delivery.id.clone(), sources);
             deliveries.push(delivery);
         }
     }
@@ -269,6 +284,7 @@ where
         sources: &sources,
         todos: &todos,
         deliveries: &deliveries,
+        delivery_sources: &delivery_sources,
         cuts: &cuts(state),
         scope,
         last_seen,
@@ -691,13 +707,7 @@ pub(super) async fn scan(
     }
     let mut read = 0;
     for (account, messages) in by_account {
-        let mut senders: Vec<String> = messages
-            .iter()
-            .map(|m| m.from_email.to_ascii_lowercase())
-            .collect();
-        senders.sort_unstable();
-        senders.dedup();
-        let kinds = AccountKinds::load(state, &account, &senders).await?;
+        let kinds = AccountKinds::load(state, &account, &messages).await?;
         let updates: Vec<&PlaceMessage> = messages
             .iter()
             .filter(|m| !m.is_delivery && !m.is_invite && !kinds.is_outbound(m))

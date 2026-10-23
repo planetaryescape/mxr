@@ -12,7 +12,7 @@ use super::HandlerError;
 use crate::state::AppState;
 use mxr_core::id::{AccountId, ThreadId};
 use mxr_core::types::Envelope;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// Which prompt writes a conversation's gist, and so part of its cache key:
 /// a sender moved between Messages and Updates gets a new gist.
@@ -59,14 +59,16 @@ pub(super) async fn thread_kinds(
     }
     let mut out = HashMap::new();
     for (account_id, threads) in by_account {
-        let senders: Vec<String> = threads
-            .iter()
-            .flat_map(|(_, envelopes)| envelopes.iter())
-            .map(|envelope| envelope.from.email.clone())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-        let kinds = AccountKinds::load(state, account_id, &senders).await?;
+        let mut messages = Vec::new();
+        for (_, envelopes) in &threads {
+            for envelope in *envelopes {
+                if let Some(message) = state.store.place_message(&envelope.id).await? {
+                    messages.push(message);
+                }
+            }
+        }
+        let kinds = AccountKinds::load(state, account_id, &messages).await?;
+        let messages: HashMap<_, _> = messages.into_iter().map(|m| (m.id.clone(), m)).collect();
         for (thread_id, envelopes) in threads {
             let theirs = envelopes
                 .iter()
@@ -76,10 +78,10 @@ pub(super) async fn thread_kinds(
                 out.insert((*thread_id).clone(), SenderKind::Person);
                 continue;
             };
-            if let Some(message) = state.store.place_message(&theirs.id).await? {
+            if let Some(message) = messages.get(&theirs.id) {
                 out.insert(
                     (*thread_id).clone(),
-                    mail_kind::classify(&kinds.signals(&message)).kind,
+                    mail_kind::classify(&kinds.signals(message)).kind,
                 );
             }
         }

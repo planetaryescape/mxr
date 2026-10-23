@@ -177,6 +177,14 @@ async fn eval(
     account_id: Option<&AccountId>,
     set: ClassifyEvalSetData,
 ) -> (ClassifyEvalSummaryData, Vec<ClassifyEvalMismatchData>) {
+    for account in state.store.list_accounts().await.unwrap() {
+        if account_id.is_none_or(|id| id == &account.id) {
+            crate::handler::assessments::reconcile_account(state, &account.id)
+                .await
+                .unwrap();
+        }
+    }
+
     let started = Instant::now();
     let response = classify_eval(state, account_id, set).await.unwrap();
     eprintln!("graded the {set:?} set in {:?}", started.elapsed());

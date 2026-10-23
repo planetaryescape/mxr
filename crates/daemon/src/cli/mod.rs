@@ -2364,6 +2364,11 @@ pub enum DraftsAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ClassifyAction {
+    /// Count stored fallback decisions, grouped by home, sender kind and rule.
+    Report {
+        #[arg(long, default_value_t = 1000)]
+        limit: u32,
+    },
     /// Grade the mail already in this mailbox against labelled scenarios:
     /// how often today's rules agree on who sent it, which mode it goes to
     /// and whether it makes a record; for what an email asks of you,
@@ -2375,6 +2380,9 @@ pub enum ClassifyAction {
         /// Which labelled set to grade against.
         #[arg(long, value_enum, default_value_t = ClassifySetArg::Quick)]
         set: ClassifySetArg,
+        /// Compare homes with a policy version actually retained in this mailbox.
+        #[arg(long)]
+        compare: Option<String>,
     },
 }
 

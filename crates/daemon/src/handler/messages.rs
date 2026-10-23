@@ -157,6 +157,7 @@ async fn gather(
     // borrows `dyn Fn`) is alive.
     let (mut topics, threads, names, outbound) = {
         let inputs = AccountInputs {
+            assessments: &senders.assessments,
             account_id,
             messages: &messages,
             contacts: &senders.contacts,

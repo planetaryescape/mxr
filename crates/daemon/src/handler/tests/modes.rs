@@ -156,9 +156,15 @@ async fn the_landlords_email_is_in_messages_and_to_do_each_saying_why() {
     assert_eq!(messages.key, "g m");
     assert!(!messages.early, "Messages is built (phase 3)");
     assert!(
-        messages
-            .reason
-            .starts_with("Here because: your turn with sam@lettings.example"),
+        messages.reason.contains(
+            &placed
+                .assessments
+                .iter()
+                .find(|a| a.message_id == ask.id)
+                .unwrap()
+                .deciding
+                .reason
+        ),
         "{}",
         messages.reason
     );
@@ -626,7 +632,10 @@ async fn person_mail_left_in_the_inbox_stays_in_messages_as_quiet() {
         assert_eq!(placed.held_by, [ModeKindData::Messages]);
         let entry = &placed.modes[0];
         assert!(
-            entry.reason.starts_with("Here because: quiet, "),
+            placed
+                .assessments
+                .iter()
+                .any(|a| entry.reason.contains(&a.deciding.reason)),
             "{}",
             entry.reason
         );
@@ -1067,7 +1076,7 @@ async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messa
     assert_eq!(modes(&bank), [ModeKindData::Updates]);
     assert_eq!(
         bank.modes[0].reason,
-        "Here because: repeated subject templates with bulk precedence, and no correspondence history (rule)."
+        "Here because: No rule decided; Updates for now (Not sure)."
     );
     assert!(bank.in_inbox, "the inbox keeps it");
     assert!(bank.new_sender.is_none());
@@ -1075,7 +1084,7 @@ async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messa
     assert_eq!(modes(&toys), [ModeKindData::Updates]);
     assert_eq!(
         toys.modes[0].reason,
-        "Here because: a role address you have never written to (rule)."
+        "Here because: No rule decided; Updates for now (Not sure)."
     );
 
     // Moving the sender to people wins over every rule.

@@ -1585,6 +1585,17 @@ pub enum Request {
     /// Measure today's classifier against labelled scenarios in the stored
     /// mail: who sent it, which mode it went to, and whether it made a
     /// to-do or a record. Local; nothing is changed or sent.
+    /// Read stored fallback decisions only. The limit is capped at 10,000.
+    ClassifyReport {
+        account_id: Option<AccountId>,
+        limit: u32,
+    },
+    /// Compare only versions actually retained in this mailbox.
+    ClassifyCompare {
+        account_id: Option<AccountId>,
+        policy_version: String,
+        limit: u32,
+    },
     ClassifyEval {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,
@@ -2970,6 +2981,8 @@ impl Request {
             | Self::DraftRefine { .. }
             | Self::DraftEval { .. }
             | Self::DraftEvalQuick
+            | Self::ClassifyReport { .. }
+            | Self::ClassifyCompare { .. }
             | Self::ClassifyEval { .. }
             | Self::PrepareReply { .. }
             | Self::PrepareForward { .. }
@@ -3805,6 +3818,12 @@ pub enum ResponseData {
     },
     /// Returned by `Request::ClassifyEval`. Mismatches are sorted by
     /// scenario, then provider id, then question.
+    ClassifyReport {
+        report: ClassifyReportData,
+    },
+    ClassifyCompare {
+        comparison: ClassifyComparisonData,
+    },
     ClassifyEval {
         summary: ClassifyEvalSummaryData,
         mismatches: Vec<ClassifyEvalMismatchData>,
@@ -4461,6 +4480,9 @@ pub enum ResponseData {
     },
     /// Returned by `Request::GetMessageKind`.
     MessageKind {
+        /// The exact stored home decision; absent for outbound context mail.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assessment: Option<mxr_core::assessment::MailAssessment>,
         account_id: AccountId,
         message_id: MessageId,
         sender_email: String,
@@ -4628,6 +4650,8 @@ impl ResponseData {
             | Self::DraftSuggestion { .. }
             | Self::DraftEval { .. }
             | Self::DraftEvalQuick { .. }
+            | Self::ClassifyReport { .. }
+            | Self::ClassifyCompare { .. }
             | Self::ClassifyEval { .. }
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }

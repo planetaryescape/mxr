@@ -21,7 +21,7 @@ pub mod arrivals_copy {
     /// The most "Not sure" questions Now asks in one day.
     pub const NOT_SURE_DAILY_CAP: usize = 3;
     /// The hint on the first Not-sure item (contextual, never a card).
-    pub const NOT_SURE_HINT: &str = "Two of mxr's rules disagreed about this one. One key sends it where it belongs: m Messages, x To do, u Updates, r Reading, e Archive.";
+    pub const NOT_SURE_HINT: &str = "The rules disagreed or left its purpose unknown. One key sends it where it belongs: m Messages, x To do, u Updates, r Reading, e Archive.";
     /// The hint on the first move's toast.
     pub const MOVE_HINT: &str =
         "X moves just this email. K sends everything from this sender there from now on.";
@@ -40,13 +40,14 @@ pub enum ArrivalBucketData {
     Archive,
     ScreenedOut,
     Spam,
+    Trash,
     /// Stored, not placed yet.
     Sorting,
 }
 
 impl ArrivalBucketData {
     /// The line's order.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Messages,
         Self::Todo,
         Self::Updates,
@@ -54,6 +55,7 @@ impl ArrivalBucketData {
         Self::Archive,
         Self::ScreenedOut,
         Self::Spam,
+        Self::Trash,
         Self::Sorting,
     ];
 
@@ -67,6 +69,7 @@ impl ArrivalBucketData {
             Self::Archive => "archive",
             Self::ScreenedOut => "screened_out",
             Self::Spam => "spam",
+            Self::Trash => "trash",
             Self::Sorting => "sorting",
         }
     }
@@ -96,7 +99,7 @@ impl ArrivalBucketData {
             Self::Updates => Some(ModeKindData::Updates),
             Self::Reading => Some(ModeKindData::Reading),
             Self::Archive => Some(ModeKindData::Archive),
-            Self::ScreenedOut | Self::Spam | Self::Sorting => None,
+            Self::ScreenedOut | Self::Spam | Self::Trash | Self::Sorting => None,
         }
     }
 
@@ -107,6 +110,7 @@ impl ArrivalBucketData {
             None => match self {
                 Self::ScreenedOut => format!("{count} screened out"),
                 Self::Spam => format!("{count} spam"),
+                Self::Trash => format!("{count} trash"),
                 _ => format!("{count} still sorting"),
             },
         }
@@ -172,6 +176,9 @@ impl MoveChoiceData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ArrivalsData {
+    /// Bounded stored fallback clusters, in the existing sorting disclosure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classification_report: Option<super::ClassifyReportData>,
     pub generated_at: chrono::DateTime<chrono::Utc>,
     /// The window: since Now was last opened, at most 24 hours back; the
     /// start of today when Now was never opened.

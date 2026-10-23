@@ -73,9 +73,7 @@ pub struct ClassifyEvalSummaryData {
     pub labelled_in_set: u32,
     /// Of those, the ones found in this mailbox.
     pub present: u32,
-    /// Present emails with no arrivals row (history older than 30 days when
-    /// the account first synced), whose home was worked out live by the same
-    /// rules.
+    /// Legacy field, always zero: historical mail also reads stored assessments.
     pub placed_live: u32,
     /// Present emails whose home could not be worked out at all, so there is
     /// none to compare.
@@ -225,4 +223,51 @@ pub struct ClassifyEvalAsksData {
     pub twins: ClassifyEvalTwinsData,
     pub slices: Vec<ClassifyEvalSliceData>,
     pub reply_owed: ClassifyEvalReplyData,
+}
+
+/// A bounded local picture of stored home decisions. It never creates assessments.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ClassifyReportData {
+    pub policy_version: String,
+    pub examined: u32,
+    pub missing: u32,
+    /// Stored rows whose observed inputs changed; awaiting reconciliation.
+    pub stale: u32,
+    pub pending_body: u32,
+    pub fallback: u32,
+    pub truncated: bool,
+    pub clusters: Vec<ClassifyFallbackClusterData>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ClassifyFallbackClusterData {
+    pub facts: mxr_core::assessment::AssessmentFacts,
+    pub home: String,
+    pub who: String,
+    pub rule: String,
+    pub count: u32,
+    pub examples: Vec<mxr_core::MessageId>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ClassifyComparisonData {
+    pub current_version: String,
+    pub requested_version: String,
+    pub available_versions: Vec<String>,
+    pub available: bool,
+    /// Missing or stale current assessments excluded from comparison.
+    pub pending_assessments: u32,
+    pub compared: u32,
+    pub missing_previous_assessments: u32,
+    pub changes: Vec<ClassifyHomeChangeData>,
+    pub truncated: bool,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ClassifyHomeChangeData {
+    pub message_id: mxr_core::MessageId,
+    pub previous_home: String,
+    pub current_home: String,
+    pub deciding_reason: String,
 }

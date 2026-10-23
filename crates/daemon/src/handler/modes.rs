@@ -13,9 +13,6 @@
 //!
 //! minus each mode's done mark (`mode_done`, the desk's watermark).
 
-use super::conversation_shape::{
-    conversation_shape, human_address, Shape, ShapeConfig, ShapeInputs,
-};
 use super::desk::{self_matcher, Senders};
 use super::desk_lanes::{
     clean_subject, is_outbound, thread_lanes, AccountInputs, DESK_WINDOW_DAYS,
@@ -109,13 +106,25 @@ pub(super) async fn place_threads(
     now: DateTime<Utc>,
 ) -> Result<Vec<Placement>, HandlerError> {
     let store = &state.store;
-    let messages = store
+    let mut messages = store
         .desk_messages_in_threads(account_id, thread_ids)
         .await?;
     if messages.is_empty() {
         return Ok(Vec::new());
     }
     let senders = Senders::load(state, account_id, &messages).await?;
+    let invites: Vec<_> = messages
+        .iter()
+        .filter(|m| m.is_invite)
+        .map(|m| m.id.clone())
+        .collect();
+    let released =
+        super::home_projection::released_specialists(state, account_id, &invites, now).await?;
+    for message in &mut messages {
+        if released.contains(&message.id) {
+            message.in_inbox = false;
+        }
+    }
     let is_self = self_matcher(state, account_id).await?;
     let dismissed = messages_dismissals(state, account_id).await?;
     let window_start = now - Duration::days(DESK_WINDOW_DAYS);
@@ -140,6 +149,7 @@ pub(super) async fn place_threads(
         .cloned()
         .collect();
     let lanes = thread_lanes(&AccountInputs {
+        assessments: &senders.assessments,
         account_id,
         messages: &lane_messages,
         contacts: &senders.contacts,
@@ -210,7 +220,6 @@ pub(super) async fn place_threads(
             senders: &senders,
             written_to: &written_to,
             is_self: &is_self,
-            shape: super::conversation_shape::shape_config(state),
             now,
         });
         let quiet = !rows.contains_key(&thread_id)
@@ -243,7 +252,6 @@ struct PlaceInputs<'a> {
     /// Senders you have ever written to, anywhere in the account.
     written_to: &'a HashSet<String>,
     is_self: &'a dyn Fn(&str) -> bool,
-    shape: ShapeConfig,
     now: DateTime<Utc>,
 }
 
@@ -256,27 +264,9 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     let mut modes = Vec::new();
     let mut done_in = Vec::new();
 
-    let shape = shape_of(inputs);
-    // Messages: the lane rules already left out a thread put away. A thread
-    // you were only copied on is in Updates instead.
-    if shape == Shape::Copied {
-        if !mark(ModeKindData::Updates).is_some_and(|mark| mark.covers(thread)) {
-            modes.push(membership(
-                ModeKindData::Updates,
-                "Here because: you were only copied, or it went to a crowd, and you never wrote in it (rule).".to_string(),
-                "Also in Updates: a thread you were copied on".to_string(),
-                is_early(ModeKindData::Updates),
-                mail_kind::rule_tag(mxr_protocol::KindRuleData::Copied),
-            ));
-        } else {
-            done_in.push(ModeKindData::Updates);
-        }
-        // A user-set return is attention, not a change of message purpose.
-        // Keep the copied Updates membership and expose its Messages turn too.
-        if let Some(row) = inputs.row.filter(|row| row.back_at.is_some()) {
-            modes.push(messages_membership(row, is_early(ModeKindData::Messages)));
-        }
-    } else if let Some(row) = inputs.row {
+    // Purpose comes from the assessment; explicit return timers can add
+    // Messages attention without changing an Updates/Reading home.
+    if let Some(row) = inputs.row {
         modes.push(messages_membership(row, is_early(ModeKindData::Messages)));
     } else if let Some(message) = quiet(inputs) {
         modes.push(quiet_membership(
@@ -307,7 +297,7 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     let inbound = |m: &&DeskMessage| !is_outbound(m, inputs.is_self) && !m.trashed;
     let mut by_kind: HashMap<SenderKindData, Vec<&DeskMessage>> = HashMap::new();
     for message in thread.iter().filter(inbound) {
-        if !message.in_inbox || message.snoozed || message.is_delivery || message.is_invite {
+        if !message.in_inbox || message.snoozed {
             continue;
         }
         let kind = mail_kind::classify(&signals(message, inputs.senders, inputs.is_self))
@@ -385,6 +375,23 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         ));
     }
 
+    for entry in &mut modes {
+        if let Some(assessment) = thread
+            .iter()
+            .rev()
+            .filter_map(|m| inputs.senders.assessments.get(&m.id))
+            .find(|a| a.home == entry.mode.id())
+        {
+            let source = if assessment.not_sure.is_some() {
+                "Not sure"
+            } else if assessment.deciding.source == "you" {
+                "you"
+            } else {
+                "rule"
+            };
+            entry.reason = format!("Here because: {} ({source}).", assessment.deciding.reason);
+        }
+    }
     modes.sort_by_key(|entry| entry.mode);
     done_in.sort();
     let held_by = modes
@@ -394,6 +401,10 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         .collect();
     let latest = thread.iter().max_by_key(|m| (m.date, m.seq));
     ThreadModesData {
+        assessments: thread
+            .iter()
+            .filter_map(|m| inputs.senders.assessments.get(&m.id).cloned())
+            .collect(),
         account_id: inputs.account_id.clone(),
         thread_id: thread_id.clone(),
         subject: latest
@@ -407,26 +418,6 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     }
 }
 
-/// The thread's shape, by the rule the lanes and Messages use.
-fn shape_of(inputs: &PlaceInputs<'_>) -> Shape {
-    let person_sender = |m: &DeskMessage| {
-        mail_kind::classify(&signals(m, inputs.senders, inputs.is_self)).kind
-            == mail_kind::SenderKind::Person
-    };
-    let human = |email: &str| human_address(email, &inputs.senders.screener);
-    let kept = |m: &DeskMessage| inputs.senders.kept_in_messages(m, inputs.is_self);
-    conversation_shape(
-        inputs.thread,
-        &ShapeInputs {
-            is_self: inputs.is_self,
-            person_sender: &person_sender,
-            human_address: &human,
-            kept_in_messages: &kept,
-            config: inputs.shape,
-        },
-    )
-}
-
 /// Person mail still in the inbox that no lane holds: nobody's turn, but
 /// nobody let it go either. Messages keeps it as Quiet until it is done
 /// there, so inbox mail never vanishes from every mode and a to-do ticked
@@ -438,7 +429,7 @@ fn quiet<'a>(inputs: &PlaceInputs<'a>) -> Option<&'a DeskMessage> {
     }
     thread
         .iter()
-        .filter(|m| m.in_inbox && !m.trashed && !is_outbound(m, inputs.is_self))
+        .filter(|m| m.in_inbox && !m.trashed && !m.snoozed && !is_outbound(m, inputs.is_self))
         .filter(|m| {
             mail_kind::classify(&signals(m, inputs.senders, inputs.is_self)).kind
                 == mail_kind::SenderKind::Person
@@ -475,10 +466,15 @@ fn new_sender(inputs: &PlaceInputs<'_>) -> Option<mxr_protocol::ScreenerQuestion
     // Only a person is asked about. A machine's mail goes to its mode
     // silently, and its row's why line says which rule put it there.
     let kind = mail_kind::classify(&signals(latest, inputs.senders, inputs.is_self)).kind;
-    if kind != mail_kind::SenderKind::Person {
+    let person = inputs
+        .senders
+        .assessments
+        .get(&latest.id)
+        .map_or(kind == mail_kind::SenderKind::Person, |a| a.who == "person");
+    if !person {
         return None;
     }
-    screener_question(inputs.account_id, &key, kind.to_data())
+    screener_question(inputs.account_id, &key, SenderKindData::People)
 }
 
 /// Group threads by the account that owns them, in request order.
@@ -689,14 +685,7 @@ pub(super) async fn quiet_count(
     let mut quiet = 0u32;
     for account in accounts {
         let candidates = state.store.place_candidates(account).await?;
-        let mut senders: Vec<String> = candidates
-            .iter()
-            .map(|m| m.from_email.clone())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-        senders.sort_unstable();
-        let kinds = super::places::AccountKinds::load(state, account, &senders).await?;
+        let kinds = super::places::AccountKinds::load(state, account, &candidates).await?;
         let mut seen: HashSet<&ThreadId> = HashSet::new();
         let mut threads: Vec<ThreadId> = Vec::new();
         for message in &candidates {

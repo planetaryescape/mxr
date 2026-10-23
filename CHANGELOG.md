@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.157](https://github.com/planetaryescape/mxr/compare/v0.6.156...v0.6.157) (2026-10-23)
+
+
+### Features
+
+* build writing help on the current draft ([5fd6382](https://github.com/planetaryescape/mxr/commit/5fd638271cf6598797f80c7d9ab83d7a935a6d1a))
+
+
+### Documentation
+
+* present mxr as a shared local mail runtime ([cc00d40](https://github.com/planetaryescape/mxr/commit/cc00d4081bb5bd7875c39da4641ff95888817d80))
+
 ## [0.6.156](https://github.com/planetaryescape/mxr/compare/v0.6.155...v0.6.156) (2026-10-23)
 
 

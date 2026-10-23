@@ -113,6 +113,9 @@ pub struct PromptInput<'a> {
     pub tone: Option<VoiceRegisterData>,
     pub target_words: u32,
     pub instruction: &'a str,
+    /// The subject of a new message, which the user wrote: empty for a reply or
+    /// a forward, whose subject follows the conversation.
+    pub subject: &'a str,
     pub help: Help<'a>,
     pub budget_chars: usize,
 }
@@ -301,6 +304,11 @@ fn task_block(input: &PromptInput<'_>) -> String {
         AssistActionData::Polish => polish_task(input),
         AssistActionData::EditSelection => edit_task(input),
     };
+    // The user's own words, so it sits outside the markers like the instruction.
+    let subject = one_line(input.subject);
+    if matches!(input.mode, DraftMode::New { .. }) && !subject.is_empty() {
+        task.push_str(&format!("\nThe subject line of this email is: {subject}"));
+    }
     let chips = adjustment_lines(&input.help.adjust);
     if !chips.is_empty() {
         task.push_str("\nAdjustments I asked for:\n");
@@ -596,6 +604,7 @@ mod tests {
             tone: None,
             target_words: 40,
             instruction: "say yes, Friday 2pm",
+            subject: "",
             help: Help::write(),
             budget_chars: budget,
         }
@@ -722,6 +731,26 @@ mod tests {
             .unwrap_or_else(|| panic!("no {heading} in {user}"));
         let rest = &user[start..];
         rest.find("\n\n[").map_or(rest, |end| &rest[..end])
+    }
+
+    #[test]
+    fn a_new_messages_subject_reaches_the_task_outside_the_markers() {
+        let me = me();
+        let mut input = input(&me, &[], &[], &[], 30_000);
+        input.mode = DraftMode::New {
+            to: "Sam <sam@x.com>".into(),
+        };
+        input.subject = "Decline  Thursday's\ninvitation";
+        let prompt = build(&input);
+        let task = block(&prompt.user, "[TASK]");
+        assert!(
+            task.contains("The subject line of this email is: Decline Thursday's invitation"),
+            "{task}"
+        );
+        assert!(!task.contains(UNTRUSTED_MAIL_BEGIN));
+        // A reply's subject follows the conversation, so it is not repeated.
+        input.mode = DraftMode::Reply;
+        assert!(!build(&input).user.contains("The subject line"));
     }
 
     #[test]

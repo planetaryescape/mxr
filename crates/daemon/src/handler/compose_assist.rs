@@ -49,6 +49,8 @@ struct Gathered {
     counterparty: Option<Counterparty>,
     turns: Vec<Turn>,
     thread_id: Option<ThreadId>,
+    /// The subject of a new message, which the user wrote.
+    subject: String,
     /// The stored draft the request named, if it did.
     draft_id: Option<DraftId>,
     feature: LlmFeature,
@@ -142,6 +144,7 @@ pub(super) async fn compose_assist(
         tone: None,
         target_words: words,
         instruction,
+        subject: &gathered.subject,
         help: Help {
             action: resolved.action,
             typed: request.text,
@@ -280,9 +283,14 @@ async fn gather(state: &AppState, target: &DraftTargetData) -> Result<Gathered, 
                     in_conversation(state, &parent.id, Some(to)).await?
                 }
                 (Some(parent), _) => in_conversation(state, &parent.id, None).await?,
+                // A stored forward keeps no record of the message it forwards (the
+                // forwarded text lives in the compose file's context block, and
+                // the draft has no reply headers), so it is written as a new
+                // message to its recipient. A client that knows the source asks
+                // with the `forward` target instead.
                 (None, _) => {
                     let to = recipient.ok_or_else(no_recipient)?;
-                    new_message(draft.account_id.clone(), &to)
+                    new_message(draft.account_id.clone(), &to, &draft.subject)
                 }
             };
             gathered.draft_id = Some(draft_id.clone());
@@ -293,9 +301,13 @@ async fn gather(state: &AppState, target: &DraftTargetData) -> Result<Gathered, 
             let to = to.first().cloned().ok_or_else(no_recipient)?;
             in_conversation(state, message_id, Some(to)).await
         }
-        DraftTargetData::New { account_id, to, .. } => {
+        DraftTargetData::New {
+            account_id,
+            to,
+            subject,
+        } => {
             let to = to.first().ok_or_else(no_recipient)?;
-            Ok(new_message(account_id.clone(), to))
+            Ok(new_message(account_id.clone(), to, subject))
         }
     }
 }
@@ -345,12 +357,13 @@ async fn in_conversation(
         counterparty,
         turns,
         thread_id: Some(thread_id),
+        subject: String::new(),
         draft_id: None,
         feature: LlmFeature::DraftAssist,
     })
 }
 
-fn new_message(account_id: AccountId, to: &Address) -> Gathered {
+fn new_message(account_id: AccountId, to: &Address, subject: &str) -> Gathered {
     let counterparty = Counterparty {
         email: to.email.to_ascii_lowercase(),
         name: to.name.clone(),
@@ -363,6 +376,7 @@ fn new_message(account_id: AccountId, to: &Address) -> Gathered {
         counterparty: Some(counterparty),
         turns: Vec::new(),
         thread_id: None,
+        subject: subject.trim().to_string(),
         draft_id: None,
         feature: LlmFeature::DraftNew,
     }

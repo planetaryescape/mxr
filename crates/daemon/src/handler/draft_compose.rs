@@ -270,6 +270,7 @@ async fn draft_with(
         tone: request.register,
         target_words,
         instruction: request.instruction,
+        subject: "",
         help: Help::write(),
         budget_chars,
     });

@@ -115,6 +115,7 @@ pub(crate) fn assemble(case: &Case, today: &str) -> Assembled {
         tone: None,
         target_words: words,
         instruction: case.instruction,
+        subject: "",
         help: Help {
             action: resolved.action,
             typed,

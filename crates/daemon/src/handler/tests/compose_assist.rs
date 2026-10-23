@@ -746,3 +746,39 @@ async fn the_activity_log_learns_the_counts_and_never_the_text() {
         assert!(!context.contains(secret), "{context}");
     }
 }
+
+#[tokio::test]
+async fn the_subject_of_a_new_message_reaches_the_prompt_as_the_users_own_words() {
+    let state = AppState::in_memory().await.unwrap();
+    let model = Scripted::new("Hi Sam,\n\nSorry, I can't make it.\n\nAlex");
+    state.llm.replace(model.clone());
+    let target = DraftTargetData::New {
+        account_id: state.default_account_id(),
+        to: vec![sam()],
+        subject: "Decline Thursday's invitation".into(),
+    };
+    assist(&state, &target, &Ask::text("")).await.unwrap();
+    let prompt = model.user_prompt();
+    let task = &prompt[prompt.find("[TASK]").unwrap()..];
+    assert!(
+        task.contains("The subject line of this email is: Decline Thursday's invitation"),
+        "{task}"
+    );
+
+    // A stored draft's own subject counts the same way.
+    let mut stored = stored_draft(&state, "");
+    stored.subject = "Quarterly numbers".into();
+    state.store.insert_draft(&stored).await.unwrap();
+    assist(
+        &state,
+        &DraftTargetData::Stored {
+            draft_id: stored.id.clone(),
+        },
+        &Ask::text(""),
+    )
+    .await
+    .unwrap();
+    assert!(model
+        .user_prompt()
+        .contains("The subject line of this email is: Quarterly numbers"));
+}

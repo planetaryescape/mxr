@@ -80,12 +80,13 @@ the matching stored answer is projected. Withdrawn automatic asks expire;
 confirmations still offer completion rather than guessing that work is done.
 
 Migration 98 adds correction snapshots with a reason constraint. Backup
-inventory and the old-schema comparison include its inverse. Wire protocol
-26 and schema 99 also include durable, generation-scoped projection retries.
-The stored evaluator reads the actual linked task fields from the same SQL
-snapshot as their ask provenance; an absent projection is pending, and user
-corrections are excluded from classifier field scores. Wire protocol
-and the web expectation are 26. OpenAPI and generated TypeScript come from the canonical exporters. Schema
+inventory and the old-schema comparison include its inverse. Schema 99 adds
+durable, generation-scoped projection retries. Wire protocol and the web
+expectation are 26. The stored evaluator reads linked task fields from the
+same SQL snapshot as their ask provenance. Incomplete bodies and unsettled
+projection retries remain pending; a missing task after projection has settled
+counts as a miss. User corrections are excluded from classifier field scores.
+OpenAPI and generated TypeScript come from the canonical exporters. Schema
 and CLI help snapshots require their corresponding test generators and
 review before integration.
 

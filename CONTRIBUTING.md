@@ -198,8 +198,9 @@ The read-only packet takes assessments and task rows from one SQL snapshot.
 An ask counts as a delivered task only when its current fingerprint and unit
 provenance link to a stored row. Amount, currency, due date and counterparty
 come from that row; action, actor, state and exact quote come from the stored
-ask. Missing projections remain pending, and user-corrected rows are excluded
-from classifier measurement.
+ask. Incomplete bodies and unsettled projection retries remain pending. A
+missing task after projection has settled counts as a miss; user-corrected
+rows are excluded from classifier measurement.
 
 The historical `attend` reporting bucket includes RSVP response tasks. Calendar
 asks retain their stored `Reply` action, owner and pending state; reporting an

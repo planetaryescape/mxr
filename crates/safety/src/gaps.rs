@@ -12,24 +12,23 @@ use mxr_core::types::{
 const OPEN: &str = "[[?:";
 
 pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
-    // The raw text: the reader-cleaned view the other checks use drops quoted
-    // lines and signatures, and a gap there would still be sent.
-    let mut labels = gap_labels(&draft.subject);
-    match &draft.content {
-        DraftContent::Markdown { source } => labels.extend(gap_labels(source)),
-        DraftContent::Html { html, text } => {
-            // The recipient reads the HTML rendered, where `&#91;&#91;?: …]]`
-            // or a marker split by tags is a gap although neither serialized
-            // part holds the literal `[[?:`. Each view lists the same gaps, so
-            // the fullest one names them.
-            let seen = [
-                gap_labels(text.as_deref().unwrap_or("")),
-                gap_labels(html),
-                gap_labels(&mxr_reader::plain_text(None, Some(html))),
-            ];
-            labels.extend(seen.into_iter().max_by_key(Vec::len).unwrap_or_default());
+    // What is sent, not what was typed: the recipient reads the HTML part, and
+    // `&#91;&#91;?: …]]`, a marker split by tags or one broken across lines by
+    // a renderer is a gap although no serialized part holds the literal
+    // `[[?:`. Quoted text and the signature count too, since they are sent.
+    let body_views: Vec<String> = match &draft.content {
+        DraftContent::Markdown { source } => {
+            let html = mxr_outbound::render::render_markdown(source).html;
+            vec![source.clone(), visible_text(&html)]
         }
-    }
+        DraftContent::Html { html, text } => vec![
+            html.clone(),
+            text.clone().unwrap_or_default(),
+            visible_text(html),
+        ],
+    };
+    let mut labels = labels_in(std::slice::from_ref(&draft.subject));
+    labels.extend(labels_in(&body_views));
     if labels.is_empty() {
         return Vec::new();
     }
@@ -40,6 +39,41 @@ pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
         DraftSafetySeverity::Blocker,
         format!("{count} {noun} left: {}", labels.join(", ")),
     )]
+}
+
+/// The gaps one piece of the draft holds, seen through each of its `views`.
+/// The plain scan names them. The decisive count also looks with all
+/// whitespace removed, so a marker split by a space, a line wrap or a tag still
+/// counts; one the plain scan could not read is an unnamed gap.
+fn labels_in(views: &[String]) -> Vec<String> {
+    let mut labels = views
+        .iter()
+        .map(|view| gap_labels(view))
+        .max_by_key(Vec::len)
+        .unwrap_or_default();
+    let squashed = views
+        .iter()
+        .map(|view| squash(view).matches(OPEN).count())
+        .max()
+        .unwrap_or(0);
+    for _ in labels.len()..squashed {
+        labels.push("an unnamed gap".to_string());
+    }
+    labels
+}
+
+fn squash(text: &str) -> String {
+    text.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+/// The text of an HTML document as a reader sees it: entities decoded and tags
+/// dropped, with no line wrapping (the reader's renderer wraps at 80 columns,
+/// which can split a marker in two).
+fn visible_text(html: &str) -> String {
+    scraper::Html::parse_document(html)
+        .root_element()
+        .text()
+        .collect()
 }
 
 /// The label of each `[[?: …]]` in `text`, in order. A marker left open ends
@@ -171,6 +205,64 @@ mod tests {
         }
         let clean = DraftContent::html("<p>See &#91;you&#93; then.</p>", Some("See you.".into()));
         assert!(check(&draft("s", clean)).is_empty());
+    }
+
+    fn only_message(draft: &Draft) -> String {
+        let issues = check(draft);
+        assert_eq!(issues.len(), 1, "{:?}", draft.content);
+        issues[0].message.clone()
+    }
+
+    #[test]
+    fn a_marker_the_renderer_wraps_across_lines_still_counts() {
+        // 79 characters, then the marker: the reader's 80-column wrap would put
+        // `[` on one line and `[?:` on the next.
+        let html = format!("<p>{}&#91;&#91;?: the date]]</p>", "A".repeat(79));
+        let content = DraftContent::html(html, Some("Clean text.".into()));
+        assert_eq!(only_message(&draft("s", content)), "1 gap left: the date");
+    }
+
+    #[test]
+    fn markdown_that_renders_to_a_gap_is_a_gap() {
+        for source in [
+            "Meet on &#91;&#91;?: the date]]",
+            "Meet on &lbrack;&lbrack;?: the date]]",
+        ] {
+            assert_eq!(
+                only_message(&markdown(source)),
+                "1 gap left: the date",
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_marker_split_by_whitespace_or_tags_is_an_unnamed_gap() {
+        assert_eq!(
+            only_message(&markdown("Meet on [[ ?: the date]]")),
+            "1 gap left: an unnamed gap"
+        );
+        assert_eq!(
+            only_message(&markdown("Meet on [\n[?: the date]]")),
+            "1 gap left: an unnamed gap"
+        );
+        let split = DraftContent::html("<p>[<b></b>[?: the date]]</p>", Some("Clean.".into()));
+        assert_eq!(only_message(&draft("s", split)), "1 gap left: the date");
+        // One named and one only the whitespace-blind scan can read.
+        assert_eq!(
+            only_message(&markdown("[[?: the price]] and [[  ?: the date]]")),
+            "2 gaps left: the price, an unnamed gap"
+        );
+    }
+
+    #[test]
+    fn brackets_and_a_question_mark_apart_are_not_a_gap() {
+        assert!(check(&markdown(
+            "Tasks: [x] done. Is it ready?: yes. See [1] and [2]."
+        ))
+        .is_empty());
+        let html = DraftContent::html("<p>Done [x] and what?: no</p>", Some("Done [x].".into()));
+        assert!(check(&draft("s", html)).is_empty());
     }
 
     #[test]

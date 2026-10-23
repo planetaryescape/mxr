@@ -306,6 +306,78 @@ async fn ticking_off_the_last_mode_archives_and_undo_puts_everything_back() {
 }
 
 #[tokio::test]
+async fn archived_conversation_history_can_be_done_in_messages_and_undone() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let message = mail(
+        &fx,
+        &thread,
+        "sam@lettings.example",
+        "Hello",
+        Duration::hours(3),
+    )
+    .await;
+    fx.state
+        .store
+        .set_message_labels(&message.id, &[], mxr_core::EventSource::User)
+        .await
+        .unwrap();
+    assert!(!membership(&fx, &thread).await.in_inbox);
+    let listed = request(
+        &fx,
+        Request::ListMessages {
+            account_id: None,
+            turn: None,
+            filter: Default::default(),
+            limit: 50,
+        },
+    )
+    .await;
+    let ResponseData::Messages { messages } = listed else {
+        panic!("expected Messages")
+    };
+    assert!(messages
+        .recent
+        .iter()
+        .chain(&messages.quiet)
+        .flat_map(|row| &row.topics)
+        .any(
+            |topic| topic.thread_id == thread && topic.state != mxr_protocol::TopicStateData::Done
+        ));
+
+    let (preview, _) = done(&fx, &thread, ModeKindData::Messages, true).await;
+    assert_eq!(preview.error, None);
+    assert!(preview.marked);
+    assert_eq!(preview.archived, 0);
+    assert!(!membership(&fx, &thread)
+        .await
+        .done_in
+        .contains(&ModeKindData::Messages));
+    let (outcome, undo) = done(&fx, &thread, ModeKindData::Messages, false).await;
+    assert_eq!(outcome, preview);
+    assert!(!in_inbox(&fx, &message.id).await);
+    assert!(membership(&fx, &thread)
+        .await
+        .done_in
+        .contains(&ModeKindData::Messages));
+    assert!(matches!(
+        request(
+            &fx,
+            Request::UndoMutation {
+                mutation_id: undo.unwrap()
+            }
+        )
+        .await,
+        ResponseData::Ack
+    ));
+    assert!(!in_inbox(&fx, &message.id).await);
+    assert!(!membership(&fx, &thread)
+        .await
+        .done_in
+        .contains(&ModeKindData::Messages));
+}
+
+#[tokio::test]
 async fn with_archive_on_last_done_off_done_only_leaves_the_mode() {
     let fx = Fixture::new().await;
     let mut config = fx.state.config_snapshot();

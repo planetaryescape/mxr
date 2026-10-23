@@ -113,7 +113,7 @@ function RecipientGroup({
   emptyText?: string;
 }) {
   const available = addresses?.filter((address) => address.email.trim().length > 0) ?? [];
-  const emptyMessage = addresses === undefined || addresses.length > 0 ? "Unavailable" : emptyText;
+  const emptyMessage = addresses && addresses.length > 0 ? "Unavailable" : emptyText;
   const occurrences = new Map<string, number>();
   return (
     <section aria-label={label}>

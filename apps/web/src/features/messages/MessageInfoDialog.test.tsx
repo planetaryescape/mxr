@@ -115,7 +115,10 @@ afterEach(() => {
 });
 
 test("shows the exact recorded audience for each message, including available Bcc", async () => {
-  http.send.mockResolvedValue(threadResponse());
+  const response = threadResponse();
+  expect(response.messages[1]).not.toHaveProperty("cc");
+  expect(response.messages[1]).not.toHaveProperty("bcc");
+  http.send.mockResolvedValue(response);
   const client = queryClient();
   const view = render(
     <QueryClientProvider client={client}>
@@ -135,7 +138,10 @@ test("shows the exact recorded audience for each message, including available Bc
   );
   expect(await screen.findByText("maya@example.com")).toBeInTheDocument();
   expect(screen.queryByText("alex@example.com")).toBeNull();
-  expect(screen.getAllByText("Unavailable")).toHaveLength(2);
+  expect(screen.getByRole("region", { name: "Cc" })).toHaveTextContent("None recorded");
+  expect(screen.getByRole("region", { name: "Bcc" })).toHaveTextContent(
+    "Not recorded in this copy",
+  );
 });
 
 test("shows unavailable metadata and offers recovery after a query error", async () => {
@@ -148,7 +154,7 @@ test("shows unavailable metadata and offers recovery after a query error", async
   expect(http.send).toHaveBeenCalledTimes(2);
 });
 
-test("distinguishes empty recorded lists from unavailable recipient metadata", async () => {
+test("treats explicitly empty recipient arrays as empty recorded lists", async () => {
   const response = threadResponse();
   response.messages[0]!.to = [];
   response.messages[0]!.cc = [];
@@ -164,6 +170,16 @@ test("distinguishes empty recorded lists from unavailable recipient metadata", a
   );
   expect(screen.queryByText("Unavailable")).toBeNull();
   expect(screen.getByText(/does not confirm that nobody was hidden/)).toBeInTheDocument();
+});
+
+test("shows unavailable when a nonempty recipient list has no usable address", async () => {
+  const response = threadResponse();
+  response.messages[0]!.cc = [{ email: "   " }];
+  http.send.mockResolvedValue(response);
+  renderDialog();
+  fireEvent.click(screen.getByRole("button", { name: /Message info for Samir Patel/ }));
+
+  expect(await screen.findByRole("region", { name: "Cc" })).toHaveTextContent("Unavailable");
 });
 
 test("Escape closes message info and returns focus to its trigger", async () => {

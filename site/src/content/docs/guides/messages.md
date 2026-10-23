@@ -144,10 +144,11 @@ In the web app, choose a person's name to inspect and copy their linked email
 addresses. Choose a message's sender name to see the original From address;
 it can differ from the addresses linked to that person. Choose `Message info`
 on a message to inspect its recorded From, To, Cc and available Bcc addresses.
-Missing fields show as unavailable; an empty To or Cc list says that none were
-recorded. An empty Bcc list says it was not recorded in this copy, which cannot
-confirm that nobody was hidden. Long address lists scroll within the dialog.
-Escape closes the address panel or message info and returns focus to its trigger.
+An omitted or empty To or Cc list says that none were recorded. An omitted or
+empty Bcc list says it was not recorded in this copy, which cannot confirm that
+nobody was hidden. If the message details cannot be loaded, the app reports that
+or offers a retry. Long address lists scroll within the dialog. Escape closes
+the address panel or message info and returns focus to its trigger.
 
 Read the conversation directly. mxr removes repeated trailing history,
 signatures and footers when it can identify them. Quoted questions beside

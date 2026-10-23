@@ -28,6 +28,34 @@ mxr archive --account work --search 'from:no-reply@example.com older_than:30d' -
 ```
 :::
 
+## Inspect local mail for one account
+
+Use the account key, email address, account id, or unambiguous display name
+shown by `mxr accounts`. Keep that selector on each command so the count,
+search, and subscription candidates describe the same mailbox. Repeat with
+another selector to compare accounts through the same local interface:
+
+```bash
+ACCOUNT='<selector-from-mxr-accounts>'
+
+mxr count 'after:2000-01-01' --account "$ACCOUNT" --format json
+mxr search newsletter --account "$ACCOUNT" --format json --limit 200 \
+  | jq '.results'
+mxr subscriptions --account "$ACCOUNT" --limit 200 --rank --format json \
+  | jq '.[] | {sender_email, message_count, opened_count, archived_unread_count}'
+```
+
+The count JSON is `{ "query": ..., "count": ... }`; search results are in
+`.results`, and subscriptions return an array. The subscription rows are a
+bounded candidate set, limited before ranking. `opened_count` is the number
+of messages currently marked READ locally, not a measured open.
+
+The retained synthetic run for `v0.6.156` counted 55 messages in each of two
+explicitly selected accounts, found one newsletter result per account, and
+returned four subscription rows per account. These were separate account
+queries from that past run, not a current-release replay. The commands above
+show the current interface; they do not claim those observed results.
+
 :::note[Two equivalent forms]
 For mxr-on-mxr chaining, the read commands that resolve a target by ID (`cat`, `thread`, `headers`, `summarize`, `draft-assist`, `open`, `attachments list`) **also** accept `--search QUERY` directly, with `--first` (most recent only) or `--limit N` modifiers. That's daemon-native, snapshot-consistent, and one fewer process.
 

@@ -3,9 +3,18 @@ title: Examples
 description: "Copy-pasteable mxr workflows: search, triage, compose, clean up, follow up, analyze, and drive it from an agent."
 ---
 
-mxr is a single binary with a deep command set. This page is the fast tour: one-liners grouped by what you're trying to do, each linking to its full guide. Most read commands support `--format json`; other formats vary by command. The core mail mutations support `--dry-run`, so most of what follows composes with your shell or an agent.
+mxr is a single binary with a deep command set. This page is the fast tour: one-liners grouped by what you're trying to do, each linking to its full guide. Most read commands support `--format json`; other formats vary by command. Check the [automation contract](/guides/automation-contract/) for each command's preview and input support.
 
 For multi-step pipelines (fzf, jq, xargs, cron) see [Recipes](/guides/recipes/); for the per-command automation guarantees see the [Automation Contract](/guides/automation-contract/).
+
+## Choose a workflow
+
+- [Analyse local mail](/guides/recipes/#inspect-local-mail-for-one-account) with one account selector, structured search results and bounded subscription candidates.
+- [Retrieve a fact in Archive](/guides/archive/) and follow it to the supporting email or document.
+- [Prepare and review a shared draft](/getting-started/agent-quick-start/) with synthetic mail and your existing agent.
+- [Inspect attachments from booking mail](/guides/recipes/#build-an-evidence-pack-from-booking-mail) using the existing source-check workflow.
+- [Choose a job from Now and the five modes](/guides/email-modes/) for your own mail workflow.
+- [Automate a reviewed action](/guides/automation-contract/#safe-agent-loop), carrying account scope through the command's supported preview and verification.
 
 ## Get started
 
@@ -82,7 +91,7 @@ mxr paper-trail                                              # receipts and noti
 mxr sweep paper-trail --dry-run                              # what a sweep would archive
 mxr sweep paper-trail --yes
 mxr sender kind digest@news.example.com reading              # move a sender for good
-mxr subscriptions --rank --format json                       # who you never open
+mxr subscriptions --rank --format json                       # candidates ranked by current READ state
 mxr unsubscribe newsletter@example.com --dry-run
 mxr unsubscribe newsletter@example.com --yes
 mxr archive --search "from:noreply@example.com older_than:30d" --dry-run
@@ -170,7 +179,7 @@ Full guide → [LLM Features](/guides/llm-features/) · [Briefings and Loop-in](
 
 ## Automate and pipe
 
-Most reads emit JSON, and the core mail mutations accept IDs from stdin. It's a Unix citizen.
+Most reads emit JSON, and many mail mutations accept IDs from stdin. Check each command's input support before piping IDs.
 
 ```bash
 # archive everything from a sender, reviewed first
@@ -187,7 +196,7 @@ Full guide → [Recipes](/guides/recipes/) · [Automation Contract](/guides/auto
 
 ## Drive it from an agent
 
-The CLI, MCP server, and HTTP bridge all call the same daemon. Most reads return JSON, and the core mail mutations support `--dry-run`.
+The CLI, MCP server, and HTTP bridge share daemon operations where supported. Most reads return JSON; preview and stdin support vary by command.
 
 ```bash
 mxr mcp serve                                              # typed tools over stdio

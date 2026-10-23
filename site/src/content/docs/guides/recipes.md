@@ -146,16 +146,19 @@ mxr stale --theirs --older-than-days 7 --format json \
 ### Owed-reply backlog ranked by how overdue
 
 ```bash
-mxr owed --format json \
-  | jq -r 'sort_by(-.overdue_score) | .[]
-           | "\(.overdue_score | tostring | .[0:4])\t\(.waiting_days|round)d\t\(.from_email)\t\(.subject)"' \
-  | head -20
+mxr owed --account personal --limit 200 --format json \
+  | jq -r 'sort_by(-.overdue_score) | .[0:20] | .[]
+           | "\(.overdue_score | tostring | .[0:4])\t\(.waiting_days|round)d\t\(.from_email)\t\(.subject)"'
 ```
 
-What you get: the top 20 replies you owe people (the desk's You owe
-lane), ranked by `waiting_days / expected_days`, where `expected_days` is
-your usual reply time to that person (one day when there's no history).
-`mxr owed --all` is the raw set that `mxr search 'is:owed-reply'` matches.
+Replace `personal` with your configured account key. This formats up to
+20 replies from the account's returned You owe lane, sorted by
+`overdue_score` (`waiting_days / expected_days`). The daemon applies the
+200-row limit before this pipeline sorts the candidates.
+
+`mxr owed --all` uses the raw unanswered-thread population. The search
+operator `is:owed-reply` filters search results against that raw population,
+with its own search limits; it does not select the default You owe lane.
 
 ### Extract all attachment filenames from a query
 

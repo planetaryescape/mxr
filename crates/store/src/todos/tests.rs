@@ -678,3 +678,30 @@ async fn ambiguous_legacy_preserves_closed_manual_history_without_freezing_unrel
         .unwrap()
         .is_empty());
 }
+
+#[tokio::test]
+async fn missing_body_legacy_rows_cannot_starve_ready_sources_beyond_the_page() {
+    let fx = Fx::new().await;
+    for index in 0..101 {
+        let source = fx.message(&format!("source-{index}"), at(0)).await;
+        let mut row = fx.record(&format!("legacy-{index:03}"), &source, at(0));
+        row.dedup_key = format!("legacy-{index}");
+        fx.store.insert_todo(&row).await.unwrap();
+        if index == 100 {
+            fx.store
+                .insert_body(&mxr_core::MessageBody {
+                    message_id: source.0,
+                    text_plain: Some("Please sign the contract.".into()),
+                    text_html: None,
+                    attachments: vec![],
+                    fetched_at: at(0),
+                    metadata: Default::default(),
+                })
+                .await
+                .unwrap();
+        }
+    }
+    let ready = fx.store.legacy_asks_todos(&fx.account).await.unwrap();
+    assert_eq!(ready.len(), 1);
+    assert_eq!(ready[0].id, "legacy-100");
+}

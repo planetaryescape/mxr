@@ -69,7 +69,7 @@ impl Store {
         &self,
         account: &AccountId,
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
-        let sql = format!("SELECT {} FROM todos WHERE account_id = ? AND rules_version < 2 AND origin IN ('rule', 'schema', 'model', 'ics') ORDER BY id LIMIT 100", crate::todos::COLUMNS);
+        let sql = format!("SELECT {} FROM todos WHERE account_id = ? AND rules_version < 2 AND origin IN ('rule', 'schema', 'model', 'ics') AND (source_message_id IS NULL OR EXISTS (SELECT 1 FROM bodies b WHERE b.message_id = todos.source_message_id AND (b.text_plain IS NOT NULL OR b.text_html IS NOT NULL)) OR EXISTS (SELECT 1 FROM calendar_invites c WHERE c.message_id = todos.source_message_id)) ORDER BY id LIMIT 100", crate::todos::COLUMNS);
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account.as_str())
             .fetch_all(self.reader())

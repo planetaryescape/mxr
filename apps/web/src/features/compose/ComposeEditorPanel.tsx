@@ -1,5 +1,13 @@
 import { FilePlus2, Loader2, Paperclip, Trash2, X } from "lucide-react";
-import { lazy, Suspense, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+} from "react";
 
 import {
   AlertDialog,
@@ -57,6 +65,12 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
   // until asked for, and the editor's status row shrinks to a word.
   const quiet = controller.intent.quiet === true;
   const [headersOpen, setHeadersOpen] = useState(false);
+  // Only the Markdown editor reports a selection. A selection left from it must
+  // not steer the help after switching to the rich editor, which sends the whole text.
+  const setSelection = controller.setSelection;
+  useEffect(() => {
+    if (editorPreference === "tiptap") setSelection(null);
+  }, [editorPreference, setSelection]);
 
   const { draft } = controller;
   if (!draft) return null;

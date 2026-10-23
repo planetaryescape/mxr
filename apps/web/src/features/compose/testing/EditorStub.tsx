@@ -1,7 +1,8 @@
 /*
  * A stand-in for the editors in the compose tests: a controlled textarea that
- * takes focus when asked, which are the two things the compose surface relies
- * on. The real editors need a layout engine jsdom does not have.
+ * takes focus when asked, and reports its selection the way the Markdown
+ * editor does (null when empty). The real editors need a layout engine jsdom
+ * does not have.
  */
 
 import { useEffect, useRef } from "react";
@@ -11,6 +12,7 @@ export interface EditorStubProps {
   onChange: (value: string) => void;
   autoFocus?: boolean;
   focusNonce?: number;
+  onSelectionChange?: (selection: { from: number; to: number } | null) => void;
 }
 
 export function EditorStub({
@@ -18,6 +20,7 @@ export function EditorStub({
   onChange,
   autoFocus = false,
   focusNonce = 0,
+  onSelectionChange,
 }: EditorStubProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -29,6 +32,12 @@ export function EditorStub({
       aria-label="Message body"
       value={value}
       onChange={(event) => onChange(event.target.value)}
+      onSelect={(event) => {
+        const { selectionStart, selectionEnd } = event.currentTarget;
+        onSelectionChange?.(
+          selectionStart === selectionEnd ? null : { from: selectionStart, to: selectionEnd },
+        );
+      }}
     />
   );
 }

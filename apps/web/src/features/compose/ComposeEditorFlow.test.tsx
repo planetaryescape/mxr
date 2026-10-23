@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { useUiPrefs } from "@/state/uiPrefsStore";
 import { ComposeHost } from "./ComposeHost";
 import { draftIntent, newMessageIntent, useComposeUi } from "./composeUiStore";
 import type { ComposeIntent } from "./useComposeSession";
@@ -414,6 +415,29 @@ describe("Draft for me in the sheet", () => {
     rawApi.fetch.mockImplementation(async (path: string) =>
       path.includes("/mail/compose/assist") ? hiThereProposal : { snippets: [] },
     );
+  });
+
+  test("the rich editor never offers selection editing, even after a selection in the Markdown editor", async () => {
+    api.startComposeSession.mockResolvedValue({
+      session: {
+        ...composeSession.session,
+        frontmatter: { ...composeSession.session.frontmatter, to: "pat@example.com" },
+        bodyMarkdown: "Hi",
+      },
+    });
+    useUiPrefs.setState({ composeEditor: "codemirror-vim" });
+    renderCompose(newMessageIntent());
+    const editor = await screen.findByRole("textbox", { name: "Message body" });
+    fireEvent.keyDown(editor, { key: "j", metaKey: true });
+    const input = await screen.findByRole("textbox", { name: "Draft instruction" });
+
+    (editor as HTMLTextAreaElement).setSelectionRange(0, 2);
+    fireEvent.select(editor);
+    expect(input).toHaveAttribute("placeholder", "Edit the selection: say how");
+
+    act(() => useUiPrefs.getState().setComposeEditor("tiptap"));
+
+    expect(input).toHaveAttribute("placeholder", "Finish my draft, or say what to change");
   });
 
   test("Esc on a proof keeps the user's text and leaves the sheet open", async () => {

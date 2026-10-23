@@ -545,7 +545,9 @@ Compose** switches to rich text.
 **Draft for me** is one line above the page. Click it, or press ⌘J, and say
 what the email should do or what to change. The placeholder names what will
 happen: an empty draft asks for a reply, a draft with text is finished or
-changed, and a selection is the only part that changes. **Shorter**,
+changed, and in the Markdown editor a selection is the only part that
+changes. The rich-text editor has no selection editing yet: it always sends
+the whole draft and never offers "Edit the selection". **Shorter**,
 **Warmer**, **More formal** and **Proofread** steer the answer. **Polish**
 is the one action that may change your words. A new email needs to know what
 it's for (the subject counts as context, not as the instruction).
@@ -555,7 +557,8 @@ plain ink, additions are underlined, cuts are struck through and gaps are
 highlighted. Nothing is written over your text until you accept:
 
 - **Enter** accepts. **⌘Z** takes the accept back in one step.
-- **Esc** keeps your text as it was.
+- **Esc** keeps your text as it was. On the help line, Esc closes the line.
+  Neither closes the sheet.
 - **⌘J** revises the proof with a note. **← →** step through earlier answers
   for the same draft, and **Tab** moves from gap to gap.
 

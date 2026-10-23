@@ -167,7 +167,10 @@ impl Default for Limits {
     fn default() -> Self {
         Self {
             max_steps: 30,
-            max_output_tokens: None,
+            // Without a cap a provider reserves the model's whole output
+            // (65,536 tokens on Claude via OpenRouter) and refuses a key that
+            // can't cover it; a reply with its thinking fits well inside this.
+            max_output_tokens: Some(16_384),
         }
     }
 }

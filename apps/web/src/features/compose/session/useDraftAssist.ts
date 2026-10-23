@@ -19,7 +19,7 @@ import {
 } from "../assist/modelSpans";
 import { requestComposeAssist } from "../assist/api";
 import { helpAction, helpPlaceholder, type HelpLineState } from "../assist/helpLine";
-import { proofPieces } from "../assist/proof";
+import { proofRuns } from "../assist/proof";
 import { joinTextRegion, splitTextRegion, utf8Offset, type TextRegion } from "../assist/textRegion";
 import type {
   ComposeAssistAction,
@@ -298,7 +298,7 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
         )
       : mapModelSpans(previous, current.bodyMarkdown, body);
     const added = addedSpans(
-      proofPieces(version.proposal.changes, version.proposal.gaps),
+      proofRuns(version.proposal.changes, version.proposal.gaps),
       textStart,
       inserted,
     );

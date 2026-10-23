@@ -32,10 +32,10 @@ describe("mapModelSpans", () => {
 describe("addedSpans", () => {
   test("marks only the added runs, at the text's start in the body", () => {
     const pieces = [
-      { kind: "kept" as const, text: "Thursday works. " },
-      { kind: "removed" as const, text: "numbers" },
-      { kind: "added" as const, text: "Numbers" },
-      { kind: "gap" as const, text: "[[?: a time]]" },
+      { kind: "kept" as const, text: "Thursday works. ", gap: null },
+      { kind: "removed" as const, text: "numbers", gap: null },
+      { kind: "added" as const, text: "Numbers", gap: null },
+      { kind: "kept" as const, text: "[[?: a time]]", gap: 0 },
     ];
     const spans = addedSpans(pieces, 100);
     expect(spans).toEqual([{ start: 100 + 16, end: 100 + 16 + 7 }]);
@@ -43,7 +43,7 @@ describe("addedSpans", () => {
 
   test("a run past the inserted text is clipped to it", () => {
     // The proof ends in a newline, which the insert drops.
-    const pieces = [{ kind: "added" as const, text: "Hi\n" }];
+    const pieces = [{ kind: "added" as const, text: "Hi\n", gap: null }];
     expect(addedSpans(pieces, 10, "Hi".length)).toEqual([{ start: 10, end: 12 }]);
   });
 

@@ -7,7 +7,7 @@
  * left alone keeps its mark even when the proof adds text around it.
  */
 
-import type { ProofPiece } from "./proof";
+import type { ProofRun } from "./proof";
 
 export interface ModelSpan {
   start: number;
@@ -51,7 +51,7 @@ export function mapModelSpans(
  * has to fill, are not model prose to mark.
  */
 export function addedSpans(
-  pieces: readonly ProofPiece[],
+  pieces: readonly ProofRun[],
   textStart: number,
   limit: number = Number.POSITIVE_INFINITY,
 ): ModelSpan[] {

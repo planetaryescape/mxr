@@ -11,18 +11,20 @@ import { Button } from "@/components/ui/button";
 import { isComposingKey } from "@/lib/keys/composition";
 import { cn } from "@/lib/utils";
 import { DraftProvenanceLine } from "./DraftProvenanceLine";
-import type { ProofPiece } from "./assist/proof";
+import type { ProofRun, ProofRunKind } from "./assist/proof";
 import type { DraftProvenance } from "./draftProvenanceFormat";
 
-const PIECE_CLASS = {
+/** How a run is drawn outside a gap. */
+const RUN_CLASS = {
   kept: "text-foreground",
   added: "text-foreground underline decoration-signal decoration-1 underline-offset-4",
   removed: "text-text-3 line-through decoration-1",
-  gap: "text-cue",
-} satisfies Record<ProofPiece["kind"], string>;
+} satisfies Record<ProofRunKind, string>;
 
 interface DraftProofProps {
-  pieces: ProofPiece[];
+  runs: ProofRun[];
+  /** One Tab stop and one count per gap in the proposal, however the diff split it. */
+  gapCount: number;
   provenance: DraftProvenance | null;
   versionIndex: number;
   versionCount: number;
@@ -36,7 +38,8 @@ interface DraftProofProps {
 }
 
 export function DraftProof({
-  pieces,
+  runs,
+  gapCount,
   provenance,
   versionIndex,
   versionCount,
@@ -48,14 +51,7 @@ export function DraftProof({
   onRevise,
 }: DraftProofProps) {
   const containerRef = useRef<HTMLElement>(null);
-  const gapCount = pieces.filter((piece) => piece.kind === "gap").length;
-  // Each run starts at a distinct offset, so the offset keys it without an index.
-  let offset = 0;
-  const keyed = pieces.map((piece) => {
-    const key = `${offset}:${piece.kind}`;
-    offset += piece.text.length;
-    return { key, piece };
-  });
+  const groups = groupRuns(runs);
 
   useEffect(() => {
     containerRef.current?.focus();
@@ -68,7 +64,7 @@ export function DraftProof({
     const target = event.target;
     const onProofSurface =
       target === containerRef.current ||
-      (target instanceof HTMLElement && target.dataset.gap !== undefined);
+      (target instanceof HTMLElement && target.closest("[data-gap]") !== null);
     if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
       if (!onProofSurface) return;
       event.preventDefault();
@@ -89,7 +85,7 @@ export function DraftProof({
         containerRef.current?.querySelectorAll<HTMLElement>("[data-gap]") ?? [],
       );
       const focused = document.activeElement;
-      const current = gaps.findIndex((gap) => gap === focused);
+      const current = gaps.findIndex((gap) => gap === focused || gap.contains(focused));
       const next =
         current === -1
           ? gaps[event.shiftKey ? gaps.length - 1 : 0]
@@ -110,18 +106,15 @@ export function DraftProof({
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-[860px] px-5 py-5">
           <div className="type-reading whitespace-pre-wrap border-l-2 border-signal pl-4">
-            {keyed.map(({ key, piece }) =>
-              piece.kind === "removed" ? (
-                <span key={key} className={PIECE_CLASS.removed}>
-                  {piece.text}
-                </span>
-              ) : piece.kind === "gap" ? (
-                <span key={key} data-gap tabIndex={0} className={PIECE_CLASS.gap}>
-                  {piece.text}
-                </span>
+            {groups.map((group) =>
+              group.gap === null ? (
+                group.items.map((item) => <RunText key={item.key} run={item.run} />)
               ) : (
-                <span key={key} className={cn(PIECE_CLASS[piece.kind])}>
-                  {piece.text}
+                // One focusable gap, however many runs the word diff put inside it.
+                <span key={group.key} data-gap tabIndex={0} className="text-cue">
+                  {group.items.map((item) => (
+                    <RunText key={item.key} run={item.run} inGap />
+                  ))}
                 </span>
               ),
             )}
@@ -159,4 +152,51 @@ export function DraftProof({
       </div>
     </section>
   );
+}
+
+interface RunItem {
+  key: string;
+  run: ProofRun;
+}
+
+interface RunGroup {
+  key: string;
+  gap: number | null;
+  items: RunItem[];
+}
+
+/**
+ * Runs in order, with the runs of one gap kept together. Each run starts at a
+ * distinct offset, so the offset keys it without an index.
+ */
+function groupRuns(runs: readonly ProofRun[]): RunGroup[] {
+  const groups: RunGroup[] = [];
+  let offset = 0;
+  for (const run of runs) {
+    const item: RunItem = { key: `${offset}:${run.kind}`, run };
+    offset += run.text.length;
+    const last = groups.at(-1);
+    if (run.gap !== null && last?.gap === run.gap) {
+      last.items.push(item);
+    } else {
+      groups.push({
+        key: run.gap === null ? item.key : `gap-${run.gap}`,
+        gap: run.gap,
+        items: [item],
+      });
+    }
+  }
+  return groups;
+}
+
+function RunText({ run, inGap = false }: { run: ProofRun; inGap?: boolean }) {
+  // Inside a gap the colour is the gap's; the run keeps its own addition or strike.
+  const className = inGap ? cn("text-cue", decorationOnly(run.kind)) : RUN_CLASS[run.kind];
+  return <span className={className}>{run.text}</span>;
+}
+
+function decorationOnly(kind: ProofRunKind): string {
+  if (kind === "added") return "underline decoration-signal decoration-1 underline-offset-4";
+  if (kind === "removed") return "line-through decoration-1";
+  return "";
 }

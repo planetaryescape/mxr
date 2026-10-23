@@ -30,7 +30,7 @@ import { ComposeIssueSummary } from "./ComposeIssueSummary";
 import { ComposeTopBar } from "./ComposeTopBar";
 import { DraftHelpLine } from "./DraftHelpLine";
 import { DraftProof } from "./DraftProof";
-import { proofPieces } from "./assist/proof";
+import { proofRuns } from "./assist/proof";
 import { RecipientField } from "./RecipientField";
 import { SendConfirmDialog } from "./SendConfirmDialog";
 import { SendLaterDialog } from "./SendLaterDialog";
@@ -281,10 +281,8 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         {controller.proofOpen && controller.version ? (
           <div className="mx-auto h-full w-full max-w-[860px]">
             <DraftProof
-              pieces={proofPieces(
-                controller.version.proposal.changes,
-                controller.version.proposal.gaps,
-              )}
+              runs={proofRuns(controller.version.proposal.changes, controller.version.proposal.gaps)}
+              gapCount={controller.version.proposal.gaps.length}
               provenance={controller.version.proposal.provenance}
               versionIndex={controller.versionIndex}
               versionCount={controller.versionCount}

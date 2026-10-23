@@ -456,6 +456,7 @@ impl App {
                     if self.modals.platform.title == "Writing proof" {
                         self.compose.assist_request_id =
                             self.compose.assist_request_id.wrapping_add(1);
+                        self.compose.assist_review = None;
                     }
                     self.modals.platform.close();
                     None

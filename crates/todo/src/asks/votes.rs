@@ -115,6 +115,12 @@ pub(super) fn label(
             .iter()
             .enumerate()
             .filter(|(_, d)| inside(zone, span, d.zone, &d.span))
+            .filter(|(_, d)| {
+                doc.kind != DocumentKind::FailedPayment
+                    || !facts.zones[d.zone].text[d.span.start..d.span.end]
+                        .to_ascii_lowercase()
+                        .starts_with("expires")
+            })
             .map(|(id, d)| (id, d.at)),
     );
     let reference = agreed_candidate(

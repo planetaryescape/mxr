@@ -112,12 +112,19 @@ impl Row {
     pub(super) fn from_asks(
         answer: &mxr_core::asks::AskAssessment,
         counterparty: &str,
+        projected_units: &std::collections::HashSet<String>,
     ) -> Vec<Self> {
         use mxr_core::asks::{ActionKind as A, AskAnswer};
         answer
             .units
             .iter()
-            .filter_map(|unit| {
+            .enumerate()
+            .filter_map(|(index, unit)| {
+                if !projected_units
+                    .contains(&mxr_todo::asks::items::unit_provenance(answer, index, unit))
+                {
+                    return None;
+                }
                 let direction = match unit.answer {
                     AskAnswer::AsksYou => Direction::AsksYou,
                     AskAnswer::YouPromised => Direction::YouPromised,
@@ -345,6 +352,13 @@ impl AskGrader {
                 .filter(|review| review.questions.contains(&"todo"))
                 .map(|review| review.why.to_string()),
         }
+    }
+
+    pub(super) fn pending(&mut self) {
+        self.slices
+            .entry(("rules_abstained", "pending".into()))
+            .or_default()
+            .0 += 1;
     }
 
     /// Match `rows` to the label's items and tally the result.
@@ -1816,7 +1830,12 @@ mod provenance_tests {
                 answer: AskAnswer::AsksYou,
             }],
         };
-        let calendar = Row::from_asks(&a, "Organiser");
+        let links = std::collections::HashSet::from([mxr_todo::asks::items::unit_provenance(
+            &a,
+            0,
+            &a.units[0],
+        )]);
+        let calendar = Row::from_asks(&a, "Organiser", &links);
         assert_eq!(calendar[0].kind, AskKind::Attend);
         assert!(mxr_todo::asks::items::is_rsvp(&a, &a.units[0]));
         let provenance = calendar[0].provenance.as_ref().expect("stored provenance");
@@ -1826,7 +1845,7 @@ mod provenance_tests {
         );
         assert_eq!(a.units[0].tags.as_ref(), Some(&tags));
         a.facts.zones[0].kind = ZoneKind::Authored;
-        assert_eq!(Row::from_asks(&a, "Sender")[0].kind, AskKind::Reply);
+        assert_eq!(Row::from_asks(&a, "Sender", &links)[0].kind, AskKind::Reply);
         assert!(!mxr_todo::asks::items::is_rsvp(&a, &a.units[0]));
         assert_eq!(a.units[0].tags.as_ref(), Some(&tags));
     }

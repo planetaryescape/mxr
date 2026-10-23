@@ -112,14 +112,7 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                 "asks_provenance",
                 FieldProvenance::with_evidence(
                     FieldSource::Rule,
-                    format!(
-                        "{}:{}:unit:{index}:zone:{}:{}..{}",
-                        answer.policy_version,
-                        answer.message_id,
-                        unit.zone,
-                        unit.span.start,
-                        unit.span.end
-                    ),
+                    unit_provenance(answer, index, unit),
                 ),
             );
             fields.set(
@@ -223,4 +216,11 @@ pub fn is_rsvp(answer: &AskAssessment, unit: &AskUnit) -> bool {
         .is_some_and(|t| t.action == ActionKind::Reply)
         && (answer.facts.zones[unit.zone].kind == ZoneKind::Calendar
             || unit.votes.iter().any(|v| v.rule == "authored_rsvp"))
+}
+
+pub fn unit_provenance(answer: &AskAssessment, index: usize, unit: &AskUnit) -> String {
+    format!(
+        "{}:{}:unit:{index}:zone:{}:{}..{}",
+        answer.policy_version, answer.message_id, unit.zone, unit.span.start, unit.span.end
+    )
 }

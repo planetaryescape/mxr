@@ -260,7 +260,11 @@ impl super::Store {
     ) -> Result<TodoUpsert, sqlx::Error> {
         let mut record = record.clone();
         if record.due_at.is_none() {
-            if let Some((identity, _)) = record.dedup_key.rsplit_once('|') {
+            if let Some((identity, _period)) = record
+                .dedup_key
+                .rsplit_once('|')
+                .filter(|(_, period)| period.starts_with("sent:") || period.starts_with("due:"))
+            {
                 let keys: Vec<String> = sqlx::query_scalar(
                     "SELECT dedup_key FROM todos WHERE account_id = ? AND dedup_key LIKE ? LIMIT 2",
                 )

@@ -315,9 +315,13 @@ pub(super) async fn classify_eval(
     let mut reads = HashMap::new();
     let mut rows = HashMap::new();
     let mut stored_answers = HashMap::new();
+    let mut pending_projection = std::collections::HashSet::new();
     let mut records = std::collections::HashSet::new();
     for entry in packet {
         let message = entry.envelope;
+        if entry.projection_pending {
+            pending_projection.insert(message.id.clone());
+        }
         let assessment = entry.home.as_ref();
         let kind = assessment.map_or(SenderKindData::ScreenedOut, |a| match a.who.as_str() {
             "person" => SenderKindData::People,
@@ -364,13 +368,10 @@ pub(super) async fn classify_eval(
             let name = person
                 .map(|p| p.name.as_deref().unwrap_or(&p.email))
                 .unwrap_or_default();
-            let mut projected = Row::from_asks(&answer, name);
-            projected.retain(|row| {
-                !row.provenance
-                    .as_ref()
-                    .is_some_and(|p| entry.born_expired_quotes.contains(&p.quote))
-            });
-            rows.insert(message.id.clone(), projected);
+            rows.insert(
+                message.id.clone(),
+                Row::from_asks(&answer, name, &entry.projected_units),
+            );
             stored_answers.insert(message.id, answer);
         }
     }
@@ -394,6 +395,12 @@ pub(super) async fn classify_eval(
             record: records.contains(&candidate.message_id),
         };
         grade(label, &actual, &mut tally, &mut mismatches);
+        if !stored_answers.contains_key(&candidate.message_id)
+            || pending_projection.contains(&candidate.message_id)
+        {
+            asks.pending();
+            continue;
+        }
         asks.grade(
             AskInput {
                 provenance_slices: stored_answers.get(&candidate.message_id).map_or_else(

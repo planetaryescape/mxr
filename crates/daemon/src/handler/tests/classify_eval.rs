@@ -165,13 +165,14 @@ async fn the_quick_set_is_graded_and_every_mismatch_is_listed() {
     if std::env::var_os("MXR_CLASSIFY_TRACE").is_some() {
         use sqlx::Row;
         eprintln!("{}", report(&summary, &mismatches));
-        for row in sqlx::query("SELECT m.provider_id, m.subject, a.assessment_json FROM messages m JOIN mail_assessments a ON a.message_id = m.id WHERE a.policy_version = ?1 ORDER BY m.provider_id")
+        for row in sqlx::query("SELECT m.provider_id, m.subject, a.assessment_json, (SELECT json_group_array(json_object('reason', t.reason, 'state', t.state, 'expired_at_birth', t.expired_at_birth, 'field_sources', json(t.field_sources))) FROM todos t WHERE t.source_message_id = m.id) AS todo_json FROM messages m JOIN mail_assessments a ON a.message_id = m.id WHERE a.policy_version = ?1 ORDER BY m.provider_id")
             .bind(mxr_core::asks::ASKS_POLICY_VERSION)
             .fetch_all(state.store.reader()).await.unwrap()
         {
             eprintln!("ASK_TRACE {}", serde_json::json!({
                 "provider_id": row.get::<String, _>("provider_id"),
                 "subject": row.get::<String, _>("subject"),
+                    "todos": serde_json::from_str::<serde_json::Value>(&row.get::<String, _>("todo_json")).expect("synthetic projection JSON"),
                 "asks": serde_json::from_str::<serde_json::Value>(&row.get::<String, _>("assessment_json")).unwrap(),
             }));
         }
@@ -371,5 +372,61 @@ async fn a_to_do_that_was_already_over_when_found_is_not_a_to_do() {
             .iter()
             .all(|m| !(m.scenario == "todo-event-already-over" && m.question == "ask")),
         "a born-expired to-do is not counted as a to-do: {mismatches:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_stored_ask_without_its_item_projection_is_not_graded_as_delivered() {
+    let (state, _) = scenario_state().await;
+    let (before, _) = eval(&state, None).await;
+    let removed = sqlx::query("DELETE FROM todos WHERE source_message_id IN (SELECT id FROM messages WHERE provider_id = 'demo-msg-9')")
+        .execute(state.store.writer()).await.expect("remove only the synthetic projection").rows_affected();
+    assert_eq!(removed, 1);
+    let changes: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(state.store.writer())
+        .await
+        .expect("changes");
+    let ResponseData::ClassifyEval {
+        summary,
+        mismatches,
+    } = classify_eval(&state, None, ClassifyEvalSetData::Quick)
+        .await
+        .expect("read-only evaluation")
+    else {
+        panic!("eval response");
+    };
+    assert_eq!(
+        summary
+            .asks
+            .as_ref()
+            .expect("asks")
+            .kinds
+            .iter()
+            .find(|k| k.kind == "pay" && k.direction == "asks_you")
+            .expect("pay")
+            .counts
+            .found
+            + 1,
+        before
+            .asks
+            .as_ref()
+            .expect("asks")
+            .kinds
+            .iter()
+            .find(|k| k.kind == "pay" && k.direction == "asks_you")
+            .expect("pay")
+            .counts
+            .found
+    );
+    assert!(mismatches
+        .iter()
+        .any(|m| m.provider_id == "demo-msg-9" && m.question == "ask" && m.actual == "no row"));
+    let after: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(state.store.writer())
+        .await
+        .expect("changes");
+    assert_eq!(
+        changes, after,
+        "evaluation must not regenerate the missing task"
     );
 }

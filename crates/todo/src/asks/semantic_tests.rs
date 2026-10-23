@@ -255,3 +255,15 @@ fn a_postposed_condition_attaches_to_its_task_but_an_embedded_question_is_firm()
         "a second embedded question cannot erase the task's condition"
     );
 }
+
+#[test]
+fn card_expiry_and_payment_method_deadline_are_distinct_date_roles() {
+    let a = judge("Your card expires on 26 October. Update your payment method before 30 October or your subscription will lapse.", false);
+    let unit = a
+        .units
+        .iter()
+        .find(|u| u.answer == AskAnswer::AsksYou)
+        .expect("payment method task");
+    let date = &a.facts.dates[unit.tags.as_ref().expect("tags").due.expect("deadline")];
+    assert_eq!(date.at.date_naive().to_string(), "2026-10-30");
+}

@@ -838,3 +838,56 @@ async fn equal_bills_from_one_sender_keep_unmarked_account_headers_as_distinct_o
     );
     assert_ne!(rows[0].dedup_key, rows[1].dedup_key);
 }
+
+#[tokio::test]
+async fn distinct_undated_calendar_uids_never_use_the_reminder_period_lookup() {
+    let fx = Fixture::new().await;
+    for uid in ["event-one", "event-two", "event-three"] {
+        let mail = fx
+            .message(
+                &ThreadId::new(),
+                "organiser@example.com",
+                ME,
+                Duration::minutes(5),
+                None,
+            )
+            .await;
+        fx.state
+            .store
+            .insert_body(&MessageBody {
+                message_id: mail.id.clone(),
+                text_plain: Some("An invitation.".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: mail.date,
+                metadata: mxr_core::MessageMetadata {
+                    calendar: Some(mxr_core::CalendarMetadata {
+                        method: Some("REQUEST".into()),
+                        component_kind: Some("VEVENT".into()),
+                        uid: Some(uid.into()),
+                        summary: Some(uid.into()),
+                        rsvp_requested: true,
+                        starts_at: Some((chrono::Utc::now() + Duration::days(10)).to_rfc3339()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            })
+            .await
+            .expect("stored invitation");
+        crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
+        crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
+    }
+    let rows = fx
+        .state
+        .store
+        .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
+        .await
+        .expect("RSVP rows");
+    assert_eq!(
+        rows.len(),
+        3,
+        "three UIDs mean three identities, including on replay"
+    );
+    assert!(rows.iter().all(|t| t.kind == "rsvp"));
+}

@@ -96,16 +96,16 @@ export function topicLabel(topic: MessagesTopic): string {
   return others.length > 0 ? `with ${others.join(", ")}: ${topic.subject}` : topic.subject;
 }
 
-const STATE_WORDS: Record<MessagesTopic["state"], string> = {
+const STATE_WORDS = {
   your_turn: "your turn",
   waiting: "waiting",
-  quiet: "quiet",
   done: "done here",
-};
+} satisfies Record<Exclude<MessagesTopic["state"], "quiet">, string>;
 
 /** "your turn · 16h", "waiting · 1d". */
 export function topicStateLabel(topic: MessagesTopic, now: Date = new Date()): string {
-  return `${STATE_WORDS[topic.state]} · ${waitLabel(topic.last_at, now)}`;
+  const recency = waitLabel(topic.last_at, now);
+  return topic.state === "quiet" ? recency : `${STATE_WORDS[topic.state]} · ${recency}`;
 }
 
 /** The topic before or after `current`, wrapping at neither end. */

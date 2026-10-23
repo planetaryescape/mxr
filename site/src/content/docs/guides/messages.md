@@ -140,6 +140,16 @@ Opening a person shows how you know them ("You've written 48 times since
 2023. Last: Tuesday."), every topic with them, group threads as "with
 Ruth: Pricing copy", and the selected topic as a conversation.
 
+In the web app, choose a person's name to inspect and copy their linked email
+addresses. Choose a message's sender name to see the original From address;
+it can differ from the addresses linked to that person. Choose `Message info`
+on a message to inspect its recorded From, To, Cc and available Bcc addresses.
+An omitted or empty To or Cc list says that none were recorded. An omitted or
+empty Bcc list says it was not recorded in this copy, which cannot confirm that
+nobody was hidden. If the message details cannot be loaded, the app reports that
+or offers a retry. Long address lists scroll within the dialog. Escape closes
+the address panel or message info and returns focus to its trigger.
+
 Read the conversation directly. mxr removes repeated trailing history,
 signatures and footers when it can identify them. Quoted questions beside
 inline answers stay together, and forwarded messages keep their attribution
@@ -164,6 +174,9 @@ sender [mail appearance choice](/guides/web-app/#the-reader).
 
 The reply box sits at the bottom, already addressed ("Reply to Samir ·
 Contract renewal"), with reply all on by default in a group.
+
+Topic labels show the state and recency for your turn, waiting and done topics.
+Quiet topics show only recency; the separate Quiet band for people remains.
 
 ## Got it
 

@@ -16,6 +16,7 @@ import { mergePeople, refreshMessages, type MergeSuggestion, type PersonPage } f
 import { ConversationView } from "./Conversation";
 import { GotItBar } from "./GotItBar";
 import { topicLabel, topicStateLabel, type Arrival } from "./messagesView";
+import { PersonIdentity } from "./PersonIdentity";
 import type { PendingAck } from "./useGotIt";
 
 export interface PersonPaneProps {
@@ -84,6 +85,7 @@ export function PersonPane(props: PersonPaneProps) {
           </button>
         }
         title={row.title}
+        titleContent={<PersonIdentity row={row} interactive={!props.loading} />}
         purpose={page.relationship_line}
         freshness={<span data-testid="person-header-line">{page.header_line}</span>}
       />
@@ -179,9 +181,11 @@ export function PersonPane(props: PersonPaneProps) {
                 <ModeMarks modes={otherModes(modes, "messages")} />
               </div>
               <ConversationView
+                key={props.topic ?? conversation.thread_id}
                 conversation={conversation}
                 asSent={props.asSent}
                 onToggleAsSent={props.onToggleAsSent}
+                disclosuresEnabled={!props.loading}
               />
             </>
           ) : (

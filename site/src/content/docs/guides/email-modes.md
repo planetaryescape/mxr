@@ -10,8 +10,11 @@ receipt matters a year from now, when you need its reference number. One
 list of subject lines treats all five the same and offers the same
 actions for each: reply, archive, label.
 
-mxr treats email as five modes that share one mailbox. Each has its own view
-and actions. Now brings together the work that needs your attention.
+mxr treats email as five modes that share one local mailbox and runtime.
+Each has its own view, primary object and completion action. The web app,
+TUI, CLI and agent interfaces use the same daemon-backed state, with different
+client surfaces. Now brings together a short list of work across the modes;
+it is a starting view, not a sixth mode.
 
 ```bash
 mxr now            # people waiting on you and tasks due soon
@@ -25,21 +28,20 @@ mxr modes explain  # what each shipped mode does and its keys
 
 ## Each mode does one job, with its own verb
 
-| Mode | What it holds | What you do there | When you're finished |
+| Mode | What it holds | What you do there | Completion |
 |---|---|---|---|
-| Messages | People you are in conversation with | Reply, or start a new topic | Nobody is waiting on you |
-| To do | Things you have to act on, such as a bill, a renewal or a form to sign | Do it, schedule it, tick it off | Nothing needs you until a named date |
-| Updates | Notifications that tell you something happened | Glance, then let go of the whole batch | Nothing new since the last digest |
-| Reading | Newsletters and posts you asked for | Read now, save for later, or unsubscribe | You're current; nothing is owed |
-| Archive | Records: receipts, orders, bookings, invoices | Ask for a fact and copy it, or open the document | Never: records stay |
+| [Messages](/guides/messages/) | People you are in conversation with | Read the request, reply, acknowledge or mark its topic done | Done clears that topic in Messages; a later message can bring it back |
+| [To do](/guides/todo/) | Dated actions with a source email | Check the evidence, act, schedule or complete one task | Completing a row ticks that task; other tasks remain open |
+| [Updates](/guides/updates/) | Source-grouped notifications | Glance, open the source email, make a task when needed, then let go | A preview selects the digest messages to mark done in Updates |
+| [Reading](/guides/reading/) | Newsletters and posts you chose | Read, save to Later, unsubscribe or let go | Let go or expiry clears an item from Reading; Later stays saved |
+| [Archive](/guides/archive/) | Sourced records: receipts, orders, bookings, invoices | Retrieve a field and follow it to its source email or document | Records stay filed; Archive has no done action |
 
-Two more views sit beside the modes. **Now** is the front page: at most ten
-items drawn from the modes, so you can answer "what needs me right now?"
-without opening each one. **Inbox** stays as the everything view, in
-arrival order.
+**Inbox** stays as the everything view, in arrival order. It is not a sixth
+mode. The mode answers what an email is for; Inbox shows what arrived.
 
-Messages, To do, [Updates](/guides/updates/), [Reading](/guides/reading/) and
-Archive are built in their own shape.
+Each view keeps its own object and action. Use Now to choose a person in Messages, a
+task in To do, the Updates briefing, or a reading item.
+Use Archive when you need a filed record and its source.
 
 ## A conversation can belong to several modes
 
@@ -54,9 +56,11 @@ mxr modes why MESSAGE_ID --format json
 mxr modes done THREAD_ID --mode messages --dry-run
 ```
 
-When the last active mode lets go, mxr also archives the conversation at the
-provider unless `modes.archive_on_last_done` is disabled. Review the preview
-before applying `mxr modes done THREAD_ID --mode messages`.
+When the last inbox-holding mode lets go, mxr may archive the conversation at
+the provider. This is enabled by default through
+`modes.archive_on_last_done`; the preview shows the provider effect before
+you apply `mxr modes done THREAD_ID --mode messages`. Archive records do not
+hold an email in the inbox and filing a record does not perform this action.
 
 ## Sorting rules and categories serve different jobs
 
@@ -69,6 +73,8 @@ When no rule decides, possible personal mail goes to Messages and machine
 mail goes to Updates, marked **Not sure**. A missing body remains pending.
 Open `mxr why MESSAGE_ID --format json` for the stored assessment and evidence,
 or `mxr classify report --format json` for bounded fallback counts and clusters.
+The stored-assessment details require changes made after
+`v0.6.158`; that release does not include them.
 
 While sync changes the evidence, an email can briefly be still sorting. It
 stays in Inbox and arrivals while its mode waits for a stored answer. If

@@ -1,19 +1,20 @@
 ---
-title: Clear Reading and Paper trail
-description: Sweep receipts and notifications away. Newsletters now have their own edition in Reading.
+title: Reading and Paper trail compatibility
+description: Use the retained Paper trail sender-bundle commands and find current Reading, Updates and Archive workflows.
 ---
 
 :::note
-Reading is now its own mode: an edition with a reader, a Later shelf and
-fading items. See [Read newsletters as an edition](/guides/reading/). This
-page covers Paper trail, and the sender moves, pins and sweeps both places
-still share.
+This page retains the older Paper trail sender-bundle workflow and its CLI
+and TUI compatibility commands. In the web app, `/paper-trail` redirects to
+[Updates](/guides/updates/). Sourced receipts, orders and bookings live in
+[Archive](/guides/archive/), and newsletters have their own
+[Reading](/guides/reading/) edition. The examples below cover the retained
+sender moves, pins and sweeps.
 :::
 
-Read what you want from newsletters and notifications, keep the few that
-matter, and archive the rest in one sweep. Mail that is not from a person
-never reaches the [desk](/guides/now/). It goes to one of two places
-instead:
+The older workflow grouped mail outside Messages into Reading and Paper
+trail. Reading now has its own edition. Paper trail remains a sender-bundle
+compatibility view; current notifications are handled in Updates.
 
 | Place | What is in it | How it reads |
 |---|---|---|
@@ -25,9 +26,9 @@ as records in [Archive](/guides/archive/), which keeps them after you sweep
 their emails and answers with the field you need, like an order number.
 
 Notifications now have their own mode. [Updates](/guides/updates/) reads
-the same automated mail as a briefing: one line per source, what changed
-first, gathered at 08:00 and 16:30 and let go in one key. Paper trail stays
-as the plain list by sender. `mxr paper-trail` and `mxr sweep` work as before.
+automated mail as a briefing: one line per source, what changed first,
+gathered at the configured cuts and let go after review. `mxr paper-trail`
+and `mxr sweep` still address the older sender-bundle view.
 
 Both places are views over the inbox. Archiving a message takes it out, and
 undo puts it back. Deliveries and calendar invites have their own pages, so
@@ -36,9 +37,9 @@ desk's **Everything else** line says how much arrived this week.
 
 ## Open a place
 
-In the web app, pick **Reading** or **Paper trail** in the sidebar, or follow
-the link on the desk. In the TUI they are lenses in the sidebar. From the
-command line:
+In the TUI, Reading and Paper trail remain sidebar lenses. The web app's old
+`/paper-trail` route redirects to Updates. From the command line, inspect the
+legacy sender bundles with:
 
 ```bash
 mxr paper-trail --messages 2
@@ -82,9 +83,9 @@ The full list of rules, in the order they apply, is in the
 
 ## Move a sender for good
 
-When a sender is in the wrong place, move them. In the web app use **Move
-sender to...** in Reading or Paper trail, under a message in the reader, or in
-the command palette, and choose:
+When a sender is in the wrong place, move them from the CLI or the TUI's
+Reading and Paper trail lenses. Choose the legacy Paper trail destination
+only when you want to keep using sender bundles:
 
 | Kind | Where their mail goes |
 |---|---|
@@ -126,8 +127,7 @@ paper-trail senders stays archived. Their new mail appears in the place.
 ## Pin what you want to keep
 
 A sweep leaves pinned messages where they are. Pin the few you want to keep
-in view before you sweep: use the pin at the end of a line in the web app, or
-from the command line:
+in view before you sweep, from the TUI or command line:
 
 ```bash
 mxr pin cc2cbc75-87a9-5c63-b941-aa63ec3607fb
@@ -176,17 +176,8 @@ Undo with:
 Add `--sender ADDRESS` to sweep one bundle. Without `--yes` or `--dry-run`,
 `mxr sweep` shows the preview and asks; outside a terminal it refuses.
 
-In the web app, sweep a sender's bundle or the whole place from its
-**Sweep** button or key. The preview comes from the daemon's dry run of the
-same request: how many messages, from which senders, a few subjects, and how
-many pinned messages stay. When the sweep reaches past what is on screen, it
-says so ("Archives 143 messages, 20 shown here"). The TUI shows the same
-preview before it archives.
-
-A sweep of one sender's bundle confirms with `Enter`. A sweep of the whole
-place opens on **Cancel**, and its button says how much it takes ("Archive
-all 143 from 35 senders"): press `Tab`, then `Enter`. That way a slip
-between the two sweep keys archives nothing.
+In the TUI, preview a sender's bundle or the whole place before confirming
+the sweep. The preview comes from the same daemon request as the apply.
 
 What a sweep archives:
 
@@ -197,8 +188,8 @@ What a sweep archives:
 
 ## Undo a sweep
 
-Undo puts every swept message back. Use the toast's **Undo** in the web app
-or TUI, or each id the sweep printed:
+Undo puts every swept message back. Use the TUI toast's **Undo** or an id
+the sweep printed:
 
 ```bash
 mxr undo 01a0e733-cc1f-71c0-b554-c03d6170d24c
@@ -213,13 +204,9 @@ A large sweep runs in chunks and prints one undo id per chunk; run
 
 ## Keys
 
-The keys for these places are the same in the web app and the TUI. They are
-in the keybindings reference, for the
-[web app](/reference/keybindings/#reading-edition) and the
-[TUI](/reference/keybindings/#reading). Once a conversation
-is open, the reader's own keys apply. Before 0.6.41 the web app used other
-keys to open these places and to sweep; the reference's 0.6.41 note lists
-them.
+Use the TUI's Reading and Paper trail keys from the
+[keybindings reference](/reference/keybindings/#reading). For the current
+web workflows, use [Reading](/guides/reading/) and [Updates](/guides/updates/).
 
 Next: when the desk is clear, the web app shows
 [low tide](/guides/sound-hints-and-touch/#low-tide). Back to

@@ -91,14 +91,15 @@ fn draw_with_color_mode(
         ),
         Style::default().fg(theme.text_muted),
     )));
-    let max_scroll = lines.len().saturating_sub(usize::from(inner.height));
+    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+    let max_scroll = paragraph
+        .line_count(inner.width)
+        .saturating_sub(usize::from(inner.height));
     let scroll = usize::from(scroll_offset)
         .min(max_scroll)
         .min(u16::MAX as usize) as u16;
     frame.render_widget(
-        Paragraph::new(lines)
-            .wrap(Wrap { trim: false })
-            .scroll((scroll, 0)),
+        paragraph.scroll((scroll, 0)),
         inner,
     );
 }
@@ -123,18 +124,6 @@ fn proof_keys() -> &'static BTreeMap<&'static str, &'static str> {
 
 fn key(action: &str) -> &'static str {
     proof_keys().get(action).copied().unwrap_or("?")
-}
-
-/// Number of proof content lines used to clamp End and tests. This includes
-/// explicit newlines in model text and the warning/provenance/help rows.
-pub fn line_count(proposal: &ComposeProposalData) -> usize {
-    1 + proposal
-        .changes
-        .iter()
-        .map(|change| change.text.bytes().filter(|byte| *byte == b'\n').count())
-        .sum::<usize>()
-        + usize::from(!proposal.gaps.is_empty())
-        + 2
 }
 
 fn proof_lines(
@@ -420,8 +409,7 @@ mod tests {
                 .join("\n"),
         }];
         draft.text = draft.changes[0].text.clone();
-        let end = line_count(&draft).saturating_sub(10) as u16;
-        let backend = rendered(false, end, &draft);
+        let backend = rendered(false, u16::MAX, &draft);
         let rows: Vec<String> = (0..backend.buffer().area.height)
             .map(|y| {
                 (0..backend.buffer().area.width)
@@ -431,5 +419,26 @@ mod tests {
             .collect();
         assert!(rows.iter().any(|row| row.contains("draft line 39")));
         assert!(rows.iter().any(|row| row.contains("history not used")));
+    }
+
+    #[test]
+    fn end_reaches_the_last_word_of_a_wrapped_paragraph() {
+        let mut draft = proposal();
+        draft.text = format!("{}FINAL_WORD_ANCHOR", "long draft text ".repeat(200));
+        draft.changes = vec![TextChangeData {
+            kind: TextChangeKindData::Kept,
+            text: draft.text.clone(),
+        }];
+        let backend = rendered(false, u16::MAX, &draft);
+        let buffer = backend.buffer();
+        let text = (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("FINAL_WORD_ANCHOR"));
     }
 }

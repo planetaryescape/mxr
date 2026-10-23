@@ -182,16 +182,8 @@ impl App {
                     None
                 }
                 Some("ComposeProofScrollBottom") => {
-                    let bottom = self
-                        .compose
-                        .assist_review
-                        .as_ref()
-                        .and_then(|review| review.proposal())
-                        .map(crate::ui::compose_assist_proof::line_count)
-                        .unwrap_or_default()
-                        .saturating_sub(1) as u16;
                     if let Some(review) = self.compose.assist_review.as_mut() {
-                        review.proof_scroll_offset = bottom;
+                        review.proof_scroll_offset = u16::MAX;
                     }
                     None
                 }

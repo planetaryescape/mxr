@@ -1,12 +1,15 @@
 # Every authored website page has a destination and an implementation brief
 
-Inventory baseline: `origin/main` `f39ae66578e3099e464967ab2f042e24b1ad8ec4`, read on 2026-10-23. 80 authored Markdown/MDX files exist under `site/src/content/docs/` before CLI reference generation. Generated CLI children are handled by their generator, not counted as hand-authored files. This is an exhaustive route disposition inventory; priority pages were read in depth, other pages retain their mechanics pending any focused verification required by implementation. “Keep and relink” is not a claim that every existing command was replayed.
+Original inventory baseline: `origin/main` `f39ae66578e3099e464967ab2f042e24b1ad8ec4`, read on 2026-10-23. That tree had 80 authored Markdown/MDX files under `site/src/content/docs/` before CLI reference generation. Generated CLI children are handled by their generator, not counted as hand-authored files. This is the original route disposition inventory; priority pages were read in depth, other pages retain their mechanics pending any focused verification required by implementation. “Keep and relink” is not a claim that every existing command was replayed.
+
+At `fe8ea0f1ba4253df34d586c82eb2a58e1a240695`, the current tree has 81 authored Markdown/MDX routes. The existing `getting-started/agent-quick-start.md` was omitted from the original table. The added row records its disposition; this update does not claim that the original full audit was rerun.
 
 Use the [navigation map](../website-refresh/blueprint/07-guides-and-navigation.md) for group placement and the [verification contract](../website-refresh/blueprint/10-verification.md) for acceptance. All existing routes remain unless a separately justified redirect preserves their links.
 
 | Current source below site/src/content/docs | Disposition | Required result |
 |---|---|---|
 | `examples.md` | Rewrite | Select jobs that demonstrate runtime value; link full recipes and reference rather than listing every command family. |
+| `getting-started/agent-quick-start.md` | Revise | Take an existing agent through synthetic mail to a shared draft; preserve the profile and review boundaries. |
 | `getting-started/first-sync.md` | Revise | Explain usable partial history, completeness and cached-content limits; point to local query verification. |
 | `getting-started/gmail-setup.md` | Keep and relink | Keep provider/platform setup mechanics; link shared demo and agent route, and verify any setup command newly promoted. |
 | `getting-started/imap-smtp-setup.md` | Keep and relink | Keep provider/platform setup mechanics; link shared demo and agent route, and verify any setup command newly promoted. |

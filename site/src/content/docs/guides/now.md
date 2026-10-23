@@ -3,7 +3,8 @@ title: Start from Now
 description: Find people waiting on you and tasks due soon, then open their modes.
 ---
 
-Now is the front page: the few things that need you now, from every mode.
+Now is the front page: a short list of work from the five modes. Choose an
+item here, then finish it in its own mode. Now has no separate Done action.
 It shows at most ten things, in four sections that never change order:
 
 - **People**: whose turn it is with you, from Messages. Never the people you
@@ -22,10 +23,9 @@ you have written to; "others" are people who wrote to you and you have not
 answered, whether it is their first message or not. The headline, that line,
 "and 11 more in Messages", Messages' Your turn and the Messages count in the
 rail all count the same rows (a person once, a group thread once), so the
-numbers add up. A section with nothing in it
-disappears, and when they all have, Now says "Clear." and when the next to-do
-surfaces. The caps live in the daemon, so the web app, the TUI and
-`mxr now` show the same ten things.
+numbers add up. A section with nothing in it disappears. When all four are
+empty, Now says "Clear" until another item surfaces. The caps live in the
+daemon, so the web app, the TUI and `mxr now` show the same ten things.
 
 Open [Archive](/guides/archive/) when you need a filed receipt, booking or
 reference. Records remain available there without adding work to Now.
@@ -110,7 +110,11 @@ line for the sorting policy, or read [Messages](/guides/messages/#which-threads-
 
 Arrivals read the same stored assessment as the modes and Inbox chips. Cached
 mail, sender history, aliases and teaching changes refresh that assessment.
-The original arrival destination and first-seen time stay unchanged.
+The original arrival destination and first-seen time stay unchanged. This
+stored-assessment workflow describes `main` at
+`fe8ea0f1ba4253df34d586c82eb2a58e1a240695`. Published `v0.6.157` predates
+it; the `v0.6.158` tag points to an earlier commit and its release is still
+a draft.
 
 Unknown purpose still has a home marked **Not sure**: Messages for possible
 personal mail, Updates for machine mail. Expand the arrivals line for provisional-placement counts. Run
@@ -129,7 +133,7 @@ one key:
 | `x` | To do (adds a to-do from it) |
 | `u` | Updates |
 | `r` | Reading |
-| `e` | Archive (files it as a record) |
+| `e` | Archive (files the email's evidence as a record) |
 
 The move takes effect at once in every client, and the toast asks once:
 "Moved to Reading. Always for this sender? (P)". `P` sends everything from

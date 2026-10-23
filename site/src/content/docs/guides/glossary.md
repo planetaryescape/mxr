@@ -7,7 +7,11 @@ mxr borrows vocabulary from email standards, Gmail, Hey, and IMAP. This page rec
 
 ## Architecture
 
-**Daemon**: the background process that owns the SQLite store, the search index, the network connections, and the IPC socket. The TUI, the CLI, and the HTTP bridge are all clients of the same daemon. `mxr` autostarts it; `mxr daemon` runs it explicitly. See the [architecture guide](/guides/architecture/).
+**Runtime**: the local daemon and the mailbox state it owns: synced mail, the SQLite store, search index and provider connections. A provider account is one connected mailbox in that runtime. See the [architecture guide](/guides/architecture/).
+
+**Daemon**: the background process for a runtime. The TUI, CLI, web app, HTTP bridge, MCP server, scripts and agents can call the same daemon; each client exposes different operations and may have different authority. `mxr` autostarts the daemon; `mxr daemon` runs it explicitly. See the [architecture guide](/guides/architecture/).
+
+**Client**: an interface or caller that uses a runtime, such as the TUI, CLI, web app, MCP server, script or agent. Sharing a daemon shares mailbox state, not client capabilities or permissions.
 
 **Adapter**: the per-provider code that translates mxr's internal model to and from a provider's API or wire protocol. Today: `provider-gmail`, `provider-outlook`, `provider-imap`, `provider-smtp`, `provider-fake`. New adapters live in their own crate and pass a [conformance test suite](/reference/conformance/).
 
@@ -28,7 +32,7 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 **Config-backed account**: an entry in `config.toml` under `[accounts.<key>]`. IMAP/SMTP accounts and Gmail-with-BYOC live here. Editable from the TUI's Accounts page or by hand.
 
-**Runtime account**: what the daemon actually has connected. May include accounts that are config-backed (the common case) plus runtime-only entries (e.g. browser-auth Gmail sessions that don't have a TOML row). `mxr accounts` shows runtime; `mxr config show` shows config.
+**Provider account**: one connected mailbox in a runtime. `mxr accounts` shows accounts currently available to the daemon; `mxr config show` shows config-backed entries. An account is not the runtime itself.
 
 **Owned address**: an address registered locally against an mxr account, used for direction inference and per-message From selection. Registering it in mxr does not create or authorise the address at the mail provider. Manage with `mxr accounts addresses`.
 
@@ -44,15 +48,15 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 ## Mutation flow
 
-**Mutation**: any operation that changes provider state (archive, trash, spam, label, snooze, send, unsend, unsubscribe). All support `--dry-run`; see the [automation contract](/guides/automation-contract/).
+**Mutation**: an operation that changes mail or provider state, such as archive, trash, label, snooze or send. Preview support depends on the command; check its CLI reference and the [automation contract](/guides/automation-contract/) before applying it.
 
-**Mutation ID**: a short token printed by archive/trash/spam/read/read-archive. Copy it and pass to `mxr undo MUTATION_ID` within ~60 seconds to revert.
+**Mutation ID**: an operation-specific token returned by some mutations. Use `mxr undo` only when that operation reports an undo ID and supports undo; the available effects and time window depend on the operation.
 
 **Reply-later** (a.k.a. **bookmark**): flag a thread to come back to. Hey's term is "Reply Later"; in the TUI the key is `b` for bookmark. The reply queue is browsed with `mxr replies` or `Ctrl-p → Reply Queue`.
 
 **Snooze**: hide a thread until a time. Returns to inbox at the specified moment. Set with `mxr snooze --until '<time>'` (see [time phrases](/reference/time-phrases/)) or the `Z` key in the TUI.
 
-**Screener**: Hey-borrowed term for triaging unknown senders into Allow / Deny / Feed / Paper Trail. Anyone you have written to is never in the queue. Allow gives the sender Messages visibility, not automatic reply debt. A directed request can enter New from people until you write to them. Feed sends their mail to Reading and Paper Trail to Paper trail, the same as a [sender kind](#the-desk-and-places). Local-only consent metadata; never round-trips to the provider. CLI: `mxr screener`.
+**Screener**: Hey-borrowed term for triaging unknown senders into Allow / Deny / Feed / Paper Trail. Anyone you have written to is never in the queue. Allow gives the sender Messages visibility, not automatic reply debt. A directed request can enter New from people until you write to them. Feed sends their mail to Reading; Paper Trail retains the older sender-bundle destination. These are sender decisions, not extra email modes. CLI: `mxr screener`.
 
 **Owed reply**: an unanswered directed request from someone you have written to, or an explicit reply-later reminder that has returned: the desk's You owe lane. Informational mail and acknowledgements do not create a reply obligation. mxr ranks requests by `waiting_days / expected_days`, where `expected_days` is your usual reply time. Reachable via `mxr owed`, the desk, or the TUI sidebar (Owed). The raw set (every thread whose latest message is inbound with no later reply, automated and archived mail included) is `mxr owed --all` or `mxr search 'is:owed-reply'`. See the [search guide](/guides/search/#common-patterns).
 
@@ -60,7 +64,7 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 ## The desk and places
 
-**Desk**: the web app's home and a TUI lens: what needs you, not what arrived. Four lanes, each row with its reason and age. CLI: `mxr desk`. See [Clear the desk](/guides/now/).
+**Desk**: a separate four-lane workflow for replies, promises, waiting conversations and new requests from people. It is available through `mxr desk`; Now is the web app and TUI front page. See [Start from Now](/guides/now/).
 
 **Lane**: one section of the desk. **You owe** (a directed request or returned reply-later timer), **Due** (a promise you made is coming due), **Waiting on** (you wrote last and they have not answered), **New from people** (a directed request from someone you have not written to). The rules are in the [desk reference](/reference/desk-and-places/#lanes).
 
@@ -68,9 +72,9 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 **Promise**: the desk's and web app's word for a commitment you made in mail you sent. When you send one with a date, mxr offers to remind you. See [Reply to everyone you owe](/guides/focus-and-reply/#keep-the-promises-you-make).
 
-**Focus & reply**: a web app mode that shows everyone you owe a reply one conversation at a time, with the reply beside it. See [Reply to everyone you owe](/guides/focus-and-reply/).
+**Focus & reply**: a web workflow that shows everyone you owe a reply one conversation at a time, with the reply beside it. See [Reply to everyone you owe](/guides/focus-and-reply/).
 
-**Place**: where mail that is not from people goes instead of the desk. There are two, **Reading** (newsletters and lists) and **Paper trail** (receipts and notifications). Both are views over the inbox. CLI: `mxr reading`, `mxr paper-trail`. See [Clear Reading and Paper trail](/guides/reading-and-paper-trail/). Under the [modes plan](#email-modes), Reading becomes a mode and Paper trail splits into Updates and Archive.
+**Paper trail**: a retained compatibility name for the older sender-bundle view and its CLI command. The current workflow uses the five modes: Updates groups notifications, while Archive holds sourced records. See [Reading and Paper trail](/guides/reading-and-paper-trail/).
 
 **Sender kind**: where a sender's mail goes, set once with `mxr sender kind` or Move sender: people, reading, paper-trail, screened-out, or auto (the rules decide). Stored as the sender's screener decision. `mxr why MESSAGE_ID` says which rule placed a message.
 
@@ -84,10 +88,10 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 ## Email modes
 
-mxr's plan treats email as five apps sharing one inbox. See
-[Email is five apps at once](/guides/email-modes/) for the model and what
-ships today. Terms marked **(planned)** name parts of the plan that are not
-in a release yet; the rest exist today.
+mxr's current email workflow has five shipped modes over one shared mailbox.
+See [Email is five apps at once](/guides/email-modes/) for their jobs and
+completion actions. Terms marked **(planned)** describe future work, not
+current behavior.
 
 **Mode**: one of the five jobs email does, each with its own view, unit and
 verbs: Messages, To do, Updates, Reading and Archive. One email can be in
@@ -181,8 +185,8 @@ keys (`mxr modes rail`).
 went quiet. Person mail still in your inbox stays in Messages until you mark
 it done there, so it never vanishes from every mode.
 
-**Inbox**: everything, in arrival order. Under the modes plan it stays as
-a lens over all mail, not a mode.
+**Inbox**: everything in arrival order. It remains an all-mail view outside
+the five modes.
 
 **Handoff**: passing an item from one mode to the next, such as making a
 to-do from a message (`t`), filing an email in Archive (`T`), or a ticked-off
@@ -190,18 +194,19 @@ bill or a delivered parcel's order filing itself in Archive. The toast names
 where the item went.
 
 **Done here**: finishing an item in one mode without clearing it from the
-others (`e`, `mxr modes done`). The provider archive happens when the last
-mode lets go, and the toast says which happened. The desk's own **Done**,
-at `/desk`, still archives at once.
+others (`e`, `mxr modes done`). When the last inbox-holding mode lets go, the
+provider email may be archived if `modes.archive_on_last_done` is enabled;
+preview the command to see its effect. The desk's own **Done** is a separate
+lane action.
 
-**Reason**: the line that says why an item is where it is. Today
-`mxr why MESSAGE_ID` prints the place and the rule. Under the plan every
-item in every mode carries one, naming the rule, your decision or the
-model.
+**Reason**: the explanation for an email's placement. Use
+`mxr why MESSAGE_ID` to inspect the reason and available evidence for the
+installed version. See [Messages](/guides/messages/#which-threads-land-here).
 
-**Correction**: telling mxr an item is in the wrong place. Today you
-correct a sender with `mxr sender kind`. Corrections per email are
-planned.
+**Correction**: telling mxr an email is in the wrong mode. Preview a
+per-email correction with `mxr reclassify MESSAGE_ID MODE --dry-run`; use
+`--sender` when the choice should apply to that sender's mail. See
+[Start from Now](/guides/now/#move-an-email-to-where-it-belongs).
 
 **Fast tier** (planned): model work that touches every incoming message,
 such as deciding its mode. Runs on your local model by default; a cloud

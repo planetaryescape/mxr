@@ -21,6 +21,8 @@ Delivery updates and calendar invites have an Updates home too. Their existing
 specialist views remain available. `mxr why MESSAGE_ID --format json` names the
 stored deciding claim; Inbox chips and arrivals use the same answer. A done
 mark, snooze or expired item still controls whether it is open in Updates.
+The stored-assessment details require changes made after
+`v0.6.158`; that release does not include them.
 
 ## Each source is one line, sorted by what it asks of you
 

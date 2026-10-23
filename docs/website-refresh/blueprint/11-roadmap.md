@@ -6,7 +6,7 @@ Move from skateboard to scooter, bicycle, motorbike and car. Each rung is a work
 
 No separate unusable foundation turn is needed: the site and its build already exist. Generation, scoped checks, design review and deployment travel with the nearest useful change. Passing tests and behaving correctly are required, but the reader outcome and design intent must also be observed. (D-WEB-010, D-WEB-021, D-WEB-024)
 
-These are staged website releases under BK’s subsequent orchestrate authorisation. Rung 1 is deployed and its public entry paths are verified; [production evidence](../evidence/rung1-production.md) records the exact source and remaining comprehension limits. Rung 2 begins with S3 and host-setup evidence; later implementation remains planned. Use the existing site delivery mechanism and do not start dependent code until its prerequisite deploys. Do not create a binary release/tag for copy-only work.
+These are staged website releases under BK’s subsequent orchestrate authorisation. Rung 1 is deployed and its public entry paths are verified; [production evidence](../evidence/rung1-production.md) records the exact source and remaining comprehension limits. Rung 2 is deployed and its public agent tutorial is verified; [production evidence](../evidence/rung2-production.md) records the shared-draft evidence boundaries. Rung 3 is next; later rungs remain planned. Use the existing site delivery mechanism and do not start dependent code until its prerequisite deploys. Do not create a binary release/tag for copy-only work.
 
 ## Phase 0 verifies evidence and the first-screen direction
 

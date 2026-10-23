@@ -29,12 +29,18 @@
 - [HTTP bridge](https://mxr.sh/reference/bridge.md): endpoints, auth, curl recipes
 - [API route inventory](https://mxr.sh/reference/api-explorer/): read-only list of the daemon HTTP routes in the generated OpenAPI document; some live routes are missing (requires JS)
 
-## Your day in mxr
+## Work with your mail
 
-- [Work through your day](https://mxr.sh/guides/your-day.md): desk, focus & reply, then Reading and Paper trail
-- [Clear the desk](https://mxr.sh/guides/desk.md): replies you owe, promises due, threads waiting, new mail from people; `mxr desk`, `mxr desk done`
-- [Reply to everyone you owe](https://mxr.sh/guides/focus-and-reply.md): focus mode, undo send, promises on send, `mxr commitments add`
-- [Clear Reading and Paper trail](https://mxr.sh/guides/reading-and-paper-trail.md): `mxr reading`, `mxr paper-trail`, `mxr why`, `mxr sender kind`, `mxr pin`, `mxr sweep`
+- [Work through your day](https://mxr.sh/guides/your-day.md): start on Now, then reply in Messages, act on To do, review Updates, read newsletters and retrieve sourced records
+- [Start from Now](https://mxr.sh/guides/now.md): choose from a short list across five modes; finish each item in its own mode
+- [Email modes](https://mxr.sh/guides/email-modes.md): five workflows over one mailbox, with separate completion actions; Inbox remains an arrival-order view
+- [Messages](https://mxr.sh/guides/messages.md): conversations with people, their source messages and reply actions
+- [To do](https://mxr.sh/guides/todo.md): dated actions tied to source email and reviewed before completion
+- [Updates](https://mxr.sh/guides/updates.md): notifications grouped by source; inspect the source email or create a task when needed
+- [Reading](https://mxr.sh/guides/reading.md): read chosen newsletters as an edition and keep items in Later
+- [Archive](https://mxr.sh/guides/archive.md): retrieve a sourced fact and open its supporting email or document; records do not archive provider mail
+- [Reply to everyone you owe](https://mxr.sh/guides/focus-and-reply.md): focus workflow, undo send, promises on send, `mxr commitments add`
+- [Reading and Paper trail](https://mxr.sh/guides/reading-and-paper-trail.md): compatibility guide to the older Paper trail sender-bundle view and its commands
 
 ## Working with mxr
 

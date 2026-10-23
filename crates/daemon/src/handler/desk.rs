@@ -183,6 +183,8 @@ pub(super) async fn thread_turn(
     let is_self = self_matcher(state, account_id).await?;
     let dismissed = super::modes::messages_dismissals(state, account_id).await?;
     let lanes = thread_lanes(&AccountInputs {
+        pending_threads: &senders.pending_threads(&messages, &is_self),
+        assessments: &senders.assessments,
         account_id,
         messages: &messages,
         contacts: &senders.contacts,
@@ -258,6 +260,7 @@ pub(super) async fn attach_histories<'a>(
 /// shared classifier: contacts and screener decisions, keyed by lowercased
 /// email.
 pub(super) struct Senders {
+    pub assessments: HashMap<MessageId, mxr_core::assessment::MailAssessment>,
     pub contacts: HashMap<String, DeskContact>,
     pub written_to: HashSet<String>,
     pub screener: HashMap<String, ScreenerDisposition>,
@@ -269,6 +272,16 @@ pub(super) struct Senders {
 
 impl Senders {
     pub(super) async fn load(
+        state: &AppState,
+        account_id: &AccountId,
+        messages: &[DeskMessage],
+    ) -> Result<Self, super::HandlerError> {
+        let mut senders = Self::load_raw(state, account_id, messages).await?;
+        senders.assessments = super::assessments::materialize(state, account_id, messages).await?;
+        Ok(senders)
+    }
+
+    pub(super) async fn load_raw(
         state: &AppState,
         account_id: &AccountId,
         messages: &[DeskMessage],
@@ -320,6 +333,7 @@ impl Senders {
             .filter_map(|(id, mode)| Some((id, mail_kind::kind_for_stored_mode(&mode)?)))
             .collect();
         Ok(Self {
+            assessments: HashMap::new(),
             written_to: state
                 .store
                 .addresses_written_to(account_id, &emails)
@@ -329,6 +343,18 @@ impl Senders {
             moves,
             treatments: state.store.rule_treatments(account_id).await?,
         })
+    }
+
+    pub(super) fn pending_threads(
+        &self,
+        messages: &[DeskMessage],
+        is_self: &dyn Fn(&str) -> bool,
+    ) -> HashSet<ThreadId> {
+        messages
+            .iter()
+            .filter(|m| !is_outbound(m, is_self) && !self.assessments.contains_key(&m.id))
+            .map(|m| m.thread_id.clone())
+            .collect()
     }
 
     /// The kind signals for one of these messages.
@@ -350,6 +376,7 @@ impl Senders {
             .get(&message.id)
             .and_then(|(mode, name)| Some((mail_kind::kind_for_stored_mode(mode)?, name.as_str())));
         signals.written_to |= self.written_to.contains(&email);
+        signals.assessment = self.assessments.get(&message.id);
         signals
     }
 
@@ -409,6 +436,8 @@ async fn account_desk(
     let is_self = self_matcher(state, account_id).await?;
     let dismissed = super::modes::messages_dismissals(state, account_id).await?;
     let mut lanes = thread_lanes(&AccountInputs {
+        pending_threads: &senders.pending_threads(&messages, &is_self),
+        assessments: &senders.assessments,
         account_id,
         messages: &messages,
         contacts: &senders.contacts,

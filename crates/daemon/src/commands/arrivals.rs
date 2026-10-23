@@ -412,6 +412,7 @@ mod tests {
     fn line() -> ArrivalsData {
         let now = chrono::Utc::now();
         ArrivalsData {
+            classification_report: None,
             generated_at: now,
             since: now,
             until: now,

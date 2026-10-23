@@ -603,6 +603,7 @@ pub struct AppState {
     /// can publish a new Tantivy reader generation.
     lexical_search_warmed: std::sync::atomic::AtomicBool,
     config: RwLock<mxr_config::MxrConfig>,
+    pub(crate) assessment_config_gate: tokio::sync::RwLock<()>,
     shutdown_tx: watch::Sender<bool>,
     /// Bumped by [`AppState::reload_accounts_from_disk`] after the provider
     /// runtime is rebuilt. Long-lived loops that hold a provider (the IDLE
@@ -926,6 +927,7 @@ impl AppState {
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
+            assessment_config_gate: tokio::sync::RwLock::new(()),
             shutdown_tx,
             reload_tx,
             runtime_tasks,
@@ -2044,6 +2046,7 @@ impl AppState {
             .await
             .map_err(|e| e.to_string())?;
         apply_llm_config_to_runtime(&self.llm, &config.llm);
+        let _assessment_config = self.assessment_config_gate.write().await;
         *self.config.write() = config.clone();
         Ok(config)
     }
@@ -2055,6 +2058,7 @@ impl AppState {
             .await
             .expect("apply semantic config");
         apply_llm_config_to_runtime(&self.llm, &config.llm);
+        let _assessment_config = self.assessment_config_gate.write().await;
         *self.config.write() = config;
     }
 
@@ -2253,6 +2257,7 @@ impl AppState {
             .await
             .map_err(|e| e.to_string())?;
         apply_llm_config_to_runtime(&self.llm, &config.llm);
+        let _assessment_config = self.assessment_config_gate.write().await;
         *self.config.write() = config;
         crate::loops::spawn_sync_loops(self.clone());
         Ok(())
@@ -2375,6 +2380,7 @@ impl AppState {
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
+            assessment_config_gate: tokio::sync::RwLock::new(()),
             shutdown_tx,
             reload_tx,
             runtime_tasks,
@@ -2471,6 +2477,7 @@ impl AppState {
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
+            assessment_config_gate: tokio::sync::RwLock::new(()),
             shutdown_tx,
             reload_tx,
             runtime_tasks,
@@ -2593,6 +2600,7 @@ impl AppState {
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
                 lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
                 config: RwLock::new(config),
+                assessment_config_gate: tokio::sync::RwLock::new(()),
                 shutdown_tx,
                 reload_tx,
                 runtime_tasks,

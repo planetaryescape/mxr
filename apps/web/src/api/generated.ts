@@ -835,6 +835,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/classify/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stored fallback clusters and pending assessment counts; local and read-only */
+        get: operations["mail_classify_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/codes": {
         parameters: {
             query?: never;
@@ -4979,6 +4996,7 @@ export interface components {
             | "archive"
             | "screened_out"
             | "spam"
+            | "trash"
             | "sorting";
         /** @description One count on the line, and what opening it lists. */
         ArrivalCountData: {
@@ -5056,6 +5074,8 @@ export interface components {
         ArrivalsData: {
             /** @description To do and Archive, shown as "also" and never added. */
             also?: components["schemas"]["ArrivalCountData"][];
+            classification_report?:
+                components["schemas"]["ClassifyReportData"] | null;
             /**
              * @description When nothing on Now waits: "Clear. All 50 emails since 08:12 are
              *     accounted for." Absent when nothing arrived.
@@ -5101,6 +5121,25 @@ export interface components {
             track_record?: string | null;
             /** Format: date-time */
             until: string;
+        };
+        AssessmentClaim: {
+            evidence: string[];
+            reason: string;
+            rule: string;
+            source: string;
+        };
+        /** @description Canonical observations useful for finding missing classifier distinctions. */
+        AssessmentFacts: {
+            addressed: boolean;
+            auto_generated: boolean;
+            body_cached: boolean;
+            bulk: boolean;
+            has_list_id: boolean;
+            has_unsubscribe: boolean;
+            recipients: number;
+            sender_shape: string;
+            templated_sender: boolean;
+            written_to: boolean;
         };
         /**
          * @description What the writing help does with the text. A request without one lets the
@@ -5798,6 +5837,23 @@ export interface components {
             quote: string;
             thread_id?: string | null;
         };
+        ClassifyComparisonData: {
+            available: boolean;
+            available_versions: string[];
+            changes: components["schemas"]["ClassifyHomeChangeData"][];
+            /** Format: int32 */
+            compared: number;
+            current_version: string;
+            /** Format: int32 */
+            missing_previous_assessments: number;
+            /**
+             * Format: int32
+             * @description Missing or stale current assessments excluded from comparison.
+             */
+            pending_assessments: number;
+            requested_version: string;
+            truncated: boolean;
+        };
         /** @description Precision and recall for one kind of ask. */
         ClassifyEvalAskKindData: {
             counts: components["schemas"]["ClassifyEvalCountsData"];
@@ -6040,9 +6096,7 @@ export interface components {
             not_placed: number;
             /**
              * Format: int32
-             * @description Present emails with no arrivals row (history older than 30 days when
-             *     the account first synced), whose home was worked out live by the same
-             *     rules.
+             * @description Legacy field, always zero: historical mail also reads stored assessments.
              */
             placed_live: number;
             /**
@@ -6075,6 +6129,40 @@ export interface components {
              * @description Pairs with both members present.
              */
             pairs: number;
+        };
+        ClassifyFallbackClusterData: {
+            /** Format: int32 */
+            count: number;
+            examples: components["schemas"]["MessageId"][];
+            facts: components["schemas"]["AssessmentFacts"];
+            home: string;
+            rule: string;
+            who: string;
+        };
+        ClassifyHomeChangeData: {
+            current_home: string;
+            deciding_reason: string;
+            message_id: components["schemas"]["MessageId"];
+            previous_home: string;
+        };
+        /** @description A bounded local picture of stored home decisions. It never creates assessments. */
+        ClassifyReportData: {
+            clusters: components["schemas"]["ClassifyFallbackClusterData"][];
+            /** Format: int32 */
+            examined: number;
+            /** Format: int32 */
+            fallback: number;
+            /** Format: int32 */
+            missing: number;
+            /** Format: int32 */
+            pending_body: number;
+            policy_version: string;
+            /**
+             * Format: int32
+             * @description Stored rows whose observed inputs changed; awaiting reconciliation.
+             */
+            stale: number;
+            truncated: boolean;
         };
         /**
          * @description Originating client for an IPC request. Carried on the envelope so the
@@ -7761,6 +7849,7 @@ export interface components {
          * @enum {string}
          */
         KindRuleData:
+            | "fallback"
             | "decision"
             | "delivery"
             | "invite"
@@ -8002,6 +8091,21 @@ export interface components {
             /** Format: int64 */
             request_timeout_secs: number;
             supports_streaming: boolean;
+        };
+        MailAssessment: {
+            account_id: components["schemas"]["AccountId"];
+            deciding: components["schemas"]["AssessmentClaim"];
+            facts: components["schemas"]["AssessmentFacts"];
+            fallback: boolean;
+            home: string;
+            /** @description Digest of the canonical observed inputs, never mail content. */
+            input_fingerprint: string;
+            message_id: components["schemas"]["MessageId"];
+            not_sure?: string | null;
+            overridden: components["schemas"]["AssessmentClaim"][];
+            pending_body: boolean;
+            policy_version: string;
+            who: string;
         };
         /** @description A message's kind with the reason it was given. */
         MailKindData: {
@@ -11603,6 +11707,21 @@ export interface components {
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
+                  cmd: "ClassifyReport";
+                  /** Format: int32 */
+                  limit: number;
+              }
+            | {
+                  account_id?: components["schemas"]["AccountId"] | null;
+                  /** @enum {string} */
+                  cmd: "ClassifyCompare";
+                  /** Format: int32 */
+                  limit: number;
+                  policy_version: string;
+              }
+            | {
+                  account_id?: components["schemas"]["AccountId"] | null;
+                  /** @enum {string} */
                   cmd: "ClassifyEval";
                   set?: components["schemas"]["ClassifyEvalSetData"];
               }
@@ -13046,6 +13165,16 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  kind: "ClassifyReport";
+                  report: components["schemas"]["ClassifyReportData"];
+              }
+            | {
+                  comparison: components["schemas"]["ClassifyComparisonData"];
+                  /** @enum {string} */
+                  kind: "ClassifyCompare";
+              }
+            | {
+                  /** @enum {string} */
                   kind: "ClassifyEval";
                   mismatches: components["schemas"]["ClassifyEvalMismatchData"][];
                   summary: components["schemas"]["ClassifyEvalSummaryData"];
@@ -13890,6 +14019,7 @@ export interface components {
               }
             | {
                   account_id: components["schemas"]["AccountId"];
+                  assessment?: components["schemas"]["MailAssessment"] | null;
                   /** @enum {string} */
                   kind: "MessageKind";
                   mail_kind: components["schemas"]["MailKindData"];
@@ -14849,6 +14979,8 @@ export interface components {
         /** @description Every mode one thread is in, returned by `Request::GetModeMembership`. */
         ThreadModesData: {
             account_id: components["schemas"]["AccountId"];
+            /** @description The stored answers behind this thread's memberships; live marks stay separate. */
+            assessments?: components["schemas"]["MailAssessment"][];
             /**
              * @description Modes this thread was marked done in and stays out of until a new
              *     message arrives.
@@ -17791,6 +17923,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_classify_report: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description Emails examined; default 1000, maximum 10000 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ClassifyReport variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
             /** @description Missing or invalid bridge token */
             401: {

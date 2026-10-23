@@ -363,10 +363,8 @@ pub(super) fn item_data(
         |kind| {
             if kind.corrected {
                 format!("Here because: {} (you).", kind.reason)
-            } else if matches!(issue.unsubscribe, UnsubscribeMethod::None) {
-                format!("Here because: {} (rule).", kind.reason)
             } else {
-                "Here because: you subscribed, and it has an unsubscribe link (rule).".to_string()
+                format!("Here because: {} (rule).", kind.reason)
             }
         },
     );

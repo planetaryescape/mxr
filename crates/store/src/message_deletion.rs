@@ -57,6 +57,12 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
     ),
     ("desk_dismissals", MessageDeletionRule::ClearedWithMessages),
     ("mode_done", MessageDeletionRule::ClearedWithMessages),
+    (
+        "assessment_thread_inputs",
+        MessageDeletionRule::KeptNoText(
+            "thread generations survive deletion so an in-flight assessment cannot commit old inputs; account deletion cascades",
+        ),
+    ),
     ("event_log", MessageDeletionRule::ClearedWithMessages),
     ("unsubscribe_receipts", MessageDeletionRule::ClearedWithMessages),
     // Cleared for every person a delete touches, and with its contact.

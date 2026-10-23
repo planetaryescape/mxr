@@ -147,6 +147,9 @@ pub struct ScreenerChoiceData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadModesData {
+    /// The stored answers behind this thread's memberships; live marks stay separate.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assessments: Vec<mxr_core::assessment::MailAssessment>,
     pub account_id: AccountId,
     pub thread_id: ThreadId,
     pub subject: String,

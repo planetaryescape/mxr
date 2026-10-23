@@ -15,11 +15,13 @@ mod admin;
 mod archive_ask;
 mod archive_recovery;
 pub(crate) mod arrivals;
+pub(crate) mod assessments;
 mod assistant;
 mod auth_sessions;
 mod briefing;
 pub(crate) mod categories;
 pub(crate) mod category_rules;
+mod classifier_report;
 mod classify_eval;
 mod classify_eval_asks;
 mod codes;
@@ -55,6 +57,7 @@ mod freshness;
 mod gist_kind;
 mod gist_numbers;
 mod helpers;
+mod home_projection;
 mod humanizer;
 mod keymap;
 mod llm_routes;
@@ -2141,6 +2144,14 @@ async fn dispatch(
             draft_id,
         } => compose_assist::apply(state, proposal_id, draft_id).await,
         Request::DraftEvalQuick => compose_eval::quick(state).await,
+        Request::ClassifyReport { account_id, limit } => {
+            classifier_report::report(state, account_id.as_ref(), *limit).await
+        }
+        Request::ClassifyCompare {
+            account_id,
+            policy_version,
+            limit,
+        } => classifier_report::compare(state, account_id.as_ref(), policy_version, *limit).await,
         Request::ClassifyEval { account_id, set } => {
             classify_eval::classify_eval(state, account_id.as_ref(), *set).await
         }
@@ -2565,6 +2576,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetArrivals { .. }
         | Request::ListArrivals { .. }
         | Request::GetArrivalModes { .. }
+        | Request::ClassifyReport { .. }
+        | Request::ClassifyCompare { .. }
         | Request::ClassifyEval { .. }
         | Request::ListCorrections { .. }
         | Request::GetRail { .. }
@@ -3063,6 +3076,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ApplyComposeProposal { .. } => "apply_compose_proposal",
         Request::DraftEval { .. } => "draft_eval",
         Request::DraftEvalQuick => "draft_eval_quick",
+        Request::ClassifyReport { .. } => "classify_report",
+        Request::ClassifyCompare { .. } => "classify_compare",
         Request::ClassifyEval { .. } => "classify_eval",
         Request::PrepareReply { .. } => "prepare_reply",
         Request::PrepareForward { .. } => "prepare_forward",
@@ -3302,7 +3317,9 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
             ..
         } => Some(account_id),
         Request::DraftEval { account_id, .. } => account_id.as_ref(),
-        Request::ClassifyEval { account_id, .. } => account_id.as_ref(),
+        Request::ClassifyReport { account_id, .. }
+        | Request::ClassifyCompare { account_id, .. }
+        | Request::ClassifyEval { account_id, .. } => account_id.as_ref(),
         Request::SetSignatureDefault { account_id, .. }
         | Request::ClearSignatureDefault { account_id, .. }
         | Request::ResolveSignature { account_id, .. } => account_id.as_ref(),

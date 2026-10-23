@@ -1768,6 +1768,50 @@
         }
       }
     },
+    "/api/v1/mail/classify/report": {
+      "get": {
+        "tags": [],
+        "summary": "Stored fallback clusters and pending assessment counts; local and read-only",
+        "operationId": "mail_classify_report",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Emails examined; default 1000, maximum 10000",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The ClassifyReport variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/codes": {
       "get": {
         "tags": [],
@@ -9310,6 +9354,7 @@
           "archive",
           "screened_out",
           "spam",
+          "trash",
           "sorting"
         ]
       },
@@ -9543,6 +9588,17 @@
             },
             "description": "To do and Archive, shown as \"also\" and never added."
           },
+          "classification_report": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ClassifyReportData",
+                "description": "Bounded stored fallback clusters, in the existing sorting disclosure."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "clear_line": {
             "type": [
               "string",
@@ -9622,6 +9678,81 @@
           "until": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "AssessmentClaim": {
+        "type": "object",
+        "required": [
+          "rule",
+          "reason",
+          "source",
+          "evidence"
+        ],
+        "properties": {
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      },
+      "AssessmentFacts": {
+        "type": "object",
+        "description": "Canonical observations useful for finding missing classifier distinctions.",
+        "required": [
+          "sender_shape",
+          "has_list_id",
+          "has_unsubscribe",
+          "auto_generated",
+          "bulk",
+          "templated_sender",
+          "written_to",
+          "body_cached",
+          "recipients",
+          "addressed"
+        ],
+        "properties": {
+          "addressed": {
+            "type": "boolean"
+          },
+          "auto_generated": {
+            "type": "boolean"
+          },
+          "body_cached": {
+            "type": "boolean"
+          },
+          "bulk": {
+            "type": "boolean"
+          },
+          "has_list_id": {
+            "type": "boolean"
+          },
+          "has_unsubscribe": {
+            "type": "boolean"
+          },
+          "recipients": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sender_shape": {
+            "type": "string"
+          },
+          "templated_sender": {
+            "type": "boolean"
+          },
+          "written_to": {
+            "type": "boolean"
           }
         }
       },
@@ -11813,6 +11944,62 @@
           }
         }
       },
+      "ClassifyComparisonData": {
+        "type": "object",
+        "required": [
+          "current_version",
+          "requested_version",
+          "available_versions",
+          "available",
+          "pending_assessments",
+          "compared",
+          "missing_previous_assessments",
+          "changes",
+          "truncated"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "available_versions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClassifyHomeChangeData"
+            }
+          },
+          "compared": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "current_version": {
+            "type": "string"
+          },
+          "missing_previous_assessments": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "pending_assessments": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Missing or stale current assessments excluded from comparison.",
+            "minimum": 0
+          },
+          "requested_version": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
       "ClassifyEvalAskKindData": {
         "type": "object",
         "description": "Precision and recall for one kind of ask.",
@@ -12233,7 +12420,7 @@
           "placed_live": {
             "type": "integer",
             "format": "int32",
-            "description": "Present emails with no arrivals row (history older than 30 days when\nthe account first synced), whose home was worked out live by the same\nrules.",
+            "description": "Legacy field, always zero: historical mail also reads stored assessments.",
             "minimum": 0
           },
           "present": {
@@ -12290,6 +12477,119 @@
             "format": "int32",
             "description": "Pairs with both members present.",
             "minimum": 0
+          }
+        }
+      },
+      "ClassifyFallbackClusterData": {
+        "type": "object",
+        "required": [
+          "facts",
+          "home",
+          "who",
+          "rule",
+          "count",
+          "examples"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageId"
+            }
+          },
+          "facts": {
+            "$ref": "#/components/schemas/AssessmentFacts"
+          },
+          "home": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "who": {
+            "type": "string"
+          }
+        }
+      },
+      "ClassifyHomeChangeData": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "previous_home",
+          "current_home",
+          "deciding_reason"
+        ],
+        "properties": {
+          "current_home": {
+            "type": "string"
+          },
+          "deciding_reason": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "previous_home": {
+            "type": "string"
+          }
+        }
+      },
+      "ClassifyReportData": {
+        "type": "object",
+        "description": "A bounded local picture of stored home decisions. It never creates assessments.",
+        "required": [
+          "policy_version",
+          "examined",
+          "missing",
+          "stale",
+          "pending_body",
+          "fallback",
+          "truncated",
+          "clusters"
+        ],
+        "properties": {
+          "clusters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClassifyFallbackClusterData"
+            }
+          },
+          "examined": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "fallback": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "missing": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "pending_body": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "policy_version": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Stored rows whose observed inputs changed; awaiting reconciliation.",
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean"
           }
         }
       },
@@ -17192,6 +17492,7 @@
         "type": "string",
         "description": "Which rule decided a message's kind, most decisive first. `Decision`\nmeans the user moved the sender; everything else is automatic.",
         "enum": [
+          "fallback",
           "decision",
           "delivery",
           "invite",
@@ -17914,6 +18215,67 @@
           },
           "supports_streaming": {
             "type": "boolean"
+          }
+        }
+      },
+      "MailAssessment": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "account_id",
+          "policy_version",
+          "home",
+          "facts",
+          "who",
+          "deciding",
+          "overridden",
+          "fallback",
+          "pending_body",
+          "input_fingerprint"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "deciding": {
+            "$ref": "#/components/schemas/AssessmentClaim"
+          },
+          "facts": {
+            "$ref": "#/components/schemas/AssessmentFacts"
+          },
+          "fallback": {
+            "type": "boolean"
+          },
+          "home": {
+            "type": "string"
+          },
+          "input_fingerprint": {
+            "type": "string",
+            "description": "Digest of the canonical observed inputs, never mail content."
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "not_sure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "overridden": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentClaim"
+            }
+          },
+          "pending_body": {
+            "type": "boolean"
+          },
+          "policy_version": {
+            "type": "string"
+          },
+          "who": {
+            "type": "string"
           }
         }
       },
@@ -29238,7 +29600,73 @@
           },
           {
             "type": "object",
-            "description": "Measure today's classifier against labelled scenarios in the stored\nmail: who sent it, which mode it went to, and whether it made a\nto-do or a record. Local; nothing is changed or sent.",
+            "description": "Read stored fallback decisions only. The limit is capped at 10,000.",
+            "required": [
+              "limit",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ClassifyReport"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Compare only versions actually retained in this mailbox.",
+            "required": [
+              "policy_version",
+              "limit",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ClassifyCompare"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "policy_version": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Measure today's classifier against labelled scenarios in stored mail:\nsender, home, asks and records. Local; nothing is changed or sent.",
             "required": [
               "cmd"
             ],
@@ -34762,6 +35190,42 @@
             "type": "object",
             "description": "Returned by `Request::ClassifyEval`. Mismatches are sorted by\nscenario, then provider id, then question.",
             "required": [
+              "report",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ClassifyReport"
+                ]
+              },
+              "report": {
+                "$ref": "#/components/schemas/ClassifyReportData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "comparison",
+              "kind"
+            ],
+            "properties": {
+              "comparison": {
+                "$ref": "#/components/schemas/ClassifyComparisonData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ClassifyCompare"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "summary",
               "mismatches",
               "kind"
@@ -37953,6 +38417,17 @@
               "account_id": {
                 "$ref": "#/components/schemas/AccountId"
               },
+              "assessment": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/MailAssessment",
+                    "description": "The exact stored home decision; absent for outbound context mail."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "kind": {
                 "type": "string",
                 "enum": [
@@ -40839,6 +41314,13 @@
         "properties": {
           "account_id": {
             "$ref": "#/components/schemas/AccountId"
+          },
+          "assessments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MailAssessment"
+            },
+            "description": "The stored answers behind this thread's memberships; live marks stay separate."
           },
           "done_in": {
             "type": "array",

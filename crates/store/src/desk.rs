@@ -662,9 +662,10 @@ mod tests {
         assert!(
             threads
                 .iter()
-                .any(|step| step
-                    .starts_with("SEARCH m USING INDEX idx_messages_account_thread_date")),
-            "{threads:#?}"
+                .any(|step| step.starts_with("SEARCH m USING ")
+                    && step.contains("INDEX ")
+                    && step.contains("(account_id=? AND thread_id=?)")),
+            "selected messages must use account and thread: {threads:#?}"
         );
         crate::places::tests::assert_thread_lookups_use_the_thread(&threads);
     }

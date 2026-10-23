@@ -382,6 +382,28 @@ fn arrivals_lines(
         body.text(rest, muted);
     }
     *index += 1;
+    if let Some(report) = &arrivals.classification_report {
+        if report.fallback > 0 {
+            body.text(
+                format!(
+                    "{} emails placed provisionally{}.",
+                    report.fallback,
+                    if report.truncated {
+                        " in this sample"
+                    } else {
+                        ""
+                    }
+                ),
+                muted,
+            );
+            if report.pending_body > 0 {
+                body.text(
+                    format!("{} need more of the email.", report.pending_body),
+                    muted,
+                );
+            }
+        }
+    }
     if arrivals.not_sure.is_empty() {
         return;
     }
@@ -787,6 +809,7 @@ pub(crate) mod tests {
             })
             .collect();
         mxr_protocol::ArrivalsData {
+            classification_report: None,
             generated_at: now,
             since: now,
             until: now,

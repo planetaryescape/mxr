@@ -60,8 +60,22 @@ before applying `mxr modes done THREAD_ID --mode messages`.
 
 ## Sorting rules and categories serve different jobs
 
-Sorting chooses where you work on mail. Sender signals and rules determine
-placement; your explicit corrections take precedence. Inspect a message's
+Each inbound email has one stored home and deciding reason. Messages,
+Updates, Reading, the Inbox chip and arrivals read that answer. Your moves
+and sender choices take precedence over teaching rules and built-in rules;
+Spam, Trash and blocked senders stay outside those homes.
+
+When no rule decides, possible personal mail goes to Messages and machine
+mail goes to Updates, marked **Not sure**. A missing body remains pending.
+Open `mxr why MESSAGE_ID --format json` for the stored assessment and evidence,
+or `mxr classify report --format json` for bounded fallback counts and clusters.
+
+While sync changes the evidence, an email can briefly be still sorting. It
+stays in Inbox and arrivals while its mode waits for a stored answer. If
+`mxr why` returns `classification_pending`, retry once sorting finishes.
+
+A home describes the email's purpose. Inbox membership, snoozes, done marks and
+expiry still decide whether it appears as open work. Inspect a message's
 placement before correcting it:
 
 ```bash

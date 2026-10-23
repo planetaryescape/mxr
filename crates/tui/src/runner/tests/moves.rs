@@ -71,6 +71,7 @@ fn question(subject: &str) -> NotSureData {
 pub(crate) fn arrivals(not_sure: Vec<NotSureData>) -> ArrivalsData {
     let now = Utc::now();
     ArrivalsData {
+        classification_report: None,
         generated_at: now,
         since: now - chrono::Duration::hours(3),
         until: now,

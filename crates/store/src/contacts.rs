@@ -190,7 +190,7 @@ impl super::Store {
             let mut tx = self.writer().begin().await?;
             for row in chunk {
                 sqlx::query(
-                    r#"INSERT OR REPLACE INTO contacts (
+                    r#"INSERT INTO contacts (
                         account_id, email, display_name,
                         first_seen_at, last_seen_at,
                         last_inbound_at, last_outbound_at,
@@ -198,7 +198,20 @@ impl super::Store {
                         replied_count, cadence_days_p50,
                         is_list_sender, list_id,
                         refreshed_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(account_id, email) DO UPDATE SET
+                        display_name = excluded.display_name,
+                        first_seen_at = excluded.first_seen_at,
+                        last_seen_at = excluded.last_seen_at,
+                        last_inbound_at = excluded.last_inbound_at,
+                        last_outbound_at = excluded.last_outbound_at,
+                        total_inbound = excluded.total_inbound,
+                        total_outbound = excluded.total_outbound,
+                        replied_count = excluded.replied_count,
+                        cadence_days_p50 = excluded.cadence_days_p50,
+                        is_list_sender = excluded.is_list_sender,
+                        list_id = excluded.list_id,
+                        refreshed_at = excluded.refreshed_at"#,
                 )
                 .bind(&row.account_id)
                 .bind(&row.email)

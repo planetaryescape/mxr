@@ -22,6 +22,10 @@ use std::sync::Arc;
 /// post-sync work the daemon runs after each page and a contacts refresh,
 /// which the daemon's background worker does a few seconds after a sync.
 async fn scenario_state() -> (Arc<AppState>, AccountId) {
+    scenario_state_at(Utc::now()).await
+}
+
+async fn scenario_state_at(now: chrono::DateTime<Utc>) -> (Arc<AppState>, AccountId) {
     let account_id = AccountId::from_provider_id("fake", SELF_EMAIL);
     let account = Account {
         id: account_id.clone(),
@@ -35,7 +39,7 @@ async fn scenario_state() -> (Arc<AppState>, AccountId) {
         enabled: true,
     };
     let provider = Arc::new(
-        mxr_provider_fake::FakeProvider::with_scenario_set(account_id.clone(), Utc::now(), &[])
+        mxr_provider_fake::FakeProvider::with_scenario_set(account_id.clone(), now, &[])
             .with_page_size(1000),
     );
     let state = Arc::new(
@@ -85,6 +89,14 @@ async fn eval(
     state: &AppState,
     account_id: Option<&AccountId>,
 ) -> (ClassifyEvalSummaryData, Vec<ClassifyEvalMismatchData>) {
+    for account in state.store.list_accounts().await.unwrap() {
+        if account_id.is_none_or(|id| id == &account.id) {
+            crate::handler::assessments::reconcile_account(state, &account.id)
+                .await
+                .unwrap();
+        }
+    }
+
     match classify_eval(state, account_id, ClassifyEvalSetData::Quick)
         .await
         .unwrap()
@@ -155,6 +167,27 @@ async fn the_quick_set_is_graded_and_every_mismatch_is_listed() {
 }
 
 #[tokio::test]
+async fn the_quick_snapshot_survives_crossing_midnight_utc() {
+    let midnight = Utc::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc();
+    for now in [
+        midnight - chrono::Duration::minutes(1),
+        midnight + chrono::Duration::minutes(1),
+    ] {
+        let (state, _) = scenario_state_at(now).await;
+        let (summary, mismatches) = eval(&state, None).await;
+        classify_eval_floor::check("quick", summary.asks.as_ref().expect("asks"));
+        insta::assert_snapshot!(
+            "the_quick_set_is_graded_and_every_mismatch_is_listed",
+            report(&summary, &mismatches)
+        );
+    }
+}
+
+#[tokio::test]
 async fn grading_twice_gives_the_same_answer() {
     let (state, account_id) = scenario_state().await;
     let first = eval(&state, None).await;
@@ -218,7 +251,7 @@ async fn another_accounts_mail_with_the_same_provider_id_and_sender_is_not_grade
 }
 
 #[tokio::test]
-async fn an_email_with_no_arrivals_row_is_placed_live_not_counted_wrong() {
+async fn an_email_with_no_arrivals_row_keeps_its_stored_assessment() {
     let (state, _) = scenario_state().await;
     let (before, before_mismatches) = eval(&state, None).await;
     let victim = scenarios::quick_set().next().unwrap();
@@ -235,12 +268,72 @@ async fn an_email_with_no_arrivals_row_is_placed_live_not_counted_wrong() {
     assert_eq!(removed, 1, "the first labelled email had an arrivals row");
 
     let (after, after_mismatches) = eval(&state, None).await;
-    assert_eq!(after.placed_live, before.placed_live + 1);
+    assert_eq!(after.placed_live, 0);
     assert_eq!(after.not_placed, 0);
     assert_eq!(after.questions, before.questions, "its home is still asked");
     assert_eq!(
         after_mismatches, before_mismatches,
         "placing live by the same rules gives the same answer"
+    );
+}
+
+#[tokio::test]
+async fn a_missing_assessment_is_pending_without_being_repaired_or_graded_as_wrong() {
+    let (state, account_id) = scenario_state().await;
+    let (before, _) = eval(&state, Some(&account_id)).await;
+    let victim = scenarios::quick_set()
+        .find(|label| !label.outbound)
+        .unwrap();
+    let removed = sqlx::query(
+        "DELETE FROM mail_assessments WHERE message_id IN
+         (SELECT id FROM messages WHERE account_id = ?1 AND provider_id = ?2 AND from_email = ?3)",
+    )
+    .bind(account_id.as_str())
+    .bind(&victim.provider_id)
+    .bind(&victim.from_email)
+    .execute(state.store.writer())
+    .await
+    .unwrap()
+    .rows_affected();
+    assert_eq!(removed, 1);
+    let stored_before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mail_assessments")
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap();
+
+    let ResponseData::ClassifyEval {
+        summary,
+        mismatches,
+    } = classify_eval(&state, Some(&account_id), ClassifyEvalSetData::Quick)
+        .await
+        .unwrap()
+    else {
+        panic!("expected evaluation");
+    };
+    assert_eq!(summary.not_placed, before.not_placed + 1);
+    for question in ["who", "home"] {
+        let old = before
+            .questions
+            .iter()
+            .find(|q| q.question == question)
+            .unwrap();
+        let new = summary
+            .questions
+            .iter()
+            .find(|q| q.question == question)
+            .unwrap();
+        assert_eq!(new.evaluated + 1, old.evaluated);
+        assert!(!mismatches
+            .iter()
+            .any(|m| { m.provider_id == victim.provider_id && m.question == question }));
+    }
+    let stored_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mail_assessments")
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap();
+    assert_eq!(
+        stored_after, stored_before,
+        "evaluation must not repair the missing answer"
     );
 }
 

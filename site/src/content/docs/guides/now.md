@@ -108,9 +108,14 @@ decides its destination, even from someone you've written to. Uncertain personal
 mail stays accessible without automatically becoming Your turn. Press `?` on the
 line for the sorting policy, or read [Messages](/guides/messages/#which-threads-land-here).
 
-Existing arrivals use current cached evidence when read. Their original arrival
-destination and first-seen time remain unchanged; no correction, task or provider
-mutation is created by this recalculation.
+Arrivals read the same stored assessment as the modes and Inbox chips. Cached
+mail, sender history, aliases and teaching changes refresh that assessment.
+The original arrival destination and first-seen time stay unchanged.
+
+Unknown purpose still has a home marked **Not sure**: Messages for possible
+personal mail, Updates for machine mail. Expand the arrivals line for provisional-placement counts. Run
+`mxr classify report --format json` for bounded clusters of observed facts. The report reads
+stored answers only and names missing or stale assessments while reconciliation is pending.
 
 ## Move an email to where it belongs
 
@@ -147,7 +152,7 @@ mxr corrections undo 12
 ## Answer what mxr wasn't sure about
 
 When two rules disagree, Now asks instead of guessing, at most three times a
-day. In the web app, expand the arrivals line to answer. Today that is mail
+day. In the web app, expand the arrivals line to answer. This includes mail
 from someone you've written to that only copied you:
 
 ```text

@@ -92,6 +92,8 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_todo_get`: one task with its source mail and field provenance
 - `mxr_todo_set_state`: `done`, `dismiss` or `undo` for task IDs; previews unless `confirm=true`
 - `mxr_todo_resolve`: preview, accept, dismiss or undo one later-message offer; `confirm=true` applies the named action
+- `mxr_why`: stored home, deciding claim, evidence and uncertainty for one message
+- `mxr_classify_report`: bounded stored fallback clusters and pending assessment counts
 - `mxr_updates_digest`
 - `mxr_updates_let_go_preview`
 - `mxr_draft_assist`: writing help for a reply to a thread. With `text` (what the user has typed so far) it finishes it and keeps their sentences; without, it writes the reply. Optional `revise` (a proposal id) applies the instruction to that earlier proposal. Optional `message_id` picks the message to answer (default: the newest one somebody else sent). Returns a proposal; nothing is saved or sent. Gaps come back as `[[?: …]]`, and a draft with one can't be sent

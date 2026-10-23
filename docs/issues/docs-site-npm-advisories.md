@@ -46,3 +46,9 @@ fails on any moderate or higher advisory except entries in
 entry expires 2026-11-03; remove it when a fixed release ships. The web
 app's advisories (`dompurify`, `chokidar` via the TanStack router plugin)
 were fixed with `npm audit fix`.
+
+## 2026-10-23: Zod patch restores the audit gate
+
+The locked `zod` 4.6.5 triggered high-severity [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5). `npm ls zod` traced it through Astro, sitemap and Scalar. The existing `scripts/check-npm-audit.mjs` rejected it; it was not covered by the allowlist. This was observed while integrating the website discovery/media slice based on main `cd08cfe5eb72b0959bc623ad15439bbf09cbe2c3`.
+
+A targeted `npm update zod --package-lock-only --ignore-scripts` selected 4.6.7 within existing ranges. Only that lock entry's version, tarball and integrity changed. The advisory identifies 4.6.6 as the first patched version. `npm audit` then reported zero vulnerabilities and the existing audit gate passed. No allowlist, package manifest or audit policy changed. Final install/build validation remains part of the candidate's CI gate; no exploitability claim about the static site was made.

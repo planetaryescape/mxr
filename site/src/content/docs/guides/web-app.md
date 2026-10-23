@@ -3,7 +3,12 @@ title: Web app
 description: How the mxr web SPA is served, how it auto-authenticates on the local machine, and how to point it at a remote bridge.
 ---
 
-The mxr web app is a React SPA that talks to the daemon through its
+The web app is mxr's human client for a daemon-backed mailbox. When it is
+connected to the same runtime, it shares state with the CLI, TUI and agent
+clients, while each client keeps its own authority. Start with [Now](/guides/now/)
+or follow [Your day](/guides/your-day/) through the five modes.
+
+The web app is a React SPA that talks to the daemon through its
 HTTP/WebSocket bridge. The TUI and CLI talk to the same daemon over its
 local socket. It's embedded into the
 `mxr` binary when built with `--features web-ui` and served at the

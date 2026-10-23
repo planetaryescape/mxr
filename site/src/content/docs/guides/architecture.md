@@ -3,9 +3,7 @@ title: Architecture
 description: Why mxr is daemon-backed, local-first, and built around one internal mail model.
 ---
 
-mxr is built as local-first email infrastructure.
-
-That is a narrower and more useful description than "terminal email client." The TUI matters, but it sits on top of a daemon, a local store, a search index, and a provider model that are meant to work together.
+mxr is a local mail runtime. Its clients share daemon-backed mail operations over a local store, search index and provider adapters.
 
 ## The short version
 

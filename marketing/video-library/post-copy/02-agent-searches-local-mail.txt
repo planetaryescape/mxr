@@ -1,3 +1,5 @@
-mxr gives my agent the same mailbox I use in the TUI and CLI. Search runs on the local index, so it can inspect years of mail without waiting on Gmail for every query.
+An excerpt from a recorded agent session: search synthetic mail for suspicious phrases, then inspect the matching messages.
+
+The capture shows GPT-5.5; its date and mxr version are not identified. It does not establish current model quality.
 
 https://mxr.sh/

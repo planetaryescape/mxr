@@ -1,5 +1,3 @@
-I want my agent to help with email, but I still want to see what it is about to change.
-
-Here mxr resolves the search and shows the exact messages first. The command stops there because it is a dry run.
+The CLI dry-runs an unread-mail search from a synthetic notes-list address and lists two threads containing two messages. The preview does not apply the archive action; no agent appears in this recording.
 
 https://mxr.sh/

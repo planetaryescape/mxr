@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.155](https://github.com/planetaryescape/mxr/compare/v0.6.154...v0.6.155) (2026-10-23)
+
+
+### Features
+
+* open tools with g and a capital, and retire the duplicate keys ([#681](https://github.com/planetaryescape/mxr/issues/681)) ([00b7135](https://github.com/planetaryescape/mxr/commit/00b7135fb99fc6ef5ec3442d8a3c2e951d0b2e4c))
+
 ## [0.6.154](https://github.com/planetaryescape/mxr/compare/v0.6.153...v0.6.154) (2026-10-23)
 
 

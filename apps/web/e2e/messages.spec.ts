@@ -97,12 +97,26 @@ test("each person is one row with topics, a group is its own row, a cc is not he
   await row(page, SAMIR).click();
   const pageView = page.getByTestId("person-page");
   await expect(pageView.getByTestId("person-name")).toHaveText("Samir Patel");
-  const topics = pageView.getByTestId("topic");
+  const topicTrigger = pageView.getByTestId("topics-trigger");
+  const topics = pageView.getByTestId("topics");
+  await expect(topics).toHaveCount(0);
+  await expect(topicTrigger).toContainText(/Contract renewal|Launch checklist|Pricing copy/);
+  await topicTrigger.click();
   // The demo's generated mail has "Contract renewal details" and "Launch
   // checklist for Project Aurora" too; these are the seeded topics.
-  await expect(topics.filter({ hasText: /Contract renewal(?! details)/ })).toHaveCount(1);
-  await expect(topics.filter({ hasText: /Launch checklist(?! for)/ })).toHaveCount(1);
-  await expect(topics.filter({ hasText: "with Ruth: Pricing copy" })).toHaveCount(1);
+  await expect(
+    topics.getByTestId("topic").filter({ hasText: /Contract renewal(?! details)/ }),
+  ).toHaveCount(1);
+  await expect(
+    topics.getByTestId("topic").filter({ hasText: /Launch checklist(?! for)/ }),
+  ).toHaveCount(1);
+  await expect(
+    topics.getByTestId("topic").filter({ hasText: "with Ruth: Pricing copy" }),
+  ).toHaveCount(1);
+  await topics.getByTestId("topic").first().focus();
+  await page.keyboard.press("Escape");
+  await expect(topics).toHaveCount(0);
+  await expect(topicTrigger).toBeFocused();
   await expect(pageView.getByTestId("composer")).toContainText("Reply to Samir · ");
 });
 
@@ -122,12 +136,15 @@ test("{ and } step through a person's topics", async ({ page }) => {
   const contract = await topicOf(page, SAMIR, "Contract renewal");
   await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}&topic=${contract}`);
   const pageView = page.getByTestId("person-page");
-  const current = pageView.locator('[data-testid="topic"][aria-current="true"]');
+  const current = pageView.getByTestId("topics-trigger");
   await expect(current).toContainText("Contract renewal");
+  await expect.poll(() => new URL(page.url()).searchParams.get("topic")).toBe(contract);
   await page.keyboard.press("}");
   await expect(current).not.toContainText("Contract renewal");
+  await expect.poll(() => new URL(page.url()).searchParams.get("topic")).not.toBe(contract);
   await page.keyboard.press("{");
   await expect(current).toContainText("Contract renewal");
+  await expect.poll(() => new URL(page.url()).searchParams.get("topic")).toBe(contract);
 });
 
 test("a thread link opens the person and topic that contain it", async ({ page }) => {
@@ -136,9 +153,8 @@ test("a thread link opens the person and topic that contain it", async ({ page }
   await openApp(page, `/messages/${encodeURIComponent(contract)}`);
   const pageView = page.getByTestId("person-page");
   await expect(pageView.getByTestId("person-name")).toHaveText("Samir Patel");
-  await expect(pageView.locator('[data-testid="topic"][aria-current="true"]')).toContainText(
-    "Contract renewal",
-  );
+  await expect(pageView.getByTestId("topics-trigger")).toContainText("Contract renewal");
+  expect(new URL(page.url()).pathname).toBe(`/messages/${encodeURIComponent(contract)}`);
 });
 
 test("returning to Messages leaves the previous conversation closed", async ({ page }) => {

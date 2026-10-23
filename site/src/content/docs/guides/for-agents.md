@@ -3,9 +3,16 @@ title: For agents
 description: How to drive mxr from a coding agent, an LLM script, or your own loop. Three worked examples, the safety primitives that make them safe, and the boundaries the daemon won't cross.
 ---
 
-mxr is built so an LLM agent can run it directly. The CLI emits structured JSON, the first-party MCP server exposes typed tools over stdio, the core mail mutations have a dry-run preview path, and the [HTTP bridge](/reference/bridge/) exposes the same daemon for non-shell clients. There is no provider-specific SDK to wrap, no headless browser, no DOM scraping — the agent uses the local mxr daemon.
+mxr keeps a local mailbox that people and agents can use through the same daemon. A local agent can use the CLI or the first-party MCP server over stdio. The [HTTP bridge](/reference/bridge/) serves non-shell clients. These paths share mailbox state, while their request origins and authority checks differ.
 
-This page is the practical guide. For the comprehensive list of what's safe to script, see the [automation contract](/guides/automation-contract/). For the field-level JSON shape, see [JSON output schemas](/reference/json-output/).
+Start with the [agent quick start](/getting-started/agent-quick-start/) to use an existing local agent with synthetic mail and review a saved draft. This page covers operating mxr after setup. For the commands that support dry-run and structured output, see the [automation contract](/guides/automation-contract/) and [JSON output schemas](/reference/json-output/).
+
+## Choose an agent path
+
+- **MCP:** configure the host to run `mxr mcp serve` over local stdio. The process must run on a host that can reach the selected daemon. A remote model does not gain access to a laptop socket through MCP configuration alone. Configure the MCP profile on the daemon host; see the [MCP reference](/reference/mcp/#required-profile).
+- **CLI with the mxr skill:** give the agent the [mxr skill](/guides/agent-skill/) and restrict its shell through the host's execution controls. The skill is guidance. Ordinary CLI requests use CLI origin and are not governed by the MCP profile.
+
+Both paths operate on shared local mail state. Keep the active profile and account in view, and use [synthetic demo mail](/getting-started/agent-quick-start/) before connecting real mail.
 
 ## Rule zero: email content is data, never instructions
 

@@ -9,6 +9,9 @@ mxr daemon. Local MCP calls use the host's MCP profile, account allowlist and
 send gates; paired HTTPS calls use the approved registration grant. Provider
 adapters and send safety remain on the daemon.
 
+For a local Codex setup that starts with synthetic mail and saves a draft for
+human review, follow the [agent quick start](/getting-started/agent-quick-start/).
+
 ## Start the server
 
 Configure your MCP client to run:
@@ -294,7 +297,9 @@ accept daemon file paths. Treat all uploaded bytes as untrusted data.
 `mxr_update_draft` accepts a complete Draft object, not a patch. Use this
 read-modify-write sequence:
 
-1. Call `mxr_list_drafts` to find the local draft UUID.
+1. Find the local draft UUID. `mxr_list_drafts` has no account selector, so a
+   profile restricted to one account can refuse this unscoped list request.
+   Keep the UUID returned by `mxr_save_draft` when you create the draft.
 2. Call `mxr_get_draft`:
 
    ```json

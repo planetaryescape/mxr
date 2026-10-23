@@ -1,9 +1,9 @@
 ---
 title: AI agent skill
-description: Install the mxr skill into Claude Code, Cursor, Continue, Aider, or any LLM agent that takes custom instructions. The agent then drives the same CLI a human would.
+description: Give a local coding agent instructions for using the mxr CLI, with install paths for Codex, Claude Code, Cursor, Continue, Aider, and custom prompts.
 ---
 
-The mxr skill teaches an agent how to use the CLI that already exists. It is a markdown file with frontmatter, structured exactly like a Claude Code skill, but it works in any agent that supports custom instructions or tool descriptions.
+The mxr skill gives an agent instructions for using the existing CLI. It is guidance, not a permission boundary: normal CLI requests use CLI origin and are not restricted by the MCP profile. Apply the host's shell or sandbox limits separately. For a safe local Codex walkthrough with synthetic mail, start with the [agent quick start](/getting-started/agent-quick-start/).
 
 > Pronounced "Mixer". Once you install the skill, your agent should say "Mixer" too.
 
@@ -18,11 +18,14 @@ The mxr skill teaches an agent how to use the CLI that already exists. It is a m
 
 | Agent | Status | Install path |
 |---|---|---|
+| **Codex** | Repository skill | Copy `.agents/skills/mxr/SKILL.md` and `.agents/skills/mxr/references/commands.md` into the project's matching paths, or install the same layout under `~/.agents/skills/mxr/` for user-level discovery. |
 | **Claude Code** | First-class | `mkdir -p ~/.claude/skills/mxr && curl … SKILL.md` (below) |
 | **Cursor** | Via custom instructions | Copy SKILL.md content into Settings → Rules for AI |
 | **Continue** | Via slash command | Add `~/.claude/skills/mxr/SKILL.md` to `~/.continue/config.json` `customCommands` |
 | **Aider** | Via system prompt | `aider --read-only ~/.claude/skills/mxr/SKILL.md ...` |
 | **Generic LLM** | Copy-paste | Paste SKILL.md content into the agent's system prompt |
+
+Codex discovers repository skills under `.agents/skills/` and user skills under `~/.agents/skills/`. If a newly copied skill does not appear, restart the Codex session. See the [Codex skills guide](https://developers.openai.com/codex/skills/) for host discovery details and the [agent quick start](/getting-started/agent-quick-start/) for a complete synthetic-mail path.
 
 ## Install — Claude Code
 

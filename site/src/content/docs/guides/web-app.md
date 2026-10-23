@@ -562,7 +562,8 @@ highlighted. Nothing is written over your text until you accept:
 - **⌘J** revises the proof with a note. **← →** step through earlier answers
   for the same draft, and **Tab** moves from gap to gap.
 
-Words the model wrote keep a dotted underline until you edit them.
+In the Markdown editor, words the model wrote keep a dotted underline until
+you edit them.
 
 Under the proof, a line says which model wrote the draft (local or
 cloud), how many of your emails shaped the voice and whether your history

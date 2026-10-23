@@ -2902,8 +2902,10 @@ async fn list_response_time_returns_clock_and_business_percentiles() {
             .unwrap();
         assert!(store.try_create_reply_pair(&reply).await.unwrap());
     }
+    // Pairs are written with their business-hours latency already, so the
+    // backfill has nothing left to fill.
     let backfilled = store.backfill_business_hours_latency().await.unwrap();
-    assert_eq!(backfilled, 3);
+    assert_eq!(backfilled, 0);
 
     let summary = store
         .list_response_time(None, ResponseTimeDirection::IReplied, None, None)

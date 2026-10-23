@@ -179,8 +179,19 @@ pub struct SubscriptionEntry {
     pub envelope: Envelope,
 }
 
+/// A section header in the sidebar. The cursor rests on it, `Enter` folds
+/// or unfolds the section, and `{` / `}` jump between headers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SidebarHeader {
+    Accounts,
+    More,
+    Labels,
+    SavedSearches,
+}
+
 #[derive(Debug, Clone)]
 pub enum SidebarItem {
+    Header(SidebarHeader),
     Account(Box<mxr_protocol::AccountSummaryData>),
     AllMail,
     Subscriptions,
@@ -204,6 +215,7 @@ pub enum SidebarItem {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SidebarSelectionKey {
+    Header(SidebarHeader),
     Account(String),
     AllMail,
     Subscriptions,

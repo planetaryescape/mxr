@@ -934,7 +934,11 @@ pub fn draw_overlays(
                 Style::default().fg(theme.text_muted),
             )));
             lines.push(Line::from(Span::styled(
-                "Enter preview  Esc cancel",
+                if prompt.input.trim().is_empty() {
+                    "Enter all right, mark it checked  Esc cancel"
+                } else {
+                    "Enter preview  Esc cancel"
+                },
                 Style::default().fg(theme.text_muted),
             )));
         }

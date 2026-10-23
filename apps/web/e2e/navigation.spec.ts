@@ -13,7 +13,7 @@ const sidebar = (page: Page) => page.getByRole("complementary", { name: "Mailbox
 /** The rail's labels in order, without counts or key hints. */
 async function railLabels(page: Page): Promise<string[]> {
   return sidebar(page)
-    .locator("[data-nav-index]")
+    .locator("a[data-nav-index]")
     .evaluateAll((links) =>
       links.map((link) => link.querySelector("span.truncate")?.textContent?.trim() ?? ""),
     );

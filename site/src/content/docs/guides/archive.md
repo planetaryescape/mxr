@@ -344,14 +344,15 @@ the ledger, and `/` focuses the box. The other keys are the same in both:
 | `o` | Open the email it came from |
 | `p` | The issuer's page: every record from them |
 | `{` / `}` | Previous / next year |
-| `,` | Fix a field, or confirm it |
-| `v` | Mark the card checked |
+| `,` | Fix a field or confirm it; in the TUI, `Enter` with nothing typed marks the card checked, and on the web the dialog has **Mark all checked** |
 | `X` | Not a record |
-| `E` | Export, after a preview |
 | `t` | Make a to-do from the record, such as "claim warranty" |
 | `g f` | Filters: kind, issuer, year, amount, PDF, checked (in the TUI, the next kind chip, Subscriptions last) |
 | `u` | Undo |
 | `?` | What Archive is, then every key |
+
+Export is in the palette in both clients (**Export…** on the web, **Archive:
+export the records in view** in the TUI) and previews before it writes.
 
 In the web app the kinds are one segmented control, and the lit row shows
 `o` email and `Enter` document; a field mxr isn't sure of reads "unchecked"

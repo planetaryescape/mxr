@@ -1,6 +1,6 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 419
+assertion_line: 497
 expression: snapshot
 ---
 "┌ Account Details ───────────────────────────────────────────┐┌ Accounts / Browse ─────────────────┐"
@@ -21,5 +21,5 @@ expression: snapshot
 "│d set default                                               ││                                    │"
 "└────────────────────────────────────────────────────────────┘│                                    │"
 "┌────────────────────────────────────────────────────────────┐│                                    │"
-"│n:new  Enter:edit  t:test  d:set default                    ││                                    │"
+"│c:new  Enter:edit  t:test  d:set default                    ││                                    │"
 "└────────────────────────────────────────────────────────────┘└────────────────────────────────────┘"

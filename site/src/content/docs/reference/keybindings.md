@@ -53,7 +53,6 @@ mxr keys --client web --format json      # the web app's keys, for a script
 
 ```text
 $ mxr keys explain e --client tui
-tui  archive         e  archive.open-email     Open the email  (RecordsOpenEmail)
 tui  catchup         e  todo.catchup-let-go    Let go of this one  (CatchupLetGo)
 tui  list            e  mail.archive           Archive  (Archive)
 tui  messages        e  messages.done          Done here  (MessagesDone)
@@ -156,7 +155,6 @@ see whether it starts an `Alt` key; every key works without it.
 | `O` | Open in browser |
 | `R` | Toggle reader mode |
 | `S` | Toggle signature display |
-| `E` | Export thread |
 
 ### Selection
 
@@ -218,7 +216,7 @@ where each went until 0.6.180.
 
 Draft assist, a new draft for this sender, commitments and the voice
 profile are in the command palette only (`:`), and so is **Edit Config**
-(`$EDITOR` on `config.toml`).
+(`$EDITOR` on `config.toml`), and so is **Export Thread** (`E` until K3).
 
 ## Message view
 
@@ -268,7 +266,6 @@ profile are in the command palette only (`:`), and so is **Edit Config**
 | `H` | Toggle HTML view |
 | `M` | Toggle remote content |
 | `S` | Toggle signature |
-| `E` | Export thread |
 | `O` | Open in browser |
 | `e` | Archive |
 | `m` | Mark read + archive |
@@ -285,10 +282,11 @@ profile are in the command palette only (`:`), and so is **Edit Config**
 
 | Key | Action |
 |-----|--------|
-| `[` / `]` | Collapse / expand the focused sidebar section |
-| `n` | New saved search (when the sidebar's saved-searches list is focused) |
+| `Enter` on a section header | Fold or unfold that section (`[` / `]` until K3) |
+| `{` / `}` | Previous / next section header |
+| `c` | New saved search (`n` until K3) |
 | `e` | Edit the focused saved search |
-| `d` | Delete the focused saved search (with confirm) |
+| `#` | Delete the focused saved search, after a confirm (`d` until K3) |
 | `g 1`–`g 9` | Jump to saved-search 1–9 |
 | `g 0` | Clear saved-search filter (return to default inbox) |
 
@@ -343,11 +341,15 @@ Open To do with `gx`. See [Act on To dos](/guides/todo/).
 | `o` | Open the source email |
 | `E` (web) | Open Expired |
 | `C` (web) | Open Catch-up |
-| `M` (TUI, ms-todo installed) | Preview the selected Microsoft task link; press again to confirm |
-| `j` / `k`, Page Up / Down (Microsoft link review) | Scroll outgoing context without changing task selection; `Esc` cancels |
-| `S` (TUI, ms-todo installed) | Preview sync for the selected link; press again to sync |
+| `j` / `k`, Page Up / Down (Microsoft link review) | Scroll outgoing context without changing task selection; `Enter` sends, `Esc` cancels |
 
-For `Looks resolved`, use **Review** on the web or `v` in the TUI.
+Microsoft To Do is in the TUI's palette (`:`): **To do: send to Microsoft To
+Do** previews the link and `Enter` confirms it; **To do: sync the linked
+Microsoft To Do task** previews the sync and `Enter` syncs. They were `M` and
+`S` until K3.
+
+For `Looks resolved`, use **Review** on the web or `,` in the TUI, which
+reviews a waiting resolution before it edits fields (`v` until K3).
 [Review later evidence](/guides/todo-resolution/) lists the preview's own keys
 and acceptance actions. Ordinary typing in a text input or composer stays in
 that editor.
@@ -365,12 +367,14 @@ cut below.
 | `e` | Let go of this source |
 | `t` | This needs me: make a to-do from the line |
 | `s` | Pin or unpin the latest email from this source |
-| `S` | Preview a sender sweep |
 | `P` | Tune the source: every digest, changes only, muted, breakthrough (always first, with a suggested to-do) |
 | `L` | Open the line's link (never a pay link) |
 | `o` | Open the email |
 | `u` | Undo |
 | `?` | What Updates is for, then its keys |
+
+A sender sweep is in the palette: **Updates: sweep this sender out** in the
+TUI, **Sweep this sender out of Updates** on the web (`S` until K3).
 
 ## Reading
 
@@ -410,14 +414,15 @@ The records lens (`ge`), with the answer box focused.
 | `o` | Open the email the record came from |
 | `p` | The issuer's page: every record from them |
 | `{` / `}` | Previous / next year |
-| `,` | Fix a field or confirm it (previews first) |
-| `v` | Mark the card checked: confirm every unchecked amount and date |
+| `,` | Fix a field or confirm it (previews first); with nothing typed, `Enter` marks the card checked (`v` until K3) |
 | `X` | Not a record (the email is untouched) |
-| `E` | Export as CSV, after a preview of rows, totals, unchecked rows and missing PDFs |
 | `t` | Make a to-do from the record's email |
 | `g f` | Filters: kind, issuer, year |
 | `u` | Undo |
 | `?` | What Archive is, then every key |
+
+Export is in the palette (`E` until K3): a CSV of the records in view, after a
+preview of rows, totals, unchecked rows and missing PDFs.
 
 On any conversation, in the mailbox or the reader, `T` passes it to
 another mode. This release offers Archive: it shows the card it would file,
@@ -431,10 +436,10 @@ detected invite with inline RSVP.
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Move down / up |
-| `a` | Accept |
-| `t` or `m` | Tentative |
-| `d` | Decline |
-| `A` / `T` (or `M`) / `D` | Accept / Tentative / Decline **with a comment** (opens compose) |
+| `i a` | Accept |
+| `i m` | Tentative |
+| `i d` | Decline |
+| `i A` / `i M` / `i D` | Accept / Tentative / Decline **with a comment** (opens compose) |
 | `u` | Undo the just-issued RSVP (within its send window) |
 | `Enter` / `o` | Open the underlying message |
 | `h` | Back to the sidebar |
@@ -512,6 +517,7 @@ Open with `gP`. Lists [tracked packages](/guides/deliveries/) detected in your m
 | `h` / `Esc` | Return to results |
 | `Tab` | Switch back to results |
 | `R` | Toggle reader mode |
+| `O` | Open in browser (`o` until K3) |
 | `A` | Open attachments |
 | `L` | Open links |
 | `r` / `a` / `f` / `e` | Reply / reply all / forward / archive |
@@ -522,7 +528,7 @@ Open with `gP`. Lists [tracked packages](/guides/deliveries/) detected in your m
 |-----|--------|
 | `j` / `k` | Move rule selection |
 | `Enter` / `o` | Refresh selected rule overview |
-| `n` | New rule |
+| `c` | New rule (`n` until K3) |
 | `E` | Edit rule |
 | `e` | Enable / disable rule |
 | `D` | Dry-run selected rule |
@@ -546,11 +552,10 @@ Open with `gP`. Lists [tracked packages](/guides/deliveries/) detected in your m
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Move account selection |
-| `n` | New IMAP/SMTP account |
+| `c` | New IMAP/SMTP account (`n` until K3; Edit Config is in the palette) |
 | `Enter` / `o` | Edit selected account |
 | `t` | Test selected account |
 | `d` | Set selected account as default |
-| `c` | Edit config |
 | `r` | Refresh account inventory |
 
 ## Assistant pane
@@ -568,9 +573,9 @@ Open with `gP`. Lists [tracked packages](/guides/deliveries/) detected in your m
 | `1`–`9`, `o`, `Enter`, `s` | Choose, write your own answer, answer, skip |
 | `Ctrl-c` | Stop a running turn |
 | `N` / `L` | New conversation / past conversations |
-| `D` (in the `L` list) | Delete the highlighted conversation (shows what goes first) |
+| `#` (in the `L` list) | Delete the highlighted conversation (shows what goes first) |
 | `T` | Auto-approve reversible changes in this conversation (on/off) |
-| `D` | Delete the conversation (shows what goes first) |
+| `#` | Delete the conversation (shows what goes first; `D` until K3) |
 | `e` | Open or fold the steps |
 | `j` / `k`, `Ctrl-d` / `Ctrl-u`, `G` | Scroll the conversation |
 
@@ -615,6 +620,14 @@ Activity (was `g y`). The digit tabs, `8`, `9`, `g E`, `g p`, the list's `H`
 and `M`, and raw headers' `g H` retired; raw headers are in the palette. The
 assistant is `@` as well as `⌘.`, and Summarize folded into the briefing
 (`B`). Each old key says where it went until 0.6.180.
+
+The next wave moved these, each saying where it went until 0.6.185: Export
+(`E`, in the mail list and Archive) and Updates' sender sweep (`S`) are in the
+palette; Archive's mark checked (`v`) is in the `,` dialog; To do's details
+(`v`) is in the palette and on the row; Focus skips with `j` (was `s`); the
+sidebar folds a section with `Enter` on its header (was `[` and `]`) and
+jumps between sections with `{` and `}`; and the assistant's history deletes
+with `#` (was `d`). Every mode now takes `g g`, `G`, `Ctrl+d` and `Ctrl+u`.
 :::
 
 <!-- web-keys:start (generated from the action registry; run UPDATE_KEY_DOCS=1 npm test) -->
@@ -691,7 +704,6 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `r` | Reply |  |
 | `a` | Reply all |  |
 | `f` | Forward |  |
-| `E` | Export as Markdown |  |
 | `B` | Thread briefing |  |
 | `W` | Who is this sender? |  |
 | `p` | Sender profile |  |
@@ -741,7 +753,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `G`, `End` | End of thread |  |
 | `J` | Next message |  |
 | `K` | Previous message |  |
-| `o` | Expand or collapse message | The TUI shows every message, and its o opens the original, like O |
+| `o` | Expand or collapse message | The TUI shows every message in full, so o does nothing there yet |
 | `;` | Expand or collapse all | Web only |
 | `n` | Next conversation | The TUI steps results with n/N; the web steps conversations |
 | `N` | Previous conversation |  |
@@ -766,8 +778,8 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `g g` | First item |  |
 | `G` | Last item |  |
 | `Enter`, `o`, `l`, `ArrowRight` | Open |  |
-| `[` | Collapse section |  |
-| `]` | Expand section |  |
+| `{` | Previous section |  |
+| `}` | Next section |  |
 
 ### Screener
 
@@ -787,7 +799,7 @@ One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out o
 | Key | Action | Note |
 |-----|--------|------|
 | `⌘Enter / Ctrl+Enter` | Send and next |  |
-| `s` | Skip for now | Goes to the end of the queue |
+| `j` | Skip for now | Goes to the end of the queue |
 | `e` | Done, no reply needed | e on the desk in the TUI |
 | `Z` | Snooze… |  |
 | `w` | Send, remind me if nobody replies… |  |
@@ -801,6 +813,10 @@ On a lit new sender, `1` to `4` answer its question.
 
 | Key | Action | Note |
 |-----|--------|------|
+| `g g`, `Home` | First conversation |  |
+| `G`, `End` | Last conversation |  |
+| `Ctrl+D`, `PageDown` | Half page down |  |
+| `Ctrl+U`, `PageUp` | Half page up |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Open in its mode |  |
@@ -822,6 +838,10 @@ On a lit new sender, `1` to `4` answer its question.
 
 | Key | Action | Note |
 |-----|--------|------|
+| `g g`, `Home` | First conversation |  |
+| `G`, `End` | Last conversation |  |
+| `Ctrl+D`, `PageDown` | Half page down |  |
+| `Ctrl+U`, `PageUp` | Half page up |  |
 | `j`, `ArrowDown` | Next person |  |
 | `k`, `ArrowUp` | Previous person |  |
 | `Enter` | Open the person |  |
@@ -850,6 +870,10 @@ On a lit new sender, `1` to `4` answer its question.
 
 | Key | Action | Note |
 |-----|--------|------|
+| `g g`, `Home` | First conversation |  |
+| `G`, `End` | Last conversation |  |
+| `Ctrl+D`, `PageDown` | Half page down |  |
+| `Ctrl+U`, `PageUp` | Half page up |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Do it: what the row's button says | Opens a link only when the sender passed the check; otherwise the email |
@@ -858,7 +882,6 @@ On a lit new sender, `1` to `4` answer its question.
 | `,` | Edit what mxr read… |  |
 | `X` | Not a to-do |  |
 | `o` | Open the email it came from |  |
-| `v` | Why it is here and where each field came from |  |
 | `E` | Expired list |  |
 | `C` | Catch-up |  |
 | `Esc` | Dismiss the hint |  |
@@ -869,6 +892,10 @@ The first run's older undated tasks: keep each one, or let it go to the Expired 
 
 | Key | Action | Note |
 |-----|--------|------|
+| `g g`, `Home` | First conversation |  |
+| `G`, `End` | Last conversation |  |
+| `Ctrl+D`, `PageDown` | Half page down |  |
+| `Ctrl+U`, `PageUp` | Half page up |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Keep: it still needs me |  |
@@ -882,6 +909,10 @@ Tasks that expired or were let go. `E` on To do opens it.
 
 | Key | Action | Note |
 |-----|--------|------|
+| `g g`, `Home` | First conversation |  |
+| `G`, `End` | Last conversation |  |
+| `Ctrl+D`, `PageDown` | Half page down |  |
+| `Ctrl+U`, `PageUp` | Half page up |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Restore to To do |  |
@@ -891,6 +922,10 @@ Tasks that expired or were let go. `E` on To do opens it.
 
 | Key | Action | Note |
 |-----|--------|------|
+| `g g`, `Home` | First conversation |  |
+| `G`, `End` | Last conversation |  |
+| `Ctrl+D`, `PageDown` | Half page down |  |
+| `Ctrl+U`, `PageUp` | Half page up |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Show routine |  |
@@ -903,7 +938,6 @@ Tasks that expired or were let go. `E` on To do opens it.
 | `o` | Open the email |  |
 | `Space` | Peek at this update under its line |  |
 | `s` | Pin or unpin this source's latest email |  |
-| `S` | Sweep this sender out of Updates… | Previews the daemon's dry run first; undo afterwards |
 | `Esc` | Dismiss the hint |  |
 
 ### Reading edition
@@ -912,6 +946,10 @@ Newsletters as an edition. `b`, `e`, `D` and `A` work on the item or link under 
 
 | Key | Action | Note |
 |-----|--------|------|
+| `g g`, `Home` | First conversation |  |
+| `G`, `End` | Last conversation |  |
+| `Ctrl+D`, `PageDown` | Half page down |  |
+| `Ctrl+U`, `PageUp` | Half page up |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Read |  |
@@ -951,6 +989,10 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 
 | Key | Action | Note |
 |-----|--------|------|
+| `g g`, `Home` | First conversation |  |
+| `G`, `End` | Last conversation |  |
+| `Ctrl+D`, `PageDown` | Half page down |  |
+| `Ctrl+U`, `PageUp` | Half page up |  |
 | `j`, `ArrowDown` | Next record |  |
 | `k`, `ArrowUp` | Previous record |  |
 | `/` | Ask Archive |  |
@@ -962,9 +1004,7 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `{` | Previous year |  |
 | `}` | Next year |  |
 | `,` | Fix a field… |  |
-| `v` | Mark checked |  |
 | `X` | Not a record |  |
-| `E` | Export… |  |
 | `t` | Make a to-do from this record |  |
 | `g f` | Filters… |  |
 | `Esc` | Close |  |

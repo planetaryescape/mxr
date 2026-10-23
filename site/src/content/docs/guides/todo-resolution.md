@@ -37,7 +37,7 @@ Accept updates only the named task. Dismissal leaves its fields alone and retain
 mxr
 ```
 
-Open To do with `g x`, select the row marked **Looks resolved**, and press `v` to preview it. While the preview is open, press `o` to open that exact source email. In the preview, Enter accepts, `x` dismisses, and Esc cancels. After an accepted change, `u` undoes it if the task has not changed since acceptance.
+Open To do with `g x`, select the row marked **Looks resolved**, and press `,` to preview it (`,` corrects what mxr read, and a waiting resolution comes first). While the preview is open, press `o` to open that exact source email. In the preview, Enter accepts, `x` dismisses, and Esc cancels. After an accepted change, `u` undoes it if the task has not changed since acceptance.
 
 ## Review it on the web
 

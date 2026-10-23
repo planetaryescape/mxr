@@ -60,7 +60,7 @@ export type MailDialog =
   | { kind: "todo-make"; messageId: string; suggestion: string; subject?: string }
   /** Archive: fix or confirm a record's fields (`,`). */
   | { kind: "record-edit"; record: RecordData }
-  /** Archive: preview the export of the records in view, then download it (`E`). */
+  /** Archive: preview the export of the records in view, then download it (Export in the palette). */
   | { kind: "record-export"; account: string | null; filter: RecordFilter }
   /** Pass a conversation to another mode (`T`): this phase, file it in Archive. */
   | { kind: "pass-to-mode"; messageId: string; subject?: string }

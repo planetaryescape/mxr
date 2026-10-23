@@ -91,7 +91,6 @@ export const SAME_ACTION: Record<string, string[]> = {
   "mail.reply": ["Reply"],
   "mail.reply-all": ["ReplyAll"],
   "mail.forward": ["Forward"],
-  "mail.export": ["ExportThread"],
   "mail.briefing": ["OpenThreadBriefing"],
   "mail.whois": ["OpenWhoisOnFocusedSender"],
   "mail.sender-profile": ["OpenSenderView"],
@@ -106,8 +105,8 @@ export const SAME_ACTION: Record<string, string[]> = {
   "sidebar.down": ["inline:next_item"],
   "sidebar.up": ["inline:prev_item"],
   "sidebar.open": ["SidebarSelect"],
-  "sidebar.collapse": ["inline:collapse_section"],
-  "sidebar.expand": ["inline:expand_section"],
+  "sidebar.prev-section": ["inline:prev_section"],
+  "sidebar.next-section": ["inline:next_section"],
   "list.down": ["MoveDown"],
   "list.up": ["MoveUp"],
   "list.top": ["JumpTop"],
@@ -157,7 +156,6 @@ export const SAME_ACTION: Record<string, string[]> = {
   "todo.edit": ["TodoEdit"],
   "todo.dismiss": ["TodoDismiss"],
   "todo.open-email": ["TodoOpenEmail"],
-  "todo.details": ["TodoReviewResolution"],
   "todo.expired": ["TodoOpenExpired"],
   "todo.catchup": ["TodoOpenCatchup"],
   "now.down": ["MoveDown"],
@@ -197,9 +195,7 @@ export const SAME_ACTION: Record<string, string[]> = {
   "archive.prev-year": ["RecordsPrevYear"],
   "archive.next-year": ["RecordsNextYear"],
   "archive.edit": ["RecordsFix"],
-  "archive.check": ["RecordsMarkChecked"],
   "archive.dismiss": ["RecordsDismiss"],
-  "archive.export": ["RecordsExport"],
   "archive.make-todo": ["RecordsMakeTodo"],
   "archive.close": ["RecordsBack"],
   "updates.down": ["MoveDown"],
@@ -213,7 +209,6 @@ export const SAME_ACTION: Record<string, string[]> = {
   "updates.open-email": ["UpdatesOpenEmail"],
   "updates.copy-code": ["UpdatesCopyCode"],
   "updates.pin": ["TogglePin"],
-  "updates.sweep": ["UpdatesSweep"],
   "updates.close-hint": ["UpdatesClose"],
   "reading.down": ["MoveDown"],
   "reading.up": ["MoveUp"],
@@ -351,8 +346,8 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "reader",
     keys: ["o"],
-    bound: "both",
-    why: "The web collapses messages and o toggles one, as in Gmail; the TUI shows every message and o opens the original, like O",
+    bound: "web",
+    why: "The web collapses messages and o toggles one, as in Gmail; the TUI shows every message in full, so its o does nothing yet",
   },
   {
     context: "reader",
@@ -383,7 +378,7 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   {
     context: "sidebar",
     // prettier-ignore
-    keys: ["A", "E", "F", "V", "b", "x", "Escape", "Ctrl+d", "Ctrl+u", "Ctrl+f", "i a", "i m", "i d", "i A", "i M", "i D"],
+    keys: ["A", "F", "V", "b", "x", "Escape", "Ctrl+d", "Ctrl+u", "Ctrl+f", "i a", "i m", "i d", "i A", "i M", "i D"],
     bound: "tui",
     why: "The TUI sidebar passes list keys to the mail list beside it; the web sidebar keeps its own",
   },
@@ -395,23 +390,28 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   },
   {
     context: "sidebar",
-    keys: ["n"],
-    bound: "tui",
-    why: "A new saved search from the TUI sidebar; the web makes them on the Search page",
+    keys: ["c"],
+    bound: "both",
+    why: "c creates what a place holds: a saved search from the TUI sidebar; the web makes those on the Search page, so its c composes",
   },
   {
     context: "sidebar",
-    keys: ["c", "u"],
+    keys: ["u"],
     bound: "web",
-    why: "Compose and undo work everywhere on the web; the TUI sidebar takes only navigation",
+    why: "Undo works everywhere on the web; the TUI sidebar takes only navigation",
   },
   // To do.
   {
     context: "todo",
-    // prettier-ignore
-    keys: ["G", "g g", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    keys: ["h", "ArrowLeft"],
     bound: "tui",
-    why: "The TUI lens shares the list's motions and pane keys; the web runway moves with j and k",
+    why: "The TUI lens moves focus to the sidebar with h and Left; the web modes leave those keys alone",
+  },
+  {
+    context: "todo",
+    keys: ["Home", "End", "PageUp", "PageDown"],
+    bound: "web",
+    why: "Browser keyboard keys for the list motions every mode inherits",
   },
   {
     context: "todo",
@@ -434,10 +434,15 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   // Now.
   {
     context: "now",
-    // prettier-ignore
-    keys: ["G", "g g", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    keys: ["h", "ArrowLeft"],
     bound: "tui",
-    why: "The TUI lens shares the list's motions and pane keys; the web Now moves with j and k",
+    why: "The TUI lens moves focus to the sidebar with h and Left; the web modes leave those keys alone",
+  },
+  {
+    context: "now",
+    keys: ["Home", "End", "PageUp", "PageDown"],
+    bound: "web",
+    why: "Browser keyboard keys for the list motions every mode inherits",
   },
   {
     context: "now",
@@ -460,10 +465,15 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   // Messages.
   {
     context: "messages",
-    // prettier-ignore
-    keys: ["G", "g g", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft", "q"],
+    keys: ["h", "ArrowLeft", "q"],
     bound: "tui",
-    why: "The TUI lens shares the list's motions and pane keys; the web Messages moves with j and k",
+    why: "The TUI lens moves focus to the sidebar with h and Left, and q goes back; the web modes leave those keys alone",
+  },
+  {
+    context: "messages",
+    keys: ["Home", "End", "PageUp", "PageDown"],
+    bound: "web",
+    why: "Browser keyboard keys for the list motions every mode inherits",
   },
   {
     context: "messages",
@@ -492,10 +502,15 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   },
   {
     context: "archive",
-    // prettier-ignore
-    keys: ["G", "g g", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft", "ArrowRight"],
+    keys: ["h", "ArrowLeft", "ArrowRight"],
     bound: "tui",
-    why: "The TUI lens shares the list's motions and pane keys, and Right opens the card; the web shows the card beside the ledger",
+    why: "The TUI lens shares the list's pane keys, and Right opens the card; the web shows the card beside the ledger",
+  },
+  {
+    context: "archive",
+    keys: ["Home", "End", "PageUp", "PageDown"],
+    bound: "web",
+    why: "Browser keyboard keys for the list motions every mode inherits",
   },
   {
     context: "archive",
@@ -512,10 +527,15 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   // Updates.
   {
     context: "updates",
-    // prettier-ignore
-    keys: ["G", "g g", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    keys: ["h", "ArrowLeft"],
     bound: "tui",
-    why: "The TUI lens shares the list's motions and pane keys; the web briefing moves with j and k",
+    why: "The TUI lens moves focus to the sidebar with h and Left; the web modes leave those keys alone",
+  },
+  {
+    context: "updates",
+    keys: ["Home", "End", "PageUp", "PageDown"],
+    bound: "web",
+    why: "Browser keyboard keys for the list motions every mode inherits",
   },
   {
     context: "updates",
@@ -538,10 +558,15 @@ export const KEYMAP_DIFFERENCES: KeymapDifference[] = [
   // Reading.
   {
     context: "reading",
-    // prettier-ignore
-    keys: ["G", "g g", "Ctrl+d", "Ctrl+u", "h", "ArrowLeft"],
+    keys: ["h", "ArrowLeft"],
     bound: "tui",
-    why: "The TUI lens shares the list's motions and pane keys; the web edition moves with j and k",
+    why: "The TUI lens moves focus to the sidebar with h and Left; the web modes leave those keys alone",
+  },
+  {
+    context: "reading",
+    keys: ["Home", "End", "PageUp", "PageDown"],
+    bound: "web",
+    why: "Browser keyboard keys for the list motions every mode inherits",
   },
   {
     context: "reading",

@@ -154,9 +154,16 @@ fn x_takes_a_record_out_at_once_and_u_brings_it_back() {
 }
 
 #[test]
-fn e_previews_the_export_and_enter_writes_it() {
+fn the_export_previews_and_enter_writes_it() {
     let mut app = archive_app();
+    // `E` exported until K3 (blueprint 35); export is in the palette now.
     press_shifted(&mut app, 'E');
+    assert_eq!(app.mailbox.records_page.pending_export, None);
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Export has no key now; find it in the palette")
+    );
+    app.apply(Action::RecordsExport);
     assert_eq!(app.mailbox.records_page.pending_export, Some(false));
     app.mailbox.records_page.pending_export = None;
     app.show_export(mxr_protocol::RecordExportData {
@@ -182,11 +189,17 @@ fn e_previews_the_export_and_enter_writes_it() {
 #[test]
 fn the_verbs_name_their_requests() {
     let mut app = archive_app();
-    // Dell is checked already; Apple's amount isn't.
+    // Dell is checked already; Apple's amount isn't. `,` then Enter with
+    // nothing typed marks a record checked (`v` until K3).
     press(&mut app, KeyCode::Char('v'));
+    assert_eq!(app.status_message.as_deref(), Some("Checked is now ,"));
+    press(&mut app, KeyCode::Char(','));
+    press(&mut app, KeyCode::Enter);
     assert!(queued(&app).is_empty());
+    assert!(app.mailbox.records_page.prompt.is_none());
     press(&mut app, KeyCode::Char('j'));
-    press(&mut app, KeyCode::Char('v'));
+    press(&mut app, KeyCode::Char(','));
+    press(&mut app, KeyCode::Enter);
     assert!(matches!(
         queued(&app).as_slice(),
         [Request::SetRecordField { record_id, edit: RecordEditData::ConfirmAll, dry_run: false, .. }]

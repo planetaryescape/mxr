@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/assistant_pane.rs
+assertion_line: 1336
 expression: render(&state)
 ---
 "╭ Tidy newsletters ────────────────────────────╮"
@@ -24,5 +25,5 @@ expression: render(&state)
 "│ › Ask about your mail, or say what to do     │"
 "│ qwen3:8b · runs on this machine              │"
 "│ i write · N new · L history · M model · T    │"
-"│ trust · D delete · e steps · Ctrl-c stop     │"
+"│ trust · # delete · e steps · Ctrl-c stop     │"
 "╰──────────────────────────────────────────────╯"

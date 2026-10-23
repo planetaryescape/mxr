@@ -17,7 +17,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
     let modal_area = centered_rect(MODAL_WIDTH_PERCENT, MODAL_HEIGHT_PERCENT, area);
     Clear.render(modal_area, frame.buffer_mut());
 
-    let title = " Drafts: ↑/↓ navigate · Enter/e edit · d delete · p provider sync · c cancel scheduled send · Esc close ";
+    let title = " Drafts: ↑/↓ navigate · Enter edit · # delete · p provider sync · c cancel scheduled send · Esc close ";
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)

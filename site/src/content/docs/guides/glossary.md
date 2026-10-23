@@ -240,7 +240,7 @@ changes and whether it is active, overdue or ended.
 
 **Checked**: a record whose every amount and date came from schema.org
 markup or from you. A value read by a rule shows an open dot until you
-confirm it (`v`, `,`, `mxr records fix --confirm`).
+confirm it (`,`, `mxr records fix --confirm`).
 
 ## Pre-send safety
 

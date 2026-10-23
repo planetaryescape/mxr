@@ -64,6 +64,7 @@ import {
 import { PersonPane } from "./PersonPane";
 import { useGotIt } from "./useGotIt";
 import { FramePanesContext, PageFrame } from "@/components/PageFrame";
+import { listMotions } from "@/features/modes/listMotions";
 
 /** List and person page share the screen from Tailwind's md up. */
 const MESSAGES_SPLIT_QUERY = "(min-width: 768px)";
@@ -622,6 +623,9 @@ function MessagesBody({
   useScopeController("messages", {
     down: () => move(1),
     up: () => move(-1),
+    ...listMotions(move),
+    // With nothing lit, a step up wraps to the last row; the first is the top.
+    top: () => move(rows.length > 0 && index < 0 ? 1 : -Number.MAX_SAFE_INTEGER),
     // Below the split the filter line sits in the people list, which the
     // person's page covers: reveal the list first.
     filter: () => {

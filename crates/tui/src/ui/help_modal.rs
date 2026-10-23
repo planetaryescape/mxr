@@ -115,7 +115,7 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             entries: vec![
                 (
                     "Add an account".into(),
-                    "g C → n (or palette: New IMAP/SMTP Account)".into(),
+                    "g C → c (or palette: New IMAP/SMTP Account)".into(),
                 ),
                 (
                     "Compose and send".into(),
@@ -123,11 +123,11 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
                 ),
                 (
                     "Search and save a search".into(),
-                    "/ to query → palette: New Saved Search → n in sidebar to refine".into(),
+                    "/ to query → palette: New Saved Search → c in sidebar to refine".into(),
                 ),
                 (
                     "Manage rules".into(),
-                    "g R → n new / E edit / D dry-run / palette: Refresh Rules".into(),
+                    "g R → c new / E edit / D dry-run / palette: Refresh Rules".into(),
                 ),
                 (
                     "Reset local state".into(),
@@ -214,7 +214,7 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             ),
             (
                 "Assistant (@)".into(),
-                "Enter send, Esc pane keys: y/n approve/reject, 1-9 choose (or open a reply link), s skip, N new, L history, T trust, D delete, Ctrl-c stop".into(),
+                "Enter send, Esc pane keys: y/n approve/reject, 1-9 choose (or open a reply link), s skip, N new, L history, T trust, # delete, Ctrl-c stop".into(),
             ),
         ],
     });
@@ -366,7 +366,7 @@ fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
             binding_context(state),
         ),
         UiContext::RulesList | UiContext::RulesForm => vec![
-            ("n".into(), "Start a new rule".into()),
+            ("c".into(), "Start a new rule".into()),
             ("D".into(), "Dry run before save".into()),
             ("E".into(), "Edit selected rule".into()),
         ],
@@ -376,9 +376,8 @@ fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
             ("L".into(), "Open log file".into()),
         ],
         UiContext::AccountsList | UiContext::AccountsForm => vec![
-            ("n".into(), "Add an account".into()),
+            ("c".into(), "Add an account".into()),
             ("t".into(), "Test selected account".into()),
-            ("c".into(), "Edit config".into()),
         ],
         UiContext::Analytics => vec![
             ("Tab".into(), "Next analytics view".into()),
@@ -491,7 +490,7 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
             entries: vec![
                 ("j / k".into(), "Move rules".into()),
                 ("Enter".into(), "Refresh overview".into()),
-                ("n".into(), "New rule".into()),
+                ("c".into(), "New rule".into()),
                 ("E".into(), "Edit rule".into()),
                 ("D".into(), "Dry run".into()),
                 ("H".into(), "History".into()),
@@ -516,10 +515,9 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
             entries: vec![
                 ("j / k".into(), "Move accounts or fields".into()),
                 ("Enter".into(), "Edit selected account".into()),
-                ("n".into(), "New account".into()),
+                ("c".into(), "New account".into()),
                 ("t".into(), "Test account".into()),
                 ("d".into(), "Set default".into()),
-                ("c".into(), "Edit config".into()),
                 ("s".into(), "Save account form".into()),
             ],
         }],

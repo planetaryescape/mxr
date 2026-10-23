@@ -28,6 +28,7 @@ import { useLitReason } from "@/state/litReasonStore";
 import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
+import { listMotions } from "@/features/modes/listMotions";
 
 import {
   useDigest,
@@ -317,6 +318,7 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
   useScopeController("updates", {
     down: () => move(1),
     up: () => move(-1),
+    ...listMotions(move),
     expand: routine.sources > 0 ? () => setRoutineOpen(true) : undefined,
     letGoAll: digest.let_go_line
       ? () => {

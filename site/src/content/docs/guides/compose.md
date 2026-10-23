@@ -78,7 +78,7 @@ to edit it, use the confirmed trash action to delete both linked copies, or
 choose **Save to server draft** to create/update the provider link.
 
 In the TUI, open the command palette (`:`) and choose **Drafts**.
-The draft browser uses `e` to edit, `d` to preview and confirm linked deletion,
+The draft browser uses `Enter` to edit, `#` to preview and confirm linked deletion,
 and `p` to preview and confirm provider sync. Unsupported accounts are
 refused without changing the local draft. A draft scheduled to send later
 shows when it sends; `c` previews and cancels the scheduled send and keeps

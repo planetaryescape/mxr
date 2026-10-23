@@ -40,9 +40,9 @@ While the pane has the keys, everything you type goes to it, not to the screen b
 | `1`-`9` | With no question waiting, open a numbered link in the latest reply with links: an email opens in the reader, a person in Messages |
 | `Ctrl-c` | Stop a running turn |
 | `M` | Choose the model; `j` / `k` move, `Enter` uses it, `Esc` goes back |
-| `N` / `L` | New conversation / past conversations; in the list, `Enter` opens one and `D` deletes it after saying what goes |
+| `N` / `L` | New conversation / past conversations; in the list, `Enter` opens one and `#` deletes it after saying what goes |
 | `T` | Let reversible changes run without asking in this conversation, or stop; the title says "trusted" |
-| `D` | Delete the conversation, after saying what goes |
+| `#` | Delete the conversation, after saying what goes |
 | `e` | Open or fold the steps |
 | `j` / `k` | Scroll the conversation |
 
@@ -83,7 +83,7 @@ Once a turn ends the steps fold into one line such as "3 steps · 14 found · 1 
 
 Replies link the emails and people they name as chips, drawn in the link colour: a person with their avatar, an email with its subject and the glyph of the mode that holds it (Reading's newspaper, To do's checklist, and so on). An email opens in All Mail and a person opens their row in Messages, with the assistant still open beside it. When a reply names several emails or people from one search, they are also drawn as rows under it. An email's row shows who it is from and the start of its text under the subject, with a paperclip if it has an attachment, the mode glyph and when it arrived on the right; unread mail has a bold subject. In the web app, hovering a chip or an email row (or tabbing to it) opens a small card after a short pause: for an email its subject, who wrote last and when, how many messages, the start of the text, the modes that hold it, an attachment clip and the unread count; for a person their name, how you usually trade messages and whether it is your turn. The card has no buttons, `Esc` closes it, and a tap on a touch screen just opens the link. A link only goes to an email or person the assistant's tools returned in that conversation; anything else it names stays plain text. A reply that quotes an email's subject, a to-do's title or a person's name as a tool listed it gets the same link, even when the assistant wrote no link. In the TUI, the latest reply with links numbers them, "Q1 report [1]", and `1`-`9` opens one with the pane still open beside it; other replies show their links as words. Opening the steps with `e` adds a line under each one saying what it found.
 
-Past conversations are under the history button, where `j` and `k` move, `Enter` opens one and `d` asks before deleting it (`y` or `Enter` deletes, `n` or `Esc` keeps it), under `L` in the TUI, and `mxr assistant list` shows them in the terminal. Delete one there or with `mxr assistant delete <id>` (add `--dry-run` to see what goes).
+Past conversations are under the history button, where `j` and `k` move, `Enter` opens one and `#` asks before deleting it (`y` or `Enter` deletes, `n` or `Esc` keeps it), under `L` in the TUI, and `mxr assistant list` shows them in the terminal. Delete one there or with `mxr assistant delete <id>` (add `--dry-run` to see what goes).
 
 ## Pick the model
 

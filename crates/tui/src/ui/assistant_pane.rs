@@ -192,7 +192,7 @@ pub fn hint_text(state: &AssistantState) -> String {
             return "j/k move · Enter use this model · Esc back".into();
         }
         _ if state.list.is_some() => {
-            return "j/k move · Enter open · D delete · Esc back".into();
+            return "j/k move · Enter open · # delete · Esc back".into();
         }
         Some(AssistantPrompt::RejectReason { .. }) => return "Enter reject · Esc back".into(),
         Some(AssistantPrompt::Other { .. }) => return "Enter save · Esc back".into(),
@@ -239,7 +239,7 @@ pub fn hint_text(state: &AssistantState) -> String {
                     n => format!("1-{n} open link · "),
                 };
                 format!(
-                    "{links}i write · N new · L history · M model · T trust · D delete · e steps{stop}"
+                    "{links}i write · N new · L history · M model · T trust · # delete · e steps{stop}"
                 )
             }
         },

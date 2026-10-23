@@ -1,10 +1,4 @@
 {
-  "archive.check": {
-    "modifiers": [
-      "cmd"
-    ],
-    "key": "v"
-  },
   "archive.copy-amount": {
     "modifiers": [
       "cmd",
@@ -31,13 +25,6 @@
       "cmd"
     ],
     "key": "j"
-  },
-  "archive.export": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "e"
   },
   "archive.issuer": {
     "modifiers": [
@@ -109,7 +96,7 @@
     "modifiers": [
       "cmd"
     ],
-    "key": "s"
+    "key": "j"
   },
   "focus.snooze": {
     "modifiers": [
@@ -181,13 +168,6 @@
       "shift"
     ],
     "key": "b"
-  },
-  "mail.export": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "e"
   },
   "mail.forward": {
     "modifiers": [
@@ -743,12 +723,6 @@
     ],
     "key": "e"
   },
-  "todo.details": {
-    "modifiers": [
-      "cmd"
-    ],
-    "key": "v"
-  },
   "todo.dismiss": {
     "modifiers": [
       "cmd",
@@ -838,13 +812,6 @@
       "cmd"
     ],
     "key": "."
-  },
-  "updates.sweep": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "s"
   },
   "updates.tune": {
     "modifiers": [

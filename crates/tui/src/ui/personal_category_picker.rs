@@ -143,10 +143,10 @@ pub fn draw(
     frame.render_widget(Clear, popup);
     let title = match picker.surface {
         Some(CategorySurface::Catalog) => {
-            " Categories · n new · r rename · d delete · Enter view · Esc back "
+            " Categories · c new · r rename · # delete · Enter view · Esc back "
         }
         Some(CategorySurface::View) => " Category mail · Enter open · w Why · Esc back ",
-        _ => " Assign Category · Space stage · Enter preview · w Why · n new · Esc ",
+        _ => " Assign Category · Space stage · Enter preview · w Why · c new · Esc ",
     };
     let block = Block::default()
         .title(title)

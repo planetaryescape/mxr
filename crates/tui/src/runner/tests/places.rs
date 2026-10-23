@@ -111,13 +111,17 @@ fn a_stale_fetch_for_another_place_is_ignored() {
 }
 
 #[test]
-fn p_pins_the_message_under_the_cursor_and_shows_it_at_once() {
+fn s_pins_the_message_under_the_cursor_and_shows_it_at_once() {
     let receipt = message("Receipt 1", false);
     let mut app = paper_trail(vec![bundle(
         "receipts@shop.example",
         vec![receipt.clone(), message("Receipt 0", false)],
     )]);
+    // `p` pinned until K3 (blueprint 35); it says `s` does now.
     press(&mut app, KeyCode::Char('p'));
+    assert!(queued(&app).is_empty());
+    assert_eq!(app.status_message.as_deref(), Some("Pin is now s"));
+    press(&mut app, KeyCode::Char('s'));
     assert!(matches!(
         queued(&app).as_slice(),
         [Request::PinMessages { message_ids, pinned: true }] if message_ids == &vec![receipt.message_id.clone()]
@@ -127,10 +131,12 @@ fn p_pins_the_message_under_the_cursor_and_shows_it_at_once() {
 }
 
 #[test]
-fn k_moves_the_sender_and_the_menu_says_where_it_goes() {
+fn capital_p_moves_the_sender_and_the_menu_says_where_it_goes() {
     let shop = bundle("receipts@shop.example", vec![message("Receipt", false)]);
     let mut app = paper_trail(vec![shop.clone()]);
     press_shifted(&mut app, 'K');
+    assert!(app.mailbox.sender_kind_menu.is_none(), "K moved to P");
+    press_shifted(&mut app, 'P');
     assert_eq!(
         app.mailbox
             .sender_kind_menu
@@ -148,7 +154,7 @@ fn k_moves_the_sender_and_the_menu_says_where_it_goes() {
 
     // `a` hands the sender back to the automatic rules.
     app.pending_mutation_queue.clear();
-    press_shifted(&mut app, 'K');
+    press_shifted(&mut app, 'P');
     press(&mut app, KeyCode::Char('a'));
     assert!(matches!(
         queued(&app).as_slice(),
@@ -157,13 +163,16 @@ fn k_moves_the_sender_and_the_menu_says_where_it_goes() {
 }
 
 #[test]
-fn s_previews_the_bundle_sweep_and_enter_runs_exactly_that_preview() {
+fn the_bundle_sweep_previews_and_enter_runs_exactly_that_preview() {
     let shop = bundle(
         "receipts@shop.example",
         vec![message("Receipt 1", true), message("Receipt 0", false)],
     );
     let mut app = paper_trail(vec![shop.clone()]);
+    // `S` swept the bundle until K3; it is in the palette now.
     press_shifted(&mut app, 'S');
+    assert!(app.mailbox.pending_sweep_preview.is_none());
+    app.apply(Action::SweepBundle);
     let target = app
         .mailbox
         .pending_sweep_preview
@@ -230,7 +239,7 @@ fn a_whole_place_sweep_undoes_every_chunk_with_one_u() {
         "receipts@shop.example",
         vec![message("Receipt", false)],
     )]);
-    press_shifted(&mut app, 'A');
+    press_shifted(&mut app, 'E');
     let target = app.mailbox.pending_sweep_preview.clone().unwrap();
     assert_eq!(target.sender_email, None);
     assert_eq!(target.account_id, None, "every account's Paper trail");
@@ -282,7 +291,10 @@ fn more_senders_and_more_from_a_sender_page_in_without_losing_the_cursor() {
     app.mailbox.place_page.total_bundles = 2;
     app.mailbox.place_page.bundles[0].message_count = 2;
 
+    // `>` and `+` loaded more until K3; they are in the palette now.
     press(&mut app, KeyCode::Char('>'));
+    assert!(app.mailbox.pending_place_more.is_none());
+    app.apply(Action::MorePlaceSenders);
     let more = app
         .mailbox
         .pending_place_more
@@ -310,7 +322,7 @@ fn more_senders_and_more_from_a_sender_page_in_without_losing_the_cursor() {
     assert_eq!(app.mailbox.place_page.bundles.len(), 2);
     assert!(!app.mailbox.place_page.has_more_senders());
 
-    press(&mut app, KeyCode::Char('+'));
+    app.apply(Action::MoreFromSender);
     let more = app
         .mailbox
         .pending_place_more
@@ -379,18 +391,18 @@ fn u_moves_a_sender_back_where_it_was() {
     );
 }
 
-/// Open the whole-place preview the way `A` and the daemon's dry run do.
+/// Open the whole-place preview the way `E` and the daemon's dry run do.
 fn whole_place_preview() -> App {
     let mut app = paper_trail(vec![bundle(
         "receipts@shop.example",
         vec![message("Receipt", false)],
     )]);
-    press_shifted(&mut app, 'A');
+    press_shifted(&mut app, 'E');
     let target = app
         .mailbox
         .pending_sweep_preview
         .take()
-        .expect("A previews");
+        .expect("E previews");
     let sender = |email: &str, count| mxr_protocol::SweepSenderData {
         account_id: mxr_core::AccountId::new(),
         sender_email: email.into(),
@@ -416,7 +428,7 @@ fn whole_place_preview() -> App {
 }
 
 #[test]
-fn a_then_enter_never_sweeps_the_whole_place() {
+fn e_then_enter_never_sweeps_the_whole_place() {
     let mut app = whole_place_preview();
     assert_eq!(
         app.mailbox.sweep_confirm.as_ref().map(|c| c.sweep_focused),
@@ -437,7 +449,7 @@ fn a_then_enter_never_sweeps_the_whole_place() {
 }
 
 #[test]
-fn a_tab_enter_sweeps_the_whole_place() {
+fn e_tab_enter_sweeps_the_whole_place() {
     let mut app = whole_place_preview();
     press(&mut app, KeyCode::Tab);
     press(&mut app, KeyCode::Enter);

@@ -472,7 +472,7 @@ fn accounts_page_snapshot() {
             capabilities: Default::default(),
         }],
         selected_index: 0,
-        status: Some("n:new  Enter:edit  t:test  d:set default".into()),
+        status: Some("c:new  Enter:edit  t:test  d:set default".into()),
         last_result: None,
         operation_in_flight: false,
         throbber: Default::default(),

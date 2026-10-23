@@ -225,7 +225,7 @@ fn hints_with_keybindings(
             hints
         }
         UiContext::RulesList => vec![
-            ("n".to_string(), "New Rule".to_string()),
+            ("c".to_string(), "New Rule".to_string()),
             ("Enter".to_string(), "Refresh".to_string()),
             ("E".to_string(), "Edit Rule".to_string()),
             ("D".to_string(), "Dry Run".to_string()),
@@ -245,7 +245,7 @@ fn hints_with_keybindings(
             ("?".to_string(), "Help".to_string()),
         ],
         UiContext::AccountsList => vec![
-            ("n".to_string(), "New".to_string()),
+            ("c".to_string(), "New".to_string()),
             ("Enter".to_string(), "Edit".to_string()),
             ("t".to_string(), "Test".to_string()),
             ("d".to_string(), "Default".to_string()),

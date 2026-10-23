@@ -1,6 +1,6 @@
 ---
 source: crates/tui/src/ui/help_modal.rs
-assertion_line: 1125
+assertion_line: 1123
 expression: snapshot
 ---
 "                                                                                                    "
@@ -13,7 +13,7 @@ expression: snapshot
 "      ││gC                   Accounts and settings                  Start Here              ││      "
 "      ││gC                   Accounts Page                          Mailbox List            ││      "
 "      ││gC                   Open Accounts Tab                      Commands: Navigation    ││      "
-"      ││Add an account       g C → n (or palette: New IMAP/SMTP Acc How do I…               ││      "
+"      ││Add an account       g C → c (or palette: New IMAP/SMTP Acc How do I…               ││      "
 "      ││Repair an unhealthy  g C → select account → r when [unhealt How do I…               ││      "
 "      ││                                                                                    ││      "
 "      ││                                                                                    ││      "

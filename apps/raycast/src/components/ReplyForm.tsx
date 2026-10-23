@@ -58,6 +58,7 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
   const [body, setBody] = useState("");
   const [error, setError] = useState<string>();
   const current = useRef<ReplyDraft>(undefined);
+  const formGeneration = useRef(0);
   // What the form shows now; a submission compares it with what it checked.
   const latestBody = useRef("");
   const submissions = useRef(new OwnedRequestGate());
@@ -82,17 +83,24 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
   };
 
   useEffect(() => {
+    const form = ++formGeneration.current;
     closed.current = false;
     startReply(messageId, kind)
       .then((opened) => {
+        if (closed.current || formGeneration.current !== form) {
+          void discardReply(opened).catch(() => undefined);
+          return;
+        }
         current.current = opened;
-        if (closed.current) return discardIfAbandoned();
         setDraft(opened);
         editBody(opened.session.bodyMarkdown);
       })
-      .catch((failure) => setError(message(failure)));
+      .catch((failure) => {
+        if (!closed.current && formGeneration.current === form) setError(message(failure));
+      });
     return () => {
       closed.current = true;
+      formGeneration.current += 1;
       const submissionInFlight = submissions.current.isRunning;
       submissions.current.cancel();
       assistRequests.current.cancel();

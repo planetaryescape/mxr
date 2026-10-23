@@ -2082,6 +2082,24 @@ pub enum Request {
         #[serde(default)]
         dry_run: bool,
     },
+    /// Four distinct user corrections. Wrong details requires edits and does
+    /// not change the row until saved. Quotes are immutable source evidence.
+    CorrectTodo {
+        todo_id: String,
+        reason: TodoCorrectionData,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        time_zone: Option<String>,
+        #[serde(default)]
+        edits: Vec<TodoEditData>,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    UndoTodoCorrection {
+        todo_id: String,
+        correction_id: String,
+        #[serde(default)]
+        dry_run: bool,
+    },
     /// Preview or accept one evidence-backed later-mail resolution.
     ResolveTodoSuggestion {
         todo_id: String,
@@ -3059,6 +3077,8 @@ impl Request {
             | Self::ListTodos { .. }
             | Self::GetTodo { .. }
             | Self::SetTodoState { .. }
+            | Self::CorrectTodo { .. }
+            | Self::UndoTodoCorrection { .. }
             | Self::ResolveTodoSuggestion { .. }
             | Self::ScheduleTodo { .. }
             | Self::UpdateTodo { .. }

@@ -19,10 +19,8 @@
 //! including no activity row.
 
 use super::classify_eval_asks::{AskGrader, AskInput, Row, ASK_QUESTIONS};
-use super::desk::{self_matcher, Senders};
-use super::desk_lanes;
 use super::modes::MEMBERSHIP_MAX_THREADS;
-use super::{mail_kind, HandlerError, HandlerResult};
+use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
@@ -326,11 +324,27 @@ pub(super) async fn classify_eval(
         .map(|(candidate, _)| candidate.message_id.clone())
         .collect();
     let aspects = state.store.classify_eval_aspects(&ids).await?;
-    let mut rows: HashMap<&MessageId, Vec<Row>> = HashMap::new();
-    for todo in &aspects.todos {
-        rows.entry(&todo.source_message_id)
-            .or_default()
-            .push(Row::from_todo(todo));
+    let mut rows: HashMap<MessageId, Vec<Row>> = HashMap::new();
+    let mut stored_answers = HashMap::new();
+    let envelopes = state.store.list_envelopes_by_ids(&ids).await?;
+    let account_ids: std::collections::HashSet<_> =
+        envelopes.iter().map(|e| e.account_id.clone()).collect();
+    for account in account_ids {
+        let stored = state.store.asks_for_messages(&account, &ids).await?;
+        for (id, answer) in stored {
+            if let Some(envelope) = envelopes.iter().find(|e| e.id == id) {
+                let person = if answer.facts.owner_authored {
+                    envelope.to.first()
+                } else {
+                    Some(&envelope.from)
+                };
+                let name = person
+                    .map(|a| a.name.as_deref().unwrap_or(&a.email))
+                    .unwrap_or_default();
+                rows.insert(id.clone(), Row::from_asks(&answer, name));
+                stored_answers.insert(id, answer);
+            }
+        }
     }
     let mut tally = Tally::default();
     let mut asks = AskGrader::default();
@@ -348,11 +362,55 @@ pub(super) async fn classify_eval(
         grade(label, &actual, &mut tally, &mut mismatches);
         asks.grade(
             AskInput {
+                provenance_slices: stored_answers.get(&candidate.message_id).map_or_else(
+                    || vec![("rules_abstained", "pending".into())],
+                    |answer| {
+                        let mut zones: Vec<_> = answer
+                            .facts
+                            .zones
+                            .iter()
+                            .map(|z| format!("{:?}", z.kind).to_lowercase())
+                            .collect();
+                        zones.sort();
+                        zones.dedup();
+                        vec![
+                            ("zone", zones.join("+")),
+                            (
+                                "thread_position",
+                                if answer.facts.owner_replied_afterwards {
+                                    "followed_by_owner"
+                                } else if answer.facts.predecessor.is_some() {
+                                    "reply"
+                                } else {
+                                    "first"
+                                }
+                                .into(),
+                            ),
+                            (
+                                "rules_abstained",
+                                if answer.pending_body {
+                                    "pending_body"
+                                } else if answer
+                                    .units
+                                    .iter()
+                                    .any(|u| u.answer == mxr_core::asks::AskAnswer::NotSure)
+                                {
+                                    "yes"
+                                } else {
+                                    "no"
+                                }
+                                .into(),
+                            ),
+                        ]
+                    },
+                ),
                 label,
                 // The store returns rows in key order; the grader does not
                 // rely on it.
                 rows: rows.remove(&candidate.message_id).unwrap_or_default(),
-                reply_found: (!label.outbound).then_some(read.reply_owed),
+                reply_found: (!label.outbound
+                    && stored_answers.contains_key(&candidate.message_id))
+                .then_some(read.reply_owed),
                 sent: read.sent,
             },
             &candidate.from_email,
@@ -403,35 +461,17 @@ async fn mail_reads(
                     .await?,
             );
         }
-        let senders = Senders::load_raw(state, &account_id, &messages).await?;
-        let assessments = super::assessments::fresh_stored(
-            state,
-            &account_id,
-            state
-                .store
-                .assessments(&account_id, mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
-                .await?,
-        )
-        .await?;
-        let is_self = self_matcher(state, &account_id).await?;
-        // Looked up once per email: a scan per email is quadratic on a demo
-        // of tens of thousands.
+        let asks_ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
+        let (homes, stored_asks) = state
+            .store
+            .assessment_facets_for_messages(&account_id, &asks_ids)
+            .await?;
+        let assessments = super::assessments::fresh_stored(state, &account_id, homes).await?;
         let by_id: HashMap<&MessageId, _> = messages.iter().map(|m| (&m.id, m)).collect();
-        // The newest message you sent in each thread, by the order mail was
-        // stored (`seq`), as the desk judges who wrote last
-        // (`desk_lanes::last_stored`).
-        let mut last_sent: HashMap<&ThreadId, i64> = HashMap::new();
-        for message in &messages {
-            if desk_lanes::is_outbound(message, &is_self) {
-                let newest = last_sent.entry(&message.thread_id).or_insert(message.seq);
-                *newest = (*newest).max(message.seq);
-            }
-        }
         for candidate in candidates {
             let Some(message) = by_id.get(&candidate.message_id) else {
                 continue;
             };
-            let signals = senders.signals(message, &is_self);
             let assessment = assessments.get(&candidate.message_id);
             let kind = assessment.map_or(SenderKindData::ScreenedOut, |a| match a.who.as_str() {
                 "person" => SenderKindData::People,
@@ -450,21 +490,11 @@ async fn mail_reads(
                         live: false,
                     }),
                     reason: assessment.map_or_else(String::new, |a| a.deciding.reason.clone()),
-                    // Your turn: a request directed to you that you have not
-                    // answered. The desk puts a thread in You owe only when
-                    // its latest stored message is not yours
-                    // (`desk_lanes.rs:438`: an outbound latest is Waiting)
-                    // and the inbound one passes `requires_reply`
-                    // (`desk_lanes.rs:483`), which is `reply_request` and a
-                    // sender that classifies as a person
-                    // (`mail_kind.rs:408-418`). Per message that is:
-                    // requires_reply on the signals built above, and
-                    // nothing sent after it. The lane's other gates (copied
-                    // threads, decay, the screener, snoozes) are not mirrored.
-                    reply_owed: mail_kind::requires_reply(&signals)
-                        && last_sent
-                            .get(&message.thread_id)
-                            .is_none_or(|sent| *sent < message.seq),
+                    reply_owed: stored_asks.get(&message.id).is_some_and(|a| {
+                        a.units
+                            .iter()
+                            .any(|u| u.answer == mxr_core::asks::AskAnswer::AsksYouToReply)
+                    }),
                     sent: message.date,
                 },
             );

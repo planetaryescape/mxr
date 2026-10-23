@@ -1664,6 +1664,7 @@ mod tests {
     fn todo_change(dry_run: bool, changed: usize, unchanged: &[&str]) -> String {
         let data = mxr_protocol::ResponseData::TodoChange {
             change: mxr_protocol::TodoChangeData {
+                correction_undo: None,
                 dry_run,
                 action: "done".into(),
                 changed: Vec::new(),

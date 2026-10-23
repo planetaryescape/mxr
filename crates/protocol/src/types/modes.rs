@@ -147,9 +147,12 @@ pub struct ScreenerChoiceData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadModesData {
+    /// Additional stored asks can be inspected through their source messages.
+    #[serde(default)]
+    pub asks_more: bool,
     /// The independently versioned asks facet includes sent mail as well as received mail.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub asks: Vec<mxr_core::asks::AskAssessment>,
+    pub asks: Vec<mxr_core::asks::AskSummary>,
     /// Missing or invalidated asks are pending; readers never invent a replacement.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub asks_pending: Vec<MessageId>,
@@ -315,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_membership_defaults_asks_without_changing_protocol_version() {
+    fn legacy_membership_defaults_asks() {
         let old = serde_json::json!({
             "account_id": mxr_core::AccountId::new(),
             "thread_id": mxr_core::ThreadId::new(),

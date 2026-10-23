@@ -8,15 +8,18 @@ use mxr_store::DeskMessage;
 use mxr_todo::asks::{assess, AskInput, Predecessor};
 use std::collections::HashMap;
 
-pub(super) async fn materialize(
+pub(super) async fn prepare(
     state: &AppState,
     account: &AccountId,
     messages: &[DeskMessage],
-    revisions: &HashMap<ThreadId, i64>,
     is_owner: &(dyn Fn(&str) -> bool + Sync),
-) -> Result<bool, HandlerError> {
+) -> Result<Vec<AskAssessment>, HandlerError> {
+    let context_token =
+        mxr_store::asks_context_token().map_err(|e| HandlerError::from(e.to_string()))?;
     let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
     let stored = state.store.asks_for_messages(account, &ids).await?;
+    let envelopes = state.store.list_envelopes_by_ids(&ids).await?;
+    let envelopes: HashMap<_, _> = envelopes.iter().map(|e| (&e.id, e)).collect();
     let source_bodies = if stored.len() == ids.len() {
         HashMap::new()
     } else {
@@ -40,7 +43,11 @@ pub(super) async fn materialize(
     // Names are observations from this account's envelopes, never derived
     // from an email address or an account's UI label.
     let mut answers: Vec<AskAssessment> = Vec::new();
-    for thread in messages.chunk_by(|a, b| a.thread_id == b.thread_id) {
+    let mut grouped: HashMap<&ThreadId, Vec<&DeskMessage>> = HashMap::new();
+    for message in messages {
+        grouped.entry(&message.thread_id).or_default().push(message);
+    }
+    for thread in grouped.values() {
         let mut names: Vec<_> = thread
             .iter()
             .flat_map(|m| {
@@ -54,7 +61,7 @@ pub(super) async fn materialize(
             .collect();
         names.sort();
         names.dedup();
-        let mut ordered: Vec<_> = thread.iter().collect();
+        let mut ordered = thread.clone();
         ordered.sort_by_key(|m| m.seq);
         let last_owner = ordered
             .iter()
@@ -65,7 +72,18 @@ pub(super) async fn materialize(
             if stored.contains_key(&message.id) {
                 continue;
             }
-            let predecessor = position.checked_sub(1).and_then(|p| ordered.get(p));
+            let linked = envelopes
+                .get(&message.id)
+                .and_then(|e| e.in_reply_to.as_deref());
+            let predecessor = linked
+                .and_then(|header| {
+                    ordered.iter().take(position).rev().find(|p| {
+                        envelopes
+                            .get(&p.id)
+                            .is_some_and(|e| e.message_id_header.as_deref() == Some(header))
+                    })
+                })
+                .or_else(|| position.checked_sub(1).and_then(|p| ordered.get(p)));
             let body = plain_bodies.get(&message.id);
             let previous_body = predecessor.and_then(|p| plain_bodies.get(&p.id));
             let replied = last_owner.is_some_and(|seq| seq > message.seq);
@@ -81,7 +99,7 @@ pub(super) async fn materialize(
                 "owner": [owned, names, owner_addresses],
                 "predecessor": predecessor.map(|p| (&p.id, &p.from, previous_body)),
                 "owner_replied_afterwards": replied,
-                "timezone_offset": message.date.with_timezone(&Local).offset().to_string(),
+                "context_token": context_token,
             }).to_string());
             let input = AskInput {
                 message_id: &message.id,
@@ -105,11 +123,18 @@ pub(super) async fn materialize(
                 }),
                 owner_replied_afterwards: replied,
             };
-            answers.push(assess(&input, &Local, fingerprint));
+            let mut answer = assess(&input, &Local, fingerprint);
+            answer.context_token = context_token.clone();
+            answers.push(answer);
         }
     }
-    Ok(state
-        .store
-        .save_asks_batch(account, revisions, &answers)
-        .await?)
+    // A timezone change during the read cannot publish an answer for the old context.
+    if mxr_store::asks_context_token().map_err(|e| HandlerError::from(e.to_string()))?
+        != context_token
+    {
+        return Err(HandlerError::from(
+            "asks timezone changed during materialization",
+        ));
+    }
+    Ok(answers)
 }

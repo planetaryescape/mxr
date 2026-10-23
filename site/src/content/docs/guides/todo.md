@@ -43,6 +43,27 @@ renewal reviews can become tasks automatically. An alert in Updates offers
 `t` to create a task when you choose; it does not automatically create one
 merely because it appears in `Needs a look`.
 
+## Correct ownership or details
+
+Press `X` in the web app or TUI and choose `Not a to-do`, `Not mine`,
+`Already done` or `Wrong details`. Wrong details opens the editor and keeps
+the task until you save. The asking quote stays unchanged. Undo restores
+the prior task; if you edited it again, mxr keeps the newer work.
+
+```bash
+mxr todo correct TODO_ID not-mine --dry-run --format json
+mxr todo correct TODO_ID not-mine --format json
+mxr todo undo-correction TODO_ID CORRECTION_ID --dry-run --format json
+mxr todo undo-correction TODO_ID CORRECTION_ID --format json
+```
+
+Use the `correction_undo` token from the correction response. Automatic
+rows name who asked, or say you promised, and quote the authored request.
+Reply-only requests stay in Messages' Your turn. Requests you sent and
+promises someone made to you feed Waiting on. Uncertain requests appear in
+the collapsed `Might need you` section; in the TUI, press `m` to review
+those source emails. They do not enter Now's urgent tasks.
+
 ## Add or correct a task yourself
 
 ```bash

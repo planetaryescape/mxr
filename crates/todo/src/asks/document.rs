@@ -42,7 +42,7 @@ pattern!(NOW, r"(?i)\b(now|immediately|overdue|past due)\b");
 
 pub(super) fn read(text: &str, zone: usize, span: &AskSpan, facts: &AskFacts) -> DocumentReading {
     let has = |regex: &Regex| regex.is_match(text);
-    let (kind, status) = if has(&COMPLETE) {
+    let (mut kind, mut status) = if has(&COMPLETE) {
         (DocumentKind::PaymentConfirmation, PaymentStatus::Complete)
     } else if has(&CREDIT) {
         (DocumentKind::Credit, PaymentStatus::Credit)
@@ -80,6 +80,13 @@ pub(super) fn read(text: &str, zone: usize, span: &AskSpan, facts: &AskFacts) ->
         .iter()
         .filter(|a| inside(zone, span, a.zone, &a.span))
         .collect();
+    if matches!(kind, DocumentKind::Bill | DocumentKind::Statement)
+        && !amounts.is_empty()
+        && amounts.iter().all(|a| a.minor <= 0)
+    {
+        kind = DocumentKind::Credit;
+        status = PaymentStatus::Credit;
+    }
     let unique_positive = amounts.first().is_some_and(|first| {
         first.minor > 0
             && amounts

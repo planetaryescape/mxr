@@ -362,6 +362,7 @@ fn resolution_requires_preview_and_explicit_accept_and_opens_exact_source() {
         "todo_1".into(),
         "resolution-1".into(),
         TodoChangeData {
+            correction_undo: None,
             dry_run: true,
             action: "resolution_preview".into(),
             changed: vec![app.selected_todo().unwrap().clone()],
@@ -485,6 +486,7 @@ fn resolution_preview_is_discarded_after_selection_moves() {
         "todo_1".into(),
         "resolution-1".into(),
         TodoChangeData {
+            correction_undo: None,
             dry_run: true,
             action: "resolution_preview".into(),
             changed: vec![first_todo],
@@ -638,13 +640,18 @@ fn mutation_failure_replaces_retired_progress_with_the_error() {
 }
 
 #[test]
-fn x_marks_it_not_a_to_do() {
+fn x_chooses_a_durable_correction_before_changing_the_row() {
     let mut app = todo_app(true);
     press_shifted(&mut app, 'X');
+    assert!(queued(&app).is_empty());
+    assert!(app.mailbox.todo_page.prompt.is_some());
+    press(&mut app, KeyCode::Char('2'));
+    press(&mut app, KeyCode::Enter);
     assert!(matches!(
         queued(&app).as_slice(),
-        [Request::SetTodoState {
-            action: TodoStateActionData::Dismiss,
+        [Request::CorrectTodo {
+            reason: mxr_protocol::TodoCorrectionData::NotMine,
+            dry_run: false,
             ..
         }]
     ));
@@ -829,6 +836,7 @@ fn the_catch_up_keeps_lets_go_and_lets_go_of_exactly_the_preview() {
     assert!(queued(&app).is_empty());
     app.mailbox.todo_page.pending_catchup_preview = false;
     app.show_catchup_preview(TodoChangeData {
+        correction_undo: None,
         dry_run: true,
         action: "let_go".into(),
         changed: vec![rows[1].clone()],
@@ -869,6 +877,7 @@ fn help_leads_with_the_mode_on_to_do() {
 
 fn catchup_change(action: &str, ids: &[&str]) -> TodoChangeData {
     TodoChangeData {
+        correction_undo: None,
         dry_run: false,
         action: action.into(),
         changed: ids.iter().map(|id| todo(id, "Pay water bill")).collect(),
@@ -973,6 +982,7 @@ fn source_reader_shows_email_and_escape_returns_to_the_resolution_preview() {
         row.id.clone(),
         "resolution-reader".into(),
         TodoChangeData {
+            correction_undo: None,
             dry_run: true,
             action: "resolution_preview".into(),
             changed: vec![row],

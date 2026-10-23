@@ -3,7 +3,7 @@ use crate::{AccountId, MessageId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-pub const ASKS_POLICY_VERSION: &str = "asks-r2c-1";
+pub const ASKS_POLICY_VERSION: &str = "asks-r2c-2";
 
 macro_rules! tags {
     ($name:ident { $($variant:ident),+ $(,)? }) => {
@@ -210,6 +210,9 @@ pub struct AskAssessment {
     pub policy_version: String,
     pub input_fingerprint: String,
     pub pending_body: bool,
+    /// Local timezone rules and configuration used to interpret date candidates.
+    #[serde(default)]
+    pub context_token: String,
     pub facts: AskFacts,
     pub units: Vec<AskUnit>,
 }
@@ -222,5 +225,92 @@ impl AskAssessment {
             .get(unit.zone)?
             .text
             .get(unit.span.start..unit.span.end)
+    }
+}
+
+/// Bounded mode projection of the persisted answer. Full zones stay in the
+/// local assessment; the message, zone and byte span identify the evidence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AskSummary {
+    pub message_id: MessageId,
+    pub policy_version: String,
+    pub input_fingerprint: String,
+    pub pending_body: bool,
+    pub units: Vec<AskUnitSummary>,
+    pub more_units: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AskUnitSummary {
+    pub unit: usize,
+    pub zone: usize,
+    pub span: AskSpan,
+    pub author: Option<String>,
+    /// Exact source text, or absent when too long for a mode response.
+    pub quote: Option<String>,
+    pub answer: AskAnswer,
+    pub tags: Option<AskTags>,
+    pub amount: Option<AskAmount>,
+    pub due: Option<AskDate>,
+    pub reference: Option<AskReference>,
+}
+
+impl AskAssessment {
+    pub fn summary(&self) -> AskSummary {
+        let mut relevant = self
+            .units
+            .iter()
+            .enumerate()
+            .filter(|(_, u)| u.answer != AskAnswer::Nothing);
+        let units = relevant
+            .by_ref()
+            .take(8)
+            .map(|(index, unit)| AskUnitSummary {
+                unit: index,
+                zone: unit.zone,
+                span: unit.span.clone(),
+                author: self
+                    .facts
+                    .zones
+                    .get(unit.zone)
+                    .and_then(|z| z.author.clone())
+                    .filter(|a| a.len() <= 320),
+                quote: self
+                    .quote(unit)
+                    .filter(|q| q.len() <= 2048)
+                    .map(str::to_string),
+                answer: unit.answer,
+                tags: unit.tags.clone(),
+                amount: unit
+                    .tags
+                    .as_ref()
+                    .and_then(|t| t.amount)
+                    .and_then(|i| self.facts.amounts.get(i))
+                    .cloned(),
+                due: unit
+                    .tags
+                    .as_ref()
+                    .and_then(|t| t.due)
+                    .and_then(|i| self.facts.dates.get(i))
+                    .cloned(),
+                reference: unit
+                    .tags
+                    .as_ref()
+                    .and_then(|t| t.reference)
+                    .and_then(|i| self.facts.references.get(i))
+                    .filter(|r| r.value.len() <= 256)
+                    .cloned(),
+            })
+            .collect();
+        AskSummary {
+            message_id: self.message_id.clone(),
+            policy_version: self.policy_version.clone(),
+            input_fingerprint: self.input_fingerprint.clone(),
+            pending_body: self.pending_body,
+            units,
+            more_units: relevant.next().is_some(),
+        }
     }
 }

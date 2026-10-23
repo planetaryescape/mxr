@@ -2,6 +2,7 @@
 mod candidates;
 mod document;
 mod facts;
+pub mod items;
 mod votes;
 
 use chrono::{DateTime, TimeZone, Utc};
@@ -66,7 +67,16 @@ where
                 .first()
                 .map(|v| v.tags.clone())
                 .filter(|first| votes.iter().all(|vote| &vote.tags == first));
-            let answer = resolve(tags.as_ref(), input.owner_replied_afterwards);
+            let mut answer = resolve(tags.as_ref(), input.owner_replied_afterwards);
+            if answer == AskAnswer::NotSure
+                && tags.is_none()
+                && !votes::eligible_uncertainty(text, &document)
+            {
+                answer = AskAnswer::Nothing;
+            }
+            if text.len() > 2048 && matches!(answer, AskAnswer::AsksYou | AskAnswer::YouPromised) {
+                answer = AskAnswer::NotSure;
+            }
             units.push(AskUnit {
                 zone,
                 span,
@@ -95,7 +105,7 @@ where
                 .is_some_and(|t| terminal.contains(&t.action) || input.body.is_none())
         {
             unit.tags = None;
-            unit.answer = AskAnswer::NotSure;
+            unit.answer = AskAnswer::Nothing;
         }
     }
     AskAssessment {
@@ -104,6 +114,7 @@ where
         policy_version: ASKS_POLICY_VERSION.into(),
         input_fingerprint: fingerprint,
         pending_body: input.body.is_none(),
+        context_token: String::new(),
         facts,
         units,
     }

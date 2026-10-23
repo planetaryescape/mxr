@@ -127,6 +127,9 @@ async fn put(fx: &Fixture, mail: Mail<'_>) -> MessageId {
 }
 
 async fn scan(fx: &Fixture, ids: &[MessageId], now: DateTime<Utc>) -> pass::PassSummary {
+    super::super::assessments::reconcile_messages(&fx.state, &fx.account, ids)
+        .await
+        .unwrap();
     let cfg = todos::pass_config(&fx.state, now);
     pass::scan_messages(&fx.state.store, &cfg, ids)
         .await

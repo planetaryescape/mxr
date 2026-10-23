@@ -159,6 +159,7 @@ async fn gather(
         let inputs = AccountInputs {
             pending_threads: &senders.pending_threads(&messages, &is_self),
             assessments: &senders.assessments,
+            asks: &senders.asks,
             account_id,
             messages: &messages,
             contacts: &senders.contacts,

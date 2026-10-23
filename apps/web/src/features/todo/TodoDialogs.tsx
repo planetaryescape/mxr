@@ -111,17 +111,20 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
   };
   const [values, setValues] = useState(initial);
   const changed = EDIT_FIELDS.filter(({ field }) => values[field].trim() !== initial[field].trim());
-  function submit(event: FormEvent) {
+  const [saving, setSaving] = useState(false);
+  async function submit(event: FormEvent) {
     event.preventDefault();
-    if (changed.length === 0 || !values.title.trim()) return;
-    onClose();
-    void editRow(
+    if (saving || changed.length === 0 || !values.title.trim()) return;
+    setSaving(true);
+    const saved = await editRow(
       todo,
       changed.map(({ field }) => ({ field, value: values[field].trim() })),
     );
+    setSaving(false);
+    if (saved) onClose();
   }
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Edit to-do</DialogTitle>
@@ -129,7 +132,8 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
             What you change here is yours: mxr won't rewrite it.
           </DialogDescription>
         </DialogHeader>
-        <form className="grid gap-3" onSubmit={submit}>
+        <blockquote className="border-l border-rule pl-3 text-text-2">{todo.why}</blockquote>
+        <form className="grid gap-3" onSubmit={(event) => void submit(event)}>
           {EDIT_FIELDS.map(({ field, label, hint }, index) => (
             <label key={field} className="grid gap-1 text-sm">
               <span className="font-medium">{label}</span>
@@ -142,10 +146,10 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
             </label>
           ))}
           <DialogFooter>
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={changed.length === 0 || !values.title.trim()}>
+            <Button type="submit" size="sm" disabled={saving || changed.length === 0 || !values.title.trim()}>
               Save
             </Button>
           </DialogFooter>

@@ -33,7 +33,7 @@ import { fetchRunway, TODO_KEY, type Todo, type TodoRunway } from "./api";
 import { TodoCatchupView, TodoExpiredView } from "./TodoCatchupView";
 import { TodoRow } from "./TodoRow";
 import { openCount, primaryAction, runwayItems, type RunwayItem } from "./todoRows";
-import { markNotTodo, restoreTodos, tickOff, useTodoHidden } from "./todoVerbs";
+import { restoreTodos, tickOff, useTodoHidden } from "./todoVerbs";
 import type { LampVia } from "@/components/Row";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { SectionHeading } from "@/components/SectionHeading";
@@ -366,7 +366,7 @@ function Bands({
       else runPrimary(current.todo);
     },
     done: () => actionable && done(actionable, "key"),
-    dismiss: () => actionable && void markNotTodo([actionable], "key"),
+    dismiss: () => actionable && openMailDialog({ kind: "todo-correct", todo: actionable }),
     schedule: () => actionable && openMailDialog({ kind: "todo-schedule", todo: actionable }),
     edit: () => actionable && openMailDialog({ kind: "todo-edit", todo: actionable }),
     openEmail: () => current?.todo.thread_id && openEmail(current.todo),
@@ -541,6 +541,18 @@ function Bands({
             <ul aria-label="Done this week" className="mt-1 grid grid-cols-[minmax(0,1fr)] gap-0.5">
               {doneItems.map(row)}
             </ul>
+          ) : null}
+
+          {(runway.might_need_you?.length ?? 0) > 0 ? (
+            <details className="mx-5 mt-5" data-testid="might-need-you">
+              <summary className="cursor-pointer text-text-2">Might need you · {runway.might_need_you?.length}</summary>
+              <ul className="mt-2 grid gap-3">
+                {runway.might_need_you?.map((item) => <li key={item.asks.message_id}>
+                  <button type="button" className="text-left text-text-1 underline" onClick={() => navigate({ to: "/todo/$threadId", params: { threadId: item.thread_id } })}>{item.subject || "Open the source email"}</button>
+                  {item.asks.units.filter((unit) => unit.answer === "not_sure").map((unit) => <blockquote key={unit.unit} className="border-l border-rule pl-3 text-text-2">{unit.quote ?? "Open the source email to review this request."}</blockquote>)}
+                </li>)}
+              </ul>
+            </details>
           ) : null}
 
           {expiredOnOpen > 0 ? (

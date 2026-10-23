@@ -18,13 +18,15 @@ use mxr_protocol::{
     ClassifyEvalMismatchData, ClassifyEvalReplyData, ClassifyEvalSliceData, ClassifyEvalTwinsData,
 };
 use mxr_provider_fake::fixtures::scenarios::{AskKind, Direction, Due, Item, Labelled};
+#[cfg(test)]
 use mxr_store::EvalTodo;
 use mxr_todo::dates::{parse_date, DateOrder, YearIntent};
+#[cfg(test)]
 use mxr_todo::TodoKind;
 use std::collections::BTreeMap;
 
 /// What the Your turn answer reads, for the output.
-pub(super) const REPLY_PROJECTION: &str = "Your turn as the desk reads it for one message: `mail_kind::requires_reply` (a request directed to you, `reply_request`, from a sender that classifies as a person, mail_kind.rs:408-418, the call the You owe lane makes at desk_lanes.rs:483) with nothing you sent after it in the thread (desk_lanes.rs:438, an outbound latest message is Waiting). The lane's other gates (copied threads, decay, snoozes, the screener) are not mirrored";
+pub(super) const REPLY_PROJECTION: &str = "Stored asks unit answer asks_you_to_reply; missing or stale rows remain pending and eval never materializes them.";
 
 /// The mismatch questions the asks add, in the order they are listed.
 pub(super) const ASK_QUESTIONS: [&str; 5] = ["ask", "amount", "due", "counterparty", "reply"];
@@ -54,6 +56,7 @@ pub(super) struct Row {
 /// * `Promise` is a promise in the owner's sent mail, so its direction is
 ///   `you_promised` and its kind comes from the verb its title starts with
 ///   ([`promise_kind`]); a title that starts with anything else is `other`.
+#[cfg(test)]
 pub(super) fn translate(todo: &TodoKind, title: &str) -> (AskKind, Direction) {
     let asked = |kind| (kind, Direction::AsksYou);
     match todo {
@@ -71,6 +74,7 @@ pub(super) fn translate(todo: &TodoKind, title: &str) -> (AskKind, Direction) {
 
 /// The kind of a promise from the first word of its title ("Send the signed
 /// form" is `send`); `other` when the verb is not one of the vocabulary's.
+#[cfg(test)]
 fn promise_kind(title: &str) -> AskKind {
     match title
         .split_whitespace()
@@ -93,6 +97,57 @@ fn promise_kind(title: &str) -> AskKind {
 }
 
 impl Row {
+    pub(super) fn from_asks(
+        answer: &mxr_core::asks::AskAssessment,
+        counterparty: &str,
+    ) -> Vec<Self> {
+        use mxr_core::asks::{ActionKind as A, AskAnswer};
+        answer
+            .units
+            .iter()
+            .filter_map(|unit| {
+                let direction = match unit.answer {
+                    AskAnswer::AsksYou => Direction::AsksYou,
+                    AskAnswer::YouPromised => Direction::YouPromised,
+                    _ => return None,
+                };
+                let tags = unit.tags.as_ref()?;
+                let kind = match tags.action {
+                    A::Pay => AskKind::Pay,
+                    A::FixPayment => AskKind::FixPayment,
+                    A::Sign => AskKind::Sign,
+                    A::Verify => AskKind::Verify,
+                    A::Reply => AskKind::Reply,
+                    A::Send => AskKind::Send,
+                    A::Provide => AskKind::Provide,
+                    A::Upload => AskKind::Upload,
+                    A::Book => AskKind::Book,
+                    A::Attend => AskKind::Attend,
+                    A::RenewOrCancel => AskKind::RenewOrCancel,
+                    A::Register => AskKind::Register,
+                    A::Contact => AskKind::Contact,
+                    A::Other => AskKind::Other,
+                };
+                let due = tags.due.and_then(|i| answer.facts.dates.get(i));
+                Some(Self {
+                    kind,
+                    direction,
+                    made_as: format!("{}:unit", answer.policy_version),
+                    counterparty: Some(counterparty.into()),
+                    amount: tags
+                        .amount
+                        .and_then(|i| answer.facts.amounts.get(i))
+                        .map(|a| (a.minor, a.currency.clone())),
+                    due_at: due.map(|d| d.at),
+                    due_words: due.map(|d| {
+                        answer.facts.zones[d.zone].text[d.span.start..d.span.end].to_string()
+                    }),
+                })
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
     pub(super) fn from_todo(todo: &EvalTodo) -> Self {
         let parsed = TodoKind::parse(&todo.kind).unwrap_or(TodoKind::Other);
         let (kind, direction) = translate(&parsed, &todo.title);
@@ -204,6 +259,7 @@ struct Outcome {
 
 /// One email to grade.
 pub(super) struct AskInput<'a> {
+    pub provenance_slices: Vec<(&'static str, String)>,
     pub label: &'a Labelled,
     pub rows: Vec<Row>,
     /// Whether the classifier says a reply is owed; `None` for sent mail,
@@ -368,12 +424,13 @@ impl AskGrader {
         } else {
             "visible"
         };
-        let slice_keys: [(&'static str, String); 4] = [
+        let mut slice_keys = vec![
             ("sender_kind", label.sender.as_str().to_string()),
             ("locale", label.locale.to_string()),
             ("template_family", label.family.to_string()),
             ("phrasing", held.to_string()),
         ];
+        slice_keys.extend(input.provenance_slices);
         for key in slice_keys {
             let entry = self.slices.entry(key).or_default();
             entry.0 += 1;
@@ -899,6 +956,7 @@ mod tests {
         let mut grader = AskGrader::default();
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label,
                 rows,
                 reply_found: Some(false),
@@ -1210,6 +1268,7 @@ mod tests {
         let mut grader = AskGrader::default();
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &sent_mail,
                 rows: vec![found],
                 reply_found: None,
@@ -1220,6 +1279,7 @@ mod tests {
         // A promise row does not satisfy an ask of the same kind.
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &label("ask", vec![Item::asks(AskKind::Send, "Priya")]),
                 rows: vec![Row {
                     direction: Direction::YouPromised,
@@ -1269,6 +1329,7 @@ mod tests {
         // Only the later email kept the row, as the store does.
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &first,
                 rows: Vec::new(),
                 reply_found: Some(false),
@@ -1278,6 +1339,7 @@ mod tests {
         );
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &second,
                 rows: vec![row(AskKind::Pay)],
                 reply_found: Some(false),
@@ -1296,6 +1358,7 @@ mod tests {
         let mut grader = AskGrader::default();
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &first,
                 rows: Vec::new(),
                 reply_found: Some(false),
@@ -1305,6 +1368,7 @@ mod tests {
         );
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &second,
                 rows: vec![row(AskKind::Pay)],
                 reply_found: Some(false),
@@ -1328,6 +1392,7 @@ mod tests {
             for (l, rows) in [(&plain, plain_rows), (&twin, twin_rows)] {
                 grader.grade(
                     AskInput {
+                        provenance_slices: vec![],
                         label: l,
                         rows,
                         reply_found: Some(false),
@@ -1356,6 +1421,7 @@ mod tests {
         let mut grader = AskGrader::default();
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &twin,
                 rows: Vec::new(),
                 reply_found: Some(false),
@@ -1382,6 +1448,7 @@ mod tests {
             for (l, found) in [(&open, open_found), (&answered, answered_found)] {
                 grader.grade(
                     AskInput {
+                        provenance_slices: vec![],
                         label: l,
                         rows: Vec::new(),
                         reply_found: Some(found),
@@ -1424,6 +1491,7 @@ mod tests {
             for (l, code) in [(&plain, "GBP"), (&twin, currency)] {
                 grader.grade(
                     AskInput {
+                        provenance_slices: vec![],
                         label: l,
                         rows: vec![Row {
                             amount: Some((123_456, code.into())),
@@ -1513,6 +1581,7 @@ mod tests {
         ] {
             grader.grade(
                 AskInput {
+                    provenance_slices: vec![],
                     label: l,
                     rows: Vec::new(),
                     reply_found: Some(found),
@@ -1547,6 +1616,7 @@ mod tests {
         let mut grader = AskGrader::default();
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &held,
                 rows: vec![row(AskKind::Pay)],
                 reply_found: Some(false),
@@ -1556,6 +1626,7 @@ mod tests {
         );
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &label("quiet", Vec::new()),
                 rows: Vec::new(),
                 reply_found: Some(false),

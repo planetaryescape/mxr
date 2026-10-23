@@ -245,6 +245,10 @@ pub enum UndoAction {
     /// (`SetTodoState` undo).
     Todos(Vec<String>),
     /// An evidence-backed resolution accepted for one task.
+    TodoCorrection {
+        todo_id: String,
+        correction_id: String,
+    },
     TodoResolution {
         todo_id: String,
         suggestion_id: String,

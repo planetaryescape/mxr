@@ -139,5 +139,28 @@
     "impact": "first compile received wrapper defaults despite outer env=4; later attempts never reached Cargo",
     "fix": "all following heavy commands must put env=4 after agent-work run --",
     "source": "~/.dotfiles/bin/agent-work:76-82"
+  },
+  "round2": {
+    "recorded_at": "2026-10-23T22:24:56.791314+00:00",
+    "canonical_worktree": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b",
+    "branch": "t3/asks-r2c-to-do-classifier",
+    "foundation_head": "231624910cdae602f8efcd4388905d08ae40c097",
+    "fetched_base": "b3c2f3b00aca85c2c7375030e86fb7f2380ba4fc",
+    "target_directory": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b/target-cli",
+    "target_budget_gib": 60,
+    "run_budget_gib": 100,
+    "target_kib": 809676,
+    "worker_tree_kib": 918188,
+    "heavy_commands_started": 0,
+    "queue_jobs": [],
+    "runtime_processes": [],
+    "reserved_ports": [
+      5573,
+      22777,
+      22778
+    ],
+    "memory_pressure_level": 2,
+    "memory_free_percent_last_observed": 38,
+    "reason_no_heavy_run": "Shared wrapper requires pressure level 1 and free >=25%; pressure remained 2. No override or foreign process action."
   }
 }

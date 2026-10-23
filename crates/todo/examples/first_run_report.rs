@@ -43,6 +43,10 @@ async fn main() -> anyhow::Result<()> {
             if progress.complete {
                 break;
             }
+            anyhow::ensure!(
+                progress.summary.scanned > 0,
+                "Stored asks are pending; run the daemon reconciler before this report"
+            );
         }
         println!(
             "first run, one account: {:.1}s",
@@ -215,6 +219,10 @@ async fn main() -> anyhow::Result<()> {
         if progress.complete {
             break;
         }
+        anyhow::ensure!(
+            progress.summary.scanned > 0,
+            "Stored asks are pending; run the daemon reconciler before this report"
+        );
     }
     println!(
         "\nre-run: {} created, {} updated, {} reopened, {} new catch-up, {:.1}s",

@@ -323,3 +323,16 @@ fn actor(text: &str, facts: &AskFacts, input: &AskInput<'_>) -> Actor {
         }
     }
 }
+
+/// Unsupported informational prose is not ask uncertainty. Keep only an
+/// observed request/commitment or incomplete consequential document reading.
+pub(super) fn eligible_uncertainty(text: &str, doc: &DocumentReading) -> bool {
+    REQUEST.is_match(text)
+        || PROMISE.is_match(text)
+        || matches!(
+            doc.kind,
+            DocumentKind::Bill | DocumentKind::Statement | DocumentKind::FailedPayment
+        )
+        || SIGN.is_match(text)
+        || VERIFY.is_match(text)
+}

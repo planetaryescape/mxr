@@ -34,8 +34,8 @@ const MODE: &str = "todo";
 pub(crate) const CATCHUP_MAX: u32 = 25;
 /// First-run pages classified per background tick, so a big mailbox is
 /// sorted in steps rather than one long hold on the writer.
-const FIRST_RUN_PAGES_PER_TICK: u32 = 20;
-const FIRST_RUN_PAGE_SIZE: u32 = 500;
+const FIRST_RUN_PAGES_PER_TICK: u32 = 1;
+const FIRST_RUN_PAGE_SIZE: u32 = 100;
 
 pub(crate) fn pass_config(state: &AppState, now: DateTime<Utc>) -> PassConfig<Local> {
     let cfg = state.config_snapshot();
@@ -71,6 +71,23 @@ pub(crate) async fn scan_messages_at(
         return;
     }
     let cfg = pass_config(state, now);
+    let envelopes = match state.store.list_envelopes_by_ids(message_ids).await {
+        Ok(envelopes) => envelopes,
+        Err(error) => {
+            tracing::warn!(%error, "asks source lookup failed");
+            return;
+        }
+    };
+    let accounts: std::collections::HashSet<_> =
+        envelopes.iter().map(|e| e.account_id.clone()).collect();
+    for account in accounts {
+        if let Err(error) =
+            super::assessments::reconcile_messages(state, &account, message_ids).await
+        {
+            tracing::warn!(%error, "asks materialization pending before to-do scan");
+            return;
+        }
+    }
     match pass::scan_messages(&state.store, &cfg, message_ids).await {
         Ok(summary) => {
             super::todo_resolution::scan_messages(state, message_ids).await;
@@ -95,7 +112,7 @@ pub(crate) async fn scan_messages_at(
 pub(crate) async fn tick(
     state: &AppState,
     now: DateTime<Utc>,
-    promise_fingerprints: &mut HashMap<AccountId, String>,
+    _promise_fingerprints: &mut HashMap<AccountId, String>,
 ) -> Result<bool, HandlerError> {
     if !state.config_snapshot().todo.enabled {
         return Ok(false);
@@ -105,6 +122,31 @@ pub(crate) async fn tick(
     for account in state.store.list_accounts().await? {
         if !account.enabled {
             continue;
+        }
+        if !super::asks_upgrade::page(state, &account.id, now).await? {
+            running = true;
+            continue;
+        }
+        let run = state.store.get_todo_run(&account.id).await?;
+        if run.as_ref().is_none_or(|run| {
+            run.rules_version != mxr_todo::RULES_VERSION || run.completed_at.is_none()
+        }) {
+            let cursor = run
+                .as_ref()
+                .filter(|run| run.rules_version == mxr_todo::RULES_VERSION)
+                .and_then(|run| run.cursor.as_ref());
+            let page = state
+                .store
+                .list_messages_for_todo_scan(&account.id, cursor, FIRST_RUN_PAGE_SIZE)
+                .await?;
+            let ids: Vec<_> = page.iter().map(|row| row.id.clone()).collect();
+            if let Err(error) =
+                super::assessments::reconcile_messages(state, &account.id, &ids).await
+            {
+                tracing::warn!(%error, "first-run asks pending");
+                running = true;
+                continue;
+            }
         }
         // One account's failure never stops the others or the sweep.
         let progress = match pass::run_first_run(
@@ -136,24 +178,6 @@ pub(crate) async fn tick(
                 expired_at_birth = progress.summary.expired_at_birth.values().sum::<u64>(),
                 "to-do first run"
             );
-        }
-        let fingerprint = state.store.promise_fingerprint(&account.id).await?;
-        if promise_fingerprints.get(&account.id) != Some(&fingerprint) {
-            match pass::sync_promises(&state.store, &cfg, &account.id, !progress.complete).await {
-                Ok(summary) => {
-                    if summary.not_promises > 0 {
-                        tracing::info!(
-                            account = %account.id,
-                            dismissed = summary.not_promises,
-                            "to-do dismissed promise rows not from mail you sent"
-                        );
-                    }
-                    promise_fingerprints.insert(account.id.clone(), fingerprint);
-                }
-                Err(error) => {
-                    tracing::warn!(account = %account.id, %error, "to-do promise mirror failed");
-                }
-            }
         }
     }
     let swept = pass::sweep(&state.store, now)
@@ -220,7 +244,21 @@ pub(super) async fn runway_at(
         .now
         .is_empty()
         .then(|| empty_state(never_had_any, bands.next_surface.as_ref()));
+    let might_need_you = state
+        .store
+        .uncertain_asks(account_id)
+        .await?
+        .into_iter()
+        .map(
+            |(thread_id, subject, asks)| mxr_protocol::TodoUncertainData {
+                thread_id,
+                subject,
+                asks: asks.summary(),
+            },
+        )
+        .collect();
     let mut runway = TodoRunwayData {
+        might_need_you,
         generated_at: now,
         header: todo_copy::HEADER.to_string(),
         headline,
@@ -431,6 +469,92 @@ pub(super) async fn set_state(
     Ok(change(dry_run, verb, done_word, &changed, unchanged, now))
 }
 
+pub(super) async fn correct(
+    state: &AppState,
+    raw_id: &str,
+    reason: mxr_protocol::TodoCorrectionData,
+    edits: &[TodoEditData],
+    time_zone: Option<&str>,
+    dry_run: bool,
+) -> HandlerResult {
+    use mxr_protocol::TodoCorrectionData as Reason;
+    let now = Utc::now();
+    let id = resolve_todo_id(state, raw_id).await?;
+    let before = state
+        .store
+        .get_todo(&id)
+        .await?
+        .ok_or_else(|| HandlerError::InvalidRequest("To-do no longer exists".into()))?;
+    if (reason == Reason::WrongDetails) == edits.is_empty() {
+        return Err(HandlerError::InvalidRequest(
+            "Wrong details needs saved field edits; the other corrections take no edits".into(),
+        ));
+    }
+    let mut after = if reason == Reason::WrongDetails {
+        apply_edits(state, before.clone(), edits, now, time_zone)?
+    } else {
+        before.clone()
+    };
+    match reason {
+        Reason::NotATodo | Reason::NotMine => {
+            after.state = TodoState::Dismissed;
+            after.dismissed_at = Some(now);
+        }
+        Reason::AlreadyDone => {
+            after.state = TodoState::Done;
+            after.done_at = Some(now);
+        }
+        Reason::WrongDetails => {}
+    }
+    let token = uuid::Uuid::new_v4().to_string();
+    let mut fields = FieldSources::from_json(&after.field_sources);
+    fields.set(
+        "correction",
+        FieldProvenance::with_evidence(FieldSource::User, format!("{}:{token}", reason.as_str())),
+    );
+    after.field_sources = fields.to_json();
+    after.user_edited = true;
+    after.updated_at = now;
+    let saved = state
+        .store
+        .correct_todo(&token, reason.as_str(), &before, &after, dry_run, now)
+        .await?;
+    let mut response = change(
+        dry_run,
+        reason.as_str(),
+        "Corrected",
+        &[saved],
+        Vec::new(),
+        now,
+    );
+    if let ResponseData::TodoChange { change } = &mut response {
+        change.correction_undo = (!dry_run).then_some(token);
+    }
+    Ok(response)
+}
+
+pub(super) async fn undo_correction(
+    state: &AppState,
+    raw_id: &str,
+    token: &str,
+    dry_run: bool,
+) -> HandlerResult {
+    let now = Utc::now();
+    let id = resolve_todo_id(state, raw_id).await?;
+    let record = state
+        .store
+        .undo_todo_correction(&id, token, dry_run, now)
+        .await?;
+    Ok(change(
+        dry_run,
+        "undo_correction",
+        "Restored",
+        &[record],
+        Vec::new(),
+        now,
+    ))
+}
+
 pub(super) async fn resolve_suggestion(
     state: &AppState,
     raw_todo_id: &str,
@@ -460,6 +584,7 @@ pub(super) async fn resolve_suggestion(
     {
         return Ok(ResponseData::TodoChange {
             change: TodoChangeData {
+                correction_undo: None,
                 dry_run: false,
                 action: "resolution_accept".into(),
                 changed: Vec::new(),
@@ -648,6 +773,7 @@ pub(super) async fn resolve_suggestion(
         };
         return Ok(ResponseData::TodoChange {
             change: TodoChangeData {
+                correction_undo: None,
                 dry_run: true,
                 action: "resolution_preview".into(),
                 changed: vec![todo],
@@ -717,6 +843,7 @@ pub(super) async fn resolve_suggestion(
         .map(|current| super::todo_resolution::resolution_data(&current));
     Ok(ResponseData::TodoChange {
         change: TodoChangeData {
+            correction_undo: None,
             dry_run: false,
             action: match action {
                 TodoResolutionActionData::Dismiss => "resolution_dismiss",
@@ -1291,6 +1418,7 @@ fn change(
     };
     ResponseData::TodoChange {
         change: TodoChangeData {
+            correction_undo: None,
             dry_run,
             action: action.to_string(),
             changed: changed.iter().map(|record| to_data(record, now)).collect(),

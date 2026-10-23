@@ -9,6 +9,7 @@ fn answer(account: &AccountId, message: &mxr_core::Envelope) -> AskAssessment {
         policy_version: ASKS_POLICY_VERSION.into(),
         input_fingerprint: "fingerprint".into(),
         pending_body: true,
+        context_token: crate::asks_context_token().unwrap(),
         facts: AskFacts {
             zones: vec![],
             recipient_role: RecipientRole::Unknown,
@@ -211,4 +212,99 @@ async fn batches_reject_wrong_account_policy_and_unobserved_message_atomically()
         .await
         .unwrap()
         .is_empty());
+}
+
+#[tokio::test]
+async fn timezone_context_mismatch_is_pending_on_both_read_surfaces() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let message = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    store.upsert_envelope(&message).await.unwrap();
+    let revisions = store
+        .assessment_thread_revisions(&account.id, std::slice::from_ref(&message.thread_id))
+        .await
+        .unwrap();
+    let mut ask = answer(&account.id, &message);
+    ask.context_token = "old-zone-rules".into();
+    store
+        .save_asks_batch(&account.id, &revisions, &[ask])
+        .await
+        .unwrap();
+    assert!(store
+        .asks_for_messages(&account.id, std::slice::from_ref(&message.id))
+        .await
+        .unwrap()
+        .is_empty());
+    let (home, asks) = store
+        .assessment_facets_for_messages(&account.id, std::slice::from_ref(&message.id))
+        .await
+        .unwrap();
+    assert!(home.is_empty() && asks.is_empty());
+}
+
+#[tokio::test]
+async fn rejected_asks_roll_back_home_and_dirty_acknowledgement_together() {
+    use mxr_core::assessment::*;
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let message = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    store.upsert_envelope(&message).await.unwrap();
+    let revisions = store
+        .assessment_thread_revisions(&account.id, std::slice::from_ref(&message.thread_id))
+        .await
+        .unwrap();
+    let mut ask = answer(&account.id, &message);
+    ask.account_id = AccountId::new();
+    let home = MailAssessment {
+        message_id: message.id.clone(),
+        account_id: account.id.clone(),
+        policy_version: CLASSIFIER_POLICY_VERSION.into(),
+        input_fingerprint: "home".into(),
+        home: "messages".into(),
+        who: "person".into(),
+        facts: AssessmentFacts {
+            sender_shape: "person".into(),
+            has_list_id: false,
+            has_unsubscribe: false,
+            auto_generated: false,
+            bulk: false,
+            templated_sender: false,
+            written_to: false,
+            body_cached: false,
+            recipients: 1,
+            addressed: true,
+        },
+        deciding: AssessmentClaim {
+            rule: "person".into(),
+            reason: "person".into(),
+            source: "rule".into(),
+            evidence: vec![],
+        },
+        overridden: vec![],
+        not_sure: None,
+        fallback: false,
+        pending_body: true,
+    };
+    assert!(store
+        .save_assessment_facets(&account.id, &revisions, &[home], &[ask])
+        .await
+        .is_err());
+    assert!(store
+        .assessments(&account.id, CLASSIFIER_POLICY_VERSION)
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        store
+            .dirty_assessment_threads(&account.id, None)
+            .await
+            .unwrap(),
+        [message.thread_id]
+    );
 }

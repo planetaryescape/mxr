@@ -404,7 +404,7 @@ fn cancelled_body_prevents_a_stale_subject_from_creating_a_task() {
         false,
         "Please sign the contract",
     );
-    assert_eq!(answers(&result), [AskAnswer::NotSure, AskAnswer::Nothing]);
+    assert_eq!(answers(&result), [AskAnswer::Nothing, AskAnswer::Nothing]);
 }
 
 #[test]
@@ -465,4 +465,35 @@ fn a_rand_shaped_invoice_reference_is_not_money_owed() {
     assert!(result.facts.amounts.is_empty());
     assert_eq!(result.facts.references[0].value, "r123");
     assert_eq!(answers(&result), [AskAnswer::NotSure]);
+}
+
+#[test]
+fn informational_abstentions_do_not_enter_might_need_you() {
+    for text in [
+        "The report arrived yesterday.",
+        "For your records.",
+        "A new article is available.",
+    ] {
+        let result = judge(text, false);
+        assert!(
+            result
+                .units
+                .iter()
+                .all(|unit| unit.answer == AskAnswer::Nothing),
+            "{text}"
+        );
+    }
+    assert!(
+        answers(&judge("Could you arrange the unspecified thing?", false))
+            .contains(&AskAnswer::NotSure)
+    );
+}
+
+#[test]
+fn summary_bounds_text_without_altering_source_evidence() {
+    let result = judge(&format!("Please send me {}.", "x".repeat(4096)), false);
+    let summary = result.summary();
+    assert_eq!(summary.units.len(), 1);
+    assert!(summary.units[0].quote.is_none());
+    assert!(result.quote(&result.units[0]).unwrap().len() > 4096);
 }

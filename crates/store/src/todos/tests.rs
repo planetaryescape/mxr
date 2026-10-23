@@ -503,3 +503,92 @@ async fn newer_evidence_never_clears_the_date_you_chose() {
     assert_eq!(row.scheduled_for, Some(at(400)));
     assert_eq!(row.amount_minor, Some(15000), "the facts still update");
 }
+
+#[tokio::test]
+async fn correction_restores_every_prior_field_and_rejects_same_second_newer_work() {
+    let fx = Fx::new().await;
+    let source = fx.message("correction", at(0)).await;
+    let before = fx.record("corrected", &source, at(0));
+    fx.store.insert_todo(&before).await.unwrap();
+    let mut edited = before.clone();
+    edited.title = "Pay the right account".into();
+    edited.amount_minor = Some(4500);
+    edited.user_edited = true;
+    edited.state = TodoState::Done;
+    edited.done_at = Some(at(1));
+    edited.field_sources =
+        r#"{"correction":{"source":"user","evidence":"wrong_details:one"}}"#.into();
+    edited.updated_at = at(1);
+    fx.store
+        .correct_todo("one", "wrong_details", &before, &edited, true, at(1))
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.store.get_todo(&before.id).await.unwrap(),
+        Some(before.clone())
+    );
+    fx.store
+        .correct_todo("one", "wrong_details", &before, &edited, false, at(1))
+        .await
+        .unwrap();
+    let restored = fx
+        .store
+        .undo_todo_correction(&before.id, "one", false, at(2))
+        .await
+        .unwrap();
+    assert_eq!(restored, before);
+    fx.store
+        .correct_todo("two", "not_mine", &before, &edited, false, at(1))
+        .await
+        .unwrap();
+    let mut newer = edited.clone();
+    newer.title = "Keep my newer title".into();
+    fx.store.update_todo_by_user(&newer, at(1)).await.unwrap();
+    let error = fx
+        .store
+        .undo_todo_correction(&before.id, "two", false, at(2))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("newer work was kept"));
+    assert_eq!(
+        fx.store.get_todo(&before.id).await.unwrap().unwrap().title,
+        newer.title
+    );
+}
+
+#[tokio::test]
+async fn all_correction_reasons_survive_and_source_quote_cannot_be_edited() {
+    let fx = Fx::new().await;
+    let source = fx.message("reasons", at(0)).await;
+    for reason in ["not_a_todo", "not_mine", "already_done", "wrong_details"] {
+        let before = fx.record(reason, &source, at(0));
+        fx.store
+            .insert_todo(&TodoRecord {
+                dedup_key: reason.into(),
+                ..before.clone()
+            })
+            .await
+            .unwrap();
+        let before = fx.store.get_todo(reason).await.unwrap().unwrap();
+        let mut after = before.clone();
+        after.user_edited = true;
+        fx.store
+            .correct_todo(reason, reason, &before, &after, false, at(1))
+            .await
+            .unwrap();
+        let recorded: String =
+            sqlx::query_scalar("SELECT reason FROM todo_corrections WHERE id = ?")
+                .bind(reason)
+                .fetch_one(fx.store.reader())
+                .await
+                .unwrap();
+        assert_eq!(recorded, reason);
+        let mut wrong = after.clone();
+        wrong.reason = "edited quote".into();
+        assert!(fx
+            .store
+            .correct_todo("bad", reason, &after, &wrong, false, at(2))
+            .await
+            .is_err());
+    }
+}

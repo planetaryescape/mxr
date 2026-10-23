@@ -1,91 +1,103 @@
-# R2c's stored facet is under development
+# R2c has stored projections and still needs acceptance
 
-Continue from the independent asks facet in `mxr_core::asks`, the pure
-`mxr_todo::asks::assess` judge and the daemon's
-`handler/ask_assessments.rs`. The product contract remains
-[blueprint 37](../../blueprint/37-what-it-asks.md). This candidate does not
-complete R2c: To do, Your turn, Waiting on and relationship commitments
-still use their existing consumers. Their model and detector documentation
-remains current until those paths are retired.
+Continue in the canonical worker checkout and `target-cli`. The candidate
+is unfinished: Rust compilation, canonical generators, evaluator floors,
+public fake-mail journeys and the actual UI design matrix have not passed.
+The accepted contract remains [blueprint 37](../../blueprint/37-what-it-asks.md).
+Do not merge this candidate as completed R2c.
 
-## Inspect the stored answer through mode membership
+## Inspect the stored answer and correct a task
 
 ```sh
 mxr modes why MESSAGE_ID --format json
+mxr todo why TODO_ID --format json
+mxr todo correct TODO_ID not-mine --dry-run --format json
+mxr todo correct TODO_ID not-mine --format json
+mxr todo undo-correction TODO_ID CORRECTION_ID --dry-run --format json
+mxr todo undo-correction TODO_ID CORRECTION_ID --format json
+mxr todo correct TODO_ID wrong-details 'title=Sign the right contract' --dry-run
 ```
 
-Use an isolated synthetic mailbox. The membership response adds `asks` and
-`asks_pending`; old responses deserialize with both empty. Each asks record
-contains its policy and fingerprint, body-pending flag, zones, candidate
-spans, unit votes and resolved tags. An absent or invalidated record appears
-in `asks_pending`. A record with an uncached body keeps `pending_body: true`.
+These are source-defined commands for the candidate, pending runtime
+verification. `not-a-todo`, `not-mine`, `already-done` and `wrong-details`
+are separate durable reasons. Wrong details takes field edits; opening its
+editor saves nothing. Quotes remain source evidence. The returned
+`correction_undo` token restores the prior row, including its fields,
+state and provenance, unless newer work has changed it.
 
-The read surface is additive under protocol 25. The same mode-membership
-request serves CLI JSON/JSONL, IPC and the bridge. Client presentation and
-the switch of product projections remain unfinished.
+CLI, IPC, HTTP bridge, MCP, web and TUI use the same correction requests.
+The web and TUI `X` paths choose a reason; TUI choices use 1–4 and Enter.
+Eligible ask uncertainty is a separate `might_need_you` collection on the
+runway. The web disclosure starts closed; TUI `m` opens its source list.
+No uncertain row becomes a Now task.
 
-## The asks record cannot create an outbound home
+## Home and asks commit together
 
-`asks-r2c-1` uses the existing `mail_assessments` storage envelope, with an
-independent JSON payload. It covers both received and sent messages. The
-`r2-1` home materializer still skips outbound messages and keeps its existing
-resolver, claims and fingerprint. Home-version reports exclude the reserved
-`asks-` policy namespace.
+`asks-r2c-2` covers received and sent messages in the existing assessment
+storage envelope. `r2-1` remains the inbound home policy. Home-version
+reports exclude the reserved asks namespace, and outbound asks cannot
+create a home. Both facets share one generation CAS, transaction and dirty
+acknowledgement. A shared read takes both facets from one SQLite snapshot.
 
-The asks write compares the observed thread generations in a transaction.
-Each row stores its own thread token. The home batch acknowledges dirty
-threads after the asks batch succeeds. A mutation between the two commits
-makes the old asks row unreadable and rejects the home commit; the next
-bounded reconciliation retries. Empty asks batches and settled reads use
-the reader pool. They never acquire the writer to repair state.
+The context token hashes the process timezone override and actual tzfile,
+including future offset rules. Reads reject a mismatched context before
+reconciliation. The bounded reconciler also detects context changes.
+Unknown or unreadable timezone files need recovery; they are not a reason
+to show an answer from another timezone.
 
-No database schema migration is added. Backup/restore keeps the existing
-assessment-table treatment. Required changes to a persisted asks payload
-need an asks-policy bump; changing the home policy to refresh asks would
-unnecessarily invalidate R2 placement.
+The materializer groups threads explicitly, orders messages by SQLite
+storage sequence and prefers a preceding `In-Reply-To` match. It supplies
+one predecessor and full cached body parts, including HTML text fallback.
+Desk snippets are not the evidence boundary. Owner matching uses
+`OwnedAddresses`, including send-as aliases.
 
-## Authored units retain source evidence
+Mode responses carry bounded summaries: policy, fingerprint, unit tags,
+candidate values, exact quotes when within the response limit, and
+message/zone/span provenance. Full zones remain in local storage. A summary
+reports omitted units; membership reports additional omitted messages.
 
-Owner matching comes from `OwnedAddresses` through the daemon's existing
-matcher. Facts retain the primary address and aliases, observed owner names,
-recipient role, one predecessor and whether the owner wrote afterwards.
-The predecessor is selected by storage order, independently of the sender's
-Date header. The reader's `authored_text` excludes contextual material.
-Explicit quote, forward, signature and footer boundaries are retained as
-zones; removed text without a supported attribution stays `unattributed`.
+## Tasks and commitments project the persisted answer
 
-Amounts share `money::find_candidates` with the existing positive selector.
-Signed amounts, zero and R-prefixed ZAR remain candidates with verbatim byte
-spans. Due candidates use `dates::find_due` and `natural_time`, anchored to
-the message date in the supplied timezone. Account, invoice, policy and
-order references retain their spans. HTML schema.org markup is not used by
-this candidate; it supplies no unverified structured-data authority.
+The To do scan no longer calls the legacy first-hit detector or mirrors
+model commitment rows. It projects owner requests and owner promises from
+stored tags. Reply-only asks gate Your turn; owner requests and their
+commitments gate automatic Waiting on. Explicit timers retain their
+existing authority. Relationship commitment projection commits with asks;
+background model commitment extraction is no longer scheduled. Optional
+compose safety and draft promise proposals remain separate existing paths.
 
-Rules emit unit votes. Agreement produces tags; conflicting or unsupported
-readings abstain. Document readings require a positive amount and a date or
-explicit immediate payment, with minimum-payment fields for statements.
-Offers and automatic payments stay separate from other units. A reply after
-a request settles a reply-only ask; it does not complete a named task.
+Task identity uses the full counterparty address, action, explicit reference
+or action object and due month. Payment reminders and failed-payment
+escalations share the payment identity. A reminder without a date only
+reuses an unambiguous existing period. New automatic rows wait for bounded
+legacy-row reconciliation; manual edits, schedules and completed/dismissed
+history are protected. Source replacement hides stale automatic rows until
+the matching stored answer is projected. Withdrawn automatic asks expire;
+confirmations still offer completion rather than guessing that work is done.
 
-## Verify persistence before switching product consumers
+Migration 98 adds correction snapshots with a reason constraint. Backup
+inventory and the old-schema comparison include its inverse. Wire protocol
+and the web expectation are 26. OpenAPI, generated TypeScript and schema
+snapshots must be regenerated before integration; they remain stale in
+this unfinished candidate.
+
+## Run the focused gates before accepting the candidate
 
 ```sh
-agent-work run -- env CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 NEXTEST_TEST_THREADS=4 RAYON_NUM_THREADS=4 scripts/cargo-test -p mxr-todo --tests
+agent-work run -- env CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 NEXTEST_TEST_THREADS=4 RAYON_NUM_THREADS=4 scripts/cargo-test -p mxr-todo --tests asks::
 agent-work run -- env CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 NEXTEST_TEST_THREADS=4 RAYON_NUM_THREADS=4 scripts/cargo-test -p mxr-store --tests asks::
 agent-work run -- env CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 NEXTEST_TEST_THREADS=4 RAYON_NUM_THREADS=4 scripts/cargo-test -p mxr --tests ask_assessments
 ```
 
-Keep the inner `env`: the shared wrapper sets worker defaults before
-launching its command. Reuse this worktree's `target-cli` and shared
-sccache. Record actual check results in the worker report; these commands
-are the verification entry points, not evidence that they passed.
+Run heavy work only when the shared memory gate permits it. Keep the inner
+four-worker environment and reuse the existing target. After the foundation
+passes, run correction, migration/backup, concurrency and touched-crate
+tests; the canonical OpenAPI/types/reference generators; web component
+checks; the evaluator with unchanged floors; and `cargo build -p mxr`.
+Use only synthetic mail for the public CLI and client journeys.
 
-Before integration, finish the item identity/lifecycle projection and safe
-legacy-row reconciliation, retire the old active detector and commitment
-model paths, connect all four product consumers, implement the correction
-picker with durable reasons and concurrent-safe undo, add the collapsed
-uncertainty section, and extend read-only R1c grading of stored results.
-Regenerate OpenAPI and web types through their canonical generators, run
-the complete touched-crate gate and synthetic public journey, and pass the
-actual UI design matrix. The week of counts-only real-mail dogfood remains
-pending and is outside development/smoke authorization.
+The evaluator reads persisted asks and reports zone, thread-position and
+abstention slices. It does not repair state or call a model. Its metrics,
+quote/actor/state coverage and held-out corpus acceptance remain unverified.
+The week of counts-only real-mail dogfood remains pending and is outside
+local development/smoke authorization.

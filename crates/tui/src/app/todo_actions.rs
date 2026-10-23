@@ -20,7 +20,16 @@ impl App {
             Action::OpenTodo => self.open_todo(),
             Action::TodoPrimary => self.todo_primary(),
             Action::TodoDone => self.set_selected_todo_state(TodoStateActionData::Done),
-            Action::TodoDismiss => self.set_selected_todo_state(TodoStateActionData::Dismiss),
+            Action::TodoDismiss => {
+                if let Some(todo) = self.selected_todo() {
+                    self.mailbox.todo_page.prompt = Some(TodoPromptState::new(
+                        TodoPromptKind::Correct {
+                            todo_id: todo.id.clone(),
+                        },
+                        String::new(),
+                    ));
+                }
+            }
             Action::TodoRestore => self.set_selected_todo_state(TodoStateActionData::Undo),
             Action::TodoSchedule => self.open_todo_prompt(false),
             Action::TodoEdit => self.open_todo_prompt(true),
@@ -497,15 +506,46 @@ impl App {
                     return;
                 }
             },
+            TodoPromptKind::Correct { todo_id } => {
+                let reason = match input.as_str() {
+                    "1" => mxr_protocol::TodoCorrectionData::NotATodo,
+                    "2" => mxr_protocol::TodoCorrectionData::NotMine,
+                    "3" => mxr_protocol::TodoCorrectionData::AlreadyDone,
+                    "4" => {
+                        let todo_id = todo_id.clone();
+                        prompt.kind = TodoPromptKind::Edit { todo_id };
+                        prompt.input.clear();
+                        return;
+                    }
+                    _ => {
+                        prompt.error = Some(
+                            "Choose 1 Not a to-do, 2 Not mine, 3 Already done, or 4 Wrong details"
+                                .into(),
+                        );
+                        return;
+                    }
+                };
+                (
+                    Request::CorrectTodo {
+                        time_zone: None,
+                        todo_id: todo_id.clone(),
+                        reason,
+                        edits: vec![],
+                        dry_run: false,
+                    },
+                    "Correction saved".into(),
+                )
+            }
             TodoPromptKind::Edit { todo_id } => match input.split_once('=') {
                 Some((field, value)) if !field.trim().is_empty() => (
-                    Request::UpdateTodo {
+                    Request::CorrectTodo {
+                        time_zone: None,
+                        reason: mxr_protocol::TodoCorrectionData::WrongDetails,
                         todo_id: todo_id.clone(),
                         edits: vec![TodoEditData {
                             field: field.trim().to_string(),
                             value: value.trim().to_string(),
                         }],
-                        time_zone: None,
                         dry_run: false,
                     },
                     format!("Changed {}. The row is yours now", field.trim()),
@@ -610,6 +650,44 @@ impl App {
     /// navigation reach it: mail verbs need an email, and this list holds
     /// things to do.
     pub(super) fn todo_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        if plain_or_shift(key.modifiers) {
+            let page = &mut self.mailbox.todo_page;
+            if key.code == KeyCode::Char('m') {
+                page.uncertain_open = !page.uncertain_open;
+                return None;
+            }
+            if page.uncertain_open {
+                let items = page
+                    .runway
+                    .as_ref()
+                    .map(|r| r.might_need_you.as_slice())
+                    .unwrap_or_default();
+                match key.code {
+                    KeyCode::Esc => page.uncertain_open = false,
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        page.uncertain_selected = page
+                            .uncertain_selected
+                            .saturating_add(1)
+                            .min(items.len().saturating_sub(1))
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        page.uncertain_selected = page.uncertain_selected.saturating_sub(1)
+                    }
+                    KeyCode::Enter => {
+                        if let Some(item) = items.get(page.uncertain_selected) {
+                            page.pending_open = Some(crate::app::TodoOpen {
+                                message_id: item.asks.message_id.clone(),
+                                link: None,
+                            });
+                            page.uncertain_open = false;
+                        }
+                    }
+                    _ => {}
+                }
+                return None;
+            }
+        }
+
         if self
             .mailbox
             .todo_page

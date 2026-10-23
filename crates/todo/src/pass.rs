@@ -5,7 +5,6 @@
 //!   resumably, applying every window as it goes: what is already over is
 //!   written expired and never surfaces, and undated recent items form one
 //!   catch-up batch of at most `catchup_max`.
-//! * [`sync_promises`] mirrors the promises you made into To do.
 //! * [`sweep`] completes answered RSVPs, expires rows past their window and
 //!   claims the rows whose surface time has come.
 //!
@@ -13,7 +12,7 @@
 //! change can add at most one more catch-up batch, never a flood.
 
 use crate::action_link::registrable_domain;
-use crate::detect::{detect, from_invite, Detection, MessageInput, Origin};
+use crate::detect::{from_invite, Detection, Origin};
 use crate::provenance::{FieldProvenance, FieldSource, FieldSources};
 use crate::text::clip;
 use crate::timing::{lead_time, place, window, Placement, TimingInput};
@@ -21,14 +20,9 @@ use crate::{TodoKind, RULES_VERSION};
 use chrono::{DateTime, TimeZone, Utc};
 use mxr_core::id::{AccountId, MessageId};
 use mxr_core::types::MessageFlags;
-use mxr_reader::{clean, ReaderConfig};
-use mxr_store::{
-    PromiseForTodo, Store, TodoCatchup, TodoRecord, TodoScanRow, TodoState, TodoUpsert,
-};
-use once_cell::sync::Lazy;
-use regex::Regex;
+use mxr_store::{Store, TodoCatchup, TodoRecord, TodoScanRow, TodoState, TodoUpsert};
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 /// What a pass needs besides the store.
 #[derive(Debug, Clone)]
@@ -92,13 +86,6 @@ pub struct FirstRunProgress {
     /// later cached evidence after a task is created.
     pub scanned_message_ids: Vec<MessageId>,
 }
-
-/// Words that earn a message a read of its body. Cheap on headers so the
-/// first run over a whole mailbox reads few bodies.
-static WORTH_READING: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)(bill|invoice|payment|\bpay\b|\bdue\b|overdue|balance|renew|expir|verify|confirm|activate|\bsign\b|signature|docusign|rsvp|invit|declined|failed|unsuccessful|reminder|action required|statement|booking|reservation|[£$€]\s?\d)")
-        .expect("valid worth-reading regex")
-});
 
 /// Classify newly synced messages. Each account's first-run state decides
 /// whether a recent undated item joins the catch-up or goes straight in.
@@ -181,7 +168,6 @@ where
             .list_messages_for_todo_scan(account_id, run.cursor.as_ref(), page_size)
             .await?;
         let Some(last) = page.last() else {
-            summary.add(&sync_promises(store, cfg, account_id, true).await?);
             summary.catchup_overflow += store.trim_todo_catchup(cfg.catchup_max, cfg.now).await?;
             store.complete_todo_run(account_id, cfg.now).await?;
             return Ok(FirstRunProgress {
@@ -192,6 +178,17 @@ where
                 scanned_message_ids,
             });
         };
+        let ids: Vec<_> = page.iter().map(|row| row.id.clone()).collect();
+        let stored = store.asks_for_messages(account_id, &ids).await?;
+        if page.iter().any(|row| !stored.contains_key(&row.id)) {
+            return Ok(FirstRunProgress {
+                complete: false,
+                scanned: run.scanned,
+                reached: run.cursor.map(|(date, _)| date),
+                summary,
+                scanned_message_ids,
+            });
+        }
         let cursor = (last.date, last.id.clone());
         let mut page_summary = PassSummary::default();
         for row in &page {
@@ -264,49 +261,71 @@ where
     }
     if row.outbound {
         summary.looks_done += offer_promises_kept(store, cfg, row).await?;
-        return Ok(summary);
     }
-    if !WORTH_READING.is_match(&row.subject) && !WORTH_READING.is_match(&row.snippet) {
+    let stored = store
+        .asks_for_messages(&row.account_id, std::slice::from_ref(&row.id))
+        .await?;
+    let Some(answer) = stored.get(&row.id) else {
         return Ok(summary);
+    };
+    let Some(envelope) = store.get_envelope(&row.id).await? else {
+        return Ok(summary);
+    };
+    let mut detections = crate::asks::items::detections(answer, &envelope);
+    // Calendar PARTSTAT retains its explicit pending/answered semantics.
+    if !row.outbound && !detections.iter().any(|(_, d)| d.kind == TodoKind::Rsvp) {
+        if let Some(invite) = invite_detection(store, row).await? {
+            detections.push((usize::MAX, invite));
+        }
     }
-    summary.bodies_read = 1;
-    let Some(body) = store.get_body(&row.id).await? else {
-        return Ok(summary);
-    };
-    let text = clean(
-        body.text_plain.as_deref(),
-        body.text_html.as_deref(),
-        &ReaderConfig::default(),
-    )
-    .content;
-
-    let detection = match invite_detection(store, row).await? {
-        Some(detection) => Some(detection),
-        None => detect(
-            &MessageInput {
-                subject: &row.subject,
-                body_text: &text,
-                body_html: body.text_html.as_deref(),
-                from_name: row.from_name.as_deref(),
-                from_email: &row.from_email,
-                sent: row.date,
-                list_mail: body.metadata.list_id.is_some(),
-            },
-            &cfg.tz,
-        ),
-    };
-
-    let Some(detection) = detection else {
-        return Ok(summary);
-    };
-    let (record, placement) = build_record(cfg, row, detection, run_in_progress);
-    record_outcome(
-        &mut summary,
-        &record,
-        placement,
-        store.upsert_detected_todo(&record).await?,
-    );
+    let mut current_keys = Vec::new();
+    for (_, detection) in detections {
+        let (record, placement) = stored_record(cfg, row, detection, run_in_progress);
+        current_keys.push(record.reason.clone());
+        record_outcome(
+            &mut summary,
+            &record,
+            placement,
+            store.upsert_asks_todo(&record, answer).await?,
+        );
+    }
+    store.withdraw_asks_todos(answer, &current_keys).await?;
     Ok(summary)
+}
+
+/// The same identity and timing projection serves backfill and new mail.
+pub fn stored_record<Tz>(
+    cfg: &PassConfig<Tz>,
+    row: &TodoScanRow,
+    detection: Detection,
+    run_in_progress: bool,
+) -> (TodoRecord, Placement)
+where
+    Tz: TimeZone,
+    Tz::Offset: std::fmt::Display,
+{
+    let identity = detection.object_key.clone();
+    let (mut record, placement) = build_record(cfg, row, detection, run_in_progress);
+    record.origin = "asks".into();
+    let due_period = record.due_at.map_or_else(
+        || {
+            row.date
+                .with_timezone(&cfg.tz)
+                .format("sent:%Y-%m")
+                .to_string()
+        },
+        |due| due.with_timezone(&cfg.tz).format("due:%Y-%m").to_string(),
+    );
+    let kind_identity = if matches!(record.kind.as_str(), "bill" | "payment_failed") {
+        "payment"
+    } else {
+        record.kind.as_str()
+    };
+    record.dedup_key = format!(
+        "asks|{kind_identity}|{}|{due_period}",
+        mxr_store::assessment_fingerprint(&identity)
+    );
+    (record, placement)
 }
 
 fn record_outcome(
@@ -579,204 +598,6 @@ async fn offer_promises_kept<Tz>(
         }
     }
     Ok(offered)
-}
-
-/// Mirrors the promises you made into To do: new ones become rows (placed
-/// by the same window and catch-up rules), resolved ones tick their row
-/// off, and expired ones let their row go unless you touched it. An open
-/// row whose commitment is no longer a promise you made (its evidence is
-/// mail you received, or the commitment is gone) is dismissed unless you
-/// touched it: that repairs rows earlier versions built from inbound mail.
-pub async fn sync_promises<Tz>(
-    store: &Store,
-    cfg: &PassConfig<Tz>,
-    account_id: &AccountId,
-    run_in_progress: bool,
-) -> anyhow::Result<PassSummary>
-where
-    Tz: TimeZone,
-{
-    let mut summary = PassSummary::default();
-    let existing: HashMap<String, TodoRecord> = store
-        .list_promise_todos(account_id)
-        .await?
-        .into_iter()
-        .filter_map(|todo| Some((todo.commitment_id.clone()?, todo)))
-        .collect();
-    let mut resolved = Vec::new();
-    let mut lapsed = Vec::new();
-    let promises = store.list_promises_for_todos(account_id).await?;
-    let current: HashSet<&str> = promises
-        .iter()
-        .map(|promise| promise.commitment_id.as_str())
-        .collect();
-    let not_promises: Vec<String> = existing
-        .iter()
-        .filter(|(commitment_id, todo)| {
-            todo.state == TodoState::Open
-                && !todo.user_touched()
-                && !current.contains(commitment_id.as_str())
-        })
-        .map(|(_, todo)| todo.id.clone())
-        .collect();
-    for promise in &promises {
-        match (
-            promise.status.as_str(),
-            existing.get(&promise.commitment_id),
-        ) {
-            ("resolved", Some(todo)) if todo.state == TodoState::Open => {
-                resolved.push(todo.id.clone());
-            }
-            ("expired", Some(todo)) if todo.state == TodoState::Open && !todo.user_touched() => {
-                lapsed.push(todo.id.clone());
-            }
-            ("open", Some(todo)) if todo.due_at == promise.by_when || todo.user_touched() => {}
-            ("open", _) => {
-                let Some(evidence_date) = promise.evidence_date else {
-                    continue;
-                };
-                let (record, placement) =
-                    promise_record(cfg, promise, evidence_date, run_in_progress);
-                let upsert = store.upsert_detected_todo(&record).await?;
-                record_outcome(&mut summary, &record, placement, upsert);
-            }
-            _ => {}
-        }
-    }
-    if !resolved.is_empty() {
-        store
-            .set_todos_state(&resolved, &[TodoState::Open], TodoState::Done, cfg.now)
-            .await?;
-    }
-    if !lapsed.is_empty() {
-        store
-            .set_todos_state(&lapsed, &[TodoState::Open], TodoState::Expired, cfg.now)
-            .await?;
-    }
-    if !not_promises.is_empty() {
-        summary.not_promises += store
-            .set_todos_state(
-                &not_promises,
-                &[TodoState::Open],
-                TodoState::Dismissed,
-                cfg.now,
-            )
-            .await?
-            .len() as u64;
-    }
-    if summary.catchup > 0 {
-        summary.catchup_overflow += store.trim_todo_catchup(cfg.catchup_max, cfg.now).await?;
-    }
-    Ok(summary)
-}
-
-fn promise_record<Tz: TimeZone>(
-    cfg: &PassConfig<Tz>,
-    promise: &PromiseForTodo,
-    evidence_date: DateTime<Utc>,
-    run_in_progress: bool,
-) -> (TodoRecord, Placement) {
-    let input = TimingInput {
-        kind: TodoKind::Promise,
-        doc_type: None,
-        arrived: evidence_date,
-        due: promise.by_when,
-        event_start: None,
-    };
-    let timing = lead_time(&input, &cfg.tz, cfg.morning_hour);
-    let window = window(&input);
-    let placement = place(
-        cfg.now,
-        &window,
-        promise.by_when,
-        evidence_date,
-        cfg.catchup_days,
-        run_in_progress,
-    );
-    let person = promise
-        .contact_name
-        .as_deref()
-        .map(crate::text::strip_glued_id)
-        .filter(|name| !name.is_empty())
-        .map_or_else(|| promise.email.clone(), str::to_string);
-    let what = clip(&crate::text::strip_urls(promise.what.trim()), 100);
-    let what = if what.is_empty() {
-        "Do what you promised".to_string()
-    } else {
-        what
-    };
-    let title = crate::text::capitalise(&what);
-    let mut fields = FieldSources::default();
-    fields.set(
-        "kind",
-        FieldProvenance::with_evidence(
-            FieldSource::Model,
-            format!("a promise found in your email to {person}"),
-        ),
-    );
-    fields.set(
-        "title",
-        FieldProvenance::with_evidence(FieldSource::Model, "the promise as the model worded it"),
-    );
-    fields.set(
-        "counterparty",
-        FieldProvenance::with_evidence(FieldSource::Rule, "who the email was to"),
-    );
-    if promise.by_when.is_some() {
-        fields.set(
-            "due_at",
-            FieldProvenance::with_evidence(FieldSource::Model, "the date you named"),
-        );
-    }
-    set_timing_fields(&mut fields, &timing, &window);
-    let (state, catchup, expired_at, expired_at_birth) = placed_state(placement, cfg.now);
-    let record = TodoRecord {
-        id: new_todo_id(),
-        account_id: promise.account_id.clone(),
-        thread_id: Some(promise.thread_id.clone()),
-        source_message_id: Some(promise.evidence_msg_id.clone()),
-        source_date: Some(evidence_date),
-        kind: TodoKind::Promise.as_str().to_string(),
-        verb: what
-            .split_whitespace()
-            .next()
-            .unwrap_or("do")
-            .to_ascii_lowercase(),
-        doc_type: None,
-        title,
-        counterparty: Some(person.clone()),
-        sender_domain: None,
-        amount_minor: None,
-        currency: None,
-        due_at: promise.by_when,
-        due_words: None,
-        act_by_at: timing.act_by,
-        surface_at: timing.surface_at,
-        scheduled_for: None,
-        action_url: None,
-        action_domain: None,
-        relevant_until: window.until,
-        window_source: window.until.map(|_| "rule".to_string()),
-        state,
-        expired_at,
-        expired_at_birth,
-        catchup,
-        looks_done_message_id: None,
-        looks_done_reason: None,
-        origin: "model".to_string(),
-        reason: format!("you promised {person} (model)"),
-        field_sources: fields.to_json(),
-        user_edited: false,
-        commitment_id: Some(promise.commitment_id.clone()),
-        rules_version: RULES_VERSION,
-        dedup_key: format!("promise|{}", promise.commitment_id),
-        surfaced_at: None,
-        created_at: cfg.now,
-        updated_at: cfg.now,
-        done_at: None,
-        dismissed_at: None,
-    };
-    (record, placement)
 }
 
 /// What one sweep did.

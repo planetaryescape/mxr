@@ -109,6 +109,7 @@ pub(super) fn thread_starred(thread: &[DeskMessage]) -> bool {
 pub(super) struct AccountInputs<'a> {
     pub pending_threads: &'a HashSet<ThreadId>,
     pub assessments: &'a HashMap<MessageId, mxr_core::assessment::MailAssessment>,
+    pub asks: &'a HashMap<MessageId, mxr_core::asks::AskAssessment>,
     pub account_id: &'a AccountId,
     /// Messages of recently active threads, ordered by thread then date.
     pub messages: &'a [DeskMessage],
@@ -467,6 +468,13 @@ fn thread_row(
         }
     }
 
+    if inputs.asks.get(&latest.id).is_some_and(|a| {
+        a.units
+            .iter()
+            .any(|u| u.answer == mxr_core::asks::AskAnswer::TheyPromisedYou)
+    }) {
+        return waiting_row(inputs, conversation, latest, latest_inbound.is_some());
+    }
     let inbound = latest_inbound?;
     // You said you'd reply by now: owed, wherever the mail is and whoever
     // sent it, since you asked for it back. The newest message from a
@@ -496,7 +504,12 @@ fn thread_row(
     }
     // Human response occurrence is not a new obligation. Unknown semantics
     // stays in Messages' Recent/Quiet views, never the attention rail.
-    if !mail_kind::requires_reply(&inputs.signals(inbound)) {
+    if !inputs.asks.get(&inbound.id).is_some_and(|answer| {
+        answer
+            .units
+            .iter()
+            .any(|u| u.answer == mxr_core::asks::AskAnswer::AsksYouToReply)
+    }) {
         return None;
     }
     let email = inbound.from.email.as_str();
@@ -607,7 +620,11 @@ fn waiting_row(
         return None;
     }
     let timer = inputs.timers.waiting(conversation.all, &answers, now);
-    let recipient = sent.to.iter().find(|a| !(inputs.is_self)(&a.email))?;
+    let recipient = if inputs.is_outbound(sent) {
+        sent.to.iter().find(|a| !(inputs.is_self)(&a.email))?
+    } else {
+        &sent.from
+    };
     let email = recipient.email.as_str();
     let contact = inputs.contact(email);
     // Nobody replied by the time you set: back, however old or archived.
@@ -621,6 +638,17 @@ fn waiting_row(
             "no reply by the time you set",
             back_at,
         ));
+    }
+    if !inputs.asks.get(&sent.id).is_some_and(|answer| {
+        answer.units.iter().any(|u| {
+            matches!(
+                u.answer,
+                mxr_core::asks::AskAnswer::YouAskedThem
+                    | mxr_core::asks::AskAnswer::TheyPromisedYou
+            )
+        })
+    }) {
+        return None;
     }
     // Automatic waiting remains conservative; an explicit timer above is
     // authoritative even for a role/list destination.
@@ -967,6 +995,7 @@ mod tests {
         thread_lanes(&AccountInputs {
             pending_threads: &HashSet::new(),
             assessments: &HashMap::new(),
+            asks: &HashMap::new(),
             account_id: &account,
             messages,
             contacts: &contacts,

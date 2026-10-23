@@ -209,9 +209,9 @@ where
         let is_self = self_matcher(state, account).await?;
         let shape = super::conversation_shape::shape_config(state);
         let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
-        let stored = state
+        let (stored, _) = state
             .store
-            .assessments_for_messages(account, CLASSIFIER_POLICY_VERSION, &ids)
+            .assessment_facets_for_messages(account, &ids)
             .await?;
         let mut answers = Vec::new();
         for thread in messages.chunk_by(|a, b| a.thread_id == b.thread_id) {
@@ -316,17 +316,25 @@ where
             }
         }
         before_commit().await?;
-        if !super::ask_assessments::materialize(state, account, &messages, &revision, &is_self)
+        let asks = super::ask_assessments::prepare(state, account, &messages, &is_self).await?;
+        if !state
+            .store
+            .save_assessment_facets(account, &revision, &answers, &asks)
             .await?
         {
             continue;
         }
-        if !state
-            .store
-            .save_assessment_batch(account, &revision, &answers)
-            .await?
-        {
-            continue;
+        if !asks.is_empty() && state.config_snapshot().todo.enabled {
+            // This is a stored projection, not another materialization entry
+            // point: never call the daemon scan wrapper recursively here.
+            let changed: Vec<_> = asks.iter().map(|a| a.message_id.clone()).collect();
+            mxr_todo::pass::scan_messages(
+                &state.store,
+                &super::todos::pass_config(state, chrono::Utc::now()),
+                &changed,
+            )
+            .await
+            .map_err(|e| HandlerError::from(e.to_string()))?;
         }
         let mut persisted = state
             .store
@@ -387,17 +395,20 @@ pub(crate) async fn reconciler_loop(
 ) {
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(2));
     let mut previous_shape = None;
+    let mut previous_asks_context = None;
     loop {
         tokio::select! { _ = tick.tick() => {}, changed = shutdown.changed() => {
             if changed.is_err() || *shutdown.borrow_and_update() { break; } continue;
         }}
         let shape = super::conversation_shape::shape_config(&state);
-        if previous_shape != Some(shape) {
+        let asks_context = mxr_store::asks_context_token().ok();
+        if previous_shape != Some(shape) || previous_asks_context != asks_context {
             if let Err(error) = state.store.invalidate_all_assessments().await {
                 tracing::warn!(%error, "assessment initialization pending");
                 continue;
             }
             previous_shape = Some(shape);
+            previous_asks_context = asks_context;
         }
         let Ok(accounts) = state.store.list_accounts().await else {
             continue;

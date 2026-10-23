@@ -185,6 +185,7 @@ pub(super) async fn thread_turn(
     let lanes = thread_lanes(&AccountInputs {
         pending_threads: &senders.pending_threads(&messages, &is_self),
         assessments: &senders.assessments,
+        asks: &senders.asks,
         account_id,
         messages: &messages,
         contacts: &senders.contacts,
@@ -278,9 +279,12 @@ impl Senders {
         messages: &[DeskMessage],
     ) -> Result<Self, super::HandlerError> {
         let mut senders = Self::load_raw(state, account_id, messages).await?;
-        senders.assessments = super::assessments::materialize(state, account_id, messages).await?;
+        super::assessments::materialize(state, account_id, messages).await?;
         let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
-        senders.asks = state.store.asks_for_messages(account_id, &ids).await?;
+        (senders.assessments, senders.asks) = state
+            .store
+            .assessment_facets_for_messages(account_id, &ids)
+            .await?;
         Ok(senders)
     }
 
@@ -356,7 +360,10 @@ impl Senders {
     ) -> HashSet<ThreadId> {
         messages
             .iter()
-            .filter(|m| !is_outbound(m, is_self) && !self.assessments.contains_key(&m.id))
+            .filter(|m| {
+                !self.asks.contains_key(&m.id)
+                    || (!is_outbound(m, is_self) && !self.assessments.contains_key(&m.id))
+            })
             .map(|m| m.thread_id.clone())
             .collect()
     }
@@ -442,6 +449,7 @@ async fn account_desk(
     let mut lanes = thread_lanes(&AccountInputs {
         pending_threads: &senders.pending_threads(&messages, &is_self),
         assessments: &senders.assessments,
+        asks: &senders.asks,
         account_id,
         messages: &messages,
         contacts: &senders.contacts,

@@ -2,7 +2,7 @@
 
 mxr's website must explain why a locally synced, programmable mailbox is useful even when an agent already has Gmail access, then let a visitor prove it safely. The five modes, human clients, scripts and agents belong to the same story. (D-WEB-001 through D-WEB-005, D-WEB-016)
 
-This is a website feature blueprint, prepared on 2026-10-23 from BK's current request, recovered product discussions and fresh repository evidence. It specifies documentation and presentation work, not new mail-runtime features. The implementation baseline is `origin/main` at `f39ae66578e3099e464967ab2f042e24b1ad8ec4`; the supplied feature branch is tracked separately. The original planning task is complete. BK subsequently authorised staged implementation through orchestrate and approved the first-screen direction; rung 1 is building. (D-WEB-018, D-WEB-025–027)
+This is a website feature blueprint, prepared on 2026-10-23 from BK's current request, recovered product discussions and fresh repository evidence. It specifies documentation and presentation work, not new mail-runtime features. The implementation baseline is `origin/main` at `f39ae66578e3099e464967ab2f042e24b1ad8ec4`; the supplied feature branch is tracked separately. The original planning task is complete. BK subsequently authorised staged implementation through orchestrate and approved the first-screen direction. All five website rungs are deployed; the [final production record](../evidence/rung5-production.md) gives the source, checks and remaining evidence limits. (D-WEB-018, D-WEB-025–027)
 
 ## Read the explanation, then the surfaces and delivery checks
 
@@ -20,7 +20,7 @@ This is a website feature blueprint, prepared on 2026-10-23 from BK's current re
 | 09 | [Discovery and maintenance](09-discovery-and-maintenance.md) | Metadata, machine docs, media, root docs and release alignment |
 | 10 | [Verification](10-verification.md) | Reader outcomes, focused checks, browser and deployed acceptance |
 | 11 | [Roadmap](11-roadmap.md) | Five usable website releases with demos and completion criteria |
-| 12 | [Decisions](12-decisions.md) | 27 decisions, with BK's direction separated from agent proposals |
+| 12 | [Decisions](12-decisions.md) | 28 decisions, with BK's direction separated from agent proposals |
 | 13 | [Open questions](13-open-questions.md) | Seven product assumptions and five evidence spikes |
 | — | [Kickoff](KICKOFF.md) | First implementation-session brief |
 | — | [Handoff](HANDOFF.md) | Current state, exact next action, blockers and validation evidence |
@@ -28,12 +28,12 @@ This is a website feature blueprint, prepared on 2026-10-23 from BK's current re
 Evidence and inventory:
 
 - [Research and claim register](../../research/website-refresh-2026-10-23.md): 25 entries grounded in named code/source, historical context and bounded connector research.
-- [Complete page audit](../../research/website-page-audit-2026-10-23.md): disposition of all 80 authored Markdown/MDX sources plus metadata, media, legal and generated surfaces.
+- [Complete page audit](../../research/website-page-audit-2026-10-23.md): historical baseline of 80 authored Markdown/MDX sources, with the later 81-route implementation inventory plus metadata, media, legal and generated surfaces.
 - [Existing product blueprint](../../blueprint/README.md): product design history, preserved rather than rewritten.
 
 ## The design shows one task moving through one mailbox
 
-The proposed concept is “The working mailbox”: evidence is selected locally, an agent or script prepares work, and the person reviews the same object in a human client. Refine the site's existing Recursive/deep-blue/cyan visual language around that relationship. BK supplied the runtime direction; this particular concept and candidate headline are blueprint assumptions. (D-WEB-010, D-WEB-012, D-WEB-013)
+The approved concept is “The working mailbox”: evidence is selected locally, an agent or script prepares work, and the person reviews the same object in a human client. Refine the site's existing Recursive/deep-blue/cyan visual language around that relationship. BK approved the concept and headline after the first-screen comp. (D-WEB-010, D-WEB-012, D-WEB-013)
 
 ## Keep the implementation honest and small
 

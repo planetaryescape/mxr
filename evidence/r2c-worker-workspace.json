@@ -162,5 +162,49 @@
     "memory_pressure_level": 2,
     "memory_free_percent_last_observed": 38,
     "reason_no_heavy_run": "Shared wrapper requires pressure level 1 and free >=25%; pressure remained 2. No override or foreign process action."
+  },
+  "round3": {
+    "round": 3,
+    "recorded_at": "2026-10-23T23:09:18.273476+00:00",
+    "canonical_path": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b",
+    "branch": "t3/asks-r2c-to-do-classifier",
+    "head": "e7785da67a4f34646b31a2692ed63ba31c56e8d9",
+    "tree": "d1f324ba498811decfffeaee542cc6dd562ded0a",
+    "base": "b3c2f3b00aca85c2c7375030e86fb7f2380ba4fc",
+    "fresh_main": "544da5355fbaa11a7cf64e0fecbd844ca119623a",
+    "merge_base": "b3c2f3b00aca85c2c7375030e86fb7f2380ba4fc",
+    "status": "",
+    "target": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b/target-cli",
+    "limits": {
+      "target_gib": 60,
+      "run_gib": 100,
+      "workers": 4
+    },
+    "new_workers": 0,
+    "runtime": "fake-only CLI smoke completed; own daemon stopped at closeout; restart environment .r2c-runtime/environment.sh",
+    "real_mail": "prohibited and not used",
+    "tests": {
+      "daemon_asks_1df": "11/11 pass 4.04s; build46.35s session18036",
+      "store_asks_0fa": "11/11 pass7.06s session85217",
+      "store_legacy_303": "6/6 pass2.15s session82658",
+      "web_1df": "3 files31tests pass1.32s session70251",
+      "generators": "canonical OpenAPI + gen:types pass; API267paths; npm typecheck pass",
+      "lint": "web lint pass829files; React Doctor noissues; one existing repo-pattern module-mock warning from anti-slop",
+      "scoped_gate": "PASS a866 session33544 clippy46.71s; fmt/architecture/cargo-deny pass",
+      "cli_build": "PASS a866 session14136 2m33s; macOS linker warning only",
+      "cli_help": "5/5 PASS session83003 build56.75s tests10.85s; reviewed three snapshots; canonical reference generator123pages",
+      "ui_empty": "four files32tests PASS961ms session61764; only-uncertain regression passed; scoped oxlint0; typecheck pass"
+    },
+    "pending": [
+      "stored evaluator floors/full50k/heldout/invariance",
+      "full backup/migration/mixed-version recovery",
+      "full correction/client acceptance and actual UI48matrix",
+      "parent full CI/integration/review/release",
+      "counts-only week dogfood"
+    ],
+    "source_checked": "a866c1ad334809ee5c8767035f5dfd812758315b",
+    "measured_target_kib": 25166972,
+    "measured_runtime_kib": 8084,
+    "node_modules_kib": 393196
   }
 }

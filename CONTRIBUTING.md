@@ -192,7 +192,7 @@ kind of ask from blueprint 37 (`pay`, `fix_payment`, `sign`, `verify`, `reply`,
 mail), the counterparty, the amount and the due words, plus whether a reply is
 owed. Annotated items also grade the exact source quote, actor and state. The eval matches each email's stored asks units to its expected items by kind and
 direction (the table that maps today's to-do kinds to these is
-`translate` in `crates/daemon/src/handler/classify_eval_asks.rs`) and reports:
+`Row::from_asks` in `crates/daemon/src/handler/classify_eval_asks.rs`) and reports:
 
 - true positives, false positives, false negatives, precision and recall per
   kind of ask, and for all kinds together;

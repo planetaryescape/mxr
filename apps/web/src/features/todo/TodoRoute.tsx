@@ -32,6 +32,7 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 import { fetchRunway, TODO_KEY, type Todo, type TodoRunway } from "./api";
 import { TodoCatchupView, TodoExpiredView } from "./TodoCatchupView";
 import { TodoRow } from "./TodoRow";
+import { TodoEmptyRunway, TodoUncertainty } from "./TodoEmptyRunway";
 import { openCount, primaryAction, runwayItems, type RunwayItem } from "./todoRows";
 import { restoreTodos, tickOff, useTodoHidden } from "./todoVerbs";
 import type { LampVia } from "@/components/Row";
@@ -435,13 +436,12 @@ function Bands({
 
   if (neverHadAny) {
     return (
-      <PageEmpty
-        framed
-        glyph="todo"
-        title="Nothing here yet"
+      <TodoEmptyRunway
+        runway={runway}
         body={[runway.empty_state ?? guide?.never_had_any, guide?.add_one?.replaceAll("`", "")]
           .filter(Boolean)
           .join(" ")}
+        onOpenSource={(threadId) => navigate({ to: "/todo/$threadId", params: { threadId } })}
       />
     );
   }
@@ -543,17 +543,10 @@ function Bands({
             </ul>
           ) : null}
 
-          {(runway.might_need_you?.length ?? 0) > 0 ? (
-            <details className="mx-5 mt-5" data-testid="might-need-you">
-              <summary className="cursor-pointer text-text-2">Might need you · {runway.might_need_you?.length}</summary>
-              <ul className="mt-2 grid gap-3">
-                {runway.might_need_you?.map((item) => <li key={item.asks.message_id}>
-                  <button type="button" className="text-left text-text-1 underline" onClick={() => navigate({ to: "/todo/$threadId", params: { threadId: item.thread_id } })}>{item.subject || "Open the source email"}</button>
-                  {item.asks.units.filter((unit) => unit.answer === "not_sure").map((unit) => <blockquote key={unit.unit} className="border-l border-rule pl-3 text-text-2">{unit.quote ?? "Open the source email to review this request."}</blockquote>)}
-                </li>)}
-              </ul>
-            </details>
-          ) : null}
+          <TodoUncertainty
+            items={runway.might_need_you}
+            onOpenSource={(threadId) => navigate({ to: "/todo/$threadId", params: { threadId } })}
+          />
 
           {expiredOnOpen > 0 ? (
             <p data-testid="expired-line" className="mx-5 mt-5 text-xs text-muted-foreground">

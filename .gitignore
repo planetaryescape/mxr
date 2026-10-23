@@ -35,3 +35,6 @@ apps/desktop/.openapi-spec.json
 # Marketing: regenerable QA captures and zipped asset bundles (>5 MB)
 marketing/*/qa/
 marketing/**/*.zip
+
+# Isolated synthetic R2c runtime; source/evidence remain in the worker report.
+/.r2c-runtime/

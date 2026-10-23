@@ -10,9 +10,115 @@ use std::time::Instant;
 /// in this codebase ever lands earlier.
 const EARLIEST_PLAUSIBLE_TS: i64 = 946_684_800;
 
-/// Reclassify every `direction='unknown'` row using a closure that queries
-/// the account-address lookup. Returns the number of rows updated. Called
-/// by `mxr doctor --rebuild-analytics` (Slice 15).
+/// How many stored messages of one account an owned-set change flipped.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct AccountDirectionChanges {
+    /// Inbound rows whose sender is owned now.
+    pub to_outbound: u32,
+    /// Outbound rows whose sender is no longer owned.
+    pub to_inbound: u32,
+}
+
+/// The rows an owned set changes: inbound from an owned sender, or outbound
+/// from one that is not. Unknown rows belong to `reclassify_unknown_directions`.
+/// Rows are `(id, from_email, direction)`.
+fn direction_flips(
+    rows: &[(String, String, String)],
+    owned: &OwnedAddresses,
+) -> Vec<(String, MessageDirection)> {
+    rows.iter()
+        .filter_map(|(id, from_email, direction)| {
+            let owned_sender = owned.contains(from_email);
+            match direction.as_str() {
+                "inbound" if owned_sender => Some((id.clone(), MessageDirection::Outbound)),
+                "outbound" if !owned_sender => Some((id.clone(), MessageDirection::Inbound)),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+/// The rows of one account whose direction is known, as `(id, from_email,
+/// direction)`. Both the preview and the real change read them here.
+async fn account_direction_rows<'e, E>(
+    executor: E,
+    account_id: &AccountId,
+) -> Result<Vec<(String, String, String)>, sqlx::Error>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
+    sqlx::query_as(
+        r#"SELECT id, from_email, direction
+           FROM messages
+           WHERE account_id = ? AND direction != 'unknown'"#,
+    )
+    .bind(account_id.as_str())
+    .fetch_all(executor)
+    .await
+}
+
+impl AccountDirectionChanges {
+    fn from_flips(flips: &[(String, MessageDirection)]) -> Self {
+        let mut changes = Self::default();
+        for (_, direction) in flips {
+            match direction {
+                MessageDirection::Outbound => changes.to_outbound += 1,
+                _ => changes.to_inbound += 1,
+            }
+        }
+        changes
+    }
+}
+
+impl super::Store {
+    /// Reclassify one account's stored messages against `owned`, the set the
+    /// change produces. With `apply: false` it runs the same selection and
+    /// returns the counts a real run would apply, and writes nothing. Its
+    /// callers are the address commands' dry run and the real change.
+    ///
+    /// With `apply: true`, inbound rows from an owned sender become outbound and
+    /// outbound rows from an unowned one become inbound. Their reply pairs move
+    /// with them. It all runs in one writer transaction, so sync cannot write between the
+    /// read and the flip. Arrivals are not touched: they record what arrived
+    /// when it arrived, and their corrections stay as they were.
+    pub async fn reclassify_account_directions(
+        &self,
+        account_id: &AccountId,
+        owned: &OwnedAddresses,
+        apply: bool,
+    ) -> Result<AccountDirectionChanges, sqlx::Error> {
+        if !apply {
+            let rows = account_direction_rows(self.reader(), account_id).await?;
+            let flips = direction_flips(&rows, owned);
+            return Ok(AccountDirectionChanges::from_flips(&flips));
+        }
+
+        let started_at = Instant::now();
+        let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
+        let rows = account_direction_rows(&mut *tx, account_id).await?;
+        let flips = direction_flips(&rows, owned);
+        for (id, direction) in &flips {
+            sqlx::query("UPDATE messages SET direction = ? WHERE id = ?")
+                .bind(direction.as_db_str())
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            Self::reseat_reply_pair_tx(&mut tx, id).await?;
+        }
+        // Pairs a late writer rebuilt from an old direction are not in `flips`.
+        // Rebuild every mismatched pair of the account here as well.
+        Self::reseat_mismatched_pairs_tx(&mut tx, &account_id.as_str()).await?;
+        tx.commit().await?;
+        let changes = AccountDirectionChanges::from_flips(&flips);
+        trace_query(
+            "analytics.reclassify_account_directions",
+            started_at,
+            (changes.to_outbound + changes.to_inbound) as usize,
+        );
+        Ok(changes)
+    }
+}
+
 impl super::Store {
     pub async fn reclassify_unknown_directions(
         &self,
@@ -410,3 +516,6 @@ impl super::Store {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod tests;

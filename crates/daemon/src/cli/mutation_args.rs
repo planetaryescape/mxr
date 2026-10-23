@@ -157,12 +157,18 @@ pub enum AddressesOp {
         /// Mark as primary; demotes the previous primary atomically.
         #[arg(long)]
         primary: bool,
+        /// Show the stored mail this would reclassify, without adding the address.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Remove an alias from an account.
     Remove {
         #[arg(long)]
         account: Option<String>,
         email: String,
+        /// Show the stored mail this would reclassify, without removing the address.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Promote an existing alias to primary (demoting the previous primary).
     SetPrimary {

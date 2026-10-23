@@ -26163,6 +26163,10 @@
                   "AddAccountAddress"
                 ]
               },
+              "dry_run": {
+                "type": "boolean",
+                "description": "Report what the add would reclassify without writing anything."
+              },
               "email": {
                 "type": "string"
               },
@@ -26187,6 +26191,10 @@
                 "enum": [
                   "RemoveAccountAddress"
                 ]
+              },
+              "dry_run": {
+                "type": "boolean",
+                "description": "Report what the remove would reclassify without writing anything."
               },
               "email": {
                 "type": "string"
@@ -34906,6 +34914,35 @@
                 "enum": [
                   "AccountAddresses"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Reply to an address add, remove or primary change: how many stored\nmessages of the account were reclassified to match the new owned set.",
+            "required": [
+              "to_outbound",
+              "to_inbound",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "AccountAddressChanged"
+                ]
+              },
+              "to_inbound": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Outbound messages now read as inbound: their sender is no longer owned.",
+                "minimum": 0
+              },
+              "to_outbound": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Inbound messages now read as outbound: their sender is owned.",
+                "minimum": 0
               }
             }
           },

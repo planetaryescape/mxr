@@ -711,10 +711,7 @@ mod tests {
             .upsert_envelope_with_direction(&reply, MessageDirection::Outbound)
             .await
             .unwrap();
-        assert!(store
-            .try_create_reply_pair(&reply, MessageDirection::Outbound)
-            .await
-            .unwrap());
+        assert!(store.try_create_reply_pair(&reply).await.unwrap());
 
         store.refresh_contacts().await.unwrap();
 

@@ -125,6 +125,48 @@ mxr accounts addresses set-primary --account work hello@planetaryescape.xyz
 mxr accounts addresses remove --account work support@planetaryescape.xyz
 ```
 
+Adding or removing an address reclassifies the account's stored mail against
+the new set in the same command. Mail from an address you now own reads as
+sent, and sent mail from an address you no longer own reads as received. Reply
+pairs follow in the same command. The contacts table is rebuilt in the
+background, starting about ten seconds after the last change; a contacts or
+analytics view already open shows the new counts after you reload it. A sync pass that was already running when you made the change
+is reconciled before it releases its place in line, so the messages it
+wrote take the new direction and their reply pairs are rebuilt with them. The
+catch is timing: until that pass finishes, a message it wrote can still show
+the old direction, for as long as the pass runs. If the reconciliation fails,
+it is retried after the account's next successful sync pass. Relationship
+profiles and resolution suggestions are not refreshed by an address change
+yet.
+
+Arrival history is not rewritten. An arrival records what arrived when it
+arrived, and a correction you made stays as you made it. So mail you sent from
+a new alias may still appear in an old arrival count, and mail from an alias you
+removed is not added to arrival counts after the fact. The command reports how
+many messages changed:
+
+```bash
+mxr accounts addresses add --account work support@planetaryescape.xyz
+# Added support@planetaryescape.xyz. Stored mail reclassified: 14 now sent, 0 now received.
+mxr accounts addresses add --account work support@planetaryescape.xyz --format json
+# {"email":"support@planetaryescape.xyz","dry_run":false,"to_outbound":14,"to_inbound":0}
+```
+
+Add and remove take `--dry-run`. It prints the same counts the real change
+would apply and changes nothing: the address, the stored directions and the
+arrivals stay as they are. Run it first when you want to see the effect:
+
+```bash
+mxr accounts addresses add --account work support@planetaryescape.xyz --dry-run
+# Dry run: nothing changed. Added support@planetaryescape.xyz. Would reclassify stored mail: 14 now sent, 0 now received.
+mxr accounts addresses remove --account work support@planetaryescape.xyz --dry-run --format json
+```
+
+`set-primary` has no dry run. It changes only the primary marker, so it never
+changes which addresses are owned. It still runs the account-wide
+reconciliation, so its counts can be non-zero when rows from an earlier change
+were stale.
+
 Once an address is registered it becomes a valid sender inside mxr for that
 account. A reply defaults its From to whichever owned address the original was
 delivered to, and `--from` / the `from:` frontmatter field can send as any

@@ -11,6 +11,7 @@ use super::status_helpers::{
 use super::{
     handle_export_search, handle_export_thread, helpers::protocol_event_entry, HandlerResult,
 };
+use crate::state::owned_addresses_after_change;
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{
@@ -23,7 +24,7 @@ use mxr_protocol::{
     SearchExplainResult, SearchResultItem,
 };
 use mxr_search::{SearchPage, SearchResult};
-use mxr_store::SyncRuntimeStatusUpdate;
+use mxr_store::{AccountDirectionChanges, SyncRuntimeStatusUpdate, PRIMARY_REMOVAL_REFUSED};
 use std::collections::HashMap;
 
 #[cfg(not(test))]
@@ -492,11 +493,12 @@ pub(crate) async fn wrapped(
             summary: (*cached).clone(),
         });
     }
+    let generation = state.wrapped_cache_generation();
     let summary = state
         .store
         .wrapped_summary(resolved.as_ref(), since_unix, until_unix, label)
         .await?;
-    state.wrapped_cache_put(cache_key, std::sync::Arc::new(summary.clone()));
+    state.wrapped_cache_put(cache_key, std::sync::Arc::new(summary.clone()), generation);
     Ok(ResponseData::Wrapped { summary })
 }
 
@@ -792,38 +794,70 @@ pub(crate) async fn add_account_address(
     account_id: &AccountId,
     email: &str,
     primary: bool,
+    dry_run: bool,
 ) -> HandlerResult {
+    if dry_run {
+        let owned =
+            owned_addresses_after_change(&state.store, account_id, Some(email), None).await?;
+        return Ok(address_changed(
+            preview_account_directions(state, account_id, &owned).await?,
+        ));
+    }
+    // The gate covers the address write and the reclassify, so a sweep check
+    // cannot see the old set and archive after the change.
+    let _change = state.sweep_gate.change([account_id]).await;
     state
         .store
         .add_account_address(account_id, email, primary)
         .await?;
     state.refresh_account_addresses().await;
+    let changes = settle_address_change(state, account_id).await?;
     crate::chimes::emit_daemon_event(
         state,
         mxr_protocol::DaemonEvent::AccountAddressesChanged {
             account_id: account_id.clone(),
         },
     );
-    Ok(ResponseData::Ack)
+    Ok(address_changed(changes))
 }
 
 pub(crate) async fn remove_account_address(
     state: &AppState,
     account_id: &AccountId,
     email: &str,
+    dry_run: bool,
 ) -> HandlerResult {
+    if dry_run {
+        // The same refusal the real remove makes, from the same stored primary row.
+        let is_primary = state
+            .store
+            .list_account_addresses(account_id)
+            .await?
+            .iter()
+            .any(|address| address.is_primary && address.email == email);
+        if is_primary {
+            return Err(sqlx::Error::Protocol(PRIMARY_REMOVAL_REFUSED.to_string()).into());
+        }
+        let owned =
+            owned_addresses_after_change(&state.store, account_id, None, Some(email)).await?;
+        return Ok(address_changed(
+            preview_account_directions(state, account_id, &owned).await?,
+        ));
+    }
+    let _change = state.sweep_gate.change([account_id]).await;
     state
         .store
         .remove_account_address(account_id, email)
         .await?;
     state.refresh_account_addresses().await;
+    let changes = settle_address_change(state, account_id).await?;
     crate::chimes::emit_daemon_event(
         state,
         mxr_protocol::DaemonEvent::AccountAddressesChanged {
             account_id: account_id.clone(),
         },
     );
-    Ok(ResponseData::Ack)
+    Ok(address_changed(changes))
 }
 
 pub(crate) async fn set_primary_account_address(
@@ -831,15 +865,100 @@ pub(crate) async fn set_primary_account_address(
     account_id: &AccountId,
     email: &str,
 ) -> HandlerResult {
+    let _change = state.sweep_gate.change([account_id]).await;
     state.store.set_primary_address(account_id, email).await?;
     state.refresh_account_addresses().await;
+    let changes = settle_address_change(state, account_id).await?;
     crate::chimes::emit_daemon_event(
         state,
         mxr_protocol::DaemonEvent::AccountAddressesChanged {
             account_id: account_id.clone(),
         },
     );
-    Ok(ResponseData::Ack)
+    Ok(address_changed(changes))
+}
+
+fn address_changed(changes: AccountDirectionChanges) -> ResponseData {
+    ResponseData::AccountAddressChanged {
+        to_outbound: changes.to_outbound,
+        to_inbound: changes.to_inbound,
+    }
+}
+
+/// The counts an address change would apply, computed against `owned` without
+/// writing. Same selection as the real change.
+async fn preview_account_directions(
+    state: &AppState,
+    account_id: &AccountId,
+    owned: &mxr_core::types::OwnedAddresses,
+) -> Result<AccountDirectionChanges, sqlx::Error> {
+    state
+        .store
+        .reclassify_account_directions(account_id, owned, false)
+        .await
+}
+
+/// After an address write, with the caller holding the account's sweep gate:
+/// owe the account a reconciliation after its next sync pass, then reclassify
+/// now for the response. The owed mark stays even when this succeeds, because a
+/// sync batch prepared before the write can still land after it.
+async fn settle_address_change(
+    state: &AppState,
+    account_id: &AccountId,
+) -> Result<AccountDirectionChanges, sqlx::Error> {
+    state.owe_direction_repair(account_id);
+    let changes = reclassify_account_directions(state, account_id).await;
+    // Ownership changed even when no message flipped: Wrapped and contacts
+    // read the owned set and reply pairs directly.
+    refresh_direction_derived(state, account_id).await;
+    changes
+}
+
+/// The post-pass reconciliation, and the reload path's repair: reclassify one
+/// account under its sweep gate. A failure leaves the account owed, so the next
+/// successful sync pass retries it.
+pub(crate) async fn reconcile_account_directions(
+    state: &AppState,
+    account_id: &AccountId,
+) -> Result<AccountDirectionChanges, sqlx::Error> {
+    let _change = state.sweep_gate.change([account_id]).await;
+    match reclassify_account_directions(state, account_id).await {
+        Ok(changes) => Ok(changes),
+        Err(error) => {
+            state.owe_direction_repair(account_id);
+            Err(error)
+        }
+    }
+}
+
+/// Make the account's stored mail agree with its committed owned set. Callers
+/// refresh the registry first, so sync passes that start now classify against
+/// the new set. Callers follow with `refresh_direction_derived`.
+pub(crate) async fn reclassify_account_directions(
+    state: &AppState,
+    account_id: &AccountId,
+) -> Result<AccountDirectionChanges, sqlx::Error> {
+    let owned = state.owned_addresses(account_id).await?;
+    state
+        .store
+        .reclassify_account_directions(account_id, &owned, true)
+        .await
+}
+
+/// Drop and requeue what is computed from ownership, direction and reply
+/// pairs: the Wrapped cache and the contacts table. Unconditional, because a
+/// pair-only repair or a recipient-only alias changes them without flipping a
+/// message. Not called under a provider guard: the contacts worker's
+/// acknowledgement can wait on a refresh already running.
+pub(crate) async fn refresh_direction_derived(state: &AppState, account_id: &AccountId) {
+    state.wrapped_cache_clear();
+    if let Err(error) = state
+        .contacts_refresh
+        .enqueue_accounts(std::slice::from_ref(account_id))
+        .await
+    {
+        tracing::warn!(account = %account_id, %error, "contacts refresh not queued after an address change");
+    }
 }
 
 pub(crate) async fn semantic_status(state: &AppState) -> HandlerResult {

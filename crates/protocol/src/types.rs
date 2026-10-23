@@ -982,10 +982,16 @@ pub enum Request {
         account_id: AccountId,
         email: String,
         primary: bool,
+        /// Report what the add would reclassify without writing anything.
+        #[serde(default)]
+        dry_run: bool,
     },
     RemoveAccountAddress {
         account_id: AccountId,
         email: String,
+        /// Report what the remove would reclassify without writing anything.
+        #[serde(default)]
+        dry_run: bool,
     },
     SetPrimaryAccountAddress {
         account_id: AccountId,
@@ -3908,6 +3914,14 @@ pub enum ResponseData {
     AccountAddresses {
         addresses: Vec<mxr_core::types::AccountAddress>,
     },
+    /// Reply to an address add, remove or primary change: how many stored
+    /// messages of the account were reclassified to match the new owned set.
+    AccountAddressChanged {
+        /// Inbound messages now read as outbound: their sender is owned.
+        to_outbound: u32,
+        /// Outbound messages now read as inbound: their sender is no longer owned.
+        to_inbound: u32,
+    },
     /// Effective From address resolved (and ownership-validated) by
     /// `Request::ResolveSendFrom`.
     ResolvedSendFrom {
@@ -4735,6 +4749,7 @@ impl ResponseData {
             | Self::AnalyticsRebuildSummary { .. }
             | Self::ResponseTime { .. }
             | Self::AccountAddresses { .. }
+            | Self::AccountAddressChanged { .. }
             | Self::LlmStatus { .. }
             | Self::LlmConfig { .. }
             | Self::LlmKeyChange { .. }

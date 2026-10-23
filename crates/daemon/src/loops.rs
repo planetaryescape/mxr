@@ -568,7 +568,14 @@ pub(crate) async fn finalize_sync_pass(
             .await;
     }
     reassert_busy_if_background_sync_queued(&state, &account_id).await;
+    // Reconciled under the provider guard, before it is released. A pass that
+    // took the guard after this one has not prepared its batch yet, so the
+    // debt cannot be consumed ahead of a batch it has to repair.
+    let reconciled = reconcile_pass_directions(&state, &account_id).await;
     drop(provider_guard);
+    if reconciled {
+        crate::handler::diagnostics_impl::refresh_direction_derived(&state, &account_id).await;
+    }
     state.finish_sync_run(&account_id, outcome.has_more);
     // A pass returns after one page. Without a wake, the account would sit at
     // `sync_in_progress = true` until the sync loop's next tick, a full
@@ -1281,6 +1288,36 @@ async fn post_delete_fanout(
 /// because the steps filter the whole table: the run after the last page
 /// repairs every row the earlier pages left. `finalize_sync_pass` owns the
 /// decision of when that is.
+/// After a sync pass wrote its batch: if the account owes a direction
+/// reconciliation (an address change, or startup), reclassify its stored mail
+/// against the committed owned set. A batch prepared before the change can land
+/// after the change's own reclassify, and this is what corrects it. A failure
+/// leaves the account owed, so the next pass retries.
+/// Returns whether a reconciliation ran, so the caller refreshes derived data
+/// once it has released the provider guard.
+pub(crate) async fn reconcile_pass_directions(
+    state: &Arc<AppState>,
+    account_id: &AccountId,
+) -> bool {
+    if !state.take_direction_repair(account_id) {
+        return false;
+    }
+    match crate::handler::diagnostics_impl::reconcile_account_directions(state, account_id).await {
+        Ok(changes) => tracing::info!(
+            account = %account_id,
+            to_outbound = changes.to_outbound,
+            to_inbound = changes.to_inbound,
+            "reconciled stored mail directions after a sync pass"
+        ),
+        Err(error) => tracing::warn!(
+            account = %account_id,
+            %error,
+            "could not reconcile stored mail directions after a sync pass; retrying on the next pass"
+        ),
+    }
+    true
+}
+
 pub(crate) async fn run_analytics_repair(state: &Arc<AppState>, account_id: &AccountId) {
     let backfill = crate::handler::diagnostics_impl::incremental_analytics_backfill(state).await;
     if backfill.did_work() || backfill.startup_repair_ran {
@@ -1975,13 +2012,14 @@ async fn warm_default_wrapped(state: &Arc<AppState>) {
             label: label.clone(),
         };
         let started = std::time::Instant::now();
+        let generation = state.wrapped_cache_generation();
         match state
             .store
             .wrapped_summary(account_id.as_ref(), since_unix, until_unix, &label)
             .await
         {
             Ok(summary) => {
-                state.wrapped_cache_put(cache_key, Arc::new(summary));
+                state.wrapped_cache_put(cache_key, Arc::new(summary), generation);
                 tracing::debug!(
                     label = %label,
                     account = ?account_id.as_ref().map(mxr_core::AccountId::as_str),
@@ -3384,6 +3422,64 @@ mod tests {
         ) -> Result<(), MxrError> {
             Ok(())
         }
+    }
+
+    /// A batch classified before an address change, written while its pass
+    /// holds the provider guard, is corrected by that pass's own finalizer.
+    #[tokio::test]
+    async fn a_pass_holding_the_guard_is_corrected_by_its_own_finalizer() {
+        let account_id = AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let provider = std::sync::Arc::new(DeleteOnlySyncProvider {
+            account_id: account_id.clone(),
+            deleted_provider_ids: vec![],
+        });
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, provider.clone(), None)
+                .await
+                .unwrap(),
+        );
+        let pass = begin_sync_pass(
+            &state,
+            provider as std::sync::Arc<dyn MailSyncProvider>,
+            None,
+            SyncStarter::AccountLoop,
+        )
+        .await;
+        // The alias is registered while this pass holds the guard.
+        crate::handler::diagnostics_impl::add_account_address(
+            &state,
+            &account_id,
+            "alias@example.com",
+            false,
+            false,
+        )
+        .await
+        .unwrap();
+        // The pass then writes a batch it classified before the change.
+        let late = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .provider_id("late-batch")
+            .sender_address("Alias", "alias@example.com")
+            .build();
+        state
+            .store
+            .upsert_envelope_with_direction(&late, mxr_core::types::MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let SyncWait::Finished { pass, result } = run_sync_pass(pass, Duration::from_secs(5)).await
+        else {
+            panic!("a fast sync must not detach");
+        };
+        finalize_sync_pass(pass, result).await.unwrap();
+
+        let direction: String = sqlx::query_scalar("SELECT direction FROM messages WHERE id = ?")
+            .bind(late.id.as_str())
+            .fetch_one(state.store.reader())
+            .await
+            .unwrap();
+        assert_eq!(direction, "outbound");
     }
 
     /// A page that only deletes mail synced zero messages, which used to skip

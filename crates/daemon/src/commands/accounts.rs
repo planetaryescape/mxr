@@ -116,10 +116,15 @@ async fn addresses_dispatch(op: AddressesOp, format: Option<OutputFormat>) -> an
             account,
             email,
             primary,
-        } => add_address(account.as_deref(), &email, primary).await,
-        AddressesOp::Remove { account, email } => remove_address(account.as_deref(), &email).await,
+            dry_run,
+        } => add_address(account.as_deref(), &email, primary, dry_run, format).await,
+        AddressesOp::Remove {
+            account,
+            email,
+            dry_run,
+        } => remove_address(account.as_deref(), &email, dry_run, format).await,
         AddressesOp::SetPrimary { account, email } => {
-            set_primary_address(account.as_deref(), &email).await
+            set_primary_address(account.as_deref(), &email, format).await
         }
     }
 }
@@ -203,59 +208,116 @@ fn render_addresses(
     Ok(())
 }
 
-async fn add_address(account_name: Option<&str>, email: &str, primary: bool) -> anyhow::Result<()> {
+async fn add_address(
+    account_name: Option<&str>,
+    email: &str,
+    primary: bool,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let account_id = resolve_account_id(account_name).await?;
+    let request = Request::AddAccountAddress {
+        account_id,
+        email: email.to_string(),
+        primary,
+        dry_run,
+    };
+    let changes = address_change(request).await?;
+    let marker = if primary { " (primary)" } else { "" };
+    render_address_change(
+        &format!("Added {email}{marker}."),
+        email,
+        changes,
+        dry_run,
+        format,
+    )
+}
+
+async fn remove_address(
+    account_name: Option<&str>,
+    email: &str,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let account_id = resolve_account_id(account_name).await?;
+    let request = Request::RemoveAccountAddress {
+        account_id,
+        email: email.to_string(),
+        dry_run,
+    };
+    let changes = address_change(request).await?;
+    render_address_change(
+        &format!("Removed {email}."),
+        email,
+        changes,
+        dry_run,
+        format,
+    )
+}
+
+async fn set_primary_address(
+    account_name: Option<&str>,
+    email: &str,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let account_id = resolve_account_id(account_name).await?;
+    let request = Request::SetPrimaryAccountAddress {
+        account_id,
+        email: email.to_string(),
+    };
+    let changes = address_change(request).await?;
+    // Set-primary moves only the primary marker, so its change is always zero
+    // and it has no dry run.
+    render_address_change(
+        &format!("Promoted {email} to primary."),
+        email,
+        changes,
+        false,
+        format,
+    )
+}
+
+/// `(to_outbound, to_inbound)`: stored messages the daemon reclassified.
+async fn address_change(request: Request) -> anyhow::Result<(u32, u32)> {
     let mut client = client().await?;
-    match client
-        .request(Request::AddAccountAddress {
-            account_id,
-            email: email.to_string(),
-            primary,
-        })
-        .await?
-    {
-        Response::Ok { .. } => {
-            println!("Added {email}{}.", if primary { " (primary)" } else { "" });
-            Ok(())
-        }
+    match client.request(request).await? {
+        Response::Ok {
+            data:
+                ResponseData::AccountAddressChanged {
+                    to_outbound,
+                    to_inbound,
+                },
+        } => Ok((to_outbound, to_inbound)),
         Response::Error { message, .. } => anyhow::bail!(message),
+        other => anyhow::bail!("Unexpected address response: {other:?}"),
     }
 }
 
-async fn remove_address(account_name: Option<&str>, email: &str) -> anyhow::Result<()> {
-    let account_id = resolve_account_id(account_name).await?;
-    let mut client = client().await?;
-    match client
-        .request(Request::RemoveAccountAddress {
-            account_id,
-            email: email.to_string(),
-        })
-        .await?
-    {
-        Response::Ok { .. } => {
-            println!("Removed {email}.");
-            Ok(())
-        }
-        Response::Error { message, .. } => anyhow::bail!(message),
+fn render_address_change(
+    summary: &str,
+    email: &str,
+    (to_outbound, to_inbound): (u32, u32),
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    match resolve_format(format) {
+        OutputFormat::Json | OutputFormat::Jsonl => println!(
+            "{}",
+            serde_json::to_string(&serde_json::json!({
+                "email": email,
+                "dry_run": dry_run,
+                "to_outbound": to_outbound,
+                "to_inbound": to_inbound,
+            }))?
+        ),
+        _ if dry_run => println!(
+            "Dry run: nothing changed. {summary} Would reclassify stored mail: {to_outbound} now sent, {to_inbound} now received."
+        ),
+        _ => println!(
+            "{summary} Stored mail reclassified: {to_outbound} now sent, {to_inbound} now received."
+        ),
     }
-}
-
-async fn set_primary_address(account_name: Option<&str>, email: &str) -> anyhow::Result<()> {
-    let account_id = resolve_account_id(account_name).await?;
-    let mut client = client().await?;
-    match client
-        .request(Request::SetPrimaryAccountAddress {
-            account_id,
-            email: email.to_string(),
-        })
-        .await?
-    {
-        Response::Ok { .. } => {
-            println!("Promoted {email} to primary.");
-            Ok(())
-        }
-        Response::Error { message, .. } => anyhow::bail!(message),
-    }
+    Ok(())
 }
 
 async fn client() -> anyhow::Result<IpcClient> {

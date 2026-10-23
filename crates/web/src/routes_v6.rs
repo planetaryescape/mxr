@@ -717,6 +717,8 @@ struct AddAddressBody {
     email: String,
     #[serde(default)]
     primary: bool,
+    #[serde(default)]
+    dry_run: bool,
 }
 
 async fn add_account_address(
@@ -735,6 +737,7 @@ async fn add_account_address(
             account_id: id,
             email: body.email,
             primary: body.primary,
+            dry_run: body.dry_run,
         },
     )
     .await?;
@@ -746,12 +749,19 @@ struct EmailBody {
     email: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct RemoveAddressBody {
+    email: String,
+    #[serde(default)]
+    dry_run: bool,
+}
+
 async fn remove_account_address(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(account_id): Path<String>,
     Query(auth): Query<AuthQuery>,
-    Json(body): Json<EmailBody>,
+    Json(body): Json<RemoveAddressBody>,
 ) -> Result<Json<Value>, BridgeError> {
     let id = parse_account_id(&account_id)?;
     let response = dispatch(
@@ -761,6 +771,7 @@ async fn remove_account_address(
         Request::RemoveAccountAddress {
             account_id: id,
             email: body.email,
+            dry_run: body.dry_run,
         },
     )
     .await?;

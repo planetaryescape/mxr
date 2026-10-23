@@ -31,6 +31,12 @@ export function useDaemonEventInvalidation(): void {
           case "ModesChanged":
             void invalidateMailQueries(qc);
             break;
+          // An address change moves stored mail between sent and received, so
+          // the mail views and the analytics that count it both refresh.
+          case "AccountAddressesChanged":
+            void invalidateMailQueries(qc);
+            void qc.invalidateQueries({ queryKey: ["analytics"] });
+            break;
           case "LabelCountsUpdated":
             void qc.invalidateQueries({ queryKey: shellKey });
             break;

@@ -11,5 +11,6 @@ Arguments:
 
 Options:
       --account <ACCOUNT>
+      --dry-run            Show the stored mail this would reclassify, without removing the address
       --format <FORMAT>    Output format for `accounts` (the no-subcommand listing) [possible values: table, json, jsonl, csv, ids]
   -h, --help               Print help

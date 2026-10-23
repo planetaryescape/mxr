@@ -579,6 +579,10 @@ pub struct AppState {
     /// 60s in-memory cache for `Wrapped` summaries. See
     /// `WrappedCacheKey` and `WRAPPED_CACHE_TTL` above.
     wrapped_cache: ParkingMutex<HashMap<WrappedCacheKey, (Instant, Arc<types::WrappedSummary>)>>,
+    /// Bumped by every clear. A summary is cached only under the generation it
+    /// was computed under, so one that started before a clear cannot repopulate
+    /// the cache after it.
+    wrapped_generation: std::sync::atomic::AtomicU64,
     /// Ready-made Now, rail and mode views; see `handler::mode_cache`.
     pub(crate) mode_cache: crate::handler::mode_cache::ModeCache,
     /// Set on the first successful sync after daemon start when the
@@ -611,6 +615,12 @@ pub struct AppState {
     /// Both are per-run state that dies with the process, so neither belongs
     /// in the store.
     sync_runs: ParkingMutex<HashMap<AccountId, SyncRun>>,
+    /// Accounts whose stored directions must be reconciled with their committed
+    /// owned set after their next successful sync pass. An address change owes
+    /// it, and so does startup, so a batch prepared with an older set, or a
+    /// reclassify that failed, is repaired even after a restart. In memory: a
+    /// restart owes every account again, which is the safe direction.
+    direction_repair_owed: ParkingMutex<HashSet<AccountId>>,
     /// The id the next background-sync claim will take. A claim's cleanup
     /// must not clear a flag a *later* claim wrote, and the run entry a claim
     /// is stamped in is dropped the moment the account goes idle — so the
@@ -848,6 +858,15 @@ impl AppState {
         // pass reclassifies whatever Unknown rows are left.
         account_addresses.mark_repair_owed();
 
+        // A restart forgets which accounts had a direction change in flight.
+        // Every stored account owes a reconciliation, paid on its next pass.
+        let direction_repair_owed: HashSet<AccountId> = match store.list_all_accounts().await {
+            Ok(accounts) => accounts.into_iter().map(|account| account.id).collect(),
+            Err(err) => {
+                tracing::warn!(error = %err, "could not list accounts for direction repair");
+                HashSet::new()
+            }
+        };
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
@@ -894,6 +913,7 @@ impl AppState {
             sync_error_chimes: Default::default(),
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
+            wrapped_generation: std::sync::atomic::AtomicU64::new(0),
             mode_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
@@ -906,6 +926,7 @@ impl AppState {
             config_write: Default::default(),
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
+            direction_repair_owed: ParkingMutex::new(direction_repair_owed),
             next_background_claim: std::sync::atomic::AtomicU64::new(1),
         })
     }
@@ -1375,13 +1396,35 @@ impl AppState {
         None
     }
 
-    /// Insert a freshly-computed `Wrapped` summary into the cache.
+    /// Drop every cached `Wrapped` summary. A direction change moves the counts
+    /// they were computed from, so they must not be served until they expire.
+    pub(crate) fn wrapped_cache_clear(&self) {
+        let mut cache = self.wrapped_cache.lock();
+        cache.clear();
+        self.wrapped_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// The generation a summary must be computed under to be cached.
+    pub(crate) fn wrapped_cache_generation(&self) -> u64 {
+        self.wrapped_generation
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Insert a `Wrapped` summary computed under `generation` (read with
+    /// `wrapped_cache_generation` before the store query). A summary from an
+    /// older generation describes mail a clear has since changed, so it is
+    /// dropped rather than cached.
     pub(crate) fn wrapped_cache_put(
         &self,
         key: WrappedCacheKey,
         summary: Arc<types::WrappedSummary>,
+        generation: u64,
     ) {
         let mut cache = self.wrapped_cache.lock();
+        if generation != self.wrapped_cache_generation() {
+            return;
+        }
         cache.insert(key, (Instant::now(), summary));
     }
 
@@ -1537,6 +1580,17 @@ impl AppState {
     }
 
     /// Note that a pass deferred the whole-table analytics repair.
+    /// Mark an account for a direction reconciliation after its next successful
+    /// sync pass.
+    pub(crate) fn owe_direction_repair(&self, account_id: &AccountId) {
+        self.direction_repair_owed.lock().insert(account_id.clone());
+    }
+
+    /// Clear and report whether the account owes a direction reconciliation.
+    pub(crate) fn take_direction_repair(&self, account_id: &AccountId) -> bool {
+        self.direction_repair_owed.lock().remove(account_id)
+    }
+
     pub(crate) fn owe_analytics_repair(&self, account_id: &AccountId) {
         self.sync_runs
             .lock()
@@ -2150,6 +2204,25 @@ impl AppState {
         // primary. Clients hear about address changes whether or not it rebuilds.
         self.refresh_account_addresses().await;
         for account_id in accounts_with_changed_addresses(&before, &after) {
+            // Owed before the reclassify, as for an address command: a batch
+            // prepared under the old set can still land after this.
+            self.owe_direction_repair(&account_id);
+            match crate::handler::diagnostics_impl::reconcile_account_directions(self, &account_id)
+                .await
+            {
+                Ok(changes) => tracing::info!(
+                    account = %account_id,
+                    to_outbound = changes.to_outbound,
+                    to_inbound = changes.to_inbound,
+                    "reclassified stored mail after a config address change"
+                ),
+                Err(error) => tracing::warn!(
+                    account = %account_id,
+                    %error,
+                    "could not reclassify stored mail after a config address change"
+                ),
+            }
+            crate::handler::diagnostics_impl::refresh_direction_derived(self, &account_id).await;
             crate::chimes::emit_daemon_event(
                 self,
                 mxr_protocol::DaemonEvent::AccountAddressesChanged { account_id },
@@ -2288,6 +2361,7 @@ impl AppState {
             sync_error_chimes: Default::default(),
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
+            wrapped_generation: std::sync::atomic::AtomicU64::new(0),
             mode_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
@@ -2300,6 +2374,7 @@ impl AppState {
             config_write: Default::default(),
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
+            direction_repair_owed: ParkingMutex::new(HashSet::new()),
             next_background_claim: std::sync::atomic::AtomicU64::new(1),
         })
     }
@@ -2381,6 +2456,7 @@ impl AppState {
             sync_error_chimes: Default::default(),
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
+            wrapped_generation: std::sync::atomic::AtomicU64::new(0),
             mode_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
@@ -2393,6 +2469,7 @@ impl AppState {
             config_write: Default::default(),
             auth_sessions: ParkingMutex::new(HashMap::new()),
             sync_runs: ParkingMutex::new(HashMap::new()),
+            direction_repair_owed: ParkingMutex::new(HashSet::new()),
             next_background_claim: std::sync::atomic::AtomicU64::new(1),
         })
     }
@@ -2500,6 +2577,7 @@ impl AppState {
                 sync_error_chimes: Default::default(),
                 start_time: Instant::now(),
                 wrapped_cache: ParkingMutex::new(HashMap::new()),
+                wrapped_generation: std::sync::atomic::AtomicU64::new(0),
                 mode_cache: Default::default(),
                 reply_context_cache: ParkingMutex::new(HashMap::new()),
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
@@ -2512,6 +2590,7 @@ impl AppState {
                 config_write: Default::default(),
                 auth_sessions: ParkingMutex::new(HashMap::new()),
                 sync_runs: ParkingMutex::new(HashMap::new()),
+                direction_repair_owed: ParkingMutex::new(HashSet::new()),
                 next_background_claim: std::sync::atomic::AtomicU64::new(1),
             },
             fake,
@@ -2707,14 +2786,34 @@ pub(crate) async fn owned_addresses_for(
     store: &Store,
     account_id: &AccountId,
 ) -> std::result::Result<mxr_core::types::OwnedAddresses, sqlx::Error> {
+    owned_addresses_after_change(store, account_id, None, None).await
+}
+
+/// The owned set an alias add or remove would produce, read from committed
+/// store data and changing nothing. `added` and `removed` match the stored
+/// spelling exactly, as the address row's delete does. With neither set, this
+/// is `owned_addresses_for`.
+pub(crate) async fn owned_addresses_after_change(
+    store: &Store,
+    account_id: &AccountId,
+    added: Option<&str>,
+    removed: Option<&str>,
+) -> std::result::Result<mxr_core::types::OwnedAddresses, sqlx::Error> {
     let primary = store
         .get_account(account_id)
         .await?
         .map(|account| account.email);
-    let aliases = store.list_account_addresses(account_id).await?;
+    let mut aliases: Vec<String> = store
+        .list_account_addresses(account_id)
+        .await?
+        .into_iter()
+        .map(|address| address.email)
+        .filter(|email| Some(email.as_str()) != removed)
+        .collect();
+    aliases.extend(added.map(str::to_string));
     Ok(mxr_core::types::OwnedAddresses::new(
         primary.as_deref(),
-        aliases.iter().map(|address| address.email.as_str()),
+        aliases.iter().map(String::as_str),
     ))
 }
 
@@ -3874,5 +3973,33 @@ use_tls = true
             .await
             .expect("unfinished owned task should be aborted")
             .expect_err("pending task must be cancelled, not completed");
+    }
+}
+
+#[cfg(test)]
+mod wrapped_cache_generation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_summary_computed_before_a_clear_is_not_cached() {
+        let state = AppState::in_memory().await.unwrap();
+        let key = WrappedCacheKey {
+            account_id: None,
+            label: "2026".into(),
+        };
+        let stale = state.wrapped_cache_generation();
+        let summary = state
+            .store
+            .wrapped_summary(None, 0, 1, "2026")
+            .await
+            .unwrap();
+
+        state.wrapped_cache_clear();
+        state.wrapped_cache_put(key.clone(), Arc::new(summary.clone()), stale);
+        assert!(state.wrapped_cache_get(&key).is_none());
+
+        let current = state.wrapped_cache_generation();
+        state.wrapped_cache_put(key.clone(), Arc::new(summary), current);
+        assert!(state.wrapped_cache_get(&key).is_some());
     }
 }

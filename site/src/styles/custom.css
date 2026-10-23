@@ -139,18 +139,26 @@ body {
   max-width: 84rem;
   margin-inline: auto;
   padding-inline: clamp(1.25rem, 4vw, 4rem);
-  /* Starlight ships .hero as a 2-col grid that pairs the copy
-     stack with an image slot. mxr's hero has no image, so we
-     collapse to a single column and let .copy take full width. */
+  /* Starlight ships .hero as a 2-col grid for copy and a media slot.
+     mxr uses the slot for its category line and keeps one column. */
   grid-template-columns: 1fr !important;
 }
 
 .hero .stack { width: 100%; }
 .hero .copy { max-width: none !important; }
 
-.hero::before {
-  content: 'mxr ◈ Gmail, Outlook and IMAP';
-  display: block;
+.hero > .hero-html {
+  order: 0 !important;
+  grid-column: 1;
+  width: 100% !important;
+  height: auto !important;
+  margin: 0 !important;
+  justify-content: flex-start;
+}
+
+.hero-category {
+  width: 100%;
+  margin: 0;
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-meta);
   font-size: 0.78rem;
@@ -455,6 +463,128 @@ body {
 .hero-provider-row a:hover {
   text-decoration-color: var(--signal);
 }
+
+/* A single synthetic task makes local evidence and the person's review
+   visible beside the opening promise without relying on a widget. */
+.home-proof {
+  max-width: 84rem;
+  margin: 0 auto clamp(1.5rem, 3vw, 2.5rem);
+  padding: 0 clamp(1.25rem, 4vw, 4rem);
+  color: var(--paper);
+}
+
+.home-proof-head,
+.home-proof-result-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.home-proof-label,
+.home-proof-account,
+.home-proof-result-head,
+.home-proof-mailbox small,
+.home-proof-review small {
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.68rem;
+  letter-spacing: 0.025em;
+}
+
+.home-proof-label { color: var(--signal); }
+.home-proof-account { color: var(--paper-mute); }
+
+.home-proof h2 {
+  margin: 0.9rem 0 0.25rem;
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-size: clamp(1.2rem, 1.6vw, 1.55rem);
+  font-variation-settings: var(--rec-display);
+}
+
+.home-proof-intro {
+  margin: 0 0 1rem;
+  color: var(--paper-soft);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.home-proof-mailbox {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0;
+  border-block: 1px solid var(--rule);
+}
+
+.home-proof-mailbox > span:not(.home-proof-arrow) {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.home-proof-mailbox small { color: var(--paper-mute); }
+.home-proof-mailbox strong { font-size: 0.82rem; font-weight: 500; }
+.home-proof-arrow { color: var(--signal); font-family: var(--font-mono); }
+
+.home-proof-result { margin-top: 0.9rem; }
+.home-proof-result-head { color: var(--paper-mute); padding-bottom: 0.35rem; }
+.home-proof-result-head code { color: var(--paper-soft); font-size: 0.68rem; overflow-wrap: anywhere; }
+
+.home-proof-proposal {
+  display: grid;
+  gap: 0.15rem;
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--rule);
+}
+
+.home-proof-proposal small {
+  color: var(--signal);
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.68rem;
+}
+
+.home-proof-proposal strong { font-size: 0.8rem; font-weight: 500; }
+
+.home-proof-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+.home-proof-row > span:first-child { display: grid; gap: 0.1rem; }
+.home-proof-row strong { font-size: 0.84rem; font-weight: 500; }
+.home-proof-row small { color: var(--paper-mute); font-size: 0.7rem; }
+.home-proof-rate { white-space: nowrap; font-family: var(--font-mono); font-size: 0.75rem; }
+.home-proof-rate em { color: var(--quiet); font-style: normal; }
+
+.home-proof-limit {
+  margin: 0.45rem 0 0;
+  color: var(--paper-mute);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.home-proof-review {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--rule);
+}
+
+.home-proof-review-mark,
+.home-proof-review small { color: var(--quiet); }
+.home-proof-review > span:last-child { display: grid; gap: 0.12rem; }
+.home-proof-review strong { font-size: 0.8rem; font-weight: 500; }
 
 /* Hero terminal demo — a real VHS recording of mxr against the
    seeded demo inbox. Framed like the code blocks elsewhere: a thin
@@ -1866,13 +1996,13 @@ body {
    these, in keeping with the no-cards house style.
    ========================================================== */
 
-/* The first screen is a split product demo: the promise, provider support,
-   and install path on the left, with a real recording on the right. */
+/* The first screen pairs the promise with a static, illustrative task proof.
+   The existing recordings follow below as optional product tours. */
 @media (min-width: 1100px) {
   main:has(.hero-cast) .content-panel > .sl-container {
     display: grid;
     grid-template-columns: minmax(20rem, 0.95fr) minmax(32rem, 1.05fr);
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto auto auto auto;
     column-gap: clamp(2.5rem, 5vw, 5.5rem);
     max-width: 92rem;
     margin-inline: auto;
@@ -1892,7 +2022,7 @@ body {
     display: contents;
   }
 
-  main:has(.hero-cast) .hero::before {
+  main:has(.hero-cast) .hero-category {
     margin-bottom: clamp(1.25rem, 2.5vw, 2.25rem);
   }
 
@@ -1940,15 +2070,25 @@ body {
     padding-inline: 0;
   }
 
-  main:has(.hero-cast) .hero-cast {
+  main:has(.hero-cast) .home-proof {
     grid-column: 2;
     grid-row: 1 / 4;
-    align-self: center;
+    align-self: start;
     max-width: none;
     width: 100%;
     margin: 0;
     padding: 0 0 0 clamp(1.5rem, 3vw, 3rem);
     border-left: 1px solid var(--rule);
+  }
+
+  main:has(.hero-cast) .hero-cast {
+    grid-column: 1 / -1;
+    grid-row: 5;
+    align-self: start;
+    max-width: none;
+    width: 100%;
+    margin: clamp(1.5rem, 3vw, 2.5rem) 0 0;
+    padding: 0;
   }
 
   main:has(.hero-cast) .landing-section {

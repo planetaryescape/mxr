@@ -6,7 +6,9 @@ hero:
   title: |
     Put your whole mail
     <span class="hero-accent">history to work.</span>
-  tagline: "A local mail runtime for you and your agents. A Gmail connector gives an agent access to Gmail; mxr syncs connected mail into a local mailbox. People, scripts, and agents can reuse its operations and local state while it syncs with providers."
+  image:
+    html: '<p class="hero-category">A local mail runtime for you and your agents</p>'
+  tagline: "A Gmail connector gives your agent access to Gmail. mxr syncs connected mail into a local mailbox, where you, your scripts, and your agents can reuse its mail operations while your provider keeps syncing."
   actions:
     - text: Try it with demo mail
       link: /getting-started/quick-start/#1-try-the-demo-inbox
@@ -18,6 +20,43 @@ hero:
       link: /guides/your-day/
       variant: minimal
 ---
+
+<div class="hero-install" aria-label="Install one-liner">
+  <span class="hero-install-prompt">$</span>
+  <code class="hero-install-cmd" id="install-cmd" tabindex="0">brew install planetaryescape/mxr/mxr</code>
+  <button class="hero-install-copy" type="button" data-copy-target="install-cmd" aria-label="Copy install command">copy</button>
+  <span class="hero-install-alt">Other install methods <a href="/getting-started/install/">available</a></span>
+</div>
+
+<section class="home-proof" aria-labelledby="home-proof-title">
+  <div class="home-proof-head">
+    <span class="home-proof-label">ONE SYNTHETIC TASK · LOCAL EVIDENCE → AGENT PROPOSAL → YOUR REVIEW</span>
+    <span class="home-proof-account">personal · example account</span>
+  </div>
+  <h2 id="home-proof-title">Find subscriptions to review</h2>
+  <p class="home-proof-intro">The daemon reads synced message state; an agent proposes what to review; you decide whether to act.</p>
+
+  <div class="home-proof-mailbox">
+    <span><small>CONNECTED ACCOUNT</small><strong>Gmail · personal</strong></span>
+    <span class="home-proof-arrow" aria-hidden="true">→</span>
+    <span><small>LOCAL MAILBOX</small><strong>messages + READ state</strong></span>
+  </div>
+
+  <div class="home-proof-result">
+    <div class="home-proof-result-head"><span>LOCAL RESULT · ILLUSTRATION</span><code>{`mxr subscriptions --account personal --limit 200 --rank`}</code></div>
+    <div class="home-proof-row"><span><strong>Field Notes</strong><small>6 messages in this sender bucket</small></span><span class="home-proof-rate">2 / 6 <em>READ</em></span></div>
+    <div class="home-proof-row"><span><strong>Weekly Brief</strong><small>8 messages in this sender bucket</small></span><span class="home-proof-rate">6 / 8 <em>READ</em></span></div>
+  </div>
+
+  <div class="home-proof-proposal"><small>AGENT PROPOSAL</small><strong>Review Field Notes first · 2 of 6 messages are marked READ.</strong></div>
+
+  <p class="home-proof-limit">Synthetic example, not observed output. The unscoped command uses the configured default account. It considers at most 200 eligible sender buckets before ranking; counts reflect current READ flags, not tracked opens or every newsletter.</p>
+
+  <div class="home-proof-review">
+    <span class="home-proof-review-mark" aria-hidden="true">◇</span>
+    <span><small>HUMAN REVIEW</small><strong>Preview an unsubscribe, then choose whether to apply it.</strong></span>
+  </div>
+</section>
 
 <div class="hero-providers" aria-label="Mail provider support">
   <div class="hero-provider-row">
@@ -43,13 +82,6 @@ hero:
     <div><span>CLIENTS</span><strong>mxr · scripts · agents</strong></div>
   </div>
   <p>mxr keeps the working mailbox on your machine and continues syncing with the provider. Local search and cached mail reads use that state; sync, sends, provider-backed changes, uncached attachments, and configured model endpoints can still use the network.</p>
-</div>
-
-<div class="hero-install" aria-label="Install one-liner">
-  <span class="hero-install-prompt">$</span>
-  <code class="hero-install-cmd" id="install-cmd" tabindex="0">brew install planetaryescape/mxr/mxr</code>
-  <button class="hero-install-copy" type="button" data-copy-target="install-cmd" aria-label="Copy install command">copy</button>
-  <span class="hero-install-alt">Other install methods <a href="/getting-started/install/">available</a></span>
 </div>
 
 <div class="hero-cast" aria-label="mxr demos in the CLI, TUI, and an AI agent" aria-roledescription="carousel">

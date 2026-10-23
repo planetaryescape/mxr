@@ -65,5 +65,55 @@ command fully in view (the command occupied y=622–693) with no horizontal
 overflow. Snapshot capture timed out twice; DOM geometry checks succeeded, and
 the built page was opened in Dia for inspection.
 
-Phone-width layout was not verified: requests for a 390×844 preview viewport
-left the browser at 1280×800. Recheck the mobile breakpoint during integration.
+At that check, phone-width layout was not verified: requests for a 390×844
+preview viewport left the browser at 1280×800. Round 2 adds a responsive HTML
+fallback check below; the actual production page's phone layout remains
+unverified.
+
+## Round 2: first-screen task proof
+
+This implementation starts from parent commit
+`08e5d54f99bb6ca3e7654da16b718fa5c290ea41` (tree
+`1d2bfc2271441a276bcf92042ce9bc4a9eabd89b`). The refreshed HTTPS fetch resolved
+`origin/main` to `f39ae66578e3099e464967ab2f042e24b1ad8ec4`; that is also the
+merge base. The category line is ordinary hero markup before the headline. The
+homepage now pairs the connector explanation and install action with one
+static mailbox task: local READ-state evidence, an explicit agent proposal to
+review Field Notes first, and a human unsubscribe preview. The existing
+CLI/TUI/agent media carousel follows this opening proof. The task rows and
+proposal are labeled synthetic illustration; S2's captured fixture did not
+provide useful READ-rate variation.
+
+The example names its account scope. Its note says an unscoped request uses the
+configured default account, the query limits to 200 eligible sender buckets
+before ranking, and counts use current READ flags rather than tracked opens or
+all newsletters. The operation ends at preview and human choice; the page does
+not claim that mxr unsubscribes automatically. These limits are checked against
+the source references at `f39ae66578e3099e464967ab2f042e24b1ad8ec4` in the S2
+evidence above.
+
+### Round 2 rendering and build
+
+`npm ci --prefix site` passed with 528 packages installed and no reported
+vulnerabilities. `npm run build --prefix site`, run with a Node-only `PATH` in
+the shared agent-work queue, passed 10 site script tests, validation of 262
+OpenAPI paths, and the 208-page Astro build. The generator used the committed
+`site/public/openapi.json` because Cargo was excluded from `PATH`; this was a
+hosting-mode build, not a live OpenAPI conformance check. Vite reported a chunk
+over 500 kB and Astro reported an empty `i18n` collection; both warnings were
+non-blocking. No generated reference or OpenAPI source changes remained.
+
+The built page was previewed at 1280×800 in Dia. The preview DOM reported the
+hero at x=75–581, the proof at x=645–1205 and y=139–749, and the install row at
+y=598–669, with no horizontal overflow. The real category text precedes the
+headline in DOM order. A light-theme DOM check returned the configured light
+background and foreground colors. The collaborative browser's request to
+resize to 390×844 still reported 1280×800; its page snapshot timed out twice.
+
+The native HTML preview therefore checked a self-contained rendering of the
+built opening copy and the same layout at 390 and 1440 px in both themes. It
+reported 390 px document/body widths at 390 and 1440 px widths at 1440, with no
+console errors. This fallback uses system sans typography and distilled
+homepage CSS rather than the production Recursive font and full Starlight CSS;
+it checks responsive hierarchy and overflow, not exact production-font
+wrapping. No phone-width pass is claimed for the actual production page.

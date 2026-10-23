@@ -55,7 +55,7 @@ beforeEach(() => {
     context: () => ctxWith(scopes),
     onPendingChange: (prefix) => pending.push(prefix),
     onDeadEnd: (sequence) => deadEnds.push(sequence),
-    onMoved: (action) => movedNotices.push(`${action.label} is now ${action.shortcut}`),
+    onMoved: (action, key) => movedNotices.push(`${action.label} is now ${key}`),
     isSuspended: () => suspended,
     mac: false,
   });
@@ -486,5 +486,31 @@ describe("installKeyDispatcher", () => {
     expect(notCancelled).toBe(false);
     press({ key: "E", shiftKey: true });
     expect(letGo.run).toHaveBeenCalledTimes(1);
+  });
+
+  test("a retired key whose action has no key left names where to go instead", () => {
+    const tab = runAction("nav.tab-mail", "", {
+      label: "Mail",
+      shortcut: undefined,
+      movedAliases: [{ chord: "1", scopes: ["global"], to: "g i" }],
+    });
+    const headers = runAction("reader.headers", "", {
+      label: "Raw headers",
+      shortcut: undefined,
+      paletteOnly: true,
+      scopes: ["reader"],
+      movedAliases: [{ chord: "g H", scopes: ["reader"] }],
+    });
+    registry.define(tab.action);
+    registry.define(headers.action);
+    scopes = ["reader", "global"];
+
+    press({ key: "1" });
+    press({ key: "g" });
+    press({ key: "H", shiftKey: true });
+
+    expect(tab.run).not.toHaveBeenCalled();
+    expect(headers.run).not.toHaveBeenCalled();
+    expect(movedNotices).toEqual(["Mail is now g i", "Raw headers is now null"]);
   });
 });

@@ -20,6 +20,8 @@ export interface Binding {
   macOnly: boolean;
   /** Bound from `movedAliases`: announces where the action went, runs nothing. */
   moved: boolean;
+  /** For a moved key: the key its notice names, when not the action's own. */
+  movedTo?: ShortcutChord;
 }
 
 export class ActionRegistry {
@@ -55,25 +57,27 @@ export class ActionRegistry {
           });
         }
       }
-      for (const { chord, scopes } of action.movedAliases ?? []) {
-        for (const scope of scopes) {
-          const key = `${scope}|${normalize(chord)}`;
-          const owner = this.#bindings.get(key);
-          if (owner) {
-            throw new Error(
-              `ActionRegistry: moved key "${chord}" in scope "${scope}" is still bound to "${owner.action.id}"`,
-            );
-          }
-          this.#assertNoPrefixClash(scope, chord, action.id);
-          this.#bindings.set(key, {
-            chord: normalize(chord),
-            scope,
-            action,
-            retired: true,
-            macOnly: false,
-            moved: true,
-          });
+    }
+    // A palette-only action can still announce the key it used to have.
+    for (const { chord, scopes, to } of action.movedAliases ?? []) {
+      for (const scope of scopes) {
+        const key = `${scope}|${normalize(chord)}`;
+        const owner = this.#bindings.get(key);
+        if (owner) {
+          throw new Error(
+            `ActionRegistry: moved key "${chord}" in scope "${scope}" is still bound to "${owner.action.id}"`,
+          );
         }
+        this.#assertNoPrefixClash(scope, chord, action.id);
+        this.#bindings.set(key, {
+          chord: normalize(chord),
+          scope,
+          action,
+          retired: true,
+          macOnly: false,
+          moved: true,
+          movedTo: to,
+        });
       }
     }
     this.#ids.add(action.id);

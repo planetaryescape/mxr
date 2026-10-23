@@ -244,6 +244,11 @@ pub struct MovedKey {
     /// The first release that no longer shows the notice; the entry is
     /// deleted then (`problems` fails once mxr reaches this version).
     pub until: String,
+    /// The action whose key the notice names, when the old action has no
+    /// key of its own left (digit `1` points at `g i`). The notice keeps
+    /// the old action's label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
 }
 
 /// A TUI binding: the action name its dispatcher returns for these keys, in
@@ -376,12 +381,40 @@ impl Keymap {
     /// The action whose old key `key` was in `context`, while its move is
     /// still being announced.
     pub fn moved_from(&self, context: &str, key: &str) -> Option<&KeyAction> {
-        self.actions.iter().find(|action| {
+        self.moved_entry(context, key).map(|(action, _)| action)
+    }
+
+    /// The action whose old key `key` was in `context`, with its move.
+    pub fn moved_entry(&self, context: &str, key: &str) -> Option<(&KeyAction, &MovedKey)> {
+        self.actions.iter().find_map(|action| {
             action
                 .moved
                 .iter()
-                .any(|moved| moved.key == key && moved.contexts.iter().any(|c| c == context))
+                .find(|moved| moved.key == key && moved.contexts.iter().any(|c| c == context))
+                .map(|moved| (action, moved))
         })
+    }
+
+    /// The action a moved key's notice names the key of: its `to`, or
+    /// the action itself.
+    pub fn moved_target<'a>(&'a self, action: &'a KeyAction, moved: &MovedKey) -> &'a KeyAction {
+        moved
+            .to
+            .as_deref()
+            .and_then(|id| self.get(id))
+            .unwrap_or(action)
+    }
+
+    /// True when `prefix` starts a moved sequence in `context`, so the TUI
+    /// still waits for the second key and can say where `z z` went.
+    pub fn moved_starts_sequence(&self, context: &str, prefix: &str) -> bool {
+        let start = format!("{prefix} ");
+        self.actions
+            .iter()
+            .flat_map(|action| &action.moved)
+            .any(|moved| {
+                moved.key.starts_with(&start) && moved.contexts.iter().any(|c| c == context)
+            })
     }
 
     /// Every web action's Raycast key, by action id.
@@ -469,7 +502,9 @@ impl Keymap {
             if !action.is_for(Client::Tui) && !action.tui.is_empty() {
                 problems.push(format!("{id}: has TUI bindings but is not a TUI action"));
             }
-            if action.clients == [Client::Tui] && action.tui.is_empty() {
+            // A TUI action whose key retired keeps its entry while the move
+            // is announced (`z z`), with no binding left.
+            if action.clients == [Client::Tui] && action.tui.is_empty() && action.moved.is_empty() {
                 problems.push(format!("{id}: is a TUI action with no TUI binding"));
             }
             for binding in &action.tui {
@@ -484,6 +519,14 @@ impl Keymap {
         }
         for action in &self.actions {
             for moved in &action.moved {
+                if let Some(to) = moved.to.as_deref() {
+                    if !ids.contains(to) {
+                        problems.push(format!(
+                            "{}: the move of `{}` points to no action `{to}`",
+                            action.id, moved.key
+                        ));
+                    }
+                }
                 if !older_than(env!("CARGO_PKG_VERSION"), &moved.until) {
                     problems.push(format!(
                         "{}: the move of `{}` was announced until {}; delete the entry",

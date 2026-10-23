@@ -20,13 +20,10 @@ export function useKeyDispatcher(): void {
         context: snapshotActionContext,
         onPendingChange: (prefix) => useKeyScope.getState().setPendingPrefix(prefix),
         onDeadEnd: (sequence) => useKeyScope.getState().showDeadEnd(sequence),
-        onMoved: (action) =>
+        onMoved: (action, key) =>
           useKeyScope
             .getState()
-            .showMoved(
-              (action.shortLabel ?? action.label).replace(/…$/, ""),
-              action.shortcut ?? null,
-            ),
+            .showMoved((action.shortLabel ?? action.label).replace(/…$/, ""), key),
         isSuspended: () => {
           // A palette or dialog owns the keyboard from the moment it opens,
           // not only once its input has focus: fast typing after ⌘K would

@@ -6,9 +6,7 @@
 //! full set is every labelled email in the store, which on a demo adds the
 //! generated bulk, labelled by where the generator put each email.
 //!
-//! * who: the mail kind the shared `describe` path gives (what `GetMessageKind`
-//!   and the arrivals line read), over the same sender signals placement uses,
-//!   so mail in Spam, which `GetMessageKind` refuses, still has a kind;
+//! * who: the stored assessment's sender judgement, including mail in Spam;
 //! * home: the persisted assessment used by the modes, arrivals and chips.
 //!   Missing or stale answers remain pending; evaluation never repairs them.
 //! * record: a record row includes this email.
@@ -49,9 +47,9 @@ const QUESTIONS: [&str; 3] = ["who", "home", "record"];
 /// What today's code answers for one email.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Actual {
-    who: &'static str,
+    who: Option<&'static str>,
     who_reason: String,
-    /// `None`: the email has no arrivals row, so no home to compare.
+    /// `None`: no current stored assessment is available to compare.
     home: Option<Home>,
     record: bool,
 }
@@ -106,8 +104,8 @@ const fn yes_no(value: bool) -> &'static str {
     }
 }
 
-/// Compare one email's answers with its label. `home` is skipped, and
-/// counted as not placed, when there is none. Mail you sent is not graded
+/// Compare one email's answers with its label. Pending `who` and `home`
+/// answers are skipped; a missing home counts as not placed. Mail you sent is not graded
 /// here: who, home and record are about mail that arrives.
 fn grade(
     label: &Labelled,
@@ -142,7 +140,9 @@ fn grade(
             });
         }
     };
-    check(0, label.expect.who.as_str(), actual.who, &actual.who_reason);
+    if let Some(who) = actual.who {
+        check(0, label.expect.who.as_str(), who, &actual.who_reason);
+    }
     match &actual.home {
         Some(home) => {
             tally.placed_live += u32::from(home.live);
@@ -340,11 +340,7 @@ pub(super) async fn classify_eval(
             continue;
         };
         let actual = Actual {
-            who: if read.who_pending {
-                "pending_assessment"
-            } else {
-                who_name(read.kind)
-            },
+            who: (!read.who_pending).then(|| who_name(read.kind)),
             who_reason: read.reason.clone(),
             home: read.home.clone(),
             record: aspects.record.contains(&candidate.message_id),
@@ -507,7 +503,7 @@ mod tests {
 
     fn right() -> Actual {
         Actual {
-            who: "machine",
+            who: Some("machine"),
             who_reason: "automated sender".into(),
             home: Some(Home {
                 mode: "updates".into(),
@@ -569,7 +565,7 @@ mod tests {
             ..label(EXPECT)
         };
         let wrong = Actual {
-            who: "person",
+            who: Some("person"),
             record: false,
             ..right()
         };
@@ -590,6 +586,26 @@ mod tests {
         assert!(mismatches.is_empty(), "not placed is not a wrong answer");
         assert_eq!(tally.not_placed, 1);
         assert_eq!(tally.evaluated, [1, 0, 1]);
+    }
+
+    #[test]
+    fn a_pending_assessment_is_not_a_wrong_who_answer() {
+        let actual = Actual {
+            who: None,
+            home: None,
+            ..right()
+        };
+        let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
+        let held_out = Labelled {
+            held_out: true,
+            ..label(EXPECT)
+        };
+        grade(&held_out, &actual, &mut tally, &mut mismatches);
+        assert!(mismatches.is_empty());
+        assert_eq!(tally.not_placed, 1);
+        assert_eq!(tally.evaluated, [0, 0, 1]);
+        assert_eq!(tally.held_out_evaluated, [0, 0, 1]);
+        assert_eq!(tally.correct, [0, 0, 1]);
     }
 
     #[test]
@@ -616,7 +632,7 @@ mod tests {
         assert_eq!(plain[0].label_review, None);
         // The doubt covers its own question only: a wrong who is not it.
         let wrong_who = Actual {
-            who: "person",
+            who: Some("person"),
             ..right()
         };
         let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
@@ -656,7 +672,7 @@ mod tests {
     #[test]
     fn a_wrong_who_and_home_carry_the_rule_that_decided_them() {
         let actual = Actual {
-            who: "person",
+            who: Some("person"),
             who_reason: "possible personal mail".into(),
             home: Some(Home {
                 mode: "messages".into(),

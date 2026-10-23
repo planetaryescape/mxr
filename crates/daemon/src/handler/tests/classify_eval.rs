@@ -278,6 +278,66 @@ async fn an_email_with_no_arrivals_row_keeps_its_stored_assessment() {
 }
 
 #[tokio::test]
+async fn a_missing_assessment_is_pending_without_being_repaired_or_graded_as_wrong() {
+    let (state, account_id) = scenario_state().await;
+    let (before, _) = eval(&state, Some(&account_id)).await;
+    let victim = scenarios::quick_set()
+        .find(|label| !label.outbound)
+        .unwrap();
+    let removed = sqlx::query(
+        "DELETE FROM mail_assessments WHERE message_id IN
+         (SELECT id FROM messages WHERE account_id = ?1 AND provider_id = ?2 AND from_email = ?3)",
+    )
+    .bind(account_id.as_str())
+    .bind(&victim.provider_id)
+    .bind(&victim.from_email)
+    .execute(state.store.writer())
+    .await
+    .unwrap()
+    .rows_affected();
+    assert_eq!(removed, 1);
+    let stored_before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mail_assessments")
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap();
+
+    let ResponseData::ClassifyEval {
+        summary,
+        mismatches,
+    } = classify_eval(&state, Some(&account_id), ClassifyEvalSetData::Quick)
+        .await
+        .unwrap()
+    else {
+        panic!("expected evaluation");
+    };
+    assert_eq!(summary.not_placed, before.not_placed + 1);
+    for question in ["who", "home"] {
+        let old = before
+            .questions
+            .iter()
+            .find(|q| q.question == question)
+            .unwrap();
+        let new = summary
+            .questions
+            .iter()
+            .find(|q| q.question == question)
+            .unwrap();
+        assert_eq!(new.evaluated + 1, old.evaluated);
+        assert!(!mismatches
+            .iter()
+            .any(|m| { m.provider_id == victim.provider_id && m.question == question }));
+    }
+    let stored_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mail_assessments")
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap();
+    assert_eq!(
+        stored_after, stored_before,
+        "evaluation must not repair the missing answer"
+    );
+}
+
+#[tokio::test]
 async fn a_to_do_that_was_already_over_when_found_is_not_a_to_do() {
     let (state, _) = scenario_state().await;
     // The leaving drinks ended before the mail was seen, so the to-do row

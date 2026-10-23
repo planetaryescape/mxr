@@ -29122,7 +29122,7 @@
           },
           {
             "type": "object",
-            "description": "Measure today's classifier against labelled scenarios in the stored\nmail: who sent it, which mode it went to, and whether it made a\nto-do or a record. Local; nothing is changed or sent.\nRead stored fallback decisions only. The limit is capped at 10,000.",
+            "description": "Read stored fallback decisions only. The limit is capped at 10,000.",
             "required": [
               "limit",
               "cmd"
@@ -29188,6 +29188,7 @@
           },
           {
             "type": "object",
+            "description": "Measure today's classifier against labelled scenarios in stored mail:\nsender, home, asks and records. Local; nothing is changed or sent.",
             "required": [
               "cmd"
             ],

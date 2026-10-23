@@ -49,7 +49,7 @@ export function ModeChip({ messageId }: { messageId: string }) {
     <span
       data-testid="mode-chip"
       data-bucket={item.bucket}
-      aria-label={item.chip}
+      aria-label={item.not_sure ? `${item.chip} · Not sure` : item.chip}
       title={item.chip}
       className="inline-flex shrink-0"
     >

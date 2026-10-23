@@ -376,7 +376,7 @@ fn render_table(
     if summary.not_placed > 0 {
         let _ = writeln!(
             out,
-            "{} have no current stored assessment and are not graded on home.",
+            "{} have no current stored assessment and are not graded on who or home.",
             summary.not_placed
         );
     }

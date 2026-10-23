@@ -226,7 +226,8 @@ thousands of times, so its table groups mismatches into clusters (same
 scenario, question, expected and actual answer), biggest first, with one
 example each; `--format json` has every one. Home is the stored assessment used by the modes, arrivals and Inbox chips,
 including historical mail with no arrivals row. Evaluation never creates or
-repairs assessments: missing or stale answers count as `not_placed`. Startup and ingest
+repairs assessments: missing or stale answers count as `not_placed` and are skipped
+for both who and home accuracy. Startup and ingest
 reconcile historical mail in bounded thread pages. Unit fixtures that bypass
 ingest must explicitly call `assessments::reconcile_account` before grading.
 

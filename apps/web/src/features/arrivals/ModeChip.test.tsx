@@ -42,6 +42,7 @@ describe("Inbox's mode chip", () => {
     expect(chip).toHaveAttribute("data-bucket", "updates");
     expect(chip).not.toHaveTextContent("Updates");
     expect(chip).toHaveTextContent("Not sure");
+    expect(chip).toHaveAccessibleName("→ Updates · automated sender · Not sure");
     expect(chip).toHaveAttribute("title", "→ Updates · automated sender");
     expect(screen.getAllByTestId("mode-chip")).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/mail/arrivals/modes", {

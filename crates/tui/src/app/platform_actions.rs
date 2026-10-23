@@ -95,7 +95,7 @@ impl App {
                     created_at: now,
                     updated_at: now,
                 };
-                let text = mxr_composer::check::split_body(&pending.body)
+                let text = mxr_compose::body_regions::split_body(&pending.body)
                     .text
                     .to_string();
                 self.queue_platform_request_after(

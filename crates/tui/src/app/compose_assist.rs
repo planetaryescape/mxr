@@ -14,17 +14,12 @@ impl App {
             {
                 return match (key.code, key.modifiers) {
                     (KeyCode::Enter, _) => {
-                        let Some(review) = self.compose.assist_review.as_ref().cloned() else {
-                            return None;
-                        };
-                        let Some((proposal_action, proposal_id)) = review
+                        let review = self.compose.assist_review.as_ref().cloned()?;
+                        let (proposal_action, proposal_id) = review
                             .proposal()
-                            .map(|proposal| (proposal.action, proposal.proposal_id.clone()))
-                        else {
-                            return None;
-                        };
+                            .map(|proposal| (proposal.action, proposal.proposal_id.clone()))?;
                         let instruction = review.note_input.unwrap_or_default();
-                        let text = mxr_composer::check::split_body(&review.pending.body)
+                        let text = mxr_compose::body_regions::split_body(&review.pending.body)
                             .text
                             .to_string();
                         let request = Request::ComposeAssist {
@@ -139,7 +134,7 @@ impl App {
                     }
                     None
                 }
-                Some("ComposeProofPrevious") | Some("ComposeProofNext") => {
+                Some("ComposeProofPrevious" | "ComposeProofNext") => {
                     if let Some(review) = self.compose.assist_review.as_mut() {
                         let last = review.proposals.len().saturating_sub(1);
                         let index = if action == Some("ComposeProofPrevious") {

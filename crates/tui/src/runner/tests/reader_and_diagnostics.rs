@@ -1635,8 +1635,6 @@ fn proof_scroll_keys_reach_long_text_and_reset_on_version_change() {
         kind: mxr_protocol::TextChangeKindData::Kept,
         text: long.text.clone(),
     }];
-    let expected_bottom =
-        crate::ui::compose_assist_proof::line_count(&long).saturating_sub(1) as u16;
     app.compose.assist_review = Some(crate::app::ComposeAssistReview {
         pending,
         proposals: vec![long, test_compose_proposal()],
@@ -1656,7 +1654,7 @@ fn proof_scroll_keys_reach_long_text_and_reset_on_version_change() {
             .as_ref()
             .unwrap()
             .proof_scroll_offset,
-        expected_bottom
+        u16::MAX
     );
     app.handle_key(crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::Right,

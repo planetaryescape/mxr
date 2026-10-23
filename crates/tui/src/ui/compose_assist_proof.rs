@@ -6,6 +6,20 @@ use std::sync::OnceLock;
 
 const CONTEXT: &str = "compose-assist-proof";
 
+struct ProofRenderOptions<'a> {
+    note_input: Option<&'a str>,
+    version: (usize, usize),
+    scroll_offset: u16,
+    theme: &'a crate::theme::Theme,
+    no_color: bool,
+}
+
+struct ProofTextContext<'a> {
+    proposal: &'a ComposeProposalData,
+    theme: &'a crate::theme::Theme,
+    no_color: bool,
+}
+
 pub fn draw(
     frame: &mut Frame,
     area: Rect,
@@ -19,11 +33,13 @@ pub fn draw(
         frame,
         area,
         proposal,
-        note_input,
-        version,
-        scroll_offset,
-        theme,
-        std::env::var_os("NO_COLOR").is_some(),
+        ProofRenderOptions {
+            note_input,
+            version,
+            scroll_offset,
+            theme,
+            no_color: std::env::var_os("NO_COLOR").is_some(),
+        },
     );
 }
 
@@ -31,12 +47,15 @@ fn draw_with_color_mode(
     frame: &mut Frame,
     area: Rect,
     proposal: &ComposeProposalData,
-    note_input: Option<&str>,
-    version: (usize, usize),
-    scroll_offset: u16,
-    theme: &crate::theme::Theme,
-    no_color: bool,
+    options: ProofRenderOptions<'_>,
 ) {
+    let ProofRenderOptions {
+        note_input,
+        version,
+        scroll_offset,
+        theme,
+        no_color,
+    } = options;
     let popup = super::centered_rect(84, 72, area);
     frame.render_widget(Clear, popup);
     let block = Block::default()
@@ -128,6 +147,11 @@ fn proof_lines(
     theme: &crate::theme::Theme,
     no_color: bool,
 ) -> Vec<Line<'static>> {
+    let context = ProofTextContext {
+        proposal,
+        theme,
+        no_color,
+    };
     let mut output = vec![Line::default()];
     let mut final_offset = 0usize;
     for change in &proposal.changes {
@@ -145,9 +169,7 @@ fn proof_lines(
             change.kind,
             base_style,
             is_final_text.then_some(final_offset),
-            proposal,
-            theme,
-            no_color,
+            &context,
         );
         if is_final_text {
             final_offset += change.text.len();
@@ -162,9 +184,7 @@ fn append_styled_text(
     kind: TextChangeKindData,
     base_style: Style,
     final_offset: Option<usize>,
-    proposal: &ComposeProposalData,
-    theme: &crate::theme::Theme,
-    no_color: bool,
+    context: &ProofTextContext<'_>,
 ) {
     let mut start = 0usize;
     for (index, ch) in text.char_indices() {
@@ -177,9 +197,7 @@ fn append_styled_text(
                     kind,
                     base_style,
                     final_offset,
-                    proposal,
-                    theme,
-                    no_color,
+                    context,
                 );
             }
             lines.push(Line::default());
@@ -194,14 +212,11 @@ fn append_styled_text(
             kind,
             base_style,
             final_offset,
-            proposal,
-            theme,
-            no_color,
+            context,
         );
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn append_segment(
     lines: &mut [Line<'static>],
     text: &str,
@@ -209,9 +224,7 @@ fn append_segment(
     kind: TextChangeKindData,
     base_style: Style,
     final_offset: Option<usize>,
-    proposal: &ComposeProposalData,
-    theme: &crate::theme::Theme,
-    no_color: bool,
+    context: &ProofTextContext<'_>,
 ) {
     let mut segment_start = 0usize;
     let mut warning_active = false;
@@ -221,7 +234,8 @@ fn append_segment(
     {
         let is_gap = final_offset.is_some_and(|offset| {
             let at = offset + text_offset + index;
-            proposal
+            context
+                .proposal
                 .gaps
                 .iter()
                 .any(|gap| gap.start as usize <= at && at < gap.end as usize)
@@ -230,7 +244,7 @@ fn append_segment(
             if segment_start < index {
                 let value = &text[segment_start..index];
                 let mut rendered = String::new();
-                if no_color {
+                if context.no_color {
                     if warning_active {
                         rendered.push_str("[[");
                         rendered.push_str(value);
@@ -255,7 +269,7 @@ fn append_segment(
                 }
                 let style = if warning_active {
                     Style::default()
-                        .fg(theme.warning)
+                        .fg(context.theme.warning)
                         .add_modifier(Modifier::UNDERLINED)
                 } else {
                     base_style
@@ -334,11 +348,13 @@ mod tests {
                     frame,
                     area,
                     proposal,
-                    None,
-                    (0, 1),
-                    scroll,
-                    &crate::theme::Theme::default(),
-                    no_color,
+                    ProofRenderOptions {
+                        note_input: None,
+                        version: (0, 1),
+                        scroll_offset: scroll,
+                        theme: &crate::theme::Theme::default(),
+                        no_color,
+                    },
                 );
             })
             .unwrap();

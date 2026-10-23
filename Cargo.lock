@@ -4584,6 +4584,7 @@ version = "0.6.159"
 dependencies = [
  "base16ct",
  "chrono",
+ "mxr-compose",
  "mxr-core",
  "mxr-humanizer",
  "mxr-llm",
@@ -5173,7 +5174,6 @@ dependencies = [
  "insta",
  "mxr-client",
  "mxr-compose",
- "mxr-composer",
  "mxr-config",
  "mxr-core",
  "mxr-keymap",

@@ -25,8 +25,9 @@ override values inherit from the base config. Each feature has its own guide:
 | row and reader gists | [Clear the desk](/guides/now/#see-what-each-row-asks) | one line on what a conversation is about and what it asks of you, with the ask quoted from the message |
 | `mxr triage` | [CLI: `mxr triage`](/reference/cli/triage/) | sort search results into action, FYI and routine, reusing the cached summary verdict |
 
-Every feature has an explicit disabled path when `[llm] enabled = false`.
-Pure LLM commands such as `mxr summarize` and `mxr draft-assist` return
+Each feature has an explicit disabled path when its effective `enabled`
+setting is false. A per-feature override can enable that feature even when
+the base `[llm] enabled` is false. Pure LLM commands such as `mxr summarize` and `mxr draft-assist` return
 `LLM is disabled`; features with deterministic substrate, such as briefings
 or safety checks, return the local fallback instead of pretending synthesis
 succeeded.
@@ -42,7 +43,8 @@ picker is configured through the native `assistant` feature override.
 Recognized `claude-*` and `gpt-*` model IDs route to Anthropic or OpenAI,
 with OpenRouter as fallback. Other model IDs use the configured compatible
 endpoint. Check `mxr llm status --format json` to see the effective native
-configuration; a missing `base_url` does not mean every model is local.
+configuration. Recognized hosted model IDs select their provider regardless
+of `base_url`.
 
 ## Backends supported
 

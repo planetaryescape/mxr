@@ -32,3 +32,18 @@ No invoice recipe or new runtime proof was added. Existing S2 local-query observ
 - The built pages opened at `http://localhost:4321/` and `/examples/` in Dia. Preview was served by this worktree's Astro PID `89612`; I stopped that PID and verified port `4321` has no listener.
 
 The remaining doc consistency issue is generated CLI help wording for subscription ranking. Root owns any follow-up to the CLI help source and regeneration.
+
+
+## Root integration closes the remaining wording and build gaps
+
+Root read the whole candidate and source map at fresh main `16b1adaed540bd0fdd9e2d447ecd6f6711abcf60`. GitHub release metadata confirms v0.6.159 published from `e98f499f8bf9072077a693e3e72d23528fe24fa2`. S2 and S3 retain their original version and separate-account boundaries; no new mailbox or model replay was run.
+
+Root restored the direct daemon-reuse explanation on the homepage, linked shared-draft review to the agent tutorial, replaced the remaining “who you never open” example with READ-state wording, and made queue drops explicit. The architecture diagram now shows provider adapters as their own daemon branch. The glossary no longer says every AI feature is read-only: the assistant can apply tools under its approval rules. The agent guide no longer calls MCP local-only: source `crates/mcp/src/lib.rs#L385` and `crates/daemon/src/commands/connect.rs` confirm selected paired HTTPS uses a registration grant. Native model wording follows `crates/config/src/types.rs#L475-L485`: a feature can override base `enabled=false`, and recognized hosted model IDs route independently of `base_url`.
+
+The final root build passed 10 script tests, 265-path docs validation and 209 Astro pages, with 205 Markdown siblings. It used the committed OpenAPI fallback, not live conformance. Normal macOS memory pressure was observed (`kern.memorystatus_vm_pressure_level=1`, 54% free), so the earlier worker memory wait did not recur. Root jobs completed normally; no unrelated job was cancelled.
+
+A compiled-HTML check passed 2,317 internal route/anchor occurrences across the 11 changed authored pages, including shared navigation. The local browser followed Examples → the account-scoped recipe; its selector, JSON envelopes, current READ-state limits and shared-draft tutorial link rendered. The LLM guide rendered separate external reasoning and per-feature enabled behavior; activity, security, agent, architecture and automation pages returned 200. The actual viewport remained 1280px and matched the document width. The real preview opened in Dia.
+
+Static 390px compiled-CSS captures of the LLM guide in both themes loaded Recursive, measured document width 390px and found no overflowing code blocks. These are static phone layouts, not interactive phone navigation. Capture-only favicon/touch-icon requests were unresolved; production assets were not changed. The existing worker and root npm/dist artifacts remain retained. Root preview PID 68160 on port 4323 remains owned until the online handoff.
+
+Inline simplifier review introduced no helper or executable logic; MDX changes are prose using existing structures, with no TypeScript contract change. Anti-slop JS/TS lint is not applicable. The new task chooser uses ordinary content links rather than bold-label teasers. Whitespace and suspicious-Unicode checks passed. No independent review was run after BK waived it. The old generated subscription-help terminology remains a recorded discovery follow-up for rung 5; reference output was not edited by hand.

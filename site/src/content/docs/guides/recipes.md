@@ -32,7 +32,8 @@ mxr archive --account work --search 'from:no-reply@example.com older_than:30d' -
 
 Use the account key, email address, account id, or unambiguous display name
 shown by `mxr accounts`. Keep that selector on each command so the count,
-search, and subscription candidates describe the same mailbox:
+search, and subscription candidates describe the same mailbox. Repeat with
+another selector to compare accounts through the same local interface:
 
 ```bash
 ACCOUNT='<selector-from-mxr-accounts>'

@@ -14,13 +14,11 @@ TUI / CLI / web / MCP / scripts
               |
               v
             daemon
-          /       \
-  SQLite store   Tantivy index
-  canonical      rebuildable
-              |
-              | sync and mail operations
-              v
-      provider adapters <----> mail providers
+       /       |       \
+   SQLite   Tantivy   provider adapters
+ canonical  rebuildable       |
+                              v
+                         mail providers
 ```
 
 The daemon coordinates shared local mail state and operations. SQLite is

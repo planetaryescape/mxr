@@ -11,7 +11,7 @@ redact rows you no longer want to keep.
 The log is a local working history, not a compliance audit. By default,
 subject, recipient email, and search-query context can be recorded; link URL
 tracking is off. Pause drops ordinary new rows, some rows coalesce, and the
-write queue is bounded. Change the metadata controls in `[activity]` or set
+write queue can drop rows when full. Change the metadata controls in `[activity]` or set
 `MXR_ACTIVITY=off` to disable writes.
 
 ## What gets captured

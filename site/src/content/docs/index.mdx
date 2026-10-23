@@ -87,7 +87,7 @@ hero:
 
 <div class="home-runtime" aria-label="How mxr fits with mail connectors and other clients">
   <p>A connector may be all you need to use Gmail inside your agent. Choose mxr when you also want the synced mailbox on your computer, available to your own tools and to clients you can use yourself.</p>
-  <p>The daemon coordinates sync, local storage, search and mail operations. The web app, terminal interface, CLI and agent interfaces can reuse those operations through the daemon, while each client exposes different capabilities and authority.</p>
+  <p>The daemon handles sync, local storage, search and mail operations. A new client can reuse that work instead of rebuilding the mail engine. The web app, TUI, CLI and agent interfaces use the same local mailbox.</p>
 </div>
 
 <div class="landing-section tryit-section">

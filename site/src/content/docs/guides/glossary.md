@@ -269,9 +269,10 @@ a hosted agent can leave the machine through that host's model service. See
 `[llm]`, disabled by default and optionally overridden per feature. The
 built-in assistant uses the native `assistant` feature configuration.
 
-mxr ships AI features that run above the core mail model. None of them mutate
-anything; synthesis from message evidence is citation-backed, while
-deterministic profile fallbacks may return no citations. See [archive intelligence](/guides/archive-intelligence/), [briefings and loop-in](/guides/briefings-and-loop-in/), and [timing and cadence](/guides/timing-and-cadence/).
+Native synthesis returns suggestions or answers; the built-in assistant can
+also call mutation tools under its [approval rules](/guides/assistant/#let-reversible-changes-run-on-their-own).
+Synthesis from message evidence is citation-backed, while deterministic
+profile fallbacks may return no citations. See [archive intelligence](/guides/archive-intelligence/), [briefings and loop-in](/guides/briefings-and-loop-in/), and [timing and cadence](/guides/timing-and-cadence/).
 
 **Archive ask**: `mxr ask "<question>"` runs a hybrid (or lexical, or semantic) retrieval over your local mail and synthesizes a Markdown answer with cited message ids. The daemon rejects any LLM citation that points outside the retrieved set; "not enough evidence" is a valid answer.
 

@@ -9,12 +9,12 @@ For multi-step pipelines (fzf, jq, xargs, cron) see [Recipes](/guides/recipes/);
 
 ## Choose a workflow
 
-- **Analyse local mail:** select an account, inspect structured search results and bounded subscription candidates in [Recipes](/guides/recipes/#inspect-local-mail-for-one-account).
-- **Retrieve a fact:** search synced history, then open the source message or record in [Archive](/guides/archive/).
-- **Prepare and review a shared draft:** use the saved-draft preview and outcome recovery steps in [Recipes](/guides/recipes/#send-only-if-safety-is-clean-otherwise-mint-and-pause).
-- **Inspect attachments:** follow the existing source-check workflow in [Recipes](/guides/recipes/#build-an-evidence-pack-from-booking-mail).
-- **Work through mail by intent:** use [Now and the five modes](/guides/email-modes/) to choose the human workflow.
-- **Automate a reviewed action:** follow the [safe agent loop](/guides/automation-contract/#safe-agent-loop), with an account selector and the command's supported preview.
+- [Analyse local mail](/guides/recipes/#inspect-local-mail-for-one-account) with one account selector, structured search results and bounded subscription candidates.
+- [Retrieve a fact in Archive](/guides/archive/) and follow it to the supporting email or document.
+- [Prepare and review a shared draft](/getting-started/agent-quick-start/) with synthetic mail and your existing agent.
+- [Inspect attachments from booking mail](/guides/recipes/#build-an-evidence-pack-from-booking-mail) using the existing source-check workflow.
+- [Choose a job from Now and the five modes](/guides/email-modes/) for your own mail workflow.
+- [Automate a reviewed action](/guides/automation-contract/#safe-agent-loop), carrying account scope through the command's supported preview and verification.
 
 ## Get started
 
@@ -91,7 +91,7 @@ mxr paper-trail                                              # receipts and noti
 mxr sweep paper-trail --dry-run                              # what a sweep would archive
 mxr sweep paper-trail --yes
 mxr sender kind digest@news.example.com reading              # move a sender for good
-mxr subscriptions --rank --format json                       # who you never open
+mxr subscriptions --rank --format json                       # candidates ranked by current READ state
 mxr unsubscribe newsletter@example.com --dry-run
 mxr unsubscribe newsletter@example.com --yes
 mxr archive --search "from:noreply@example.com older_than:30d" --dry-run

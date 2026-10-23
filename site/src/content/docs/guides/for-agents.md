@@ -299,7 +299,7 @@ Behind the CLI and MCP server, every request lands in one of four [IPC buckets](
 
 ## Current limits (be honest)
 
-- MCP is stdio-only today; run `mxr mcp serve` under your client. There is no hosted MCP endpoint.
+- Run `mxr mcp serve` under your client for stdio tools. It can use the selected daemon, including a saved paired HTTPS connection; that connection uses the host-approved registration grant rather than the local MCP profile. See the [MCP reference](/reference/mcp/#start-the-server) for transport and authority details.
 - Agent/MCP profiles enforce identified agent or MCP daemon requests by IPC origin, account allowlist, safety policy, send gate, and destructive gate. A coding agent using ordinary CLI requests has CLI origin and is outside those profile checks. These profiles do not sandbox the rest of the OS; a coding agent can still run shell commands available to its user.
 - Account scope must still be carried in prompts and commands. The daemon blocks out-of-profile accounts, but the best UX is to include account selectors in every search/read/mutation step.
 

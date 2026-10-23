@@ -1,4 +1,13 @@
-# Rung 1 is building with the approved ownership and working-mailbox direction
+# Rung 1 has an open PR; the copy reassessment precedes publication
+
+Current checkpoint, 23 October 2026: [PR #688](https://github.com/planetaryescape/mxr/pull/688) remains open at `66f36c749ea693516defa7d2be672eff128936e5`. Freshly fetched main remains `f39ae66578e3099e464967ab2f042e24b1ad8ec4`. BK has authorised admin merge; do not ask about GitHub approval again. Publication is held for the editorial reassessment BK requested after comparing the old and new first screens.
+
+The [research assessment](<../../research/reports/mxr mailbox positioning review.md>) is complete. The [root copy proposal](../evidence/positioning-copy-proposal.md) records the concrete redline, fixed headline/category, source checks and exact next action. Both independent Claude editorial tasks failed before review with "Claude API rate limit reached. Try again later." No editorial findings or model-usage evidence were produced. Do not start another retry loop or present either attempt as a completed review.
+
+Next: when Claude is available, request one independent review of the raw proposal and sources; reconcile it, then present the scoped copy checkpoint before design. The required second opinion comes from the explicitly invoked `write-product-communications` skill. No website source changed in this assessment. The original first-screen direction remains approved, all unfinished source and generated data remain retained, and dependent rungs still wait for rung 1 deployment. The durable orchestration ledger records exact task/worktree identities and ownership.
+
+The following entries are historical checkpoints, superseded by the current status above.
+
 
 Task: bring the docs website's explanation up to mxr as a local mail runtime, including the connector distinction, shared human/agent state, composable capabilities, modes and actual safety boundaries.
 

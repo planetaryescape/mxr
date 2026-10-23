@@ -67,7 +67,9 @@ async fn asks_membership_reads_persisted_received_and_sent_facets_without_outbou
         .unwrap();
     for facet in &modes.asks {
         assert_eq!(
-            stored.get(&facet.message_id).map(|a| a.summary()),
+            stored
+                .get(&facet.message_id)
+                .map(mxr_core::asks::AskAssessment::summary),
             Some(facet.clone())
         );
     }
@@ -694,23 +696,25 @@ async fn legacy_ics_upgrade_keeps_one_row_and_user_history_then_partstat_complet
                 None,
             )
             .await;
-        let mut metadata = mxr_core::MessageMetadata::default();
-        metadata.calendar = Some(mxr_core::CalendarMetadata {
-            method: Some("REQUEST".into()),
-            uid: Some("invite-uid".into()),
-            summary: Some("Planning".into()),
-            starts_at: Some("20261101T090000Z".into()),
-            rsvp_requested: true,
-            attendees: vec![mxr_core::CalendarAttendee {
-                email: ME.into(),
-                name: None,
-                uri: None,
-                partstat: Some("NEEDS-ACTION".into()),
-                role: None,
-                rsvp: Some(true),
-            }],
+        let metadata = mxr_core::MessageMetadata {
+            calendar: Some(mxr_core::CalendarMetadata {
+                method: Some("REQUEST".into()),
+                uid: Some("invite-uid".into()),
+                summary: Some("Planning".into()),
+                starts_at: Some("20261101T090000Z".into()),
+                rsvp_requested: true,
+                attendees: vec![mxr_core::CalendarAttendee {
+                    email: ME.into(),
+                    name: None,
+                    uri: None,
+                    partstat: Some("NEEDS-ACTION".into()),
+                    role: None,
+                    rsvp: Some(true),
+                }],
+                ..Default::default()
+            }),
             ..Default::default()
-        });
+        };
         fx.state
             .store
             .insert_body(&MessageBody {

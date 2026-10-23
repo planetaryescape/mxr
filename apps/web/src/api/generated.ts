@@ -6211,8 +6211,9 @@ export interface components {
         ComposeProposalData: {
             action: components["schemas"]["AssistActionData"];
             /**
-             * @description Hex SHA-256 of the request text: the text region the proposal was
-             *     written against. Applying refuses when the draft no longer hashes to it.
+             * @description Hex SHA-256 of the request text with trailing blank space ignored: the
+             *     text region the proposal was written against. Applying refuses when the
+             *     draft's text region no longer hashes to it.
              */
             base: string;
             changes: components["schemas"]["TextChangeData"][];
@@ -6220,11 +6221,14 @@ export interface components {
             composer_version: string;
             gaps: components["schemas"]["GapData"][];
             proposal_id: string;
+            /** @description Always filled: the model that answered, where it ran and what it read. */
             provenance: components["schemas"]["DraftProvenanceData"];
             text: string;
             /**
-             * @description Indices (in order, from zero) of the user's sentences that the
-             *     proposal changed or dropped.
+             * @description Positions, from zero, of the user's sentences that the proposal changed
+             *     or dropped. Sentences are the request text split at `.`, `!`, `?` and
+             *     line breaks, with empty ones skipped; case and spacing do not count as a
+             *     change.
              */
             yours_changed: number[];
         };

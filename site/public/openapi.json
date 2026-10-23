@@ -12683,7 +12683,7 @@
           },
           "base": {
             "type": "string",
-            "description": "Hex SHA-256 of the request text: the text region the proposal was\nwritten against. Applying refuses when the draft no longer hashes to it."
+            "description": "Hex SHA-256 of the request text with trailing blank space ignored: the\ntext region the proposal was written against. Applying refuses when the\ndraft's text region no longer hashes to it."
           },
           "changes": {
             "type": "array",
@@ -12705,7 +12705,8 @@
             "type": "string"
           },
           "provenance": {
-            "$ref": "#/components/schemas/DraftProvenanceData"
+            "$ref": "#/components/schemas/DraftProvenanceData",
+            "description": "Always filled: the model that answered, where it ran and what it read."
           },
           "text": {
             "type": "string"
@@ -12717,7 +12718,7 @@
               "format": "int32",
               "minimum": 0
             },
-            "description": "Indices (in order, from zero) of the user's sentences that the\nproposal changed or dropped."
+            "description": "Positions, from zero, of the user's sentences that the proposal changed\nor dropped. Sentences are the request text split at `.`, `!`, `?` and\nline breaks, with empty ones skipped; case and spacing do not count as a\nchange."
           }
         }
       },

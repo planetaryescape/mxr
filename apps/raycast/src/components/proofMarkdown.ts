@@ -9,13 +9,44 @@ export function proposalMarkdown(proposal: ComposeAssistProposal): string {
     return escapeText(proposal.text);
   }
 
-  return runs
+  return coalesceRuns(runs)
     .map((run) => {
       if (run.gap !== null) return inlineCode(run.text);
-      const text = escapeText(run.text);
-      if (run.kind === "added") return `**${text}**`;
-      if (run.kind === "removed") return `~~${text}~~`;
-      return text;
+      return formatRun(run.kind, run.text);
+    })
+    .join("");
+}
+
+function coalesceRuns(runs: ReturnType<typeof proofRuns>): ReturnType<typeof proofRuns> {
+  return runs.reduce<typeof runs>((merged, run) => {
+    const previous = merged.at(-1);
+    if (
+      previous &&
+      ((run.gap !== null && run.gap === previous.gap) ||
+        (run.gap === null && previous.gap === null && run.kind === previous.kind))
+    ) {
+      previous.text += run.text;
+    } else {
+      merged.push({ ...run });
+    }
+    return merged;
+  }, []);
+}
+
+function formatRun(kind: "kept" | "added" | "removed", text: string): string {
+  const escaped = escapeText(text);
+  if (kind === "kept") return escaped;
+  const marker = kind === "added" ? "**" : "~~";
+  // CommonMark emphasis cannot contain paragraph breaks. Keep leading and
+  // trailing spaces outside the markers so adjacent runs remain parseable.
+  return escaped
+    .split(/(\n)/)
+    .map((line) => {
+      if (line === "\n") return line;
+      const match = /^(\s*)([\s\S]*?)(\s*)$/.exec(line);
+      if (!match) return line;
+      const [, leading, content, trailing] = match;
+      return content ? `${leading}${marker}${content}${marker}${trailing}` : line;
     })
     .join("");
 }

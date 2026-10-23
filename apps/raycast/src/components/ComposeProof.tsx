@@ -3,6 +3,7 @@ import {
   ActionPanel,
   Detail,
   Form,
+  Icon,
   Keyboard,
   Toast,
   useNavigation,
@@ -117,21 +118,21 @@ export function ComposeProof({
         <ActionPanel>
           <Action
             title="Accept Proposal"
-            icon="checkmark"
+            icon={Icon.Checkmark}
             shortcut={ACCEPT}
             onAction={() => {
               if (!loading) onAccept(proposal);
             }}
           />
-          <Action title="Retry" icon="arrow.clockwise" shortcut={RETRY} onAction={retry} />
+          <Action title="Retry" icon={Icon.ArrowClockwise} shortcut={RETRY} onAction={retry} />
           <Action
             title="Revise with Note"
-            icon="pencil"
+            icon={Icon.Pencil}
             onAction={() => {
               if (!loading) push(<ComposeRevisionForm onSubmit={revise} />, onRevisionPop);
             }}
           />
-          <Action title="Keep Mine" icon="xmark" shortcut={KEEP_MINE} onAction={onKeepMine} />
+          <Action title="Keep Mine" icon={Icon.Xmark} shortcut={KEEP_MINE} onAction={onKeepMine} />
         </ActionPanel>
       }
     />
@@ -160,7 +161,7 @@ function ComposeRevisionForm({
       navigationTitle="Revise Proposal"
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Revise" icon="pencil" onSubmit={submit} />
+          <Action.SubmitForm title="Revise" icon={Icon.Pencil} onSubmit={submit} />
         </ActionPanel>
       }
     >

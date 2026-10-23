@@ -31,9 +31,9 @@ import {
 } from "../../../web/src/features/compose/assist/textRegion";
 import { ComposeProof } from "./ComposeProof";
 import {
+  OwnedRequestGate,
   hasUnfilledGap,
   proposalStillOwnsReply,
-  requestIsCurrent,
   shouldDiscardReply,
 } from "./proposalLifecycle";
 import { message } from "./previewed";
@@ -60,14 +60,14 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
   const current = useRef<ReplyDraft>(undefined);
   // What the form shows now; a submission compares it with what it checked.
   const latestBody = useRef("");
-  const submitting = useRef(false);
+  const submissions = useRef(new OwnedRequestGate());
   const closed = useRef(false);
   // Once the daemon owns the reply (sent, scheduled or saved for the web
   // composer), leaving the form must not discard it.
   const handedOver = useRef(false);
+  const keepDraft = useRef(false);
   const proposalOpen = useRef(false);
-  const assistRunning = useRef(false);
-  const assistGeneration = useRef(0);
+  const assistRequests = useRef(new OwnedRequestGate());
 
   const editBody = (text: string) => {
     latestBody.current = text;
@@ -76,7 +76,7 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
 
   const discardIfAbandoned = () => {
     const open = current.current;
-    if (open && shouldDiscardReply(handedOver.current, proposalOpen.current)) {
+    if (open && shouldDiscardReply(handedOver.current || keepDraft.current, proposalOpen.current)) {
       void discardReply(open).catch(() => undefined);
     }
   };
@@ -93,32 +93,54 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
       .catch((failure) => setError(message(failure)));
     return () => {
       closed.current = true;
-      assistGeneration.current += 1;
-      // A submission in flight decides the draft's fate when it settles.
-      if (!submitting.current) discardIfAbandoned();
+      const submissionInFlight = submissions.current.isRunning;
+      submissions.current.cancel();
+      assistRequests.current.cancel();
+      // An in-flight write may have reached the daemon; preserve that draft.
+      if (submissionInFlight) keepDraft.current = true;
+      if (!submissionInFlight) discardIfAbandoned();
+      proposalOpen.current = false;
+      current.current = undefined;
     };
   }, [messageId, kind]);
 
   /** Save the shown body, unless a submission already owns the draft. */
-  async function saveShownBody(): Promise<{ written: ReplyDraft; text: string } | undefined> {
+  async function saveShownBody(
+    expectedOwner?: ReplyDraft,
+    stillOwned: () => boolean = () => true,
+  ): Promise<{ written: ReplyDraft; text: string } | undefined> {
     const open = current.current;
-    if (!open) return undefined;
+    if (!open || (expectedOwner && open !== expectedOwner)) return undefined;
     const text = latestBody.current;
     const written = await writeBody(open, text);
+    if ((expectedOwner && current.current !== expectedOwner) || !stillOwned()) return undefined;
     current.current = written;
     setDraft(written);
     return { written, text };
   }
 
   async function submit() {
-    if (!current.current || submitting.current || assistRunning.current || proposalOpen.current)
+    if (
+      !current.current ||
+      submissions.current.isRunning ||
+      assistRequests.current.isRunning ||
+      proposalOpen.current
+    )
       return;
-    submitting.current = true;
-    const toast = await showToast({ style: Toast.Style.Animated, title: "Checking the reply…" });
+    const submission = submissions.current.begin();
+    if (submission === undefined) return;
+    const owner = current.current;
+    let toast: Toast | undefined;
     try {
-      const saved = await saveShownBody();
+      toast = await showToast({ style: Toast.Style.Animated, title: "Checking the reply…" });
+      const saved = await saveShownBody(
+        owner,
+        () => submissions.current.isCurrent(submission) && !closed.current,
+      );
+      if (!submissions.current.isCurrent(submission) || closed.current) return;
       if (!saved) return;
       const report = await checkSafety(saved.written);
+      if (!submissions.current.isCurrent(submission) || closed.current) return;
       await toast.hide();
       if (hasUnfilledGap(report)) {
         await showToast({
@@ -128,7 +150,8 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
         });
         return;
       }
-      if (!(await confirmIssues(report))) return;
+      const confirmed = await confirmIssues(report);
+      if (!submissions.current.isCurrent(submission) || closed.current || !confirmed) return;
       // The text area stays editable while the daemon checks; send only the
       // body that was checked and is still on screen.
       if (latestBody.current !== saved.text) {
@@ -140,6 +163,7 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
         return;
       }
 
+      if (!submissions.current.isCurrent(submission) || closed.current) return;
       if (report.allowed) {
         await scheduleWithUndo(saved.written);
       } else {
@@ -154,20 +178,23 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
           });
           return;
         }
+        if (!submissions.current.isCurrent(submission) || closed.current) return;
         await sendReply(saved.written, override);
         handedOver.current = true;
         await showToast({ style: Toast.Style.Success, title: "Sent (no undo for an override)" });
       }
-      onSent?.();
-      if (!closed.current) pop();
+      if (submissions.current.isCurrent(submission)) onSent?.();
+      if (submissions.current.isCurrent(submission) && !closed.current) pop();
     } catch (failure) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "Reply not sent",
-        message: message(failure),
-      });
+      if (submissions.current.isCurrent(submission) && !closed.current) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Reply not sent",
+          message: message(failure),
+        });
+      }
     } finally {
-      submitting.current = false;
+      submissions.current.finish(submission);
       if (closed.current) discardIfAbandoned();
     }
   }
@@ -203,24 +230,25 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
     const owner = current.current;
     if (
       !owner ||
-      submitting.current ||
-      assistRunning.current ||
+      submissions.current.isRunning ||
+      assistRequests.current.isRunning ||
       proposalOpen.current ||
       closed.current
     )
       return;
     const baseline = latestBody.current;
     const region = splitTextRegion(baseline);
-    const generation = ++assistGeneration.current;
+    const request = assistRequests.current.begin();
+    if (request === undefined) return;
     const workspaceKey = JSON.stringify(owner.workspace);
-    assistRunning.current = true;
-    const toast = await showToast({
-      style: Toast.Style.Animated,
-      title: "Preparing a writing proof…",
-    });
+    let toast: Toast | undefined;
     try {
+      toast = await showToast({
+        style: Toast.Style.Animated,
+        title: "Preparing a writing proof…",
+      });
       const proposal = await assistReply(owner, messageId, kind, region.text);
-      if (!requestIsCurrent(generation, assistGeneration.current) || closed.current) {
+      if (!assistRequests.current.isCurrent(request) || closed.current) {
         await toast.hide();
         return;
       }
@@ -270,14 +298,16 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
             }
             editBody(joinTextRegion(region, accepted.text).body);
             proposalOpen.current = false;
+            assistRequests.current.cancel();
             pop();
           }}
           onKeepMine={() => {
             proposalOpen.current = false;
+            assistRequests.current.cancel();
             pop();
           }}
           onRevisionPop={() => {
-            assistGeneration.current += 1;
+            assistRequests.current.cancel();
           }}
           onRetry={(shown) => requestAgain(owner, baseline, region, workspaceKey, shown.action)}
           onRevise={(shown, instruction) =>
@@ -289,15 +319,19 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
         />,
         () => {
           proposalOpen.current = false;
-          assistGeneration.current += 1;
+          assistRequests.current.cancel();
         },
       );
     } catch (failure) {
-      toast.style = Toast.Style.Failure;
-      toast.title = "No writing proof";
-      toast.message = message(failure);
+      if (toast && assistRequests.current.isCurrent(request) && !closed.current) {
+        toast.style = Toast.Style.Failure;
+        toast.title = "No writing proof";
+        toast.message = message(failure);
+      } else if (toast) {
+        await toast.hide();
+      }
     } finally {
-      assistRunning.current = false;
+      assistRequests.current.finish(request);
     }
   }
 
@@ -309,15 +343,15 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
     action: ComposeAssistProposal["action"],
     options: { revise: string; instruction: string } | undefined = undefined,
   ): Promise<ComposeAssistProposal | undefined> {
-    if (assistRunning.current || submitting.current || closed.current) return undefined;
-    assistRunning.current = true;
-    const generation = ++assistGeneration.current;
+    if (submissions.current.isRunning || closed.current) return undefined;
+    const request = assistRequests.current.begin();
+    if (request === undefined) return undefined;
     try {
       const proposal = await assistReply(owner, messageId, kind, region.text, {
         action,
         ...(options ?? {}),
       });
-      if (!requestIsCurrent(generation, assistGeneration.current) || closed.current) {
+      if (!assistRequests.current.isCurrent(request) || closed.current) {
         return undefined;
       }
       if (
@@ -340,31 +374,54 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
       }
       return proposal;
     } finally {
-      assistRunning.current = false;
+      assistRequests.current.finish(request);
     }
   }
 
   /** Hand the reply as written to the web composer instead of starting over. */
   async function openInMxr() {
-    if (!webBase || submitting.current || assistRunning.current || proposalOpen.current) return;
+    if (
+      !webBase ||
+      submissions.current.isRunning ||
+      assistRequests.current.isRunning ||
+      proposalOpen.current ||
+      closed.current
+    )
+      return;
     // Same guard as Send: one handover at a time, and leaving the form
     // waits for this one to settle before discarding anything.
-    submitting.current = true;
-    const toast = await showToast({ style: Toast.Style.Animated, title: "Opening in mxr…" });
+    const submission = submissions.current.begin();
+    if (submission === undefined) return;
+    const owner = current.current;
+    if (!owner) {
+      submissions.current.finish(submission);
+      return;
+    }
+    let toast: Toast | undefined;
     try {
-      const saved = await saveShownBody();
+      toast = await showToast({ style: Toast.Style.Animated, title: "Opening in mxr…" });
+      const saved = await saveShownBody(
+        owner,
+        () => submissions.current.isCurrent(submission) && !closed.current,
+      );
+      if (!submissions.current.isCurrent(submission) || closed.current) return;
       if (!saved) return;
       const draftId = await saveForWeb(saved.written);
       handedOver.current = true;
+      if (!submissions.current.isCurrent(submission) || closed.current) return;
       await open(`${webBase}${web.draft(draftId)}`);
       await toast.hide();
-      if (!closed.current) pop();
+      if (submissions.current.isCurrent(submission) && !closed.current) pop();
     } catch (failure) {
-      toast.style = Toast.Style.Failure;
-      toast.title = "Could not open the reply in mxr";
-      toast.message = message(failure);
+      if (toast && submissions.current.isCurrent(submission) && !closed.current) {
+        toast.style = Toast.Style.Failure;
+        toast.title = "Could not open the reply in mxr";
+        toast.message = message(failure);
+      } else if (toast) {
+        await toast.hide();
+      }
     } finally {
-      submitting.current = false;
+      submissions.current.finish(submission);
       if (closed.current) discardIfAbandoned();
     }
   }

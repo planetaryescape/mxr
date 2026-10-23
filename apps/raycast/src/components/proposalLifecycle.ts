@@ -22,8 +22,34 @@ export function shouldDiscardReply(handedOver: boolean, proofOpen: boolean): boo
   return !handedOver && !proofOpen;
 }
 
-export function requestIsCurrent(request: number, latest: number): boolean {
-  return request === latest;
+/** Owns one in-flight UI operation; an old completion cannot release a new one. */
+export class OwnedRequestGate {
+  private generation = 0;
+  private active?: number;
+
+  get isRunning(): boolean {
+    return this.active !== undefined;
+  }
+
+  begin(): number | undefined {
+    if (this.isRunning) return undefined;
+    const request = ++this.generation;
+    this.active = request;
+    return request;
+  }
+
+  isCurrent(request: number): boolean {
+    return this.active === request;
+  }
+
+  finish(request: number): void {
+    if (this.active === request) this.active = undefined;
+  }
+
+  cancel(): void {
+    this.generation += 1;
+    this.active = undefined;
+  }
 }
 
 export function hasUnfilledGap(report: SafetyReport): boolean {

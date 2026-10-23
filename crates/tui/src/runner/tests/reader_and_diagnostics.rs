@@ -1656,6 +1656,40 @@ fn proof_scroll_keys_reach_long_text_and_reset_on_version_change() {
             .proof_scroll_offset,
         u16::MAX
     );
+    let _ = render_to_string(100, 24, |frame| app.draw(frame));
+    let bottom = app
+        .compose
+        .assist_review
+        .as_ref()
+        .unwrap()
+        .proof_scroll_offset;
+    assert!(bottom > 8 && bottom < u16::MAX);
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('k'),
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    let _ = render_to_string(100, 24, |frame| app.draw(frame));
+    assert_eq!(
+        app.compose
+            .assist_review
+            .as_ref()
+            .unwrap()
+            .proof_scroll_offset,
+        bottom - 1
+    );
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::PageUp,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    let _ = render_to_string(100, 24, |frame| app.draw(frame));
+    assert_eq!(
+        app.compose
+            .assist_review
+            .as_ref()
+            .unwrap()
+            .proof_scroll_offset,
+        bottom - 9
+    );
     app.handle_key(crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::Right,
         crossterm::event::KeyModifiers::NONE,

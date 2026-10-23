@@ -806,9 +806,9 @@ impl App {
             &time_preview,
             theme,
         );
-        if let Some(review) = self.compose.assist_review.as_ref() {
+        if let Some(review) = self.compose.assist_review.as_mut() {
             if let Some(proposal) = review.proposal() {
-                ui::compose_assist_proof::draw(
+                let scroll = ui::compose_assist_proof::draw(
                     frame,
                     area,
                     proposal,
@@ -817,6 +817,7 @@ impl App {
                     review.proof_scroll_offset,
                     theme,
                 );
+                review.proof_scroll_offset = scroll;
             }
         }
 

@@ -28,7 +28,7 @@ pub fn draw(
     version: (usize, usize),
     scroll_offset: u16,
     theme: &crate::theme::Theme,
-) {
+) -> u16 {
     draw_with_color_mode(
         frame,
         area,
@@ -40,7 +40,7 @@ pub fn draw(
             theme,
             no_color: std::env::var_os("NO_COLOR").is_some(),
         },
-    );
+    )
 }
 
 fn draw_with_color_mode(
@@ -48,7 +48,7 @@ fn draw_with_color_mode(
     area: Rect,
     proposal: &ComposeProposalData,
     options: ProofRenderOptions<'_>,
-) {
+) -> u16 {
     let ProofRenderOptions {
         note_input,
         version,
@@ -118,6 +118,7 @@ fn draw_with_color_mode(
         .min(max_scroll)
         .min(u16::MAX as usize) as u16;
     frame.render_widget(paragraph.scroll((scroll, 0)), inner);
+    scroll
 }
 
 fn proof_keys() -> &'static BTreeMap<&'static str, &'static str> {

@@ -191,7 +191,14 @@ test("a long reply is a letter, trimmed, and o shows it as sent", async ({ page 
   await expect(letter.getByTestId("trimmed-marker")).toContainText(
     /trimmed: quote, sig(, footer)?/,
   );
-  await expect(letter).toContainText(/Read all \d+ paragraphs/);
+  await expect(letter).toHaveAttribute("data-latest", "true");
+  const showLess = letter.getByRole("button", { name: "Show less", exact: true });
+  await expect(showLess).toHaveAttribute("aria-expanded", "true");
+  await showLess.click();
+  const readAll = letter.getByRole("button", { name: /^Read all \d+ paragraphs$/ });
+  await expect(readAll).toHaveAttribute("aria-expanded", "false");
+  await readAll.click();
+  await expect(showLess).toHaveAttribute("aria-expanded", "true");
   // The quote of your own message and Samir's signature are gone.
   await expect(letter).not.toContainText("Could you check it with legal");
   await expect(letter).not.toContainText("+44 20 7946 0102");

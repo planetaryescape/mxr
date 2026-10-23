@@ -120,14 +120,7 @@ export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
               title="Reply"
               icon={Icon.Reply}
               shortcut={keyFor("mail.reply")}
-              target={
-                <ReplyForm
-                  messageId={answer.messageId}
-                  threadId={threadId}
-                  to={answer.to}
-                  onSent={onChange}
-                />
-              }
+              target={<ReplyForm messageId={answer.messageId} to={answer.to} onSent={onChange} />}
             />
           )}
           {answer && (
@@ -138,7 +131,6 @@ export function ThreadDetail({ threadId, webPath, replyTo, onChange }: Props) {
               target={
                 <ReplyForm
                   messageId={answer.messageId}
-                  threadId={threadId}
                   kind="reply_all"
                   to={answer.to}
                   onSent={onChange}

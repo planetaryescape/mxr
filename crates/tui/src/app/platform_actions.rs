@@ -4,26 +4,16 @@ impl App {
     pub(super) fn apply_platform_action(&mut self, action: Action) {
         match action {
             Action::DraftAssistCurrentThread => {
-                let Some(env) = self.context_envelope() else {
+                let Some(env) = self.context_envelope().cloned() else {
                     self.status_message = Some("No message selected".into());
                     return;
                 };
-                self.queue_platform_request(
-                    Request::DraftCompose {
-                        account_id: None,
-                        to: None,
-                        // Empty: the daemon answers what the message asks and
-                        // marks what only the user can decide. `W` (draft
-                        // options) lets the user say what to write.
-                        instruction: String::new(),
-                        source_message_id: None,
-                        thread_id: Some(env.thread_id.clone()),
-                        register: None,
-                        length_hint: None,
-                    },
-                    "Draft assist",
-                    "Generating relationship-aware reply draft...",
-                );
+                self.compose.assist_after_editor = true;
+                self.compose.pending_compose = Some(ComposeAction::Reply {
+                    message_id: env.id.clone(),
+                    account_id: env.account_id.clone(),
+                    preloaded: None,
+                });
             }
             Action::DraftWithOptions => {
                 let Some(env) = self.context_envelope() else {
@@ -64,11 +54,12 @@ impl App {
                     self.status_message = Some("No draft to refine".into());
                     return;
                 };
-                if pending.mode != PendingSendMode::SendOrSave {
+                if pending.mode == PendingSendMode::DraftOnlyNoRecipients {
                     self.status_message = Some("Add a recipient before refining".into());
                     return;
                 }
-                let draft_id = mxr_core::DraftId::new();
+                let pending = pending.clone();
+                let draft_id = pending.draft_id();
                 let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
                 let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
                     mxr_core::types::ReplyHeaders {
@@ -104,17 +95,28 @@ impl App {
                     created_at: now,
                     updated_at: now,
                 };
+                let text = mxr_compose::body_regions::split_body(&pending.body)
+                    .text
+                    .to_string();
                 self.queue_platform_request_after(
                     vec![Request::SaveDraft { draft }],
-                    // Saved just before, so the stored body is current.
-                    Request::DraftRefine {
-                        draft_id,
-                        knobs: mxr_protocol::DraftRefineKnobsData::default(),
-                        body: None,
+                    Request::ComposeAssist {
+                        draft: mxr_protocol::DraftTargetData::Stored { draft_id },
+                        text,
+                        selection: None,
+                        action: None,
+                        instruction: None,
+                        adjust: mxr_protocol::AssistAdjustData::default(),
+                        revise: None,
                     },
-                    "Refined draft",
-                    "Saving and refining current draft...",
+                    "Writing proof",
+                    "Preparing a proof against your current draft...",
                 );
+                if let Some(dispatch) = self.modals.pending_platform_dispatch.last_mut() {
+                    dispatch.compose_assist = Some(Box::new(pending));
+                    self.compose.assist_request_id = self.compose.assist_request_id.wrapping_add(1);
+                    dispatch.compose_assist_request_id = Some(self.compose.assist_request_id);
+                }
             }
             Action::OpenVoiceProfile => {
                 let Some(account_id) = self.platform_account_id() else {
@@ -199,6 +201,10 @@ impl App {
             .pending_platform_dispatch
             .push(PendingPlatformDispatch {
                 compose: None,
+                compose_assist: None,
+                compose_assist_request_id: None,
+                compose_assist_accept: None,
+                compose_assist_reopen_editor: false,
                 prelude: Vec::new(),
                 request,
                 title,
@@ -222,6 +228,10 @@ impl App {
             .pending_platform_dispatch
             .push(PendingPlatformDispatch {
                 compose: None,
+                compose_assist: None,
+                compose_assist_request_id: None,
+                compose_assist_accept: None,
+                compose_assist_reopen_editor: false,
                 prelude,
                 request,
                 title,

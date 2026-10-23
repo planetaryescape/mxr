@@ -4322,3 +4322,125 @@ actions = ["archive.ask", "archive.open-email", "archive.issuer", "archive.filte
 [[strip]]
 id = "screener"
 actions = ["screener.allow", "screener.deny", "screener.feed", "screener.paper-trail"]
+
+# Writing proof overlay. These bindings are scoped to the overlay so their
+# modal keys never shadow mail actions underneath it.
+[[action]]
+id = "compose.proof.accept"
+label = "Accept writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofAccept"
+keys = ["y"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.accept-edit"
+label = "Accept proof and edit"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofAcceptEdit"
+keys = ["e"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.revise"
+label = "Revise writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofRevise"
+keys = ["n"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.keep"
+label = "Keep my draft"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofKeep"
+keys = ["Escape"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.previous"
+label = "Previous writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofPrevious"
+keys = ["ArrowLeft"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.next"
+label = "Next writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofNext"
+keys = ["ArrowRight"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.scroll-up"
+label = "Scroll writing proof up"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofScrollUp"
+keys = ["ArrowUp", "k"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.scroll-down"
+label = "Scroll writing proof down"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofScrollDown"
+keys = ["ArrowDown", "j"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.page-up"
+label = "Page up in writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofPageUp"
+keys = ["PageUp"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.page-down"
+label = "Page down in writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofPageDown"
+keys = ["PageDown"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.top"
+label = "Top of writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofScrollTop"
+keys = ["Home"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.bottom"
+label = "Bottom of writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofScrollBottom"
+keys = ["End"]
+contexts = ["compose-assist-proof"]

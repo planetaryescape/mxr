@@ -37,9 +37,8 @@ pub const TUI_CONTEXTS: [&str; 14] = [
     "updates",
 ];
 
-/// TUI screens and overlays that still read their own keys. A moved key there
-/// is announced by name from the screen's handler (`App::announce_moved`).
-pub const SCREEN_CONTEXTS: [&str; 8] = [
+/// TUI screens and overlays that read keys outside the mail-context probe.
+pub const SCREEN_CONTEXTS: [&str; 9] = [
     "accounts",
     "assistant",
     "categories",
@@ -48,6 +47,7 @@ pub const SCREEN_CONTEXTS: [&str; 8] = [
     "rules",
     "saved-searches",
     "todo-microsoft",
+    "compose-assist-proof",
 ];
 
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).
@@ -528,7 +528,9 @@ impl Keymap {
             for binding in &action.tui {
                 if let Contexts::Only(list) = &binding.contexts {
                     for context in list {
-                        if !TUI_CONTEXTS.contains(&context.as_str()) {
+                        if !TUI_CONTEXTS.contains(&context.as_str())
+                            && !SCREEN_CONTEXTS.contains(&context.as_str())
+                        {
                             problems.push(format!("{id}: unknown TUI context `{context}`"));
                         }
                     }

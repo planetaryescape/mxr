@@ -10,6 +10,7 @@ pub mod briefing_modal;
 pub mod bulk_confirm_modal;
 pub mod calendar_invites_lens;
 pub mod command_palette;
+pub mod compose_assist_proof;
 pub mod compose_picker;
 pub mod deliveries_page;
 pub mod desk_lens;

@@ -4584,6 +4584,7 @@ version = "0.6.159"
 dependencies = [
  "base16ct",
  "chrono",
+ "mxr-compose",
  "mxr-core",
  "mxr-humanizer",
  "mxr-llm",

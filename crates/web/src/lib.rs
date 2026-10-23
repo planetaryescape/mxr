@@ -11,6 +11,7 @@ mod arrival_routes;
 mod assistant_routes;
 mod chime_routes;
 mod chrome;
+mod compose_assist_routes;
 mod envelope_list;
 mod freshness_routes;
 mod insight_routes;

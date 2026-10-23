@@ -2,7 +2,7 @@ use super::desk::{request, Fixture, ME};
 use super::*;
 use chrono::Duration;
 use mxr_core::asks::{AskAnswer, ASKS_POLICY_VERSION};
-use mxr_core::{Envelope, MessageBody, ThreadId};
+use mxr_core::{Envelope, MessageBody, MessageId, ThreadId};
 use mxr_protocol::{ResponseData, ThreadModesData};
 
 async fn body(fx: &Fixture, mail: &Envelope, text: &str) {

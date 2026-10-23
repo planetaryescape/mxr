@@ -30,7 +30,7 @@ pub(super) async fn prepare(
         .map(|(id, (plain, html))| {
             (
                 id.clone(),
-                mxr_reader::new_text::plain_text(plain.as_deref(), html.as_deref()),
+                mxr_reader::plain_text(plain.as_deref(), html.as_deref()),
             )
         })
         .collect();

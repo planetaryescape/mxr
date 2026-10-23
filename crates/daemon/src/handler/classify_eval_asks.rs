@@ -660,15 +660,48 @@ fn verdict(field: &str, item: &Item, row: &Row, sent: DateTime<Utc>) -> Verdict 
     }
 }
 
-/// A day as its distance from the email's own date, so the text does not
-/// move with the clock the mail was seeded at.
-fn after_sent(day: NaiveDate, sent: DateTime<Utc>) -> String {
-    match (day - sent.date_naive()).num_days() {
-        0 => "the day it was sent".to_string(),
-        1 => "1 day after it was sent".to_string(),
-        -1 => "1 day before it was sent".to_string(),
-        days if days > 0 => format!("{days} days after it was sent"),
-        days => format!("{} days before it was sent", -days),
+fn plural(count: i64, unit: &str) -> String {
+    format!("{count} {unit}{}", if count == 1 { "" } else { "s" })
+}
+
+/// A label's due date in words, from the label alone. It never goes through
+/// a calendar day, because the day a mail was sent on depends on the hour of
+/// the seed clock, while the label's hours do not.
+fn expected_due_text(due: Due) -> String {
+    match due {
+        Due::None => "none".to_string(),
+        Due::Words(words) => words.to_string(),
+        Due::AfterSent(hours) => {
+            let (direction, hours) = if hours < 0 {
+                ("before", -hours)
+            } else {
+                ("after", hours)
+            };
+            let (days, rest) = (hours / 24, hours % 24);
+            let span = match (days, rest) {
+                (0, rest) => plural(rest, "hour"),
+                (days, 0) => plural(days, "day"),
+                (days, rest) => format!("{} {}", plural(days, "day"), plural(rest, "hour")),
+            };
+            format!("{span} {direction} it was sent")
+        }
+    }
+}
+
+/// A row's due date against the day the label expects. Both days come from
+/// the same mail, so their difference does not move with the clock; the
+/// row's own calendar date would.
+fn actual_due_text(item: &Item, row: &Row, sent: DateTime<Utc>) -> String {
+    let Some(got) = row_day(row) else {
+        return "none".to_string();
+    };
+    let Some(want) = expected_day(item.due, sent) else {
+        return "a date".to_string();
+    };
+    match (got - want).num_days() {
+        0 => "on the expected day".to_string(),
+        days if days > 0 => format!("{} later than expected", plural(days, "day")),
+        days => format!("{} earlier than expected", plural(-days, "day")),
     }
 }
 
@@ -684,8 +717,8 @@ fn field_texts(field: &str, item: &Item, row: &Row, sent: DateTime<Utc>) -> (Str
                 .map_or_else(none, |(minor, currency)| money(*minor, currency)),
         ),
         "due" => (
-            expected_day(item.due, sent).map_or_else(none, |day| after_sent(day, sent)),
-            row_day(row).map_or_else(none, |day| after_sent(day, sent)),
+            expected_due_text(item.due),
+            actual_due_text(item, row, sent),
         ),
         _ => (
             item.counterparty.clone().unwrap_or_else(none),
@@ -1040,10 +1073,71 @@ mod tests {
         let m = mismatches.iter().find(|m| m.question == "due").unwrap();
         assert_eq!(
             (m.expected.as_str(), m.actual.as_str()),
-            ("3 days after it was sent", "4 days after it was sent")
+            (
+                "2 days 12 hours after it was sent",
+                "1 day later than expected"
+            )
         );
         // A date already past is a negative offset.
         assert_eq!(due(-48, -2).0.exact, 1);
+    }
+
+    /// The text of a due mismatch is the same whichever side of midnight UTC
+    /// the email was sent on: it comes from the label and from the row's
+    /// distance from the expected day, never from the calendar day of the send.
+    #[test]
+    fn due_text_does_not_depend_on_the_hour_the_email_was_sent() {
+        let text = |sent_at: &str| {
+            let sent = DateTime::parse_from_rfc3339(sent_at)
+                .unwrap()
+                .with_timezone(&Utc);
+            // The mail writes the day 7 days and 11 hours after it was sent.
+            let due = Due::AfterSent(7 * 24 + 11);
+            let written = Some(mxr_todo::dates::end_of_day(
+                (sent + Duration::hours(7 * 24 + 11)).date_naive(),
+                &Local,
+            ));
+            let late = Some(mxr_todo::dates::end_of_day(
+                (sent + Duration::hours(7 * 24 + 11 + 48)).date_naive(),
+                &Local,
+            ));
+            let item = pay().due(due);
+            let mismatch = |due_at| {
+                let found = Row {
+                    due_at,
+                    ..row(AskKind::Pay)
+                };
+                field_texts("due", &item, &found, sent)
+            };
+            (mismatch(written), mismatch(late), mismatch(None))
+        };
+        let evening = text("2026-10-21T23:30:00Z");
+        let morning = text("2026-10-22T00:30:00Z");
+        assert_eq!(evening, morning);
+        assert_eq!(
+            evening.1,
+            (
+                "7 days 11 hours after it was sent".to_string(),
+                "2 days later than expected".to_string()
+            )
+        );
+        assert_eq!(evening.0 .1, "on the expected day");
+        assert_eq!(evening.2 .1, "none");
+        // Words and a label that expects no date.
+        assert_eq!(expected_due_text(Due::Words("Friday")), "Friday");
+        assert_eq!(
+            expected_due_text(Due::AfterSent(-81)),
+            "3 days 9 hours before it was sent"
+        );
+        assert_eq!(
+            expected_due_text(Due::AfterSent(24)),
+            "1 day after it was sent"
+        );
+        let spurious = Row {
+            due_at: due_on(1),
+            ..row(AskKind::Pay)
+        };
+        assert_eq!(field_texts("due", &pay(), &spurious, sent()).1, "a date");
     }
 
     /// Words are read by the to-do code's own reader from the email's date, so

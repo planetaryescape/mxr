@@ -53,6 +53,9 @@ export type ComposeAttachmentUploadResponse =
 
 export type ComposeKind = "new" | "reply" | "reply_all" | "forward";
 
+/** Stored draft intent added by the restore route beside its editable `kind`. */
+export type ComposeDraftIntent = components["schemas"]["DraftIntent"];
+
 /** Calendar invite response carried by an `invite_reply` compose session. */
 export type InviteReplyAction = "accept" | "tentative" | "decline";
 

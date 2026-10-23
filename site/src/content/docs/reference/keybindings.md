@@ -1038,6 +1038,7 @@ While writing a message. ⌘ and Ctrl both work, on every platform.
 | `⌘⇧A / Ctrl+Shift+A` | Attach files |  |
 | `⌘⇧G / Ctrl+Shift+G` | Insert signature |  |
 | `⌘; / Ctrl+;` | Insert snippet |  |
+| `⌘J / Ctrl+J` | Draft for me |  |
 | `⌘⇧F / Ctrl+Shift+F` | Toggle fullscreen |  |
 
 <!-- web-keys:end -->

@@ -3,19 +3,20 @@
 //! check stage gives a reply to it. Pure: no store and no model, so the same
 //! code serves the snapshot test and `mxr draft eval --set quick`.
 //!
-//! Today's request has no field for typed text or a selection, so neither
-//! reaches the prompt. That is the measured baseline (blueprint 34); the next
-//! rung changes the request and this module follows it.
+//! A case's typed text and selection reach the prompt the way a `ComposeAssist`
+//! request carries them: typed text is finished, a selection is edited.
 
 use super::draft_compose::{max_tokens_for_words, target_words};
 use super::draft_context::ASSEMBLED_MESSAGE_BUDGET_CHARS;
-use super::draft_prompt::{self, DraftMode, Me, Prompt, PromptInput, Turn, VoiceExample};
+use super::draft_prompt::{self, DraftMode, Help, Me, Prompt, PromptInput, Turn, VoiceExample};
 use super::draft_voice::VoiceMaterial;
 use chrono::{DateTime, Utc};
 use mxr_composer::check::{Answer, Output, Report, Requirements, WordBand};
+use mxr_composer::plan;
 use mxr_core::id::{MessageId, ThreadId};
 use mxr_protocol::DraftSourceData;
-use mxr_provider_fake::fixtures::compose::{self, Case};
+use mxr_protocol::TextRangeData;
+use mxr_provider_fake::fixtures::compose::{self, Case, DraftState};
 use mxr_relationship::analyse_habits;
 
 /// The prompt for one case, and how many tokens its reply may take.
@@ -88,7 +89,21 @@ pub(crate) fn assemble(case: &Case, today: &str) -> Assembled {
         median_words: (analysed.samples >= 3).then_some(analysed.median_words),
         samples: analysed.samples,
     };
-    let words = target_words(None, &material);
+    let (typed, selection) = match case.draft {
+        DraftState::Empty => ("", None),
+        DraftState::Typed(text) => (text, None),
+        DraftState::Selection { typed, start, end } => (
+            typed,
+            Some(TextRangeData {
+                start: u32::try_from(start).unwrap_or(u32::MAX),
+                end: u32::try_from(end).unwrap_or(u32::MAX),
+            }),
+        ),
+    };
+    // The corpus is hand-written to be valid; a bad case is a bug in it.
+    let resolved = plan::resolve(None, typed, selection).expect("corpus case resolves");
+    let typed_words = u32::try_from(typed.split_whitespace().count()).unwrap_or(u32::MAX);
+    let words = plan::target_words(target_words(None, &material), resolved.action, typed_words);
     let prompt = draft_prompt::build(&PromptInput {
         mode: DraftMode::Reply,
         me: &me,
@@ -100,6 +115,14 @@ pub(crate) fn assemble(case: &Case, today: &str) -> Assembled {
         tone: None,
         target_words: words,
         instruction: case.instruction,
+        subject: "",
+        help: Help {
+            action: resolved.action,
+            typed,
+            selection: resolved.selection,
+            adjust: Default::default(),
+            revise: None,
+        },
         budget_chars: ASSEMBLED_MESSAGE_BUDGET_CHARS,
     });
     Assembled {

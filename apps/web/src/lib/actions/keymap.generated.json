@@ -1958,6 +1958,22 @@
       ]
     },
     {
+      "id": "compose.draft-for-me",
+      "label": "Draft for me",
+      "description": "Open the help line; in a proof, revise it",
+      "group": "Compose",
+      "scopes": [
+        "compose"
+      ],
+      "keys": [
+        "Mod+j"
+      ],
+      "hide_in_palette": true,
+      "clients": [
+        "web"
+      ]
+    },
+    {
       "id": "mail.archive",
       "label": "Archive",
       "group": "Mail",

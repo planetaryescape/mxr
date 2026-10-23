@@ -51,6 +51,14 @@ const ALLOWED: Record<string, { rule: Rule; why: string }> = {
     rule: "text field or editor",
     why: "the recipient field's Tab and → accept the suggestion",
   },
+  "features/compose/DraftHelpLine.tsx": {
+    rule: "text field or editor",
+    why: "Enter submits the instruction, Esc closes the line",
+  },
+  "features/compose/DraftProof.tsx": {
+    rule: "overlay with its own letters",
+    why: "the proof's keys while it is open: Enter accepts, Esc keeps mine, ← → steps versions, Tab moves gap to gap",
+  },
   "features/compose/RecipientField.tsx": {
     rule: "text field or editor",
     why: "recipient chips: commas, Backspace and suggestion keys",
@@ -78,10 +86,6 @@ const ALLOWED: Record<string, { rule: Rule; why: string }> = {
   "features/search/SearchToolbar.tsx": {
     rule: "text field or editor",
     why: "Esc leaves the search query field",
-  },
-  "features/thread/DraftAssistPanel.tsx": {
-    rule: "text field or editor",
-    why: "Enter in the draft instruction field generates",
   },
   "features/time/NaturalTimeInput.tsx": {
     rule: "text field or editor",

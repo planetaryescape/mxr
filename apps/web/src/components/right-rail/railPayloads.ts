@@ -10,16 +10,6 @@ export function isThreadContext(value: unknown): value is { title?: string; item
   return typeof value === "object" && value !== null && "items" in value;
 }
 
-interface DraftAssistPayload {
-  threadId: string;
-  /** The message a reply would answer. */
-  messageId?: string;
-}
-
-export function isDraftAssistPayload(value: unknown): value is DraftAssistPayload {
-  return isRecord(value) && typeof value.threadId === "string";
-}
-
 interface SenderProfile {
   account_id: string;
   email: string;

@@ -45,3 +45,32 @@ describe("CodeMirrorComposeEditor held keys", () => {
     expect(held).toEqual(first);
   });
 });
+
+describe("CodeMirrorComposeEditor model marks", () => {
+  it("accepting a longer text leaves a mark on the words it added", () => {
+    const { container, rerender } = render(
+      <CodeMirrorComposeEditor
+        value="Hi"
+        onChange={vi.fn<(value: string) => void>()}
+        onSave={vi.fn<() => void>()}
+        onSend={vi.fn<() => void>()}
+        onDiscard={vi.fn<() => void>()}
+      />,
+    );
+    // The accept replaces the text and marks the added words in one render.
+    rerender(
+      <CodeMirrorComposeEditor
+        value="Hi there"
+        onChange={vi.fn<(value: string) => void>()}
+        onSave={vi.fn<() => void>()}
+        onSend={vi.fn<() => void>()}
+        onDiscard={vi.fn<() => void>()}
+        modelSpans={[{ start: 2, end: 8 }]}
+      />,
+    );
+    const marks = Array.from(container.querySelectorAll(".cm-model-span")).map(
+      (node) => node.textContent,
+    );
+    expect(marks).toEqual([" there"]);
+  });
+});

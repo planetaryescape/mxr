@@ -6,6 +6,7 @@
 
 import type {
   ComposeFrontmatter,
+  ComposeDraftIntent,
   ComposeIssue,
   ComposeSession,
   ComposeSessionKind,
@@ -13,6 +14,7 @@ import type {
 } from "../api";
 
 import type { WorkspaceBinding } from "@/lib/workspaceOwner";
+import type { ModelSpan } from "../assist/modelSpans";
 
 export interface ComposeDraftState {
   binding?: WorkspaceBinding;
@@ -25,9 +27,12 @@ export interface ComposeDraftState {
   rawContent: string;
   frontmatter: ComposeFrontmatter;
   bodyMarkdown: string;
+  /** Ranges of the body the model wrote and the user has not edited since. */
+  modelSpans?: readonly ModelSpan[];
   issues: ComposeIssue[];
   accountId: string;
   kind: string;
+  draftIntent?: ComposeDraftIntent;
   editorCommand?: string;
   cursorLine?: number;
 }
@@ -44,7 +49,7 @@ export interface ComposeIntent {
   prefillSubject?: string;
   /** Text to start the body with (an AI draft), above any quoted history. */
   prefillBody?: string;
-  /** Open with "Draft for me" expanded (the reader's "Draft in your voice"). */
+  /** Open the help line ("Draft for me") already (the reader's "Draft in your voice"). */
   openAssist?: boolean;
   /**
    * Quiet chrome (focus mode): From, To and Subject fold into one line and
@@ -120,6 +125,7 @@ export function draftFromSession(
     issues: session.issues ?? [],
     accountId: session.accountId ?? fallbackAccountId,
     kind: session.kind ?? "new",
+    draftIntent: session.draftIntent ?? undefined,
     editorCommand: session.editorCommand ?? undefined,
     cursorLine: session.cursorLine ?? undefined,
   };
@@ -184,6 +190,16 @@ export function splitAddresses(value: string): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+/** "Name <a@b>" or "a@b", in the daemon's address shape. */
+export function addressList(value: string): { name: string | null; email: string }[] {
+  return splitAddresses(value).map((entry) => {
+    const match = entry.match(/^(.*?)\s*<([^>]+)>$/);
+    if (!match) return { name: null, email: entry };
+    const name = match[1]?.trim() ?? "";
+    return { name: name || null, email: (match[2] ?? "").trim() };
+  });
 }
 
 export function firstAddress(value: string): string | undefined {

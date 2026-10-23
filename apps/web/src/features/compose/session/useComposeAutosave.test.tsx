@@ -117,6 +117,49 @@ test("queued own saves advance the token even when the first UI result is stale"
   hook.unmount();
 });
 
+test("an ordinary save keeps model marks when the accepted text is unchanged", async () => {
+  const hook = setup("/tmp/marked-draft.md");
+  const body = "Model wrote this.";
+  const mark = { start: 6, end: body.length };
+  update.mockResolvedValue(session("/tmp/marked-draft.md", 2, body));
+  act(() => {
+    hook.result.current.setDraft((draft) =>
+      draft ? { ...draft, bodyMarkdown: body, modelSpans: [mark] } : draft,
+    );
+  });
+
+  await act(async () => {
+    await hook.result.current.saveCurrentDraft();
+  });
+
+  expect(hook.result.current.draft?.bodyMarkdown).toBe(body);
+  expect(hook.result.current.draft?.modelSpans).toEqual([mark]);
+  hook.result.current.markSessionFinished();
+  hook.unmount();
+});
+
+test("an autosave response with different text cannot retain stale model offsets", async () => {
+  const hook = setup("/tmp/changed-marked-draft.md");
+  const body = "Model wrote this.";
+  update.mockResolvedValue(session("/tmp/changed-marked-draft.md", 2, "Different text."));
+  act(() => {
+    hook.result.current.setDraft((draft) =>
+      draft
+        ? { ...draft, bodyMarkdown: body, modelSpans: [{ start: 6, end: body.length }] }
+        : draft,
+    );
+  });
+
+  await act(async () => {
+    await hook.result.current.saveCurrentDraft();
+  });
+
+  expect(hook.result.current.draft?.bodyMarkdown).toBe("Different text.");
+  expect(hook.result.current.draft?.modelSpans).toBeUndefined();
+  hook.result.current.markSessionFinished();
+  hook.unmount();
+});
+
 test("a save finishing after a session switch cannot copy identity or revision to the new draft", async () => {
   const first = deferred();
   update.mockReturnValueOnce(first.promise);

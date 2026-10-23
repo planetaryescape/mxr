@@ -80,7 +80,11 @@ export async function loadInitialComposeSession(
             );
             assertWorkspaceBinding(binding);
             const refreshedDraft = draftFromSession(
-              { ...refreshed.session, binding },
+              {
+                ...refreshed.session,
+                binding,
+                draftIntent: refreshed.session.draftIntent ?? snapshot.draftIntent,
+              },
               snapshot.accountId,
             );
             // The bridge checked exact source references before relocating the owned copies.
@@ -98,7 +102,12 @@ export async function loadInitialComposeSession(
               return {
                 ...refreshed,
                 preservedRecoveryPath: snapshot.preservedRecoveryPath,
-                session: { ...refreshed.session, binding, accountId: snapshot.accountId },
+                session: {
+                  ...refreshed.session,
+                  binding,
+                  accountId: snapshot.accountId,
+                  draftIntent: refreshed.session.draftIntent ?? snapshot.draftIntent,
+                },
               };
             }
           }
@@ -279,5 +288,12 @@ function parseSnapshot(value: unknown): ComposeDraftState {
       from: fm.from,
       attach: fm.attach,
     },
+    draftIntent:
+      value.draftIntent === "new" ||
+      value.draftIntent === "reply" ||
+      value.draftIntent === "reply_all" ||
+      value.draftIntent === "forward"
+        ? value.draftIntent
+        : undefined,
   };
 }

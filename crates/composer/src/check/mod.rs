@@ -3,8 +3,12 @@
 //! what it did, so a failing case reads as a sentence, not a bare count.
 
 mod graders;
+mod proposal;
+mod regions;
 mod text;
 
+pub use proposal::{check_proposal, Checked, Fixes, ProposalInput};
+pub use regions::{split_body, text_hash, BodyRegions};
 pub use text::{invented_numbers, replay_invented_numbers};
 
 /// The question a case asks of the target message, and the words a reply

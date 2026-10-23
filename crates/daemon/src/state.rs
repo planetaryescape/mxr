@@ -506,6 +506,10 @@ pub(crate) struct WrappedCacheKey {
 /// current data.
 pub(crate) const WRAPPED_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 
+/// How many events the daemon's broadcast channel holds for a slow client
+/// before it drops the oldest and tells that client to resync.
+pub(crate) const EVENT_CHANNEL_CAPACITY: usize = 256;
+
 pub struct AppState {
     pub(crate) restore_pending: std::sync::atomic::AtomicBool,
     pub store: Arc<Store>,
@@ -537,6 +541,8 @@ pub struct AppState {
     pub(crate) purge_previews: crate::handler::mutations::PurgePreviews,
     pub(crate) category_rule_previews: crate::handler::category_rules::CategoryRulePreviews,
     pub(crate) category_previews: crate::handler::categories::CategoryPreviews,
+    /// Writing-help proposals waiting to be accepted (`ComposeAssist`).
+    pub(crate) compose_proposals: crate::handler::compose_proposals::ComposeProposals,
     pub(crate) sweep_gate: crate::handler::places::SweepGate,
     /// Conversations waiting for a list-row gist (`GetThreadGists`).
     pub(crate) gist_queue: crate::handler::thread_gists::GistQueue,
@@ -867,7 +873,7 @@ impl AppState {
                 HashSet::new()
             }
         };
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
@@ -892,6 +898,7 @@ impl AppState {
             purge_previews: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
+            compose_proposals: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
             assistant: Default::default(),
@@ -2316,7 +2323,7 @@ impl AppState {
             send_providers.insert(account_id.clone(), send_provider.clone());
         }
 
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
@@ -2340,6 +2347,7 @@ impl AppState {
             purge_previews: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
+            compose_proposals: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
             assistant: Default::default(),
@@ -2411,7 +2419,7 @@ impl AppState {
             ContactsRefreshHandle::start(store.clone(), background_db.clone());
         runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
@@ -2435,6 +2443,7 @@ impl AppState {
             purge_previews: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
+            compose_proposals: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
             assistant: Default::default(),
@@ -2531,7 +2540,7 @@ impl AppState {
         providers.insert(account_id.clone(), provider.clone());
         send_providers.insert(account_id, fake.clone() as Arc<dyn MailSendProvider>);
 
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
@@ -2556,6 +2565,7 @@ impl AppState {
                 purge_previews: Default::default(),
                 category_rule_previews: Default::default(),
                 category_previews: Default::default(),
+                compose_proposals: Default::default(),
                 sweep_gate: Default::default(),
                 gist_queue: Default::default(),
                 assistant: Default::default(),

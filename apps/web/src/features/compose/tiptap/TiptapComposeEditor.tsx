@@ -14,6 +14,8 @@ interface TiptapComposeEditorProps {
   onSend: () => void;
   onDiscard: () => void;
   autoFocus?: boolean;
+  /** Changes when the editor should take focus back, e.g. after a proof closes. */
+  focusNonce?: number;
 }
 
 export function TiptapComposeEditor({
@@ -23,6 +25,7 @@ export function TiptapComposeEditor({
   onSend,
   onDiscard,
   autoFocus = false,
+  focusNonce = 0,
 }: TiptapComposeEditorProps) {
   const editor = useEditor({
     extensions: [StarterKit, Placeholder.configure({ placeholder: "Write the message body..." })],
@@ -73,6 +76,11 @@ export function TiptapComposeEditor({
     if (!editor || !autoFocus) return;
     window.setTimeout(() => editor.commands.focus("end"), 0);
   }, [autoFocus, editor]);
+
+  useEffect(() => {
+    if (!editor || focusNonce === 0) return;
+    editor.commands.focus("end");
+  }, [editor, focusNonce]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">

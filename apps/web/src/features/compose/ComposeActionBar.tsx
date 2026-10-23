@@ -16,8 +16,6 @@ import { describeChoice } from "@/features/time/api";
 import { useResolvedPresets } from "@/features/time/useNaturalTime";
 import { cn } from "@/lib/utils";
 import type { ComposeEditor } from "@/state/uiPrefsStore";
-import { DraftQualityBadges } from "./DraftQualityBadges";
-import type { DraftSuggestionResponse } from "./types";
 
 /** "Send and remind me if no reply in..." presets (TUI `n` parity). */
 const REMIND_PRESETS = [
@@ -42,7 +40,6 @@ interface ComposeActionBarProps {
   onRetrySave: () => void;
   editorPreference: ComposeEditor;
   onEditorChange: (editor: ComposeEditor) => void;
-  suggestion: DraftSuggestionResponse | null;
 }
 
 export function ComposeActionBar({
@@ -60,7 +57,6 @@ export function ComposeActionBar({
   onRetrySave,
   editorPreference,
   onEditorChange,
-  suggestion,
 }: ComposeActionBarProps) {
   return (
     <footer className="shrink-0 border-t border-rule">
@@ -150,7 +146,6 @@ export function ComposeActionBar({
           onChange={(value) => onEditorChange(value as ComposeEditor)}
         />
         <div className="ml-auto flex min-w-0 shrink-0 items-center gap-3">
-          <DraftQualityBadges suggestion={suggestion} compact />
           {saveError ? (
             <span role="alert" className="flex min-w-0 items-center gap-1.5">
               <span className="truncate text-2xs font-medium text-destructive" title={saveError}>

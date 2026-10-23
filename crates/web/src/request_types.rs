@@ -443,6 +443,9 @@ pub(super) struct ComposeSessionData {
     preview_html: String,
     issues: Vec<super::ComposeIssueView>,
     kind: Option<String>,
+    /// Stored intent when reopening a saved draft.
+    #[serde(rename = "draftIntent")]
+    draft_intent: Option<mxr_core::DraftIntent>,
     #[serde(rename = "editorCommand")]
     editor_command: Option<String>,
     #[serde(rename = "cursorLine")]

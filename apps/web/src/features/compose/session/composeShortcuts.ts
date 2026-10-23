@@ -11,6 +11,7 @@ import { parseChord } from "@/lib/keys/chord";
 
 export interface ComposeShortcutHandlers {
   busy: boolean;
+  openDraftHelp: () => void;
   canServerSave: boolean;
   revealCc: () => void;
   revealBcc: () => void;
@@ -46,6 +47,7 @@ const COMPOSE_COMMANDS = {
   "compose.attach": "handleAttachShortcut",
   "compose.signature": "openSignaturePicker",
   "compose.snippets": "openSnippetPicker",
+  "compose.draft-for-me": "openDraftHelp",
 } as const satisfies Record<string, Command>;
 
 /**

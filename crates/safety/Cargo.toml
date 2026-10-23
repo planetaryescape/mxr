@@ -13,11 +13,13 @@ workspace = true
 
 [dependencies]
 mxr-core = { workspace = true }
+mxr-outbound = { workspace = true }
 mxr-reader = { workspace = true }
 mxr-relationship = { workspace = true }
 chrono = { workspace = true }
 once_cell = { workspace = true }
 regex = { workspace = true }
+scraper = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]

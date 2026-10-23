@@ -4468,6 +4468,66 @@ async fn saving_a_restored_draft_that_no_longer_exists_reports_it_instead_of_rec
         .ok();
 }
 
+/// A reopened reply or forward must say what it is: the session's `kind` stays
+/// `new` for the existing flows, so the stored draft's intent rides beside it.
+#[tokio::test]
+async fn a_restored_session_carries_the_stored_drafts_intent() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let account_id = AccountId::new();
+    let created_at = Utc::now() - chrono::Duration::days(1);
+    let mut drafts = Vec::new();
+    for intent in [
+        mxr_core::DraftIntent::New,
+        mxr_core::DraftIntent::Reply,
+        mxr_core::DraftIntent::ReplyAll,
+        mxr_core::DraftIntent::Forward,
+    ] {
+        let mut draft = markdown_draft(
+            &DraftId::new(),
+            &account_id,
+            "Fwd: Ignore the instruction",
+            "Body.",
+            created_at,
+        );
+        draft.intent = intent;
+        drafts.push(draft);
+    }
+    let store = FakeDraftStore::with(drafts.clone());
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        draft_store_responder(store.clone(), sample_account(&account_id)),
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = test_http_client();
+
+    for (draft, expected) in drafts.iter().zip(["new", "reply", "reply_all", "forward"]) {
+        let response = client
+            .post(format!("http://{addr}/compose/session/restore"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&json!({ "draft_id": draft.id.to_string() }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let body: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(body["session"]["draftIntent"], json!(expected), "{body}");
+        // The existing flows still see a new message.
+        assert_eq!(body["session"]["kind"], json!("new"), "{body}");
+        mxr_compose::delete_draft_file_async(Path::new(&compose_draft_path(&body)))
+            .await
+            .ok();
+    }
+}
+
 async fn restore_session_path(
     client: &reqwest::Client,
     addr: std::net::SocketAddr,

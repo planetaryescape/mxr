@@ -6,7 +6,7 @@
 
 use chrono::{DateTime, Duration, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::UnsubscribeMethod;
+use mxr_core::types::{MessageDirection, UnsubscribeMethod};
 use mxr_protocol::{DeskElsewhereData, DeskLaneKind, DeskRowData};
 use mxr_store::{DeskContact, DeskDismissal, DeskMessage, ScreenerDisposition};
 use std::collections::{HashMap, HashSet};
@@ -39,7 +39,9 @@ use super::mail_kind::{looks_automated, SenderKind};
 
 pub(super) fn is_outbound(message: &DeskMessage, is_self: &dyn Fn(&str) -> bool) -> bool {
     message.direction == "outbound"
-        || (message.direction != "inbound" && is_self(&message.from.email))
+        || (message.direction != "inbound"
+            && MessageDirection::for_message(is_self(&message.from.email), message.flags)
+                == MessageDirection::Outbound)
 }
 
 /// A thread's messages up to a day ahead of `now`, in date order: who wrote
@@ -813,6 +815,21 @@ mod tests {
         DateTime::parse_from_rfc3339("2026-09-26T10:00:00Z")
             .unwrap()
             .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn unknown_direction_mail_filed_as_sent_is_outbound_from_an_unowned_alias() {
+        // Synced before its alias was registered: no stored direction, but the
+        // provider filed it as sent, so it is yours.
+        let thread = ThreadId::new();
+        let mut sent = message(&thread, "alias@send-as.example", "carol@example.com", 2);
+        sent.direction = "unknown".into();
+        sent.flags = MessageFlags::SENT;
+        let is_self = |email: &str| email == ME;
+        assert!(is_outbound(&sent, &is_self));
+
+        sent.flags = MessageFlags::empty();
+        assert!(!is_outbound(&sent, &is_self));
     }
 
     fn message(thread: &ThreadId, from: &str, to: &str, hours_ago: i64) -> DeskMessage {

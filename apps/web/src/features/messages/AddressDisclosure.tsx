@@ -28,7 +28,11 @@ export function AddressDisclosure({
           {trigger}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[min(22rem,calc(100vw-2rem))]">
+      <PopoverContent
+        align="start"
+        className="w-[min(22rem,calc(100vw-2rem))]"
+        aria-label={heading}
+      >
         <p className="type-eyebrow text-text-3">{heading}</p>
         {name ? <p className="type-body mt-1 text-text-1">{name}</p> : null}
         <CopyableAddress address={address} />

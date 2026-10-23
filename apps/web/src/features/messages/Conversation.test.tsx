@@ -86,6 +86,7 @@ describe("ConversationView", () => {
       infoButtons[1]?.getAttribute("aria-label"),
     );
     fireEvent.click(senderButtons[0]!);
+    expect(await screen.findByRole("dialog", { name: "Original sender" })).toBeInTheDocument();
     expect(await screen.findByText("samir.p@home.example")).toBeInTheDocument();
     expect(screen.queryByText("samir@launchpad.example")).toBeNull();
   });

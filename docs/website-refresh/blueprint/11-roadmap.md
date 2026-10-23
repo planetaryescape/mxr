@@ -6,7 +6,7 @@ Move from skateboard to scooter, bicycle, motorbike and car. Each rung is a work
 
 No separate unusable foundation turn is needed: the site and its build already exist. Generation, scoped checks, design review and deployment travel with the nearest useful change. Passing tests and behaving correctly are required, but the reader outcome and design intent must also be observed. (D-WEB-010, D-WEB-021, D-WEB-024)
 
-These are staged website releases under BK’s subsequent orchestrate authorisation. Rung 1 is deployed and its public entry paths are verified; [production evidence](../evidence/rung1-production.md) records the exact source and remaining comprehension limits. Rung 2 is deployed and its public agent tutorial is verified; [production evidence](../evidence/rung2-production.md) records the shared-draft evidence boundaries. Rung 3 is deployed with [production evidence](../evidence/rung3-production.md); rung 4 is deployed with [production evidence](../evidence/rung4-production.md); rung 5 is the final active consistency slice. Use the existing site delivery mechanism and do not start dependent code until its prerequisite deploys. Do not create a binary release/tag for copy-only work.
+These are staged website releases under BK’s subsequent orchestrate authorisation. Rung 1 is deployed and its public entry paths are verified; [production evidence](../evidence/rung1-production.md) records the exact source and remaining comprehension limits. Rung 2 is deployed and its public agent tutorial is verified; [production evidence](../evidence/rung2-production.md) records the shared-draft evidence boundaries. Rung 3 is deployed with [production evidence](../evidence/rung3-production.md); rung 4 is deployed with [production evidence](../evidence/rung4-production.md); rung 5 is deployed with [production evidence](../evidence/rung5-production.md). Use the existing site delivery mechanism and do not start dependent code until its prerequisite deploys. Do not create a binary release/tag for copy-only work.
 
 ## Phase 0 verifies evidence and the first-screen direction
 
@@ -141,3 +141,15 @@ Left out: a public content platform, brand replacement and expansion into unrela
 Evaluate whether user questions still reveal a missing explanation. Propose another slice only for that demonstrated problem. Do not turn the website into an unbounded campaign or a reason to add runtime capabilities.
 
 Unresolved questions: Q1–Q3 are approved; Q4–Q7 have stated assumptions. S1–S5 remain the evidence gates for implementation.
+
+## Five website releases are delivered
+
+| Rung | Merged PR | Public result |
+|---|---|---|
+| 1 | [688](https://github.com/planetaryescape/mxr/pull/688) | Runtime category, local ownership, connector distinction and install/demo routes |
+| 2 | [691](https://github.com/planetaryescape/mxr/pull/691) | Existing-agent setup and the bounded shared-draft tutorial |
+| 3 | [695](https://github.com/planetaryescape/mxr/pull/695) | Now, five modes and task-oriented navigation |
+| 4 | [696](https://github.com/planetaryescape/mxr/pull/696) | Account-scoped composition, daemon reuse, model routing and authority/activity limits |
+| 5 | [697](https://github.com/planetaryescape/mxr/pull/697) | Consistent discovery, setup and root docs; accurate recording descriptions and generated-source clarification |
+
+The [final production record](../evidence/rung5-production.md) confirms the deployed reader paths and checks. Delivery does not establish the proposed three-person comprehension outcome, a live Codex-host/model run or interactive phone rendering. Those evidence limits remain explicit in [13](13-open-questions.md); no performance or conversion improvement is claimed. No further website implementation is queued by this blueprint. Retained resources need separate exact-scope authorization before deletion.

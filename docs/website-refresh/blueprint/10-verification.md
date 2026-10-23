@@ -84,3 +84,9 @@ Use the current site's actual deployment pipeline. Record the deployment URL, so
 Do not mark a rung complete because Vercel or npm returned success. It is complete when its reader outcome and design gate are observed. No public deployment is part of the present planning task.
 
 Unresolved questions: Q7 proposes the review method; S1–S5 define the pending evidence checks.
+
+## Execution evidence is separate from the proposed checks
+
+The original verification plan above includes checks that were not all observed. Production and implementation packets record exactly what ran for each rung. S2 and S3 are separate synthetic v0.6.156 sessions; S3 uses deterministic MCP calls and the actual web client. Current runtime source matches published v0.6.159 at final integration. Combined final CI passed the locked install/audit, 10 script tests, 265-path validation, 209-page build and 205 Markdown siblings. CI generated the OpenAPI artifact; no full endpoint-conformance claim follows.
+
+The final preview checked all 81 authored routes, 80 non-home navigation entries, 1,822 authored internal route/anchor occurrences, 46 curated machine links, metadata, exports, redirects and recovery. Gallery notes opened using Enter and one selected video played. Earlier static 390px dark/light checks used compiled CSS; the actual collaborative viewport remained 1280px despite resize requests. No interactive phone pass, three-person comprehension study or conversion improvement is claimed. The handoff and final production record are the current status, while the earlier commands remain reproduction guidance.

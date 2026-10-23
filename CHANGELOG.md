@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.152](https://github.com/planetaryescape/mxr/compare/v0.6.151...v0.6.152) (2026-10-23)
+
+
+### Features
+
+* grade classify eval by kind of ask and by field ([#664](https://github.com/planetaryescape/mxr/issues/664)) ([81875ca](https://github.com/planetaryescape/mxr/commit/81875ca9ace4a2a580be88b2d0ba51eed222cc76))
+
+
+### Bug Fixes
+
+* keep the phone list usable under a docked reply and fix three stale e2e checks ([#673](https://github.com/planetaryescape/mxr/issues/673)) ([4b08c36](https://github.com/planetaryescape/mxr/commit/4b08c36069fb1916cea5b49dd5e8c20451ed2279))
+* write due mismatches from the label so the quick snapshot passes at any hour ([#675](https://github.com/planetaryescape/mxr/issues/675)) ([1dda1ce](https://github.com/planetaryescape/mxr/commit/1dda1ce5422517fb0bc1cd98be3300185a1a8192))
+
+
+### Documentation
+
+* cover everything shipped from 0.6.120 to 0.6.150 on the docs site ([#669](https://github.com/planetaryescape/mxr/issues/669)) ([18763dd](https://github.com/planetaryescape/mxr/commit/18763ddbe21ea6dd57b1defa36314b7ce90a9005))
+* track the WebKit spec failures and close the Mac rust-cache issue ([#671](https://github.com/planetaryescape/mxr/issues/671)) ([ca5f2e4](https://github.com/planetaryescape/mxr/commit/ca5f2e47eb132f6cd51f5921e28cffdf9ebbcc94))
+
 ## [0.6.151](https://github.com/planetaryescape/mxr/compare/v0.6.150...v0.6.151) (2026-10-22)
 
 

@@ -2,6 +2,8 @@
 
 Rewrite `site/src/content/docs/index.mdx` around the hierarchy in [03](03-design-concept.md), preserving its working install-copy behaviour and useful media infrastructure. The present homepage already has strong details; move and correct them rather than discarding them. (D-WEB-010, D-WEB-012, D-WEB-013)
 
+Rung 1 implementation checkpoint, 23 October 2026: the [positioning reassessment](<../../research/reports/mxr mailbox positioning review.md>) found the illustrated subscription panel too dense and weak as evidence. The current refinement restores the existing product recording beside the approved headline, leads with local ownership and shared use, and puts the balanced connector answer and daemon explanation immediately after the opening. S2 remains valid evidence but does not provide useful ranking variation. The captured three-step proof below remains a later evidence target, not a description of what the current first screen demonstrates. See [implementation evidence](../evidence/rung1-clarity-implementation.md). Second-opinion reviews were explicitly waived by BK. (D-WEB-028)
+
 ## The opening answers four questions without interaction
 
 | Question | Content | Location and treatment |

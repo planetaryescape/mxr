@@ -168,3 +168,7 @@ Decision: BK approved Q1–Q3 after the concrete comp: existing-agent visitors f
 ### D-WEB-027: Make local ownership and reusable daemon capabilities explicit. (BK)
 
 Decision: Explain the value of a mailbox on your own computer alongside continued remote-server sync. Explain that clients reuse the daemon's mail operations rather than each rebuilding provider/sync logic. Do not imply every attachment is cached, remote access is automatic, or new clients require no work. The ownership claim applies to synced content and the user's local tools.
+
+### D-WEB-028: Skip second-opinion reviews for this website work. (BK)
+
+Decision: BK explicitly authorised skipping second-opinion reviews after the independent editorial provider was rate-limited. Continue implementation and normal source, build, link and render verification. The failed attempts are not completed reviews. Preserve the approved category, headline and product boundaries.

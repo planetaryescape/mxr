@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.159](https://github.com/planetaryescape/mxr/compare/v0.6.158...v0.6.159) (2026-10-23)
+
+
+### Features
+
+* inspect Messages identities and message audiences ([748044a](https://github.com/planetaryescape/mxr/commit/748044ab455371aa73e36f344e4410e63130f78d))
+* share one stored classifier assessment across mxr ([#687](https://github.com/planetaryescape/mxr/issues/687)) ([fe8ea0f](https://github.com/planetaryescape/mxr/commit/fe8ea0f1ba4253df34d586c82eb2a58e1a240695))
+
+
+### Documentation
+
+* guide existing agents through shared draft review ([4874fbd](https://github.com/planetaryescape/mxr/commit/4874fbd31d785e9e37d64080b2ba1db696e689dd))
+
 ## [0.6.158](https://github.com/planetaryescape/mxr/compare/v0.6.157...v0.6.158) (2026-10-23)
 
 

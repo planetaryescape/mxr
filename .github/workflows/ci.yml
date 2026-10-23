@@ -438,8 +438,7 @@ jobs:
           else
             timeout --signal=TERM --kill-after=30s 45m npm run e2e -- --workers=1 --shard=${{ matrix.shard }}/2 2>&1 | tee playwright-run.log
           fi
-      # Right after the suite: the speed gate below starts its own Playwright
-      # run, which empties test-results before a later upload could see it.
+      # Keep functional failures separate from the speed traces below.
       - name: Upload Playwright results
         if: failure()
         uses: actions/upload-artifact@v7
@@ -453,10 +452,18 @@ jobs:
       # the development build's owner-stack capture isn't what users run.
       # Run only on shard 1 to avoid duplicate work; allow 75ms on shared CI runners.
       - name: Speed gate (production build)
+        id: speed
         if: ${{ !cancelled() && matrix.shard == 1 }}
         env:
           MXR_KEY_TO_PAINT_BUDGET_MS: 75
-        run: npm run e2e:perf -- --workers=1
+        run: npm run e2e:perf -- --workers=1 --output=test-results-speed
+      - name: Upload speed traces
+        if: ${{ !cancelled() && steps.speed.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-speed-results
+          path: apps/web/test-results-speed
+          retention-days: 3
 
   web-e2e-webkit:
     name: Web E2E (WebKit / macOS)

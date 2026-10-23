@@ -70,11 +70,20 @@ pub fn check_proposal(input: &ProposalInput<'_>) -> Checked {
 
     let known = [input.typed, input.known].join("\n");
     let (rewritten, figures) = figures_to_gaps(&text, &known, editable);
-    text = rewritten.trim_end().to_string();
+    text = rewritten;
     fixes.figures_to_gaps = figures;
 
     Checked {
-        changes: word_changes(input.typed.trim_end(), &text),
+        // An edit keeps what is outside its selection byte for byte, blank
+        // space included, so the diff starts from the text as typed.
+        changes: word_changes(
+            if input.action == AssistActionData::EditSelection {
+                input.typed
+            } else {
+                input.typed.trim_end()
+            },
+            &text,
+        ),
         gaps: gap_spans(&text),
         yours_changed: sentences_changed(input.typed, &text),
         text,
@@ -166,24 +175,24 @@ struct KeptEdit {
 /// is diffed word by word against the original and a change is kept only when
 /// the words it replaces lie wholly inside the selection; the rest is put
 /// back. A selection that cuts a word in half therefore keeps that word as it
-/// was unless the model left both ends alone.
+/// was unless the model left both ends alone. Blank space at either end of the
+/// text counts as outside the selection and is kept too.
 fn keep_edit_inside(original: &str, selection: Range<usize>, output: &str) -> KeptEdit {
     let prefix = &original[..selection.start];
     let suffix = &original[selection.end..];
-    // The check trims the end of what the model wrote, so a suffix of blank
-    // space is not something it can be held to.
-    let suffix_kept = suffix.trim_end();
-    if output.len() >= prefix.len() + suffix_kept.len()
-        && output.starts_with(prefix)
-        && output.ends_with(suffix_kept)
+    // The model's answer arrives trimmed, so blank space at the very ends is
+    // not something it can be held to: it is put back as it was.
+    let prefix_core = prefix.trim_start();
+    let suffix_core = suffix.trim_end();
+    let lead = &prefix[..prefix.len() - prefix_core.len()];
+    let trail = &suffix[suffix_core.len()..];
+    if output.len() >= prefix_core.len() + suffix_core.len()
+        && output.starts_with(prefix_core)
+        && output.ends_with(suffix_core)
     {
-        let text = output.trim_end().to_string();
-        let end = text
-            .len()
-            .saturating_sub(suffix_kept.len())
-            .max(prefix.len());
+        let text = format!("{lead}{output}{trail}");
         return KeptEdit {
-            editable: prefix.len()..end,
+            editable: prefix.len()..text.len() - suffix.len(),
             text,
             reverted: false,
         };
@@ -224,10 +233,8 @@ fn keep_edit_inside(original: &str, selection: Range<usize>, output: &str) -> Ke
             reverted: true,
         };
     }
-    let end = text.len() - suffix.len();
-    let text = text.trim_end().to_string();
     KeptEdit {
-        editable: prefix.len()..end.min(text.len()).max(prefix.len()),
+        editable: prefix.len()..text.len() - suffix.len(),
         text,
         reverted,
     }
@@ -556,6 +563,27 @@ mod tests {
         let checked = edit(typed, 6..7, "Keep cot safe.");
         assert_eq!(checked.text, "Keep cot safe.");
         assert!(!checked.fixes.outside_reverted);
+    }
+
+    #[test]
+    fn trailing_and_leading_blank_space_outside_the_selection_is_kept_byte_for_byte() {
+        let typed = "\n  Keep cat safe.  \n";
+        let (start, end) = (typed.find('a').unwrap(), typed.find('a').unwrap() + 1);
+        // The model's answer arrives trimmed; an honest one-byte edit is kept.
+        let checked = edit(typed, start..end, "Keep cot safe.");
+        assert_eq!(checked.text, "\n  Keep cot safe.  \n");
+        assert!(!checked.fixes.outside_reverted);
+        // A change to the neighbouring word is put back with the blank space.
+        let checked = edit(typed, start..end, "Keep dog safe.");
+        assert_eq!(checked.text, typed);
+        // So is a model that dropped everything.
+        let checked = edit(typed, start..end, "x");
+        assert_eq!(checked.text, typed);
+        // The diff starts from the text as typed.
+        assert!(checked
+            .changes
+            .iter()
+            .all(|c| c.kind == TextChangeKindData::Kept));
     }
 
     #[test]

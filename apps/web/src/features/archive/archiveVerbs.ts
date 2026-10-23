@@ -193,7 +193,7 @@ export function previewExport(account: string | null, filter: RecordFilter) {
   return exportRecords(account, filter, true);
 }
 
-/** `E`, after the preview: the CSV, saved by the browser. */
+/** Export, after the preview: the CSV, saved by the browser. */
 export async function downloadExport(account: string | null, filter: RecordFilter): Promise<void> {
   if (refuseWhileDaemonDown("export")) return;
   try {

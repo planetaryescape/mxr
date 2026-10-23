@@ -210,7 +210,7 @@ export function RecordEditDialog({ record, onClose }: { record: RecordData; onCl
 }
 
 /**
- * `E`: what an export of the records in view holds, from the daemon's dry
+ * Export (the palette): what an export of the records in view holds, from the daemon's dry
  * run, before the CSV is written. The export reads the same rows.
  */
 export function ExportDialog({

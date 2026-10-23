@@ -59,6 +59,7 @@ import { useLitReason } from "@/state/litReasonStore";
 import { stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { SectionHeading } from "@/components/SectionHeading";
+import { listMotions } from "@/features/modes/listMotions";
 
 const PAGE = 200;
 const SUBSCRIPTIONS_SEGMENT = "subscriptions";
@@ -474,6 +475,7 @@ function Ledger({
   useScopeController("archive", {
     down: () => move(1),
     up: () => move(-1),
+    ...listMotions(move),
     ask: () => {
       inputRef.current?.focus();
       inputRef.current?.select();

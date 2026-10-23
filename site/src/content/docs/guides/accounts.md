@@ -22,11 +22,10 @@ Open it with:
 Actions:
 
 - `j` / `k`: move account selection
-- `n`: new IMAP/SMTP account
+- `c`: new IMAP/SMTP account
 - `Enter` / `o`: edit selected account
 - `t`: test selected account
 - `d`: set default account
-- `c`: edit config
 - `r`: refresh runtime account inventory
 
 The page shows:

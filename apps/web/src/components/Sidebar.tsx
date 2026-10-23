@@ -61,6 +61,11 @@ export function screenerEntry(desk: Desk): NavEntry | null {
   };
 }
 
+/** Where the sidebar's keyboard cursor can rest: a section header or an entry. */
+type SidebarStop =
+  | { kind: "header"; section: NavSection }
+  | { kind: "entry"; entry: NavEntry; section: NavSection };
+
 /** Sections whose entries open a mail list, so the keyboard follows. */
 const LIST_SECTIONS = new Set(["places", "saved", "mail", "views", "labels", "categories"]);
 
@@ -153,7 +158,6 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   const userCollapsed = useUiPrefs((s) => s.sidebarCollapsed);
   const folded = useUiPrefs((s) => s.collapsedSections);
   const toggleSection = useUiPrefs((s) => s.toggleSection);
-  const setSectionCollapsed = useUiPrefs((s) => s.setSectionCollapsed);
   const setMoreOpen = useModals((s) => s.setMoreSheetOpen);
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -179,15 +183,20 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     [allSections, collapsed],
   );
 
-  // Keyboard walks only what is visible: folded sections contribute their
-  // header, not their entries.
-  const visible = useMemo(
+  // Keyboard walks only what is visible: a foldable section's header is a
+  // stop (Enter folds it, blueprint 35), and a folded section adds nothing
+  // more.
+  const visible = useMemo<SidebarStop[]>(
     () =>
-      sections.flatMap((section) =>
-        section.foldable && folded.includes(section.id)
-          ? []
-          : section.entries.map((entry) => ({ entry, section })),
-      ),
+      sections.flatMap((section) => {
+        const header: SidebarStop[] =
+          section.title && section.foldable ? [{ kind: "header", section }] : [];
+        if (section.foldable && folded.includes(section.id)) return header;
+        return [
+          ...header,
+          ...section.entries.map((entry) => ({ kind: "entry" as const, entry, section })),
+        ];
+      }),
     [folded, sections],
   );
 
@@ -203,21 +212,33 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
     bottom: () => setFocusIndex(visible.length - 1),
     open: () => {
       if (!current) return;
+      if (current.kind === "header") {
+        toggleSection(current.section.id);
+        return;
+      }
       void navigate({ to: current.entry.to, search: current.entry.search });
       if (LIST_SECTIONS.has(current.section.id)) setActivePane("mailbox");
     },
-    collapse: () =>
-      current && current.section.foldable && setSectionCollapsed(current.section.id, true),
-    expand: () => {
-      const next = sections.find((section) => section.foldable && folded.includes(section.id));
-      if (next) setSectionCollapsed(next.id, false);
+    // `{` and `}` jump between section headers; the rail has none, so `{`
+    // from the first header goes to the top.
+    prevSection: () => {
+      const at = clamp(focusIndex);
+      const previous = visible.findLastIndex((stop, index) => stop.kind === "header" && index < at);
+      setFocusIndex(Math.max(0, previous));
+    },
+    nextSection: () => {
+      const at = clamp(focusIndex);
+      const next = visible.findIndex((stop, index) => stop.kind === "header" && index > at);
+      if (next >= 0) setFocusIndex(next);
     },
   });
 
   // Keep the keyboard cursor on the page the user is on when they arrive.
   useEffect(() => {
     if (sidebarFocused) return;
-    const index = visible.findIndex(({ entry }) => isEntryActive(path, lane, entry));
+    const index = visible.findIndex(
+      (stop) => stop.kind === "entry" && isEntryActive(path, lane, stop.entry),
+    );
     if (index >= 0 && index !== focusIndex) setFocusIndex(index);
   }, [focusIndex, lane, path, setFocusIndex, sidebarFocused, visible]);
 
@@ -255,6 +276,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       >
         {sections.map((section) => {
           const isFolded = section.foldable && folded.includes(section.id);
+          const headerIndex = section.title && section.foldable ? (runningIndex += 1) : -1;
           return (
             <nav
               key={section.id}
@@ -266,7 +288,14 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                   type="button"
                   onClick={() => toggleSection(section.id)}
                   aria-expanded={!isFolded}
-                  className="type-eyebrow group mb-0.5 flex w-full items-center gap-1 rounded-sm px-2 py-1 text-text-3 hover:text-text-2"
+                  data-nav-index={headerIndex >= 0 ? headerIndex : undefined}
+                  className={cn(
+                    "type-eyebrow group mb-0.5 flex w-full items-center gap-1 rounded-sm px-2 py-1 text-text-3 hover:text-text-2",
+                    sidebarFocused &&
+                      headerIndex >= 0 &&
+                      clamp(focusIndex) === headerIndex &&
+                      "ring-1 ring-inset ring-sidebar-ring",
+                  )}
                 >
                   <ChevronRight
                     className={cn("size-3 transition-transform", !isFolded && "rotate-90")}

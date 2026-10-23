@@ -91,9 +91,9 @@ pub fn draw(
         if state.panel == RulesPanel::DryRun {
             "PgUp/PgDn:effects  A:apply  Esc:back"
         } else if state.rules.is_empty() {
-            "n:new rule  Esc:mailbox"
+            "c:new rule  Esc:mailbox"
         } else {
-            "j/k:select  Enter:overview  H:history  D:dry run  A:apply preview  E:edit  n:new  e:toggle"
+            "j/k:select  Enter:overview  H:history  D:dry run  A:apply preview  E:edit  c:new  e:toggle"
         },
         theme,
     );

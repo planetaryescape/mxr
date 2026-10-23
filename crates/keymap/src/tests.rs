@@ -397,3 +397,93 @@ fn a_moved_key_can_name_another_actions_key() {
         vec!["x: the move of `1` points to no action `nowhere`".to_string()]
     );
 }
+
+#[test]
+fn a_tui_only_move_may_keep_a_key_the_web_binds_there() {
+    let keymap = Keymap::parse(
+        r#"
+        [[action]]
+        id = "reader.toggle-message"
+        label = "Expand or collapse"
+        group = "Read"
+        scopes = ["reader"]
+        keys = ["o"]
+        clients = ["web"]
+
+        [[action]]
+        id = "tui.reader-open-original"
+        label = "Open in browser"
+        group = "Read"
+        clients = ["tui"]
+        [[action.moved]]
+        key = "o"
+        contexts = ["reader"]
+        until = "99.0.0"
+
+        [[action]]
+        id = "rules.new"
+        label = "New rule"
+        group = "Rules"
+        palette_only = true
+        [[action.moved]]
+        key = "n"
+        contexts = ["rules"]
+        until = "99.0.0"
+        to_key = "c"
+        "#,
+    )
+    .expect("parses");
+    assert_eq!(keymap.problems(), Vec::<String>::new());
+    let (_, moved) = keymap.moved_entry("rules", "n").expect("n moved");
+    assert_eq!(moved.to_key.as_deref(), Some("c"));
+
+    let web = Keymap::parse(
+        r#"
+        [[action]]
+        id = "reader.toggle-message"
+        label = "Expand or collapse"
+        group = "Read"
+        scopes = ["reader"]
+        keys = ["o"]
+        clients = ["web"]
+
+        [[action]]
+        id = "reader.open-original"
+        label = "Open in browser"
+        group = "Read"
+        clients = ["web"]
+        [[action.moved]]
+        key = "o"
+        contexts = ["reader"]
+        until = "99.0.0"
+        "#,
+    )
+    .expect("parses");
+    assert_eq!(
+        web.problems(),
+        vec!["reader.open-original: `o` moved away in reader but is still bound there".to_string()]
+    );
+}
+
+#[test]
+fn a_moved_key_names_a_known_place() {
+    let keymap = Keymap::parse(
+        r##"
+        [[action]]
+        id = "tui.drafts-delete"
+        label = "Delete draft"
+        group = "Compose"
+        clients = ["tui"]
+        [[action.moved]]
+        key = "d"
+        contexts = ["drafts", "draft"]
+        until = "99.0.0"
+        to_key = "#"
+        "##,
+    )
+    .expect("parses");
+    assert_eq!(
+        keymap.problems(),
+        vec!["tui.drafts-delete: the move of `d` names unknown context `draft`".to_string()]
+    );
+}

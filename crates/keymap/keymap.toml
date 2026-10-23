@@ -916,7 +916,7 @@ keys = ["s"]
 [[action.tui]]
 name = "Star"
 keys = ["s"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader"]
 
 [[action]]
 id = "mail.mark-read"
@@ -1073,12 +1073,12 @@ id = "mail.export"
 label = "Export as Markdown"
 group = "Mail"
 scopes = ["list", "reader"]
-keys = ["E"]
+palette_only = true
 
-[[action.tui]]
-name = "ExportThread"
-keys = ["E"]
-contexts = ["list", "reader", "sidebar", "place"]
+[[action.moved]]
+key = "E"
+contexts = ["list", "reader", "sidebar"]
+until = "0.6.185"
 
 [[action]]
 id = "mail.briefing"
@@ -1152,6 +1152,11 @@ name = "RespondInvite(Accept)"
 keys = ["i a"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
 
+[[action.moved]]
+key = "a"
+contexts = ["invites"]
+until = "0.6.185"
+
 [[action]]
 id = "invite.tentative"
 label = "Maybe (invite)"
@@ -1163,6 +1168,16 @@ keys = ["i m"]
 name = "RespondInvite(Tentative)"
 keys = ["i m"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+
+[[action.moved]]
+key = "t"
+contexts = ["invites"]
+until = "0.6.185"
+
+[[action.moved]]
+key = "m"
+contexts = ["invites"]
+until = "0.6.185"
 
 [[action]]
 id = "invite.decline"
@@ -1176,6 +1191,11 @@ name = "RespondInvite(Decline)"
 keys = ["i d"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
 
+[[action.moved]]
+key = "d"
+contexts = ["invites"]
+until = "0.6.185"
+
 [[action]]
 id = "invite.accept-comment"
 label = "Accept with comment"
@@ -1187,6 +1207,11 @@ keys = ["i A"]
 name = "RespondInviteWithComment(Accept)"
 keys = ["i A"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+
+[[action.moved]]
+key = "A"
+contexts = ["invites"]
+until = "0.6.185"
 
 [[action]]
 id = "invite.tentative-comment"
@@ -1200,6 +1225,16 @@ name = "RespondInviteWithComment(Tentative)"
 keys = ["i M"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
 
+[[action.moved]]
+key = "T"
+contexts = ["invites"]
+until = "0.6.185"
+
+[[action.moved]]
+key = "M"
+contexts = ["invites"]
+until = "0.6.185"
+
 [[action]]
 id = "invite.decline-comment"
 label = "Decline with comment"
@@ -1211,6 +1246,11 @@ keys = ["i D"]
 name = "RespondInviteWithComment(Decline)"
 keys = ["i D"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+
+[[action.moved]]
+key = "D"
+contexts = ["invites"]
+until = "0.6.185"
 
 [[action]]
 id = "mail.cancel-reminder"
@@ -1311,7 +1351,7 @@ hide_in_palette = true
 
 [[action.tui]]
 name = "SidebarSelect"
-keys = ["ArrowRight", "Enter", "l", "o"]
+keys = ["Enter", "ArrowRight", "l", "o"]
 contexts = ["sidebar"]
 
 [[action]]
@@ -1319,25 +1359,54 @@ id = "sidebar.collapse"
 label = "Collapse section"
 group = "View"
 scopes = ["sidebar"]
-keys = ["["]
+palette_only = true
 hide_in_palette = true
 
-[[action.tui]]
-name = "inline:collapse_section"
-keys = ["["]
+[[action.moved]]
+key = "["
 contexts = ["sidebar"]
+until = "0.6.185"
+to = "sidebar.open"
 
 [[action]]
 id = "sidebar.expand"
 label = "Expand section"
 group = "View"
 scopes = ["sidebar"]
-keys = ["]"]
+palette_only = true
+hide_in_palette = true
+
+[[action.moved]]
+key = "]"
+contexts = ["sidebar"]
+until = "0.6.185"
+to = "sidebar.open"
+
+# Enter on a section header folds or unfolds it (sidebar.open).
+[[action]]
+id = "sidebar.prev-section"
+label = "Previous section"
+group = "Move"
+scopes = ["sidebar"]
+keys = ["{"]
 hide_in_palette = true
 
 [[action.tui]]
-name = "inline:expand_section"
-keys = ["]"]
+name = "inline:prev_section"
+keys = ["{"]
+contexts = ["sidebar"]
+
+[[action]]
+id = "sidebar.next-section"
+label = "Next section"
+group = "Move"
+scopes = ["sidebar"]
+keys = ["}"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:next_section"
+keys = ["}"]
 contexts = ["sidebar"]
 
 [[action]]
@@ -1368,12 +1437,14 @@ name = "MoveUp"
 keys = ["ArrowUp", "k"]
 contexts = ["list"]
 
+# The modes inherit the list's motions (blueprint 35): each mode's page
+# registers top, bottom and the half pages for its own rows.
 [[action]]
 id = "list.top"
 label = "First conversation"
 short_label = "First"
 group = "Move"
-scopes = ["list"]
+scopes = ["list", "now", "messages", "todo", "catchup", "expired", "updates", "reading", "archive"]
 keys = ["g g", "Home"]
 hide_in_palette = true
 
@@ -1387,7 +1458,7 @@ id = "list.bottom"
 label = "Last conversation"
 short_label = "Last"
 group = "Move"
-scopes = ["list"]
+scopes = ["list", "now", "messages", "todo", "catchup", "expired", "updates", "reading", "archive"]
 keys = ["G", "End"]
 hide_in_palette = true
 
@@ -1401,7 +1472,7 @@ id = "list.page-down"
 label = "Half page down"
 short_label = "Page down"
 group = "Move"
-scopes = ["list"]
+scopes = ["list", "now", "messages", "todo", "catchup", "expired", "updates", "reading", "archive"]
 keys = ["Ctrl+d", "PageDown"]
 hide_in_palette = true
 
@@ -1415,7 +1486,7 @@ id = "list.page-up"
 label = "Half page up"
 short_label = "Page up"
 group = "Move"
-scopes = ["list"]
+scopes = ["list", "now", "messages", "todo", "catchup", "expired", "updates", "reading", "archive"]
 keys = ["Ctrl+u", "PageUp"]
 hide_in_palette = true
 
@@ -1731,7 +1802,7 @@ group = "Read"
 scopes = ["reader"]
 keys = ["o"]
 hide_in_palette = true
-note = "The TUI shows every message, and its o opens the original, like O"
+note = "The TUI shows every message in full, so o does nothing there yet"
 
 [[action]]
 id = "reader.expand-all"
@@ -1908,10 +1979,19 @@ name = "OpenInBrowser"
 keys = ["O"]
 contexts = ["list", "reader", "place"]
 
-[[action.tui]]
-name = "OpenInBrowser"
-keys = ["o"]
+
+# The TUI reader's o opened the original, as O does; o is the email itself now.
+[[action]]
+id = "tui.reader-open-original"
+label = "Open in browser"
+group = "View"
+clients = ["tui"]
+
+[[action.moved]]
+key = "o"
 contexts = ["reader"]
+until = "0.6.185"
+to = "reader.open-original"
 
 [[action]]
 id = "reader.summary"
@@ -2037,8 +2117,13 @@ label = "Skip for now"
 short_label = "Skip"
 group = "Compose"
 scopes = ["focus"]
-keys = ["s"]
+keys = ["j"]
 note = "Goes to the end of the queue"
+
+[[action.moved]]
+key = "s"
+contexts = ["focus"]
+until = "0.6.185"
 
 [[action]]
 id = "focus.done"
@@ -2145,8 +2230,13 @@ clients = ["tui"]
 
 [[action.tui]]
 name = "TogglePin"
-keys = ["p"]
+keys = ["s"]
 contexts = ["place"]
+
+[[action.moved]]
+key = "p"
+contexts = ["place"]
+until = "0.6.185"
 
 [[action]]
 id = "place.sweep-bundle"
@@ -2155,10 +2245,10 @@ short_label = "Sweep sender"
 group = "Triage"
 clients = ["tui"]
 
-[[action.tui]]
-name = "SweepBundle"
-keys = ["S"]
+[[action.moved]]
+key = "S"
 contexts = ["place"]
+until = "0.6.185"
 
 [[action]]
 id = "place.sweep-all"
@@ -2169,8 +2259,13 @@ clients = ["tui"]
 
 [[action.tui]]
 name = "SweepPlace"
-keys = ["A"]
+keys = ["E"]
 contexts = ["place"]
+
+[[action.moved]]
+key = "A"
+contexts = ["place"]
+until = "0.6.185"
 
 [[action]]
 id = "place.move-sender"
@@ -2181,8 +2276,13 @@ clients = ["tui"]
 
 [[action.tui]]
 name = "OpenSenderKindMenu"
-keys = ["K"]
+keys = ["P"]
 contexts = ["place"]
+
+[[action.moved]]
+key = "K"
+contexts = ["place"]
+until = "0.6.185"
 
 [[action]]
 id = "place.unsubscribe"
@@ -2333,12 +2433,13 @@ label = "Why it is here and where each field came from"
 short_label = "Details"
 group = "Triage"
 scopes = ["todo"]
-keys = ["v"]
+palette_only = true
 
-[[action.tui]]
-name = "TodoReviewResolution"
-keys = ["v"]
+[[action.moved]]
+key = "v"
 contexts = ["todo"]
+until = "0.6.185"
+to = "todo.edit"
 
 [[action]]
 id = "todo.expired"
@@ -2675,12 +2776,13 @@ label = "Mark checked"
 short_label = "Checked"
 group = "Triage"
 scopes = ["archive"]
-keys = ["v"]
+palette_only = true
 
-[[action.tui]]
-name = "RecordsMarkChecked"
-keys = ["v"]
+[[action.moved]]
+key = "v"
 contexts = ["archive"]
+until = "0.6.185"
+to = "archive.edit"
 
 [[action]]
 id = "archive.dismiss"
@@ -2702,12 +2804,12 @@ short_label = "Export"
 description = "CSV of the records in view, after a preview of what it holds"
 group = "Triage"
 scopes = ["archive"]
-keys = ["E"]
+palette_only = true
 
-[[action.tui]]
-name = "RecordsExport"
-keys = ["E"]
+[[action.moved]]
+key = "E"
 contexts = ["archive"]
+until = "0.6.185"
 
 [[action]]
 id = "archive.make-todo"
@@ -3690,13 +3792,13 @@ label = "Sweep this sender out of Updates…"
 short_label = "Sweep sender"
 group = "Triage"
 scopes = ["updates"]
-keys = ["S"]
+palette_only = true
 note = "Previews the daemon's dry run first; undo afterwards"
 
-[[action.tui]]
-name = "UpdatesSweep"
-keys = ["S"]
+[[action.moved]]
+key = "S"
 contexts = ["updates"]
+until = "0.6.185"
 
 [[action]]
 id = "updates.close-hint"
@@ -3814,6 +3916,12 @@ group = "Rules"
 scopes = ["global"]
 palette_only = true
 
+[[action.moved]]
+key = "n"
+contexts = ["rules"]
+until = "0.6.185"
+to_key = "c"
+
 [[action]]
 id = "accounts.new"
 label = "Add account"
@@ -3821,6 +3929,12 @@ description = "Open account onboarding"
 group = "Accounts"
 scopes = ["global"]
 palette_only = true
+
+[[action.moved]]
+key = "n"
+contexts = ["accounts"]
+until = "0.6.185"
+to_key = "c"
 
 [[action]]
 id = "analytics.refresh-contacts"
@@ -3959,36 +4073,41 @@ until = "0.6.180"
 
 [[action]]
 id = "tui.open-saved-search-form-new"
-label = "Open saved search form new"
+label = "New saved search"
 group = "TUI"
 clients = ["tui"]
 
 [[action.tui]]
 name = "OpenSavedSearchFormNew"
-keys = ["n"]
+keys = ["c"]
 contexts = ["sidebar"]
+
+[[action.moved]]
+key = "n"
+contexts = ["sidebar"]
+until = "0.6.185"
 
 [[action]]
 id = "tui.more-from-sender"
-label = "More from sender"
+label = "More from this sender"
 group = "TUI"
 clients = ["tui"]
 
-[[action.tui]]
-name = "MoreFromSender"
-keys = ["+"]
+[[action.moved]]
+key = "+"
 contexts = ["place"]
+until = "0.6.185"
 
 [[action]]
 id = "tui.more-place-senders"
-label = "More place senders"
+label = "More senders in this place"
 group = "TUI"
 clients = ["tui"]
 
-[[action.tui]]
-name = "MorePlaceSenders"
-keys = [">"]
+[[action.moved]]
+key = ">"
 contexts = ["place"]
+until = "0.6.185"
 
 [[action]]
 id = "tui.close-screener-modal"
@@ -4022,6 +4141,104 @@ clients = ["tui"]
 name = "RecordsNextKind"
 keys = ["g f"]
 contexts = ["archive"]
+
+# Screens and overlays that still read their own keys (the drafts list,
+# categories, the assistant pane, To do's Microsoft To Do link): each moved
+# key says where its action went, from here, until the screen reads the
+# definition.
+[[action]]
+id = "tui.todo-microsoft-send"
+label = "Send to Microsoft To Do"
+group = "Triage"
+clients = ["tui"]
+
+[[action.moved]]
+key = "M"
+contexts = ["todo-microsoft"]
+until = "0.6.185"
+
+[[action]]
+id = "tui.todo-microsoft-sync"
+label = "Sync the linked Microsoft To Do task"
+group = "Triage"
+clients = ["tui"]
+
+[[action.moved]]
+key = "S"
+contexts = ["todo-microsoft"]
+until = "0.6.185"
+
+[[action]]
+id = "tui.drafts-delete"
+label = "Delete draft"
+group = "Compose"
+clients = ["tui"]
+
+[[action.moved]]
+key = "d"
+contexts = ["drafts"]
+until = "0.6.185"
+to_key = "#"
+
+[[action]]
+id = "tui.drafts-edit"
+label = "Edit draft"
+group = "Compose"
+clients = ["tui"]
+
+[[action.moved]]
+key = "e"
+contexts = ["drafts"]
+until = "0.6.185"
+to_key = "Enter"
+
+[[action]]
+id = "tui.delete-saved-search"
+label = "Delete saved search"
+group = "Search"
+clients = ["tui"]
+
+[[action.moved]]
+key = "d"
+contexts = ["saved-searches"]
+until = "0.6.185"
+to_key = "#"
+
+[[action]]
+id = "tui.new-category"
+label = "New category"
+group = "Mail"
+clients = ["tui"]
+
+[[action.moved]]
+key = "n"
+contexts = ["categories"]
+until = "0.6.185"
+to_key = "c"
+
+[[action]]
+id = "tui.delete-category"
+label = "Delete category"
+group = "Mail"
+clients = ["tui"]
+
+[[action.moved]]
+key = "d"
+contexts = ["categories"]
+until = "0.6.185"
+to_key = "#"
+
+[[action]]
+id = "tui.delete-assistant-conversation"
+label = "Delete conversation"
+group = "Mail"
+clients = ["tui"]
+
+[[action.moved]]
+key = "D"
+contexts = ["assistant"]
+until = "0.6.185"
+to_key = "#"
 
 # Status strips: the three to five verbs the status bar offers for what is lit
 # (D130). Each client picks the strip for its state and drops a member that

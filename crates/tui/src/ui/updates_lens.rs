@@ -241,7 +241,7 @@ fn body_for(
                 }
                 if let Some(suggestion) = &line.suggestion {
                     for text in wrap(
-                        &format!("{}  K tune", one_line(suggestion)),
+                        &format!("{}  P tune", one_line(suggestion)),
                         width.saturating_sub(8),
                     ) {
                         body.text(format!("    {text}"), Style::default().fg(theme.accent));

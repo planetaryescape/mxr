@@ -1,12 +1,12 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 572
+assertion_line: 643
 expression: snapshot
 ---
 "┌ Account Details ───────────────────────────────────────────┐┌ Accounts / Browse ─────────────────┐"
 "│Accounts connect mxr to sync and send mail.                 ││                                    │"
 "│                                                            ││                                    │"
-"│Press n to add Gmail, IMAP + SMTP, or SMTP-only.            ││                                    │"
+"│Press c to add Gmail, IMAP + SMTP, or SMTP-only.            ││                                    │"
 "│Press c to open config in your editor.                      ││                                    │"
 "│                                                            ││                                    │"
 "│                                                            ││                                    │"
@@ -21,5 +21,5 @@ expression: snapshot
 "│                                                            ││                                    │"
 "└────────────────────────────────────────────────────────────┘│                                    │"
 "┌────────────────────────────────────────────────────────────┐│                                    │"
-"│n:new account  c:edit config  Esc:mailbox                   ││                                    │"
+"│c:new account  Esc:mailbox                                  ││                                    │"
 "└────────────────────────────────────────────────────────────┘└────────────────────────────────────┘"

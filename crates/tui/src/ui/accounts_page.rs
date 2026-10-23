@@ -158,7 +158,7 @@ pub fn draw(
         let mut lines = vec![
             Line::from("Accounts connect mxr to sync and send mail."),
             Line::from(""),
-            Line::from("Press n to add Gmail, IMAP + SMTP, or SMTP-only."),
+            Line::from("Press c to add Gmail, IMAP + SMTP, or SMTP-only."),
             Line::from("Press c to open config in your editor."),
         ];
         if let Some(status) = &state.status {
@@ -201,12 +201,11 @@ pub fn draw(
         })
         .is_some();
     let mut footer_hint = if state.accounts.is_empty() {
-        "n:new account  c:edit config  Esc:mailbox".to_string()
+        "c:new account  Esc:mailbox".to_string()
     } else if selected_unhealthy {
-        "j/k:select  Enter:edit  n:new  t:test  d:default  c:config  r:repair  R:refresh"
-            .to_string()
+        "j/k:select  Enter:edit  c:new  t:test  d:default  r:repair  R:refresh".to_string()
     } else {
-        "j/k:select  Enter:edit  n:new  t:test  d:default  c:config  r:refresh".to_string()
+        "j/k:select  Enter:edit  c:new  t:test  d:default  r:refresh".to_string()
     };
     if account_result_has_details(state.last_result.as_ref()) {
         footer_hint.push_str("  O:details");

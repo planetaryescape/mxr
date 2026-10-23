@@ -119,13 +119,13 @@ fn keys_line(page: &TodoPageState, selected: Option<&TodoData>) -> String {
             let review = selected
                 .and_then(|todo| todo.resolution.as_ref())
                 .filter(|resolution| resolution.status == "pending")
-                .map_or_else(String::new, |_| "  v review resolution".into());
+                .map_or_else(String::new, |_| "  , review the resolution first".into());
             let microsoft = if page
                 .microsoft_status
                 .as_ref()
                 .is_some_and(|status| status.installed)
             {
-                "  M Microsoft To Do  S sync linked task"
+                "  : Microsoft To Do"
             } else {
                 ""
             };
@@ -133,7 +133,7 @@ fn keys_line(page: &TodoPageState, selected: Option<&TodoData>) -> String {
         }
         TodoPanel::Expired => "\u{21b5} restore  o email  Esc back to the runway".to_string(),
         TodoPanel::Catchup => {
-            "\u{21b5} keep  e let go  A let go of all  o email  Esc back".to_string()
+            "\u{21b5} keep  e let go  E let go of all  o email  Esc back".to_string()
         }
     }
 }
@@ -365,7 +365,7 @@ impl Body {
                         }
                     }
                     self.text(
-                        "S sync now · Esc cancel",
+                        "Enter sync now · Esc cancel",
                         Style::default().fg(theme.text_muted),
                     );
                     self.sync_preview_end = Some(self.lines.len());
@@ -725,7 +725,7 @@ fn draw_microsoft_preview(
         chunks[1],
     );
     frame.render_widget(
-        Paragraph::new("M confirm  j/k scroll  Esc cancel"),
+        Paragraph::new("Enter confirm  j/k scroll  Esc cancel"),
         chunks[2],
     );
     page.microsoft_review_visible.set(true);
@@ -1042,7 +1042,7 @@ pub(crate) mod tests {
             };
             let top = draw_review(&page);
             assert!(top.contains("Title: Pay selected"), "{top}");
-            assert!(top.contains("M confirm"), "{top}");
+            assert!(top.contains("Enter confirm"), "{top}");
             assert!(page.microsoft_review_visible.get());
             assert!(page.microsoft_scroll_max.get() > 0);
             page.microsoft_scroll = page.microsoft_scroll_max.get();
@@ -1287,7 +1287,7 @@ pub(crate) mod tests {
         insta::assert_snapshot!("todo_lens_catchup", rendered);
         assert!(rendered.contains("Catch up: 2 things from the last two weeks"));
         assert!(rendered.contains("Already over, so not shown: 1 past invite."));
-        assert!(rendered.contains("\u{21b5} keep  e let go  A let go of all"));
+        assert!(rendered.contains("\u{21b5} keep  e let go  E let go of all"));
 
         catchup_page.catchup_preview = Some(TodoChangeData {
             dry_run: true,

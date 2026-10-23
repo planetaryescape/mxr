@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/todo_lens.rs
+assertion_line: 1287
 expression: rendered
 ---
 "╭ To do ─ Things email asked you to do, ordered by when to act. ───────────────────────────────────────────────────────╮"
@@ -30,5 +31,5 @@ expression: rendered
 "│                                                                                                                      │"
 "│                                                                                                                      │"
 "│ Here because: "payment due 9 October" (rule).                                                                        │"
-"│ ↵ keep  e let go  A let go of all  o email  Esc back                                                                 │"
+"│ ↵ keep  e let go  E let go of all  o email  Esc back                                                                 │"
 "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯"

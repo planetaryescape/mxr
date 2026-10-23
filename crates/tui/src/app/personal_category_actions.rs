@@ -413,6 +413,9 @@ impl App {
                 _ => {}
             }
         }
+        // A key that moved (blueprint 35) says where it went once `state` is
+        // released.
+        let mut moved: Option<char> = None;
         match (key.code, key.modifiers) {
             (KeyCode::Char('w'), _) => {
                 let message_id = if state.surface == Some(CategorySurface::View) {
@@ -501,6 +504,20 @@ impl App {
                     Some(CategorySurface::Catalog | CategorySurface::Assign)
                 ) =>
             {
+                moved = Some('n');
+            }
+            (KeyCode::Char('d'), KeyModifiers::NONE)
+                if state.surface == Some(CategorySurface::Catalog) =>
+            {
+                moved = Some('d');
+            }
+            // c creates what this place holds: a category.
+            (KeyCode::Char('c'), KeyModifiers::NONE)
+                if matches!(
+                    state.surface,
+                    Some(CategorySurface::Catalog | CategorySurface::Assign)
+                ) =>
+            {
                 state.input.clear();
                 state.error = None;
                 state.name_action = Some(CategoryNameAction::Create);
@@ -517,9 +534,8 @@ impl App {
                     state.error = None;
                 }
             }
-            (KeyCode::Char('d'), KeyModifiers::NONE)
-                if state.surface == Some(CategorySurface::Catalog) =>
-            {
+            // `#` deletes, after the daemon's preview.
+            (KeyCode::Char('#'), _) if state.surface == Some(CategorySurface::Catalog) => {
                 if let Some(category) = state.selected_category() {
                     self.pending_category_requests.push((
                         generation,
@@ -627,6 +643,9 @@ impl App {
                 state.selected = 0;
             }
             _ => {}
+        }
+        if let Some(key) = moved {
+            self.announce_moved("categories", &key.to_string());
         }
         true
     }
@@ -918,7 +937,7 @@ mod tests {
         let mut app = App::new();
         app.apply(Action::OpenPersonalCategories);
         app.pending_category_requests.clear();
-        press(&mut app, KeyCode::Char('n'));
+        press(&mut app, KeyCode::Char('c'));
         for letter in "Alpha".chars() {
             press(&mut app, KeyCode::Char(letter));
         }
@@ -928,7 +947,7 @@ mod tests {
         press(&mut app, KeyCode::Char('x'));
         assert_eq!(app.modals.personal_categories.input, "Alpha");
         press(&mut app, KeyCode::Esc);
-        press(&mut app, KeyCode::Char('n'));
+        press(&mut app, KeyCode::Char('c'));
         for letter in "Beta".chars() {
             press(&mut app, KeyCode::Char(letter));
         }

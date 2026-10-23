@@ -120,7 +120,7 @@ pub fn draw(
     }
 
     let footer = Line::from(Span::styled(
-        "  a accept · t tentative · d decline · A/T/D w/ comment · enter open",
+        "  i a accept · i m maybe · i d decline · i A/M/D with a comment · enter open",
         Style::default().fg(theme.text_muted),
     ));
 

@@ -314,19 +314,22 @@ fn s_does_not_pin_a_tracker_without_a_latest_message() {
 }
 
 #[test]
-fn uppercase_s_previews_an_account_sender_sweep_and_cancel_or_apply_uses_that_preview() {
+fn the_sender_sweep_previews_an_account_sender_and_cancel_or_apply_uses_that_preview() {
     let mut app = updates_app();
     select_source(&mut app, "Stripe (stripe.com)");
     let (account_id, sender_email) = match app.selected_updates_row().unwrap() {
         UpdatesRow::Line(line) => (line.account_id.clone(), line.sender_email.clone()),
         _ => unreachable!(),
     };
+    // `S` swept until K3 (blueprint 35); the sweep is in the palette now.
     press(&mut app, KeyCode::Char('S'));
+    assert!(app.mailbox.pending_sweep_preview.is_none());
+    app.apply(Action::UpdatesSweep);
     let target = app
         .mailbox
         .pending_sweep_preview
         .take()
-        .expect("S requests a preview");
+        .expect("the sweep requests a preview");
     assert_eq!(target.account_id, Some(account_id));
     assert_eq!(target.sender_email.as_deref(), Some(sender_email.as_str()));
     assert!(matches!(

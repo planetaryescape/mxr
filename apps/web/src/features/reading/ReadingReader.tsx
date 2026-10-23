@@ -27,7 +27,7 @@ import { pickSearch, useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { formatLongDate } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
-import { stripKeys } from "@/lib/actions/definition";
+import { definedShortcut, stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -313,7 +313,12 @@ function Reader({ detail }: { detail: ReadingDetail }) {
                 next();
               }}
             />
-            <ToolButton label="Highlight" keys="h" icon={Highlighter} onClick={highlight} />
+            <ToolButton
+              label="Highlight"
+              keys={definedShortcut("reading.reader-highlight")}
+              icon={Highlighter}
+              onClick={highlight}
+            />
             <ToolButton
               label={original ? "Cleaned" : "Original"}
               keys="R"
@@ -325,7 +330,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             <ToolButton
               testId="reader-marginalia"
               label={sentTo ? "In Marginalia" : "Marginalia"}
-              keys="M"
+              keys={definedShortcut("reading.reader-marginalia")}
               iconOnly
               icon={BookOpenText}
               hint={

@@ -73,14 +73,14 @@ describe("TodoRow", () => {
     );
   });
 
-  test("the lit row offers Space done and o email; the unlit row's verbs wait for hover", () => {
+  test("the lit row offers e done and o email; the unlit row's verbs wait for hover", () => {
     const lit = renderRow(todoFixture(), "now", { lit: true });
     expect(lit.row).toHaveAttribute("data-lit", "true");
     expect(within(lit.row).getByTestId("todo-tick")).toBeVisible();
     expect(within(lit.row).getByRole("button", { name: "email" })).toBeVisible();
   });
 
-  test("Space done and o email call their handlers", () => {
+  test("e done and o email call their handlers", () => {
     const { row, props } = renderRow(todoFixture());
     fireEvent.click(within(row).getByTestId("todo-tick"));
     expect(props.onDone).toHaveBeenCalledWith(props.todo, "pointer");

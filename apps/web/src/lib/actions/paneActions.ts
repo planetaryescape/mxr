@@ -15,8 +15,11 @@ export const sidebarActions: ActionBehavior[] = [
   { id: "sidebar.top", command: "top" },
   { id: "sidebar.bottom", command: "bottom" },
   { id: "sidebar.open", command: "open" },
+  // Enter on a header folds it now; these keep their moved-key notices.
   { id: "sidebar.collapse", command: "collapse" },
   { id: "sidebar.expand", command: "expand" },
+  { id: "sidebar.prev-section", command: "prevSection" },
+  { id: "sidebar.next-section", command: "nextSection" },
 ];
 
 export const listActions: ActionBehavior[] = [

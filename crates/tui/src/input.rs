@@ -576,9 +576,6 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('V'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::VisualLineMode)
             }
-            (KeyState::Normal, KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
-                Some(Action::ExportThread)
-            }
             (KeyState::Normal, KeyCode::Char('F'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::ToggleFullscreen)
             }

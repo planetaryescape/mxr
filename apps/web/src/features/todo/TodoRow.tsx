@@ -374,12 +374,12 @@ export const TodoRow = memo(function TodoRow({
         done ? (
           <>
             <RowVerb keys="Enter" label="reopen" onClick={() => onRestore(todo)} />
-            <RowVerb keys="v" label="details" onClick={() => onToggleDetails(todo)} />
+            <RowVerb label="details" onClick={() => onToggleDetails(todo)} />
           </>
         ) : (
           <>
             <RowVerb
-              keys="Space"
+              keys="e"
               label="done"
               testId="todo-tick"
               ariaLabel={`Tick off ${todo.title}`}
@@ -388,7 +388,7 @@ export const TodoRow = memo(function TodoRow({
             {todo.thread_id ? (
               <RowVerb keys="o" label="email" onClick={() => onOpenEmail(todo)} />
             ) : null}
-            <RowVerb keys="v" label="details" onClick={() => onToggleDetails(todo)} />
+            <RowVerb label="details" onClick={() => onToggleDetails(todo)} />
           </>
         )
       }

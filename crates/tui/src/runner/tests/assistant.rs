@@ -408,7 +408,14 @@ fn updates_refetch_the_open_conversation_one_at_a_time() {
 fn delete_asks_the_daemon_first_and_confirms() {
     let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
     press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    // `D` deleted until K3; it says `#` does now and sends nothing.
     press(&mut app, KeyCode::Char('D'), KeyModifiers::SHIFT);
+    assert!(app.assistant.take_outbound().is_empty());
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Delete conversation is now #")
+    );
+    press(&mut app, KeyCode::Char('#'), KeyModifiers::SHIFT);
     let preview = app.assistant.take_outbound();
     assert!(matches!(
         preview.as_slice(),
@@ -460,7 +467,7 @@ fn summary(id: &str, title: &str) -> mxr_protocol::AssistantConversationSummaryD
 }
 
 #[test]
-fn shift_d_in_the_history_deletes_the_highlighted_conversation_after_a_dry_run() {
+fn hash_in_the_history_deletes_the_highlighted_conversation_after_a_dry_run() {
     let mut app = showing(conversation(AssistantStatusData::Idle, Vec::new()));
     press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
     press(&mut app, KeyCode::Char('L'), KeyModifiers::SHIFT);
@@ -473,6 +480,8 @@ fn shift_d_in_the_history_deletes_the_highlighted_conversation_after_a_dry_run()
     );
     press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
     press(&mut app, KeyCode::Char('D'), KeyModifiers::SHIFT);
+    assert!(app.assistant.take_outbound().is_empty(), "D moved to #");
+    press(&mut app, KeyCode::Char('#'), KeyModifiers::SHIFT);
     let preview = app.assistant.take_outbound();
     assert!(matches!(
         preview.as_slice(),

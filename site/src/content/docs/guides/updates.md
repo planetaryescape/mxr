@@ -145,7 +145,6 @@ The keys:
 | `y` | Copy the line's one-time code |
 | `o` | Open the email itself |
 | `s` | Pin or unpin the latest email behind this line |
-| `S` | Preview a sweep of this sender in this account; unavailable for parcels |
 | `u` | Undo |
 | `?` | What Updates is for, then its keys |
 
@@ -156,7 +155,9 @@ survives reloads; changes made in the CLI, terminal or web app appear when
 the digest refreshes. It protects that email from a sweep, rather than
 pinning every future email from the sender.
 
-Press `S` to preview a sender sweep. It applies to that line's account,
+To sweep the sender, choose **Sweep this sender out of Updates** in the
+palette (**Updates: sweep this sender out** in the TUI). It previews first,
+applies to that line's account,
 leaves pinned emails in place and asks before archiving. Cancel to leave
 the mail untouched, or use `u` after applying to undo it. Parcel trackers
 do not offer a sender sweep.

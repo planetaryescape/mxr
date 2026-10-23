@@ -35,7 +35,9 @@ const defined = (keymap.action as DefinedAction[]).filter(
   (action) => !action.clients || action.clients.includes("web"),
 );
 
-const TUI_ONLY_CONTEXTS = new Set(["place"]);
+// The TUI's place view and the screens that still read their own keys have
+// no web scope.
+const TUI_ONLY_CONTEXTS = new Set(["place", "rules", "accounts", "invites"]);
 
 function definedBindings(): string[] {
   const bindings: string[] = [];

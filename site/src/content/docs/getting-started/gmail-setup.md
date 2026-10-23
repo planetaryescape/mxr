@@ -70,7 +70,7 @@ mxr sync
 ### TUI setup
 
 1. Press `g` then `C` to open the Accounts page.
-2. Press `n` to add a new account.
+2. Press `c` to add a new account.
 3. Fill in your name and email, select Gmail as the sync and send provider.
 4. Select **custom** for credential source and paste your Client ID and Client Secret.
 5. Press `a` to authorize (opens browser for OAuth).

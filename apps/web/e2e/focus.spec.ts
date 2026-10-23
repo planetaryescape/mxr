@@ -135,10 +135,10 @@ test("g F works through the queue: send and next, skip, snooze, then a calm fini
   await expect(page.getByTestId("focus-progress-bar")).toHaveAttribute("style", /scaleX\(0\.333/);
   expect((await sent).ok()).toBe(true);
 
-  // Skip keeps it in the queue, at the end: Tab out of the reply, then s.
+  // Skip keeps it in the queue, at the end: Tab out of the reply, then j.
   await reply(page).locator(".cm-content").click();
   await page.keyboard.press("Tab");
-  await page.keyboard.press("s");
+  await page.keyboard.press("j");
   await expect(heading(page)).toHaveText(three[2]!.subject);
   await expect(progress).toContainText("2 of 3");
 
@@ -261,7 +261,7 @@ test("fast back and forth never loses the latest reply text", async ({ page }) =
   for (const next of [three[1]!, three[2]!, three[0]!]) {
     await reply(page).locator(".cm-content").click();
     await page.keyboard.press("Tab");
-    await page.keyboard.press("s");
+    await page.keyboard.press("j");
     await expect(heading(page)).toHaveText(next.subject);
     await expect(reply(page).locator(".cm-content")).toBeVisible();
   }
@@ -276,7 +276,7 @@ test("skipping the last one sets it aside, and you can come back to it", async (
   await expect(page.getByTestId("focus-progress")).toContainText("1 of 1");
   await reply(page).locator(".cm-content").click();
   await page.keyboard.press("Tab");
-  await page.keyboard.press("s");
+  await page.keyboard.press("j");
   const finish = page.getByTestId("focus-finish");
   await expect(finish).toContainText("1 conversation skipped.");
   await expect(finish).not.toContainText("That's everyone");
@@ -315,7 +315,7 @@ test("a cut-short lane says how many more are waiting, never that's everyone", a
   await expect(page.getByTestId("focus-progress")).toContainText("1 of 1");
   await reply(page).locator(".cm-content").click();
   await page.keyboard.press("Tab");
-  await page.keyboard.press("s");
+  await page.keyboard.press("j");
   const finish = page.getByTestId("focus-finish");
   await expect(finish).toContainText("That's this batch.");
   await expect(finish).toContainText("3 more conversations waiting on a reply.");

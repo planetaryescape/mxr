@@ -9,7 +9,14 @@ import { useMutation } from "@tanstack/react-query";
 import { useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { toast } from "sonner";
 
-import { addedSpans, mapModelSpans, NO_SPANS, type ModelSpan } from "../assist/modelSpans";
+import {
+  addedSpans,
+  carryModelSpans,
+  keptRuns,
+  mapModelSpans,
+  NO_SPANS,
+  type ModelSpan,
+} from "../assist/modelSpans";
 import { requestComposeAssist } from "../assist/api";
 import { helpAction, helpPlaceholder, type HelpLineState } from "../assist/helpLine";
 import { proofPieces } from "../assist/proof";
@@ -273,7 +280,23 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     if (live.text !== version.sentText) return;
     const { body, textStart } = joinTextRegion(live, version.proposal.text);
     const inserted = version.proposal.text.trimEnd().length;
-    const spans = mapModelSpans(current.modelSpans ?? NO_SPANS, current.bodyMarkdown, body);
+    const previous = current.modelSpans ?? NO_SPANS;
+    // The proof's own changes say exactly which characters survived. Only when
+    // they do not spell both texts is the whole-body diff used instead.
+    const kept = keptRuns(version.proposal.changes, live.text, version.proposal.text);
+    const spans = kept
+      ? carryModelSpans(
+          previous,
+          {
+            oldRegionStart: live.prefix.length,
+            oldRegionEnd: live.prefix.length + live.text.length,
+            newRegionStart: textStart,
+            insertedLength: inserted,
+            suffixShift: body.length - live.suffix.length - (live.prefix.length + live.text.length),
+          },
+          kept,
+        )
+      : mapModelSpans(previous, current.bodyMarkdown, body);
     const added = addedSpans(
       proofPieces(version.proposal.changes, version.proposal.gaps),
       textStart,

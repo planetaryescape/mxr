@@ -388,6 +388,76 @@ describe("useDraftAssist", () => {
     expect(init.body).toMatchObject({ action: "write" });
   });
 
+  test("accepting a greeting and sign-off keeps the mark on an unedited model sentence", async () => {
+    const marked = "Friday works.";
+    apiFetch.mockResolvedValue({
+      proposal: {
+        proposal_id: "p-g",
+        action: "finish",
+        base: "",
+        text: "Hi Pat,\n\nFriday works.\n\nThanks, B",
+        changes: [
+          { kind: "added", text: "Hi Pat,\n\n" },
+          { kind: "kept", text: marked },
+          { kind: "added", text: "\n\nThanks, B" },
+        ],
+        gaps: [],
+        provenance: null,
+        yours_changed: [],
+        composer_version: "1",
+      },
+    });
+    const { result } = renderHook(
+      () => useHarness(draftWith(marked, { modelSpans: [{ start: 0, end: marked.length }] })),
+      { wrapper },
+    );
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
+    act(() => result.current.assist.accept());
+
+    const body = result.current.draft?.bodyMarkdown ?? "";
+    expect(body).toBe("Hi Pat,\n\nFriday works.\n\nThanks, B");
+    const marks = (result.current.draft?.modelSpans ?? []).map((span) =>
+      body.slice(span.start, span.end),
+    );
+    expect(marks.sort()).toEqual(["\n\nThanks, B", "Friday works.", "Hi Pat,\n\n"].sort());
+  });
+
+  test("an edit inside a marked sentence clears only the edited words", async () => {
+    const marked = "Friday works.";
+    apiFetch.mockResolvedValue({
+      proposal: {
+        proposal_id: "p-e",
+        action: "finish",
+        base: "",
+        text: "Friday is set.",
+        changes: [
+          { kind: "kept", text: "Friday" },
+          { kind: "removed", text: " works." },
+          { kind: "added", text: " is set." },
+        ],
+        gaps: [],
+        provenance: null,
+        yours_changed: [],
+        composer_version: "1",
+      },
+    });
+    const { result } = renderHook(
+      () => useHarness(draftWith(marked, { modelSpans: [{ start: 0, end: marked.length }] })),
+      { wrapper },
+    );
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
+    act(() => result.current.assist.accept());
+
+    const body = result.current.draft?.bodyMarkdown ?? "";
+    expect(body).toBe("Friday is set.");
+    const marks = (result.current.draft?.modelSpans ?? []).map((span) =>
+      body.slice(span.start, span.end),
+    );
+    expect(marks.sort()).toEqual(["Friday", " is set."].sort());
+  });
+
   test("a forward sends its recipients as address objects", async () => {
     apiFetch.mockResolvedValue(proposal("FYI", [{ kind: "added", text: "FYI" }]));
     const forward: ComposeIntent = { key: "f", title: "Forward", kind: "forward", messageId: "m2" };

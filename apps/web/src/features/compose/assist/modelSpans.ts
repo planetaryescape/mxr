@@ -1,9 +1,10 @@
 /*
  * Model-written spans stay marked until the user edits them (D136). A span
- * is a UTF-16 range of the body. Edits arrive as whole-body replacements
- * from the editors, so the change is found as the one contiguous region
- * that differs; a span that overlaps it loses its mark, and spans after it
- * move with the text.
+ * is a UTF-16 range of the body. A user's typed edit arrives as a whole-body
+ * replacement, so the one contiguous region that differs is found and any
+ * span overlapping it loses its mark. An accepted proof carries its marks
+ * through its own kept runs instead (carryModelSpans): a sentence the model
+ * left alone keeps its mark even when the proof adds text around it.
  */
 
 import type { ProofPiece } from "./proof";
@@ -67,4 +68,93 @@ export function addedSpans(
     offset += piece.text.length;
   }
   return spans;
+}
+
+/** A run the proof kept: where it sits in the old text and in the new one. */
+export interface KeptRun {
+  /** Offset in the user's text before the accept. */
+  oldStart: number;
+  length: number;
+  /** Offset in the proof's text. */
+  newStart: number;
+}
+
+/**
+ * The kept runs of a proof, given the two texts they must spell. Returns null
+ * when the changes do not account for both texts exactly; the caller then
+ * falls back to the whole-body mapping rather than trust a bad diff.
+ */
+export function keptRuns(
+  changes: readonly { kind: string; text: string }[],
+  oldText: string,
+  newText: string,
+): KeptRun[] | null {
+  const runs: KeptRun[] = [];
+  let oldSpelled = "";
+  let newSpelled = "";
+  for (const change of changes) {
+    if (change.kind === "kept") {
+      runs.push({
+        oldStart: oldSpelled.length,
+        length: change.text.length,
+        newStart: newSpelled.length,
+      });
+      oldSpelled += change.text;
+      newSpelled += change.text;
+    } else if (change.kind === "removed") {
+      oldSpelled += change.text;
+    } else if (change.kind === "added") {
+      newSpelled += change.text;
+    } else {
+      return null;
+    }
+  }
+  return oldSpelled === oldText && newSpelled === newText ? runs : null;
+}
+
+/** Where the user's text sat before the accept and where the proof put it. */
+export interface ProofLayout {
+  oldRegionStart: number;
+  oldRegionEnd: number;
+  newRegionStart: number;
+  /** Length of the inserted text, without the blank space the insert drops. */
+  insertedLength: number;
+  /** How far the signature and whatever follows the text moved. */
+  suffixShift: number;
+}
+
+/**
+ * Carry marks through an accepted proof. A mark keeps the characters the proof
+ * kept and is cleared only where its own text was removed: a span over kept
+ * text moves with it, and a span across an edit keeps its unchanged parts.
+ * Text outside the user's region moves with the region's end.
+ */
+export function carryModelSpans(
+  spans: readonly ModelSpan[],
+  layout: ProofLayout,
+  kept: readonly KeptRun[],
+): ModelSpan[] {
+  const carried: ModelSpan[] = [];
+  const push = (start: number, end: number) => {
+    if (end > start) carried.push({ start, end });
+  };
+  for (const span of spans) {
+    push(span.start, Math.min(span.end, layout.oldRegionStart));
+    push(
+      Math.max(span.start, layout.oldRegionEnd) + layout.suffixShift,
+      span.end + layout.suffixShift,
+    );
+    const from = Math.max(span.start, layout.oldRegionStart) - layout.oldRegionStart;
+    const to = Math.min(span.end, layout.oldRegionEnd) - layout.oldRegionStart;
+    for (const run of kept) {
+      const runEnd = run.oldStart + run.length;
+      const start = Math.max(from, run.oldStart);
+      const end = Math.min(to, runEnd);
+      if (end <= start) continue;
+      const newStart = Math.min(start - run.oldStart + run.newStart, layout.insertedLength);
+      const newEnd = Math.min(end - run.oldStart + run.newStart, layout.insertedLength);
+      push(layout.newRegionStart + newStart, layout.newRegionStart + newEnd);
+    }
+  }
+  return carried;
 }

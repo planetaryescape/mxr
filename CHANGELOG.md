@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.156](https://github.com/planetaryescape/mxr/compare/v0.6.155...v0.6.156) (2026-10-23)
+
+
+### Features
+
+* move the rest of the verb table's single keys ([#683](https://github.com/planetaryescape/mxr/issues/683)) ([930f1c4](https://github.com/planetaryescape/mxr/commit/930f1c4a70e97939004b552352c9dba994fa7c18))
+
 ## [0.6.155](https://github.com/planetaryescape/mxr/compare/v0.6.154...v0.6.155) (2026-10-23)
 
 

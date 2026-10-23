@@ -258,6 +258,14 @@ reuse the stored answer without judging again. Activation selects that version
 and bounded startup/ingest reconciliation; evaluation never repairs it. Old
 version rows remain available for explicit comparisons.
 
+R2c's developing asks facet uses a separate `asks-r2c-1` policy in the
+assessment table. Its records include sent mail; home assessments remain
+inbound-only under `r2-1`. Inspect the stored facet and pending message IDs
+in `mxr modes why MESSAGE_ID --format json`. The existing To do and relationship
+consumers have not yet switched to it. See the
+[implementation contract](docs/implementation/r2c-asks/README.md) before
+connecting another consumer or interpreting these records as shipped R2c.
+
 `mxr classify report --limit 1000 --format json` counts stored fallbacks by
 home, sender kind, deciding rule and observed address/header/body facts. `mxr classify eval --compare POLICY`
 compares homes only when that policy version is retained locally. Coverage names compared emails, missing previous answers and pending current assessments. An

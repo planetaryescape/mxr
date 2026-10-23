@@ -173,7 +173,9 @@ impl super::Store {
         &self,
         accounts: &[AccountId],
     ) -> Result<Vec<String>, sqlx::Error> {
-        sqlx::query_scalar("SELECT DISTINCT policy_version FROM mail_assessments WHERE account_id IN (SELECT value FROM json_each(?)) ORDER BY policy_version")
+        // The asks namespace has a different payload and includes sent mail;
+        // home reports must never try to decode it as an inbound home row.
+        sqlx::query_scalar("SELECT DISTINCT policy_version FROM mail_assessments WHERE account_id IN (SELECT value FROM json_each(?)) AND policy_version NOT LIKE 'asks-%' ORDER BY policy_version")
             .bind(encode_json(&accounts.iter().map(AccountId::as_str).collect::<Vec<_>>())?).fetch_all(self.reader()).await
     }
 }

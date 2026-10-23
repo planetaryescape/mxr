@@ -316,6 +316,11 @@ where
             }
         }
         before_commit().await?;
+        if !super::ask_assessments::materialize(state, account, &messages, &revision, &is_self)
+            .await?
+        {
+            continue;
+        }
         if !state
             .store
             .save_assessment_batch(account, &revision, &answers)

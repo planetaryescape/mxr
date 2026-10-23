@@ -405,6 +405,15 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         .collect();
     let latest = thread.iter().max_by_key(|m| (m.date, m.seq));
     ThreadModesData {
+        asks: thread
+            .iter()
+            .filter_map(|m| inputs.senders.asks.get(&m.id).cloned())
+            .collect(),
+        asks_pending: thread
+            .iter()
+            .filter(|m| !inputs.senders.asks.contains_key(&m.id))
+            .map(|m| m.id.clone())
+            .collect(),
         assessments: thread
             .iter()
             .filter_map(|m| inputs.senders.assessments.get(&m.id).cloned())

@@ -260,6 +260,7 @@ pub(super) async fn attach_histories<'a>(
 /// shared classifier: contacts and screener decisions, keyed by lowercased
 /// email.
 pub(super) struct Senders {
+    pub asks: HashMap<MessageId, mxr_core::asks::AskAssessment>,
     pub assessments: HashMap<MessageId, mxr_core::assessment::MailAssessment>,
     pub contacts: HashMap<String, DeskContact>,
     pub written_to: HashSet<String>,
@@ -278,6 +279,8 @@ impl Senders {
     ) -> Result<Self, super::HandlerError> {
         let mut senders = Self::load_raw(state, account_id, messages).await?;
         senders.assessments = super::assessments::materialize(state, account_id, messages).await?;
+        let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
+        senders.asks = state.store.asks_for_messages(account_id, &ids).await?;
         Ok(senders)
     }
 
@@ -333,6 +336,7 @@ impl Senders {
             .filter_map(|(id, mode)| Some((id, mail_kind::kind_for_stored_mode(&mode)?)))
             .collect();
         Ok(Self {
+            asks: HashMap::new(),
             assessments: HashMap::new(),
             written_to: state
                 .store

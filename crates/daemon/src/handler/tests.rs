@@ -703,6 +703,7 @@ mod account_scope;
 mod archive_recovery;
 mod arrivals;
 mod arrivals_report;
+mod ask_assessments;
 mod assistant;
 mod assistant_models;
 mod body_and_invites;

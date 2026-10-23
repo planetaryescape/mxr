@@ -77,9 +77,9 @@ const CODES: &str = "GBP|USD|EUR|ZAR|CAD|AUD|NZD|CHF|SEK|NOK|DKK|INR|JPY";
 static AMOUNT: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
         r"(?x)
-        (?P<sym>[£$€])\s?(?P<n1>\d{{1,3}}(?:,\d{{3}})+(?:\.\d{{1,2}})?|\d+(?:\.\d{{1,2}})?)
-        | \b(?P<code1>{CODES})\s?(?P<n2>\d{{1,3}}(?:,\d{{3}})+(?:\.\d{{1,2}})?|\d+(?:\.\d{{1,2}})?)\b
-        | \b(?P<n3>\d{{1,3}}(?:,\d{{3}})+(?:\.\d{{1,2}})?|\d+(?:\.\d{{1,2}})?)\s?(?P<code2>{CODES})\b
+        (?P<sign1>[+-]?)(?P<sym>[£$€]|\bR)\s?(?P<n1>[+-]?(?:\d{{1,3}}(?:,\d{{3}})+(?:\.\d{{1,2}})?|\d+(?:\.\d{{1,2}})?))\b
+        | (?P<sign2>[+-]?)\b(?P<code1>{CODES})\s?(?P<n2>[+-]?(?:\d{{1,3}}(?:,\d{{3}})+(?:\.\d{{1,2}})?|\d+(?:\.\d{{1,2}})?))\b
+        | (?P<n3>[+-]?(?:\d{{1,3}}(?:,\d{{3}})+(?:\.\d{{1,2}})?|\d+(?:\.\d{{1,2}})?))\s?(?P<code2>{CODES})\b
         "
     ))
     .expect("valid amount regex")
@@ -111,14 +111,32 @@ const CONTEXT_WINDOW: usize = 60;
 
 /// Every amount in `text`, in order.
 pub fn find_amounts(text: &str) -> Vec<(usize, Amount)> {
+    find_candidates(text)
+        .into_iter()
+        .filter(|(_, amount)| amount.minor > 0)
+        .collect()
+}
+
+/// Signed and zero candidates are facts even when they cannot be money owed.
+/// The legacy positive-only selector and the asks judge share this parser.
+pub fn find_candidates(text: &str) -> Vec<(usize, Amount)> {
     AMOUNT
         .captures_iter(text)
         .filter_map(|caps| {
             let whole = caps.get(0)?;
+            // A shorter regex alternative must not turn malformed money
+            // such as £1.234 or £1,23 into a valid £1 candidate.
+            let tail = text.get(whole.end()..)?;
+            if tail.starts_with(['.', ','])
+                && tail.chars().nth(1).is_some_and(|c| c.is_ascii_digit())
+            {
+                return None;
+            }
             let (currency, number) = if let Some(sym) = caps.name("sym") {
                 let code = match sym.as_str() {
                     "£" => "GBP",
                     "$" => "USD",
+                    "R" => "ZAR",
                     _ => "EUR",
                 };
                 (code.to_string(), caps.name("n1")?.as_str())
@@ -130,9 +148,17 @@ pub fn find_amounts(text: &str) -> Vec<(usize, Amount)> {
                     caps.name("n3")?.as_str(),
                 )
             };
-            let minor = parse_minor(number)?;
-            // Zero is a "£0.00 to pay" summary line, never what is owed.
-            (minor > 0).then(|| {
+            let mut minor = parse_minor(number)?;
+            let prefix = caps.name("sign1").or_else(|| caps.name("sign2"));
+            if let Some(sign) = prefix.filter(|sign| !sign.as_str().is_empty()) {
+                if number.starts_with(['-', '+']) {
+                    return None;
+                }
+                if sign.as_str() == "-" {
+                    minor = minor.checked_neg()?;
+                }
+            }
+            Some({
                 (
                     whole.start(),
                     Amount {
@@ -150,14 +176,22 @@ pub fn find_amounts(text: &str) -> Vec<(usize, Amount)> {
 /// "1,249.00", "1249.5", "1249" to minor units, without floating point.
 pub fn parse_minor(number: &str) -> Option<i64> {
     let cleaned = number.replace(',', "");
-    let (whole, frac) = cleaned.split_once('.').unwrap_or((&cleaned, ""));
+    let negative = cleaned.starts_with('-');
+    let digits = cleaned.strip_prefix(['-', '+']).unwrap_or(&cleaned);
+    let (whole, frac) = digits.split_once('.').unwrap_or((digits, ""));
     let whole: i64 = whole.parse().ok()?;
     let frac: i64 = match frac.len() {
         0 => 0,
         1 => frac.parse::<i64>().ok()? * 10,
-        _ => frac.get(..2)?.parse().ok()?,
+        2 => frac.parse().ok()?,
+        _ => return None,
     };
-    whole.checked_mul(100)?.checked_add(frac)
+    let minor = whole.checked_mul(100)?.checked_add(frac)?;
+    if negative {
+        minor.checked_neg()
+    } else {
+        Some(minor)
+    }
 }
 
 /// The amount the email asks for, ranked by the words before each
@@ -265,5 +299,42 @@ mod tests {
         assert_eq!(format_amount(14200, "GBP"), "£142.00");
         assert_eq!(format_amount(1_500_000, "USD"), "$15,000.00");
         assert_eq!(format_amount(1250, "ZAR"), "ZAR 12.50");
+    }
+
+    #[test]
+    fn signed_and_zero_candidates_share_the_positive_selector_parser() {
+        let text = "-£12.50 £-0.25 €0.00 R1,234.50 +USD 20";
+        let candidates = find_candidates(text);
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|(_, a)| (a.minor, a.currency.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (-1250, "GBP"),
+                (-25, "GBP"),
+                (0, "EUR"),
+                (123450, "ZAR"),
+                (2000, "USD")
+            ]
+        );
+        assert_eq!(
+            find_amounts(text)
+                .iter()
+                .map(|(_, a)| a.minor)
+                .collect::<Vec<_>>(),
+            [123450, 2000]
+        );
+        assert_eq!(parse_minor("-1.25"), Some(-125));
+        assert_eq!(parse_minor("-0.25"), Some(-25));
+        assert_eq!(parse_minor("1.234"), None);
+        assert_eq!(parse_minor("9223372036854775807.00"), None);
+    }
+
+    #[test]
+    fn malformed_decimal_and_thousands_do_not_become_partial_candidates() {
+        for text in ["£1.234", "£1,23", "R2D2", "-£-12", "USD -+12"] {
+            assert!(find_candidates(text).is_empty(), "{text}");
+        }
     }
 }

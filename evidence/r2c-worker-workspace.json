@@ -1,0 +1,143 @@
+{
+  "recorded_at": "2026-10-23T21:08:42.489338+00:00",
+  "canonical_path": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b",
+  "common_git_dir": "/Users/bhekanik/code/planetaryescape/mxr/.git",
+  "head": "cd08cfe5eb72b0959bc623ad15439bbf09cbe2c3",
+  "branch": "t3/asks-r2c-to-do-classifier",
+  "base": "cd08cfe5eb72b0959bc623ad15439bbf09cbe2c3",
+  "merge_base": "cd08cfe5eb72b0959bc623ad15439bbf09cbe2c3",
+  "initial_dirty_state": "",
+  "fetch": "git fetch https://github.com/planetaryescape/mxr.git main:refs/remotes/origin/main",
+  "directories": {
+    "target": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b/target-cli",
+    "target_exists": false,
+    "dependencies": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b/apps/web/node_modules",
+    "dependencies_exist": false,
+    "runtime": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b/.r2c-runtime",
+    "runtime_exists": false,
+    "target_configuration": ".cargo/config.toml and scripts/cargo-test both select target-cli"
+  },
+  "ownership": {
+    "build_processes": [],
+    "runtime_processes": [],
+    "queue_jobs": [],
+    "foreign_processes": "Observed foreign queue jobs 252,255,257 running and 258,260,261 queued; none owned by this candidate. No process stopped.",
+    "sccache": "shared preserved"
+  },
+  "storage": {
+    "total_bytes": 7998551654400,
+    "used_bytes": 5025655619584,
+    "free_bytes": 2972896034816
+  },
+  "limits": {
+    "child_target_gib": 60,
+    "whole_run_gib": 100,
+    "workers": 4,
+    "round_minutes": 45,
+    "build_measure_after_minutes": 3,
+    "local_eval_minutes": 5,
+    "ports": [
+      5573,
+      22777,
+      22778
+    ]
+  },
+  "real_mail": "prohibited; fake-only runtime not started",
+  "measurements": [
+    {
+      "at": "2026-10-23T21:17:14.702895+00:00",
+      "target_kib": 809676,
+      "check": "initial build measured after first compile failure; same target reused",
+      "initial_build": "agent-work task 252, tool session 6377, exit 101: encode_json slice Sized; corrected with reference to slice",
+      "second_build": "agent-work task 252, tool session 34963, waiting for normal memory pressure and at least 25% available memory",
+      "owned_runtime": []
+    },
+    {
+      "at": "2026-10-23T21:21:35.263263+00:00",
+      "target_kib": 809676,
+      "second_build_pid": 1035,
+      "queue_executor_pid": 1046,
+      "queue_task_id": 252,
+      "macos_pressure_level": 2,
+      "memory_pressure_free_percent": 40,
+      "meaning": "agent-work requires pressure level 1 and at least 25% free; no override or foreign process termination"
+    },
+    {
+      "at": "2026-10-23T21:45:13.636682+00:00",
+      "target_kib": 809676,
+      "parent_web_node_modules_kib": 415556,
+      "external_evidence_kib": 48668,
+      "child_web_dependencies": false,
+      "child_site_dependencies": false,
+      "runtime_created": false,
+      "own_active_jobs": [],
+      "own_runtime_processes": [],
+      "memory_pressure_level": 2
+    }
+  ],
+  "checks": [
+    {
+      "command": "CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 RAYON_NUM_THREADS=4 agent-work run -- scripts/cargo-test -p mxr-todo --tests asks::",
+      "session_id": 6377,
+      "queue_id": 252,
+      "result": "exit 101; encode_json(ids) required Sized; fixed encode_json(&ids)"
+    },
+    {
+      "command": "CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 RAYON_NUM_THREADS=4 agent-work run -- scripts/cargo-test -p mxr-todo --tests asks::",
+      "session_id": 34963,
+      "queue_id": 252,
+      "pid": 1035,
+      "executor_pid": 1046,
+      "result": "waiting at memory pressure gate; no override"
+    },
+    {
+      "command": "rustfmt --edition 2021 [changed/new Rust modules]",
+      "result": "exit 0; syntax parsed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "exit 0"
+    },
+    {
+      "command": "agent-work run -- env CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 NEXTEST_TEST_THREADS=4 RAYON_NUM_THREADS=4 scripts/cargo-test -p mxr-todo --tests asks::",
+      "session_id": 38048,
+      "queue_id": 258,
+      "caller_pid": 84363,
+      "executor_pid": 88795,
+      "result": "memory gate never started Cargo; cancelled owned job at 2026-10-23T21:42:24Z; exit 143"
+    },
+    {
+      "command": "agent-work cancel 252",
+      "result": "cancelled own waiting job; exit 0; waiting caller session 34963 exit 143"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "exit 0 after final formatting; session 88667"
+    },
+    {
+      "command": "scripts/check_architecture_boundaries.sh",
+      "result": "exit 0: Architecture boundaries ok"
+    },
+    {
+      "command": "node site/scripts/validate-docs.mjs",
+      "result": "exit 0: [docs-validate] ok (265 OpenAPI paths)"
+    },
+    {
+      "command": "scripts/pre-pr-rust-gate --list",
+      "result": "mxr, mxr-core, mxr-protocol, mxr-store, mxr-todo; full gate not run"
+    }
+  ],
+  "latest_remote": {
+    "fetched_at": "2026-10-23T21:45:13.628086+00:00",
+    "origin_main": "a9b1346f763e7f43a1ece10f50c63b74140f0f12",
+    "pinned_initial_base": "cd08cfe5eb72b0959bc623ad15439bbf09cbe2c3",
+    "remote_changes": "43 docs/site/marketing files; git diff --quiet cd08..origin/main -- crates apps/web Cargo.toml Cargo.lock returned 0",
+    "next": "commit then rebase clean isolated candidate onto fetched origin/main"
+  },
+  "worker_limit_incident": {
+    "observation": "agent-work execute() overwrites CARGO_BUILD_JOBS/RUST_TEST_THREADS/NEXTEST_TEST_THREADS/RAYON_NUM_THREADS with 5 before spawning child",
+    "impact": "first compile received wrapper defaults despite outer env=4; later attempts never reached Cargo",
+    "fix": "all following heavy commands must put env=4 after agent-work run --",
+    "source": "~/.dotfiles/bin/agent-work:76-82"
+  }
+}

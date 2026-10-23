@@ -147,6 +147,12 @@ pub struct ScreenerChoiceData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadModesData {
+    /// The independently versioned asks facet includes sent mail as well as received mail.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asks: Vec<mxr_core::asks::AskAssessment>,
+    /// Missing or invalidated asks are pending; readers never invent a replacement.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asks_pending: Vec<MessageId>,
     /// The stored answers behind this thread's memberships; live marks stay separate.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assessments: Vec<mxr_core::assessment::MailAssessment>,
@@ -306,5 +312,20 @@ mod tests {
                 serde_json::Value::String(mode.id().to_string())
             );
         }
+    }
+
+    #[test]
+    fn legacy_membership_defaults_asks_without_changing_protocol_version() {
+        let old = serde_json::json!({
+            "account_id": mxr_core::AccountId::new(),
+            "thread_id": mxr_core::ThreadId::new(),
+            "subject": "Subject", "modes": [], "in_inbox": false
+        });
+        let parsed: ThreadModesData = serde_json::from_value(old).unwrap();
+        assert!(parsed.asks.is_empty());
+        assert!(parsed.asks_pending.is_empty());
+        let encoded = serde_json::to_value(parsed).unwrap();
+        assert!(encoded.get("asks").is_none());
+        assert!(encoded.get("asks_pending").is_none());
     }
 }

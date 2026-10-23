@@ -15,6 +15,7 @@ mod admin;
 mod archive_ask;
 mod archive_recovery;
 pub(crate) mod arrivals;
+mod ask_assessments;
 pub(crate) mod assessments;
 mod assistant;
 mod auth_sessions;

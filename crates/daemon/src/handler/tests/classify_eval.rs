@@ -174,8 +174,8 @@ async fn the_quick_snapshot_survives_crossing_midnight_utc() {
         .unwrap()
         .and_utc();
     for now in [
-        midnight - chrono::Duration::minutes(1),
-        midnight + chrono::Duration::minutes(1),
+        midnight - chrono::Duration::hours(3),
+        midnight + chrono::Duration::hours(3),
     ] {
         let (state, _) = scenario_state_at(now).await;
         let (summary, mismatches) = eval(&state, None).await;

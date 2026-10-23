@@ -101,7 +101,7 @@ impl super::Store {
                 homes.insert(answer.message_id.clone(), answer);
             }
         }
-        homes.retain(|id, _| asks.contains_key(id));
+        homes.retain(|id, _| asks.get(id).is_some_and(|a| !a.facts.owner_authored));
         Ok((homes, asks))
     }
 

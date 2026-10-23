@@ -9,6 +9,7 @@ pub(super) async fn page(
     account: &AccountId,
     now: DateTime<Utc>,
 ) -> Result<bool, HandlerError> {
+    state.store.complete_answered_rsvp_todos(now).await?;
     let legacy = state.store.legacy_asks_todos(account).await?;
     if legacy.is_empty() {
         return Ok(true);

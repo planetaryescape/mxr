@@ -1,8 +1,10 @@
 # R2c has stored projections and still needs acceptance
 
 Continue in the canonical worker checkout and `target-cli`. The candidate
-is unfinished: Rust compilation, canonical generators, evaluator floors,
-public fake-mail journeys and the actual UI design matrix have not passed.
+is unfinished: targeted storage and component checks have passed, and the
+OpenAPI and TypeScript contracts are generated. Daemon lifecycle checks,
+evaluator floors, public fake-mail journeys and the actual UI design matrix
+still require acceptance.
 The accepted contract remains [blueprint 37](../../blueprint/37-what-it-asks.md).
 Do not merge this candidate as completed R2c.
 
@@ -79,9 +81,9 @@ confirmations still offer completion rather than guessing that work is done.
 
 Migration 98 adds correction snapshots with a reason constraint. Backup
 inventory and the old-schema comparison include its inverse. Wire protocol
-and the web expectation are 26. OpenAPI, generated TypeScript and schema
-snapshots must be regenerated before integration; they remain stale in
-this unfinished candidate.
+and the web expectation are 26. OpenAPI and generated TypeScript come from the canonical exporters. Schema
+and CLI help snapshots require their corresponding test generators and
+review before integration.
 
 ## Run the focused gates before accepting the candidate
 

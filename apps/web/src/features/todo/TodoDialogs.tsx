@@ -115,7 +115,9 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
   const active = useRef(true);
   const inFlight = useRef(false);
   const currentId = useRef(todo.id);
-  currentId.current = todo.id;
+  useEffect(() => {
+    currentId.current = todo.id;
+  }, [todo.id]);
   useEffect(() => {
     active.current = true;
     return () => {

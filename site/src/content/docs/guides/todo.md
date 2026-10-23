@@ -4,8 +4,8 @@ description: Review task dates, finish work, and schedule what can wait.
 ---
 
 Open To do to act on what an email asks you to do. Rows show an action title,
-the counterparty, and any extracted amount or dates, so you can decide what
-to do before opening the full email.
+who asked or what you promised, the source quote, and any extracted amount
+or dates. Calendar requests identify the invite as their source.
 
 ```bash
 mxr todo

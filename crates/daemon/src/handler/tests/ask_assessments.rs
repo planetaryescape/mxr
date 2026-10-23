@@ -673,3 +673,126 @@ async fn already_done_bill_files_archive_and_undo_removes_only_its_filing() {
         Some(row)
     );
 }
+
+#[tokio::test]
+async fn legacy_ics_upgrade_keeps_one_row_and_user_history_then_partstat_completes() {
+    use mxr_store::TodoState;
+    for (state, edited) in [
+        (TodoState::Open, false),
+        (TodoState::Open, true),
+        (TodoState::Done, false),
+        (TodoState::Dismissed, false),
+    ] {
+        let fx = Fixture::new().await;
+        let thread = ThreadId::new();
+        let mail = fx
+            .message(
+                &thread,
+                "organizer@example.com",
+                ME,
+                Duration::minutes(5),
+                None,
+            )
+            .await;
+        let mut metadata = mxr_core::MessageMetadata::default();
+        metadata.calendar = Some(mxr_core::CalendarMetadata {
+            method: Some("REQUEST".into()),
+            uid: Some("invite-uid".into()),
+            summary: Some("Planning".into()),
+            starts_at: Some("20261101T090000Z".into()),
+            rsvp_requested: true,
+            attendees: vec![mxr_core::CalendarAttendee {
+                email: ME.into(),
+                name: None,
+                uri: None,
+                partstat: Some("NEEDS-ACTION".into()),
+                role: None,
+                rsvp: Some(true),
+            }],
+            ..Default::default()
+        });
+        fx.state
+            .store
+            .insert_body(&MessageBody {
+                message_id: mail.id.clone(),
+                text_plain: Some("Calendar invitation".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: mail.date,
+                metadata,
+            })
+            .await
+            .unwrap();
+        membership(&fx, &thread).await;
+        let mut old = fx
+            .state
+            .store
+            .list_todos_in_state(Some(&fx.account), TodoState::Open, 100)
+            .await
+            .unwrap()
+            .remove(0);
+        sqlx::query("DELETE FROM todos WHERE id = ?")
+            .bind(&old.id)
+            .execute(fx.state.store.writer())
+            .await
+            .unwrap();
+        old.origin = "ics".into();
+        old.rules_version = 1;
+        old.dedup_key = format!("rsvp|{thread}|planning");
+        old.field_sources = "{}".into();
+        old.state = state;
+        old.user_edited = edited;
+        if edited {
+            old.title = "My planning title".into();
+        }
+        fx.state.store.insert_todo(&old).await.unwrap();
+        crate::handler::asks_upgrade::page(&fx.state, &fx.account, chrono::Utc::now())
+            .await
+            .unwrap();
+        crate::handler::assessments::reconcile_dirty_page(&fx.state, &fx.account, None)
+            .await
+            .unwrap();
+        let current = fx.state.store.get_todo(&old.id).await.unwrap().unwrap();
+        assert_eq!(current.state, state);
+        assert_eq!(current.title, old.title);
+        let count: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM todos WHERE source_message_id = ?")
+                .bind(mail.id.as_str())
+                .fetch_one(fx.state.store.reader())
+                .await
+                .unwrap();
+        assert_eq!(count, 1);
+        crate::handler::asks_upgrade::page(&fx.state, &fx.account, chrono::Utc::now())
+            .await
+            .unwrap();
+        crate::handler::assessments::reconcile_dirty_page(&fx.state, &fx.account, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            fx.state.store.get_todo(&old.id).await.unwrap().unwrap(),
+            current
+        );
+        if state == TodoState::Open {
+            fx.state
+                .store
+                .update_calendar_invite_partstat(&mail.id, ME, "ACCEPTED")
+                .await
+                .unwrap();
+            fx.state
+                .store
+                .complete_answered_rsvp_todos(chrono::Utc::now())
+                .await
+                .unwrap();
+            assert_eq!(
+                fx.state
+                    .store
+                    .get_todo(&old.id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .state,
+                TodoState::Done
+            );
+        }
+    }
+}

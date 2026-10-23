@@ -28,7 +28,9 @@ impl Store {
             if row.state != crate::TodoState::Open || row.user_touched() {
                 return true;
             }
-            if row.rules_version < 2 && matches!(row.origin.as_str(), "rule" | "schema" | "model") {
+            if row.rules_version < 2
+                && matches!(row.origin.as_str(), "rule" | "schema" | "model" | "ics")
+            {
                 return false;
             }
             if !row.has_stored_asks() {
@@ -67,7 +69,7 @@ impl Store {
         &self,
         account: &AccountId,
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
-        let sql = format!("SELECT {} FROM todos WHERE account_id = ? AND rules_version < 2 AND origin IN ('rule', 'schema', 'model') ORDER BY id LIMIT 100", crate::todos::COLUMNS);
+        let sql = format!("SELECT {} FROM todos WHERE account_id = ? AND rules_version < 2 AND origin IN ('rule', 'schema', 'model', 'ics') ORDER BY id LIMIT 100", crate::todos::COLUMNS);
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account.as_str())
             .fetch_all(self.reader())

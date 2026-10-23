@@ -143,14 +143,25 @@ impl SyncEngine {
             .collect())
     }
 
+    /// Whether the screener applies to this sender. Screening follows owned
+    /// addresses only: a message from an owned address is never screened,
+    /// whatever its SENT flag says. Until the address lookup is loaded nothing
+    /// is screened, the same as before direction was known.
+    fn screens_sender(&self, account_id: &AccountId, from_email: &str) -> bool {
+        self.address_lookup.is_loaded()
+            && !self
+                .address_lookup
+                .is_account_address(account_id, from_email)
+    }
+
     /// Takes the envelope by value: sync routes a whole page at a time and
     /// a clone per message doubles the page's peak memory.
     async fn apply_screener_decision(
         &self,
         envelope: Envelope,
-        direction: MessageDirection,
+        screened: bool,
     ) -> Result<Envelope, MxrError> {
-        if direction != MessageDirection::Inbound {
+        if !screened {
             return Ok(envelope);
         }
 
@@ -202,8 +213,10 @@ impl SyncEngine {
             &synced.envelope.from.email,
             synced.envelope.flags,
         );
+        let screened =
+            self.screens_sender(&synced.envelope.account_id, &synced.envelope.from.email);
         let mut envelope = self
-            .apply_screener_decision(synced.envelope.clone(), direction)
+            .apply_screener_decision(synced.envelope.clone(), screened)
             .await?;
 
         // The store keeps the id an existing row already has, so everything
@@ -409,8 +422,10 @@ impl SyncEngine {
                     &synced.envelope.from.email,
                     synced.envelope.flags,
                 );
+                let screened =
+                    self.screens_sender(&synced.envelope.account_id, &synced.envelope.from.email);
                 let mut envelope = self
-                    .apply_screener_decision(synced.envelope, direction)
+                    .apply_screener_decision(synced.envelope, screened)
                     .await?;
 
                 // Derive link-density inputs from the normalized body so the

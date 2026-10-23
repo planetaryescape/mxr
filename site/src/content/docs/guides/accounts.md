@@ -121,7 +121,9 @@ as `Sent`, `Sent Items`, `Sent Mail` or `Sent Messages`. A localised Sent folder
 does not count yet, because mxr does not read the folder's special-use
 attribute. Screening still follows owned addresses only: a message from a
 screened sender is screened unless its From is one of your addresses, whatever
-the sent mark says. The current primary address cannot be removed; `remove` fails
+the sent mark says.
+
+The current primary address cannot be removed; `remove` fails
 with `cannot remove the primary address; set another address as primary first`,
 so promote another address with `set-primary` first.
 
@@ -243,8 +245,8 @@ the finding suggests. Once the set rebuilds, the next sync
 pass reclassifies the `Unknown` rows.
 
 Registering an alias reclassifies mail that is already stored. Messages you
-sent from an alias you never registered still count as sent when the provider
-filed them as sent, which is the case for Gmail send-as addresses.
+sent from an alias you never registered still count as sent when Gmail marks
+them SENT, as it does for send-as addresses.
 
 ## Selecting an account
 

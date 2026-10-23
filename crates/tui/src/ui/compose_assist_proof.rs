@@ -98,10 +98,7 @@ fn draw_with_color_mode(
     let scroll = usize::from(scroll_offset)
         .min(max_scroll)
         .min(u16::MAX as usize) as u16;
-    frame.render_widget(
-        paragraph.scroll((scroll, 0)),
-        inner,
-    );
+    frame.render_widget(paragraph.scroll((scroll, 0)), inner);
 }
 
 fn proof_keys() -> &'static BTreeMap<&'static str, &'static str> {

@@ -16,6 +16,7 @@ import { createPortal } from "react-dom";
 import { PageError } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 import { overlayMotion, scrimMotion, sheetMotion } from "@/components/ui/motion";
+import { PHONE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { focusActivePane } from "@/lib/keys/focusPane";
 import { cn } from "@/lib/utils";
 import { ComposeEditorPanel } from "./ComposeEditorPanel";
@@ -139,12 +140,19 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   // list never throws a modal over it.
   const sheet = surface !== "inline";
   const inThread = surface === "inline" && slot !== null;
+  // On a phone the corner window would cover most of the list, so the docked
+  // draft is its title bar alone; reopening the conversation brings it back
+  // inline, and Popout or Fullscreen open it in place.
+  const phone = useMediaQuery(PHONE_QUERY);
+  const dockedBar = phone && surface === "inline" && slot === null;
   const chrome = (
     <div
       data-compose-surface
       className={cn(
         "flex min-h-0 flex-col overflow-hidden border border-rule",
-        inThread ? "max-h-[70vh] min-h-[320px] bg-background" : "h-full bg-ink-overlay shadow-2xl",
+        inThread
+          ? "max-h-[70vh] min-h-[320px] bg-background"
+          : cn("bg-ink-overlay shadow-2xl", !dockedBar && "h-full"),
       )}
       onKeyDown={(event) => {
         if (isComposeActionChord(event, "compose.fullscreen")) {
@@ -186,7 +194,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
           </Button>
         </span>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col">{body}</div>
+      {dockedBar ? null : <div className="flex min-h-0 flex-1 flex-col">{body}</div>}
     </div>
   );
 
@@ -201,7 +209,11 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
       <div
         role="dialog"
         aria-label={intent.title}
-        className="fixed bottom-4 right-4 z-40 flex h-[min(640px,calc(100vh-6rem))] w-[min(680px,calc(100vw-3rem))] flex-col"
+        className={
+          dockedBar
+            ? "fixed inset-x-4 bottom-4 z-40 flex flex-col"
+            : "fixed bottom-4 right-4 z-40 flex h-[min(640px,calc(100vh-6rem))] w-[min(680px,calc(100vw-3rem))] flex-col"
+        }
       >
         {chrome}
       </div>

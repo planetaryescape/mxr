@@ -79,15 +79,26 @@ for (const width of [390, 1440, 1920, 2560]) {
       expect(count).toBeGreaterThan(0);
       for (let at = 0; at < count; at += 1) {
         const row = rows.nth(at);
-        // At rest a wide row shows its date; the check takes the slot on hover.
+        // On hover the check takes the marks' slot; the time stays after it (D148).
         await row.hover();
         const done = await box(row.getByTestId("now-done"));
         const rowBox = await box(row);
         // Inside the row, which is inside the column.
         expect(rowBox.x + rowBox.width).toBeLessThanOrEqual(right + 1);
         expect(done.x + done.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
-        // Against the row's right edge, not floating mid-row.
-        expect(rowBox.x + rowBox.width - (done.x + done.width)).toBeLessThan(24);
+        // The trail ends against the row's right edge, not floating mid-row:
+        // the check, or the time or due label that stays after it.
+        const end = await row.evaluate((el) =>
+          Math.max(
+            ...[...el.querySelectorAll("*")]
+              .filter((leaf) => leaf.childElementCount === 0 && leaf.textContent?.trim())
+              .map((leaf) => leaf.getBoundingClientRect())
+              .filter((rect) => rect.width > 0)
+              .map((rect) => rect.right),
+          ),
+        );
+        expect(done.x + done.width).toBeLessThanOrEqual(end + 1);
+        expect(rowBox.x + rowBox.width - end).toBeLessThan(24);
       }
 
       // The teaching card's prose keeps a readable measure.

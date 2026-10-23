@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.154](https://github.com/planetaryescape/mxr/compare/v0.6.153...v0.6.154) (2026-10-23)
+
+
+### Features
+
+* move the first keys to the chapter 35 map, announcing each old key ([#676](https://github.com/planetaryescape/mxr/issues/676)) ([348789d](https://github.com/planetaryescape/mxr/commit/348789d3b08a718c08f5bda6eeec2c0a54e58496))
+
+
+### Bug Fixes
+
+* pin the full classifier eval's clock so it grades the same at any hour ([#680](https://github.com/planetaryescape/mxr/issues/680)) ([7a8d624](https://github.com/planetaryescape/mxr/commit/7a8d624bad1e42d093170d4bcad9400ca4422832))
+* reclassify stored mail when an account's addresses change ([#665](https://github.com/planetaryescape/mxr/issues/665)) ([015f9e8](https://github.com/planetaryescape/mxr/commit/015f9e8ae2065c9c8c5e20e8e18a5b78aaeadd6d))
+
+
+### Documentation
+
+* record that the full classifier eval depends on the time of day ([6085bce](https://github.com/planetaryescape/mxr/commit/6085bce141af6ee4090eb38857e36a90271a0a2e))
+
 ## [0.6.153](https://github.com/planetaryescape/mxr/compare/v0.6.152...v0.6.153) (2026-10-23)
 
 

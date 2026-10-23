@@ -3,10 +3,12 @@ title: LLM features (summarize, draft assist)
 description: Configure Ollama, LM Studio, Claude through Anthropic, GPT models through OpenAI (each with OpenRouter as fallback), or any OpenAI-compatible endpoint for thread summarisation and draft assist in mxr.
 ---
 
-## Every model feature uses the backend you configure here
+## Configure mxr-native model features
 
-Set up the model backend once, under `[llm]`, and every synthesis feature
-in mxr uses it. Each feature has its own guide:
+mxr-native model features are disabled by default. The base `[llm]` config
+uses a local Ollama endpoint and model; each feature can override enabled
+state, endpoint, model, key source, context window, or timeout. Omitted
+override values inherit from the base config. Each feature has its own guide:
 
 | Feature | Guide | What the LLM does |
 |---|---|---|
@@ -29,9 +31,18 @@ Pure LLM commands such as `mxr summarize` and `mxr draft-assist` return
 or safety checks, return the local fallback instead of pretending synthesis
 succeeded.
 
-Enable LLM features by setting `[llm] enabled = true` in your config and
-pointing at any backend that speaks the **OpenAI Chat Completions**
-schema.
+Enable a native feature by setting `[llm] enabled = true` in your config.
+The external agent that calls mxr supplies its own reasoning model and does
+not need an mxr-native model configured to run local searches or other
+daemon operations. If the agent uses a hosted model, mail results returned
+to it leave the machine through that agent's model service. The built-in
+[assistant](/guides/assistant/) is a separate client experience; its model
+picker is configured through the native `assistant` feature override.
+
+Recognized `claude-*` and `gpt-*` model IDs route to Anthropic or OpenAI,
+with OpenRouter as fallback. Other model IDs use the configured compatible
+endpoint. Check `mxr llm status --format json` to see the effective native
+configuration; a missing `base_url` does not mean every model is local.
 
 ## Backends supported
 
@@ -268,35 +279,14 @@ The keys are `summarize` (which also covers gists and `mxr triage`),
 tools). The relationship rule above still applies to an override that
 points at a cloud endpoint.
 
-## Fast and smart tiers are planned for the email modes
+## Model tiers for email modes are planned
 
-The [email modes](/guides/email-modes/) plan adds model work that reads
-more of your mail, so it splits that work into two tiers instead of one
-model for everything. None of this is in a release yet.
-
-- `llm.tiers.fast` will place incoming mail in a mode. It reads every new
-  message, so it runs on a loopback endpoint unless you point it at a cloud
-  endpoint and set `allow_cloud_background_classification = true`. A cloud
-  model you set up for drafting will never start classifying all your mail
-  on its own.
-- `llm.tiers.smart` will pull out fields that need care, such as the amount
-  and deadline of a bill. It only sees mail already in To do, Archive or
-  Messages. Without a cloud model it runs locally and marks its fields
-  unchecked. Archive ships without it: today its record fields come from
-  schema.org markup and labelled lines, and the smart tier will read record
-  fields the rules miss in a later phase.
-- `escalate`, an optional stronger model on the same provider and key, will
-  take over when the smart model's answer fails the check that amounts and
-  dates appear word for word in the email.
-- A cloud tier will need an API key (`api_key_env`), so cloud work stays
-  under the provider's API data terms.
-- Running both tiers in the cloud, with no local model server, will be a
-  supported setup. Turning it on will say plainly that the text of every
-  incoming message goes to that provider.
-
-`llm.overrides` keeps working when the tiers land. The design is in
-[22. Email is five apps](https://github.com/planetaryescape/mxr/blob/main/docs/blueprint/22-email-modes.md)
-and decision D114.
+The current mode classifier assigns deterministic placements during sync;
+that work does not require an LLM. The `fast` and `smart` model tiers in
+[the email modes plan](/guides/email-modes/) are future work. They are not
+current configuration keys or shipped model behavior. Current background
+model calls, including delivery confirmation and configured gists, are
+listed in [what each request sends](#know-what-each-request-sends-and-where).
 
 ## Recommended local models
 

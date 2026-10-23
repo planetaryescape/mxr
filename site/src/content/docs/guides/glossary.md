@@ -208,14 +208,13 @@ per-email correction with `mxr reclassify MESSAGE_ID MODE --dry-run`; use
 `--sender` when the choice should apply to that sender's mail. See
 [Start from Now](/guides/now/#move-an-email-to-where-it-belongs).
 
-**Fast tier** (planned): model work that touches every incoming message,
-such as deciding its mode. Runs on your local model by default; a cloud
-model only with your explicit opt-in and your own API key.
+**Fast tier** (planned): proposed model-assisted work for every incoming
+message. Current mode placement is deterministic; `fast` is not a shipped
+configuration key or model path.
 
-**Smart tier** (planned): model work that needs care, such as pulling the
-amount and deadline from a bill. It sees only mail already placed in To
-do, Archive or Messages. Can step up (**escalate**) to a stronger model
-when its answer fails the check that amounts and dates appear verbatim.
+**Smart tier** (planned): proposed model-assisted extraction for selected
+mail. It is not a shipped configuration key or model path. See the
+[LLM features guide](/guides/llm-features/#model-tiers-for-email-modes-are-planned).
 
 **Index recipe**: what each mode indexes for semantic search. Archive's
 ships: one field chunk per record email plus its PDF text. The other modes'
@@ -260,6 +259,15 @@ mxr gates every send through a [seven-check pipeline](/guides/pre-send-safety/) 
 **Safety audit**: every safety run is persisted to `draft_safety_runs` (verdict + redacted issues). Every override consumption is persisted to `draft_safety_overrides`. PII is never persisted raw, only redacted previews.
 
 ## AI features
+
+**External agent model**: the reasoning model selected by a coding-agent
+host. It is separate from mxr's native model configuration; mail returned to
+a hosted agent can leave the machine through that host's model service. See
+[For agents](/guides/for-agents/) and [LLM features](/guides/llm-features/).
+
+**mxr-native model feature**: a model-backed operation configured through
+`[llm]`, disabled by default and optionally overridden per feature. The
+built-in assistant uses the native `assistant` feature configuration.
 
 mxr ships AI features that run above the core mail model. None of them mutate
 anything; synthesis from message evidence is citation-backed, while

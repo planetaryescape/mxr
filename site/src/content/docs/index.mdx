@@ -87,7 +87,7 @@ hero:
 
 <div class="home-runtime" aria-label="How mxr fits with mail connectors and other clients">
   <p>A connector may be all you need to use Gmail inside your agent. Choose mxr when you also want the synced mailbox on your computer, available to your own tools and to clients you can use yourself.</p>
-  <p>The daemon handles sync, storage, search and mail operations. The web app, terminal interface, CLI and agent interfaces call it. Build another client without rebuilding the mail engine.</p>
+  <p>The daemon coordinates sync, local storage, search and mail operations. The web app, terminal interface, CLI and agent interfaces can reuse those operations through the daemon, while each client exposes different capabilities and authority.</p>
 </div>
 
 <div class="landing-section tryit-section">
@@ -217,7 +217,7 @@ mxr reclassify MESSAGE_ID reading
 
 ## let your agent use the same inbox
 
-<p>Local search and cached-mail reads use state on your computer. Sync, sends, provider-backed changes, uncached attachment downloads, remote articles, and configured model endpoints can still use the network. Agents can use the CLI or first-party MCP server; the operations available and their authority depend on the client path.</p>
+<p>Local search and cached-mail reads use state on your computer. Sync, sends, provider-backed changes, uncached attachment downloads, remote articles, and configured model endpoints can still use the network. An external agent supplies its own model; mxr-native model features and the built-in assistant use separate settings. Returned mail sent to a hosted agent model leaves through that service. Agents can use the CLI or first-party MCP server, whose available operations and daemon authority differ.</p>
 
 <p class="search-illustration">Illustrative prompts and outcomes, not an observed agent run.</p>
 
@@ -245,7 +245,7 @@ mxr reclassify MESSAGE_ID reading
   </div>
 </div>
 
-<p>The CLI, MCP server, web bridge, and TUI all call the same daemon. Most read commands can return JSON. Core mail mutations support <code>{`--dry-run`}</code>, and MCP mutation and send tools require <code>{`confirm=true`}</code>. <a href="/guides/automation-contract/">See the automation contract →</a></p>
+<p>The CLI, MCP server, web bridge, and TUI call the same daemon operations where supported. Read commands can return structured output; preview support varies by command. Identified MCP and agent requests use their configured profile gates. Ordinary CLI requests use CLI origin, including when a shell-capable agent runs them. <a href="/guides/automation-contract/">See the automation contract →</a></p>
 
 <div class="agent-json-peek">
   <div class="agent-json-label">◈ example search output shape</div>

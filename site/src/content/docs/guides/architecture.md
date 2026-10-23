@@ -10,17 +10,24 @@ That is a narrower and more useful description than "terminal email client." The
 ## The short version
 
 ```text
-TUI / CLI / scripts / agents
-          |
-          v
-        daemon
-       /      \
-   SQLite    Tantivy
-       \
-   provider adapters
+TUI / CLI / web / MCP / scripts
+              |
+              v
+            daemon
+          /       \
+  SQLite store   Tantivy index
+  canonical      rebuildable
+              |
+              | sync and mail operations
+              v
+      provider adapters <----> mail providers
 ```
 
-The daemon is the system. SQLite is the source of truth. Tantivy is rebuildable from SQLite. Provider adapters map into one internal model.
+The daemon coordinates shared local mail state and operations. SQLite is
+canonical; Tantivy is rebuildable from it. Provider adapters map provider
+mail into mxr's internal model and handle provider I/O. Clients can reuse
+daemon operations without duplicating provider behavior, while exposing
+different capabilities and authority.
 
 ## IPC buckets
 

@@ -5,7 +5,7 @@ description: What stays local in mxr, what guardrails exist today, and which saf
 
 mxr is local-first by design.
 
-Mail syncs from the provider into SQLite on your machine. Search runs against the local index. The daemon, TUI, CLI, and agent workflows all operate on that local state. There is no hosted mxr relay in the middle.
+Mail syncs from the provider into SQLite on your machine. Search runs against the local index. The daemon and its clients use that state; a client can still send returned mail to an external model or another service. There is no hosted mxr relay in the middle.
 
 ## What stays local
 
@@ -59,7 +59,12 @@ mxr llm status --format json
 
 Released mxr contains no tracing code. A developer can [build mxr with the `langfuse` feature](/guides/trace-model-calls/) to record each model call, prompt and reply included, in a Langfuse they run themselves. That build sends traces only to a Langfuse on the same machine and refuses any other address, Langfuse Cloud included.
 
-The [email modes](/guides/email-modes/) plan adds background classification of every incoming message. That work is planned, not shipped, and it will run on a loopback endpoint unless you point its tier at a cloud endpoint and set `allow_cloud_background_classification = true`. Running everything in the cloud with your own key will be supported, and turning it on will say that the text of every incoming message goes to that provider.
+Email modes already place messages using deterministic rules and stored
+assessment data during sync. The `fast` and `smart` model tiers described in
+the plan are future work; they are not the current classification path or
+configuration keys. Other configured background model calls, such as
+delivery confirmation and row gists, have separate timing and data scopes
+listed in [LLM features](/guides/llm-features/#know-what-each-request-sends-and-where).
 
 ## Deleting an email removes most of what mxr derived from it
 

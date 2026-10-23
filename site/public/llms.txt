@@ -55,7 +55,8 @@
 
 ## Agents and automation
 
-- [For agents](https://mxr.sh/guides/for-agents.md): drive mxr through the CLI or first-party MCP; includes safety and authority boundaries
+- [For agents](https://mxr.sh/guides/for-agents.md): use local mail through CLI or first-party MCP; external agent models, account scope, and request-origin authority boundaries
+- [LLM features](https://mxr.sh/guides/llm-features.md): configure mxr-native features separately from an external agent model; per-feature overrides, destinations, and planned mode tiers
 - [Agent skill](https://mxr.sh/guides/agent-skill.md): install paths for Codex, Claude Code, Cursor, Continue, Aider, and custom prompts
 - [Automation contract](https://mxr.sh/guides/automation-contract.md): which commands return JSON, which support `--dry-run`, which accept piped IDs
 

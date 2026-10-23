@@ -3,9 +3,18 @@ title: Examples
 description: "Copy-pasteable mxr workflows: search, triage, compose, clean up, follow up, analyze, and drive it from an agent."
 ---
 
-mxr is a single binary with a deep command set. This page is the fast tour: one-liners grouped by what you're trying to do, each linking to its full guide. Most read commands support `--format json`; other formats vary by command. The core mail mutations support `--dry-run`, so most of what follows composes with your shell or an agent.
+mxr is a single binary with a deep command set. This page is the fast tour: one-liners grouped by what you're trying to do, each linking to its full guide. Most read commands support `--format json`; other formats vary by command. Check the [automation contract](/guides/automation-contract/) for each command's preview and input support.
 
 For multi-step pipelines (fzf, jq, xargs, cron) see [Recipes](/guides/recipes/); for the per-command automation guarantees see the [Automation Contract](/guides/automation-contract/).
+
+## Choose a workflow
+
+- **Analyse local mail:** select an account, inspect structured search results and bounded subscription candidates in [Recipes](/guides/recipes/#inspect-local-mail-for-one-account).
+- **Retrieve a fact:** search synced history, then open the source message or record in [Archive](/guides/archive/).
+- **Prepare and review a shared draft:** use the saved-draft preview and outcome recovery steps in [Recipes](/guides/recipes/#send-only-if-safety-is-clean-otherwise-mint-and-pause).
+- **Inspect attachments:** follow the existing source-check workflow in [Recipes](/guides/recipes/#build-an-evidence-pack-from-booking-mail).
+- **Work through mail by intent:** use [Now and the five modes](/guides/email-modes/) to choose the human workflow.
+- **Automate a reviewed action:** follow the [safe agent loop](/guides/automation-contract/#safe-agent-loop), with an account selector and the command's supported preview.
 
 ## Get started
 
@@ -170,7 +179,7 @@ Full guide → [LLM Features](/guides/llm-features/) · [Briefings and Loop-in](
 
 ## Automate and pipe
 
-Most reads emit JSON, and the core mail mutations accept IDs from stdin. It's a Unix citizen.
+Most reads emit JSON, and many mail mutations accept IDs from stdin. Check each command's input support before piping IDs.
 
 ```bash
 # archive everything from a sender, reviewed first
@@ -187,7 +196,7 @@ Full guide → [Recipes](/guides/recipes/) · [Automation Contract](/guides/auto
 
 ## Drive it from an agent
 
-The CLI, MCP server, and HTTP bridge all call the same daemon. Most reads return JSON, and the core mail mutations support `--dry-run`.
+The CLI, MCP server, and HTTP bridge share daemon operations where supported. Most reads return JSON; preview and stdin support vary by command.
 
 ```bash
 mxr mcp serve                                              # typed tools over stdio

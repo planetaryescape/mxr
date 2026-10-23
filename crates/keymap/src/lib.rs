@@ -249,6 +249,11 @@ pub struct MovedKey {
     /// the old action's label.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub to: Option<String>,
+    /// The key the notice names when the new key belongs to a screen or
+    /// overlay that still reads its own keys (Rules, the drafts list), so
+    /// no action here carries it yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_key: Option<String>,
 }
 
 /// A TUI binding: the action name its dispatcher returns for these keys, in
@@ -533,11 +538,21 @@ impl Keymap {
                         action.id, moved.key, moved.until
                     ));
                 }
+                if let Some(key) = moved.to_key.as_deref().filter(|key| !is_well_formed(key)) {
+                    problems.push(format!(
+                        "{}: the move of `{}` names malformed key `{key}`",
+                        action.id, moved.key
+                    ));
+                }
+                // Only the clients the action is for: the TUI reader's `o`
+                // moved while the web reader keeps `o` for its own verb.
                 for context in &moved.contexts {
-                    let web_bound = self.web_bindings().iter().any(|b| {
-                        b.chord == moved.key && (b.scope == *context || b.scope == "global")
-                    });
-                    let tui_bound = self.tui_binding(context, &moved.key).is_some();
+                    let web_bound = action.is_for(Client::Web)
+                        && self.web_bindings().iter().any(|b| {
+                            b.chord == moved.key && (b.scope == *context || b.scope == "global")
+                        });
+                    let tui_bound =
+                        action.is_for(Client::Tui) && self.tui_binding(context, &moved.key).is_some();
                     if web_bound || tui_bound {
                         problems.push(format!(
                             "{}: `{}` moved away in {context} but is still bound there",

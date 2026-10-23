@@ -15,8 +15,14 @@
 //! and live in `bulk/`; nothing here states one.
 //!
 //! The variants of a family are the visible ones first, then these.
+//!
+//! Whole template families are held out too ([`families`]): pairs of emails
+//! whose wording and sender kind no other scenario shares, labelled
+//! `held_out` so the eval reports them apart from the visible corpus.
 
 use super::bulk::Variant;
+use super::twins::{addr, expect, Builder, Mail, Scenario, ACTION, NOTICE};
+use super::{AskKind, Due, Home, Item, Who};
 
 /// The held-out phrasings of the family with this id.
 pub(crate) fn variants(family_id: &str) -> &'static [Variant] {
@@ -312,3 +318,99 @@ const PHISHING: &[Variant] = &[
         bodies: &["Urgent password reset of your delivery profile is required before we can send your prize. Sign in with your usual details to continue.\n\nhttps://claim-now.demo.mxr.local/delivery\n\nPrize Desk"],
     },
 ];
+
+/// The held-out template families: kinds of mail the visible corpus has no
+/// phrasing for. Each is a pair, an ask and a near miss that asks nothing.
+pub(super) fn families(b: &mut Builder) {
+    school_consent_form(b);
+    vet_balance_payable(b);
+}
+
+/// A school asks for a signed consent form; its newsletter does not.
+fn school_consent_form(b: &mut Builder) {
+    let trip = b.inbound(Mail::new(
+        "h01-trip",
+        addr("Elmwood Primary School", "office@elmwoodprimary.example"),
+        "Year 4 geography trip",
+        "Dear parent or carer,\n\nThe Year 4 trip to the coast runs next month. The consent form must be signed and handed to the class teacher by Friday, or your child cannot join the coach.\n\nMrs Adeyemi, school office",
+        22,
+    ));
+    b.label(
+        &trip,
+        Scenario::new(
+            "school-trip-consent-form",
+            "A primary school needs a signed consent form handed in by Friday",
+            expect(Who::Machine, Home::Updates, false),
+        )
+        .asks(vec![Item::asks(AskKind::Sign, "Elmwood Primary School").due(Due::Words("Friday"))])
+        .held_out()
+        .review(
+            &["who", "home"],
+            "A school office writes as an organisation with a person's signature; whether mxr calls it a person or a machine is a call, labelled machine because it is a form letter.",
+        ),
+    );
+    let photos = b.inbound(Mail::new(
+        "h01-photos",
+        addr("Elmwood Primary School", "office@elmwoodprimary.example"),
+        "Sports day photographs",
+        "Dear parent or carer,\n\nThe photographs from sports day are now on the school gallery. Thank you to everyone who came along.\n\nMrs Adeyemi, school office",
+        21,
+    ));
+    b.label(
+        &photos,
+        Scenario::new(
+            "school-photos-notice",
+            "The same school says the sports day photographs are online",
+            NOTICE,
+        )
+        .held_out()
+        .twin_of(
+            "school-trip-consent-form",
+            "photographs are online, nothing is asked",
+        )
+        .review(&["who", "home"], "Same call as school-trip-consent-form."),
+    );
+}
+
+/// A vet's balance is "now payable"; its insurer-paid notice is not.
+fn vet_balance_payable(b: &mut Builder) {
+    let payable = b.inbound(Mail::new(
+        "h02-payable",
+        addr("Willowbank Vets", "reception@willowbankvets.example"),
+        "Biscuit's treatment",
+        "Hello Alex,\n\nBiscuit's treatment is complete. The remaining balance of £86.00 is now payable; please settle it at reception or by card over the phone within seven days.\n\nWillowbank Vets",
+        20,
+    ));
+    b.label(
+        &payable,
+        Scenario::new(
+            "vet-balance-now-payable",
+            "A vet says the balance of £86.00 is now payable within seven days",
+            ACTION,
+        )
+        .asks(vec![Item::asks(AskKind::Pay, "Willowbank Vets")
+            .amount(8_600, "GBP")
+            .due(Due::AfterSent(168))])
+        .held_out(),
+    );
+    let insured = b.inbound(Mail::new(
+        "h02-insured",
+        addr("Willowbank Vets", "reception@willowbankvets.example"),
+        "Biscuit's treatment, settled",
+        "Hello Alex,\n\nBiscuit's treatment is complete and your pet insurer has paid the remaining balance of £86.00 directly to us. There is nothing to pay.\n\nWillowbank Vets",
+        19,
+    ));
+    b.label(
+        &insured,
+        Scenario::new(
+            "vet-balance-paid-by-insurer",
+            "The same vet says the insurer has paid the balance",
+            NOTICE,
+        )
+        .held_out()
+        .twin_of(
+            "vet-balance-now-payable",
+            "the insurer has paid, so nothing is owed by you",
+        ),
+    );
+}

@@ -69,8 +69,13 @@ test("the ledger is one row per record, by month with its count and total", asyn
   await expect(dell).toContainText("ordered · shipped · delivered");
   // Archive is built: no early-version note.
   await expect(page.getByTestId("early-version")).toHaveCount(0);
-  // The Lisbon trip, three days away, is coming up.
-  await expect(page.getByTestId("coming-up")).toContainText(/Lisbon, .* · in 3 days/);
+  // The Lisbon trip, 72 hours after the demo was built, is coming up. The
+  // label counts calendar days in the daemon's zone, so it reads "in 2 days"
+  // when a local midnight passes between the build and this check, or when
+  // the clocks go back before the trip and the demo was built in the first
+  // hour after local midnight (CI, 2026-10-22 23:17Z, London went back on
+  // the 25th).
+  await expect(page.getByTestId("coming-up")).toContainText(/Lisbon, .* · in [23] days/);
 });
 
 test("the answer box returns the booking reference with where it came from, and y copies it", async ({

@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.150"
+    "version": "0.6.151"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -11715,6 +11715,211 @@
           }
         }
       },
+      "ClassifyEvalAskKindData": {
+        "type": "object",
+        "description": "Precision and recall for one kind of ask.",
+        "required": [
+          "kind",
+          "direction",
+          "counts"
+        ],
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/ClassifyEvalCountsData"
+          },
+          "direction": {
+            "type": "string",
+            "description": "`asks_you` (inbound mail asks) or `you_promised` (your sent mail)."
+          },
+          "kind": {
+            "type": "string",
+            "description": "A kind from blueprint 37: `pay`, `fix_payment`, `sign`, `verify`,\n`reply`, `send`, `provide`, `upload`, `book`, `attend`,\n`renew_or_cancel`, `register`, `contact` or `other`."
+          }
+        }
+      },
+      "ClassifyEvalAsksData": {
+        "type": "object",
+        "description": "What the emails ask of you: to-do rows against the labelled items.",
+        "required": [
+          "emails",
+          "total",
+          "kinds",
+          "fields",
+          "duplicates",
+          "merges",
+          "twins",
+          "slices",
+          "reply_owed"
+        ],
+        "properties": {
+          "duplicates": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Matched items with two rows for one expected item.",
+            "minimum": 0
+          },
+          "emails": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Labelled emails graded on what they ask.",
+            "minimum": 0
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClassifyEvalFieldData"
+            },
+            "description": "Exact match per field on matched items."
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClassifyEvalAskKindData"
+            },
+            "description": "Per kind of ask. Every kind a person can be asked for is listed (with\nzero counts when nothing was expected or found), then any kind of\npromise that appeared."
+          },
+          "merges": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Expected items absorbed into another email's row of the same sender,\nkind and counterparty (two accounts from one sender).",
+            "minimum": 0
+          },
+          "reply_owed": {
+            "$ref": "#/components/schemas/ClassifyEvalReplyData"
+          },
+          "slices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClassifyEvalSliceData"
+            }
+          },
+          "total": {
+            "$ref": "#/components/schemas/ClassifyEvalCountsData",
+            "description": "All kinds together."
+          },
+          "twins": {
+            "$ref": "#/components/schemas/ClassifyEvalTwinsData"
+          }
+        }
+      },
+      "ClassifyEvalCountsData": {
+        "type": "object",
+        "description": "How many items were expected, found and matched.",
+        "required": [
+          "expected",
+          "found",
+          "true_positives",
+          "false_positives",
+          "false_negatives"
+        ],
+        "properties": {
+          "expected": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Items the labels expect.",
+            "minimum": 0
+          },
+          "false_negatives": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Expected items nothing matched.",
+            "minimum": 0
+          },
+          "false_positives": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Found items that match no expected item.",
+            "minimum": 0
+          },
+          "found": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Items (to-do rows) the classifier made.",
+            "minimum": 0
+          },
+          "precision_percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "`true_positives / found` as a percentage with one decimal; absent when\nnothing was found, because precision is then undefined."
+          },
+          "recall_percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "`true_positives / expected`; absent when nothing was expected."
+          },
+          "true_positives": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Found items that match an expected item by kind and direction.",
+            "minimum": 0
+          }
+        }
+      },
+      "ClassifyEvalFieldData": {
+        "type": "object",
+        "description": "How often one field of a matched item is exactly right.",
+        "required": [
+          "field",
+          "pairs",
+          "exact",
+          "exact_percent",
+          "missing",
+          "wrong",
+          "spurious"
+        ],
+        "properties": {
+          "exact": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Pairs where the row's field equals the label's, an absent value on\nboth sides counting as equal. A due date is exact only when the row's\nday is the day the label names.",
+            "minimum": 0
+          },
+          "exact_percent": {
+            "type": "number",
+            "format": "double"
+          },
+          "field": {
+            "type": "string",
+            "description": "`amount`, `due` or `counterparty`."
+          },
+          "missing": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The label states a value and the row has none.",
+            "minimum": 0
+          },
+          "pairs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Matched items: the ones this field is compared on.",
+            "minimum": 0
+          },
+          "present": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The label states a value the eval cannot resolve to an exact one, and\nthe row has one. Counted apart and never as exact.",
+            "minimum": 0
+          },
+          "spurious": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The label states none and the row has one.",
+            "minimum": 0
+          },
+          "wrong": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Both have a value and they differ.",
+            "minimum": 0
+          }
+        }
+      },
       "ClassifyEvalMismatchData": {
         "type": "object",
         "description": "One wrong answer.",
@@ -11768,7 +11973,7 @@
       },
       "ClassifyEvalQuestionData": {
         "type": "object",
-        "description": "Accuracy on one question about an email.",
+        "description": "Accuracy on one question about an email. What an email asks of you (to-dos)\nis not one of these: it is graded in [`ClassifyEvalAsksData`].",
         "required": [
           "question",
           "evaluated",
@@ -11794,7 +11999,32 @@
           },
           "question": {
             "type": "string",
-            "description": "`who`, `home`, `todo` or `record`."
+            "description": "`who`, `home` or `record`."
+          }
+        }
+      },
+      "ClassifyEvalReplyData": {
+        "type": "object",
+        "description": "Whether a reply is owed, graded as its own question.",
+        "required": [
+          "emails",
+          "counts",
+          "projection"
+        ],
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/ClassifyEvalCountsData",
+            "description": "`expected` emails owe a reply, `found` are marked as needing one."
+          },
+          "emails": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Emails graded on it.",
+            "minimum": 0
+          },
+          "projection": {
+            "type": "string",
+            "description": "What the classifier's answer reads, so the number is not taken for\nmore than it is."
           }
         }
       },
@@ -11805,6 +12035,35 @@
           "quick",
           "full"
         ]
+      },
+      "ClassifyEvalSliceData": {
+        "type": "object",
+        "description": "The ask results over one slice of the emails.",
+        "required": [
+          "dimension",
+          "value",
+          "emails",
+          "counts"
+        ],
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/ClassifyEvalCountsData"
+          },
+          "dimension": {
+            "type": "string",
+            "description": "`sender_kind`, `locale`, `template_family` or `phrasing`."
+          },
+          "emails": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Labelled emails in the slice.",
+            "minimum": 0
+          },
+          "value": {
+            "type": "string",
+            "description": "For example `person`, `en-ZA`, `bill-due`, `held_out`."
+          }
+        }
       },
       "ClassifyEvalSummaryData": {
         "type": "object",
@@ -11820,6 +12079,17 @@
           "home_projection"
         ],
         "properties": {
+          "asks": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ClassifyEvalAsksData",
+                "description": "What the emails ask of you, graded per kind of ask and per field\n(label schema v2). Absent when nothing was graded."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "held_out_present": {
             "type": "integer",
             "format": "int32",
@@ -11887,6 +12157,40 @@
             "type": "integer",
             "format": "int32",
             "description": "Stored emails in scope that no scenario labels.",
+            "minimum": 0
+          }
+        }
+      },
+      "ClassifyEvalTwinsData": {
+        "type": "object",
+        "description": "Twin pairs, where both members must be right on what they ask.",
+        "required": [
+          "pairs",
+          "both_right",
+          "differing_pairs",
+          "differing_both_right"
+        ],
+        "properties": {
+          "both_right": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "differing_both_right": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "differing_pairs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Of those, pairs whose members expect different asks (one asks\nsomething and the other nothing, or different kinds).",
+            "minimum": 0
+          },
+          "pairs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Pairs with both members present.",
             "minimum": 0
           }
         }

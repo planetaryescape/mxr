@@ -66,6 +66,18 @@ is still waiting in Your turn.
 | Raycast | `⌘F` opens a Filter menu. The choice is remembered for that command |
 | CLI | `mxr messages list --turn mine --unread --past-pace`; `--format json` echoes the filter and reports `matched` |
 
+In the CLI, `--turn mine` and `--turn theirs` pick Your turn and Waiting on
+them. The table says what it kept:
+
+```text
+$ mxr messages list --unread --past-pace
+People you talk with, one row each. Reply or mark done.
+Filtered: Unread · Past your pace · 1 of 782 rows
+
+YOUR TURN
+  DP   Samir Patel                 16h  close · usually 47m
+```
+
 ## Which threads land here
 
 Sorting follows this email's evidence, not a permanent sender identity.

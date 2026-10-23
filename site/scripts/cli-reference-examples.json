@@ -32,10 +32,12 @@
     ]
   },
   "draft": {
-    "use": "Get a suggested revision of an existing local draft from your configured LLM. The command prints the suggestion without replacing the draft or sending it.",
+    "use": "Get a suggested revision of an existing local draft from your configured LLM, or measure drafting with `eval`. `refine` prints the suggestion without replacing the draft or sending it; `eval` saves and sends nothing. See [check how close drafts get](/guides/llm-features/#check-how-close-drafts-get).",
     "examples": [
       "mxr draft refine DRAFT_ID --shorter",
-      "mxr draft refine DRAFT_ID --add-context 'The deadline is Friday'"
+      "mxr draft refine DRAFT_ID --add-context 'The deadline is Friday'",
+      "mxr draft eval --limit 20",
+      "mxr draft eval --set quick"
     ]
   },
   "headers": {

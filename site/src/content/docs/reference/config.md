@@ -512,8 +512,18 @@ MXR_ACTIVITY=off mxr daemon          # recorder is spawned but writes are droppe
 
 - `theme`
 
-`sidebar`, `date_format`, `date_format_full` and `subject_max_width` were retired
-and no longer do anything. mxr warns once when they are present and ignores them.
+`appearance.sidebar`, `appearance.date_format`, `appearance.date_format_full`,
+`appearance.subject_max_width` and `humanizer.apply_to_summaries` were retired in
+v0.6.125 and no longer do anything. A config file that still sets one keeps
+loading; mxr logs a warning once, `config keys ignored: no longer used`, that
+names the keys. `mxr config get` and `mxr config set` on a retired key fail with
+`` `appearance.sidebar` was retired and no longer does anything; remove it from config.toml ``.
+
+Find out whether your file sets one:
+
+```bash
+grep -nE '^(sidebar|date_format|date_format_full|subject_max_width|apply_to_summaries)\b' "$(mxr config path)"
+```
 
 ## `bridge`
 

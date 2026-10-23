@@ -23,17 +23,26 @@
 //! what today's code does, so a gap shows up as a mismatch. A label that
 //! rests on a judgement call carries its reasoning in a [`Review`].
 //!
-//! The four questions are the ones a classifier can be graded on today:
-//! who sent it, which mode is its home, and whether it made a to-do or a
-//! record. [`LABEL_SCHEMA_VERSION`] changes whenever they do, so old
-//! expectations are never silently reused.
+//! The questions are the ones a classifier can be graded on today: who sent
+//! it, which mode is its home, whether it made a record, and what it asks of
+//! you. The last is a list of expected [`Item`]s (kind of ask, counterparty,
+//! amount, due words) plus whether a reply is owed, not a yes or no, so the
+//! eval can grade each kind of ask and each field. [`LABEL_SCHEMA_VERSION`]
+//! changes whenever the questions do, so old expectations are never silently
+//! reused.
 
+mod asks;
 mod bulk;
 mod curated;
 #[cfg(test)]
 mod date_finder;
 mod held_out;
+#[cfg(test)]
+mod leak_guard;
 mod twins;
+mod twins_asks;
+
+pub use asks::{locale_of, sender_kind, Amount, AskKind, Direction, Due, Item, SenderKind};
 
 use super::{curated_head_len, curated_seed_messages, demo_thread_id, DemoCuts};
 use chrono::{DateTime, TimeZone, Utc};
@@ -44,8 +53,10 @@ use std::sync::OnceLock;
 
 pub(crate) use bulk::{render as render_bulk, thread_len as bulk_thread_len};
 
-/// Version of the questions an [`Expect`] answers.
-pub const LABEL_SCHEMA_VERSION: u32 = 1;
+/// Version of the questions an [`Expect`] and its [`Item`]s answer. Version 2
+/// replaces the to-do yes or no with the expected items of the email and
+/// whether a reply is owed.
+pub const LABEL_SCHEMA_VERSION: u32 = 2;
 
 /// The mailbox owner of the seeded personal demo account.
 pub const SELF_EMAIL: &str = "alex@demo.mxr.local";
@@ -96,22 +107,45 @@ impl Home {
     }
 }
 
-/// The right answers for one email.
+/// The right answers for one email, apart from the items it asks (those are
+/// [`Labelled::items`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Expect {
     pub who: Who,
     pub home: Home,
-    /// A to-do is made from this email.
-    pub todo: bool,
     /// A record is filed from this email.
     pub record: bool,
+    /// A reply is owed: the email asks a question or for an answer, so it is
+    /// the owner's turn (Your turn, blueprint 37).
+    pub reply: bool,
+}
+
+impl Expect {
+    /// An email that owes no reply.
+    pub const fn new(who: Who, home: Home, record: bool) -> Self {
+        Self {
+            who,
+            home,
+            record,
+            reply: false,
+        }
+    }
+
+    /// The same, but a reply is owed.
+    pub const fn replying(self) -> Self {
+        Self {
+            reply: true,
+            ..self
+        }
+    }
 }
 
 /// Why some answers of a label are a judgement call, so a mismatch on one
 /// of them may be the label's fault.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Review {
-    /// Which questions (`who`, `home`, `todo`, `record`) it covers.
+    /// Which questions (`who`, `home`, `todo`, `record`) it covers. `todo`
+    /// covers the expected items and whether a reply is owed.
     pub questions: &'static [&'static str],
     pub why: &'static str,
 }
@@ -127,6 +161,19 @@ pub struct Labelled {
     pub scenario: &'static str,
     pub description: &'static str,
     pub expect: Expect,
+    /// What the email asks of the owner, or what the owner promised in it.
+    /// Empty when it asks nothing.
+    pub items: Vec<Item>,
+    /// The owner's own sent mail: only its promises are graded, because who,
+    /// home and record are about mail that arrives.
+    pub outbound: bool,
+    /// Who the sender is, for slicing.
+    pub sender: SenderKind,
+    /// `en-GB`, `en-ZA` or `en-US`, for slicing.
+    pub locale: &'static str,
+    /// The template family: the generator's family for bulk mail, the
+    /// scenario for the rest. For slicing.
+    pub family: &'static str,
     /// The scenario this email is a near-miss twin of.
     pub twin_of: Option<&'static str>,
     /// The one fact that differs from the twin; empty when not a twin.
@@ -285,12 +332,18 @@ fn bulk_label_for(
     if !label.from_email.eq_ignore_ascii_case(from_email) {
         return None;
     }
+    let sender = sender_kind(label.expect.who, from_email);
     Some(Labelled {
         provider_id: provider_id.to_string(),
         from_email: from_email.to_string(),
         scenario: label.turn.scenario,
         description: label.turn.description,
         expect: label.expect,
+        items: bulk::items(thread_num, reply_idx),
+        outbound: false,
+        sender,
+        locale: "en-GB",
+        family: label.family,
         twin_of: None,
         differs_by: "",
         review: label.turn.review,
@@ -337,20 +390,88 @@ mod tests {
         assert_eq!(ids.len(), total);
     }
 
+    /// Mail the owner sent is labelled only when it makes a promise, and then
+    /// the label says it is outbound, so the eval grades its promises alone.
     #[test]
-    fn every_inbound_email_is_labelled_and_sent_mail_is_not() {
+    fn every_inbound_email_is_labelled_and_sent_mail_only_when_it_promises() {
         let seed = seed();
+        let mut promises = 0;
         for (envelope, _) in &seed.messages {
-            let labelled = seed
+            let label = seed
                 .labels
                 .iter()
-                .any(|label| label.provider_id == envelope.provider_id);
+                .find(|label| label.provider_id == envelope.provider_id);
             let sent = envelope.from.email.eq_ignore_ascii_case(SELF_EMAIL);
-            assert_eq!(
-                labelled, !sent,
-                "{} ({}) from {}",
-                envelope.provider_id, envelope.subject, envelope.from.email
+            match label {
+                None => assert!(
+                    sent,
+                    "{} ({}) from {} is inbound and unlabelled",
+                    envelope.provider_id, envelope.subject, envelope.from.email
+                ),
+                Some(label) => {
+                    assert_eq!(label.outbound, sent, "{}", envelope.provider_id);
+                    if sent {
+                        promises += label.items.len();
+                        // Sent mail may promise nothing (you ask someone
+                        // for something): that is the near miss of a promise.
+                        assert!(
+                            label
+                                .items
+                                .iter()
+                                .all(|item| item.direction == Direction::YouPromised),
+                            "{} is sent mail labelled with something other than a promise",
+                            envelope.provider_id
+                        );
+                    } else {
+                        assert!(
+                            label
+                                .items
+                                .iter()
+                                .all(|item| item.direction == Direction::AsksYou),
+                            "{} is inbound but labelled with a promise",
+                            envelope.provider_id
+                        );
+                    }
+                }
+            }
+        }
+        assert!(promises >= 2, "only {promises} promises are labelled");
+    }
+
+    /// Chapter 37's rule: an item asks for something other than a reply, and
+    /// a reply is owed only when the email is inbound.
+    #[test]
+    fn items_are_never_replies_and_only_inbound_mail_owes_one() {
+        let seed = seed();
+        for label in &seed.labels {
+            assert!(
+                label.items.iter().all(|item| item.kind != AskKind::Reply),
+                "{}: a reply is Your turn, not a to-do",
+                label.scenario
             );
+            assert!(
+                !(label.outbound && label.expect.reply),
+                "{}: sent mail owes no reply",
+                label.scenario
+            );
+        }
+    }
+
+    /// An item states what it asks with enough to be graded: a counterparty,
+    /// and a reference whenever a sender has several items.
+    #[test]
+    fn every_item_names_its_counterparty() {
+        let seed = seed();
+        for label in &seed.labels {
+            for item in &label.items {
+                assert!(
+                    item.counterparty
+                        .as_deref()
+                        .is_some_and(|name| !name.trim().is_empty()),
+                    "{} has an item with no counterparty",
+                    label.scenario
+                );
+            }
         }
     }
 
@@ -619,15 +740,17 @@ mod tests {
                     &envelope.thread_id,
                     &envelope.from.email,
                 );
+                // Mail you sent is labelled only for a promise, and says so.
                 assert_eq!(
-                    label.is_some(),
+                    label.as_ref().is_some_and(|label| !label.outbound),
                     !is_sent,
                     "{} ({}) from {}",
                     envelope.provider_id,
                     envelope.subject,
                     envelope.from.email
                 );
-                labelled += usize::from(label.is_some());
+                assert!(label.as_ref().is_none_or(|label| label.outbound == is_sent));
+                labelled += usize::from(label.as_ref().is_some_and(|label| !label.outbound));
                 sent += usize::from(is_sent);
             }
             assert!(
@@ -729,6 +852,7 @@ mod tests {
             .expect("labelled");
             assert_eq!(full.scenario, label.scenario);
             assert_eq!(full.expect, label.expect);
+            assert_eq!(full.items, label.items);
             assert!(!full.held_out);
         }
     }
@@ -744,7 +868,7 @@ mod tests {
                 .iter()
                 .filter_map(|e| {
                     full_label_for(&work_account(), &e.provider_id, &e.thread_id, &e.from.email)
-                        .map(|l| (l.provider_id, l.scenario, l.expect, l.held_out))
+                        .map(|l| (l.provider_id, l.scenario, l.expect, l.items, l.held_out))
                 })
                 .collect::<Vec<_>>()
         };
@@ -788,9 +912,19 @@ mod tests {
                         &envelope.thread_id,
                         &envelope.from.email,
                     )
-                    .map(|l| (l.scenario, l.expect, l.held_out, l.review.is_some()));
+                    .map(|l| {
+                        (
+                            l.scenario,
+                            l.expect,
+                            l.items,
+                            l.held_out,
+                            l.review.is_some(),
+                        )
+                    });
                     // A live ask is the mail that arrived in the last hours.
-                    let live_ask = label.as_ref().is_some_and(|(_, expect, ..)| expect.todo);
+                    let live_ask = label
+                        .as_ref()
+                        .is_some_and(|(_, _, items, ..)| !items.is_empty());
                     if live_ask {
                         assert!(
                             clock - envelope.date < chrono::Duration::hours(11),
@@ -806,9 +940,9 @@ mod tests {
         let first = labels_at(clocks[0]);
         assert!(first.iter().any(|(_, _, label)| label.is_some()));
         assert!(
-            first
-                .iter()
-                .any(|(_, _, label)| label.as_ref().is_some_and(|(_, e, ..)| e.todo)),
+            first.iter().any(|(_, _, label)| label
+                .as_ref()
+                .is_some_and(|(_, _, items, ..)| !items.is_empty())),
             "the sample holds no live ask, so the check saw little"
         );
         for clock in &clocks[1..] {

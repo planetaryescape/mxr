@@ -4,6 +4,7 @@
 //! Visible phrasings only. The held-out ones live in `scenarios/held_out.rs`.
 
 use super::expect;
+use super::AskKind;
 use super::{
     Attachments, Dating, Family, Senders, Subjects, Turn, Unsubscribe, Variant, CONVERSATION,
     COPIED,
@@ -173,11 +174,12 @@ pub(super) static DATED_REQUEST: Family = Family {
         Turn::them(
             "bulk-dated-request-ask",
             "A colleague asks you to send something by a date",
-            expect(Who::Person, Home::Messages, true, false),
+            expect(Who::Person, Home::Messages, false),
         )
+        .asking(AskKind::Send, false)
         .reviewed(
             &["todo"],
-            "A colleague's request with a verb, an object and a date in their own words is an instruction, so it makes a to-do while the date is open (the landlord's lease in modes-landlord-reply is the same shape). Whether a person's ask belongs in To do or only in Your turn is a policy call. Mail whose date had passed before it was found makes no to-do, as todo-event-already-over says.",
+            "A colleague's request with a verb, an object and a date in their own words is an instruction, so it makes a to-do while the date is open (the landlord's lease in modes-landlord-reply is the same shape); chapter 37 puts a request for an action other than a reply in To do. The kind follows each phrasing's main verb (see `variant_ask`): a confirmation is a reply, so it is no item. No reply is owed in any phrasing, because your reply follows in the thread. Mail whose date had passed before it was found makes no to-do, as todo-event-already-over says.",
         ),
         Turn::you("bulk-dated-request-your-reply", "Your reply"),
         Turn::them(

@@ -86,6 +86,61 @@ mxr categories --format json
 mxr categories --format json why MESSAGE_ID CATEGORY_ID
 ```
 
+## Measure how well mxr sorts
+
+`mxr classify eval` grades the mail already in your mailbox against labelled
+scenarios and prints how often today's rules agree with the labels. It reads
+stored mail and changes nothing. Only the demo mailbox carries labels. `mxr demo`
+runs in its own profile and leaves your config alone, and every `mxr` command
+uses it until `mxr demo stop`:
+
+```bash
+mxr demo --no-tui
+mxr classify eval                  # the quick set, in seconds
+mxr classify eval --set full       # every labelled email, up to a minute
+mxr demo stop                      # back to your real profile
+```
+
+On a profile without labelled mail it prints `No labelled mail here; run mxr
+demo`. In a terminal the output is a table; piped, it is JSON. `--format table`
+forces the table. This is what the quick set printed on v0.6.150:
+
+```text
+Classifier eval, quick set (label schema v1)
+
+question evaluated  correct  accuracy
+who             99       89     89.9%
+home            99       89     89.9%
+todo            99       98     99.0%
+record          99       95     96.0%
+
+99 of 147 labelled emails are in this mailbox; 49901 stored emails have no label.
+
+25 mismatches
+subscriptions-disney-receipt  demo-msg-103  who  expected machine  got person  (possible personal mail; no decisive list or automation evidence)
+```
+
+Each email gets four questions. **who** asks whether a person, a list, a
+machine or a screened-out sender wrote it. **home** asks which mode it lands in.
+**todo** and **record** ask whether a to-do or an Archive record was made from
+it. A mismatch names the scenario, the demo message id, the question, the
+expected and actual answers, and the rule that decided. `[label is a judgement
+call]` marks a label that may be the label's fault rather than the classifier's.
+Labels say what mxr should do, so a gap shows up as a mismatch.
+
+| Set | Grades | Use it |
+|---|---|---|
+| `--set quick` (default) | The 147 labelled emails of the hand-written demo mail and its near-miss twins; 99 of them are in the demo mailbox | After you change how mail is sorted |
+| `--set full` | Every labelled email in the mailbox: on the 50,000-message demo, 38,747 emails across both accounts | Before you rely on a change; CI runs it |
+
+The full set groups its mismatches into clusters, biggest first, with one
+example each, and prints a second accuracy table for held-out phrasings. Those
+are wordings kept out of the mail used while tuning the classifier. If a held-out
+figure falls well behind the overall one, a change fitted the generator's
+wording rather than the mail. `--format json` lists every mismatch,
+`--format csv` writes one row per mismatch, and `--account` limits the run to
+one account.
+
 ## Model work will run in two tiers (planned)
 
 Today every model feature uses the one model you set under `[llm]`, or a

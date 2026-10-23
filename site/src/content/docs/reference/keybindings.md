@@ -11,7 +11,9 @@ the web app keeps its own defaults.
 
 Every default in both clients comes from one definition. `mxr keys` lists
 it, and `mxr keys explain <key> --context <place>` says what a key does
-there, for example `mxr keys explain e --context todo`.
+there, for example `mxr keys explain e --context todo`. The Raycast
+extension reads the same definition: its shortcuts are Cmd plus the web app's
+letter, except where Raycast keeps its own key. See [Raycast](/guides/raycast/#what-each-command-shows).
 
 When a default moves, the old key keeps a reminder for 30 releases: pressing
 it shows "<action> is now <key>" in the status bar and does nothing else.
@@ -35,6 +37,58 @@ If you only learn ten, learn these:
 Everything else is discoverable from the palette (`Ctrl-p`) and the
 help modal (`?`).
 :::
+
+## Look up and check keys
+
+Ask the daemon which key does what, in which place, instead of searching these
+tables. Each row is the client, the place, the key, the action id, its label and,
+for the TUI, the action the dispatcher runs:
+
+```bash
+mxr keys explain e                       # what e does in every place
+mxr keys explain e --context todo        # what e does in To do
+mxr keys --client tui --context todo     # every key live in To do
+mxr keys --client web --format json      # the web app's keys, for a script
+```
+
+```text
+$ mxr keys explain e --client tui
+tui  archive         e  archive.open-email     Open the email  (RecordsOpenEmail)
+tui  catchup         e  todo.catchup-let-go    Let go of this one  (CatchupLetGo)
+tui  list            e  mail.archive           Archive  (Archive)
+tui  messages        e  messages.done          Done here  (MessagesDone)
+tui  now             e  now.done               Done here  (NowDone)
+tui  place           e  place.done             Done here: let go of this in Updates or Reading  (Archive)
+tui  reader          e  mail.archive           Archive  (Archive)
+tui  reading         e  reading.let-go         Let go  (ReadingLetGo)
+tui  reading-reader  e  reading.let-go         Let go  (ReadingLetGo)
+tui  todo            e  todo.done              Done  (TodoDone)
+tui  updates         e  updates.let-go-source  Let go of this source  (UpdatesLetGoSource)
+```
+
+`--client` is `tui` or `web`. `--context` takes a TUI context or a web scope
+such as `todo`, and a place with no keys prints `No keys match.` Use the action
+ids from this listing as the right-hand side of a remap in
+[`keys.toml`](/reference/config/#remapping-a-modes-keys).
+
+After you edit `keys.toml`, check it before you restart the TUI. `mxr keys check`
+reads the file beside your config, or the path you give it, and names every entry
+the TUI would ignore. It exits non-zero when it finds one:
+
+```bash
+mxr keys check
+mxr keys check ~/dotfiles/mxr/keys.toml
+```
+
+```text
+$ mxr keys check keys.toml
+keys.toml:
+  [todo] `Ctrl+Shift+Zzz`: most terminals send Ctrl+Shift+ as plain Ctrl+
+  [todo] `Q`: no action todo.nope; `mxr keys --client tui --context todo` lists them
+Error: 2 problems in keys.toml
+```
+
+With no `keys.toml` beside your config, it reports `No <path>/keys.toml; every key is the default.` and exits 0.
 
 ## Global
 
@@ -958,6 +1012,25 @@ While writing a message. ⌘ and Ctrl both work, on every platform.
 | `⌘⇧F / Ctrl+Shift+F` | Toggle fullscreen |  |
 
 <!-- web-keys:end -->
+
+### How the web app reads keys
+
+- **Input methods.** Keys that belong to an input method's composition are
+  ignored. `Enter` that picks a candidate does not submit a field or run a
+  shortcut, and `Escape` that cancels a composition does not close the
+  highlight note.
+- **Other layouts.** A character you type with `Option` on macOS or `AltGr`
+  elsewhere matches its binding as that character. `#` typed as `Option-3` on a
+  UK Mac works as `#`, and `[` `]` `{` `}` typed with `AltGr` on German
+  and French layouts work. `Alt` with a plain letter or digit stays a chord.
+- **Mistyped prefixes.** After `g`, a key that completes no shortcut cancels the
+  sequence and runs nothing. The status bar says `g U is not a shortcut` for two
+  seconds. A modifier chord such as `⌘K` still runs.
+- **Held keys.** Holding `j` or `k` repeats in every mode, not only the mail
+  list. Every other action runs once per press.
+- **Menus and dialogs.** A shortcut pressed right after `Esc` closes a menu
+  works at once. When Help or a dialog closes, focus returns to the pane you were
+  in.
 
 ### Customization
 

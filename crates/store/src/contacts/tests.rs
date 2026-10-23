@@ -77,10 +77,7 @@ async fn zeroing_spares_a_contact_whose_mail_arrived_after_the_snapshot() {
     insert_outbound_from(&store, &account.id, "new-sent", "me@example.com").await;
 
     store
-        .zero_direction_counters(&[(
-            account.id.as_str(),
-            "bob@example.com".to_string(),
-        )])
+        .zero_direction_counters(&[(account.id.as_str(), "bob@example.com".to_string())])
         .await
         .unwrap();
 

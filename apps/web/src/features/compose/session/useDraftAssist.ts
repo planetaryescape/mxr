@@ -73,11 +73,13 @@ const NO_ADJUST: ComposeAssistAdjust = {
   proofread: false,
 };
 
+const REPLY_OR_FORWARD = new Set(["reply", "reply_all", "forward"]);
+
 /**
- * What the help is about. A reply or forward always names its message: a
- * stored draft's metadata can exist before the daemon has any copy, so the
- * message is the context. A stored draft is named only once a save has put
- * a revision on the daemon; a draft nobody has saved yet is a new message.
+ * What the help is about. A reply or forward names its message. A saved reply
+ * or forward reopened from Drafts has no message in the session, so the daemon
+ * resolves it from the copy it holds. Everything else is a new message sent
+ * with its live recipients and subject, because a saved copy can be stale.
  */
 function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAssistDraft {
   if (intent.messageId) {
@@ -94,9 +96,13 @@ function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAs
       all: intent.kind === "reply_all",
     };
   }
-  if (draft.draftId && draft.revision != null) {
+  // A reply or forward reopened from Drafts has no message in the session: the
+  // daemon resolves its conversation from the stored reply headers.
+  if (draft.draftId && draft.revision != null && REPLY_OR_FORWARD.has(draft.kind)) {
     return { kind: "stored", draft_id: draft.draftId };
   }
+  // A new message is always sent with its live recipients and subject. A saved
+  // copy holds the values from its last save, which may be older than these.
   return {
     kind: "new",
     account_id: draft.accountId,

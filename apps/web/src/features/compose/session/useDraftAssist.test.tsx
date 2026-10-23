@@ -420,7 +420,7 @@ describe("useDraftAssist", () => {
     const marks = (result.current.draft?.modelSpans ?? []).map((span) =>
       body.slice(span.start, span.end),
     );
-    expect(marks.sort()).toEqual(["\n\nThanks, B", "Friday works.", "Hi Pat,\n\n"].sort());
+    expect(marks.toSorted()).toEqual(["\n\nThanks, B", "Friday works.", "Hi Pat,\n\n"].toSorted());
   });
 
   test("an edit inside a marked sentence clears only the edited words", async () => {
@@ -455,7 +455,7 @@ describe("useDraftAssist", () => {
     const marks = (result.current.draft?.modelSpans ?? []).map((span) =>
       body.slice(span.start, span.end),
     );
-    expect(marks.sort()).toEqual(["Friday", " is set."].sort());
+    expect(marks.toSorted()).toEqual(["Friday", " is set."].toSorted());
   });
 
   test("a forward sends its recipients as address objects", async () => {

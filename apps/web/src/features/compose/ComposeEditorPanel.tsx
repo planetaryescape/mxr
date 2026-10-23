@@ -293,6 +293,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
           >
             {editorPreference === "tiptap" ? (
               <TiptapComposeEditor
+                focusNonce={controller.editorFocusNonce}
                 value={draft.bodyMarkdown}
                 onChange={controller.updateBody}
                 onSave={controller.handleSaveClick}
@@ -301,6 +302,7 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
               />
             ) : (
               <CodeMirrorComposeEditor
+                focusNonce={controller.editorFocusNonce}
                 value={draft.bodyMarkdown}
                 onChange={controller.updateBody}
                 onSave={controller.handleSaveClick}

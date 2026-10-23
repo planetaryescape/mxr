@@ -251,7 +251,20 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
           onEscapeKeyDown={(event) => {
             // Esc belongs to vim inside the Markdown editor, and to an open suggestion list.
             const target = event.target instanceof Element ? event.target : null;
-            if (target?.closest(".cm-editor, [aria-expanded='true']")) event.preventDefault();
+            if (target?.closest(".cm-editor, [aria-expanded='true']")) {
+              event.preventDefault();
+              return;
+            }
+            // Esc never destroys: on a proof it keeps the user's text, on the help
+            // line it closes the line. Radix runs this in capture, before either
+            // sees the key, so it has to be handled here.
+            if (controller.proofOpen) {
+              event.preventDefault();
+              controller.keepMine();
+            } else if (controller.helpOpen) {
+              event.preventDefault();
+              controller.closeHelp();
+            }
           }}
           className={cn(
             "fixed z-40 flex flex-col outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0",

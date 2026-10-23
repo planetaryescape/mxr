@@ -29,6 +29,8 @@ interface CodeMirrorComposeEditorProps {
   onSelectionChange?: (selection: { from: number; to: number } | null) => void;
   /** Ranges the model wrote that the user has not edited; drawn with a hairline. */
   modelSpans?: readonly ModelSpan[];
+  /** Changes when the editor should take focus back, e.g. after a proof closes. */
+  focusNonce?: number;
 }
 
 const setModelSpans = StateEffect.define<readonly ModelSpan[]>();
@@ -119,6 +121,7 @@ export function CodeMirrorComposeEditor({
   quiet = false,
   onSelectionChange,
   modelSpans,
+  focusNonce = 0,
 }: CodeMirrorComposeEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -228,6 +231,11 @@ export function CodeMirrorComposeEditor({
       viewRef.current = null;
     };
   }, [autoFocus]);
+
+  // Each change of `focusNonce` asks for the editor back (after a proof).
+  useEffect(() => {
+    if (focusNonce > 0) viewRef.current?.focus();
+  }, [focusNonce]);
 
   // The document and its marks change in one transaction. Marks installed
   // first would be checked against the old document, where text that is

@@ -144,6 +144,9 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
   const [proof, setProof] = useState<ProofState>(EMPTY_PROOF);
   const { versions, index: versionIndex, open: proofOpen } = proof;
   const [undo, setUndo] = useState<AcceptUndo | null>(null);
+  // Bumped when the proof closes, so the editor takes focus back: the proof
+  // had it, and once it is gone the next keystroke would go nowhere.
+  const [editorFocusNonce, setEditorFocusNonce] = useState(0);
   const answersMessage = Boolean(intent.messageId);
 
   // The text region is split once per render; handlers split the live draft
@@ -275,11 +278,13 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     setDraft((draft) => (draft ? { ...draft, bodyMarkdown: body, modelSpans } : draft));
     setDirty(true);
     setProof(EMPTY_PROOF);
+    setEditorFocusNonce((nonce) => nonce + 1);
   }
 
   /** Esc: the user's text stays as it was; the proof goes. */
   function keepMine() {
     setProof(EMPTY_PROOF);
+    setEditorFocusNonce((nonce) => nonce + 1);
   }
 
   /** ⌘Z after an accept, while the text is still the accepted text. */
@@ -307,6 +312,7 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     openHelp,
     closeHelp,
     focusNonce,
+    editorFocusNonce,
     instruction,
     setInstruction,
     adjust,

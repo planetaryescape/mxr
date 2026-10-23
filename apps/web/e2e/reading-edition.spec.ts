@@ -198,7 +198,7 @@ test("let go of all previews exactly what it lets go of, and undo brings it back
   const threads = new Set(shown.bands.flatMap((band) => band.items.map((item) => item.thread_id)));
   await openApp(page, "/reading");
   await expect(items(page).first()).toBeVisible();
-  await page.keyboard.press("A");
+  await page.keyboard.press("E");
   const dialog = page.getByTestId("reading-let-go-all");
   await expect(dialog).toBeVisible();
   const preview = dialog.getByTestId("let-go-all-preview").locator("li");

@@ -58,7 +58,7 @@ test("moving a sender from Reading to People takes it to the desk, and u brings 
     );
     await expect(issue.first()).toBeVisible();
     await issue.first().click({ position: { x: 5, y: 5 } });
-    await page.keyboard.press("K");
+    await page.keyboard.press("P");
     const menu = page.getByTestId("sender-kind-dialog");
     await expect(menu).toBeVisible();
     await menu.press("p");

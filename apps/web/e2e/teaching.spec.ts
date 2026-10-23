@@ -263,7 +263,7 @@ interface PeopleAnswer {
   >;
 }
 
-test("the topics hint sits under a person's topic list and ] dismisses it", async ({ page }) => {
+test("the topics hint sits under a person's topic list and } dismisses it", async ({ page }) => {
   await showHint(page, "messages.topics");
   await openApp(page, `/messages?person=${encodeURIComponent(SAMIR)}`);
   const person = page.getByTestId("person-page");
@@ -273,7 +273,7 @@ test("the topics hint sits under a person's topic list and ] dismisses it", asyn
   await person.getByTestId("person-name").click();
   const hint = person.getByRole("navigation", { name: "Topics" }).getByTestId("hint");
   await expect(hint).toContainText("Every conversation with this person, yours to answer first");
-  await page.keyboard.press("]");
+  await page.keyboard.press("}");
   await expect(hints(page)).toHaveCount(0);
   await expect.poll(() => hintSeen(page, "messages.topics")).toBe(true);
 });

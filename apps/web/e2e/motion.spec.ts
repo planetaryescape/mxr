@@ -165,10 +165,10 @@ test("a key repeat stays instant: only the first key of a burst folds", async ({
 
   await recordFolds(page);
   // One press folds its row.
-  await page.keyboard.press("Space");
+  await page.keyboard.press("e");
   await expect.poll(() => sawFold(page, "Alpha task")).toBe(true);
   // The next press, inside the burst, drops its row at once: it never animates.
-  await page.keyboard.press("Space");
+  await page.keyboard.press("e");
   await expect(todoRow(page, "Bravo task")).toHaveCount(0);
   expect((await running(page)).filter((name) => name === "row-fold").length).toBeLessThanOrEqual(1);
   await expect(todoRow(page, "Alpha task")).toHaveCount(0);
@@ -176,7 +176,7 @@ test("a key repeat stays instant: only the first key of a burst folds", async ({
 
   // After a pause the next single press folds again.
   await page.waitForTimeout(800);
-  await page.keyboard.press("Space");
+  await page.keyboard.press("e");
   await expect.poll(() => sawFold(page, "Charlie task")).toBe(true);
 });
 

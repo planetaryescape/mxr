@@ -232,14 +232,20 @@ reconcile historical mail in bounded thread pages. Unit fixtures that bypass
 ingest must explicitly call `assessments::reconcile_account` before grading.
 
 Sync materializes only the upserted messages' threads. SQLite input triggers
-queue other affected threads, including a sender's history dependants and mail
-whose sender you just wrote to. Aliases and teaching-rule changes can invalidate
+advance account-scoped sender generations for history dependants and mail
+whose sender you just wrote to. These tokens participate in thread CAS immediately,
+without rewriting all of a common sender's threads during ingest. Each dirty page
+selects at most 100 threads; saving a batch acknowledges their observed sender
+generations. A newer sender mutation keeps earlier pages eligible for the next
+sweep. Aliases and teaching-rule changes can invalidate
 many threads. The background reconciler drains bounded dirty pages and retries
 pending arrivals; startup also covers historical mail. Read flags, inbox changes,
 arrival placement and contact refresh timestamps do not change a home. Changes
 to Spam/Trash boundaries still do.
 
-Assessment batches compare the affected thread generations and commit atomically.
+Assessment batches compare local and sender generations and commit atomically.
+An empty, settled batch checks generations in one reader snapshot without taking
+the writer; dirty acknowledgements still use the same writer CAS as new answers.
 After three input races, projections show pending: Inbox and arrivals retain the
 email as sorting, while modes wait for a stored answer. The single-message kind
 request returns retryable `classification_pending` rather than guessing a kind.

@@ -2642,3 +2642,44 @@ async fn a_recipient_decision_invalidates_other_senders_thread_geometry() {
         .unwrap()
         .contains(&mail.thread_id));
 }
+
+#[tokio::test]
+async fn idle_assessment_projection_completes_while_a_writer_is_held() {
+    let mut fx = Fixture::new().await;
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(
+        mxr_store::Store::new(&dir.path().join("idle-projection.db"))
+            .await
+            .unwrap(),
+    );
+    let account = fx
+        .state
+        .store
+        .get_account(&fx.account)
+        .await
+        .unwrap()
+        .unwrap();
+    let inbox = fx
+        .state
+        .store
+        .list_labels_by_account(&fx.account)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|label| label.id == fx.inbox)
+        .unwrap();
+    store.insert_account(&account).await.unwrap();
+    store.upsert_label(&inbox).await.unwrap();
+    Arc::get_mut(&mut fx.state).unwrap().store = store.clone();
+    let mail = inbound(&fx, "sam@studio.example", false).await;
+    let expected = membership(&fx, &mail.thread_id).await;
+    let tx = store.writer().begin_with("BEGIN IMMEDIATE").await.unwrap();
+    let actual = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        membership(&fx, &mail.thread_id),
+    )
+    .await
+    .expect("settled mode membership must not wait for the SQLite writer");
+    assert_eq!(actual, expected);
+    tx.rollback().await.unwrap();
+}

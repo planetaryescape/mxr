@@ -26,6 +26,7 @@ const IGNORED_TABLES: &[&str] = &[
     "update_facts",
     "assessment_inputs",
     "assessment_thread_inputs",
+    "assessment_sender_inputs",
     "history_text_fingerprints",
     "assistant_conversations",
     "assistant_messages",

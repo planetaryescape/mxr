@@ -922,6 +922,8 @@ pub fn map_request(
         | Request::ResolveTodoSuggestion { .. }
         | Request::ScheduleTodo { .. }
         | Request::UpdateTodo { .. }
+        | Request::CorrectTodo { .. }
+        | Request::UndoTodoCorrection { .. }
         | Request::CreateTodo { .. }
         | Request::GetTodoCatchup { .. }
         | Request::SetTodoCatchup { .. } => {

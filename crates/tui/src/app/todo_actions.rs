@@ -668,10 +668,10 @@ impl App {
                         page.uncertain_selected = page
                             .uncertain_selected
                             .saturating_add(1)
-                            .min(items.len().saturating_sub(1))
+                            .min(items.len().saturating_sub(1));
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
-                        page.uncertain_selected = page.uncertain_selected.saturating_sub(1)
+                        page.uncertain_selected = page.uncertain_selected.saturating_sub(1);
                     }
                     KeyCode::Enter => {
                         if let Some(item) = items.get(page.uncertain_selected) {

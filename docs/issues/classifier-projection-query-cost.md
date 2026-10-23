@@ -25,3 +25,12 @@ Before changing these paths, record query counts and timings for a long thread,
 many retained deliveries and repeated arrivals reads. Verify identical stored
 homes and deciding claims across modes, Inbox chips, arrivals and `mxr why`,
 including specialist expiry and unlinked legacy delivery trackers.
+
+## Fixed-time specialist projections use two clocks
+
+At `c4a93e42073d3698006d4e22091628b1da33cbe2`,
+`AccountKinds::load` passes `Utc::now()` to `released_specialists`, while
+`place_threads` passes its caller's explicit `now`. Thread the caller's time
+through `AccountKinds::load` and verify the same invite immediately before and
+after expiry. This affects the live visibility window; the stored home remains
+unchanged. Kept as a follow-up to the sync race fix.

@@ -3,14 +3,14 @@ title: Automation contract
 description: What's safe to script. Which commands return JSON, which support --dry-run, which accept piped IDs from stdin. The machine-readable surface, plainly stated.
 ---
 
-mxr is built to be scripted, but not _every_ command supports _every_ automation primitive. This page is the contract — the things you can rely on when piping mxr into a shell pipeline or an LLM agent.
+mxr is built to be scripted, but commands differ in which automation primitives they support. This page describes the common patterns; check the command reference before composing a pipeline or agent action.
 
 When in doubt, the [auto-generated CLI reference](/reference/cli/) is the source of truth. The tables below summarise the patterns.
 
 ## The four primitives
 
 1. **`--format <FORMAT>`** — `table` (default) for humans, `json|jsonl|csv|ids` for machines. The generated CLI reference lists the exact values per command.
-2. **`--dry-run`** — preview affected ids/labels/threads without mutating provider state. Implemented by core mail mutations and selected lifecycle commands.
+2. **`--dry-run`** previews a command's supported changes without mutating provider state. Many core mail mutations and selected lifecycle commands support it; check the generated CLI reference for each command.
 3. **`--yes`** — skip confirmation prompts on commands that ask before mutating. Required when stdin is not a TTY.
 4. **stdin IDs** — pass message IDs on stdin, one per line. Equivalent to listing them as positional args. Available on most mutations; not all.
 
@@ -24,6 +24,11 @@ and batch mutation surfaces operate across all enabled accounts by
 default. Unknown or ambiguous selectors fail before mxr sends the daemon
 request, and direct-ID commands validate that the selected account owns
 the target before acting.
+
+MCP profile gates apply to requests identified as MCP or agent IPC origins.
+Ordinary CLI requests use CLI origin, including when a shell-capable agent
+invokes `mxr`; the profile does not restrict that process's other shell
+commands. See [For agents](/guides/for-agents/) for the client and OS boundary.
 
 ## Reads (commands that return data)
 
@@ -153,7 +158,9 @@ For agents driving mutations, follow this pattern:
 7. VERIFY      — mxr history --category mutation --limit 1 --format json
 ```
 
-The loop is the same whether the agent is `claude`, `cursor`, `aider`, or a hand-rolled curl-and-jq script. The contract above guarantees every step is composable.
+Use this as a review pattern, then check the command reference for the exact
+preview, input, and output support of the command you chose. The daemon does
+not provide every primitive for every action.
 
 When the user names an account, keep that selector on every step:
 

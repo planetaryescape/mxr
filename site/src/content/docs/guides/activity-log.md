@@ -1,11 +1,18 @@
 ---
 title: Browse your activity log
-description: Replay, filter, export, and scrub the local record of every action you took.
+description: Browse, filter, export, and scrub selected local activity records.
 ---
 
-mxr keeps a local, append-only record of every action *you* take across the TUI, CLI, and web. Browse the last hour, last week, or any custom range. Filter by what, where, when. Tombstone anything you want gone.
+mxr can record selected successful user-intent requests from supported
+clients. The activity log is local, can be disabled or paused, and is not a
+record of every action. Browse a time range, filter by action or client, and
+redact rows you no longer want to keep.
 
-Email clients don't ship this. Gmail logs IPs for compliance admins. mxr logs *intent* — for you, on your machine, never anywhere else.
+The log is a local working history, not a compliance audit. By default,
+subject, recipient email, and search-query context can be recorded; link URL
+tracking is off. Pause drops ordinary new rows, some rows coalesce, and the
+write queue can drop rows when full. Change the metadata controls in `[activity]` or set
+`MXR_ACTIVITY=off` to disable writes.
 
 ## What gets captured
 

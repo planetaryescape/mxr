@@ -18,11 +18,16 @@ pub fn check(draft: &Draft) -> Vec<DraftSafetyIssue> {
     match &draft.content {
         DraftContent::Markdown { source } => labels.extend(gap_labels(source)),
         DraftContent::Html { html, text } => {
-            labels.extend(gap_labels(text.as_deref().unwrap_or("")));
-            // A gap only in the HTML part would be sent too.
-            if labels.is_empty() {
-                labels.extend(gap_labels(html));
-            }
+            // The recipient reads the HTML rendered, where `&#91;&#91;?: …]]`
+            // or a marker split by tags is a gap although neither serialized
+            // part holds the literal `[[?:`. Each view lists the same gaps, so
+            // the fullest one names them.
+            let seen = [
+                gap_labels(text.as_deref().unwrap_or("")),
+                gap_labels(html),
+                gap_labels(&mxr_reader::plain_text(None, Some(html))),
+            ];
+            labels.extend(seen.into_iter().max_by_key(Vec::len).unwrap_or_default());
         }
     }
     if labels.is_empty() {
@@ -148,6 +153,24 @@ mod tests {
     fn a_marker_left_open_and_an_empty_one_still_block() {
         let issues = check(&markdown("Call at [[?: the time\nThanks [[?:]]"));
         assert_eq!(issues[0].message, "2 gaps left: the time, an unnamed gap");
+    }
+
+    #[test]
+    fn a_gap_written_with_entities_or_split_by_tags_is_still_a_gap() {
+        // The text alternative is clean; the recipient's HTML view is not.
+        for html in [
+            "<p>&#91;&#91;?: the date]]</p>",
+            "<p>&lbrack;&lbrack;?: the date]]</p>",
+            "<p>[[<b>?</b>: the date]]</p>",
+            "<p>[<span>[?: the date]]</span></p>",
+        ] {
+            let content = DraftContent::html(html, Some("See you then.".into()));
+            let issues = check(&draft("s", content));
+            assert_eq!(issues.len(), 1, "{html}");
+            assert_eq!(issues[0].message, "1 gap left: the date", "{html}");
+        }
+        let clean = DraftContent::html("<p>See &#91;you&#93; then.</p>", Some("See you.".into()));
+        assert!(check(&draft("s", clean)).is_empty());
     }
 
     #[test]

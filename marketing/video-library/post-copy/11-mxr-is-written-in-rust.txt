@@ -1,5 +1,3 @@
-I wrote mxr in Rust. The daemon handles sync, search and mailbox state. The TUI uses Ratatui, the archive lives in SQLite, and Tantivy handles full text search.
-
-The CLI, TUI, web app and MCP server are clients of the same daemon.
+An edited montage of separate TUI, CLI, and agent recordings. It does not show source code, a live handoff, or the web client.
 
 https://mxr.sh/

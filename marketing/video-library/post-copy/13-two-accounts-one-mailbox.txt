@@ -1,5 +1,3 @@
-mxr can keep Gmail, Outlook and IMAP accounts in one local mailbox. The TUI, CLI and my agent all use the same account model.
-
-This recording uses two synthetic accounts.
+The CLI lists two synthetic accounts with fake sync and send settings, then searches messages from one demo address without an account selector. This does not show combined cross-account scope or real-provider behavior.
 
 https://mxr.sh/

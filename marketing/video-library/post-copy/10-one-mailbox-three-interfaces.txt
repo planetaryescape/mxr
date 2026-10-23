@@ -1,5 +1,3 @@
-Some days I use the TUI. Sometimes I need one command. My agent uses the same mailbox too.
-
-They all talk to the same daemon, so closing one of them does not stop sync or indexing.
+An edited montage cuts between separate synthetic-mail recordings of the TUI, CLI, and an agent. It is not one continuous handoff and does not show the web client.
 
 https://mxr.sh/

@@ -30,8 +30,9 @@ mxr todo why TODO_ID --format json
 ```
 
 Inspect where the title, amount and dates came from. In the web app, press
-`o` to open the source email beside the list, `v` for why the row is here and
-where each field came from (a field mxr wasn't sure of reads "unchecked"),
+`o` to open the source email beside the list, **details** on the row (or
+in the palette) for why the row is here and where each field came from (a
+field mxr wasn't sure of reads "unchecked"), `,` to fix a field,
 or `Enter` for the selected row's primary action (the email with its link
 marked, or a reply to a promise). Check extracted details against that source
 before relying on them. Use the
@@ -123,8 +124,9 @@ daemon's PATH. Open a row's **details**, choose **Microsoft To Do**, review the
 title, dates and outgoing context, then choose **Link and sync both ways**.
 Without the CLI, details offers an installation hint instead.
 
-In the TUI, select a task and press `M` to preview the link, then `M` again to
-confirm it (`Esc` cancels). These controls only appear when the CLI is installed.
+In the TUI, select a task, open the palette (`:`) and choose **To do: send to
+Microsoft To Do** to preview the link, then press `Enter` to confirm it (`Esc`
+cancels). It only works when the CLI is installed.
 Only tasks you explicitly link participate; Mixer does not import your other
 Microsoft tasks.
 
@@ -159,7 +161,8 @@ participates. External MCP/agent profiles
 with no explicit account check only their allowed enabled accounts.
 A sync preview reads ms-todo's cache; a real sync asks ms-todo to refresh first.
 In the web details, use **Preview sync**
-or **Sync now**. In the TUI, `S` previews the selected link and a second `S` syncs it.
+or **Sync now**. In the TUI, **To do: sync the linked Microsoft To Do task** in
+the palette previews the selected link, and `Enter` syncs it.
 
 If both apps changed the same field differently, sync pauses and reports the
 conflict. Set the field to the same value in both apps, then sync again. This

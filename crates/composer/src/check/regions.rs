@@ -56,19 +56,16 @@ pub fn split_body(body: &str) -> BodyRegions<'_> {
 
 impl BodyRegions<'_> {
     /// The body with `text` in place of the user's text, the blank space around
-    /// it as it was.
+    /// it written back as it was stored: the lead, the text, the original gap
+    /// (the body's trailing blank space when nothing follows) and the rest.
     pub fn with_text(&self, text: &str) -> String {
-        let text = text.trim();
-        if self.rest.is_empty() {
-            return format!("{}{text}", self.lead);
-        }
         // A body that began with its signature has no blank space to keep.
-        let gap = if self.gap.is_empty() {
+        let gap = if self.gap.is_empty() && !self.rest.is_empty() {
             "\n\n"
         } else {
             self.gap
         };
-        format!("{}{text}{gap}{}", self.lead, self.rest)
+        format!("{}{}{gap}{}", self.lead, text.trim(), self.rest)
     }
 }
 
@@ -106,7 +103,7 @@ mod tests {
         let regions = split_body("Just this.\n");
         assert_eq!(regions.text, "Just this.");
         assert_eq!(regions.rest, "");
-        assert_eq!(regions.with_text("New."), "New.");
+        assert_eq!(regions.with_text("New."), "New.\n");
     }
 
     #[test]
@@ -126,6 +123,22 @@ mod tests {
             regions.with_text("Hello there"),
             "\n\nHello there\n\n-- \nBK"
         );
+    }
+
+    #[test]
+    fn replacing_the_text_writes_back_the_original_trailing_blank_space() {
+        let regions = split_body("Keep cat safe.  \n");
+        assert_eq!(regions.text, "Keep cat safe.");
+        assert_eq!(regions.with_text("Keep cot safe."), "Keep cot safe.  \n");
+        // A proposal that carries its own blank space does not double it.
+        assert_eq!(
+            regions.with_text("Keep cot safe.  \n"),
+            "Keep cot safe.  \n"
+        );
+        assert_eq!(regions.with_text("\nKeep cot safe."), "Keep cot safe.  \n");
+        // With a signature the gap is the blank space before it, as before.
+        let signed = split_body("Hi  \n\n-- \nBK");
+        assert_eq!(signed.with_text("Hello"), "Hello  \n\n-- \nBK");
     }
 
     #[test]

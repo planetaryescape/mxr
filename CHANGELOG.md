@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.153](https://github.com/planetaryescape/mxr/compare/v0.6.152...v0.6.153) (2026-10-23)
+
+
+### Bug Fixes
+
+* cap assistant replies at 16k tokens and never show a provider's error body ([#677](https://github.com/planetaryescape/mxr/issues/677)) ([57ec457](https://github.com/planetaryescape/mxr/commit/57ec4576162a50845403da02fb36778d1941e32f))
+
 ## [0.6.152](https://github.com/planetaryescape/mxr/compare/v0.6.151...v0.6.152) (2026-10-23)
 
 

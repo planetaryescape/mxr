@@ -250,8 +250,10 @@ The narrative output covers seven slices:
   the "8 years later" pathological pairs don't claim the title).
 - **Storage** — total bytes in window, top mimetype, single
   heaviest message.
-- **Newsletters** — unique lists, top list with open rate, share of
-  inbound that came from a list.
+- **Newsletters** — unique lists, the highest-volume list with its
+  current READ-state share, and the share of inbound mail from a list.
+  The field `opened_count` counts messages currently marked READ in
+  the selected window; it does not track distinct opens or reading history.
 - **Superlatives** — longest thread, most-ghosted counterparty
   (≥10 inbound, 0 outbound).
 

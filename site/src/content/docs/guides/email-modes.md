@@ -39,8 +39,8 @@ mxr modes explain  # what each shipped mode does and its keys
 **Inbox** stays as the everything view, in arrival order. It is not a sixth
 mode. The mode answers what an email is for; Inbox shows what arrived.
 
-Each view keeps its own object and action. Now opens a person in Messages, a
-task in To do, an update in its source group, or a reading item in its reader.
+Each view keeps its own object and action. Use Now to choose a person in Messages, a
+task in To do, the Updates briefing, or a reading item.
 Use Archive when you need a filed record and its source.
 
 ## A conversation can belong to several modes
@@ -73,10 +73,8 @@ When no rule decides, possible personal mail goes to Messages and machine
 mail goes to Updates, marked **Not sure**. A missing body remains pending.
 Open `mxr why MESSAGE_ID --format json` for the stored assessment and evidence,
 or `mxr classify report --format json` for bounded fallback counts and clusters.
-The stored-assessment and report details here describe `main` at
-`fe8ea0f1ba4253df34d586c82eb2a58e1a240695`. Published `v0.6.157` predates
-them; the `v0.6.158` tag points to an earlier commit and its release is still
-a draft.
+The stored-assessment details require changes made after
+`v0.6.158`; that release does not include them.
 
 While sync changes the evidence, an email can briefly be still sorting. It
 stays in Inbox and arrivals while its mode waits for a stored answer. If

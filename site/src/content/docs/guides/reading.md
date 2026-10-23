@@ -26,10 +26,8 @@ Reading, arrivals and Inbox chips share one stored home assessment. Inspect its
 rule, source and evidence with `mxr why MESSAGE_ID --format json`. New cached
 body evidence, sender teaching and rule changes refresh that answer; your
 Later and done state remain separate.
-This shared-assessment behavior describes `main` at
-`fe8ea0f1ba4253df34d586c82eb2a58e1a240695`. Published `v0.6.157` predates it;
-the `v0.6.158` tag points to an earlier commit and its release is still a
-draft.
+The stored-assessment details require changes made after
+`v0.6.158`; that release does not include them.
 
 ## Open the edition
 

@@ -2,7 +2,7 @@
 
 Original inventory baseline: `origin/main` `f39ae66578e3099e464967ab2f042e24b1ad8ec4`, read on 2026-10-23. That tree had 80 authored Markdown/MDX files under `site/src/content/docs/` before CLI reference generation. Generated CLI children are handled by their generator, not counted as hand-authored files. This is the original route disposition inventory; priority pages were read in depth, other pages retain their mechanics pending any focused verification required by implementation. “Keep and relink” is not a claim that every existing command was replayed.
 
-At `fe8ea0f1ba4253df34d586c82eb2a58e1a240695`, the current tree has 81 authored Markdown/MDX routes. The existing `getting-started/agent-quick-start.md` was omitted from the original table. The added row records its disposition; this update does not claim that the original full audit was rerun.
+At `fe8ea0f1ba4253df34d586c82eb2a58e1a240695`, the current tree has 81 authored Markdown/MDX routes. The `getting-started/agent-quick-start.md` route was added after the original audit. The added row records its disposition; this update does not claim that the original full audit was rerun.
 
 Use the [navigation map](../website-refresh/blueprint/07-guides-and-navigation.md) for group placement and the [verification contract](../website-refresh/blueprint/10-verification.md) for acceptance. All existing routes remain unless a separately justified redirect preserves their links.
 

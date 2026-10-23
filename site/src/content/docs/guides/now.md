@@ -110,11 +110,9 @@ line for the sorting policy, or read [Messages](/guides/messages/#which-threads-
 
 Arrivals read the same stored assessment as the modes and Inbox chips. Cached
 mail, sender history, aliases and teaching changes refresh that assessment.
-The original arrival destination and first-seen time stay unchanged. This
-stored-assessment workflow describes `main` at
-`fe8ea0f1ba4253df34d586c82eb2a58e1a240695`. Published `v0.6.157` predates
-it; the `v0.6.158` tag points to an earlier commit and its release is still
-a draft.
+The original arrival destination and first-seen time stay unchanged.
+The stored-assessment details require changes made after
+`v0.6.158`; that release does not include them.
 
 Unknown purpose still has a home marked **Not sure**: Messages for possible
 personal mail, Updates for machine mail. Expand the arrivals line for provisional-placement counts. Run

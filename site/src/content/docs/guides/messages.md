@@ -27,10 +27,8 @@ Possible personal mail with no deciding rule stays in Messages, marked **Not
 sure**, with the reason “No rule decided; Messages for now”. Inspect the stored
 answer with `mxr why MESSAGE_ID --format json`, or measure fallback clusters
 with `mxr classify report --format json`. A stored Messages home does not undo
-a snooze or a done mark. These stored-assessment details describe `main` at
-`fe8ea0f1ba4253df34d586c82eb2a58e1a240695`. Published `v0.6.157` predates
-them; the `v0.6.158` tag points to an earlier commit and its release is still
-a draft.
+a snooze or a done mark. The stored-assessment details require changes made after
+`v0.6.158`; that release does not include them.
 
 ## Four bands, closest people first
 
@@ -158,10 +156,8 @@ empty Bcc list says it was not recorded in this copy, which cannot confirm that
 nobody was hidden. If the message details cannot be loaded, the app reports that
 or offers a retry. Long address lists scroll within the dialog. Escape closes
 the address panel or message info and returns focus to its trigger.
-These identity and audience details describe `main` at
-`fe8ea0f1ba4253df34d586c82eb2a58e1a240695`. Published `v0.6.157` predates
-them; the `v0.6.158` tag points to an earlier commit and its release is still
-a draft.
+These identity and audience details require changes made after
+`v0.6.158`; that release does not include them.
 
 Read the conversation directly. mxr removes repeated trailing history,
 signatures and footers when it can identify them. Quoted questions beside

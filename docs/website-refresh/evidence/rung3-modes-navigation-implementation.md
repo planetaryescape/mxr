@@ -100,3 +100,18 @@ runtime behavior or root-owned ledger changed. No test fixture or milestone
 spec was added. Before handoff, PID `73627` was verified as this checkout's
 Astro preview listening on `127.0.0.1:4321`, stopped with `kill 73627`, and
 `lsof -nP -iTCP:4321 -sTCP:LISTEN` returned no listener.
+
+
+## Root checked the integrated candidate
+
+Root refreshed main at `fe8ea0f1ba4253df34d586c82eb2a58e1a240695`, read the complete candidate diff and integrated it into the control worktree. GitHub now reports v0.6.158 published at `2026-10-23T20:03:09Z`, at `26919135bbfdfb50305d63807c8a2dcad1d33a04`. It still predates the classifier and Messages changes. Root replaced the worker's now-stale “still a draft” statements with concise, version-bounded guidance: the specific newer details require changes after v0.6.158. Full commit provenance stays in this evidence record rather than repeated in operational prose. Root also corrected the audit addendum: the agent tutorial was added after the original audit, rather than present-but-omitted in that original tree.
+
+The final root build passed 10 script tests, validation of 265 OpenAPI paths, and 209 Astro pages, with 205 Markdown siblings. It used the committed OpenAPI fallback, not live conformance. The first root build accidentally ran before the planned wording edits because the edit command used a site-relative working directory; it passed, and the build was rerun after the edits. Both jobs completed; no job was cancelled or left active.
+
+Root independently counted 81 authored routes, with all 80 non-home routes assigned in the sidebar. A focused compiled-HTML check validated 1,844 internal route/anchor occurrences across the homepage and eight changed guides, including their shared sidebar, with no failures. Whitespace and Astro config syntax checks passed. The source-map's Updates selection-token detail was checked against the CLI: the CLI previews and supplies the token internally; readers are not instructed to pass a nonexistent flag.
+
+The real built Your day page opened in Dia at port 4323. T3 DOM checks found Recursive loaded, document width equal to the measured 1280px viewport, the active Work with your mail group expanded and inactive top-level groups collapsed. Root focused Search, understand and automate and pressed Enter through the browser tool; its disclosure opened. Root focused Search and pressed Enter; the search dialog opened with its input focused, then Escape closed it. The mode comparison rendered all five distinct completion meanings. The actual browser did not resize to 390px, so this is a desktop interaction check.
+
+Full compiled-CSS static captures at 390px in dark and light show the readable Your day opening and expanded navigation state with no horizontal or code-block overflow; the matching Recursive font loaded. The menu state was set to the same attributes used by Starlight, and viewport-height units were mapped to an 844px capture viewport. These captures do not test phone menu interaction. Missing favicon/touch-icon requests belong to the extracted capture; the production assets were not changed. No model, runtime mail or real user profile was used.
+
+Inline simplifier review found no new helper, abstraction or executable logic: navigation strings and focused prose use existing patterns. There is no TypeScript contract change. Existing worker node_modules/dist and root build artifacts remain retained. The root-owned Astro preview is PID 1737 on port 4323, retained until the online handoff. No independent review was run, as BK requested.

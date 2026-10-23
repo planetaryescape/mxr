@@ -155,20 +155,6 @@
     ],
     "key": "x"
   },
-  "list.viewport-middle": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "m"
-  },
-  "list.viewport-top": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "h"
-  },
   "list.visual": {
     "modifiers": [
       "cmd",
@@ -523,12 +509,6 @@
       "shift"
     ],
     "key": "s"
-  },
-  "reader.summary": {
-    "modifiers": [
-      "cmd"
-    ],
-    "key": "y"
   },
   "reader.toggle-message": {
     "modifiers": [

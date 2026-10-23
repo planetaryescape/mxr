@@ -23,7 +23,7 @@ If you only learn ten, learn these:
 
 | Key | Action |
 |-----|--------|
-| `Ctrl-p` | Command palette — searchable surface for everything below |
+| `:` | Command palette — searchable surface for everything below (`Ctrl-k` too) |
 | `?` | Help modal (context-aware) |
 | `j` / `k` | Move down / up |
 | `Enter` | Open selected message or thread |
@@ -34,7 +34,7 @@ If you only learn ten, learn these:
 | `Z` | Snooze (preset list + custom-time entry) |
 | `/` | Search |
 
-Everything else is discoverable from the palette (`Ctrl-p`) and the
+Everything else is discoverable from the palette (`:`) and the
 help modal (`?`).
 :::
 
@@ -94,10 +94,10 @@ With no `keys.toml` beside your config, it reports `No <path>/keys.toml; every k
 
 | Key | Action |
 |-----|--------|
-| `1`–`7` | Switch Mailbox / Search / Rules / Accounts / Diagnostics / Analytics / Deliveries |
-| `Ctrl-p` | Open command palette |
-| `Ctrl-a` | Show or hide the assistant pane |
-| `gc` | Edit config |
+| `gi` / `/` | Mailbox / Search |
+| `gR` / `gC` / `gD` / `gA` / `gP` | Rules / Accounts and settings / Diagnostics / Analytics / Deliveries |
+| `:` / `Ctrl-k` | Open command palette (`Ctrl-p` works too) |
+| `@` | Show or hide the assistant pane |
 | `gL` | Open logs |
 | `?` | Toggle help modal |
 | `Esc` | Back, close modal, dismiss pane, or clear selection |
@@ -121,8 +121,6 @@ see whether it starts an `Alt` key; every key works without it.
 | `G` | Jump to bottom |
 | `Ctrl-d` | Page down |
 | `Ctrl-u` | Page up |
-| `H` / `M` | Viewport top / middle |
-| `zz` | Center current item |
 | `Enter` / `o` | Open selected row |
 | `Tab` | Switch pane |
 | `F` | Toggle fullscreen / full reader layout |
@@ -138,9 +136,8 @@ see whether it starts an `Alt` key; every key works without it.
 | `r` | Reply |
 | `a` | Reply all |
 | `f` | Forward |
-| `y` | Summarize thread in the background |
 | `p` | Sender profile |
-| `B` | Thread briefing |
+| `B` | Thread briefing (Summarize Thread is in the palette) |
 | `W` | Who is this sender? |
 | `L` | Links in the previewed message |
 | `u` | Undo the last change |
@@ -158,8 +155,6 @@ see whether it starts an `Alt` key; every key works without it.
 | `b` | Reply later, at a time (Enter with no time: the queue now) |
 | `O` | Open in browser |
 | `R` | Toggle reader mode |
-| `H` | Toggle HTML view |
-| `M` | Toggle remote content (HTML images) |
 | `S` | Toggle signature display |
 | `E` | Export thread |
 
@@ -174,19 +169,22 @@ see whether it starts an `Alt` key; every key works without it.
 | `V`, then a count, then `j` or `k` | Extend the visual selection by that many rows (`V`, `3`, `j` selects 4 rows) |
 | `Esc` | Clear selection; with a count typed, drops the count |
 
-Digits count rows only in visual line mode. Everywhere else `1` to `5` open tabs. Before a multi-message action runs, the confirm lists the messages it will touch, with `j` / `k` to scroll. `Enter` or `y` confirms; `Esc` or `n` cancels.
+Digits count rows only in visual line mode; they no longer open tabs. Before a multi-message action runs, the confirm lists the messages it will touch, with `j` / `k` to scroll. `Enter` or `y` confirms; `Esc` or `n` cancels.
 
 ### Tabs
 
+`g` plus a capital opens a tool. The digits that used to open the tabs say
+where each went until 0.6.180.
+
 | Key | Action |
 |-----|--------|
-| `1` | Mailbox |
-| `2` | Search |
-| `3` | Rules |
-| `4` | Accounts |
-| `5` | Diagnostics |
-| `6` | Analytics |
-| `7` | Deliveries |
+| `gi` | Mailbox |
+| `/` | Search |
+| `gR` | Rules |
+| `gC` | Accounts, where the TUI's settings live |
+| `gD` | Diagnostics |
+| `gA` | Analytics |
+| `gP` | Deliveries |
 
 ### Go-to
 
@@ -201,26 +199,26 @@ Digits count rows only in visual line mode. Everywhere else `1` to `5` open tabs
 | `gi` | Go to Inbox |
 | `gs` | Go to Starred |
 | `gt` | Go to Sent |
-| `gd` | Go to Drafts |
-| `gE` | Local drafts and scheduled sends |
+| `gd` | Go to Drafts (local drafts and scheduled sends are in the palette: **Drafts**) |
 | `ga` | Go to All Mail |
 | `gl` | Go to Label (picker) |
-| `gp` | Updates, as `gu` |
 | `gq` | Reply queue |
 | `go` | Owed replies |
 | `gv` | Calendar invites |
 | `gS` | Screener |
+| `gR` | Rules |
+| `gC` | Accounts and settings |
+| `gD` | Diagnostics |
 | `gA` | Analytics |
-| `gy` | Activity log |
-| `gc` | Edit config (opens `$EDITOR`) |
+| `gP` | Deliveries |
+| `gY` | Activity log |
 | `gL` | Show recent logs |
 | `g 1`–`g 9` | Jump to saved-search 1–9 |
 | `g 0` | Return to default inbox (clear saved-search filter) |
 
 Draft assist, a new draft for this sender, commitments and the voice
-profile are in the command palette only (`Ctrl-p`). Help once listed
-`gA`, `gD`, `gC` and `gV` for them, but those chords never ran them;
-`gA` opens Analytics.
+profile are in the command palette only (`:`), and so is **Edit Config**
+(`$EDITOR` on `config.toml`).
 
 ## Message view
 
@@ -240,7 +238,7 @@ profile are in the command palette only (`Ctrl-p`). Help once listed
 | `r` | Reply |
 | `a` | Reply all |
 | `f` | Forward |
-| `y` | Summarize thread in the background |
+| `B` | Thread briefing (Summarize Thread is in the palette) |
 | `p` | Sender profile |
 | `e` | Archive |
 | `m` | Mark read + archive |
@@ -249,8 +247,7 @@ profile are in the command palette only (`Ctrl-p`). Help once listed
 | `s` | Star / unstar |
 | `I` | Mark read |
 | `U` | Mark unread |
-| `1`–`7` | Switch primary tab (Mailbox / Search / Rules / Accounts / Diagnostics / Analytics / Deliveries) |
-| `gc` | Edit config |
+| `gR` / `gC` / `gD` / `gA` / `gP` | Rules / Accounts and settings / Diagnostics / Analytics / Deliveries |
 | `gL` | Show recent logs |
 | `D` | Unsubscribe |
 
@@ -263,7 +260,7 @@ profile are in the command palette only (`Ctrl-p`). Help once listed
 | `r` | Reply to focused message |
 | `a` | Reply all to focused message |
 | `f` | Forward focused message |
-| `y` | Summarize thread in the background |
+| `B` | Thread briefing (Summarize Thread is in the palette) |
 | `A` | Open attachment modal |
 | `L` | Open links modal |
 | `F` | Toggle fullscreen / full reader layout |
@@ -281,8 +278,8 @@ profile are in the command palette only (`Ctrl-p`). Help once listed
 | `I` | Mark read |
 | `U` | Mark unread |
 | `D` | Unsubscribe |
-| `1`–`7` | Switch primary tab |
-| `gc` / `gL` | Edit config / show logs |
+| `gR` / `gC` / `gD` / `gA` / `gP` | Rules / Accounts and settings / Diagnostics / Analytics / Deliveries |
+| `gL` | Show logs |
 
 ## Sidebar
 
@@ -357,7 +354,7 @@ that editor.
 
 ## Updates
 
-The briefing lens (`gu`; `gp` opens it too): the latest digest in Needs a
+The briefing lens (`gu`): the latest digest in Needs a
 look, Changed and Routine, one line per source, with what arrived since the
 cut below.
 
@@ -476,7 +473,7 @@ The Analytics screen has six views. Cycle them with `Tab` / `Shift-Tab`; refresh
 
 ## Deliveries screen
 
-Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your mail.
+Open with `gP`. Lists [tracked packages](/guides/deliveries/) detected in your mail.
 
 | Key | Action |
 |-----|--------|
@@ -558,7 +555,7 @@ Open with `7`. Lists [tracked packages](/guides/deliveries/) detected in your ma
 
 ## Assistant pane
 
-`Ctrl-a` opens the pane, brings the keys back to it, or hides it. While it has the keys, nothing you type reaches the screen behind it. See [the assistant guide](/guides/assistant/#in-the-terminal).
+`@` opens the pane and brings the keys back to it; from the pane keys (`Esc` off the message box), `@` hides it. While it has the keys, nothing you type reaches the screen behind it. See [the assistant guide](/guides/assistant/#in-the-terminal).
 
 | Key | Action |
 |-----|--------|
@@ -608,16 +605,16 @@ tables, the in-app help (`?`), the command palette and **Settings →
 Keybindings** always agree. Where the web deliberately differs from the TUI,
 the note says why, and a test fails if the two clients bind the same key
 to different things without a listed reason. Keys never fire while you
-type in a field or while compose is open, except `⌘K` / `Ctrl+K`.
+type in a field or while compose is open, except `⌘K` / `Ctrl+K` and the
+assistant's `⌘.` / `Ctrl+.`.
 
-:::note[Changed in 0.6.41]
-In 0.6.41, `g h` became the desk shortcut (was `g d`); it now opens Now.
-`mxr desk` still lists the legacy lanes. `g d`
-opens Drafts (`g E` still does), `g r` / `g p` open Reading / Paper trail
-(were `g R` / `g P`, which keep working until 0.6.42), `g H` shows raw
-headers (was `g h`), and in Reading and Paper trail `S` sweeps a sender's
-bundle and `A` the whole place (were `s` / `S`). Rules is `3` or the
-palette; `g r` no longer opens it.
+:::note[Keys that moved]
+Tools open with `g` and a capital in both clients: `g R` Rules, `g D`
+Diagnostics, `g P` Deliveries, `g C` Settings (was `g c` and `0`) and `g Y`
+Activity (was `g y`). The digit tabs, `8`, `9`, `g E`, `g p`, the list's `H`
+and `M`, and raw headers' `g H` retired; raw headers are in the palette. The
+assistant is `@` as well as `⌘.`, and Summarize folded into the briefing
+(`B`). Each old key says where it went until 0.6.180.
 :::
 
 <!-- web-keys:start (generated from the action registry; run UPDATE_KEY_DOCS=1 npm test) -->
@@ -628,50 +625,46 @@ Work on every page except while typing in a field or compose.
 
 | Key | Action | Note |
 |-----|--------|------|
-| `⌘K / Ctrl+K`, `:`, `Ctrl+P` | Command palette | Ctrl+P works on macOS only, where it is not the browser's Print |
+| `⌘K / Ctrl+K`, `:`, `Ctrl+P` | Command palette | Ctrl+P works on macOS only, where it is not the browser's Print; the TUI's Mod+K is Ctrl+k |
 | `/` | Search mail |  |
 | `?` | Keyboard help |  |
 | `c` | Compose |  |
 | `u`, `z` | Undo last action | z also undoes, for Gmail muscle memory |
-| `⌘. / Ctrl+.` | Show or hide the assistant | Ctrl+a in the TUI, where terminals don't pass Ctrl+. through |
+| `@`, `⌘. / Ctrl+.` | Show or hide the assistant | Mod+. also works from a text field; terminals don't pass it through |
 
 ### Go to
 
-`g` then a letter, as in the TUI. Digits match the TUI's tabs.
+`g` then a letter, as in the TUI: lowercase for mail places and modes, a capital for tools.
 
 | Key | Action | Note |
 |-----|--------|------|
 | `g 1` … `g 9` | Open saved search 1 to 9 | In sidebar order, as the TUI's tab strip |
 | `g h` | Go to Now |  |
 | `g m` | Go to Messages |  |
-| `g u`, `g p` | Go to Updates |  |
+| `g u` | Go to Updates |  |
 | `g e` | Go to Archive |  |
 | `g w` | Waiting on | A lane of the desk lens in the TUI |
 | `g i`, `g 0` | Go to Inbox |  |
 | `g s` | Go to Starred |  |
 | `g t` | Go to Sent |  |
-| `g d`, `g E` | Go to Drafts | One page here; in the TUI g d is the Drafts mailbox and g E its local drafts |
+| `g d` | Go to Drafts | One page here; in the TUI g d is the Drafts mailbox, and its local drafts are in the palette |
 | `g a` | Go to All Mail |  |
 | `g l` | Go to label |  |
 | `g A` | Analytics |  |
-| `g y` | Activity log |  |
+| `g Y` | Activity log |  |
 | `g L` | Daemon logs |  |
-| `g c`, `0` | Settings | The TUI opens config.toml in $EDITOR; the web opens Settings |
+| `g C` | Settings | The TUI opens its Accounts screen, where its settings live; Edit config is in its palette |
 | `g n` | Go to Snoozed | Web only |
 | `g #` | Go to Trash | Web only |
 | `g !` | Go to Spam | Web only |
 | `g q` | Reply later |  |
 | `g o` | Owed replies |  |
-| `g v`, `9` | Calendar invites |  |
+| `g v` | Calendar invites |  |
 | `g r` | Reading |  |
-| `g S`, `8` | Screener |  |
-| `1` | Mail |  |
-| `2` | Search page |  |
-| `3` | Rules |  |
-| `4` | Accounts |  |
-| `5` | Diagnostics |  |
-| `6` | Analytics (tab) |  |
-| `7` | Deliveries |  |
+| `g S` | Screener |  |
+| `g R` | Rules |  |
+| `g D` | Diagnostics |  |
+| `g P` | Deliveries |  |
 | `g F` | Focus & reply | F in the TUI's reply queue |
 | `g x` | To do |  |
 
@@ -722,8 +715,6 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `G`, `End` | Last conversation |  |
 | `Ctrl+D`, `PageDown` | Half page down |  |
 | `Ctrl+U`, `PageUp` | Half page up |  |
-| `H` | Top of screen |  |
-| `M` | Middle of screen | L (bottom of screen) opens links, as in the TUI's list pane |
 | `Enter`, `o`, `ArrowRight` | Open conversation |  |
 | `h`, `ArrowLeft` | Go to sidebar |  |
 | `w` | This list's row action | Web only |
@@ -763,9 +754,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `M` | Load remote images |  |
 | `S` | Show or hide signatures |  |
 | `Q` | Show or hide quoted text | Web only |
-| `g H` | Raw headers | CLI `mxr cat --view headers`; not in the TUI |
 | `O` | Open original in a new tab |  |
-| `y` | Summarize thread |  |
 | `F` | Full-width reader |  |
 
 ### Sidebar
@@ -808,7 +797,7 @@ One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out o
 
 ### Now
 
-On a lit new sender, `1` to `4` answer its question; elsewhere they stay the numbered tabs.
+On a lit new sender, `1` to `4` answer its question.
 
 | Key | Action | Note |
 |-----|--------|------|
@@ -829,7 +818,7 @@ On a lit new sender, `1` to `4` answer its question; elsewhere they stay the num
 
 ### Messages
 
-On a lit new sender, `1` to `4` answer its question; elsewhere they stay the numbered tabs.
+On a lit new sender, `1` to `4` answer its question.
 
 | Key | Action | Note |
 |-----|--------|------|

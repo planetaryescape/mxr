@@ -243,7 +243,7 @@ pub fn hint_text(state: &AssistantState) -> String {
                 )
             }
         },
-        AssistantFocus::Away => "Ctrl-a to use the assistant".into(),
+        AssistantFocus::Away => "@ to use the assistant".into(),
     }
 }
 
@@ -1033,7 +1033,7 @@ fn footer_lines(
         push_wrapped(
             &mut lines,
             "",
-            "Set a model under [llm] in mxr.toml (g c), then reopen this pane.",
+            "Set a model under [llm] in mxr.toml (Edit config in the palette), then reopen this pane.",
             width,
             muted,
             muted,

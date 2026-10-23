@@ -7,7 +7,8 @@
 # this file and `docs/reference/tui-keymap.json` or the web registry disagree.
 
 # Global navigation and shell. Chords follow the TUI's live key handler
-# (crates/tui/src/input.rs): g + letter for views, digits for the TUI's tabs.
+# (crates/tui/src/input.rs): g + a lowercase letter for mail places and modes,
+# g + a capital for tools (blueprint 35, D166).
 # Web-only destinations use letters the TUI leaves free, and every deliberate
 # difference carries a `note` that help displays.
 [[action]]
@@ -19,11 +20,11 @@ scopes = ["global"]
 keys = ["Mod+k", ":"]
 mac_keys = ["Ctrl+p"]
 hide_in_palette = true
-note = "Ctrl+P works on macOS only, where it is not the browser's Print"
+note = "Ctrl+P works on macOS only, where it is not the browser's Print; the TUI's Mod+K is Ctrl+k"
 
 [[action.tui]]
 name = "OpenCommandPalette"
-keys = ["Ctrl+p"]
+keys = [":", "Ctrl+k", "Ctrl+p"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
 
 [[action]]
@@ -114,14 +115,17 @@ label = "Go to Updates"
 description = "Notifications gathered twice a day: read the digest, then let go"
 group = "Navigate"
 scopes = ["global"]
-# g p opened Paper trail, which is Updates now (blueprint 22).
-keys = ["g u", "g p"]
-retired_keys = ["g P"]
+keys = ["g u"]
 
 [[action.tui]]
 name = "OpenUpdates"
-keys = ["g p", "g u"]
+keys = ["g u"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+
+[[action.moved]]
+key = "g p"
+contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
 
 [[action]]
 id = "nav.archive-mode"
@@ -199,18 +203,18 @@ id = "nav.drafts"
 label = "Go to Drafts"
 group = "Navigate"
 scopes = ["global"]
-keys = ["g d", "g E"]
-note = "One page here; in the TUI g d is the Drafts mailbox and g E its local drafts"
+keys = ["g d"]
+note = "One page here; in the TUI g d is the Drafts mailbox, and its local drafts are in the palette"
 
 [[action.tui]]
 name = "GoToDrafts"
 keys = ["g d"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
 
-[[action.tui]]
-name = "OpenStoredDrafts"
-keys = ["g E"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+[[action.moved]]
+key = "g E"
+contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
 
 [[action]]
 id = "nav.archive"
@@ -254,12 +258,17 @@ id = "nav.activity"
 label = "Activity log"
 group = "Diagnostics"
 scopes = ["global"]
-keys = ["g y"]
+keys = ["g Y"]
 
 [[action.tui]]
 name = "OpenActivityScreen"
-keys = ["g y"]
+keys = ["g Y"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+
+[[action.moved]]
+key = "g y"
+contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
 
 [[action]]
 id = "nav.logs"
@@ -278,13 +287,23 @@ id = "nav.settings"
 label = "Settings"
 group = "Settings"
 scopes = ["global"]
-keys = ["g c", "0"]
-note = "The TUI opens config.toml in $EDITOR; the web opens Settings"
+keys = ["g C"]
+note = "The TUI opens its Accounts screen, where its settings live; Edit config is in its palette"
 
 [[action.tui]]
-name = "EditConfig"
-keys = ["g c"]
+name = "OpenTab4"
+keys = ["g C"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+
+[[action.moved]]
+key = "g c"
+contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
+
+[[action.moved]]
+key = "0"
+contexts = ["global"]
+until = "0.6.180"
 
 # Web-only views, on letters the TUI does not use.
 [[action]]
@@ -341,12 +360,17 @@ id = "nav.invites"
 label = "Calendar invites"
 group = "Triage"
 scopes = ["global"]
-keys = ["g v", "9"]
+keys = ["g v"]
 
 [[action.tui]]
 name = "OpenCalendarInvites"
 keys = ["g v"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+
+[[action.moved]]
+key = "9"
+contexts = ["global"]
+until = "0.6.180"
 
 [[action]]
 id = "nav.reading"
@@ -355,9 +379,6 @@ description = "Newsletters you chose, as an edition; nothing here is owed"
 group = "Triage"
 scopes = ["global"]
 keys = ["g r"]
-# The web used g R and g P up to 0.6.40, while g r opened Rules.
-# Drop these retired aliases after 0.6.41.
-retired_keys = ["g R"]
 
 [[action.tui]]
 name = "OpenReading"
@@ -377,12 +398,17 @@ id = "nav.screener"
 label = "Screener"
 group = "Triage"
 scopes = ["global"]
-keys = ["g S", "8"]
+keys = ["g S"]
 
 [[action.tui]]
 name = "OpenScreenerQueue"
 keys = ["g S"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+
+[[action.moved]]
+key = "8"
+contexts = ["global"]
+until = "0.6.180"
 
 [[action]]
 id = "nav.jobs"
@@ -391,92 +417,109 @@ group = "Diagnostics"
 scopes = ["global"]
 palette_only = true
 
-# Tabs. 1 to 7 match the TUI's tab bar.
+# The TUI's tabs. Tools open with g + a capital (blueprint 35, D166); the
+# digits that opened them retired.
 [[action]]
 id = "nav.tab-mail"
 label = "Mail"
 group = "Navigate"
 scopes = ["global"]
-keys = ["1"]
 hide_in_palette = true
 
-[[action.tui]]
-name = "OpenTab1"
-keys = ["1"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+[[action.moved]]
+key = "1"
+contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
+to = "nav.inbox"
 
 [[action]]
 id = "nav.search-page"
 label = "Search page"
 group = "Search"
 scopes = ["global"]
-keys = ["2"]
 
-[[action.tui]]
-name = "OpenTab2"
-keys = ["2"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+[[action.moved]]
+key = "2"
+contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
+to = "shell.search-palette"
 
 [[action]]
 id = "nav.rules"
 label = "Rules"
 group = "Rules"
 scopes = ["global"]
-keys = ["3"]
+keys = ["g R"]
 
 [[action.tui]]
 name = "OpenTab3"
-keys = ["3"]
+keys = ["g R"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+
+[[action.moved]]
+key = "3"
+contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
 
 [[action]]
 id = "nav.accounts"
 label = "Accounts"
 group = "Accounts"
 scopes = ["global"]
-keys = ["4"]
 
-[[action.tui]]
-name = "OpenTab4"
-keys = ["4"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+[[action.moved]]
+key = "4"
+contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
+to = "nav.settings"
 
 [[action]]
 id = "nav.diagnostics"
 label = "Diagnostics"
 group = "Diagnostics"
 scopes = ["global"]
-keys = ["5"]
+keys = ["g D"]
 
 [[action.tui]]
 name = "OpenTab5"
-keys = ["5"]
+keys = ["g D"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+
+[[action.moved]]
+key = "5"
+contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
 
 [[action]]
 id = "nav.tab-analytics"
 label = "Analytics (tab)"
+short_label = "Analytics"
 group = "Analytics"
 scopes = ["global"]
-keys = ["6"]
 hide_in_palette = true
 
-[[action.tui]]
-name = "OpenTab6"
-keys = ["6"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+[[action.moved]]
+key = "6"
+contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
+to = "nav.analytics"
 
 [[action]]
 id = "nav.deliveries"
 label = "Deliveries"
 group = "Triage"
 scopes = ["global"]
-keys = ["7"]
+keys = ["g P"]
 
 [[action.tui]]
 name = "OpenTab7"
-keys = ["7"]
+keys = ["g P"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+
+[[action.moved]]
+key = "7"
+contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
 
 [[action]]
 id = "nav.saved-search-1"
@@ -1386,27 +1429,24 @@ id = "list.viewport-top"
 label = "Top of screen"
 group = "Move"
 scopes = ["list"]
-keys = ["H"]
 hide_in_palette = true
 
-[[action.tui]]
-name = "ViewportTop"
-keys = ["H"]
+[[action.moved]]
+key = "H"
 contexts = ["list", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "updates"]
+until = "0.6.180"
 
 [[action]]
 id = "list.viewport-middle"
 label = "Middle of screen"
 group = "Move"
 scopes = ["list"]
-keys = ["M"]
 hide_in_palette = true
-note = "L (bottom of screen) opens links, as in the TUI's list pane"
 
-[[action.tui]]
-name = "ViewportMiddle"
-keys = ["M"]
+[[action.moved]]
+key = "M"
 contexts = ["list", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "updates"]
+until = "0.6.180"
 
 [[action]]
 id = "list.open"
@@ -1847,8 +1887,13 @@ id = "reader.headers"
 label = "Raw headers"
 group = "View"
 scopes = ["reader"]
-keys = ["g H"]
+palette_only = true
 note = "CLI `mxr cat --view headers`; not in the TUI"
+
+[[action.moved]]
+key = "g H"
+contexts = ["reader"]
+until = "0.6.180"
 
 [[action]]
 id = "reader.open-original"
@@ -1873,12 +1918,12 @@ id = "reader.summary"
 label = "Summarize thread"
 group = "Read"
 scopes = ["reader"]
-keys = ["y"]
 
-[[action.tui]]
-name = "SummarizeCurrentThread"
-keys = ["y"]
+[[action.moved]]
+key = "y"
 contexts = ["list", "reader", "place"]
+until = "0.6.180"
+to = "mail.briefing"
 
 [[action]]
 id = "reader.fullscreen"
@@ -3808,8 +3853,13 @@ short_label = "Assistant"
 description = "Talk to your mail: ask questions, or have it sort and tidy with your approval"
 group = "View"
 scopes = ["global"]
-keys = ["Mod+."]
-note = "Ctrl+a in the TUI, where terminals don't pass Ctrl+. through"
+keys = ["@", "Mod+."]
+note = "Mod+. also works from a text field; terminals don't pass it through"
+
+[[action.tui]]
+name = "ToggleAssistant"
+keys = ["@"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
 
 [[action]]
 id = "assistant.new"
@@ -3835,10 +3885,11 @@ label = "Toggle assistant"
 group = "TUI"
 clients = ["tui"]
 
-[[action.tui]]
-name = "ToggleAssistant"
-keys = ["Ctrl+a"]
+[[action.moved]]
+key = "Ctrl+a"
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
+to = "assistant.toggle"
 
 [[action]]
 id = "tui.prev-search-result"
@@ -3890,10 +3941,10 @@ label = "Center current"
 group = "TUI"
 clients = ["tui"]
 
-[[action.tui]]
-name = "CenterCurrent"
-keys = ["z z"]
+[[action.moved]]
+key = "z z"
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+until = "0.6.180"
 
 [[action]]
 id = "tui.viewport-bottom"
@@ -3901,10 +3952,10 @@ label = "Viewport bottom"
 group = "TUI"
 clients = ["tui"]
 
-[[action.tui]]
-name = "ViewportBottom"
-keys = ["L"]
+[[action.moved]]
+key = "L"
 contexts = ["sidebar", "todo", "catchup", "expired", "now", "messages", "archive"]
+until = "0.6.180"
 
 [[action]]
 id = "tui.open-saved-search-form-new"

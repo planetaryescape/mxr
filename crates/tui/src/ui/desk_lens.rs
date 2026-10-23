@@ -257,7 +257,7 @@ pub(crate) fn elsewhere_line(elsewhere: &DeskElsewhereData) -> String {
     // counts, and say so.
     let parts: Vec<String> = [
         ("Reading", elsewhere.reading, " new this week (g r)"),
-        ("Paper trail", elsewhere.paper_trail, " this week (g p)"),
+        ("Paper trail", elsewhere.paper_trail, " this week (g u)"),
         ("Deliveries", elsewhere.deliveries, ""),
         ("Invites", elsewhere.invites, ""),
         ("Screener", elsewhere.screener, ""),

@@ -168,7 +168,7 @@ impl App {
         }
         if !self.place_list_focused() {
             self.status_message =
-                Some("Move a sender from Reading or Paper trail (g r, g p)".into());
+                Some("Move a sender from Reading or Paper trail (g r, g u)".into());
             return;
         }
         let Some((bundle, _)) = self.selected_place_row() else {

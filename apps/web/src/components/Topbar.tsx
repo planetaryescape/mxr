@@ -12,6 +12,7 @@ import { lensesFromShell, resolveLens } from "@/features/mailbox/lenses";
 import { useShellQuery } from "@/features/mailbox/useMailboxQuery";
 import { fetchThread } from "@/features/mailbox/api";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { definedShortcut } from "@/lib/actions/definition";
 import { formatChord } from "@/lib/keys/chord";
 import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
@@ -274,7 +275,7 @@ function AssistantToggle() {
       onClick={() => toggle("pointer")}
       aria-pressed={open}
       aria-label="Assistant"
-      title={`Assistant (${formatChord("Mod+.")})`}
+      title={`Assistant (${formatChord(definedShortcut("assistant.toggle"))})`}
     >
       <CircleDot className="size-4" />
     </Button>

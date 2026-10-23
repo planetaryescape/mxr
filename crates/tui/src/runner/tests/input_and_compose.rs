@@ -930,15 +930,16 @@ fn input_gg_jumps_top() {
 }
 
 #[test]
-fn input_zz_centers() {
+fn input_zz_no_longer_centers() {
     let mut h = InputHandler::new();
     assert_eq!(
         h.handle_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)),
         None
     );
+    assert!(h.is_pending(), "z waits so z z can say it moved");
     assert_eq!(
         h.handle_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)),
-        Some(Action::CenterCurrent)
+        None
     );
 }
 
@@ -979,28 +980,23 @@ fn input_q_quits() {
 }
 
 #[test]
-fn input_hml_viewport() {
+fn input_hml_viewport_keys_retired() {
     let mut h = InputHandler::new();
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('H'), KeyModifiers::SHIFT)),
-        Some(Action::ViewportTop)
-    );
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('M'), KeyModifiers::SHIFT)),
-        Some(Action::ViewportMiddle)
-    );
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::SHIFT)),
-        Some(Action::ViewportBottom)
-    );
+    for c in ['H', 'M', 'L'] {
+        assert_eq!(
+            h.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT)),
+            None,
+            "{c}"
+        );
+    }
 }
 
 #[test]
 fn input_uppercase_shortcuts_work_without_explicit_shift_modifier() {
     let mut h = InputHandler::new();
     assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('H'), KeyModifiers::NONE)),
-        Some(Action::ViewportTop)
+        h.handle_key(KeyEvent::new(KeyCode::Char('V'), KeyModifiers::NONE)),
+        Some(Action::VisualLineMode)
     );
     assert_eq!(
         h.handle_key(KeyEvent::new(KeyCode::Char('A'), KeyModifiers::NONE)),
@@ -1437,17 +1433,17 @@ fn command_palette_fuzzy_filter() {
 }
 
 #[test]
-fn command_palette_shortcut_filter_finds_edit_config() {
+fn command_palette_shortcut_filter_finds_accounts() {
     let mut p = CommandPalette::default();
     p.toggle(crate::action::UiContext::MailboxList);
     p.on_char('g');
-    p.on_char('c');
+    p.on_char('C');
     let labels: Vec<&str> = p
         .filtered
         .iter()
         .map(|&i| p.commands[i].label.as_str())
         .collect();
-    assert!(labels.contains(&"Edit Config"));
+    assert!(labels.contains(&"Open Accounts Tab"));
 }
 
 #[test]

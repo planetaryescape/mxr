@@ -313,6 +313,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "reply_all" => Some(Action::ReplyAll),
         "forward" => Some(Action::Forward),
         "summarize_current_thread" | "summarize_thread" => Some(Action::SummarizeCurrentThread),
+        "thread_briefing" => Some(Action::OpenThreadBriefing),
         "invite_accept" => Some(Action::RespondInvite(CalendarInviteActionData::Accept)),
         "invite_tentative" | "invite_maybe" => {
             Some(Action::RespondInvite(CalendarInviteActionData::Tentative))
@@ -347,6 +348,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "toggle_remote_content" => Some(Action::ToggleRemoteContent),
         "export_thread" => Some(Action::ExportThread),
         "command_palette" => Some(Action::OpenCommandPalette),
+        "toggle_assistant" => Some(Action::ToggleAssistant),
         "switch_panes" => Some(Action::SwitchPane),
         "toggle_fullscreen" => Some(Action::ToggleFullscreen),
         "visual_line_mode" => Some(Action::VisualLineMode),
@@ -400,6 +402,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "open_tab_4" => Some(Action::OpenTab4),
         "open_tab_5" => Some(Action::OpenTab5),
         "open_tab_6" => Some(Action::OpenTab6),
+        "open_tab_7" => Some(Action::OpenTab7),
         "toggle_signature" => Some(Action::ToggleSignature),
         #[cfg(debug_assertions)]
         "dump_action_trace" => Some(Action::DumpActionTrace),
@@ -489,6 +492,7 @@ fn action_display_name(action: &str) -> String {
         "reply_all" => "Reply All".into(),
         "forward" => "Forward".into(),
         "summarize_current_thread" | "summarize_thread" => "Summary".into(),
+        "thread_briefing" => "Brief".into(),
         "invite_accept" => "Accept Invite".into(),
         "invite_tentative" | "invite_maybe" => "Maybe".into(),
         "invite_decline" => "Decline Invite".into(),
@@ -536,6 +540,8 @@ fn action_display_name(action: &str) -> String {
         "open_tab_3" => "Rules Page".into(),
         "open_tab_4" => "Accounts Page".into(),
         "open_tab_5" => "Diagnostics Page".into(),
+        "open_tab_7" => "Deliveries Page".into(),
+        "toggle_assistant" => "Assistant".into(),
         "quit_view" => "Quit".into(),
         "clear_selection" => "Clear Sel".into(),
         "back" => "Back".into(),
@@ -735,14 +741,10 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("j", "move_down"),
     ("k", "move_up"),
     ("gg", "jump_top"),
-    ("gy", "open_activity"),
     ("G", "jump_bottom"),
     ("Ctrl-d", "page_down"),
     ("Ctrl-u", "page_up"),
-    ("H", "visible_top"),
-    ("M", "visible_middle"),
     ("L", "open_links"),
-    ("zz", "center_current"),
     ("/", "search_all_mail"),
     ("Ctrl-f", "mailbox_filter"),
     ("n", "next_search_result"),
@@ -757,7 +759,7 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("r", "reply"),
     ("a", "reply_all"),
     ("f", "forward"),
-    ("y", "summarize_current_thread"),
+    ("B", "thread_briefing"),
     ("ia", "invite_accept"),
     ("im", "invite_tentative"),
     ("id", "invite_decline"),
@@ -789,14 +791,12 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("E", "export_thread"),
     ("p", "sender_profile"),
     ("V", "visual_line_mode"),
+    (":", "command_palette"),
+    ("Ctrl-k", "command_palette"),
     ("Ctrl-p", "command_palette"),
+    ("@", "toggle_assistant"),
     ("Tab", "switch_panes"),
     ("F", "toggle_fullscreen"),
-    ("1", "open_tab_1"),
-    ("2", "open_tab_2"),
-    ("3", "open_tab_3"),
-    ("4", "open_tab_4"),
-    ("5", "open_tab_5"),
     // Gmail go-to (A005)
     ("gi", "go_inbox"),
     ("gs", "go_starred"),
@@ -807,15 +807,17 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("ge", "open_archive"),
     ("gx", "open_todo"),
     ("gr", "open_reading"),
-    ("gp", "open_updates"),
     ("ga", "go_all_mail"),
     ("gl", "go_label"),
-    ("gc", "edit_config"),
     ("gL", "open_logs"),
     // Draft assist, draft for sender, commitments and voice profile are
-    // palette only: their old gA/gD/gC/gV rows here never dispatched.
+    // palette only. g + a capital opens a tool (blueprint 35, D166).
     ("gA", "open_analytics"),
-    ("gE", "open_stored_drafts"),
+    ("gR", "open_tab_3"),
+    ("gC", "open_tab_4"),
+    ("gD", "open_tab_5"),
+    ("gP", "open_tab_7"),
+    ("gY", "open_activity"),
     ("gq", "open_reply_queue"),
     ("go", "open_owed_replies"),
     ("gv", "open_calendar_invites"),
@@ -845,7 +847,7 @@ const MV_DEFAULTS: &[(&str, &str)] = &[
     ("r", "reply"),
     ("a", "reply_all"),
     ("f", "forward"),
-    ("y", "summarize_current_thread"),
+    ("B", "thread_briefing"),
     ("ia", "invite_accept"),
     ("im", "invite_tentative"),
     ("id", "invite_decline"),
@@ -860,12 +862,9 @@ const MV_DEFAULTS: &[(&str, &str)] = &[
     ("t", "create_todo"),
     ("p", "sender_profile"),
     ("S", "toggle_signature"),
-    ("1", "open_tab_1"),
-    ("2", "open_tab_2"),
-    ("3", "open_tab_3"),
-    ("4", "open_tab_4"),
-    ("5", "open_tab_5"),
-    ("gc", "edit_config"),
+    ("gR", "open_tab_3"),
+    ("gC", "open_tab_4"),
+    ("gD", "open_tab_5"),
     ("gL", "open_logs"),
     ("gA", "open_analytics"),
 ];
@@ -886,7 +885,7 @@ const TV_DEFAULTS: &[(&str, &str)] = &[
     ("r", "reply"),
     ("a", "reply_all"),
     ("f", "forward"),
-    ("y", "summarize_current_thread"),
+    ("B", "thread_briefing"),
     ("ia", "invite_accept"),
     ("im", "invite_tentative"),
     ("id", "invite_decline"),
@@ -907,12 +906,9 @@ const TV_DEFAULTS: &[(&str, &str)] = &[
     ("D", "unsubscribe"),
     ("p", "sender_profile"),
     ("S", "toggle_signature"),
-    ("1", "open_tab_1"),
-    ("2", "open_tab_2"),
-    ("3", "open_tab_3"),
-    ("4", "open_tab_4"),
-    ("5", "open_tab_5"),
-    ("gc", "edit_config"),
+    ("gR", "open_tab_3"),
+    ("gC", "open_tab_4"),
+    ("gD", "open_tab_5"),
     ("gL", "open_logs"),
     ("gA", "open_analytics"),
 ];
@@ -1210,7 +1206,7 @@ mod tests {
         assert!(labels.contains(&"Full View".to_string()));
         assert!(labels.contains(&"Visual Line Mode".to_string()));
         assert!(labels.contains(&"Go Inbox".to_string()));
-        assert!(labels.contains(&"Edit Config".to_string()));
+        assert!(labels.contains(&"Accounts Page".to_string()));
     }
 
     #[test]
@@ -1224,8 +1220,7 @@ mod tests {
             primary_key_display(ViewContext::ThreadView, &Action::Compose),
             None
         );
-        // The HTML toggle exists only in message/thread views; H in the
-        // list is the viewport top.
+        // The HTML toggle exists only in message/thread views.
         assert_eq!(
             primary_key_display(ViewContext::MailList, &Action::ToggleHtmlView),
             None

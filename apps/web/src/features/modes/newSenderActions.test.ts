@@ -20,10 +20,12 @@ afterEach(() => {
 });
 
 describe("keys 1 to 4 on a lit new sender", () => {
-  test("stay the numbered tabs until a new sender is lit", () => {
+  test("only say where the retired tab went until a new sender is lit", () => {
     for (const scope of ["now", "messages"] as const) {
       setController(scope, { down: () => {}, up: () => {} });
-      expect(getRegistry().resolve("1", [scope, "global"])?.action.id).toBe("nav.tab-mail");
+      const binding = getRegistry().resolve("1", [scope, "global"]);
+      expect(binding?.action.id).toBe("nav.tab-mail");
+      expect(binding?.moved).toBe(true);
     }
   });
 

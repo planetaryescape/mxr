@@ -35,6 +35,8 @@ const defined = (keymap.action as DefinedAction[]).filter(
   (action) => !action.clients || action.clients.includes("web"),
 );
 
+const TUI_ONLY_CONTEXTS = new Set(["place"]);
+
 function definedBindings(): string[] {
   const bindings: string[] = [];
   for (const action of defined) {
@@ -48,7 +50,10 @@ function definedBindings(): string[] {
       }
     }
     for (const { key, contexts } of action.moved ?? []) {
-      for (const scope of contexts) bindings.push(`${scope}|${key}|${action.id}|moved`);
+      // A move lists TUI contexts too; the TUI's place view has no web scope.
+      for (const scope of contexts.filter((context) => !TUI_ONLY_CONTEXTS.has(context))) {
+        bindings.push(`${scope}|${key}|${action.id}|moved`);
+      }
     }
   }
   return bindings;

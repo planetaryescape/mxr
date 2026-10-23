@@ -1,4 +1,4 @@
-//! The assistant pane: hidden until Ctrl-a, takes every key while it has
+//! The assistant pane: hidden until @, takes every key while it has
 //! focus, and each key sends the daemon request it names (send, approve,
 //! reject, answer, skip, stop, trust, delete after a dry run).
 
@@ -29,8 +29,8 @@ fn type_text(app: &mut App, text: &str) {
     }
 }
 
-fn ctrl_a(app: &mut App) {
-    press(app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+fn at(app: &mut App) {
+    press(app, KeyCode::Char('@'), KeyModifiers::SHIFT);
 }
 
 fn requests(app: &mut App) -> Vec<Request> {
@@ -107,7 +107,7 @@ fn question() -> AssistantPendingData {
 /// there drained.
 fn showing(conversation: AssistantConversationData) -> App {
     let mut app = App::new();
-    ctrl_a(&mut app);
+    at(&mut app);
     app.assistant.conversation_id = Some(conversation.id.clone());
     app.apply_assistant_result(
         AssistantCall::Conversation,
@@ -140,9 +140,9 @@ fn the_pane_is_hidden_by_default() {
 }
 
 #[test]
-fn ctrl_a_opens_the_pane_with_the_keys_and_asks_if_it_can_run() {
+fn at_opens_the_pane_with_the_keys_and_asks_if_it_can_run() {
     let mut app = App::new();
-    ctrl_a(&mut app);
+    at(&mut app);
     assert!(app.assistant.open);
     assert_eq!(app.assistant.focus, AssistantFocus::Input);
     assert!(matches!(
@@ -155,23 +155,35 @@ fn ctrl_a_opens_the_pane_with_the_keys_and_asks_if_it_can_run() {
     let narrow = render_to_string(90, 30, |frame| app.draw(frame));
     assert!(narrow.contains("Talk to your mail"), "{narrow}");
 
-    // Esc hands the keys back in two steps; Ctrl-a then focuses and hides.
+    // Esc hands the keys back in two steps; @ then focuses the input,
+    // types there, and hides the pane from off the input.
     press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
     assert_eq!(app.assistant.focus, AssistantFocus::Pane);
     press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
     assert_eq!(app.assistant.focus, AssistantFocus::Away);
     assert!(app.assistant.open);
-    ctrl_a(&mut app);
+    at(&mut app);
     assert_eq!(app.assistant.focus, AssistantFocus::Input);
-    ctrl_a(&mut app);
+    at(&mut app);
+    assert_eq!(app.assistant.input, "@", "@ types in the input");
+    press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    at(&mut app);
     assert!(!app.assistant.open);
+
+    // Ctrl-a moved to @: it says so and opens nothing.
+    press(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+    assert!(!app.assistant.open);
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Toggle assistant is now @")
+    );
 }
 
 #[test]
 fn typing_in_the_pane_never_reaches_the_screen_behind_it() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(3);
-    ctrl_a(&mut app);
+    at(&mut app);
     requests(&mut app);
     type_text(&mut app, "e#!q archive these");
     assert_eq!(app.assistant.input, "e#!q archive these");
@@ -186,7 +198,7 @@ fn enter_sends_the_message_with_what_is_open() {
     let envelopes = make_test_envelopes(2);
     app.mailbox.selected_set.insert(envelopes[0].id.clone());
     app.mailbox.envelopes = envelopes.clone();
-    ctrl_a(&mut app);
+    at(&mut app);
     requests(&mut app);
     type_text(&mut app, "Summarise these");
     press(&mut app, KeyCode::Enter, KeyModifiers::NONE);

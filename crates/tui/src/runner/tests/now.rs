@@ -65,12 +65,18 @@ fn each_rail_key_opens_its_mode() {
         ('u', MailboxView::Updates),
         ('r', MailboxView::Reading),
         ('e', MailboxView::ArchiveMode),
-        // Paper trail became Updates.
-        ('p', MailboxView::Updates),
     ] {
         chord(&mut app, key);
         assert_eq!(app.mailbox.mailbox_view, view, "g {key}");
     }
+    // g p (Paper trail, then Updates) retired: it says where Updates is.
+    chord(&mut app, 'h');
+    chord(&mut app, 'p');
+    assert_eq!(app.mailbox.mailbox_view, MailboxView::Now, "g p");
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Go to Updates is now g u")
+    );
     app.mailbox.labels = make_test_labels();
     chord(&mut app, 'i');
     assert_eq!(
@@ -277,13 +283,14 @@ fn a_new_senders_question_is_answered_on_its_row() {
         [Request::SetSenderKind { sender_email, kind: Some(SenderKindData::PaperTrail), .. }]
             if sender_email == "iris.chen@example.com"
     ));
-    // On a row with no question a digit is still a tab.
+    // On a row with no question a digit does nothing: the tabs moved to g.
     app.pending_mutation_queue.clear();
     app.mailbox.selected_index = 0;
     assert_eq!(
         app.handle_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE)),
-        Some(Action::OpenTab2)
+        None
     );
+    assert!(queued(&app).is_empty());
 }
 
 fn status_line(app: &App) -> String {

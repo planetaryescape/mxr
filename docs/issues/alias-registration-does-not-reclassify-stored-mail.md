@@ -55,8 +55,13 @@ arrival rows. Consequences:
 
 - Set-primary runs the same account-wide reconciliation. Its counts can be
   non-zero when rows from an earlier change are stale.
-- Sync repairs a batch only after its pass finishes. A pass that is in flight
-  while the change applies is corrected at that point, not before.
+- A sync pass that is running when the change applies can write messages
+  with the old direction until its own finalizer reconciles them, while it holds
+  its provider guard. Those messages read the old direction until then.
+- Sync builds each reply pair from the reply's stored direction when it writes
+  it, so a pair written after a repair is correct. A pair damaged by any other
+  path stays wrong until the next reconcile, which is the next address change
+  or the account's next successful sync pass.
 - Relationship profiles, resolution suggestions and some cached summaries are
   not refreshed by an address change. See
   `docs/issues/address-change-does-not-refresh-relationship-profiles-and-resolution-suggestions.md`.

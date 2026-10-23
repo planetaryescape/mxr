@@ -102,9 +102,14 @@ Adding or removing an address reclassifies the account's stored mail against
 the new set in the same command. Mail from an address you now own reads as
 sent, and sent mail from an address you no longer own reads as received. Reply
 pairs follow in the same command, and the contacts view catches up within about
-ten seconds. A sync batch that was already downloaded when you made the change
-is reconciled after its pass finishes, so it cannot leave a message with the
-old direction.
+ten seconds. A sync pass that was already running when you made the change
+is reconciled before it releases its place in line, so the messages it
+wrote take the new direction and their reply pairs are rebuilt with them. The
+catch is timing: until that pass finishes, a message it wrote can still show
+the old direction, for as long as the pass runs. If the reconciliation fails,
+it is retried after the account's next successful sync pass. Relationship
+profiles and resolution suggestions are not refreshed by an address change
+yet.
 
 Arrival history is not rewritten. An arrival records what arrived when it
 arrived, and a correction you made stays as you made it. So mail you sent from

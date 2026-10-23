@@ -11,7 +11,9 @@ pub const FORWARD_HEADER: &str = "---------- Forwarded message ----------";
 /// A body split into the user's text and what follows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BodyRegions<'a> {
-    /// The user's text, without the blank space after it.
+    /// The blank space before the text, as it was written.
+    pub lead: &'a str,
+    /// The user's text, without blank space at either end.
     pub text: &'a str,
     /// The blank space between the text and the rest, as it was written.
     pub gap: &'a str,
@@ -34,20 +36,31 @@ pub fn split_body(body: &str) -> BodyRegions<'_> {
         offset += line.len();
     }
     let (before, rest) = body.split_at(cut);
-    let text = before.trim_end();
+    let text = before.trim();
+    if text.is_empty() {
+        return BodyRegions {
+            lead: "",
+            text: "",
+            gap: before,
+            rest,
+        };
+    }
+    let lead_len = before.len() - before.trim_start().len();
     BodyRegions {
+        lead: &before[..lead_len],
         text,
-        gap: &before[text.len()..],
+        gap: &before[lead_len + text.len()..],
         rest,
     }
 }
 
 impl BodyRegions<'_> {
-    /// The body with `text` in place of the user's text.
+    /// The body with `text` in place of the user's text, the blank space around
+    /// it as it was.
     pub fn with_text(&self, text: &str) -> String {
-        let text = text.trim_end();
+        let text = text.trim();
         if self.rest.is_empty() {
-            return text.to_string();
+            return format!("{}{text}", self.lead);
         }
         // A body that began with its signature has no blank space to keep.
         let gap = if self.gap.is_empty() {
@@ -55,16 +68,16 @@ impl BodyRegions<'_> {
         } else {
             self.gap
         };
-        format!("{text}{gap}{}", self.rest)
+        format!("{}{text}{gap}{}", self.lead, self.rest)
     }
 }
 
 /// The hash a proposal is made against: hex SHA-256 of the user's text with
-/// the blank space after it ignored and Windows line endings read as `\n`, so
-/// a trailing newline from a file or an editor, or a file saved with CRLF,
-/// never makes a draft look changed.
+/// the blank space at both ends ignored and Windows line endings read as `\n`.
+/// A client that trims what it sends, an editor that adds a final newline and
+/// a file saved with CRLF all hash the same text.
 pub fn text_hash(text: &str) -> String {
-    let text = text.trim_end().replace("\r\n", "\n");
+    let text = text.trim().replace("\r\n", "\n");
     base16ct::lower::encode_string(&Sha256::digest(text.as_bytes()))
 }
 
@@ -103,6 +116,19 @@ mod tests {
     }
 
     #[test]
+    fn blank_lines_before_the_text_are_not_part_of_it_and_survive_a_replacement() {
+        let body = "\n\nHi\n\n-- \nBK";
+        let regions = split_body(body);
+        assert_eq!(regions.text, "Hi");
+        assert_eq!(regions.lead, "\n\n");
+        assert_eq!(text_hash(regions.text), text_hash("Hi"));
+        assert_eq!(
+            regions.with_text("Hello there"),
+            "\n\nHello there\n\n-- \nBK"
+        );
+    }
+
+    #[test]
     fn a_body_that_starts_with_its_signature_has_no_text() {
         let regions = split_body("-- \nAlex");
         assert_eq!(regions.text, "");
@@ -120,11 +146,11 @@ mod tests {
     }
 
     #[test]
-    fn the_hash_ignores_trailing_blank_space_and_line_ending_style_only() {
+    fn the_hash_ignores_blank_space_at_both_ends_and_line_ending_style_only() {
         assert_eq!(text_hash("Hello\n"), text_hash("Hello"));
         assert_eq!(text_hash("One.\r\nTwo.\r\n"), text_hash("One.\nTwo."));
         assert_ne!(text_hash("Hello"), text_hash("hello"));
-        assert_ne!(text_hash(" Hello"), text_hash("Hello"));
+        assert_eq!(text_hash("\n\n Hello"), text_hash("Hello"));
         assert_eq!(text_hash("").len(), 64);
     }
 }

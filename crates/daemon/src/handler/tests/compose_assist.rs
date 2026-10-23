@@ -827,3 +827,23 @@ async fn a_figure_in_the_subject_is_known_not_invented() {
     assert!(proposal.text.contains("£40"), "{}", proposal.text);
     assert!(proposal.gaps.is_empty(), "{:?}", proposal.gaps);
 }
+
+#[tokio::test]
+async fn text_the_web_trimmed_still_applies_to_a_body_with_blank_lines_before_it() {
+    let state = AppState::in_memory().await.unwrap();
+    state.llm.replace(Scripted::new("Hi there"));
+    let draft = stored_draft(&state, &format!("\n\nHi\n\n{SIGNATURE}"));
+    state.store.insert_draft(&draft).await.unwrap();
+    let target = DraftTargetData::Stored {
+        draft_id: draft.id.clone(),
+    };
+    // The web sends the text region without the blank lines before it.
+    let proposal = assist(&state, &target, &Ask::text("Hi")).await.unwrap();
+    apply(&state, &proposal.proposal_id, &draft.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        stored_body(&state, &draft.id).await,
+        format!("\n\nHi there\n\n{SIGNATURE}")
+    );
+}

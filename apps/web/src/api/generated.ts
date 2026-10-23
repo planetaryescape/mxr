@@ -6255,6 +6255,7 @@ export interface components {
             bodyMarkdown: string;
             cursorLine?: number | null;
             draftId?: string | null;
+            draftIntent?: components["schemas"]["DraftIntent"] | null;
             draftPath: string;
             editorCommand?: string | null;
             frontmatter: components["schemas"]["ComposeFrontmatter"];

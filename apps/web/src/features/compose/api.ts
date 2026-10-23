@@ -19,8 +19,6 @@ export interface ComposeIssue {
 export type ComposeSession = components["schemas"]["ComposeSessionData"] & {
   workspace?: WorkspaceBinding["workspace"] | null;
   binding?: WorkspaceBinding;
-  /** Intent supplied when restoring a saved reply or forward. */
-  draftIntent?: ComposeDraftIntent | null;
 };
 export type ComposeSessionResponse = Omit<
   components["schemas"]["ComposeSessionResponse"],

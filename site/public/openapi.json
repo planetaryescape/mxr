@@ -12822,6 +12822,17 @@
               "null"
             ]
           },
+          "draftIntent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DraftIntent",
+                "description": "Stored intent when reopening a saved draft."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "draftPath": {
             "type": "string"
           },

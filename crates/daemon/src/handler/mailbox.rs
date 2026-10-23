@@ -9,7 +9,7 @@ use mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
 use mxr_core::types::{
     Account, Address, BodyPartSource, CalendarAttendee, CalendarMetadata, CalendarPartstat,
     CalendarReplyMessage, Envelope, HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind,
-    InlineCalendarReply, MessageBody,
+    InlineCalendarReply, MessageBody, MessageFlags,
 };
 use mxr_protocol::{
     AttachmentChunk, AttachmentTransferMetadata, BodyFailure, CalendarInviteActionData,
@@ -1010,6 +1010,17 @@ fn best_effort_summary_looks_suspicious(body: &MessageBody, envelope: Option<&En
         || raw_headers.contains("content-type: text/html")
 }
 
+/// Keeps the SENT bit the store already has on a hydrated envelope. The plain
+/// IMAP fetch carries no Gmail labels, so it can miss a SENT the store has.
+fn keep_stored_sent_flag(
+    fetched: &mut mxr_core::types::Envelope,
+    stored: &mxr_core::types::Envelope,
+) {
+    if stored.flags.contains(MessageFlags::SENT) {
+        fetched.flags.insert(MessageFlags::SENT);
+    }
+}
+
 async fn hydrate_body_from_provider(
     state: &AppState,
     message_id: &MessageId,
@@ -1028,7 +1039,7 @@ async fn hydrate_body_from_provider(
                 envelope.account_id
             )
         })?;
-    let synced = provider
+    let mut synced = provider
         .fetch_message(&envelope.provider_id)
         .await
         .map_err(|error| error.to_string())?
@@ -1039,6 +1050,7 @@ async fn hydrate_body_from_provider(
             "Provider body hydrate returned mismatched message id for {message_id}"
         ));
     }
+    keep_stored_sent_flag(&mut synced.envelope, &envelope);
 
     state
         .sync_engine
@@ -1489,4 +1501,42 @@ pub(super) async fn rename_label(
     }
     state.store.replace_label(&existing.id, &label).await?;
     Ok(ResponseData::Label { label })
+}
+
+#[cfg(test)]
+mod hydration_flag_tests {
+    use super::keep_stored_sent_flag;
+    use crate::test_fixtures::TestEnvelopeBuilder;
+    use mxr_core::types::MessageFlags;
+
+    #[test]
+    fn hydration_keeps_the_stored_sent_bit_the_plain_fetch_lacks() {
+        // Gmail over IMAP: the message is stored as sent, but the plain fetch
+        // returns no SENT label, so the fetched envelope lacks the bit.
+        let stored = TestEnvelopeBuilder::new()
+            .flags(MessageFlags::READ | MessageFlags::SENT)
+            .build();
+        let mut fetched = TestEnvelopeBuilder::new().flags(MessageFlags::READ).build();
+
+        keep_stored_sent_flag(&mut fetched, &stored);
+
+        assert!(fetched.flags.contains(MessageFlags::SENT));
+        assert!(fetched.flags.contains(MessageFlags::READ));
+    }
+
+    #[test]
+    fn hydration_does_not_add_sent_to_a_message_stored_as_received() {
+        let stored = TestEnvelopeBuilder::new().flags(MessageFlags::READ).build();
+        let mut fetched = TestEnvelopeBuilder::new()
+            .flags(MessageFlags::READ | MessageFlags::SENT)
+            .build();
+
+        keep_stored_sent_flag(&mut fetched, &stored);
+
+        assert!(fetched.flags.contains(MessageFlags::SENT));
+        let stored_received = TestEnvelopeBuilder::new().build();
+        let mut fetched_plain = TestEnvelopeBuilder::new().build();
+        keep_stored_sent_flag(&mut fetched_plain, &stored_received);
+        assert!(!fetched_plain.flags.contains(MessageFlags::SENT));
+    }
 }

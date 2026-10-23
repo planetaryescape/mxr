@@ -1,11 +1,11 @@
 # mxr
 
-> Local-first, keyboard-native email client. Daemon-backed
-> (Rust + SQLite + Tantivy). Provider-agnostic core; first-party
-> Gmail, IMAP, and SMTP adapters. CLI is the canonical surface
-> and emits JSON for piping into agents/scripts. TUI is one
-> client of the daemon. HTTP bridge serves an OpenAPI 3.1 spec
-> at /api/v1/openapi.json. Pronounced "Mixer".
+> A local mail runtime for you and your agents. mxr syncs connected mail
+> into a local mailbox and exposes shared daemon-backed state to human and
+> machine clients. Client operations and authority vary by path. Local search
+> and cached-mail reads use that state; sync,
+> sends, provider-backed changes, uncached attachments, and configured model
+> endpoints can still use the network. Pronounced "Mixer".
 
 ## Getting started
 
@@ -48,13 +48,13 @@
 
 ## Agents and automation
 
-- [For agents](https://mxr.sh/guides/for-agents.md): three worked examples (newsletter prune, meeting prep, CI cleanup) with prompts, tool calls, and JSON
+- [For agents](https://mxr.sh/guides/for-agents.md): drive mxr through the CLI or first-party MCP; includes safety and authority boundaries
 - [Agent skill](https://mxr.sh/guides/agent-skill.md): install paths for Claude Code, Cursor, Continue, Aider, generic LLM
 - [Automation contract](https://mxr.sh/guides/automation-contract.md): which commands return JSON, which support `--dry-run`, which accept piped IDs
 
 ## Concepts
 
-- [Why mxr](https://mxr.sh/guides/why-mxr.md): the design pitch
+- [Why mxr](https://mxr.sh/guides/why-mxr.md): why a shared local mail runtime complements an agent's provider connector
 - [Architecture](https://mxr.sh/guides/architecture.md): daemon-backed, provider-agnostic, IPC bucket model
 - [Glossary](https://mxr.sh/guides/glossary.md): plain-language definitions of the terms scattered across docs
 - [Security & privacy](https://mxr.sh/guides/security-and-privacy.md): what stays local, what doesn't

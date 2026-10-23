@@ -2222,6 +2222,7 @@ impl AppState {
                     "could not reclassify stored mail after a config address change"
                 ),
             }
+            crate::handler::diagnostics_impl::refresh_direction_derived(self, &account_id).await;
             crate::chimes::emit_daemon_event(
                 self,
                 mxr_protocol::DaemonEvent::AccountAddressesChanged { account_id },

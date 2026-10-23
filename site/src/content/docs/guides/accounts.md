@@ -128,8 +128,9 @@ mxr accounts addresses remove --account work support@planetaryescape.xyz
 Adding or removing an address reclassifies the account's stored mail against
 the new set in the same command. Mail from an address you now own reads as
 sent, and sent mail from an address you no longer own reads as received. Reply
-pairs follow in the same command, and the contacts view catches up within about
-ten seconds. A sync pass that was already running when you made the change
+pairs follow in the same command. The contacts table is rebuilt in the
+background, starting about ten seconds after the last change; a contacts or
+analytics view already open shows the new counts after you reload it. A sync pass that was already running when you made the change
 is reconciled before it releases its place in line, so the messages it
 wrote take the new direction and their reply pairs are rebuilt with them. The
 catch is timing: until that pass finishes, a message it wrote can still show

@@ -571,8 +571,11 @@ pub(crate) async fn finalize_sync_pass(
     // Reconciled under the provider guard, before it is released. A pass that
     // took the guard after this one has not prepared its batch yet, so the
     // debt cannot be consumed ahead of a batch it has to repair.
-    reconcile_pass_directions(&state, &account_id).await;
+    let reconciled = reconcile_pass_directions(&state, &account_id).await;
     drop(provider_guard);
+    if reconciled {
+        crate::handler::diagnostics_impl::refresh_direction_derived(&state, &account_id).await;
+    }
     state.finish_sync_run(&account_id, outcome.has_more);
     // A pass returns after one page. Without a wake, the account would sit at
     // `sync_in_progress = true` until the sync loop's next tick, a full
@@ -1288,9 +1291,14 @@ async fn post_delete_fanout(
 /// against the committed owned set. A batch prepared before the change can land
 /// after the change's own reclassify, and this is what corrects it. A failure
 /// leaves the account owed, so the next pass retries.
-pub(crate) async fn reconcile_pass_directions(state: &Arc<AppState>, account_id: &AccountId) {
+/// Returns whether a reconciliation ran, so the caller refreshes derived data
+/// once it has released the provider guard.
+pub(crate) async fn reconcile_pass_directions(
+    state: &Arc<AppState>,
+    account_id: &AccountId,
+) -> bool {
     if !state.take_direction_repair(account_id) {
-        return;
+        return false;
     }
     match crate::handler::diagnostics_impl::reconcile_account_directions(state, account_id).await {
         Ok(changes) => tracing::info!(
@@ -1305,6 +1313,7 @@ pub(crate) async fn reconcile_pass_directions(state: &Arc<AppState>, account_id:
             "could not reconcile stored mail directions after a sync pass; retrying on the next pass"
         ),
     }
+    true
 }
 
 pub(crate) async fn run_analytics_repair(state: &Arc<AppState>, account_id: &AccountId) {

@@ -907,7 +907,11 @@ async fn settle_address_change(
     account_id: &AccountId,
 ) -> Result<AccountDirectionChanges, sqlx::Error> {
     state.owe_direction_repair(account_id);
-    reclassify_account_directions(state, account_id).await
+    let changes = reclassify_account_directions(state, account_id).await;
+    // Ownership changed even when no message flipped: Wrapped and contacts
+    // read the owned set and reply pairs directly.
+    refresh_direction_derived(state, account_id).await;
+    changes
 }
 
 /// The post-pass reconciliation, and the reload path's repair: reclassify one
@@ -929,27 +933,32 @@ pub(crate) async fn reconcile_account_directions(
 
 /// Make the account's stored mail agree with its committed owned set. Callers
 /// refresh the registry first, so sync passes that start now classify against
-/// the new set. The contacts table caches direction, so it is queued too.
+/// the new set. Callers follow with `refresh_direction_derived`.
 pub(crate) async fn reclassify_account_directions(
     state: &AppState,
     account_id: &AccountId,
 ) -> Result<AccountDirectionChanges, sqlx::Error> {
     let owned = state.owned_addresses(account_id).await?;
-    let changes = state
+    state
         .store
         .reclassify_account_directions(account_id, &owned, true)
-        .await?;
-    if changes != AccountDirectionChanges::default() {
-        state.wrapped_cache_clear();
-        if let Err(error) = state
-            .contacts_refresh
-            .enqueue_accounts(std::slice::from_ref(account_id))
-            .await
-        {
-            tracing::warn!(account = %account_id, %error, "contacts refresh not queued after direction change");
-        }
+        .await
+}
+
+/// Drop and requeue what is computed from ownership, direction and reply
+/// pairs: the Wrapped cache and the contacts table. Unconditional, because a
+/// pair-only repair or a recipient-only alias changes them without flipping a
+/// message. Not called under a provider guard: the contacts worker's
+/// acknowledgement can wait on a refresh already running.
+pub(crate) async fn refresh_direction_derived(state: &AppState, account_id: &AccountId) {
+    state.wrapped_cache_clear();
+    if let Err(error) = state
+        .contacts_refresh
+        .enqueue_accounts(std::slice::from_ref(account_id))
+        .await
+    {
+        tracing::warn!(account = %account_id, %error, "contacts refresh not queued after an address change");
     }
-    Ok(changes)
 }
 
 pub(crate) async fn semantic_status(state: &AppState) -> HandlerResult {

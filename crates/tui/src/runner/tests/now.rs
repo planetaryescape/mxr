@@ -105,8 +105,9 @@ fn the_sidebar_is_the_rail_with_the_rest_under_more() {
         ]
     ));
     assert!(matches!(
-        &items[7..10],
+        &items[7..11],
         [
+            SidebarItem::Header(crate::app::SidebarHeader::More),
             SidebarItem::Screener,
             SidebarItem::ReplyQueue,
             SidebarItem::Waiting

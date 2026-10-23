@@ -21,6 +21,9 @@ impl App {
             .iter()
             .filter(|a| self.mailbox_sidebar_account(a))
             .collect();
+        if sync_accounts.len() > 1 {
+            items.push(SidebarItem::Header(SidebarHeader::Accounts));
+        }
         if sync_accounts.len() > 1 && self.mailbox.sidebar_accounts_expanded {
             items.extend(
                 sync_accounts
@@ -53,6 +56,7 @@ impl App {
             SidebarItem::Inbox,
         ]);
         // More: the pages that left the rail, then the folders.
+        items.push(SidebarItem::Header(SidebarHeader::More));
         if self.mailbox.sidebar_system_expanded {
             items.extend([
                 SidebarItem::Screener,
@@ -70,6 +74,9 @@ impl App {
                     .map(SidebarItem::Label),
             );
         }
+        if !user_labels.is_empty() {
+            items.push(SidebarItem::Header(SidebarHeader::Labels));
+        }
         if self.mailbox.sidebar_user_expanded {
             items.extend(
                 user_labels
@@ -77,6 +84,9 @@ impl App {
                     .map(Box::new)
                     .map(SidebarItem::Label),
             );
+        }
+        if !self.mailbox.saved_searches.is_empty() {
+            items.push(SidebarItem::Header(SidebarHeader::SavedSearches));
         }
         if self.mailbox.sidebar_saved_searches_expanded {
             items.extend(
@@ -198,6 +208,7 @@ impl App {
 
     pub(crate) fn selected_sidebar_key(&self) -> Option<SidebarSelectionKey> {
         self.selected_sidebar_item().map(|item| match item {
+            SidebarItem::Header(header) => SidebarSelectionKey::Header(header),
             SidebarItem::Account(account) => {
                 SidebarSelectionKey::Account(account.key.clone().unwrap_or_default())
             }
@@ -224,6 +235,7 @@ impl App {
         let items = self.sidebar_items();
         match selection.and_then(|selection| {
             items.iter().position(|item| match (item, &selection) {
+                (SidebarItem::Header(header), SidebarSelectionKey::Header(key)) => header == key,
                 (SidebarItem::Account(account), SidebarSelectionKey::Account(key)) => {
                     account.key.as_deref() == Some(key.as_str())
                 }
@@ -312,6 +324,10 @@ impl App {
 
     pub(super) fn sidebar_select(&mut self) -> Option<Action> {
         match self.selected_sidebar_item() {
+            Some(SidebarItem::Header(header)) => {
+                self.toggle_sidebar_section(header);
+                None
+            }
             Some(SidebarItem::Account(account)) => {
                 if let Some(key) = account.key {
                     if !account.is_default {
@@ -359,8 +375,11 @@ impl App {
                 SidebarGroup::SystemLabels
             }
             Some(SidebarItem::Label(_)) => SidebarGroup::UserLabels,
+            Some(SidebarItem::Header(SidebarHeader::Labels)) => SidebarGroup::UserLabels,
+            Some(SidebarItem::Header(SidebarHeader::SavedSearches)) => SidebarGroup::SavedSearches,
             Some(
-                SidebarItem::Account(_)
+                SidebarItem::Header(SidebarHeader::Accounts | SidebarHeader::More)
+                | SidebarItem::Account(_)
                 | SidebarItem::AllMail
                 | SidebarItem::Subscriptions
                 | SidebarItem::Now
@@ -380,29 +399,44 @@ impl App {
         }
     }
 
-    pub(super) fn collapse_current_sidebar_section(&mut self) {
-        match self.current_sidebar_group() {
-            SidebarGroup::SystemLabels => self.mailbox.sidebar_system_expanded = false,
-            SidebarGroup::UserLabels => self.mailbox.sidebar_user_expanded = false,
-            SidebarGroup::SavedSearches => self.mailbox.sidebar_saved_searches_expanded = false,
-        }
-        self.mailbox.sidebar_selected = self
-            .mailbox
-            .sidebar_selected
-            .min(self.sidebar_items().len().saturating_sub(1));
+    /// Fold or unfold a section from its header; the cursor stays on it.
+    fn toggle_sidebar_section(&mut self, header: SidebarHeader) {
+        let mailbox = &mut self.mailbox;
+        let expanded = match header {
+            SidebarHeader::Accounts => &mut mailbox.sidebar_accounts_expanded,
+            SidebarHeader::More => &mut mailbox.sidebar_system_expanded,
+            SidebarHeader::Labels => &mut mailbox.sidebar_user_expanded,
+            SidebarHeader::SavedSearches => &mut mailbox.sidebar_saved_searches_expanded,
+        };
+        *expanded = !*expanded;
         self.sync_sidebar_section();
     }
 
-    pub(super) fn expand_current_sidebar_section(&mut self) {
-        match self.current_sidebar_group() {
-            SidebarGroup::SystemLabels => self.mailbox.sidebar_system_expanded = true,
-            SidebarGroup::UserLabels => self.mailbox.sidebar_user_expanded = true,
-            SidebarGroup::SavedSearches => self.mailbox.sidebar_saved_searches_expanded = true,
+    /// `}` moves the cursor to the next section's header, `{` to the
+    /// previous one, or to the top of the rail (which has no header).
+    pub(super) fn sidebar_jump_section(&mut self, forward: bool) {
+        let selected = self.mailbox.sidebar_selected;
+        let headers: Vec<usize> = self
+            .sidebar_items()
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| matches!(item, SidebarItem::Header(_)))
+            .map(|(index, _)| index)
+            .collect();
+        let target = if forward {
+            headers.into_iter().find(|&index| index > selected)
+        } else {
+            Some(
+                headers
+                    .into_iter()
+                    .rev()
+                    .find(|&index| index < selected)
+                    .unwrap_or(0),
+            )
+        };
+        if let Some(target) = target {
+            self.mailbox.sidebar_selected = target;
+            self.sync_sidebar_section();
         }
-        self.mailbox.sidebar_selected = self
-            .mailbox
-            .sidebar_selected
-            .min(self.sidebar_items().len().saturating_sub(1));
-        self.sync_sidebar_section();
     }
 }

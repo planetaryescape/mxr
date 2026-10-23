@@ -6,7 +6,9 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { runCommand } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 import { Sidebar } from "./Sidebar";
 
@@ -59,5 +61,29 @@ describe("Sidebar", () => {
     rerender(<Harness open={false} />);
 
     await waitFor(() => expect(document.querySelector('[data-active-pane="true"]')).toHaveFocus());
+  });
+
+  test("Enter on a section's header folds it, and { and } jump between headers", () => {
+    const folded = useUiPrefs.getState().collapsedSections;
+    // jsdom has no layout; the cursor-follow scroll has nothing to do.
+    Element.prototype.scrollIntoView = vi.fn<() => void>();
+    act(() => {
+      useMailboxPane.getState().setActivePane("sidebar");
+      useMailboxPane.getState().setSidebarIndex(0);
+    });
+    render(<Harness open={false} />);
+
+    act(() => void runCommand("sidebar", "nextSection"));
+    const at = useMailboxPane.getState().sidebarIndex;
+    expect(document.querySelector(`[data-nav-index="${at}"]`)).toHaveTextContent("Mail");
+    const wasFolded = useUiPrefs.getState().collapsedSections.includes("mail");
+
+    act(() => void runCommand("sidebar", "open"));
+    expect(useUiPrefs.getState().collapsedSections.includes("mail")).toBe(!wasFolded);
+    expect(useMailboxPane.getState().sidebarIndex).toBe(at);
+
+    act(() => void runCommand("sidebar", "prevSection"));
+    expect(useMailboxPane.getState().sidebarIndex).toBe(0);
+    act(() => useUiPrefs.setState({ collapsedSections: folded }));
   });
 });

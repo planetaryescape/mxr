@@ -37,6 +37,7 @@ import { markNotTodo, restoreTodos, tickOff, useTodoHidden } from "./todoVerbs";
 import type { LampVia } from "@/components/Row";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { SectionHeading } from "@/components/SectionHeading";
+import { listMotions } from "@/features/modes/listMotions";
 
 /**
  * The runway for the account scope. The first fetch on each visit records
@@ -358,6 +359,7 @@ function Bands({
   useScopeController("todo", {
     down: () => move(1),
     up: () => move(-1),
+    ...listMotions(move),
     primary: () => {
       if (!current) return;
       if (current.band === "done") restore(current.todo);

@@ -1,11 +1,12 @@
 ---
 source: crates/tui/tests/snapshots.rs
+assertion_line: 162
 expression: snapshot
 ---
 "                                                                      "
 "                                                                      "
 "       ╭ Command Palette ─────────────────────────────────────╮       "
-"       │╭ Query  11 matches  Mailbox / List ─────────────────╮│       "
+"       │╭ Query  12 matches  Mailbox / List ─────────────────╮│       "
 "       ││> un                                                ││       "
 "       │╰────────────────────────────────────────────────────╯│       "
 "       │╭ Commands ──────────────────────────────────────────▲│       "

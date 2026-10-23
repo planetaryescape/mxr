@@ -86,7 +86,9 @@ impl App {
     }
 
     /// Show "<action> is now <key>" when `keys` moved away from `place`.
-    fn announce_moved(&mut self, place: &str, keys: &str) -> bool {
+    /// A screen that still reads its own keys (Rules, the drafts list)
+    /// calls this with its own place name.
+    pub(crate) fn announce_moved(&mut self, place: &str, keys: &str) -> bool {
         let keymap = mxr_keymap::defaults();
         let Some((action, moved)) = keymap.moved_entry(place, keys) else {
             return false;
@@ -94,13 +96,15 @@ impl App {
         // A retired key whose action has none left names where to go
         // instead (`1` → `g i`), under the old action's name.
         let target = keymap.moved_target(action, moved);
-        let now = target
-            .tui
-            .iter()
-            .find(|binding| binding.contexts.includes(place))
-            .or_else(|| action.tui.first())
-            .and_then(|binding| binding.keys.first())
-            .or_else(|| target.keys.first());
+        let now = moved.to_key.as_ref().or_else(|| {
+            target
+                .tui
+                .iter()
+                .find(|binding| binding.contexts.includes(place))
+                .or_else(|| action.tui.first())
+                .and_then(|binding| binding.keys.first())
+                .or_else(|| target.keys.first())
+        });
         let name = action
             .short_label
             .as_deref()

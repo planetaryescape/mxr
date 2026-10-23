@@ -62,8 +62,9 @@ fn on_second_item(app: &mut App) {
     app.mailbox.sidebar_selected = 1;
 }
 
-fn labels_collapsed(app: &mut App) {
-    app.mailbox.sidebar_system_expanded = false;
+/// The cursor below the More header, so `{` has a header to go back to.
+fn under_more(app: &mut App) {
+    app.mailbox.sidebar_selected = 9;
 }
 
 fn scroll(app: &App) -> String {
@@ -80,15 +81,6 @@ fn pane(app: &App) -> String {
 
 fn sidebar_cursor(app: &App) -> String {
     app.mailbox.sidebar_selected.to_string()
-}
-
-fn sections(app: &App) -> String {
-    format!(
-        "{} {} {}",
-        app.mailbox.sidebar_system_expanded,
-        app.mailbox.sidebar_user_expanded,
-        app.mailbox.sidebar_saved_searches_expanded
-    )
 }
 
 /// Every inline key, each probed through the state it changes
@@ -149,8 +141,8 @@ const INLINE: &[InlineKey] = &[
         on_second_item,
         sidebar_cursor,
     ),
-    inline("sidebar", "[", "collapse_section", no_setup, sections),
-    inline("sidebar", "]", "expand_section", labels_collapsed, sections),
+    inline("sidebar", "{", "prev_section", under_more, sidebar_cursor),
+    inline("sidebar", "}", "next_section", no_setup, sidebar_cursor),
 ];
 
 const fn inline(
@@ -1345,4 +1337,103 @@ fn ctrl_k_opens_the_palette_on_a_tool_screen_but_not_in_its_form() {
     app.screen = Screen::Rules;
     app.rules.page.form.visible = true;
     assert_ne!(app.handle_key(ctrl_k), Some(Action::OpenCommandPalette));
+}
+
+/// The third wave of moves (blueprint 35's verb table): every old key says
+/// where its action went and runs nothing.
+#[test]
+fn third_wave_keys_name_their_new_keys() {
+    let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
+    let palette = "has no key now; find it in the palette";
+    for (context, key, notice) in [
+        ("reader", press_of('o'), "Open in browser is now O".to_string()),
+        ("list", shifted('E'), format!("Export as Markdown {palette}")),
+        ("reader", shifted('E'), format!("Export as Markdown {palette}")),
+        ("sidebar", press_of('['), "Collapse section is now Enter".into()),
+        ("sidebar", press_of(']'), "Expand section is now Enter".into()),
+        ("sidebar", press_of('n'), "New saved search is now c".into()),
+        ("place", press_of('p'), "Pin is now s".into()),
+        ("place", shifted('K'), "Move sender to is now P".into()),
+        ("place", shifted('S'), format!("Sweep sender {palette}")),
+        ("place", shifted('A'), "Sweep all is now E".into()),
+        ("place", press_of('>'), format!("More senders in this place {palette}")),
+        ("place", press_of('+'), format!("More from this sender {palette}")),
+        ("archive", shifted('E'), format!("Export {palette}")),
+        ("archive", press_of('v'), "Checked is now ,".into()),
+        ("todo", press_of('v'), "Details is now ,".into()),
+        ("updates", shifted('S'), format!("Sweep sender {palette}")),
+    ] {
+        let mut app = app_in(context);
+        assert_eq!(app.handle_key(key), None, "{key:?} in {context} ran something");
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some(notice.as_str()),
+            "{context}"
+        );
+    }
+
+    for (context, keys, expected) in [
+        ("place", vec![press_of('s')], Action::TogglePin),
+        ("place", vec![shifted('P')], Action::OpenSenderKindMenu),
+        ("place", vec![shifted('E')], Action::SweepPlace),
+        ("sidebar", vec![press_of('c')], Action::OpenSavedSearchFormNew),
+        ("reader", vec![shifted('O')], Action::OpenInBrowser),
+    ] {
+        assert_eq!(press(context, &keys), Ok(Some(expected.clone())), "{context}");
+    }
+}
+
+/// Enter on a sidebar section's header folds or unfolds it, and `{` / `}`
+/// jump between headers (blueprint 35).
+#[test]
+fn sidebar_headers_hold_the_cursor_and_fold_their_section() {
+    let mut app = app_in("sidebar");
+    assert_eq!(press_char(&mut app, '}'), None);
+    assert!(matches!(
+        app.selected_sidebar_item(),
+        Some(crate::app::SidebarItem::Header(crate::app::SidebarHeader::More))
+    ));
+    let header = app.mailbox.sidebar_selected;
+    assert!(app.mailbox.sidebar_system_expanded);
+    let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+    assert_eq!(app.handle_key(enter), None);
+    assert!(!app.mailbox.sidebar_system_expanded, "Enter folds More");
+    assert_eq!(app.mailbox.sidebar_selected, header, "the cursor stays");
+    assert_eq!(app.handle_key(enter), None);
+    assert!(app.mailbox.sidebar_system_expanded, "Enter unfolds it");
+    assert_eq!(press_char(&mut app, '{'), None);
+    assert_eq!(app.mailbox.sidebar_selected, 0, "{{ from the first header goes to the top");
+}
+
+/// Screens and overlays that still read their own keys say where a moved
+/// key went too.
+#[test]
+fn tool_screen_keys_that_moved_say_so() {
+    for (screen, notice) in [
+        (Screen::Rules, "New rule is now c"),
+        (Screen::Accounts, "Add account is now c"),
+    ] {
+        let mut app = App::new();
+        app.screen = screen;
+        app.accounts.page.onboarding_required = false;
+        assert_eq!(press_char(&mut app, 'n'), None, "{screen:?}");
+        assert_eq!(app.status_message.as_deref(), Some(notice), "{screen:?}");
+    }
+    let mut app = App::new();
+    app.screen = Screen::Rules;
+    assert_eq!(press_char(&mut app, 'c'), Some(Action::OpenRuleFormNew));
+    let mut app = App::new();
+    app.screen = Screen::Accounts;
+    assert_eq!(press_char(&mut app, 'c'), Some(Action::OpenAccountFormNew));
+
+    let mut app = app_in("list");
+    app.mailbox.mailbox_view = MailboxView::CalendarInvites;
+    for (key, notice) in [
+        ('a', "Accept invite is now i a"),
+        ('t', "Maybe (invite) is now i m"),
+        ('d', "Decline invite is now i d"),
+    ] {
+        assert_eq!(press_char(&mut app, key), None);
+        assert_eq!(app.status_message.as_deref(), Some(notice));
+    }
 }

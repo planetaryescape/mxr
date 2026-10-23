@@ -2078,8 +2078,7 @@
           ],
           "contexts": [
             "list",
-            "reader",
-            "place"
+            "reader"
           ]
         }
       ]
@@ -2399,21 +2398,16 @@
         "list",
         "reader"
       ],
-      "keys": [
-        "E"
-      ],
-      "tui": [
+      "palette_only": true,
+      "moved": [
         {
-          "name": "ExportThread",
-          "keys": [
-            "E"
-          ],
+          "key": "E",
           "contexts": [
             "list",
             "reader",
-            "sidebar",
-            "place"
-          ]
+            "sidebar"
+          ],
+          "until": "0.6.185"
         }
       ]
     },
@@ -2574,6 +2568,15 @@
             "updates"
           ]
         }
+      ],
+      "moved": [
+        {
+          "key": "a",
+          "contexts": [
+            "invites"
+          ],
+          "until": "0.6.185"
+        }
       ]
     },
     {
@@ -2608,6 +2611,22 @@
             "reading-reader",
             "updates"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "t",
+          "contexts": [
+            "invites"
+          ],
+          "until": "0.6.185"
+        },
+        {
+          "key": "m",
+          "contexts": [
+            "invites"
+          ],
+          "until": "0.6.185"
         }
       ]
     },
@@ -2644,6 +2663,15 @@
             "updates"
           ]
         }
+      ],
+      "moved": [
+        {
+          "key": "d",
+          "contexts": [
+            "invites"
+          ],
+          "until": "0.6.185"
+        }
       ]
     },
     {
@@ -2678,6 +2706,15 @@
             "reading-reader",
             "updates"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "A",
+          "contexts": [
+            "invites"
+          ],
+          "until": "0.6.185"
         }
       ]
     },
@@ -2714,6 +2751,22 @@
             "updates"
           ]
         }
+      ],
+      "moved": [
+        {
+          "key": "T",
+          "contexts": [
+            "invites"
+          ],
+          "until": "0.6.185"
+        },
+        {
+          "key": "M",
+          "contexts": [
+            "invites"
+          ],
+          "until": "0.6.185"
+        }
       ]
     },
     {
@@ -2748,6 +2801,15 @@
             "reading-reader",
             "updates"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "D",
+          "contexts": [
+            "invites"
+          ],
+          "until": "0.6.185"
         }
       ]
     },
@@ -2905,8 +2967,8 @@
         {
           "name": "SidebarSelect",
           "keys": [
-            "ArrowRight",
             "Enter",
+            "ArrowRight",
             "l",
             "o"
           ],
@@ -2923,19 +2985,16 @@
       "scopes": [
         "sidebar"
       ],
-      "keys": [
-        "["
-      ],
+      "palette_only": true,
       "hide_in_palette": true,
-      "tui": [
+      "moved": [
         {
-          "name": "inline:collapse_section",
-          "keys": [
-            "["
-          ],
+          "key": "[",
           "contexts": [
             "sidebar"
-          ]
+          ],
+          "until": "0.6.185",
+          "to": "sidebar.open"
         }
       ]
     },
@@ -2946,15 +3005,58 @@
       "scopes": [
         "sidebar"
       ],
+      "palette_only": true,
+      "hide_in_palette": true,
+      "moved": [
+        {
+          "key": "]",
+          "contexts": [
+            "sidebar"
+          ],
+          "until": "0.6.185",
+          "to": "sidebar.open"
+        }
+      ]
+    },
+    {
+      "id": "sidebar.prev-section",
+      "label": "Previous section",
+      "group": "Move",
+      "scopes": [
+        "sidebar"
+      ],
       "keys": [
-        "]"
+        "{"
       ],
       "hide_in_palette": true,
       "tui": [
         {
-          "name": "inline:expand_section",
+          "name": "inline:prev_section",
           "keys": [
-            "]"
+            "{"
+          ],
+          "contexts": [
+            "sidebar"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sidebar.next-section",
+      "label": "Next section",
+      "group": "Move",
+      "scopes": [
+        "sidebar"
+      ],
+      "keys": [
+        "}"
+      ],
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "inline:next_section",
+          "keys": [
+            "}"
           ],
           "contexts": [
             "sidebar"
@@ -3020,7 +3122,15 @@
       "short_label": "First",
       "group": "Move",
       "scopes": [
-        "list"
+        "list",
+        "now",
+        "messages",
+        "todo",
+        "catchup",
+        "expired",
+        "updates",
+        "reading",
+        "archive"
       ],
       "keys": [
         "g g",
@@ -3056,7 +3166,15 @@
       "short_label": "Last",
       "group": "Move",
       "scopes": [
-        "list"
+        "list",
+        "now",
+        "messages",
+        "todo",
+        "catchup",
+        "expired",
+        "updates",
+        "reading",
+        "archive"
       ],
       "keys": [
         "G",
@@ -3092,7 +3210,15 @@
       "short_label": "Page down",
       "group": "Move",
       "scopes": [
-        "list"
+        "list",
+        "now",
+        "messages",
+        "todo",
+        "catchup",
+        "expired",
+        "updates",
+        "reading",
+        "archive"
       ],
       "keys": [
         "Ctrl+d",
@@ -3128,7 +3254,15 @@
       "short_label": "Page up",
       "group": "Move",
       "scopes": [
-        "list"
+        "list",
+        "now",
+        "messages",
+        "todo",
+        "catchup",
+        "expired",
+        "updates",
+        "reading",
+        "archive"
       ],
       "keys": [
         "Ctrl+u",
@@ -3797,7 +3931,7 @@
         "o"
       ],
       "hide_in_palette": true,
-      "note": "The TUI shows every message, and its o opens the original, like O"
+      "note": "The TUI shows every message in full, so o does nothing there yet"
     },
     {
       "id": "reader.expand-all",
@@ -4081,15 +4215,24 @@
             "reader",
             "place"
           ]
-        },
+        }
+      ]
+    },
+    {
+      "id": "tui.reader-open-original",
+      "label": "Open in browser",
+      "group": "View",
+      "clients": [
+        "tui"
+      ],
+      "moved": [
         {
-          "name": "OpenInBrowser",
-          "keys": [
-            "o"
-          ],
+          "key": "o",
           "contexts": [
             "reader"
-          ]
+          ],
+          "until": "0.6.185",
+          "to": "reader.open-original"
         }
       ]
     },
@@ -4314,9 +4457,18 @@
         "focus"
       ],
       "keys": [
-        "s"
+        "j"
       ],
-      "note": "Goes to the end of the queue"
+      "note": "Goes to the end of the queue",
+      "moved": [
+        {
+          "key": "s",
+          "contexts": [
+            "focus"
+          ],
+          "until": "0.6.185"
+        }
+      ]
     },
     {
       "id": "focus.done",
@@ -4486,11 +4638,20 @@
         {
           "name": "TogglePin",
           "keys": [
-            "p"
+            "s"
           ],
           "contexts": [
             "place"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "p",
+          "contexts": [
+            "place"
+          ],
+          "until": "0.6.185"
         }
       ]
     },
@@ -4502,15 +4663,13 @@
       "clients": [
         "tui"
       ],
-      "tui": [
+      "moved": [
         {
-          "name": "SweepBundle",
-          "keys": [
-            "S"
-          ],
+          "key": "S",
           "contexts": [
             "place"
-          ]
+          ],
+          "until": "0.6.185"
         }
       ]
     },
@@ -4526,11 +4685,20 @@
         {
           "name": "SweepPlace",
           "keys": [
-            "A"
+            "E"
           ],
           "contexts": [
             "place"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "A",
+          "contexts": [
+            "place"
+          ],
+          "until": "0.6.185"
         }
       ]
     },
@@ -4546,11 +4714,20 @@
         {
           "name": "OpenSenderKindMenu",
           "keys": [
-            "K"
+            "P"
           ],
           "contexts": [
             "place"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "K",
+          "contexts": [
+            "place"
+          ],
+          "until": "0.6.185"
         }
       ]
     },
@@ -4826,18 +5003,15 @@
       "scopes": [
         "todo"
       ],
-      "keys": [
-        "v"
-      ],
-      "tui": [
+      "palette_only": true,
+      "moved": [
         {
-          "name": "TodoReviewResolution",
-          "keys": [
-            "v"
-          ],
+          "key": "v",
           "contexts": [
             "todo"
-          ]
+          ],
+          "until": "0.6.185",
+          "to": "todo.edit"
         }
       ]
     },
@@ -5442,18 +5616,15 @@
       "scopes": [
         "archive"
       ],
-      "keys": [
-        "v"
-      ],
-      "tui": [
+      "palette_only": true,
+      "moved": [
         {
-          "name": "RecordsMarkChecked",
-          "keys": [
-            "v"
-          ],
+          "key": "v",
           "contexts": [
             "archive"
-          ]
+          ],
+          "until": "0.6.185",
+          "to": "archive.edit"
         }
       ]
     },
@@ -5489,18 +5660,14 @@
       "scopes": [
         "archive"
       ],
-      "keys": [
-        "E"
-      ],
-      "tui": [
+      "palette_only": true,
+      "moved": [
         {
-          "name": "RecordsExport",
-          "keys": [
-            "E"
-          ],
+          "key": "E",
           "contexts": [
             "archive"
-          ]
+          ],
+          "until": "0.6.185"
         }
       ]
     },
@@ -7201,19 +7368,15 @@
       "scopes": [
         "updates"
       ],
-      "keys": [
-        "S"
-      ],
+      "palette_only": true,
       "note": "Previews the daemon's dry run first; undo afterwards",
-      "tui": [
+      "moved": [
         {
-          "name": "UpdatesSweep",
-          "keys": [
-            "S"
-          ],
+          "key": "S",
           "contexts": [
             "updates"
-          ]
+          ],
+          "until": "0.6.185"
         }
       ]
     },
@@ -7415,7 +7578,17 @@
       "scopes": [
         "global"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "moved": [
+        {
+          "key": "n",
+          "contexts": [
+            "rules"
+          ],
+          "until": "0.6.185",
+          "to_key": "c"
+        }
+      ]
     },
     {
       "id": "accounts.new",
@@ -7425,7 +7598,17 @@
       "scopes": [
         "global"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "moved": [
+        {
+          "key": "n",
+          "contexts": [
+            "accounts"
+          ],
+          "until": "0.6.185",
+          "to_key": "c"
+        }
+      ]
     },
     {
       "id": "analytics.refresh-contacts",
@@ -7711,7 +7894,7 @@
     },
     {
       "id": "tui.open-saved-search-form-new",
-      "label": "Open saved search form new",
+      "label": "New saved search",
       "group": "TUI",
       "clients": [
         "tui"
@@ -7720,49 +7903,54 @@
         {
           "name": "OpenSavedSearchFormNew",
           "keys": [
-            "n"
+            "c"
           ],
           "contexts": [
             "sidebar"
           ]
         }
+      ],
+      "moved": [
+        {
+          "key": "n",
+          "contexts": [
+            "sidebar"
+          ],
+          "until": "0.6.185"
+        }
       ]
     },
     {
       "id": "tui.more-from-sender",
-      "label": "More from sender",
+      "label": "More from this sender",
       "group": "TUI",
       "clients": [
         "tui"
       ],
-      "tui": [
+      "moved": [
         {
-          "name": "MoreFromSender",
-          "keys": [
-            "+"
-          ],
+          "key": "+",
           "contexts": [
             "place"
-          ]
+          ],
+          "until": "0.6.185"
         }
       ]
     },
     {
       "id": "tui.more-place-senders",
-      "label": "More place senders",
+      "label": "More senders in this place",
       "group": "TUI",
       "clients": [
         "tui"
       ],
-      "tui": [
+      "moved": [
         {
-          "name": "MorePlaceSenders",
-          "keys": [
-            ">"
-          ],
+          "key": ">",
           "contexts": [
             "place"
-          ]
+          ],
+          "until": "0.6.185"
         }
       ]
     },
@@ -7820,6 +8008,148 @@
           "contexts": [
             "archive"
           ]
+        }
+      ]
+    },
+    {
+      "id": "tui.todo-microsoft-send",
+      "label": "Send to Microsoft To Do",
+      "group": "Triage",
+      "clients": [
+        "tui"
+      ],
+      "moved": [
+        {
+          "key": "M",
+          "contexts": [
+            "todo-microsoft"
+          ],
+          "until": "0.6.185"
+        }
+      ]
+    },
+    {
+      "id": "tui.todo-microsoft-sync",
+      "label": "Sync the linked Microsoft To Do task",
+      "group": "Triage",
+      "clients": [
+        "tui"
+      ],
+      "moved": [
+        {
+          "key": "S",
+          "contexts": [
+            "todo-microsoft"
+          ],
+          "until": "0.6.185"
+        }
+      ]
+    },
+    {
+      "id": "tui.drafts-delete",
+      "label": "Delete draft",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "moved": [
+        {
+          "key": "d",
+          "contexts": [
+            "drafts"
+          ],
+          "until": "0.6.185",
+          "to_key": "#"
+        }
+      ]
+    },
+    {
+      "id": "tui.drafts-edit",
+      "label": "Edit draft",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "moved": [
+        {
+          "key": "e",
+          "contexts": [
+            "drafts"
+          ],
+          "until": "0.6.185",
+          "to_key": "Enter"
+        }
+      ]
+    },
+    {
+      "id": "tui.delete-saved-search",
+      "label": "Delete saved search",
+      "group": "Search",
+      "clients": [
+        "tui"
+      ],
+      "moved": [
+        {
+          "key": "d",
+          "contexts": [
+            "saved-searches"
+          ],
+          "until": "0.6.185",
+          "to_key": "#"
+        }
+      ]
+    },
+    {
+      "id": "tui.new-category",
+      "label": "New category",
+      "group": "Mail",
+      "clients": [
+        "tui"
+      ],
+      "moved": [
+        {
+          "key": "n",
+          "contexts": [
+            "categories"
+          ],
+          "until": "0.6.185",
+          "to_key": "c"
+        }
+      ]
+    },
+    {
+      "id": "tui.delete-category",
+      "label": "Delete category",
+      "group": "Mail",
+      "clients": [
+        "tui"
+      ],
+      "moved": [
+        {
+          "key": "d",
+          "contexts": [
+            "categories"
+          ],
+          "until": "0.6.185",
+          "to_key": "#"
+        }
+      ]
+    },
+    {
+      "id": "tui.delete-assistant-conversation",
+      "label": "Delete conversation",
+      "group": "Mail",
+      "clients": [
+        "tui"
+      ],
+      "moved": [
+        {
+          "key": "D",
+          "contexts": [
+            "assistant"
+          ],
+          "until": "0.6.185",
+          "to_key": "#"
         }
       ]
     }

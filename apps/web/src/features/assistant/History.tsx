@@ -1,8 +1,9 @@
 /*
  * Past conversations, as the shared Row: the title, where it stands, the
  * time, and a mark for one waiting on you. j and k move, Enter opens, Esc
- * goes back. d asks the daemon what would go (a dry run), then y or Enter
- * deletes and n or Esc keeps it, as in the TUI.
+ * goes back. # asks the daemon what would go (a dry run), then y or Enter
+ * deletes and n or Esc keeps it, as in the TUI. d deleted until K3
+ * (blueprint 35) and says so until 0.6.185, as the definition's moved keys do.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,6 +23,7 @@ import { KeyChip } from "@/components/KeyChip";
 import { Row, RowVerb } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 import { formatRelative, plural } from "@/lib/format";
+import { useKeyScope } from "@/state/keyScopeStore";
 
 function standing(summary: AssistantSummary): string {
   if (summary.pending_count > 0) return "Waiting for you";
@@ -94,7 +96,8 @@ export function History({
           if (key === "j") setLit(Math.min(litIndex + 1, list.length - 1));
           else if (key === "k") setLit(Math.max(litIndex - 1, 0));
           else if (key === "Enter" && current) open(current.id);
-          else if (key === "d" && current) void askToRemove(current.id);
+          else if (key === "#" && current) void askToRemove(current.id);
+          else if (key === "d") useKeyScope.getState().showMoved("Delete", "#");
           else return false;
           return true;
         })(event);
@@ -128,7 +131,7 @@ export function History({
               time={<span>{formatRelative(new Date(summary.updated_at * 1000))}</span>}
               verbs={
                 <RowVerb
-                  keys="d"
+                  keys="#"
                   label="delete"
                   ariaLabel={`Delete "${summary.title}"`}
                   onClick={() => void askToRemove(summary.id)}

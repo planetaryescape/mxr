@@ -44,6 +44,7 @@ import {
 } from "./nowItems";
 import { PersonRow, ReadingRow, TodoRow, UpdatesRow } from "./NowRows";
 import { SectionHeading } from "@/components/SectionHeading";
+import { listMotions } from "@/features/modes/listMotions";
 
 /**
  * Now: the front page. At most ten things in four fixed sections (People,
@@ -290,6 +291,7 @@ function NowBody({ now }: { now: Now }) {
   useScopeController("now", {
     down: () => move(1),
     up: () => move(-1),
+    ...listMotions(move),
     open: () => current && open(current),
     openEmail: () => current && current.kind !== "updates" && open(current, { email: true }),
     done: () => current && done(current, "key"),

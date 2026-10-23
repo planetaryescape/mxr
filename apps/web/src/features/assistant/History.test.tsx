@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { AssistantSummary } from "./api";
 import { History } from "./History";
+import { useKeyScope } from "@/state/keyScopeStore";
 
 const apiFetch = vi.hoisted(() => vi.fn<(path: string, init?: unknown) => Promise<unknown>>());
 vi.mock("@/api/client", async (importOriginal) => ({
@@ -68,13 +69,17 @@ beforeEach(() => {
 });
 
 describe("History", () => {
-  test("d asks first, with the daemon's preview, and y deletes", async () => {
+  test("# asks first, with the daemon's preview, and y deletes; d only says so", async () => {
     renderHistory();
     await screen.findByText("Old trip");
     const history = screen.getByRole("heading", { name: "Past conversations" }).parentElement!;
 
     fireEvent.keyDown(history, { key: "j" });
+    // d deleted until K3 (blueprint 35): it names # and asks nothing.
     fireEvent.keyDown(history, { key: "d" });
+    expect(useKeyScope.getState().moved).toEqual({ label: "Delete", key: "#" });
+    expect(deletes()).toEqual([]);
+    fireEvent.keyDown(history, { key: "#" });
 
     expect(
       await screen.findByText('Delete "Old trip" and its 4 messages? This can\'t be undone.'),
@@ -104,12 +109,12 @@ describe("History", () => {
     await screen.findByText("Receipts");
     const history = screen.getByRole("heading", { name: "Past conversations" }).parentElement!;
 
-    fireEvent.keyDown(history, { key: "d" });
+    fireEvent.keyDown(history, { key: "#" });
     await screen.findByText(/^Delete "Receipts"/);
     fireEvent.keyDown(history, { key: "n" });
     expect(screen.queryByText(/^Delete "Receipts"/)).not.toBeInTheDocument();
 
-    fireEvent.keyDown(history, { key: "d" });
+    fireEvent.keyDown(history, { key: "#" });
     await screen.findByText(/^Delete "Receipts"/);
     fireEvent.keyDown(history, { key: "Escape" });
     expect(screen.queryByText(/^Delete "Receipts"/)).not.toBeInTheDocument();
@@ -117,7 +122,7 @@ describe("History", () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(deletes().every((call) => call.dryRun)).toBe(true);
 
-    fireEvent.keyDown(history, { key: "d" });
+    fireEvent.keyDown(history, { key: "#" });
     await screen.findByText(/^Delete "Receipts"/);
     fireEvent.keyDown(history, { key: "Enter" });
     await waitFor(() => expect(deletes().at(-1)).toMatchObject({ dryRun: false }));

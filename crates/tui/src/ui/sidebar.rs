@@ -459,13 +459,15 @@ fn visual_index_for_selection(
             | SidebarEntry::Owed { .. }
             | SidebarEntry::CalendarInvites { .. }
             | SidebarEntry::Label(_)
-            | SidebarEntry::SavedSearch(_) => {
+            | SidebarEntry::SavedSearch(_)
+            // A header holds the cursor: Enter folds its section.
+            | SidebarEntry::Header { .. } => {
                 if selectable == sidebar_selected {
                     return Some(visual_index);
                 }
                 selectable += 1;
             }
-            SidebarEntry::Separator | SidebarEntry::Header { .. } => {}
+            SidebarEntry::Separator => {}
         }
     }
     None
@@ -867,7 +869,7 @@ mod tests {
     }
 
     #[test]
-    fn sidebar_selection_skips_headers_and_spacers() {
+    fn sidebar_selection_rests_on_headers_and_skips_spacers() {
         let labels = vec![
             label("INBOX", LabelKind::System),
             label("Work", LabelKind::User),
@@ -888,10 +890,13 @@ mod tests {
         assert_eq!(visual_index_for_selection(&entries, 1), Some(2)); // Messages
         assert_eq!(visual_index_for_selection(&entries, 5), Some(6)); // Archive
         assert_eq!(visual_index_for_selection(&entries, 6), Some(8)); // Inbox
-        assert_eq!(visual_index_for_selection(&entries, 7), Some(10)); // Screener
-        assert_eq!(visual_index_for_selection(&entries, 13), Some(16)); // All Mail
-        assert_eq!(visual_index_for_selection(&entries, 14), Some(19)); // Work
-        assert_eq!(visual_index_for_selection(&entries, 15), Some(22)); // Unread
+        assert_eq!(visual_index_for_selection(&entries, 7), Some(9)); // More header
+        assert_eq!(visual_index_for_selection(&entries, 8), Some(10)); // Screener
+        assert_eq!(visual_index_for_selection(&entries, 14), Some(16)); // All Mail
+        assert_eq!(visual_index_for_selection(&entries, 15), Some(18)); // Labels header
+        assert_eq!(visual_index_for_selection(&entries, 16), Some(19)); // Work
+        assert_eq!(visual_index_for_selection(&entries, 17), Some(21)); // Saved Searches header
+        assert_eq!(visual_index_for_selection(&entries, 18), Some(22)); // Unread
     }
 
     #[test]

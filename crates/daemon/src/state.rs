@@ -579,6 +579,10 @@ pub struct AppState {
     /// 60s in-memory cache for `Wrapped` summaries. See
     /// `WrappedCacheKey` and `WRAPPED_CACHE_TTL` above.
     wrapped_cache: ParkingMutex<HashMap<WrappedCacheKey, (Instant, Arc<types::WrappedSummary>)>>,
+    /// Bumped by every clear. A summary is cached only under the generation it
+    /// was computed under, so one that started before a clear cannot repopulate
+    /// the cache after it.
+    wrapped_generation: std::sync::atomic::AtomicU64,
     /// Ready-made Now, rail and mode views; see `handler::mode_cache`.
     pub(crate) mode_cache: crate::handler::mode_cache::ModeCache,
     /// Set on the first successful sync after daemon start when the
@@ -909,6 +913,7 @@ impl AppState {
             sync_error_chimes: Default::default(),
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
+            wrapped_generation: std::sync::atomic::AtomicU64::new(0),
             mode_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
@@ -1394,16 +1399,32 @@ impl AppState {
     /// Drop every cached `Wrapped` summary. A direction change moves the counts
     /// they were computed from, so they must not be served until they expire.
     pub(crate) fn wrapped_cache_clear(&self) {
-        self.wrapped_cache.lock().clear();
+        let mut cache = self.wrapped_cache.lock();
+        cache.clear();
+        self.wrapped_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
-    /// Insert a freshly-computed `Wrapped` summary into the cache.
+    /// The generation a summary must be computed under to be cached.
+    pub(crate) fn wrapped_cache_generation(&self) -> u64 {
+        self.wrapped_generation
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Insert a `Wrapped` summary computed under `generation` (read with
+    /// `wrapped_cache_generation` before the store query). A summary from an
+    /// older generation describes mail a clear has since changed, so it is
+    /// dropped rather than cached.
     pub(crate) fn wrapped_cache_put(
         &self,
         key: WrappedCacheKey,
         summary: Arc<types::WrappedSummary>,
+        generation: u64,
     ) {
         let mut cache = self.wrapped_cache.lock();
+        if generation != self.wrapped_cache_generation() {
+            return;
+        }
         cache.insert(key, (Instant::now(), summary));
     }
 
@@ -2339,6 +2360,7 @@ impl AppState {
             sync_error_chimes: Default::default(),
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
+            wrapped_generation: std::sync::atomic::AtomicU64::new(0),
             mode_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
@@ -2433,6 +2455,7 @@ impl AppState {
             sync_error_chimes: Default::default(),
             start_time: Instant::now(),
             wrapped_cache: ParkingMutex::new(HashMap::new()),
+            wrapped_generation: std::sync::atomic::AtomicU64::new(0),
             mode_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
@@ -2553,6 +2576,7 @@ impl AppState {
                 sync_error_chimes: Default::default(),
                 start_time: Instant::now(),
                 wrapped_cache: ParkingMutex::new(HashMap::new()),
+                wrapped_generation: std::sync::atomic::AtomicU64::new(0),
                 mode_cache: Default::default(),
                 reply_context_cache: ParkingMutex::new(HashMap::new()),
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
@@ -3948,5 +3972,33 @@ use_tls = true
             .await
             .expect("unfinished owned task should be aborted")
             .expect_err("pending task must be cancelled, not completed");
+    }
+}
+
+#[cfg(test)]
+mod wrapped_cache_generation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_summary_computed_before_a_clear_is_not_cached() {
+        let state = AppState::in_memory().await.unwrap();
+        let key = WrappedCacheKey {
+            account_id: None,
+            label: "2026".into(),
+        };
+        let stale = state.wrapped_cache_generation();
+        let summary = state
+            .store
+            .wrapped_summary(None, 0, 1, "2026")
+            .await
+            .unwrap();
+
+        state.wrapped_cache_clear();
+        state.wrapped_cache_put(key.clone(), Arc::new(summary.clone()), stale);
+        assert!(state.wrapped_cache_get(&key).is_none());
+
+        let current = state.wrapped_cache_generation();
+        state.wrapped_cache_put(key.clone(), Arc::new(summary), current);
+        assert!(state.wrapped_cache_get(&key).is_some());
     }
 }

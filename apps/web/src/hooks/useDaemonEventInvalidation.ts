@@ -29,10 +29,13 @@ export function useDaemonEventInvalidation(): void {
           case "MessageUnsnoozed":
           // A move in any client: every mode, Now's line and Inbox's chips.
           case "ModesChanged":
-          // An address change moves stored mail between sent and received,
-          // so every mail view that reads direction refreshes too.
+            void invalidateMailQueries(qc);
+            break;
+          // An address change moves stored mail between sent and received, so
+          // the mail views and the analytics that count it both refresh.
           case "AccountAddressesChanged":
             void invalidateMailQueries(qc);
+            void qc.invalidateQueries({ queryKey: ["analytics"] });
             break;
           case "LabelCountsUpdated":
             void qc.invalidateQueries({ queryKey: shellKey });

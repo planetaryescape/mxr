@@ -228,6 +228,12 @@ pub(super) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
         DaemonEvent::AccountAddressesChanged { .. } => {
             app.modes_changed();
             app.compose.invalidate_reply_contexts();
+            // Analytics count the same direction. Forget what was fetched, so
+            // entering the screen refetches, and refresh it if it is open.
+            app.analytics.last_refresh_at.clear();
+            if app.screen == app::Screen::Analytics {
+                app.analytics.refresh_pending = true;
+            }
         }
         DaemonEvent::AssistantUpdated {
             conversation_id,

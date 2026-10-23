@@ -568,6 +568,10 @@ pub(crate) async fn finalize_sync_pass(
             .await;
     }
     reassert_busy_if_background_sync_queued(&state, &account_id).await;
+    // Reconciled under the provider guard, before it is released. A pass that
+    // took the guard after this one has not prepared its batch yet, so the
+    // debt cannot be consumed ahead of a batch it has to repair.
+    reconcile_pass_directions(&state, &account_id).await;
     drop(provider_guard);
     state.finish_sync_run(&account_id, outcome.has_more);
     // A pass returns after one page. Without a wake, the account would sit at
@@ -582,7 +586,6 @@ pub(crate) async fn finalize_sync_pass(
     if let Err(error) = crate::handler::reconcile_provider_drafts(&state, &account_id).await {
         tracing::warn!(account = %account_id, %error, "provider draft reconciliation failed");
     }
-    reconcile_pass_directions(&state, &account_id).await;
     let _ = state
         .store
         .insert_event(
@@ -1998,13 +2001,14 @@ async fn warm_default_wrapped(state: &Arc<AppState>) {
             label: label.clone(),
         };
         let started = std::time::Instant::now();
+        let generation = state.wrapped_cache_generation();
         match state
             .store
             .wrapped_summary(account_id.as_ref(), since_unix, until_unix, &label)
             .await
         {
             Ok(summary) => {
-                state.wrapped_cache_put(cache_key, Arc::new(summary));
+                state.wrapped_cache_put(cache_key, Arc::new(summary), generation);
                 tracing::debug!(
                     label = %label,
                     account = ?account_id.as_ref().map(mxr_core::AccountId::as_str),
@@ -3407,6 +3411,64 @@ mod tests {
         ) -> Result<(), MxrError> {
             Ok(())
         }
+    }
+
+    /// A batch classified before an address change, written while its pass
+    /// holds the provider guard, is corrected by that pass's own finalizer.
+    #[tokio::test]
+    async fn a_pass_holding_the_guard_is_corrected_by_its_own_finalizer() {
+        let account_id = AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let provider = std::sync::Arc::new(DeleteOnlySyncProvider {
+            account_id: account_id.clone(),
+            deleted_provider_ids: vec![],
+        });
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, provider.clone(), None)
+                .await
+                .unwrap(),
+        );
+        let pass = begin_sync_pass(
+            &state,
+            provider as std::sync::Arc<dyn MailSyncProvider>,
+            None,
+            SyncStarter::AccountLoop,
+        )
+        .await;
+        // The alias is registered while this pass holds the guard.
+        crate::handler::diagnostics_impl::add_account_address(
+            &state,
+            &account_id,
+            "alias@example.com",
+            false,
+            false,
+        )
+        .await
+        .unwrap();
+        // The pass then writes a batch it classified before the change.
+        let late = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .provider_id("late-batch")
+            .sender_address("Alias", "alias@example.com")
+            .build();
+        state
+            .store
+            .upsert_envelope_with_direction(&late, mxr_core::types::MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let SyncWait::Finished { pass, result } = run_sync_pass(pass, Duration::from_secs(5)).await
+        else {
+            panic!("a fast sync must not detach");
+        };
+        finalize_sync_pass(pass, result).await.unwrap();
+
+        let direction: String = sqlx::query_scalar("SELECT direction FROM messages WHERE id = ?")
+            .bind(late.id.as_str())
+            .fetch_one(state.store.reader())
+            .await
+            .unwrap();
+        assert_eq!(direction, "outbound");
     }
 
     /// A page that only deletes mail synced zero messages, which used to skip

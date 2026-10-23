@@ -493,11 +493,12 @@ pub(crate) async fn wrapped(
             summary: (*cached).clone(),
         });
     }
+    let generation = state.wrapped_cache_generation();
     let summary = state
         .store
         .wrapped_summary(resolved.as_ref(), since_unix, until_unix, label)
         .await?;
-    state.wrapped_cache_put(cache_key, std::sync::Arc::new(summary.clone()));
+    state.wrapped_cache_put(cache_key, std::sync::Arc::new(summary.clone()), generation);
     Ok(ResponseData::Wrapped { summary })
 }
 

@@ -118,6 +118,13 @@ describe("useDaemonEventInvalidation", () => {
     expect(roots.filter((root) => !invalidates([root]))).toEqual([]);
   });
 
+  test("AccountAddressesChanged also refetches the analytics the change moves", () => {
+    const { emit, invalidatedKeys } = setup();
+    emit({ type: "AccountAddressesChanged", account_id: "acct-1" });
+
+    expect(invalidatedKeys()).toContain(JSON.stringify(["analytics"]));
+  });
+
   test("MutationReconciliationFailed rolls back the affected surfaces and warns", () => {
     const { emit, invalidatedKeys } = setup();
     emit({

@@ -117,3 +117,15 @@ console errors. This fallback uses system sans typography and distilled
 homepage CSS rather than the production Recursive font and full Starlight CSS;
 it checks responsive hierarchy and overflow, not exact production-font
 wrapping. No phone-width pass is claimed for the actual production page.
+
+## Root integration verifies the production font and layout
+
+Root reviewed candidate `920d6c23dea185b17c4be0dee5f3f442370b8e75`, tree `44f701b9886ab4b889b4ca0971332af5a5f1c503`. The task-first proof resolves the opening mismatch. An inherited percentage row gap made the desktop hero's content overflow its intrinsic height; setting a fixed `1rem` row gap separates the action links from the install row. At1440px, the last action ends at636.8px and the install row begins at650.8px.
+
+Root rendered the built HTML with all compiled site CSS in native HTML preview at390px and1440px, both themes. The actual Recursive font loaded in each check. Its downloaded production asset and built asset both hash to `14ef41458aeba3d812284c4e32ee956910b88845062c61e91cc8578c2b78bccb`. Document and body widths matched the requested width; no console errors or horizontal overflow occurred. The full proof remains readable by scrolling on a phone.
+
+The extraction strips external JavaScript and resolves viewport-height units to844px for the phone capture and900px for desktop because the native renderer rejects viewport-height units. It retains the compiled layout rules and typography. This verifies static production layout rather than mobile browser interaction. The earlier distilled-CSS check is superseded for layout; collaborative-browser resize remains faulty.
+
+The final root build passed10script tests, validation for262OpenAPIpaths, and208Astropages in4.35seconds. It used the supported npm-only hosting fallback for the unchanged OpenAPI file. All36homepage internal links and anchors resolve in the built output. The generated homepage Markdown, Why mxr Markdown, curated llms.txt and llms-full retain the category. Node syntax checks passed for the two changed JS files. Blueprint validation reports17documents/27decisions with no errors or warnings. No new types, contracts or runtime behavior were introduced. Inline simplifier review kept the static proof and existing copy/media behavior; no additional abstraction was needed.
+
+Remaining evidence: no three-reader comprehension study has been performed. Deployment and live browser smoke are recorded by root after integration.

@@ -142,6 +142,8 @@ body {
   /* Starlight ships .hero as a 2-col grid for copy and a media slot.
      mxr uses the slot for its category line and keeps one column. */
   grid-template-columns: 1fr !important;
+  /* A percentage row gap can overflow the hero's intrinsic height. */
+  row-gap: 1rem;
 }
 
 .hero .stack { width: 100%; }

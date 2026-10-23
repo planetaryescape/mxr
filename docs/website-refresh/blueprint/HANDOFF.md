@@ -73,3 +73,9 @@ Exact next action: collect candidate and proof packets, review the whole diff an
 ### S2 now has an observed result
 
 Integrated worker evidence at control commit18b39c2cb8688e625f3049dfd8b6dd6d56c73dec. The v0.6.156 release checksum matched; two isolated fake accounts each held55messages and returned4eligible subscription buckets at limit200. Unscoped subscriptions selects the configured default account, so the public example must use explicit account commands. Root checked the rawJSON/count/search identity, archive checksum and source default-account handler at f39ae6657. The worker-owned daemon exited and socket is absent; no real mail was used. Raw small artifacts are copied under durable ledger s2-artifacts; the downloaded binary/data remain in the retained child fixture. Rung1 worker received this context during its active task; no duplicate worker or review round was created.
+
+### Rung1 is reviewed locally and ready for its PR
+
+The task-first revision and exact built-font layout checks are recorded in [rung1 evidence](../evidence/rung1-implementation.md). Root checked390/1440px in both themes with full compiled CSS and the matching Recursive asset; no horizontal overflow. Final hosting build passed10tests,262OpenAPIpaths and208pages. All36homepage internal links/anchors resolve. Only a trivial fixed row gap followed the reviewed candidate.
+
+Exact next action: commit the integration evidence/spacing correction, refresh remote base, pre-push review, open/link the scoped PR, verify its exact tree/checks, merge and smoke the existing mxr.sh deployment. Rungs2–5 remain planned; do not begin dependent code yet. The external comprehension study remains unobserved. Resources stay retained without deletion authorisation.

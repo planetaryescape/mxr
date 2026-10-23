@@ -241,7 +241,7 @@ mod tests {
             .await
             .unwrap();
         if direction == MessageDirection::Outbound {
-            store.try_create_reply_pair(&env, direction).await.unwrap();
+            store.try_create_reply_pair(&env).await.unwrap();
         }
         env
     }

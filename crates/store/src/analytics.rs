@@ -105,6 +105,9 @@ impl super::Store {
                 .await?;
             Self::reseat_reply_pair_tx(&mut tx, id).await?;
         }
+        // Pairs a late writer rebuilt from an old direction are not in `flips`.
+        // Rebuild every mismatched pair of the account here as well.
+        Self::reseat_mismatched_pairs_tx(&mut tx, &account_id.as_str()).await?;
         tx.commit().await?;
         let changes = AccountDirectionChanges::from_flips(&flips);
         trace_query(

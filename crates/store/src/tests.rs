@@ -2900,10 +2900,7 @@ async fn list_response_time_returns_clock_and_business_percentiles() {
             .upsert_envelope_with_direction(&reply, MessageDirection::Outbound)
             .await
             .unwrap();
-        assert!(store
-            .try_create_reply_pair(&reply, MessageDirection::Outbound)
-            .await
-            .unwrap());
+        assert!(store.try_create_reply_pair(&reply).await.unwrap());
     }
     let backfilled = store.backfill_business_hours_latency().await.unwrap();
     assert_eq!(backfilled, 3);
@@ -3240,10 +3237,7 @@ async fn refresh_contacts_uses_reply_pairs_for_replied_count_and_cadence() {
             .upsert_envelope_with_direction(&reply, MessageDirection::Outbound)
             .await
             .unwrap();
-        assert!(store
-            .try_create_reply_pair(&reply, MessageDirection::Outbound)
-            .await
-            .unwrap());
+        assert!(store.try_create_reply_pair(&reply).await.unwrap());
     }
 
     store.refresh_contacts().await.unwrap();
@@ -3483,10 +3477,7 @@ async fn try_create_reply_pair_links_outbound_reply_to_inbound_parent() {
         .await
         .unwrap();
 
-    let created = store
-        .try_create_reply_pair(&outbound, MessageDirection::Outbound)
-        .await
-        .unwrap();
+    let created = store.try_create_reply_pair(&outbound).await.unwrap();
     assert!(created);
 
     let row: (String, String, i64, String) = sqlx::query_as(
@@ -3563,10 +3554,7 @@ async fn an_inbound_reply_pair_leaves_the_reminder_for_the_daemon_to_settle() {
         .await
         .unwrap();
 
-    let created = store
-        .try_create_reply_pair(&inbound_reply, MessageDirection::Inbound)
-        .await
-        .unwrap();
+    let created = store.try_create_reply_pair(&inbound_reply).await.unwrap();
 
     assert!(created);
     let reminder = store
@@ -3597,10 +3585,7 @@ async fn try_create_reply_pair_enqueues_when_parent_unknown() {
         .await
         .unwrap();
 
-    let created = store
-        .try_create_reply_pair(&outbound, MessageDirection::Outbound)
-        .await
-        .unwrap();
+    let created = store.try_create_reply_pair(&outbound).await.unwrap();
     assert!(!created, "no parent should mean no pair");
 
     store.enqueue_reply_pair_pending(&outbound).await.unwrap();

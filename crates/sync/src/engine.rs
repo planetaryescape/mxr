@@ -220,7 +220,7 @@ impl SyncEngine {
         if synced.envelope.in_reply_to.is_some() {
             let resolved = self
                 .store
-                .try_create_reply_pair(&envelope, direction)
+                .try_create_reply_pair(&envelope)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
             if !resolved {
@@ -467,7 +467,7 @@ impl SyncEngine {
                 }
                 let resolved = self
                     .store
-                    .try_create_reply_pair(&upsert.envelope, upsert.direction)
+                    .try_create_reply_pair(&upsert.envelope)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
                 if !resolved {

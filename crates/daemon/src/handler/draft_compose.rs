@@ -1432,11 +1432,7 @@ mod tests {
             "yep, resent just now. shout if it's missing\ns",
         )
         .await;
-        state
-            .store
-            .try_create_reply_pair(&answered, MessageDirection::Outbound)
-            .await
-            .unwrap();
+        state.store.try_create_reply_pair(&answered).await.unwrap();
         // Someone else's mail must not shape my voice.
         let unrelated = TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
@@ -1647,11 +1643,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        state
-            .store
-            .try_create_reply_pair(&answered, MessageDirection::Outbound)
-            .await
-            .unwrap();
+        state.store.try_create_reply_pair(&answered).await.unwrap();
     }
 
     // Output: chatter the model adds around the email never reaches compose.

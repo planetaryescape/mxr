@@ -137,10 +137,7 @@ impl Fixture {
                 .await
                 .unwrap();
         }
-        store
-            .try_create_reply_pair(envelope, direction)
-            .await
-            .unwrap();
+        store.try_create_reply_pair(envelope).await.unwrap();
     }
 
     pub(super) async fn promise(&self, thread: &ThreadId, evidence: &MessageId, due_in: Duration) {

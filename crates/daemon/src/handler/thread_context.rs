@@ -450,11 +450,7 @@ mod tests {
             .upsert_envelope_with_direction(&answered, MessageDirection::Outbound)
             .await
             .unwrap();
-        assert!(state
-            .store
-            .try_create_reply_pair(&answered, MessageDirection::Outbound)
-            .await
-            .unwrap());
+        assert!(state.store.try_create_reply_pair(&answered).await.unwrap());
 
         let facts = context(get_thread_context(&state, &here).await.unwrap());
         let person = facts.counterparty.unwrap();

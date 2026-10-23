@@ -290,11 +290,7 @@ mod tests {
                 .await
                 .unwrap();
         }
-        state
-            .store
-            .try_create_reply_pair(&reply, MessageDirection::Outbound)
-            .await
-            .unwrap();
+        state.store.try_create_reply_pair(&reply).await.unwrap();
 
         let response = draft_eval(&state, Some(&account_id), 5).await.unwrap();
         let ResponseData::DraftEval { cases, summary } = response else {

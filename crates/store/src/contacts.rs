@@ -263,12 +263,33 @@ impl super::Store {
         }
         let mut tx = self.writer().begin().await?;
         for (account_id, email) in candidates {
+            // The candidates are an earlier snapshot. Mail that arrived since
+            // can name this contact again, so its counters are reset only while
+            // no qualifying inbound or outbound event exists. The predicate is
+            // the aggregate's, for this one contact.
             sqlx::query(
                 r#"UPDATE contacts
                    SET total_inbound = 0, total_outbound = 0,
                        last_inbound_at = NULL, last_outbound_at = NULL,
                        replied_count = 0, cadence_days_p50 = NULL
-                   WHERE account_id = ?1 AND email = ?2"#,
+                   WHERE account_id = ?1 AND email = ?2
+                     AND NOT EXISTS (
+                         SELECT 1 FROM messages m
+                         WHERE m.account_id = ?1
+                           AND (
+                               (m.direction = 'inbound'
+                                AND m.from_email != ''
+                                AND LOWER(m.from_email) = ?2)
+                            OR (m.direction = 'outbound' AND (
+                                EXISTS (SELECT 1 FROM json_each(m.to_addrs) a
+                                        WHERE LOWER(json_extract(a.value, '$.email')) = ?2)
+                             OR EXISTS (SELECT 1 FROM json_each(m.cc_addrs) a
+                                        WHERE LOWER(json_extract(a.value, '$.email')) = ?2)
+                             OR EXISTS (SELECT 1 FROM json_each(m.bcc_addrs) a
+                                        WHERE LOWER(json_extract(a.value, '$.email')) = ?2)
+                            ))
+                           )
+                     )"#,
             )
             .bind(account_id)
             .bind(email)

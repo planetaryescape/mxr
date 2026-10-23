@@ -19,6 +19,8 @@ pub(crate) struct StoredProposal {
     /// The stored draft the request named, when it named one: the proposal
     /// can only be applied to that draft.
     pub draft_id: Option<DraftId>,
+    /// Figures in the proposal backed by its inputs, never model-only guesses.
+    pub grounded_figures: Vec<String>,
     pub proposal: ComposeProposalData,
 }
 
@@ -98,6 +100,7 @@ mod tests {
         StoredProposal {
             account_id: AccountId::new(),
             draft_id: None,
+            grounded_figures: Vec::new(),
             proposal: ComposeProposalData {
                 proposal_id: id.into(),
                 action: AssistActionData::Write,

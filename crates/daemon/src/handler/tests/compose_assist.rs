@@ -957,6 +957,7 @@ async fn revising_a_proposal_that_is_gone_or_not_yours_is_a_clear_error() {
     let mut other = crate::handler::compose_proposals::StoredProposal {
         account_id: mxr_core::AccountId::new(),
         draft_id: None,
+        grounded_figures: Vec::new(),
         proposal: ComposeProposalData {
             proposal_id: "elsewhere".into(),
             action: AssistActionData::Write,
@@ -1004,6 +1005,76 @@ async fn revising_a_proposal_that_is_gone_or_not_yours_is_a_clear_error() {
     .unwrap_err();
     assert!(error.contains("different draft"), "{error}");
     assert_eq!(model.calls(), 0, "no error path reached the model");
+}
+
+#[tokio::test]
+async fn revision_figures_keep_the_original_inputs_across_multiple_notes() {
+    let state = AppState::in_memory().await.unwrap();
+    let target = new_message(&state);
+    state.llm.replace(Scripted::new("Please pay £40."));
+    let first = assist(
+        &state,
+        &target,
+        &Ask {
+            instruction: Some("Invoice them £40 for the workshop"),
+            ..Ask::text("")
+        },
+    )
+    .await
+    .unwrap();
+    assert!(first.gaps.is_empty());
+
+    state.llm.replace(Scripted::new("Pay £40 for 12 seats."));
+    let second = assist(
+        &state,
+        &target,
+        &Ask {
+            instruction: Some("Say it covers 12 seats"),
+            revise: Some(&first.proposal_id),
+            ..Ask::text("")
+        },
+    )
+    .await
+    .unwrap();
+    assert!(second.gaps.is_empty(), "{}", second.text);
+
+    let third = assist(
+        &state,
+        &target,
+        &Ask {
+            instruction: Some("Make it shorter"),
+            revise: Some(&second.proposal_id),
+            ..Ask::text("")
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(third.text, "Pay £40 for 12 seats.");
+    assert!(third.gaps.is_empty());
+}
+
+#[tokio::test]
+async fn revision_figures_never_promote_a_guess_from_a_proposals_gap() {
+    let state = AppState::in_memory().await.unwrap();
+    let target = new_message(&state);
+    state.llm.replace(Scripted::new("Please pay £40."));
+    let first = assist(&state, &target, &Ask::text("")).await.unwrap();
+    assert_eq!(first.gaps.len(), 1);
+    assert!(first.text.contains("the draft said £40"));
+
+    let second = assist(
+        &state,
+        &target,
+        &Ask {
+            instruction: Some("Make it shorter"),
+            revise: Some(&first.proposal_id),
+            ..Ask::text("")
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(second.gaps.len(), 1);
+    assert!(second.text.contains("the draft said £40"));
 }
 
 #[tokio::test]
@@ -1070,6 +1141,7 @@ async fn a_cloud_model_without_the_opt_in_is_not_given_a_proposal_written_from_h
     let from_history = crate::handler::compose_proposals::StoredProposal {
         account_id: state.default_account_id(),
         draft_id: None,
+        grounded_figures: Vec::new(),
         proposal: ComposeProposalData {
             proposal_id: "history".into(),
             action: AssistActionData::Write,

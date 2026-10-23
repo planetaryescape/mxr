@@ -123,7 +123,7 @@ pub(super) async fn compose_assist(
     // The proposal being revised: the model sees its text, so it must be the
     // same account's, and a cloud model without the opt-in must not get text
     // that was written from the user's history.
-    let (revised, revised_from_history) = match request.revise {
+    let revised = match request.revise {
         Some(proposal_id) => {
             let stored = state
                 .compose_proposals
@@ -149,12 +149,9 @@ pub(super) async fn compose_assist(
                     HISTORY_BODY_REFUSAL.to_string(),
                 ));
             }
-            (
-                Some(stored.proposal.text),
-                stored.proposal.provenance.history_used,
-            )
+            Some(stored)
         }
-        None => (None, false),
+        None => None,
     };
 
     if let Some(person) = &gathered.counterparty {
@@ -192,7 +189,7 @@ pub(super) async fn compose_assist(
             typed: request.text,
             selection: resolved.selection.clone(),
             adjust: request.adjust,
-            revise: revised.as_deref(),
+            revise: revised.as_ref().map(|stored| stored.proposal.text.as_str()),
         },
         budget_chars,
     });
@@ -221,6 +218,10 @@ pub(super) async fn compose_assist(
         instruction.to_string(),
         today.clone(),
         gathered.subject.clone(),
+        revised
+            .as_ref()
+            .map(|stored| stored.grounded_figures.join("\n"))
+            .unwrap_or_default(),
     ]
     .join("\n");
     let checked = check::check_proposal(&ProposalInput {
@@ -230,10 +231,18 @@ pub(super) async fn compose_assist(
         output: &cleaned,
         known: &known,
     });
+    // Keep only source-backed figures present in this proposal. A guessed
+    // amount inside a gap must not become evidence on the next revision.
+    let grounding = [request.text, &known].join("\n");
+    let unknown_figures = check::invented_numbers(&checked.text, &grounding);
+    let mut grounded_figures = check::invented_numbers(&checked.text, "");
+    grounded_figures.retain(|figure| !unknown_figures.contains(figure));
 
     // Only the examples that fit the prompt shaped the proposal.
     let examples_used = &material.examples[..prompt.examples_used];
-    let history_used = revised_from_history
+    let history_used = revised
+        .as_ref()
+        .is_some_and(|stored| stored.proposal.provenance.history_used)
         || typed_from_history
         || !examples_used.is_empty()
         || !material.habits.is_empty()
@@ -272,6 +281,7 @@ pub(super) async fn compose_assist(
     state.compose_proposals.insert(StoredProposal {
         account_id: account_id.clone(),
         draft_id: gathered.draft_id,
+        grounded_figures,
         proposal: proposal.clone(),
     });
     Ok(ResponseData::ComposeProposal { proposal })

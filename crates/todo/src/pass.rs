@@ -12,7 +12,7 @@
 //! change can add at most one more catch-up batch, never a flood.
 
 use crate::action_link::registrable_domain;
-use crate::detect::{from_invite, Detection, Origin};
+use crate::detect::{Detection, Origin};
 use crate::provenance::{FieldProvenance, FieldSource, FieldSources};
 use crate::text::clip;
 use crate::timing::{lead_time, place, window, Placement, TimingInput};
@@ -116,6 +116,28 @@ where
         summary.catchup_overflow += store.trim_todo_catchup(cfg.catchup_max, cfg.now).await?;
     }
     Ok(summary)
+}
+
+/// Outbox replay must propagate errors; best-effort scan logging cannot ACK work.
+pub async fn project_stored_ask<Tz>(
+    store: &Store,
+    cfg: &PassConfig<Tz>,
+    id: &MessageId,
+) -> anyhow::Result<()>
+where
+    Tz: TimeZone,
+    Tz::Offset: std::fmt::Display,
+{
+    for row in store.list_todo_scan_rows(std::slice::from_ref(id)).await? {
+        classify(
+            store,
+            cfg,
+            &row,
+            run_in_progress(store, &row.account_id).await?,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 async fn run_in_progress(store: &Store, account_id: &AccountId) -> anyhow::Result<bool> {
@@ -271,16 +293,21 @@ where
     let Some(envelope) = store.get_envelope(&row.id).await? else {
         return Ok(summary);
     };
-    let mut detections = crate::asks::items::detections(answer, &envelope);
-    // Calendar PARTSTAT retains its explicit pending/answered semantics.
-    if !row.outbound && !detections.iter().any(|(_, d)| d.kind == TodoKind::Rsvp) {
-        if let Some(invite) = invite_detection(store, row).await? {
-            detections.push((usize::MAX, invite));
-        }
+    let detections = crate::asks::items::detections(answer, &envelope);
+    let timezone = mxr_store::AsksTimezone::resolve()?;
+    if timezone.token() != answer.context_token {
+        return Ok(summary);
     }
+    let frozen = PassConfig {
+        now: cfg.now,
+        tz: timezone,
+        morning_hour: cfg.morning_hour,
+        catchup_days: cfg.catchup_days,
+        catchup_max: cfg.catchup_max,
+    };
     let mut current_keys = Vec::new();
     for (_, detection) in detections {
-        let (record, placement) = stored_record(cfg, row, detection, run_in_progress);
+        let (record, placement) = stored_record(&frozen, row, detection, run_in_progress);
         current_keys.push(record.reason.clone());
         record_outcome(
             &mut summary,
@@ -354,24 +381,6 @@ fn record_outcome(
         }
         TodoUpsert::Unchanged => {}
     }
-}
-
-/// A calendar invite still waiting for the user's answer.
-async fn invite_detection(store: &Store, row: &TodoScanRow) -> anyhow::Result<Option<Detection>> {
-    let Some(calendar) = store.invite_awaiting_reply(&row.id).await? else {
-        return Ok(None);
-    };
-    let starts = calendar.starts_at.as_deref().and_then(parse_ics_time);
-    let organizer = calendar
-        .organizer
-        .as_ref()
-        .map(|person| person.name.clone().unwrap_or_else(|| person.email.clone()));
-    Ok(Some(from_invite(
-        calendar.summary.as_deref(),
-        organizer.as_deref(),
-        &row.from_email,
-        starts,
-    )))
 }
 
 /// An ICS date or date-time: `20261015T180000Z`, `20261015T180000` (read

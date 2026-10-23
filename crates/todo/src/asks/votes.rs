@@ -9,6 +9,10 @@ macro_rules! pattern {
     };
 }
 pattern!(
+    NEEDS_ATTENTION,
+    r"(?i)\b(?:requires?|needs?)\s+(?:some\s+|your\s+)?attention\b"
+);
+pattern!(
     REQUEST,
     r"(?i)\b(please|kindly|can you|could you|would you|will you|you must|need you to|you need to)\b"
 );
@@ -103,7 +107,22 @@ pub(super) fn label(
             .enumerate()
             .filter(|(_, r)| inside(zone, span, r.zone, &r.span))
             .map(|(id, r)| (id, (r.kind.as_str(), r.value.as_str()))),
-    );
+    )
+    .or_else(|| {
+        // A reference header governs following units until another reference
+        // appears. Paragraph boundaries end that context.
+        facts
+            .references
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, r)| {
+                r.zone == zone
+                    && r.span.end <= span.start
+                    && !facts.zones[zone].text[r.span.end..span.start].contains("\n\n")
+            })
+            .map(|(id, _)| id)
+    });
     let actor = actor(text, facts, input);
     let base = AskTags {
         act: Act::Information,
@@ -154,7 +173,14 @@ pub(super) fn label(
         AskState::Cancelled
     } else if DONE.is_match(text) {
         AskState::Done
-    } else if CONDITIONAL.is_match(text) {
+    } else if CONDITIONAL.is_match(text)
+        || CONDITIONAL.is_match(
+            prefix
+                .rsplit(['.', '?', '!', '\n'])
+                .next()
+                .unwrap_or_default(),
+        )
+    {
         AskState::Conditional
     } else {
         AskState::Pending
@@ -327,7 +353,8 @@ fn actor(text: &str, facts: &AskFacts, input: &AskInput<'_>) -> Actor {
 /// Unsupported informational prose is not ask uncertainty. Keep only an
 /// observed request/commitment or incomplete consequential document reading.
 pub(super) fn eligible_uncertainty(text: &str, doc: &DocumentReading) -> bool {
-    REQUEST.is_match(text)
+    NEEDS_ATTENTION.is_match(text)
+        || REQUEST.is_match(text)
         || PROMISE.is_match(text)
         || matches!(
             doc.kind,

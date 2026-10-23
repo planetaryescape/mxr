@@ -1,7 +1,6 @@
 //! Independently versioned asks facet; the home materializer remains inbound-only.
 use super::HandlerError;
 use crate::state::AppState;
-use chrono::Local;
 use mxr_core::asks::{AskAssessment, ASKS_POLICY_VERSION};
 use mxr_core::{AccountId, ThreadId};
 use mxr_store::DeskMessage;
@@ -14,8 +13,9 @@ pub(super) async fn prepare(
     messages: &[DeskMessage],
     is_owner: &(dyn Fn(&str) -> bool + Sync),
 ) -> Result<Vec<AskAssessment>, HandlerError> {
-    let context_token =
-        mxr_store::asks_context_token().map_err(|e| HandlerError::from(e.to_string()))?;
+    let timezone =
+        mxr_store::AsksTimezone::resolve().map_err(|e| HandlerError::from(e.to_string()))?;
+    let context_token = timezone.token().to_string();
     let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
     let stored = state.store.asks_for_messages(account, &ids).await?;
     let envelopes = state.store.list_envelopes_by_ids(&ids).await?;
@@ -85,6 +85,11 @@ pub(super) async fn prepare(
                 })
                 .or_else(|| position.checked_sub(1).and_then(|p| ordered.get(p)));
             let body = plain_bodies.get(&message.id);
+            let calendar = if !is_owner(&message.from.email) {
+                state.store.invite_awaiting_reply(&message.id).await?
+            } else {
+                None
+            };
             let previous_body = predecessor.and_then(|p| plain_bodies.get(&p.id));
             let replied = last_owner.is_some_and(|seq| seq > message.seq);
             let owned: Vec<_> = std::iter::once(&message.from)
@@ -95,12 +100,16 @@ pub(super) async fn prepare(
                 .collect();
             let fingerprint = mxr_store::assessment_fingerprint(&serde_json::json!({
                 "policy": ASKS_POLICY_VERSION,
-                "message": [message.id, message.from, message.to, message.cc, message.bcc, message.subject, message.date, body, message.evidence.bulk, message.list_id],
+                "message": [message.id, message.from, message.to, message.cc, message.bcc, message.subject, message.date, body, message.evidence.bulk, message.evidence.auto_generated, message.list_id],
                 "owner": [owned, names, owner_addresses],
                 "predecessor": predecessor.map(|p| (&p.id, &p.from, previous_body)),
                 "owner_replied_afterwards": replied,
                 "context_token": context_token,
+                "calendar": calendar,
             }).to_string());
+            timezone
+                .validate_timestamp(message.date)
+                .map_err(|e| HandlerError::from(e.to_string()))?;
             let input = AskInput {
                 message_id: &message.id,
                 account_id: account,
@@ -122,8 +131,11 @@ pub(super) async fn prepare(
                     same_author: p.from.email.eq_ignore_ascii_case(&message.from.email),
                 }),
                 owner_replied_afterwards: replied,
+                reply_capable: !message.evidence.auto_generated
+                    && !super::mail_kind::no_reply_address(&message.from.email),
             };
-            let mut answer = assess(&input, &Local, fingerprint);
+            let mut answer = assess(&input, &timezone, fingerprint);
+            mxr_todo::asks::include_calendar(&mut answer, calendar);
             answer.context_token = context_token.clone();
             answers.push(answer);
         }

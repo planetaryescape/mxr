@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import {
   AlertDialog,
@@ -112,16 +112,32 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
   const [values, setValues] = useState(initial);
   const changed = EDIT_FIELDS.filter(({ field }) => values[field].trim() !== initial[field].trim());
   const [saving, setSaving] = useState(false);
+  const active = useRef(true);
+  const inFlight = useRef(false);
+  const currentId = useRef(todo.id);
+  currentId.current = todo.id;
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (saving || changed.length === 0 || !values.title.trim()) return;
+    if (inFlight.current || changed.length === 0 || !values.title.trim()) return;
+    inFlight.current = true;
     setSaving(true);
-    const saved = await editRow(
-      todo,
-      changed.map(({ field }) => ({ field, value: values[field].trim() })),
-    );
-    setSaving(false);
-    if (saved) onClose();
+    const requestedId = todo.id;
+    try {
+      const saved = await editRow(
+        todo,
+        changed.map(({ field }) => ({ field, value: values[field].trim() })),
+      );
+      if (saved && active.current && currentId.current === requestedId) onClose();
+    } finally {
+      inFlight.current = false;
+      if (active.current) setSaving(false);
+    }
   }
   return (
     <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
@@ -149,7 +165,11 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
             <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={saving || changed.length === 0 || !values.title.trim()}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={saving || changed.length === 0 || !values.title.trim()}
+            >
               Save
             </Button>
           </DialogFooter>

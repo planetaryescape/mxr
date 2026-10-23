@@ -59,7 +59,47 @@ fn candidate(row: &sqlx::sqlite::SqliteRow) -> Result<EvalCandidate, sqlx::Error
     })
 }
 
+/// One SQLite statement supplies all the stored facets and evidence for grading.
+#[derive(Debug)]
+pub struct EvalStoredMessage {
+    pub envelope: mxr_core::Envelope,
+    pub home: Option<mxr_core::assessment::MailAssessment>,
+    pub asks: Option<mxr_core::asks::AskAssessment>,
+    pub record: bool,
+}
+
 impl super::Store {
+    pub async fn classify_eval_packet(
+        &self,
+        ids: &[MessageId],
+    ) -> Result<Vec<EvalStoredMessage>, sqlx::Error> {
+        let context = crate::asks_context_token().map_err(sqlx::Error::Io)?;
+        let rows = sqlx::query("SELECT m.*, COALESCE((SELECT GROUP_CONCAT(l.provider_id, char(31)) FROM message_labels ml JOIN labels l ON l.id = ml.label_id WHERE ml.message_id = m.id), '') AS label_provider_ids,
+            h.assessment_json AS home_json, a.assessment_json AS asks_json,
+            EXISTS(SELECT 1 FROM record_messages r WHERE r.message_id = m.id) AS is_record
+            FROM messages m LEFT JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id
+            LEFT JOIN mail_assessments a ON a.message_id = m.id AND a.account_id = m.account_id AND a.policy_version = ?2 AND a.input_revision = i.effective_revision AND json_extract(a.assessment_json, '$.context_token') = ?4
+            LEFT JOIN mail_assessments h ON h.message_id = m.id AND h.account_id = m.account_id AND h.policy_version = ?3 AND h.input_revision = i.effective_revision AND a.message_id IS NOT NULL AND m.direction != 'outbound'
+            WHERE m.id IN (SELECT value FROM json_each(?1)) ORDER BY m.id")
+            .bind(encode_json(&ids)?).bind(mxr_core::asks::ASKS_POLICY_VERSION).bind(mxr_core::assessment::CLASSIFIER_POLICY_VERSION).bind(context).fetch_all(self.reader()).await?;
+        rows.iter()
+            .map(|row| {
+                Ok(EvalStoredMessage {
+                    envelope: crate::message::sqlite_row_to_envelope(row)?,
+                    home: row
+                        .try_get::<Option<String>, _>("home_json")?
+                        .map(|s| crate::decode_json(&s))
+                        .transpose()?,
+                    asks: row
+                        .try_get::<Option<String>, _>("asks_json")?
+                        .map(|s| crate::decode_json(&s))
+                        .transpose()?,
+                    record: row.try_get("is_record")?,
+                })
+            })
+            .collect()
+    }
+
     /// Stored emails of `accounts` (all accounts when empty) whose provider
     /// id is in `provider_ids`.
     pub async fn classify_eval_candidates(

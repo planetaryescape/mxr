@@ -324,18 +324,7 @@ where
         {
             continue;
         }
-        if !asks.is_empty() && state.config_snapshot().todo.enabled {
-            // This is a stored projection, not another materialization entry
-            // point: never call the daemon scan wrapper recursively here.
-            let changed: Vec<_> = asks.iter().map(|a| a.message_id.clone()).collect();
-            mxr_todo::pass::scan_messages(
-                &state.store,
-                &super::todos::pass_config(state, chrono::Utc::now()),
-                &changed,
-            )
-            .await
-            .map_err(|e| HandlerError::from(e.to_string()))?;
-        }
+        replay_projections(state, account).await?;
         let mut persisted = state
             .store
             .assessments_for_messages(account, CLASSIFIER_POLICY_VERSION, &ids)
@@ -438,11 +427,40 @@ pub(crate) async fn reconciler_loop(
     }
 }
 
+async fn replay_projections(state: &AppState, account: &AccountId) -> Result<(), HandlerError> {
+    if !state.config_snapshot().todo.enabled {
+        return Ok(());
+    }
+    let mut failure = None;
+    for ticket in state.store.pending_asks_projections(account).await? {
+        match mxr_todo::pass::project_stored_ask(
+            &state.store,
+            &super::todos::pass_config(state, chrono::Utc::now()),
+            &ticket.answer.message_id,
+        )
+        .await
+        {
+            Ok(()) => {
+                state.store.acknowledge_asks_projection(&ticket).await?;
+            }
+            Err(error) => {
+                tracing::warn!(message = %ticket.answer.message_id, %error, "stored asks projection remains queued");
+                failure.get_or_insert_with(|| HandlerError::from(error.to_string()));
+            }
+        }
+    }
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    Ok(())
+}
+
 pub(super) async fn reconcile_dirty_page(
     state: &AppState,
     account: &AccountId,
     after: Option<&str>,
 ) -> Result<Option<String>, HandlerError> {
+    replay_projections(state, account).await?;
     let threads = state.store.dirty_assessment_threads(account, after).await?;
     let Some(last) = threads.last().map(mxr_core::ThreadId::as_str) else {
         return Ok(None);

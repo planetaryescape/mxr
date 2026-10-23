@@ -5076,6 +5076,7 @@ dependencies = [
  "caseless",
  "chrono",
  "constant_time_eq",
+ "jiff",
  "mxr-core",
  "serde",
  "serde_json",

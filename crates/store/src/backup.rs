@@ -94,6 +94,8 @@ const TABLES: &[&str] = &[
     "decision_evidence",
     "todos",
     "todo_corrections",
+    "asks_projection_outbox",
+    "asks_legacy_links",
     "todo_microsoft_exports",
     "todo_runs",
     "mode_views",
@@ -230,7 +232,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=98).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=99).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -287,6 +289,13 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     .await?;
     validate(&mut db).await?;
     let expected = Store::in_memory().await?;
+    if manifest.schema_version < 99 {
+        sqlx::raw_sql(
+            "DROP TABLE IF EXISTS asks_projection_outbox; DROP TABLE IF EXISTS asks_legacy_links;",
+        )
+        .execute(expected.writer())
+        .await?;
+    }
     if manifest.schema_version < 98 {
         sqlx::query("DROP TABLE IF EXISTS todo_corrections")
             .execute(expected.writer())
@@ -514,7 +523,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=98).contains(&version) {
+    if !(80..=99).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -625,7 +634,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:98, workspace_id,recovery_generation,files,
+    Ok(BackupManifest { format_version:1, schema_version:99, workspace_id,recovery_generation,files,
         exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into(),"assistant conversations (chat history that quotes mail; local only)".into()] })
 }
 

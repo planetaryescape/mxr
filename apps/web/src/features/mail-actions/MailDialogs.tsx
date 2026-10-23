@@ -106,9 +106,9 @@ export function MailDialogs() {
     case "todo-schedule":
       return <TodoScheduleDialog todo={dialog.todo} onClose={close} />;
     case "todo-correct":
-      return <TodoCorrectionDialog todo={dialog.todo} onClose={close} />;
+      return <TodoCorrectionDialog key={dialog.todo.id} todo={dialog.todo} onClose={close} />;
     case "todo-edit":
-      return <TodoEditDialog todo={dialog.todo} onClose={close} />;
+      return <TodoEditDialog key={dialog.todo.id} todo={dialog.todo} onClose={close} />;
     case "todo-make":
       return (
         <MakeTodoDialog

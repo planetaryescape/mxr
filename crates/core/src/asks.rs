@@ -3,7 +3,7 @@ use crate::{AccountId, MessageId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-pub const ASKS_POLICY_VERSION: &str = "asks-r2c-2";
+pub const ASKS_POLICY_VERSION: &str = "asks-r2c-3";
 
 macro_rules! tags {
     ($name:ident { $($variant:ident),+ $(,)? }) => {
@@ -22,7 +22,8 @@ tags!(ZoneKind {
     Signature,
     Footer,
     Advertising,
-    Unattributed
+    Unattributed,
+    Calendar
 });
 tags!(RecipientRole {
     AloneTo,
@@ -213,6 +214,8 @@ pub struct AskAssessment {
     /// Local timezone rules and configuration used to interpret date candidates.
     #[serde(default)]
     pub context_token: String,
+    #[serde(default)]
+    pub calendar: Option<crate::CalendarMetadata>,
     pub facts: AskFacts,
     pub units: Vec<AskUnit>,
 }
@@ -225,6 +228,7 @@ impl AskAssessment {
             .get(unit.zone)?
             .text
             .get(unit.span.start..unit.span.end)
+            .filter(|quote| !quote.is_empty())
     }
 }
 

@@ -1,5 +1,7 @@
 //! Deterministic asks judge. Facts and votes are retained before any item projection.
+mod calendar;
 mod candidates;
+pub use calendar::include_calendar;
 mod document;
 mod facts;
 pub mod items;
@@ -34,6 +36,7 @@ pub struct AskInput<'a> {
     pub sent: DateTime<Utc>,
     pub predecessor: Option<Predecessor<'a>>,
     pub owner_replied_afterwards: bool,
+    pub reply_capable: bool,
 }
 
 pub fn assess<Tz>(input: &AskInput<'_>, tz: &Tz, fingerprint: String) -> AskAssessment
@@ -68,6 +71,16 @@ where
                 .map(|v| v.tags.clone())
                 .filter(|first| votes.iter().all(|vote| &vote.tags == first));
             let mut answer = resolve(tags.as_ref(), input.owner_replied_afterwards);
+            if answer == AskAnswer::AsksYouToReply && !input.reply_capable {
+                answer = AskAnswer::Nothing;
+            }
+            if !votes.is_empty()
+                && votes
+                    .iter()
+                    .all(|v| !matches!(v.tags.state, AskState::Pending | AskState::Failed))
+            {
+                answer = AskAnswer::Nothing;
+            }
             if answer == AskAnswer::NotSure
                 && tags.is_none()
                 && !votes::eligible_uncertainty(text, &document)
@@ -115,6 +128,7 @@ where
         input_fingerprint: fingerprint,
         pending_body: input.body.is_none(),
         context_token: String::new(),
+        calendar: None,
         facts,
         units,
     }

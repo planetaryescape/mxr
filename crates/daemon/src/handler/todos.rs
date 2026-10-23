@@ -125,7 +125,6 @@ pub(crate) async fn tick(
         }
         if !super::asks_upgrade::page(state, &account.id, now).await? {
             running = true;
-            continue;
         }
         let run = state.store.get_todo_run(&account.id).await?;
         if run.as_ref().is_none_or(|run| {
@@ -519,6 +518,14 @@ pub(super) async fn correct(
         .store
         .correct_todo(&token, reason.as_str(), &before, &after, dry_run, now)
         .await?;
+    if !dry_run {
+        mirror_promise(state, &saved, saved.state, now).await?;
+        if saved.state == TodoState::Done {
+            super::records::file_ticked_todos(state, std::slice::from_ref(&saved)).await;
+        } else {
+            super::records::unfile_todos(state, std::slice::from_ref(&saved)).await;
+        }
+    }
     let mut response = change(
         dry_run,
         reason.as_str(),
@@ -545,6 +552,14 @@ pub(super) async fn undo_correction(
         .store
         .undo_todo_correction(&id, token, dry_run, now)
         .await?;
+    if !dry_run {
+        mirror_promise(state, &record, record.state, now).await?;
+        if record.state == TodoState::Done {
+            super::records::file_ticked_todos(state, std::slice::from_ref(&record)).await;
+        } else {
+            super::records::unfile_todos(state, std::slice::from_ref(&record)).await;
+        }
+    }
     Ok(change(
         dry_run,
         "undo_correction",

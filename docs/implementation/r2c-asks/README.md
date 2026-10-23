@@ -33,14 +33,16 @@ No uncertain row becomes a Now task.
 
 ## Home and asks commit together
 
-`asks-r2c-2` covers received and sent messages in the existing assessment
+`asks-r2c-3` covers received and sent messages in the existing assessment
 storage envelope. `r2-1` remains the inbound home policy. Home-version
 reports exclude the reserved asks namespace, and outbound asks cannot
 create a home. Both facets share one generation CAS, transaction and dirty
 acknowledgement. A shared read takes both facets from one SQLite snapshot.
 
-The context token hashes the process timezone override and actual tzfile,
-including future offset rules. Reads reject a mismatched context before
+The context token hashes the same immutable TZif bytes or POSIX definition
+that Jiff resolves, including future offset rules. Named IANA zones, system
+local time, absolute TZif paths, and POSIX `TZ` forms share this path.
+Chrono date arithmetic retains the snapshot through its offset adapter. Reads reject a mismatched context before
 reconciliation. The bounded reconciler also detects context changes.
 Unknown or unreadable timezone files need recovery; they are not a reason
 to show an answer from another timezone.
@@ -101,3 +103,30 @@ abstention slices. It does not repair state or call a model. Its metrics,
 quote/actor/state coverage and held-out corpus acceptance remain unverified.
 The week of counts-only real-mail dogfood remains pending and is outside
 local development/smoke authorization.
+
+## Projection work survives a committed assessment
+
+Migration 99 adds a bounded projection outbox and legacy obligation links.
+Writing an asks facet enqueues its source, fingerprint, timezone context and
+thread generation in the same transaction. A successful matching projection
+acknowledges that ticket; an error leaves it queued across restart. A stale
+acknowledgement cannot consume a later generation, even when its fingerprint
+is unchanged. Settled reads select without taking the writer.
+
+Legacy reconciliation blocks only the corresponding source and task kind.
+When one old row could represent several actions, untouched automatic work
+expires and the stored actions can project separately. Edited or closed
+history retains its details and records all possible successor keys as
+suppressed; no arbitrary successor inherits the user's decision. Missing
+source bodies remain pending for that source. Completing reconciliation
+requeues the source projection atomically.
+
+Calendar RSVP uses the accepted stored invite selection (`REQUEST`, RSVP
+requested, `NEEDS-ACTION`). Its stored unit is a request to reply, with a
+calendar source zone and ICS provenance. The task remains RSVP; an invitation
+is not evidence of a promise to attend. Existing PARTSTAT completion remains.
+
+The evaluator reads envelopes, current home and asks facets, and record
+membership in one SQL statement. Label schema 3 adds exact quote, actor and
+state expectations when a scenario supplies them. Existing labels and floors
+remain; the extended corpus and its measurements still need acceptance.

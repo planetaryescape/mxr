@@ -24,7 +24,7 @@ pub(super) async fn page(
     let cfg = super::todos::pass_config(state, now);
     for old in &legacy {
         let Some(id) = &old.source_message_id else {
-            state.store.upgrade_asks_todo(old, None, None).await?;
+            state.store.upgrade_asks_todo(old, None, None, &[]).await?;
             continue;
         };
         let Some(answer) = answers.get(id).filter(|a| !a.pending_body) else {
@@ -40,16 +40,23 @@ pub(super) async fn page(
             .into_iter()
             .filter(|(_, detection)| detection.kind.as_str() == old.kind)
             .collect();
-        if candidates.len() > 1 {
-            continue;
-        }
-        let replacement = candidates
+        let candidates: Vec<_> = candidates
             .into_iter()
-            .next()
-            .map(|(_, detection)| mxr_todo::pass::stored_record(&cfg, row, detection, false).0);
+            .map(|(_, detection)| mxr_todo::pass::stored_record(&cfg, row, detection, false).0)
+            .collect();
+        let ambiguous_keys: Vec<_> = if candidates.len() > 1 {
+            candidates.iter().map(|r| r.dedup_key.clone()).collect()
+        } else {
+            Vec::new()
+        };
+        let replacement = if candidates.len() == 1 {
+            candidates.first()
+        } else {
+            None
+        };
         state
             .store
-            .upgrade_asks_todo(old, replacement.as_ref(), Some(answer))
+            .upgrade_asks_todo(old, replacement, Some(answer), &ambiguous_keys)
             .await?;
     }
     Ok(false)

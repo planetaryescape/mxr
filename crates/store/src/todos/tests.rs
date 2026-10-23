@@ -592,3 +592,89 @@ async fn all_correction_reasons_survive_and_source_quote_cannot_be_edited() {
             .is_err());
     }
 }
+
+#[tokio::test]
+async fn ambiguous_legacy_preserves_closed_manual_history_without_freezing_unrelated_tasks() {
+    use mxr_core::asks::*;
+    let fx = Fx::new().await;
+    let first = fx.message("legacy", at(0)).await;
+    let other = fx.message("unrelated", at(1)).await;
+    let make_answer = |id: MessageId| AskAssessment {
+        message_id: id,
+        account_id: fx.account.clone(),
+        policy_version: ASKS_POLICY_VERSION.into(),
+        input_fingerprint: "stable".into(),
+        pending_body: false,
+        context_token: crate::asks_context_token().unwrap(),
+        calendar: None,
+        facts: AskFacts {
+            zones: vec![],
+            recipient_role: RecipientRole::AloneTo,
+            owner_authored: false,
+            owner_names: vec![],
+            owner_addresses: vec![],
+            predecessor: None,
+            owner_replied_afterwards: false,
+            amounts: vec![],
+            dates: vec![],
+            references: vec![],
+            template_key: "x".into(),
+        },
+        units: vec![],
+    };
+    let ask = make_answer(first.0.clone());
+    let other_ask = make_answer(other.0.clone());
+    let revisions = fx
+        .store
+        .assessment_thread_revisions(&fx.account, &[first.1.clone(), other.1.clone()])
+        .await
+        .unwrap();
+    fx.store
+        .save_asks_batch(&fx.account, &revisions, &[ask.clone(), other_ask.clone()])
+        .await
+        .unwrap();
+    let mut legacy = fx.record("legacy", &first, at(0));
+    legacy.state = TodoState::Done;
+    legacy.done_at = Some(at(1));
+    legacy.user_edited = true;
+    fx.store.insert_todo(&legacy).await.unwrap();
+    let mut unrelated = fx.record("unrelated", &other, at(1));
+    unrelated.origin = "asks".into();
+    unrelated.rules_version = 2;
+    unrelated.dedup_key = "asks|other".into();
+    assert!(matches!(
+        fx.store
+            .upsert_asks_todo(&unrelated, &other_ask)
+            .await
+            .unwrap(),
+        TodoUpsert::Inserted { .. }
+    ));
+    let keys = vec!["asks|candidate-a".into(), "asks|candidate-b".into()];
+    assert!(fx
+        .store
+        .upgrade_asks_todo(&legacy, None, Some(&ask), &keys)
+        .await
+        .unwrap());
+    let after = fx.store.get_todo("legacy").await.unwrap().unwrap();
+    assert_eq!(after.state, TodoState::Done);
+    assert_eq!(after.done_at, legacy.done_at);
+    assert_eq!(after.title, legacy.title);
+    assert_eq!(after.field_sources, legacy.field_sources);
+    assert_eq!(after.dedup_key, legacy.dedup_key);
+    for (n, key) in keys.iter().enumerate() {
+        let mut candidate = fx.record(&format!("candidate-{n}"), &first, at(0));
+        candidate.origin = "asks".into();
+        candidate.rules_version = 2;
+        candidate.dedup_key = key.clone();
+        assert_eq!(
+            fx.store.upsert_asks_todo(&candidate, &ask).await.unwrap(),
+            TodoUpsert::Unchanged
+        );
+    }
+    assert!(fx
+        .store
+        .legacy_asks_todos(&fx.account)
+        .await
+        .unwrap()
+        .is_empty());
+}

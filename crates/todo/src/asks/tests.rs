@@ -71,6 +71,7 @@ fn judge_complete(
             sent: Utc.with_ymd_and_hms(2026, 10, 23, 23, 50, 0).unwrap(),
             predecessor: None,
             owner_replied_afterwards: replied,
+            reply_capable: true,
         },
         &Utc,
         "test".into(),
@@ -496,4 +497,42 @@ fn summary_bounds_text_without_altering_source_evidence() {
     assert_eq!(summary.units.len(), 1);
     assert!(summary.units[0].quote.is_none());
     assert!(result.quote(&result.units[0]).unwrap().len() > 4096);
+}
+
+#[test]
+fn reference_headers_bind_following_payment_units_without_crossing_paragraphs() {
+    let result = judge("Invoice number A100.\nAmount due £42 by tomorrow.", false);
+    let pay = result
+        .units
+        .iter()
+        .find(|u| u.tags.as_ref().is_some_and(|t| t.action == ActionKind::Pay))
+        .unwrap();
+    assert_eq!(pay.tags.as_ref().unwrap().reference, Some(0));
+    let separate = judge("Invoice number A100.\n\nAmount due £42 by tomorrow.", false);
+    let pay = separate
+        .units
+        .iter()
+        .find(|u| u.tags.as_ref().is_some_and(|t| t.action == ActionKind::Pay))
+        .unwrap();
+    assert_eq!(pay.tags.as_ref().unwrap().reference, None);
+}
+
+#[test]
+fn stored_calendar_rsvp_is_reply_provenance_and_never_an_attending_claim() {
+    let mut result = judge("For your records.", false);
+    let calendar = mxr_core::CalendarMetadata {
+        uid: Some("event-uid".into()),
+        summary: Some("Planning".into()),
+        method: Some("REQUEST".into()),
+        rsvp_requested: true,
+        ..Default::default()
+    };
+    super::include_calendar(&mut result, Some(calendar));
+    let unit = result.units.last().unwrap();
+    assert_eq!(unit.answer, AskAnswer::AsksYou);
+    assert_eq!(unit.tags.as_ref().unwrap().action, ActionKind::Reply);
+    assert_eq!(result.facts.zones[unit.zone].kind, ZoneKind::Calendar);
+    assert_eq!(result.quote(unit), Some("Planning"));
+    assert_eq!(unit.votes[0].rule, "ics_request_rsvp_needs_action");
+    assert_eq!(result.calendar.unwrap().uid.as_deref(), Some("event-uid"));
 }

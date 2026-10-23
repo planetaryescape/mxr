@@ -20,7 +20,9 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                 return None;
             }
             let tags = unit.tags.as_ref()?;
-            let quote = answer.quote(unit)?;
+            let quote = answer.quote(unit).or_else(|| {
+                (answer.facts.zones.get(unit.zone)?.kind == ZoneKind::Calendar).then_some("")
+            })?;
             let promised = unit.answer == AskAnswer::YouPromised;
             let kind = if promised {
                 TodoKind::Promise
@@ -138,8 +140,10 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
             let object = tags
                 .reference
                 .and_then(|i| answer.facts.references.get(i))
-                .map(|r| format!("{}:{}", r.kind, r.value.to_lowercase()))
-                .unwrap_or_else(|| quote.to_lowercase());
+                .map_or_else(
+                    || quote.to_lowercase(),
+                    |r| format!("{}:{}", r.kind, r.value.to_lowercase()),
+                );
             // Full counterparty address prevents unrelated accounts on one provider
             // domain from being merged. Explicit references survive reminder wording.
             let action_identity = if matches!(tags.action, ActionKind::Pay | ActionKind::FixPayment)
@@ -152,6 +156,42 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                 "{}|{action_identity}|{object}",
                 counterparty.email.to_lowercase()
             );
+            if answer.facts.zones[unit.zone].kind == ZoneKind::Calendar {
+                let calendar = answer.calendar.as_ref()?;
+                let organizer = calendar
+                    .organizer
+                    .as_ref()
+                    .map(|p| p.name.as_deref().unwrap_or(&p.email));
+                let mut detection = crate::detect::from_invite(
+                    calendar.summary.as_deref(),
+                    organizer,
+                    &envelope.from.email,
+                    calendar
+                        .starts_at
+                        .as_deref()
+                        .and_then(crate::pass::parse_ics_time),
+                );
+                detection.object_key = format!(
+                    "{}|calendar|{}|{}",
+                    envelope.from.email.to_lowercase(),
+                    calendar.uid.as_deref().unwrap_or(envelope.id.as_str()),
+                    calendar.recurrence_id.as_deref().unwrap_or_default()
+                );
+                if !quote.is_empty() {
+                    detection.reason = quote.to_string();
+                }
+                for key in ["quote", "requester", "asks_fingerprint", "asks_provenance"] {
+                    if let Some(value) = fields.0.get(key) {
+                        if key == "quote" && quote.is_empty() {
+                            continue;
+                        }
+                        let mut value = value.clone();
+                        value.source = FieldSource::Ics;
+                        detection.fields.set(key, value);
+                    }
+                }
+                return Some((index, detection));
+            }
             Some((
                 index,
                 Detection {

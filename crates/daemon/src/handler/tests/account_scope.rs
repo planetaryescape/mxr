@@ -2159,3 +2159,29 @@ async fn restricted_profile_cannot_inspect_or_approve_global_pairing_authority()
     };
     assert!(approved.approved);
 }
+
+#[tokio::test]
+async fn correction_and_undo_resolve_the_todos_account_for_scoped_agents() {
+    let s = scoped().await;
+    for reason in [
+        mxr_protocol::TodoCorrectionData::NotATodo,
+        mxr_protocol::TodoCorrectionData::NotMine,
+        mxr_protocol::TodoCorrectionData::AlreadyDone,
+        mxr_protocol::TodoCorrectionData::WrongDetails,
+    ] {
+        assert_scoped(&s, |owned| Request::CorrectTodo {
+            todo_id: owned.todo.clone(),
+            reason,
+            edits: vec![],
+            time_zone: None,
+            dry_run: true,
+        })
+        .await;
+    }
+    assert_scoped(&s, |owned| Request::UndoTodoCorrection {
+        todo_id: owned.todo.clone(),
+        correction_id: "token".into(),
+        dry_run: true,
+    })
+    .await;
+}

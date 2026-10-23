@@ -135,22 +135,7 @@ mod tests;
 /// rather than only its offset at the message date. Hash the actual local
 /// tzfile and any process override; failure leaves asks explicitly pending.
 pub fn asks_context_token() -> Result<String, std::io::Error> {
-    use sha2::{Digest, Sha256};
-    let zone = std::env::var("TZ").unwrap_or_default();
-    let path = if zone.is_empty() {
-        std::path::PathBuf::from("/etc/localtime")
-    } else {
-        let zone = zone.trim_start_matches(':');
-        if std::path::Path::new(zone).is_absolute() {
-            std::path::PathBuf::from(zone)
-        } else {
-            std::path::Path::new("/usr/share/zoneinfo").join(zone)
-        }
-    };
-    let mut hash = Sha256::new();
-    hash.update(zone.as_bytes());
-    hash.update(std::fs::read(path)?);
-    Ok(base16ct::lower::encode_string(&hash.finalize()))
+    Ok(crate::AsksTimezone::resolve()?.token().to_string())
 }
 
 pub(crate) async fn write_asks(
@@ -177,13 +162,17 @@ pub(crate) async fn write_asks(
                 "asks message is outside the observed threads".into(),
             ));
         }
-        sqlx::query("INSERT INTO mail_assessments (message_id, account_id, policy_version, input_fingerprint, input_revision, assessment_json)
+        let written = sqlx::query("INSERT INTO mail_assessments (message_id, account_id, policy_version, input_fingerprint, input_revision, assessment_json)
                 SELECT m.id, m.account_id, ?3, ?4, expected.value, ?5 FROM messages m JOIN json_each(?6) expected ON expected.key = m.thread_id WHERE m.id = ?1 AND m.account_id = ?2
                 ON CONFLICT(message_id, policy_version) DO UPDATE SET input_fingerprint = excluded.input_fingerprint, input_revision = excluded.input_revision, assessment_json = excluded.assessment_json
                 WHERE mail_assessments.input_fingerprint != excluded.input_fingerprint OR mail_assessments.input_revision != excluded.input_revision")
                 .bind(answer.message_id.as_str()).bind(account.as_str()).bind(ASKS_POLICY_VERSION)
                 .bind(&answer.input_fingerprint).bind(encode_json(answer)?).bind(expected)
                 .execute(&mut **tx).await?;
+        if written.rows_affected() > 0 {
+            sqlx::query("INSERT INTO asks_projection_outbox(message_id, account_id, input_revision, input_fingerprint, context_token) SELECT message_id, account_id, input_revision, input_fingerprint, ?3 FROM mail_assessments WHERE message_id = ?1 AND policy_version = ?2 ON CONFLICT(message_id) DO UPDATE SET input_revision = excluded.input_revision, input_fingerprint = excluded.input_fingerprint, context_token = excluded.context_token")
+                .bind(answer.message_id.as_str()).bind(ASKS_POLICY_VERSION).bind(&answer.context_token).execute(&mut **tx).await?;
+        }
         crate::asks_commitments::write(tx, answer).await?;
     }
     Ok(())

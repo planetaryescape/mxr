@@ -114,6 +114,13 @@ pub enum Due {
     Words(&'static str),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AskProvenance {
+    pub quote: String,
+    pub actor: String,
+    pub state: String,
+}
+
 /// One thing an email asks of the owner, or the owner promised in sent mail.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
@@ -126,6 +133,7 @@ pub struct Item {
     /// The account, invoice or policy number, when the email carries one.
     /// Two items of one sender with different references are two rows.
     pub reference: Option<String>,
+    pub provenance: Option<AskProvenance>,
 }
 
 impl Item {
@@ -147,7 +155,17 @@ impl Item {
             amount: None,
             due: Due::None,
             reference: None,
+            provenance: None,
         }
+    }
+
+    pub fn provenance(mut self, quote: &str, actor: &str, state: &str) -> Self {
+        self.provenance = Some(AskProvenance {
+            quote: quote.into(),
+            actor: actor.into(),
+            state: state.into(),
+        });
+        self
     }
 
     pub fn amount(mut self, minor: i64, currency: &'static str) -> Self {

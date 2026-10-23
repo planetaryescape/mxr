@@ -1,3 +1,6 @@
+DROP TABLE IF EXISTS asks_projection_outbox;
+DROP TABLE IF EXISTS asks_legacy_links;
+DROP TABLE IF EXISTS todo_corrections;
 DROP TRIGGER IF EXISTS assessment_input_messages_insert;
 DROP TRIGGER IF EXISTS assessment_input_messages_update;
 DROP TRIGGER IF EXISTS assessment_input_messages_delete;

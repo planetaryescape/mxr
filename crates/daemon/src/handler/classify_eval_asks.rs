@@ -17,7 +17,9 @@ use mxr_protocol::{
     ClassifyEvalAskKindData, ClassifyEvalAsksData, ClassifyEvalCountsData, ClassifyEvalFieldData,
     ClassifyEvalMismatchData, ClassifyEvalReplyData, ClassifyEvalSliceData, ClassifyEvalTwinsData,
 };
-use mxr_provider_fake::fixtures::scenarios::{AskKind, Direction, Due, Item, Labelled};
+use mxr_provider_fake::fixtures::scenarios::{
+    AskKind, AskProvenance, Direction, Due, Item, Labelled,
+};
 #[cfg(test)]
 use mxr_store::EvalTodo;
 use mxr_todo::dates::{parse_date, DateOrder, YearIntent};
@@ -29,7 +31,16 @@ use std::collections::BTreeMap;
 pub(super) const REPLY_PROJECTION: &str = "Stored asks unit answer asks_you_to_reply; missing or stale rows remain pending and eval never materializes them.";
 
 /// The mismatch questions the asks add, in the order they are listed.
-pub(super) const ASK_QUESTIONS: [&str; 5] = ["ask", "amount", "due", "counterparty", "reply"];
+pub(super) const ASK_QUESTIONS: [&str; 8] = [
+    "ask",
+    "amount",
+    "due",
+    "counterparty",
+    "reply",
+    "quote",
+    "actor",
+    "state",
+];
 
 /// A to-do row, translated to chapter 37's vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +55,7 @@ pub(super) struct Row {
     /// daemon's time zone.
     pub due_at: Option<DateTime<Utc>>,
     pub due_words: Option<String>,
+    pub provenance: Option<AskProvenance>,
 }
 
 /// Today's to-do kinds in chapter 37's kinds, in one place.
@@ -139,6 +151,17 @@ impl Row {
                         .and_then(|i| answer.facts.amounts.get(i))
                         .map(|a| (a.minor, a.currency.clone())),
                     due_at: due.map(|d| d.at),
+                    provenance: Some(AskProvenance {
+                        quote: answer.quote(unit).unwrap_or_default().into(),
+                        actor: serde_json::to_value(tags.actor)
+                            .ok()
+                            .and_then(|v| v.as_str().map(str::to_string))
+                            .unwrap_or_default(),
+                        state: serde_json::to_value(tags.state)
+                            .ok()
+                            .and_then(|v| v.as_str().map(str::to_string))
+                            .unwrap_or_default(),
+                    }),
                     due_words: due.map(|d| {
                         answer.facts.zones[d.zone].text[d.span.start..d.span.end].to_string()
                     }),
@@ -164,6 +187,7 @@ impl Row {
                 .due_at
                 .and_then(|seconds| DateTime::from_timestamp(seconds, 0)),
             due_words: todo.due_words.clone(),
+            provenance: None,
         }
     }
 }
@@ -234,7 +258,7 @@ enum Verdict {
     Present,
 }
 
-const FIELDS: [&str; 3] = ["amount", "due", "counterparty"];
+const FIELDS: [&str; 6] = ["amount", "due", "counterparty", "quote", "actor", "state"];
 
 /// What was graded for one email, kept for the checks that need the whole
 /// set: merges and twin pairs.
@@ -274,7 +298,7 @@ pub(super) struct AskGrader {
     emails: u32,
     total: Counts,
     kinds: BTreeMap<(AskKind, Direction), Counts>,
-    fields: [FieldTally; 3],
+    fields: [FieldTally; 6],
     duplicates: u32,
     outcomes: Vec<Outcome>,
     slices: BTreeMap<(&'static str, String), (u32, Counts)>,
@@ -394,6 +418,9 @@ impl AskGrader {
         for &(i, j) in &matched {
             let (item, row) = (&expected[i], &rows[j]);
             for (slot, field) in FIELDS.iter().enumerate() {
+                if matches!(*field, "quote" | "actor" | "state") && item.provenance.is_none() {
+                    continue;
+                }
                 let verdict = verdict(field, item, row, input.sent);
                 let tally = &mut self.fields[slot];
                 tally.pairs += 1;
@@ -702,6 +729,24 @@ fn verdict(field: &str, item: &Item, row: &Row, sent: DateTime<Utc>) -> Verdict 
                 None => Verdict::Present,
             },
         },
+        "quote" | "actor" | "state" => {
+            let Some(expected) = item.provenance.as_ref() else {
+                return Verdict::Present;
+            };
+            let Some(actual) = row.provenance.as_ref() else {
+                return Verdict::Missing;
+            };
+            let (want, got) = match field {
+                "quote" => (&expected.quote, &actual.quote),
+                "actor" => (&expected.actor, &actual.actor),
+                _ => (&expected.state, &actual.state),
+            };
+            if want == got {
+                Verdict::Exact
+            } else {
+                Verdict::Wrong
+            }
+        }
         _ => match (&item.counterparty, &row.counterparty) {
             (None, None) => Verdict::Exact,
             (Some(_), None) => Verdict::Missing,
@@ -777,6 +822,20 @@ fn field_texts(field: &str, item: &Item, row: &Row, sent: DateTime<Utc>) -> (Str
             expected_due_text(item.due),
             actual_due_text(item, row, sent),
         ),
+        "quote" | "actor" | "state" => {
+            let value = |p: Option<&AskProvenance>| {
+                p.map(|p| match field {
+                    "quote" => p.quote.clone(),
+                    "actor" => p.actor.clone(),
+                    _ => p.state.clone(),
+                })
+                .unwrap_or_else(none)
+            };
+            (
+                value(item.provenance.as_ref()),
+                value(row.provenance.as_ref()),
+            )
+        }
         _ => (
             item.counterparty.clone().unwrap_or_else(none),
             row.counterparty.clone().unwrap_or_else(none),
@@ -942,6 +1001,7 @@ mod tests {
             amount: None,
             due_at: None,
             due_words: None,
+            provenance: None,
         }
     }
 
@@ -1696,5 +1756,40 @@ mod tests {
             due_at: None,
         };
         assert_eq!(Row::from_todo(&todo).kind, AskKind::Other);
+    }
+}
+
+#[cfg(test)]
+mod provenance_tests {
+    use super::*;
+    #[test]
+    fn exact_quote_actor_and_state_have_independent_verdicts() {
+        let item = Item::asks(AskKind::Sign, "Alex").provenance(
+            "Please sign the contract.",
+            "owner",
+            "pending",
+        );
+        let mut row = Row {
+            kind: AskKind::Sign,
+            direction: Direction::AsksYou,
+            made_as: "stored".into(),
+            counterparty: Some("Alex".into()),
+            amount: None,
+            due_at: None,
+            due_words: None,
+            provenance: item.provenance.clone(),
+        };
+        let sent = Utc::now();
+        for field in ["quote", "actor", "state"] {
+            assert_eq!(verdict(field, &item, &row, sent), Verdict::Exact);
+        }
+        row.provenance.as_mut().unwrap().quote = "Sign it".into();
+        assert_eq!(verdict("quote", &item, &row, sent), Verdict::Wrong);
+        row.provenance.as_mut().unwrap().actor = "correspondent".into();
+        assert_eq!(verdict("actor", &item, &row, sent), Verdict::Wrong);
+        row.provenance.as_mut().unwrap().state = "done".into();
+        assert_eq!(verdict("state", &item, &row, sent), Verdict::Wrong);
+        row.provenance = None;
+        assert_eq!(verdict("quote", &item, &row, sent), Verdict::Missing);
     }
 }

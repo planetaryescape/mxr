@@ -273,3 +273,26 @@ describe("TodoRow", () => {
     expect(props.onDone).toHaveBeenCalledWith(props.todo, "pointer");
   });
 });
+
+test("the visible row keeps requester and the exact ask after title edits", () => {
+  const quote = "Please sign the original contract.";
+  const { row } = renderRow(
+    todoFixture({
+      title: "Sign the corrected contract",
+      why: quote,
+      person_label: "Alex asked",
+      fields: [
+        {
+          field: "quote",
+          evidence: quote,
+          source: "rule",
+          source_label: "a pattern in the email",
+          checked: true,
+        },
+      ],
+    }),
+  );
+  expect(row).toHaveTextContent("Alex asked");
+  expect(within(row).getByTestId("todo-ask-quote")).toHaveTextContent(quote);
+  expect(within(row).getByTestId("todo-title")).toHaveTextContent("Sign the corrected contract");
+});

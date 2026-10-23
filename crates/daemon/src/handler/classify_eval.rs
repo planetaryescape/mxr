@@ -19,17 +19,16 @@
 //! including no activity row.
 
 use super::classify_eval_asks::{AskGrader, AskInput, Row, ASK_QUESTIONS};
-use super::modes::MEMBERSHIP_MAX_THREADS;
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
-use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::id::AccountId;
 use mxr_protocol::{
     ClassifyEvalAsksData, ClassifyEvalMismatchData, ClassifyEvalQuestionData, ClassifyEvalSetData,
     ClassifyEvalSummaryData, ResponseData, SenderKindData,
 };
 use mxr_provider_fake::fixtures::scenarios::{self, Labelled, LABEL_SCHEMA_VERSION};
 use mxr_store::EvalCandidate;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 /// What `home` reads, for the output.
 const HOME_PROJECTION: &str =
@@ -311,41 +310,69 @@ pub(super) async fn classify_eval(
         });
     }
 
-    let reads = mail_reads(state, &present).await?;
-    // Mail deleted between the lookup and the read has nothing to grade.
+    let ids: Vec<_> = present.iter().map(|(c, _)| c.message_id.clone()).collect();
+    let packet = state.store.classify_eval_packet(&ids).await?;
+    let mut reads = HashMap::new();
+    let mut rows = HashMap::new();
+    let mut stored_answers = HashMap::new();
+    let mut records = std::collections::HashSet::new();
+    for entry in packet {
+        let message = entry.envelope;
+        let assessment = entry.home.as_ref();
+        let kind = assessment.map_or(SenderKindData::ScreenedOut, |a| match a.who.as_str() {
+            "person" => SenderKindData::People,
+            "list" => SenderKindData::Reading,
+            "machine" => SenderKindData::PaperTrail,
+            _ => SenderKindData::ScreenedOut,
+        });
+        let reply_owed = entry.asks.as_ref().is_some_and(|a| {
+            a.units
+                .iter()
+                .any(|u| u.answer == mxr_core::asks::AskAnswer::AsksYouToReply)
+        });
+        reads.insert(
+            message.id.clone(),
+            MailRead {
+                kind,
+                who_pending: assessment.is_none(),
+                home: assessment.map(|a| Home {
+                    mode: a.home.clone(),
+                    reason: a.deciding.reason.clone(),
+                    live: false,
+                }),
+                reason: assessment.map_or_else(String::new, |a| a.deciding.reason.clone()),
+                reply_owed,
+                sent: message.date,
+            },
+        );
+        if entry.record {
+            records.insert(message.id.clone());
+        }
+        if let Some(answer) = entry.asks {
+            let person = if answer.facts.owner_authored {
+                message.to.iter().find(|p| {
+                    !answer
+                        .facts
+                        .owner_addresses
+                        .iter()
+                        .any(|own| own.eq_ignore_ascii_case(&p.email))
+                })
+            } else {
+                Some(&message.from)
+            };
+            let name = person
+                .map(|p| p.name.as_deref().unwrap_or(&p.email))
+                .unwrap_or_default();
+            rows.insert(message.id.clone(), Row::from_asks(&answer, name));
+            stored_answers.insert(message.id, answer);
+        }
+    }
     let present: Vec<_> = present
         .into_iter()
-        .filter(|(candidate, _)| reads.contains_key(&candidate.message_id))
+        .filter(|(c, _)| reads.contains_key(&c.message_id))
         .collect();
     let present_count = u32::try_from(present.len()).unwrap_or(u32::MAX);
     let unlabelled = total.saturating_sub(present_count);
-    let ids: Vec<MessageId> = present
-        .iter()
-        .map(|(candidate, _)| candidate.message_id.clone())
-        .collect();
-    let aspects = state.store.classify_eval_aspects(&ids).await?;
-    let mut rows: HashMap<MessageId, Vec<Row>> = HashMap::new();
-    let mut stored_answers = HashMap::new();
-    let envelopes = state.store.list_envelopes_by_ids(&ids).await?;
-    let account_ids: std::collections::HashSet<_> =
-        envelopes.iter().map(|e| e.account_id.clone()).collect();
-    for account in account_ids {
-        let stored = state.store.asks_for_messages(&account, &ids).await?;
-        for (id, answer) in stored {
-            if let Some(envelope) = envelopes.iter().find(|e| e.id == id) {
-                let person = if answer.facts.owner_authored {
-                    envelope.to.first()
-                } else {
-                    Some(&envelope.from)
-                };
-                let name = person
-                    .map(|a| a.name.as_deref().unwrap_or(&a.email))
-                    .unwrap_or_default();
-                rows.insert(id.clone(), Row::from_asks(&answer, name));
-                stored_answers.insert(id, answer);
-            }
-        }
-    }
     let mut tally = Tally::default();
     let mut asks = AskGrader::default();
     let mut mismatches = Vec::new();
@@ -357,7 +384,7 @@ pub(super) async fn classify_eval(
             who: (!read.who_pending).then(|| who_name(read.kind)),
             who_reason: read.reason.clone(),
             home: read.home.clone(),
-            record: aspects.record.contains(&candidate.message_id),
+            record: records.contains(&candidate.message_id),
         };
         grade(label, &actual, &mut tally, &mut mismatches);
         asks.grade(
@@ -435,73 +462,6 @@ pub(super) async fn classify_eval(
 /// Each email's mail kind and the reason for it, over the sender signals
 /// placement reads: the thread, the sender's history, your choices. Also
 /// whether the desk reads it as asking for a reply.
-async fn mail_reads(
-    state: &AppState,
-    present: &[(EvalCandidate, Labelled)],
-) -> Result<HashMap<MessageId, MailRead>, HandlerError> {
-    let mut by_account: BTreeMap<String, (AccountId, Vec<&EvalCandidate>)> = BTreeMap::new();
-    for (candidate, _) in present {
-        by_account
-            .entry(candidate.account_id.as_str().clone())
-            .or_insert_with(|| (candidate.account_id.clone(), Vec::new()))
-            .1
-            .push(candidate);
-    }
-    let mut kinds = HashMap::new();
-    for (account_id, candidates) in by_account.into_values() {
-        let mut threads: Vec<ThreadId> = candidates.iter().map(|c| c.thread_id.clone()).collect();
-        threads.sort_by_key(ThreadId::as_str);
-        threads.dedup();
-        let mut messages = Vec::new();
-        for chunk in threads.chunks(MEMBERSHIP_MAX_THREADS) {
-            messages.extend(
-                state
-                    .store
-                    .desk_messages_in_threads(&account_id, chunk)
-                    .await?,
-            );
-        }
-        let asks_ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
-        let (homes, stored_asks) = state
-            .store
-            .assessment_facets_for_messages(&account_id, &asks_ids)
-            .await?;
-        let assessments = super::assessments::fresh_stored(state, &account_id, homes).await?;
-        let by_id: HashMap<&MessageId, _> = messages.iter().map(|m| (&m.id, m)).collect();
-        for candidate in candidates {
-            let Some(message) = by_id.get(&candidate.message_id) else {
-                continue;
-            };
-            let assessment = assessments.get(&candidate.message_id);
-            let kind = assessment.map_or(SenderKindData::ScreenedOut, |a| match a.who.as_str() {
-                "person" => SenderKindData::People,
-                "list" => SenderKindData::Reading,
-                "machine" => SenderKindData::PaperTrail,
-                _ => SenderKindData::ScreenedOut,
-            });
-            kinds.insert(
-                candidate.message_id.clone(),
-                MailRead {
-                    kind,
-                    who_pending: !assessments.contains_key(&candidate.message_id),
-                    home: assessments.get(&candidate.message_id).map(|a| Home {
-                        mode: a.home.clone(),
-                        reason: a.deciding.reason.clone(),
-                        live: false,
-                    }),
-                    reason: assessment.map_or_else(String::new, |a| a.deciding.reason.clone()),
-                    reply_owed: stored_asks.get(&message.id).is_some_and(|a| {
-                        a.units
-                            .iter()
-                            .any(|u| u.answer == mxr_core::asks::AskAnswer::AsksYouToReply)
-                    }),
-                    sent: message.date,
-                },
-            );
-        }
-    }
-    Ok(kinds)
-}
 
 #[cfg(test)]
 mod tests {

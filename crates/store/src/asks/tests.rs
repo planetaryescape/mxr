@@ -10,6 +10,7 @@ fn answer(account: &AccountId, message: &mxr_core::Envelope) -> AskAssessment {
         input_fingerprint: "fingerprint".into(),
         pending_body: true,
         context_token: crate::asks_context_token().unwrap(),
+        calendar: None,
         facts: AskFacts {
             zones: vec![],
             recipient_role: RecipientRole::Unknown,
@@ -91,6 +92,7 @@ async fn per_thread_tokens_keep_other_threads_readable_and_reruns_do_not_write()
         .account_id(account.id.clone())
         .build();
     second.from.email = "other@example.com".into();
+    second.provider_id = "fake-2".into();
     for message in [&first, &second] {
         store.upsert_envelope(message).await.unwrap();
     }
@@ -307,4 +309,132 @@ async fn rejected_asks_roll_back_home_and_dirty_acknowledgement_together() {
             .unwrap(),
         [message.thread_id]
     );
+}
+
+#[tokio::test]
+async fn projection_outbox_survives_restart_and_rejects_same_fingerprint_new_generation_ack() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("mail.db");
+    let account = test_account();
+    let message = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    let mut ask = answer(&account.id, &message);
+    ask.pending_body = false;
+    let ticket = {
+        let store = Store::new(&path).await.unwrap();
+        store.insert_account(&account).await.unwrap();
+        store.upsert_envelope(&message).await.unwrap();
+        let revisions = store
+            .assessment_thread_revisions(&account.id, std::slice::from_ref(&message.thread_id))
+            .await
+            .unwrap();
+        store
+            .save_assessment_facets(&account.id, &revisions, &[], std::slice::from_ref(&ask))
+            .await
+            .unwrap();
+        assert!(store
+            .dirty_assessment_threads(&account.id, None)
+            .await
+            .unwrap()
+            .is_empty());
+        store
+            .pending_asks_projections(&account.id)
+            .await
+            .unwrap()
+            .remove(0)
+        // Simulated crash: no projection acknowledgement before the store closes.
+    };
+    let store = Store::new(&path).await.unwrap();
+    assert_eq!(
+        store
+            .pending_asks_projections(&account.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    sqlx::query("UPDATE messages SET subject = 'new input' WHERE id = ?")
+        .bind(message.id.as_str())
+        .execute(store.writer())
+        .await
+        .unwrap();
+    assert!(!store.acknowledge_asks_projection(&ticket).await.unwrap());
+    let revisions = store
+        .assessment_thread_revisions(&account.id, std::slice::from_ref(&message.thread_id))
+        .await
+        .unwrap();
+    store
+        .save_assessment_facets(&account.id, &revisions, &[], std::slice::from_ref(&ask))
+        .await
+        .unwrap();
+    assert!(!store.acknowledge_asks_projection(&ticket).await.unwrap());
+    let current = store
+        .pending_asks_projections(&account.id)
+        .await
+        .unwrap()
+        .remove(0);
+    assert!(current.revision > ticket.revision);
+    assert!(store.acknowledge_asks_projection(&current).await.unwrap());
+    assert!(!store.acknowledge_asks_projection(&current).await.unwrap());
+    store
+        .save_assessment_facets(&account.id, &revisions, &[], &[ask])
+        .await
+        .unwrap();
+    assert!(store
+        .pending_asks_projections(&account.id)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn evaluation_packet_reads_generation_matched_facets_and_record_in_one_read() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let message = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    store.upsert_envelope(&message).await.unwrap();
+    let revisions = store
+        .assessment_thread_revisions(&account.id, std::slice::from_ref(&message.thread_id))
+        .await
+        .unwrap();
+    let ask = answer(&account.id, &message);
+    store
+        .save_assessment_facets(&account.id, &revisions, &[], std::slice::from_ref(&ask))
+        .await
+        .unwrap();
+    let before: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+    let packet = store
+        .classify_eval_packet(std::slice::from_ref(&message.id))
+        .await
+        .unwrap();
+    assert_eq!(packet.len(), 1);
+    assert_eq!(packet[0].envelope.id, message.id);
+    assert_eq!(packet[0].asks.as_ref(), Some(&ask));
+    assert!(packet[0].home.is_none());
+    let after: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+    assert_eq!(
+        before, after,
+        "evaluation cannot repair or acknowledge anything"
+    );
+    sqlx::query("UPDATE messages SET subject = 'replacement' WHERE id = ?")
+        .bind(message.id.as_str())
+        .execute(store.writer())
+        .await
+        .unwrap();
+    let packet = store
+        .classify_eval_packet(std::slice::from_ref(&message.id))
+        .await
+        .unwrap();
+    assert!(packet[0].asks.is_none());
+    assert_eq!(packet[0].envelope.subject, "replacement");
 }

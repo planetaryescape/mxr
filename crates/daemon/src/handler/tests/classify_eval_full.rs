@@ -410,7 +410,7 @@ async fn the_full_set_labels_the_curated_mail_with_the_quick_sets_labels() {
 fn the_snapshot_report_does_not_depend_on_how_long_the_run_took() {
     let summary = |placed_live| ClassifyEvalSummaryData {
         set: ClassifyEvalSetData::Full,
-        label_schema_version: 2,
+        label_schema_version: 3,
         labelled_in_set: 10,
         present: 10,
         placed_live,

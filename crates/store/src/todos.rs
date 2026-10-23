@@ -283,7 +283,7 @@ impl super::Store {
             .get_todo_by_dedup(&record.account_id, &record.dedup_key)
             .await?;
         let predicate = if answer.is_some() {
-            "WHERE EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ?41 AND a.account_id = ?42 AND a.policy_version = ?43 AND a.input_fingerprint = ?44 AND a.input_revision = i.effective_revision AND json_extract(a.assessment_json, '$.context_token') = ?45) AND NOT EXISTS (SELECT 1 FROM todos legacy WHERE legacy.account_id = ?42 AND legacy.rules_version < 2 AND legacy.origin IN ('rule', 'schema', 'model'))"
+            "WHERE EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ?41 AND a.account_id = ?42 AND a.policy_version = ?43 AND a.input_fingerprint = ?44 AND a.input_revision = i.effective_revision AND json_extract(a.assessment_json, '$.context_token') = ?45) AND NOT EXISTS (SELECT 1 FROM todos legacy WHERE legacy.account_id = ?42 AND legacy.rules_version < 2 AND legacy.origin IN ('rule', 'schema', 'model') AND legacy.source_message_id = ?41 AND legacy.kind = ?6) AND NOT EXISTS (SELECT 1 FROM asks_legacy_links l JOIN todos old ON old.id = l.todo_id WHERE old.account_id = ?42 AND l.dedup_key = ?35)"
         } else {
             "WHERE 1"
         };
@@ -292,10 +292,13 @@ impl super::Store {
         } else {
             "todos.source_date IS NULL OR excluded.source_date > todos.source_date OR (excluded.source_date = todos.source_date AND excluded.source_message_id IS todos.source_message_id)"
         };
+        let values = (1..=40)
+            .map(|i| format!("?{i}"))
+            .collect::<Vec<_>>()
+            .join(", ");
         let sql = format!(
             "INSERT INTO todos ({COLUMNS})
-             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? {predicate}
+             SELECT {values} {predicate}
              ON CONFLICT(account_id, dedup_key) DO UPDATE SET
                 thread_id = excluded.thread_id,
                 source_message_id = excluded.source_message_id,

@@ -291,6 +291,7 @@ export const TodoRow = memo(function TodoRow({
   const secondary = clock.slice(1);
   const done = band === "done";
   const { unchecked } = provenanceSummary(todo.fields);
+  const askQuote = todo.fields.find((field) => field.field === "quote")?.evidence;
   return (
     <Row
       data-index={index}
@@ -339,6 +340,9 @@ export const TodoRow = memo(function TodoRow({
       secondary={
         <>
           {secondary}
+          {askQuote ? (
+            <span data-testid="todo-ask-quote" className="block text-text-2">&ldquo;{askQuote}&rdquo;</span>
+          ) : null}
           {/* A phone has no room for the window in the trail, so it follows who it is from. */}
           <span className={cn("sm:hidden", cue && !done && "text-cue")}>
             {secondary ? " · " : null}

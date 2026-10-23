@@ -58,7 +58,7 @@ impl Store {
         if answer.pending_body {
             return Ok(());
         }
-        sqlx::query("UPDATE todos SET state = 'expired' WHERE account_id = ?1 AND source_message_id = ?2 AND origin = 'asks' AND state = 'open' AND user_edited = 0 AND scheduled_for IS NULL AND reason NOT IN (SELECT value FROM json_each(?3)) AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ?2 AND a.account_id = ?1 AND a.policy_version = ?4 AND a.input_fingerprint = ?5 AND a.input_revision = i.effective_revision)")
+        sqlx::query("UPDATE todos SET state = 'expired' WHERE account_id = ?1 AND source_message_id = ?2 AND origin = 'asks' AND kind != 'rsvp' AND state = 'open' AND user_edited = 0 AND scheduled_for IS NULL AND reason NOT IN (SELECT value FROM json_each(?3)) AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ?2 AND a.account_id = ?1 AND a.policy_version = ?4 AND a.input_fingerprint = ?5 AND a.input_revision = i.effective_revision)")
             .bind(answer.account_id.as_str()).bind(answer.message_id.as_str()).bind(crate::encode_json(&quotes)?).bind(mxr_core::asks::ASKS_POLICY_VERSION).bind(&answer.input_fingerprint).execute(self.writer()).await?;
         Ok(())
     }
@@ -80,6 +80,7 @@ impl Store {
         before: &TodoRecord,
         replacement: Option<&TodoRecord>,
         source: Option<&mxr_core::asks::AskAssessment>,
+        ambiguous_keys: &[String],
     ) -> Result<bool, sqlx::Error> {
         let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
         if let Some(source) = source {
@@ -108,6 +109,22 @@ impl Store {
         if crate::todos::row_to_todo(&row)? != *before {
             tx.rollback().await?;
             return Ok(false);
+        }
+        if let Some(source) = source {
+            sqlx::query("INSERT INTO asks_projection_outbox(message_id, account_id, input_revision, input_fingerprint, context_token) SELECT message_id, account_id, input_revision, input_fingerprint, ?3 FROM mail_assessments WHERE message_id = ?1 AND policy_version = ?2 ON CONFLICT(message_id) DO UPDATE SET input_revision = excluded.input_revision, input_fingerprint = excluded.input_fingerprint, context_token = excluded.context_token")
+                .bind(source.message_id.as_str()).bind(mxr_core::asks::ASKS_POLICY_VERSION).bind(&source.context_token).execute(&mut *tx).await?;
+        }
+        if !ambiguous_keys.is_empty()
+            && (before.user_touched()
+                || matches!(
+                    before.state,
+                    crate::TodoState::Done | crate::TodoState::Dismissed
+                ))
+        {
+            for key in ambiguous_keys {
+                sqlx::query("INSERT INTO asks_legacy_links(todo_id, dedup_key) VALUES(?, ?) ON CONFLICT DO NOTHING")
+                    .bind(&before.id).bind(key).execute(&mut *tx).await?;
+            }
         }
         if let Some(replacement) = replacement {
             // Never merge two histories: the caller must finish this upgrade

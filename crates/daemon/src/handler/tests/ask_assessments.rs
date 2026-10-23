@@ -428,3 +428,102 @@ async fn two_references_reminders_and_distinct_actions_use_stored_identity() {
         2
     );
 }
+
+#[tokio::test]
+async fn projection_failure_after_facet_commit_replays_without_new_dirty_mail() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let mail = fx
+        .message(&thread, "alex@example.com", ME, Duration::minutes(5), None)
+        .await;
+    body(&fx, &mail, "Please sign the contract.").await;
+    sqlx::raw_sql("CREATE TRIGGER fail_projection BEFORE INSERT ON todos BEGIN SELECT RAISE(ABORT, 'injected projection failure'); END;")
+        .execute(fx.state.store.writer()).await.unwrap();
+    assert!(crate::handler::assessments::reconcile_messages(
+        &fx.state,
+        &fx.account,
+        std::slice::from_ref(&mail.id)
+    )
+    .await
+    .is_err());
+    assert_eq!(
+        fx.state
+            .store
+            .pending_asks_projections(&fx.account)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(fx
+        .state
+        .store
+        .dirty_assessment_threads(&fx.account, None)
+        .await
+        .unwrap()
+        .is_empty());
+    sqlx::query("DROP TRIGGER fail_projection")
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    crate::handler::assessments::reconcile_dirty_page(&fx.state, &fx.account, None)
+        .await
+        .unwrap();
+    assert!(fx
+        .state
+        .store
+        .pending_asks_projections(&fx.account)
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        fx.state
+            .store
+            .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    crate::handler::assessments::reconcile_dirty_page(&fx.state, &fx.account, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.state
+            .store
+            .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn stored_reply_debt_respects_questions_cancellation_and_nonreply_senders() {
+    let fx = Fixture::new().await;
+    for (sender, text, reply) in [
+        ("alex@example.com", "Does this work for you?", true),
+        (
+            "alex@example.com",
+            "I've corrected the account name. No action is required.",
+            false,
+        ),
+        ("no-reply@example.com", "Does this work for you?", false),
+    ] {
+        let thread = ThreadId::new();
+        let mail = fx
+            .message(&thread, sender, ME, Duration::minutes(5), None)
+            .await;
+        body(&fx, &mail, text).await;
+        let modes = membership(&fx, &thread).await;
+        assert_eq!(
+            modes
+                .asks
+                .iter()
+                .flat_map(|a| &a.units)
+                .any(|u| u.answer == AskAnswer::AsksYouToReply),
+            reply
+        );
+    }
+}

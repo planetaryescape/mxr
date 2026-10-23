@@ -229,20 +229,23 @@ export function CodeMirrorComposeEditor({
     };
   }, [autoFocus]);
 
-  useEffect(() => {
-    const view = viewRef.current;
-    if (!view) return;
-    view.dispatch({ effects: setModelSpans.of(modelSpans ?? []) });
-  }, [modelSpans]);
-
+  // The document and its marks change in one transaction. Marks installed
+  // first would be checked against the old document, where text that is
+  // only in the new one is out of range, and be dropped.
+  const appliedSpans = useRef<readonly ModelSpan[] | undefined>(undefined);
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
     const current = view.state.doc.toString();
-    if (value !== current) {
-      view.dispatch({ changes: { from: 0, to: current.length, insert: value } });
-    }
-  }, [value]);
+    const textChanged = value !== current;
+    const marksChanged = appliedSpans.current !== modelSpans;
+    if (!textChanged && !marksChanged) return;
+    appliedSpans.current = modelSpans;
+    view.dispatch({
+      ...(textChanged ? { changes: { from: 0, to: current.length, insert: value } } : {}),
+      ...(marksChanged ? { effects: setModelSpans.of(modelSpans ?? []) } : {}),
+    });
+  }, [value, modelSpans]);
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">

@@ -126,6 +126,12 @@ pub struct TodoRecord {
 }
 
 impl TodoRecord {
+    pub fn has_stored_asks(&self) -> bool {
+        serde_json::from_str::<serde_json::Value>(&self.field_sources)
+            .ok()
+            .is_some_and(|fields| fields.get("asks_fingerprint").is_some())
+    }
+
     /// Made or touched by the user: never expires, never rewritten by a
     /// re-run, and survives its email's deletion. The SQL side is
     /// `todo_untouched_sql!` (a schedule alone still takes newer evidence).

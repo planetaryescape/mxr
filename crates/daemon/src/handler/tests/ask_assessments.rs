@@ -243,7 +243,8 @@ async fn stored_asks_drive_owner_actions_quotes_and_four_corrections_with_undo()
         .unwrap();
     assert_eq!(rows.len(), 1);
     let before = rows[0].clone();
-    assert_eq!(before.origin, "asks");
+    assert!(before.has_stored_asks());
+    assert_eq!(before.origin, "rule");
     assert_eq!(before.reason, "Please sign the contract.");
     let fields = mxr_todo::provenance::FieldSources::from_json(&before.field_sources);
     assert!(fields

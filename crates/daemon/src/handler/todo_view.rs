@@ -138,7 +138,7 @@ where
 }
 
 fn why_line(record: &TodoRecord) -> String {
-    if record.origin == "asks" {
+    if record.has_stored_asks() {
         return record.reason.clone();
     }
     format!(

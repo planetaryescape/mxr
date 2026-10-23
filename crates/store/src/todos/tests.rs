@@ -639,7 +639,7 @@ async fn ambiguous_legacy_preserves_closed_manual_history_without_freezing_unrel
     legacy.user_edited = true;
     fx.store.insert_todo(&legacy).await.unwrap();
     let mut unrelated = fx.record("unrelated", &other, at(1));
-    unrelated.origin = "asks".into();
+    unrelated.origin = "rule".into();
     unrelated.rules_version = 2;
     unrelated.dedup_key = "asks|other".into();
     assert!(matches!(
@@ -663,7 +663,7 @@ async fn ambiguous_legacy_preserves_closed_manual_history_without_freezing_unrel
     assert_eq!(after.dedup_key, legacy.dedup_key);
     for (n, key) in keys.iter().enumerate() {
         let mut candidate = fx.record(&format!("candidate-{n}"), &first, at(0));
-        candidate.origin = "asks".into();
+        candidate.origin = "rule".into();
         candidate.rules_version = 2;
         candidate.dedup_key = key.clone();
         assert_eq!(

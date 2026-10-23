@@ -333,7 +333,6 @@ where
 {
     let identity = detection.object_key.clone();
     let (mut record, placement) = build_record(cfg, row, detection, run_in_progress);
-    record.origin = "asks".into();
     let due_period = record.due_at.map_or_else(
         || {
             row.date

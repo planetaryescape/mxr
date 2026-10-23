@@ -341,7 +341,9 @@ export const TodoRow = memo(function TodoRow({
         <>
           {secondary}
           {askQuote ? (
-            <span data-testid="todo-ask-quote" className="block text-text-2">&ldquo;{askQuote}&rdquo;</span>
+            <span data-testid="todo-ask-quote" className="block text-text-2">
+              &ldquo;{askQuote}&rdquo;
+            </span>
           ) : null}
           {/* A phone has no room for the window in the trail, so it follows who it is from. */}
           <span className={cn("sm:hidden", cue && !done && "text-cue")}>

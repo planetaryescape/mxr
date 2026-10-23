@@ -11,7 +11,7 @@ impl Store {
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
         let mut accounts = std::collections::HashMap::<AccountId, Vec<mxr_core::MessageId>>::new();
         for row in &rows {
-            if row.origin == "asks" && row.state == crate::TodoState::Open && !row.user_touched() {
+            if row.has_stored_asks() && row.state == crate::TodoState::Open && !row.user_touched() {
                 if let Some(id) = &row.source_message_id {
                     accounts
                         .entry(row.account_id.clone())
@@ -31,7 +31,7 @@ impl Store {
             if row.rules_version < 2 && matches!(row.origin.as_str(), "rule" | "schema" | "model") {
                 return false;
             }
-            if row.origin != "asks" {
+            if !row.has_stored_asks() {
                 return true;
             }
             let expected = serde_json::from_str::<serde_json::Value>(&row.field_sources)
@@ -58,7 +58,7 @@ impl Store {
         if answer.pending_body {
             return Ok(());
         }
-        sqlx::query("UPDATE todos SET state = 'expired' WHERE account_id = ?1 AND source_message_id = ?2 AND origin = 'asks' AND kind != 'rsvp' AND state = 'open' AND user_edited = 0 AND scheduled_for IS NULL AND reason NOT IN (SELECT value FROM json_each(?3)) AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ?2 AND a.account_id = ?1 AND a.policy_version = ?4 AND a.input_fingerprint = ?5 AND a.input_revision = i.effective_revision)")
+        sqlx::query("UPDATE todos SET state = 'expired' WHERE account_id = ?1 AND source_message_id = ?2 AND json_extract(field_sources, '$.asks_fingerprint.evidence') IS NOT NULL AND kind != 'rsvp' AND state = 'open' AND user_edited = 0 AND scheduled_for IS NULL AND reason NOT IN (SELECT value FROM json_each(?3)) AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ?2 AND a.account_id = ?1 AND a.policy_version = ?4 AND a.input_fingerprint = ?5 AND a.input_revision = i.effective_revision)")
             .bind(answer.account_id.as_str()).bind(answer.message_id.as_str()).bind(crate::encode_json(&quotes)?).bind(mxr_core::asks::ASKS_POLICY_VERSION).bind(&answer.input_fingerprint).execute(self.writer()).await?;
         Ok(())
     }
@@ -167,7 +167,7 @@ impl Store {
                     fields.insert(key.into(), value.clone());
                 }
             }
-            sqlx::query("UPDATE todos SET dedup_key = ?, rules_version = 2, origin = 'asks', reason = ?, field_sources = ? WHERE id = ?")
+            sqlx::query("UPDATE todos SET dedup_key = ?, rules_version = 2, reason = ?, field_sources = ? WHERE id = ?")
                 .bind(&replacement.dedup_key).bind(&replacement.reason).bind(crate::encode_json(&fields)?).bind(&before.id).execute(&mut *tx).await?;
         } else {
             // Unsupported old verdicts stop surfacing, but manual edits and

@@ -174,7 +174,7 @@ pub(super) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
                     "rule",
                 )),
                 None => {
-                    if task.origin == "asks" {
+                    if task.has_stored_asks() {
                         continue;
                     }
                     match state.store.todo_resolution_input(&task.id, &row.id).await {

@@ -67,4 +67,4 @@ Do not lead with terminal email, AI-native, all-in-one, a chat interface or one 
 
 A current, bounded example is stronger than an inflated number: do not reuse “200 operations”, a canned result time, or a token-savings percentage without a maintained count or measurement. Credit prior mail tools where relevant, but avoid adding an unrelated lineage redesign to this refresh. (D-WEB-019, D-WEB-023)
 
-Unresolved questions: S4 checks whether the approved explanation is understood. Q1–Q3 were approved by BK; S2/S3 still gate observed examples.
+Unresolved questions: S4 checks whether the approved explanation is understood. Q1–Q3 were approved by BK; S2 now records isolated local results; S3 still gates the observed draft handoff.

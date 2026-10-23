@@ -24,8 +24,11 @@ Installation remains immediately usable: `brew install planetaryescape/mxr/mxr`,
 Use the subscription example first if S2 produces a clear capture. It demonstrates a local aggregate without needing a native LLM call:
 
 ```bash
-mxr subscriptions --rank --format json
+mxr subscriptions --account personal --limit 200 --rank --format json
+mxr subscriptions --account work --limit 200 --rank --format json
 ```
+
+The S2 capture confirms that an omitted account resolves to the configured default. Use one command per account when showing combined results. Captured fixture rows each have one eligible message and zero READ flags; the original illustrative comp values are not observed output. The two-account 55-message results are preserved in [S2](../evidence/s2-runtime-proof.md).
 
 The proof has three steps, with all content readable without JavaScript:
 
@@ -63,4 +66,4 @@ The mode section must keep all five modes and Now current. Hold the R2 stored-ho
 
 A visitor can repeat the local subscription query in demo mail, explain why a runtime is more than an agent Gmail connection, and find the relevant human or agent continuation. Record the exact installed version and captured results during implementation. The current planning task has not run this demo.
 
-Unresolved questions: Q1–Q3 are approved. S1 release identity is verified at v0.6.156/f39ae6657; S2 runtime proof and S4 comprehension remain evidence gates. S3 belongs to the later draft handoff.
+Unresolved questions: Q1–Q3 are approved. S1 release identity is verified at v0.6.156/f39ae6657; S2 runtime proof is recorded; S4 comprehension remains unobserved. S3 belongs to the later draft handoff.

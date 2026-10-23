@@ -513,6 +513,7 @@ async fn stored_reply_debt_respects_questions_cancellation_and_nonreply_senders(
             false,
         ),
         ("no-reply@example.com", "Does this work for you?", false),
+        ("support@example.org", "Does this work for you?", false),
     ] {
         let thread = ThreadId::new();
         let mail = fx
@@ -799,4 +800,41 @@ async fn legacy_ics_upgrade_keeps_one_row_and_user_history_then_partstat_complet
             );
         }
     }
+}
+
+#[tokio::test]
+async fn equal_bills_from_one_sender_keep_unmarked_account_headers_as_distinct_obligations() {
+    let fx = Fixture::new().await;
+    for account in ["AC-1001", "AC-1002"] {
+        let mail = fx
+            .message(
+                &ThreadId::new(),
+                "bills@example.com",
+                ME,
+                Duration::minutes(5),
+                None,
+            )
+            .await;
+        body(
+            &fx,
+            &mail,
+            &format!(
+                "Service charge, account {account}\nAmount due £250\nDue date: 2 November 2026"
+            ),
+        )
+        .await;
+        crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
+    }
+    let rows = fx
+        .state
+        .store
+        .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
+        .await
+        .expect("stored rows");
+    assert_eq!(
+        rows.len(),
+        2,
+        "equal amounts and identical action wording must not merge distinct account obligations"
+    );
+    assert_ne!(rows[0].dedup_key, rows[1].dedup_key);
 }

@@ -194,6 +194,11 @@ owed. Annotated items also grade the exact source quote, actor and state. The ev
 direction (the table that maps today's to-do kinds to these is
 `Row::from_asks` in `crates/daemon/src/handler/classify_eval_asks.rs`) and reports:
 
+The historical `attend` reporting bucket includes RSVP response tasks. Calendar
+asks retain their stored `Reply` action, owner and pending state; reporting an
+RSVP in this bucket does not assert a promise to attend. Ordinary reply asks
+retain `reply`. The packet excludes tasks born expired, as the product does.
+
 - true positives, false positives, false negatives, precision and recall per
   kind of ask, and for all kinds together;
 - exact match for the amount (value and currency), the due date and the
@@ -258,7 +263,7 @@ reuse the stored answer without judging again. Activation selects that version
 and bounded startup/ingest reconciliation; evaluation never repairs it. Old
 version rows remain available for explicit comparisons.
 
-R2c's developing asks facet uses a separate `asks-r2c-3` policy in the
+R2c's developing asks facet uses a separate `asks-r2c-4` policy in the
 assessment table. Its records include sent mail; home assessments remain
 inbound-only under `r2-1`. Inspect the stored facet and pending message IDs
 in `mxr modes why MESSAGE_ID --format json`. To do, Your turn, Waiting on and relationship commitments read the stored

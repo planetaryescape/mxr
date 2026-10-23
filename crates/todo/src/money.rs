@@ -74,12 +74,17 @@ fn symbol(currency: &str) -> Option<&'static str> {
 
 const CODES: &str = "GBP|USD|EUR|ZAR|CAD|AUD|NZD|CHF|SEK|NOK|DKK|INR|JPY";
 
+// A comma or full stop can be the decimal separator. Grouped forms
+// consume their entire numeric span, so a prefix cannot become a smaller price.
+const NUMBER: &str = r"[+-]?(?:\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{1,3}(?:\.\d{3})+,\d{1,2}|\d{1,3}(?:[\x20\x{00a0}\x{202f}]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)";
+static NUMBER_FORMAT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(&format!("^(?:{NUMBER})$")).expect("amount number grammar"));
 static AMOUNT: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
         r"(?x)
-        (?P<sign1>[+-]?)(?P<sym>[£$€]|\bR)\s?(?P<n1>[+-]?(?:\d{{1,3}}(?:,\d{{3}})+(?:\.\d{{1,2}})?|\d+(?:\.\d{{1,2}})?))\b
-        | (?P<sign2>[+-]?)\b(?P<code1>{CODES})\s?(?P<n2>[+-]?(?:\d{{1,3}}(?:,\d{{3}})+(?:\.\d{{1,2}})?|\d+(?:\.\d{{1,2}})?))\b
-        | (?P<n3>[+-]?(?:\d{{1,3}}(?:,\d{{3}})+(?:\.\d{{1,2}})?|\d+(?:\.\d{{1,2}})?))\s?(?P<code2>{CODES})\b
+        (?P<sign1>[+-]?)(?P<sym>[£$€]|\bR)\s?(?P<n1>{NUMBER})\b
+        | (?P<sign2>[+-]?)\b(?P<code1>{CODES})\s?(?P<n2>{NUMBER})\b
+        | (?P<n3>{NUMBER})\s?(?P<code2>{CODES})\b
         "
     ))
     .expect("valid amount regex")
@@ -132,6 +137,15 @@ pub fn find_candidates(text: &str) -> Vec<(usize, Amount)> {
             {
                 return None;
             }
+            if tail.starts_with([' ', '\u{00a0}', '\u{202f}'])
+                && tail
+                    .trim_start()
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_digit())
+            {
+                return None;
+            }
             let (currency, number) = if let Some(sym) = caps.name("sym") {
                 let code = match sym.as_str() {
                     "£" => "GBP",
@@ -148,6 +162,11 @@ pub fn find_candidates(text: &str) -> Vec<(usize, Amount)> {
                     caps.name("n3")?.as_str(),
                 )
             };
+            if matches!(currency.as_str(), "GBP" | "USD" | "CAD" | "AUD" | "NZD")
+                && decimal_separator(number).is_some_and(|at| number.as_bytes()[at] == b',')
+            {
+                return None;
+            }
             let mut minor = parse_minor(number)?;
             let prefix = caps.name("sign1").or_else(|| caps.name("sign2"));
             if let Some(sign) = prefix.filter(|sign| !sign.as_str().is_empty()) {
@@ -175,10 +194,17 @@ pub fn find_candidates(text: &str) -> Vec<(usize, Amount)> {
 
 /// "1,249.00", "1249.5", "1249" to minor units, without floating point.
 pub fn parse_minor(number: &str) -> Option<i64> {
-    let cleaned = number.replace(',', "");
-    let negative = cleaned.starts_with('-');
-    let digits = cleaned.strip_prefix(['-', '+']).unwrap_or(&cleaned);
-    let (whole, frac) = digits.split_once('.').unwrap_or((digits, ""));
+    if !NUMBER_FORMAT.is_match(number) {
+        return None;
+    }
+    let negative = number.starts_with('-');
+    let unsigned = number.strip_prefix(['-', '+']).unwrap_or(number);
+    let compact = unsigned.replace([' ', '\u{00a0}', '\u{202f}'], "");
+    let decimal = decimal_separator(&compact);
+    let (whole, frac) = decimal.map_or((compact.as_str(), ""), |at| {
+        (&compact[..at], &compact[at + 1..])
+    });
+    let whole = whole.replace(['.', ','], "");
     let whole: i64 = whole.parse().ok()?;
     let frac: i64 = match frac.len() {
         0 => 0,
@@ -191,6 +217,15 @@ pub fn parse_minor(number: &str) -> Option<i64> {
         minor.checked_neg()
     } else {
         Some(minor)
+    }
+}
+
+fn decimal_separator(number: &str) -> Option<usize> {
+    match (number.rfind('.'), number.rfind(',')) {
+        (Some(dot), Some(comma)) => Some(dot.max(comma)),
+        (Some(dot), None) => Some(dot),
+        (None, Some(comma)) if number.len() - comma - 1 <= 2 => Some(comma),
+        _ => None,
     }
 }
 
@@ -335,6 +370,32 @@ mod tests {
     fn malformed_decimal_and_thousands_do_not_become_partial_candidates() {
         for text in ["£1.234", "£1,23", "R2D2", "-£-12", "USD -+12"] {
             assert!(find_candidates(text).is_empty(), "{text}");
+        }
+    }
+    #[test]
+    fn european_and_rand_formats_keep_their_full_span_and_signed_value() {
+        let text = "€1.234,56 R1 234,56 R450,00 -EUR 0,25 €0,00 £1,234.56";
+        let candidates = find_candidates(text);
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|(_, a)| (a.text.as_str(), a.minor, a.currency.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("€1.234,56", 123456, "EUR"),
+                ("R1 234,56", 123456, "ZAR"),
+                ("R450,00", 45000, "ZAR"),
+                ("-EUR 0,25", -25, "EUR"),
+                ("€0,00", 0, "EUR"),
+                ("£1,234.56", 123456, "GBP")
+            ]
+        );
+        for (start, a) in &candidates {
+            assert_eq!(&text[*start..start + a.text.len()], a.text);
+        }
+        assert_eq!(find_amounts(text).len(), 4);
+        for malformed in ["R1 23,45", "€1,23,45", "£1,23", "€1.2345"] {
+            assert!(find_candidates(malformed).is_empty(), "{malformed}");
         }
     }
 }

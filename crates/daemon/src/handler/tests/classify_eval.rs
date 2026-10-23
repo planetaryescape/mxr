@@ -162,6 +162,20 @@ async fn the_quick_set_is_graded_and_every_mismatch_is_listed() {
             .all(|m| !(m.scenario == "no-reply-vendor-question" && m.question == "reply")),
         "{mismatches:?}"
     );
+    if std::env::var_os("MXR_CLASSIFY_TRACE").is_some() {
+        use sqlx::Row;
+        eprintln!("{}", report(&summary, &mismatches));
+        for row in sqlx::query("SELECT m.provider_id, m.subject, a.assessment_json FROM messages m JOIN mail_assessments a ON a.message_id = m.id WHERE a.policy_version = ?1 ORDER BY m.provider_id")
+            .bind(mxr_core::asks::ASKS_POLICY_VERSION)
+            .fetch_all(state.store.reader()).await.unwrap()
+        {
+            eprintln!("ASK_TRACE {}", serde_json::json!({
+                "provider_id": row.get::<String, _>("provider_id"),
+                "subject": row.get::<String, _>("subject"),
+                "asks": serde_json::from_str::<serde_json::Value>(&row.get::<String, _>("assessment_json")).unwrap(),
+            }));
+        }
+    }
     classify_eval_floor::check("quick", summary.asks.as_ref().expect("asks"));
     insta::assert_snapshot!(report(&summary, &mismatches));
 }
@@ -285,12 +299,13 @@ async fn a_missing_assessment_is_pending_without_being_repaired_or_graded_as_wro
         .find(|label| !label.outbound)
         .unwrap();
     let removed = sqlx::query(
-        "DELETE FROM mail_assessments WHERE message_id IN
+        "DELETE FROM mail_assessments WHERE policy_version = ?4 AND message_id IN
          (SELECT id FROM messages WHERE account_id = ?1 AND provider_id = ?2 AND from_email = ?3)",
     )
     .bind(account_id.as_str())
     .bind(&victim.provider_id)
     .bind(&victim.from_email)
+    .bind(mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
     .execute(state.store.writer())
     .await
     .unwrap()

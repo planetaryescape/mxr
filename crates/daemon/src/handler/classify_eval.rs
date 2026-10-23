@@ -325,11 +325,12 @@ pub(super) async fn classify_eval(
             "machine" => SenderKindData::PaperTrail,
             _ => SenderKindData::ScreenedOut,
         });
-        let reply_owed = entry.asks.as_ref().is_some_and(|a| {
-            a.units
-                .iter()
-                .any(|u| u.answer == mxr_core::asks::AskAnswer::AsksYouToReply)
-        });
+        let reply_owed = !message.flags.contains(mxr_core::MessageFlags::SPAM)
+            && entry.asks.as_ref().is_some_and(|a| {
+                a.units
+                    .iter()
+                    .any(|u| u.answer == mxr_core::asks::AskAnswer::AsksYouToReply)
+            });
         reads.insert(
             message.id.clone(),
             MailRead {
@@ -363,7 +364,13 @@ pub(super) async fn classify_eval(
             let name = person
                 .map(|p| p.name.as_deref().unwrap_or(&p.email))
                 .unwrap_or_default();
-            rows.insert(message.id.clone(), Row::from_asks(&answer, name));
+            let mut projected = Row::from_asks(&answer, name);
+            projected.retain(|row| {
+                !row.provenance
+                    .as_ref()
+                    .is_some_and(|p| entry.born_expired_quotes.contains(&p.quote))
+            });
+            rows.insert(message.id.clone(), projected);
             stored_answers.insert(message.id, answer);
         }
     }

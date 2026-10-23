@@ -157,10 +157,12 @@ pub(super) fn unit_spans(text: &str) -> Vec<AskSpan> {
     let mut start = 0;
     for (at, ch) in text.char_indices() {
         let end = at + ch.len_utf8();
-        let continuation = ch == '\n' && billing_continuation(&text[start..at], &text[end..]);
+        let continuation = matches!(ch, '\n' | '.' | ';' | '?')
+            && billing_continuation(&text[start..at], &text[end..], ch);
         let boundary = ch == '\n' && !continuation
-            || ch == ';'
+            || ch == ';' && !continuation
             || matches!(ch, '.' | '?' | '!')
+                && !continuation
                 && text
                     .get(end..)
                     .is_some_and(|s| s.is_empty() || s.starts_with(char::is_whitespace));
@@ -177,6 +179,17 @@ pub(super) fn unit_spans(text: &str) -> Vec<AskSpan> {
             let (Some(whole), Some(next)) = (conjunction.get(0), conjunction.name("next")) else {
                 continue;
             };
+            // Signing and returning the same document is one obligation.
+            if next.as_str().eq_ignore_ascii_case("send")
+                && text[span.start..span.start + whole.start()]
+                    .to_ascii_lowercase()
+                    .contains("sign")
+                && text[span.start + next.start()..]
+                    .to_ascii_lowercase()
+                    .starts_with("send it back")
+            {
+                continue;
+            }
             push_span(text, start, span.start + whole.start(), &mut clauses);
             start = span.start + next.start();
         }
@@ -185,9 +198,24 @@ pub(super) fn unit_spans(text: &str) -> Vec<AskSpan> {
     clauses
 }
 
-fn billing_continuation(before: &str, after: &str) -> bool {
+fn billing_continuation(before: &str, after: &str, separator: char) -> bool {
+    if separator == '\n' && after.starts_with('\n') || after.starts_with("\n\n") {
+        return false;
+    }
     let before = before.to_ascii_lowercase();
+    if before.contains("confirm your delivery address")
+        && after
+            .trim_start()
+            .to_ascii_lowercase()
+            .starts_with("reply to this email with")
+    {
+        return true;
+    }
+    if after.starts_with("\n\n") {
+        return false;
+    }
     let after = after
+        .trim_start()
         .lines()
         .next()
         .unwrap_or_default()
@@ -199,6 +227,11 @@ fn billing_continuation(before: &str, after: &str) -> bool {
         "statement",
         "amount due",
         "minimum payment",
+        "payment",
+        "card",
+        "payout",
+        "balance",
+        "charge",
     ]
     .iter()
     .any(|word| before.contains(word))
@@ -211,6 +244,12 @@ fn billing_continuation(before: &str, after: &str) -> bool {
             "due:",
             "account number",
             "account ref",
+            "please pay",
+            "pay by",
+            "please settle",
+            "update your card",
+            "update your payment",
+            "update your bank",
         ]
         .iter()
         .any(|field| after.starts_with(field))

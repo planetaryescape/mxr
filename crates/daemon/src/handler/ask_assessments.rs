@@ -11,6 +11,7 @@ pub(super) async fn prepare(
     state: &AppState,
     account: &AccountId,
     messages: &[DeskMessage],
+    senders: &super::desk::Senders,
     is_owner: &(dyn Fn(&str) -> bool + Sync),
 ) -> Result<Vec<AskAssessment>, HandlerError> {
     let timezone =
@@ -131,8 +132,8 @@ pub(super) async fn prepare(
                     same_author: p.from.email.eq_ignore_ascii_case(&message.from.email),
                 }),
                 owner_replied_afterwards: replied,
-                reply_capable: !message.evidence.auto_generated
-                    && !super::mail_kind::no_reply_address(&message.from.email),
+                reply_capable: !message.trashed
+                    && super::mail_kind::human_response(&senders.signals(message, is_owner)),
             };
             let mut answer = assess(&input, &timezone, fingerprint);
             mxr_todo::asks::include_calendar(&mut answer, calendar);

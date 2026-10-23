@@ -35,7 +35,7 @@ No uncertain row becomes a Now task.
 
 ## Home and asks commit together
 
-`asks-r2c-3` covers received and sent messages in the existing assessment
+`asks-r2c-4` covers received and sent messages in the existing assessment
 storage envelope. `r2-1` remains the inbound home policy. Home-version
 reports exclude the reserved asks namespace, and outbound asks cannot
 create a home. Both facets share one generation CAS, transaction and dirty
@@ -132,3 +132,26 @@ The evaluator reads envelopes, current home and asks facets, and record
 membership in one SQL statement. Label schema 3 adds exact quote, actor and
 state expectations when a scenario supplies them. Existing labels and floors
 remain; the extended corpus and its measurements still need acceptance.
+
+
+## Round4 repairs measured stored-ask regressions
+
+Policy `asks-r2c-4` invalidates earlier draft answers after the quick evaluator
+exposed missing common bill, signing and promise readings. Yearless deadlines
+remain marked unchecked while contributing a resolved candidate to a complete
+bill. The common money parser reads decimal-comma and grouped EUR/ZAR amounts
+without accepting a shorter numeric prefix. Past-due candidates retain the
+original tense when they use the shared date resolver. Word durations use the
+existing natural-time grammar rather than a second date parser.
+
+RSVP tasks keep their stored Reply action. The evaluator's historical `attend`
+category is the retained RSVP reporting bucket, including structured calendar
+responses, rather than a claim that the owner promised to attend. Ordinary
+reply-only asks remain Your turn. Tasks born expired are excluded using stored
+projection facts in the same read-only SQL packet. No label or floor is lowered.
+
+The full To do crate tests passed during this round; final stored evaluator,
+provenance, held-out, migration and release acceptance still require the exact
+candidate's recorded results. To inspect the synthetic quick set's retained
+facts, units, votes and candidates while diagnosing a failure, run its focused
+test with `MXR_CLASSIFY_TRACE=1` and `--nocapture`.

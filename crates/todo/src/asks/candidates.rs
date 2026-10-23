@@ -1,4 +1,4 @@
-use crate::dates::{find_due, order_for, trigger_regex};
+use crate::dates::{order_for, resolve_due_match, trigger_regex};
 use chrono::{DateTime, TimeZone};
 use mxr_core::asks::*;
 use once_cell::sync::Lazy;
@@ -9,9 +9,12 @@ static DUE: Lazy<Regex> = Lazy::new(|| {
         r"due|pay(?:ment)?\s+by|payable\s+by|no\s+later\s+than|deadline|on\s+or\s+before|by|before|expires|renew\s+by",
     )
 });
+static RELATIVE_DUE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)\bwithin\s+(?:[0-9]{1,3}|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:hours?|days?|weeks?)\b").expect("relative due candidate")
+});
 static REFERENCE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-    r"(?i)\b(?P<kind>account|invoice|policy|order)\s*(?:number|no\.?|reference|ref\.?|\#|:)\s*[:\#]?\s*(?P<value>[a-z0-9][a-z0-9/-]{1,40})\b"
+    r"(?i)\b(?P<kind>account|invoice|policy|order)\b\s*(?:(?P<marker>number|no\.?|reference|ref\.?|\#|:)\s*[:\#]?\s*)?(?P<value>[a-z0-9][a-z0-9/-]{1,40}(?: +[0-9]{2,12})*)\b"
 ).expect("reference regex")
 });
 
@@ -32,10 +35,13 @@ where
                 currency: amount.currency,
             });
         }
-        for matched in DUE.find_iter(&source.text) {
-            if let Some(date) = find_due(
-                matched.as_str(),
-                &DUE,
+        for captures in DUE.captures_iter(&source.text) {
+            let Some(matched) = captures.get(0) else {
+                continue;
+            };
+            if let Some(date) = resolve_due_match(
+                &source.text,
+                &captures,
                 &anchor,
                 order_for(
                     &crate::action_link::email_domain(email).unwrap_or_default(),
@@ -57,6 +63,26 @@ where
                 });
             }
         }
+        for matched in RELATIVE_DUE.find_iter(&source.text) {
+            if let Some(at) = mxr_core::natural_time::due_words(
+                &source.text,
+                matched.as_str(),
+                &anchor,
+                &mxr_core::natural_time::TimePrefs::default(),
+            )
+            .and_then(|d| d.unambiguous_at())
+            {
+                facts.dates.push(AskDate {
+                    zone,
+                    span: AskSpan {
+                        start: matched.start(),
+                        end: matched.end(),
+                    },
+                    at,
+                    checked: true,
+                });
+            }
+        }
         for captures in REFERENCE.captures_iter(&source.text) {
             let (Some(whole), Some(kind), Some(value)) = (
                 captures.get(0),
@@ -66,6 +92,10 @@ where
                 continue;
             };
             let normalized = value.as_str().to_ascii_lowercase();
+            if captures.name("marker").is_none() && !normalized.chars().any(|c| c.is_ascii_digit())
+            {
+                continue;
+            }
             if [
                 "amount", "due", "total", "payment", "your", "our", "the", "this", "none",
             ]

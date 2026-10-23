@@ -26,7 +26,7 @@ pattern!(
 );
 pattern!(
     CONDITIONAL,
-    r"(?i)\b(if|might|maybe|perhaps|would have|could have)\b"
+    r"(?i)(?:^if\b|\b(?:might|maybe|perhaps|would have|could have)\b|\blet (?:me|us) know if you have (?:any )?questions\b)"
 );
 pattern!(
     DONE,
@@ -38,7 +38,7 @@ pattern!(
 );
 pattern!(
     SIGN,
-    r"(?i)\b(sign (?:the|your|this|our|my|a) (?:[a-z]+\s+){0,2}(?:form|contract|agreement|waiver|document|lease|nda)|signature (?:required|requested)|awaiting your signature)\b"
+    r"(?i)\b(sign (?:the|your|this|our|my|a) (?:[a-z]+\s+){0,2}(?:form|contract|agreement|waiver|document|lease|nda)|signature (?:required|requested)|awaiting your signature|please sign\b|(?:form|document|contract|agreement) must be signed)\b|^sign:\s*\S+"
 );
 pattern!(
     VERIFY,
@@ -46,17 +46,17 @@ pattern!(
 );
 pattern!(
     SEND,
-    r"(?i)\bsend (?:me |us |the |your |a |an |my |our )[^?!.\n]+\b"
+    r"(?i)\bsend (?:me |us |you |the |your |a |an |my |our )[^?!.\n]+\b"
 );
 pattern!(
     PROVIDE,
-    r"(?i)\bprovide (?:me |us |the |your |a |an )[^?!.\n]+\b"
+    r"(?i)\b(?:provide (?:me |us |the |your |a |an )[^?!.\n]+|confirm your delivery address)\b"
 );
 pattern!(UPLOAD, r"(?i)\bupload (?:the |your |a |an )[^?!.\n]+\b");
 pattern!(BOOK, r"(?i)\bbook (?:the |your |a |an )[^?!.\n]+\b");
 pattern!(
     REVIEW,
-    r"(?i)\breview (?:the |your |this |my |our |a )[^?!.\n]+\b"
+    r"(?i)\b(?:review (?:the |your |this |my |our |a )[^?!.\n]+|take a look)\b"
 );
 pattern!(
     PAY_PROMISE,
@@ -72,8 +72,19 @@ pattern!(
 );
 pattern!(
     REPLY,
-    r"(?i)\b(reply|respond|let me know|let us know|what do you think|are you available|does (?:this|that) work|can you confirm (?:if|whether))\b"
+    r"(?i)\b(reply|respond|let me know|let us know|what do you think|are you available|does (?:this|that) work|(?:can|could|would) you confirm|tell me (?:if|whether)|(?:share|send)(?: me| us)? your availability|would you have|shall we|are you (?:around|free))\b"
 );
+
+pattern!(PURPOSE, r"(?i)\s+so (?:that )?(?:i|we) (?:can|will|know)\b");
+pattern!(
+    CHANGE,
+    r"(?i)\b(?:make the change|check (?:the|your|this) [^?!.]+|try [^?!.]+)\b"
+);
+pattern!(
+    PUBLIC_EVENT,
+    r"(?i)\b(?:product webinar|marketing webinar|sales webinar|product demo|promotional event)\b"
+);
+pattern!(RSVP, r"(?i)\brsvp\b");
 
 pub(super) fn label(
     text: &str,
@@ -97,7 +108,7 @@ pub(super) fn label(
             .dates
             .iter()
             .enumerate()
-            .filter(|(_, d)| d.checked && inside(zone, span, d.zone, &d.span))
+            .filter(|(_, d)| inside(zone, span, d.zone, &d.span))
             .map(|(id, d)| (id, d.at)),
     );
     let reference = agreed_candidate(
@@ -123,7 +134,9 @@ pub(super) fn label(
             })
             .map(|(id, _)| id)
     });
-    let actor = actor(text, facts, input);
+    let actor = actor(text, prefix, facts, input);
+    // Purpose clauses explain the sender's next step, not a second owner action.
+    let action_text = PURPOSE.find(text).map_or(text, |m| &text[..m.start()]);
     let base = AskTags {
         act: Act::Information,
         actor,
@@ -238,7 +251,7 @@ pub(super) fn label(
     ]
     .iter()
     .any(|verb| lower.starts_with(verb));
-    let explicit = REQUEST.is_match(text) || promise || imperative;
+    let explicit = REQUEST.is_match(action_text) || promise || imperative;
     for (pattern, action, rule) in [
         (&*SIGN, ActionKind::Sign, "sign"),
         (&*VERIFY, ActionKind::Verify, "verify"),
@@ -249,9 +262,14 @@ pub(super) fn label(
         (&*REVIEW, ActionKind::Other, "review"),
         (&*CONTACT, ActionKind::Contact, "contact"),
     ] {
-        if pattern.is_match(text)
+        if pattern.is_match(action_text)
             && (explicit || matches!(action, ActionKind::Sign | ActionKind::Verify))
         {
+            if action == ActionKind::Send && doc.kind == DocumentKind::Bill
+                || action == ActionKind::Other && REPLY.is_match(action_text)
+            {
+                continue;
+            }
             let (act, actor) = if promise {
                 (
                     Act::Commitment,
@@ -278,6 +296,34 @@ pub(super) fn label(
             } else {
                 Actor::Correspondent
             },
+        ));
+    }
+    if votes.is_empty()
+        && (REQUEST.is_match(action_text) || imperative)
+        && CHANGE.is_match(action_text)
+        && !REPLY.is_match(action_text)
+    {
+        votes.push(vote(
+            "change",
+            Act::Request,
+            state,
+            ActionKind::Other,
+            actor,
+        ));
+    }
+    if votes.is_empty() && RSVP.is_match(action_text) {
+        let public = PUBLIC_EVENT.is_match(action_text)
+            || PUBLIC_EVENT.is_match(prefix.rsplit("\n\n").next().unwrap_or_default());
+        votes.push(vote(
+            if public {
+                "public_event_offer"
+            } else {
+                "authored_rsvp"
+            },
+            if public { Act::Offer } else { Act::Request },
+            state,
+            ActionKind::Reply,
+            if public { Actor::Nobody } else { actor },
         ));
     }
     if votes.is_empty()
@@ -320,20 +366,21 @@ fn inherited_promise(prefix: &str) -> bool {
     (lower.ends_with(" and") || lower.ends_with(" then")) && PROMISE.is_match(preceding)
 }
 
-fn actor(text: &str, facts: &AskFacts, input: &AskInput<'_>) -> Actor {
+fn actor(text: &str, prefix: &str, facts: &AskFacts, input: &AskInput<'_>) -> Actor {
     if facts.owner_authored {
         return Actor::Correspondent;
     }
     let lower = text.to_lowercase();
-    let own_name = facts.owner_names.iter().any(|name| {
-        !name.trim().is_empty() && lower.starts_with(&format!("{},", name.to_lowercase()))
-    });
+    let own_name = facts
+        .owner_names
+        .iter()
+        .any(|name| named_addressee(&lower, name));
     let other_name = input
         .to
         .iter()
         .filter(|a| !(input.is_owner)(&a.email))
         .filter_map(|a| a.name.as_ref())
-        .any(|name| !name.is_empty() && lower.starts_with(&format!("{},", name.to_lowercase())));
+        .any(|name| named_addressee(&lower, name));
     if other_name {
         return Actor::ThirdParty;
     }
@@ -342,7 +389,15 @@ fn actor(text: &str, facts: &AskFacts, input: &AskInput<'_>) -> Actor {
     }
     match facts.recipient_role {
         RecipientRole::AloneTo => Actor::Owner,
-        RecipientRole::SharedTo if own_name => Actor::Owner,
+        RecipientRole::SharedTo
+            if own_name
+                || facts
+                    .owner_names
+                    .iter()
+                    .any(|name| named_addressee(&prefix.trim_start().to_lowercase(), name)) =>
+        {
+            Actor::Owner
+        }
         RecipientRole::SharedTo => Actor::Everyone,
         RecipientRole::Cc | RecipientRole::Bcc | RecipientRole::Unknown | RecipientRole::List => {
             Actor::ThirdParty
@@ -362,4 +417,14 @@ pub(super) fn eligible_uncertainty(text: &str, doc: &DocumentReading) -> bool {
         )
         || SIGN.is_match(text)
         || VERIFY.is_match(text)
+}
+
+fn named_addressee(text: &str, name: &str) -> bool {
+    let name = name.trim().to_lowercase();
+    !name.is_empty()
+        && (text.starts_with(&format!("{name},"))
+            || name
+                .split_whitespace()
+                .next()
+                .is_some_and(|first| text.starts_with(&format!("{first},"))))
 }

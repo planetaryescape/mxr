@@ -34,6 +34,7 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                     ActionKind::Verify => TodoKind::Verify,
                     ActionKind::RenewOrCancel => TodoKind::Renewal,
                     ActionKind::Attend => TodoKind::Rsvp,
+                    ActionKind::Reply if is_rsvp(answer, unit) => TodoKind::Rsvp,
                     _ => TodoKind::Other,
                 }
             };
@@ -213,4 +214,13 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
             ))
         })
         .collect()
+}
+
+/// The retained RSVP product category asks for a response, not an attendance promise.
+pub fn is_rsvp(answer: &AskAssessment, unit: &AskUnit) -> bool {
+    unit.tags
+        .as_ref()
+        .is_some_and(|t| t.action == ActionKind::Reply)
+        && (answer.facts.zones[unit.zone].kind == ZoneKind::Calendar
+            || unit.votes.iter().any(|v| v.rule == "authored_rsvp"))
 }

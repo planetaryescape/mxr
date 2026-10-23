@@ -386,6 +386,17 @@ impl<'a> Parser<'a> {
         }
         let amount = match word {
             "a" | "an" | "one" if after_in => 1,
+            "two" if after_in => 2,
+            "three" if after_in => 3,
+            "four" if after_in => 4,
+            "five" if after_in => 5,
+            "six" if after_in => 6,
+            "seven" if after_in => 7,
+            "eight" if after_in => 8,
+            "nine" if after_in => 9,
+            "ten" if after_in => 10,
+            "eleven" if after_in => 11,
+            "twelve" if after_in => 12,
             _ => signed_number(word)?,
         };
         let unit = duration_unit(self.peek(ahead + 1)?)?;

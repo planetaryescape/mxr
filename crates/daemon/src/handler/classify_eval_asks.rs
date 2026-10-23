@@ -129,6 +129,9 @@ impl Row {
                     A::FixPayment => AskKind::FixPayment,
                     A::Sign => AskKind::Sign,
                     A::Verify => AskKind::Verify,
+                    // Attend is the historical RSVP reporting bucket; the stored
+                    // action and its provenance remain Reply.
+                    A::Reply if mxr_todo::asks::items::is_rsvp(answer, unit) => AskKind::Attend,
                     A::Reply => AskKind::Reply,
                     A::Send => AskKind::Send,
                     A::Provide => AskKind::Provide,
@@ -1761,6 +1764,73 @@ mod tests {
 #[cfg(test)]
 mod provenance_tests {
     use super::*;
+    #[test]
+    fn calendar_reply_uses_the_historical_rsvp_bucket_without_changing_the_action() {
+        use mxr_core::asks::*;
+        let message = mxr_core::MessageId::new();
+        let account = mxr_core::AccountId::new();
+        let tags = AskTags {
+            act: Act::Request,
+            actor: Actor::Owner,
+            state: AskState::Pending,
+            action: ActionKind::Reply,
+            amount: None,
+            due: None,
+            reference: None,
+        };
+        let mut a = AskAssessment {
+            message_id: message,
+            account_id: account,
+            policy_version: ASKS_POLICY_VERSION.into(),
+            input_fingerprint: "test".into(),
+            pending_body: false,
+            context_token: "test".into(),
+            calendar: None,
+            facts: AskFacts {
+                zones: vec![AskZone {
+                    kind: ZoneKind::Calendar,
+                    author: None,
+                    text: "Planning".into(),
+                }],
+                recipient_role: RecipientRole::AloneTo,
+                owner_authored: false,
+                owner_names: vec![],
+                owner_addresses: vec![],
+                predecessor: None,
+                owner_replied_afterwards: false,
+                amounts: vec![],
+                dates: vec![],
+                references: vec![],
+                template_key: "test".into(),
+            },
+            units: vec![AskUnit {
+                zone: 0,
+                span: AskSpan { start: 0, end: 8 },
+                votes: vec![],
+                tags: Some(tags.clone()),
+                document: DocumentReading {
+                    kind: DocumentKind::Other,
+                    status: PaymentStatus::None,
+                    required_fields_present: true,
+                },
+                answer: AskAnswer::AsksYou,
+            }],
+        };
+        let calendar = Row::from_asks(&a, "Organiser");
+        assert_eq!(calendar[0].kind, AskKind::Attend);
+        assert!(mxr_todo::asks::items::is_rsvp(&a, &a.units[0]));
+        let provenance = calendar[0].provenance.as_ref().expect("stored provenance");
+        assert_eq!(
+            (&*provenance.quote, &*provenance.actor, &*provenance.state),
+            ("Planning", "owner", "pending")
+        );
+        assert_eq!(a.units[0].tags.as_ref(), Some(&tags));
+        a.facts.zones[0].kind = ZoneKind::Authored;
+        assert_eq!(Row::from_asks(&a, "Sender")[0].kind, AskKind::Reply);
+        assert!(!mxr_todo::asks::items::is_rsvp(&a, &a.units[0]));
+        assert_eq!(a.units[0].tags.as_ref(), Some(&tags));
+    }
+
     #[test]
     fn exact_quote_actor_and_state_have_independent_verdicts() {
         let item = Item::asks(AskKind::Sign, "Alex").provenance(

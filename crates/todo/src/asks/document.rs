@@ -10,7 +10,7 @@ macro_rules! pattern {
 }
 pattern!(
     COMPLETE,
-    r"(?i)\b(payment (?:received|confirmed|successful|complete)|has been paid|already paid|nothing outstanding|no (?:payment|amount) (?:is )?due|now resolved|successfully retried)\b"
+    r"(?i)\b(payment (?:received|confirmed|successful|complete)|has been paid|already paid|nothing outstanding|nothing to pay|we have since taken it|no (?:payment|amount) (?:is )?due|now resolved|successfully retried)\b"
 );
 pattern!(
     CREDIT,
@@ -26,7 +26,7 @@ pattern!(
 );
 pattern!(
     FAILED,
-    r"(?i)\b(payment (?:has )?(?:failed|declined|was declined|was unsuccessful)|card (?:was )?declined|unpaid direct debit|update your (?:card|payment details|payment method))\b"
+    r"(?i)\b((?:payment|payout)(?: of [^!?\n]{1,90})? (?:has )?(?:failed|declined|was declined|was unsuccessful)|card (?:was )?declined|unpaid direct debit|update your (?:card|payment details|payment method|bank details))\b"
 );
 pattern!(
     PAST,
@@ -34,11 +34,16 @@ pattern!(
 );
 pattern!(
     BILL,
-    r"(?i)\b(invoice|bill|amount (?:due|owed|outstanding)|balance (?:due|outstanding)|payment (?:is )?(?:due|overdue)|minimum payment|please pay|pay (?:by|now)|past due)\b"
+    r"(?i)\b(invoice|bill|amount (?:due|owed|outstanding)|(?:payment|balance) (?:of [^!?\n]{1,80} )?is (?:now )?(?:due|payable)|you owe|\beft\b|send me your half|balance (?:due|outstanding)|payment (?:is )?(?:due|overdue)|minimum payment|please pay|pay (?:by|now)|past due)\b"
 );
 pattern!(STATEMENT, r"(?i)\b(statement|minimum payment)\b");
 pattern!(MINIMUM, r"(?i)\bminimum (?:payment|amount)\b");
 pattern!(NOW, r"(?i)\b(now|immediately|overdue|past due)\b");
+
+pattern!(
+    PERSONAL_PAYMENT,
+    r"(?i)\b(?:could you|can you|please) (?:eft|pay|transfer|send me your half)\b"
+);
 
 pub(super) fn read(text: &str, zone: usize, span: &AskSpan, facts: &AskFacts) -> DocumentReading {
     let has = |regex: &Regex| regex.is_match(text);
@@ -96,13 +101,15 @@ pub(super) fn read(text: &str, zone: usize, span: &AskSpan, facts: &AskFacts) ->
     let dates: Vec<_> = facts
         .dates
         .iter()
-        .filter(|d| d.checked && inside(zone, span, d.zone, &d.span))
+        .filter(|d| inside(zone, span, d.zone, &d.span))
         .collect();
     let has_date = dates
         .first()
         .is_some_and(|first| dates.iter().all(|d| d.at == first.at));
     let required_fields_present = match kind {
-        DocumentKind::Bill => unique_positive && (has_date || has(&NOW)),
+        DocumentKind::Bill => {
+            (unique_positive && (has_date || has(&NOW))) || has(&PERSONAL_PAYMENT)
+        }
         DocumentKind::Statement => unique_positive && has_date && has(&MINIMUM),
         DocumentKind::FailedPayment => status == PaymentStatus::Failed,
         _ => false,

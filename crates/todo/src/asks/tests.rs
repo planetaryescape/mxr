@@ -2,7 +2,7 @@ use super::*;
 use chrono::TimeZone;
 use mxr_core::OwnedAddresses;
 
-fn judge(body: &str, outbound: bool) -> AskAssessment {
+pub(super) fn judge(body: &str, outbound: bool) -> AskAssessment {
     judge_as(body, outbound, RecipientRole::AloneTo, false, false)
 }
 
@@ -81,7 +81,7 @@ fn judge_complete(
     )
 }
 
-fn answers(assessment: &AskAssessment) -> Vec<AskAnswer> {
+pub(super) fn answers(assessment: &AskAssessment) -> Vec<AskAnswer> {
     assessment.units.iter().map(|u| u.answer).collect()
 }
 

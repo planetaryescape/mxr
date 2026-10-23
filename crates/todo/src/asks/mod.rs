@@ -71,6 +71,13 @@ where
                 .map(|v| v.tags.clone())
                 .filter(|first| votes.iter().all(|vote| &vote.tags == first));
             let mut answer = resolve(tags.as_ref(), input.owner_replied_afterwards);
+            if votes.iter().any(|v| v.rule == "authored_rsvp")
+                && tags
+                    .as_ref()
+                    .is_some_and(|t| t.actor == Actor::Owner && t.state == AskState::Pending)
+            {
+                answer = AskAnswer::AsksYou;
+            }
             if answer == AskAnswer::AsksYouToReply && !input.reply_capable {
                 answer = AskAnswer::Nothing;
             }
@@ -100,23 +107,35 @@ where
             });
         }
     }
-    // A subject can name the old pending act while the authored body
-    // cancels or confirms that same kind. Preserve both readings and
-    // abstain on the subject instead of creating an outdated task.
-    let terminal: Vec<_> = units
+    // A subject may summarize the same body obligation. A different explicit
+    // reference remains a distinct action, including when one bill is closed.
+    let body_tags: Vec<_> = units
         .iter()
         .filter(|u| facts.zones[u.zone].kind == ZoneKind::Authored)
-        .filter_map(|u| u.tags.as_ref())
-        .filter(|t| matches!(t.state, AskState::Done | AskState::Cancelled))
-        .map(|t| t.action)
+        .filter_map(|u| u.tags.clone())
         .collect();
     for unit in &mut units {
-        if facts.zones[unit.zone].kind == ZoneKind::Subject
-            && unit
-                .tags
-                .as_ref()
-                .is_some_and(|t| terminal.contains(&t.action) || input.body.is_none())
-        {
+        if facts.zones[unit.zone].kind != ZoneKind::Subject {
+            continue;
+        }
+        let matching = unit.tags.as_ref().is_some_and(|subject| {
+            body_tags.iter().any(|body| {
+                subject.action == body.action
+                    && match (subject.reference, body.reference) {
+                        (Some(a), Some(b)) => {
+                            facts.references[a].value == facts.references[b].value
+                        }
+                        _ => {
+                            body_tags
+                                .iter()
+                                .filter(|t| t.action == subject.action)
+                                .count()
+                                == 1
+                        }
+                    }
+            })
+        });
+        if matching || input.body.is_none() && unit.tags.is_some() {
             unit.tags = None;
             unit.answer = AskAnswer::Nothing;
         }
@@ -162,5 +181,7 @@ fn resolve(tags: Option<&AskTags>, owner_replied: bool) -> AskAnswer {
     }
 }
 
+#[cfg(test)]
+mod semantic_tests;
 #[cfg(test)]
 mod tests;

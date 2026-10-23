@@ -316,7 +316,8 @@ where
             }
         }
         before_commit().await?;
-        let asks = super::ask_assessments::prepare(state, account, &messages, &is_self).await?;
+        let asks =
+            super::ask_assessments::prepare(state, account, &messages, &senders, &is_self).await?;
         if !state
             .store
             .save_assessment_facets(account, &revision, &answers, &asks)

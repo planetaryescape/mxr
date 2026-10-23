@@ -55,12 +55,15 @@ mxr accounts identity ACCOUNT --color amber --tag W --dry-run
 
 ## Colour and tag
 
-Every account has a colour and a tag. Where a list mixes accounts, each row
-shows its account's tag, so you can tell mail apart without opening it. The
-daemon gives an account its colour and its tag when the account is created, and
-keeps both. The tag comes from the account's name: "Work" is `W`, "Planetary
-Escape" is `PE`. If that tag is taken, the name gives more letters or a digit,
-so `Wedding` becomes `WE`. Renaming an account does not change its tag.
+Every account has a colour and a tag, so mixed lists can say which account a
+row came from. Today the tag appears in CLI mail tables (see the `ACCT` column
+below); the web app and the TUI do not draw it yet, and the Raycast extension
+labels rows with the account's config key. The daemon gives an account its
+colour and its tag when the account is created, and keeps both.
+
+The tag comes from the account's name: "Work" is `W`, "Planetary Escape" is
+`PE`. If that tag is taken, the name gives more letters or a digit, so
+`Wedding` becomes `WE`. Renaming an account does not change its tag.
 
 `mxr accounts` lists each account's tag and colour. The JSON output carries
 the same values under `identity`.
@@ -74,21 +77,45 @@ mxr accounts identity work --color amber --tag W --dry-run
 mxr accounts identity work --tag OFF
 ```
 
+```text
+$ mxr accounts identity work --color amber --tag W --dry-run
+Would set identity for account 'work' (before: tag DW, colour amber; after: tag W, colour amber).
+  ok Dry run only; no changes made.
+```
+
 A tag already used by another account is refused, and the error names that
-account. The same values can be set in config; see
+account:
+
+```text
+$ mxr accounts identity work --tag DP --dry-run
+Failed to set identity for account 'work'.
+  error Tag 'DP' is already used by account 'Demo Personal'.
+```
+
+An unknown colour is refused before anything is written, with the list of
+valid slots. The same values can be set in config; see
 [`accounts` in the config reference](/reference/config/#accounts).
 
-Mail tables from `mxr search`, `mxr messages`, `mxr threads` and `mxr now`
-add an `ACCT` column with the tag. The column appears only when you have more
-than one enabled account and the command was not given `--account`. Scripts
-that read JSON or JSONL get `account_id` on each row, as before.
+Mail tables from `mxr search`, `mxr threads`, `mxr messages`, `mxr now`,
+`mxr todo`, `mxr updates` and `mxr reading` show the tag, in an `ACCT` column
+where the table has columns. The tag appears only when you have more than one
+enabled account and the command was not given `--account`. Scripts that read
+JSON or JSONL get `account_id` on each row, as before.
+
+```text
+$ mxr threads --limit 3 --format table
+DP   2026-10-22 22:25  1 msgs (1 unread)  Boiler service at the flat
+DP   2026-10-22 22:05  1 msgs (1 unread)  Okafor Lettings: tenant news for October
+DW   2026-10-22 21:58  2 msgs (0 unread)  Launch checklist for Project Aurora
+```
 
 ## Owned addresses and aliases
 
 An account owns its configured account email plus any aliases you register.
 mxr uses that set to classify mail as inbound vs outbound, and to let you send
-from any of them. The current primary address cannot be removed; promote another
-address with `set-primary` first.
+from any of them. The current primary address cannot be removed; `remove` fails
+with `cannot remove the primary address; set another address as primary first`,
+so promote another address with `set-primary` first.
 
 ```bash
 mxr accounts addresses list --account work
@@ -174,6 +201,39 @@ What you get: `hello@planetaryescape.xyz` marked as primary in the owned-address
 inventory, with the previous primary retained as a non-primary owned address.
 Use an exact owned address with `mxr compose --from <address>` when you need
 that address as the visible From.
+
+## After you change an address
+
+Adding, removing or promoting an address updates the daemon's set of owned
+addresses at once. Reply and forward recipients, thread summaries and
+triage verdicts all read from that set, so they follow the change: a cached
+summary or triage verdict made under the old set is rebuilt the next time it
+is read, and the TUI drops the reply recipients it had prepared. The daemon
+announces the change as an event. Watch for it while you make one:
+
+```bash
+mxr events
+mxr accounts addresses add --account work support@example.com
+```
+
+What you get: `account addresses changed account=<account-id>` in the
+`mxr events` stream. A config reload that changes an account's addresses
+sends the same event.
+
+Sync decides each new message's direction (inbound or outbound) from the owned
+set. If the daemon cannot rebuild that set, it stores new mail with direction
+`Unknown` instead of guessing, and `mxr doctor` warns:
+
+```text
+Account address cache is stale — new sync messages get Unknown direction until it rebuilds
+```
+
+The JSON report has the same signal as `address_cache_stale`. Run `mxr sync`, as
+the finding suggests. Once the set rebuilds, the next sync
+pass reclassifies the `Unknown` rows.
+
+Registering an alias does not change mail that is already stored. Messages you
+sent from the alias before you registered it stay inbound.
 
 ## Selecting an account
 

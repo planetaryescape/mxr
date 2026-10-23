@@ -340,6 +340,7 @@ if the cut changed since.
 |--------|------|---------|
 | `GET` | `/mail/updates` | The digest at the latest cut (`?account=`, `?cut=` RFC3339, `?mark_seen=true`, `?expired=true`) |
 | `POST` | `/mail/updates/let-go` | Let go of the cut, or one source in it (`{account_id?, cut?, source_key?, selection_token?, dry_run}`); returns the line, the threads and the undo `mutation_id` |
+| `GET` | `/mail/codes` | One-time codes from the last day's mail, newest first, each current or expired (`?account=`, `?limit=` default 10, at most 50) |
 | `POST` | `/mail/updates/sources` | Tune a source (`{account_id?, source, setting, dry_run}`, `setting` one of `every_digest`, `changes_only`, `muted`, `breakthrough`); returns the prior setting |
 
 ```bash
@@ -413,7 +414,7 @@ The existing `/mail/actions/unsubscribe-purge` commit retains its clear-mail beh
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/mail/sender?account_id=...&email=...` | Per-sender aggregates plus recent messages from that sender |
-| `GET` | `/mail/contacts/autocomplete?q=...&limit=...` | Prefix-search known senders (filters by email or display name) |
+| `GET` | `/mail/contacts/autocomplete?q=...&limit=...` | Suggest recipients from known inbound senders: `{contacts: [{name, email}]}` for senders whose address or display name contains `q` (case-insensitive), one entry per address, `name` null when no row has one. `limit` defaults to 10 |
 
 The sender response is `SenderProfile { profile }`. When present, `profile`
 includes `recent_messages`: the newest messages from that sender with
@@ -452,9 +453,12 @@ the events stream and refetch the conversation.
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/mail/assistant/availability` | Whether it can run, on which model, and whether conversations leave the machine |
+| `GET` | `/mail/assistant/models` | The models the assistant can be set to, which can be picked now and why not, and the one in use |
+| `POST` | `/mail/assistant/model` | Set the model for every conversation from the next message; refused for a model outside the list, without its key, or off this machine while the cloud setting is off |
 | `GET` | `/mail/assistant/conversations` | Conversations, most recently active first (`?limit=`) |
 | `POST` | `/mail/assistant/conversations` | `{conversation_id?, message, context}`: send a message, starting a conversation without an id |
 | `GET` | `/mail/assistant/conversations/{id}` | The transcript and anything waiting for you |
+| `GET` | `/mail/assistant/conversations/{id}/steps/{call_id}/rows` | Every row one step's stored result lists, up to 500 (`?seq=` is the seq of the assistant message that declared the call) |
 | `POST` | `/mail/assistant/conversations/{id}/decide` | `{decisions: [{call_id, decision: approve \| reject \| answer, ...}]}`; approving runs exactly the stored call |
 | `POST` | `/mail/assistant/conversations/{id}/cancel` | Stop a running turn, or close what is waiting without running it |
 | `POST` | `/mail/assistant/conversations/{id}/auto-approve` | `{enabled}`: let reversible changes run without asking in this conversation |
@@ -702,6 +706,7 @@ per daemon event. The TypeScript shapes are in
 - `ReminderTriggered` — auto-reminder fired
 - `ScheduledSendFlushed` — a `Send Later` draft just went out
 - `IndexBootstrapped` — Tantivy completed a startup repair
+- `AccountAddressesChanged` — an account's owned addresses changed (an alias was added or removed, or the primary moved); drop anything cached from the old set
 - `AssistantUpdated` — an assistant conversation changed; `progress` says
   what a running turn is doing (`thinking`, `calling`, `writing` with the
   reply so far, `summarizing`)

@@ -7,7 +7,7 @@ Measure how well mxr sorts mail: today's classifier against labelled scenarios
 Usage: mxr classify [OPTIONS] <COMMAND>
 
 Commands:
-  eval  Grade the mail already in this mailbox against labelled scenarios: per question (who sent it, which mode it goes to, whether it makes a to-do, whether it makes a record) how often today's rules agree, and every email they get wrong. Read-only and local. Run `mxr demo` first to get mail with labels
+  eval  Grade the mail already in this mailbox against labelled scenarios: how often today's rules agree on who sent it, which mode it goes to and whether it makes a record; for what an email asks of you, precision and recall per kind of ask and how often the amount, due date and counterparty are exactly right; and every email they get wrong. Read-only and local. Run `mxr demo` first to get mail with labels
   help  Print this message or the help of the given subcommand(s)
 
 Options:

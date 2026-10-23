@@ -1,0 +1,81 @@
+{
+  "full": {
+    "all": {
+      "precision": 77.8,
+      "recall": 8.3
+    },
+    "attend": {},
+    "book": {},
+    "contact": {},
+    "fix_payment": {
+      "precision": 100.0,
+      "recall": 50.0
+    },
+    "other": {
+      "recall": 0.0
+    },
+    "pay": {
+      "precision": 66.7,
+      "recall": 8.3
+    },
+    "provide": {},
+    "register": {},
+    "renew_or_cancel": {},
+    "reply": {},
+    "send": {
+      "recall": 0.0
+    },
+    "sign": {
+      "precision": 100.0,
+      "recall": 100.0
+    },
+    "upload": {},
+    "verify": {},
+    "you_promised/send": {
+      "recall": 0.0
+    }
+  },
+  "quick": {
+    "all": {
+      "precision": 90.9,
+      "recall": 55.6
+    },
+    "attend": {
+      "precision": 66.7,
+      "recall": 100.0
+    },
+    "book": {
+      "recall": 0.0
+    },
+    "contact": {},
+    "fix_payment": {
+      "precision": 100.0,
+      "recall": 60.0
+    },
+    "other": {
+      "recall": 0.0
+    },
+    "pay": {
+      "precision": 92.3,
+      "recall": 70.6
+    },
+    "provide": {
+      "recall": 0.0
+    },
+    "register": {},
+    "renew_or_cancel": {},
+    "reply": {},
+    "send": {
+      "recall": 0.0
+    },
+    "sign": {
+      "precision": 100.0,
+      "recall": 75.0
+    },
+    "upload": {},
+    "verify": {},
+    "you_promised/send": {
+      "recall": 0.0
+    }
+  }
+}

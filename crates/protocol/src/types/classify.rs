@@ -19,11 +19,12 @@ pub enum ClassifyEvalSetData {
     Full,
 }
 
-/// Accuracy on one question about an email.
+/// Accuracy on one question about an email. What an email asks of you (to-dos)
+/// is not one of these: it is graded in [`ClassifyEvalAsksData`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ClassifyEvalQuestionData {
-    /// `who`, `home`, `todo` or `record`.
+    /// `who`, `home` or `record`.
     pub question: String,
     /// Labelled emails present in this mailbox and answerable (an email
     /// whose home cannot be worked out is not asked about its home).
@@ -93,7 +94,135 @@ pub struct ClassifyEvalSummaryData {
     pub held_out_questions: Vec<ClassifyEvalQuestionData>,
     /// What `home` reads: the arrivals line's current-policy destination.
     pub home_projection: String,
+    /// What the emails ask of you, graded per kind of ask and per field
+    /// (label schema v2). Absent when nothing was graded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asks: Option<ClassifyEvalAsksData>,
     /// A plain sentence when there is nothing to measure.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+}
+
+/// How many items were expected, found and matched.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ClassifyEvalCountsData {
+    /// Items the labels expect.
+    pub expected: u32,
+    /// Items (to-do rows) the classifier made.
+    pub found: u32,
+    /// Found items that match an expected item by kind and direction.
+    pub true_positives: u32,
+    /// Found items that match no expected item.
+    pub false_positives: u32,
+    /// Expected items nothing matched.
+    pub false_negatives: u32,
+    /// `true_positives / found` as a percentage with one decimal; absent when
+    /// nothing was found, because precision is then undefined.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub precision_percent: Option<f64>,
+    /// `true_positives / expected`; absent when nothing was expected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recall_percent: Option<f64>,
+}
+
+/// Precision and recall for one kind of ask.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ClassifyEvalAskKindData {
+    /// A kind from blueprint 37: `pay`, `fix_payment`, `sign`, `verify`,
+    /// `reply`, `send`, `provide`, `upload`, `book`, `attend`,
+    /// `renew_or_cancel`, `register`, `contact` or `other`.
+    pub kind: String,
+    /// `asks_you` (inbound mail asks) or `you_promised` (your sent mail).
+    pub direction: String,
+    pub counts: ClassifyEvalCountsData,
+}
+
+/// How often one field of a matched item is exactly right.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ClassifyEvalFieldData {
+    /// `amount`, `due` or `counterparty`.
+    pub field: String,
+    /// Matched items: the ones this field is compared on.
+    pub pairs: u32,
+    /// Pairs where the row's field equals the label's, an absent value on
+    /// both sides counting as equal. A due date is exact only when the row's
+    /// day is the day the label names.
+    pub exact: u32,
+    pub exact_percent: f64,
+    /// The label states a value and the row has none.
+    pub missing: u32,
+    /// Both have a value and they differ.
+    pub wrong: u32,
+    /// The label states a value the eval cannot resolve to an exact one, and
+    /// the row has one. Counted apart and never as exact.
+    #[serde(default)]
+    pub present: u32,
+    /// The label states none and the row has one.
+    pub spurious: u32,
+}
+
+/// Twin pairs, where both members must be right on what they ask.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ClassifyEvalTwinsData {
+    /// Pairs with both members present.
+    pub pairs: u32,
+    pub both_right: u32,
+    /// Of those, pairs whose members expect different asks (one asks
+    /// something and the other nothing, or different kinds).
+    pub differing_pairs: u32,
+    pub differing_both_right: u32,
+}
+
+/// The ask results over one slice of the emails.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ClassifyEvalSliceData {
+    /// `sender_kind`, `locale`, `template_family` or `phrasing`.
+    pub dimension: String,
+    /// For example `person`, `en-ZA`, `bill-due`, `held_out`.
+    pub value: String,
+    /// Labelled emails in the slice.
+    pub emails: u32,
+    pub counts: ClassifyEvalCountsData,
+}
+
+/// Whether a reply is owed, graded as its own question.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ClassifyEvalReplyData {
+    /// Emails graded on it.
+    pub emails: u32,
+    /// `expected` emails owe a reply, `found` are marked as needing one.
+    pub counts: ClassifyEvalCountsData,
+    /// What the classifier's answer reads, so the number is not taken for
+    /// more than it is.
+    pub projection: String,
+}
+
+/// What the emails ask of you: to-do rows against the labelled items.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ClassifyEvalAsksData {
+    /// Labelled emails graded on what they ask.
+    pub emails: u32,
+    /// All kinds together.
+    pub total: ClassifyEvalCountsData,
+    /// Per kind of ask. Every kind a person can be asked for is listed (with
+    /// zero counts when nothing was expected or found), then any kind of
+    /// promise that appeared.
+    pub kinds: Vec<ClassifyEvalAskKindData>,
+    /// Exact match per field on matched items.
+    pub fields: Vec<ClassifyEvalFieldData>,
+    /// Matched items with two rows for one expected item.
+    pub duplicates: u32,
+    /// Expected items absorbed into another email's row of the same sender,
+    /// kind and counterparty (two accounts from one sender).
+    pub merges: u32,
+    pub twins: ClassifyEvalTwinsData,
+    pub slices: Vec<ClassifyEvalSliceData>,
+    pub reply_owed: ClassifyEvalReplyData,
 }

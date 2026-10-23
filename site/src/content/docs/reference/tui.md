@@ -61,6 +61,11 @@ Behavior:
 - Explicit right-pane dismissal with `Esc`
 - Press `F` in an open message to fill the main mail area; the sidebar and message list hide. Press `F` again for split view, or `Esc` to return to the list.
 - Bulk selection with confirmation modals
+- An open message shows when it arrived in your local time, never UTC and
+  never a day alone: `Today 14:02 · 2h ago` for today's mail, `Tue 21 Oct
+  14:02` for earlier mail this year, and `Tue 21 Oct 2025 14:02` after that.
+  The same wording heads each message in Messages and Reading. List rows keep
+  the compact form.
 - The sidebar opens **Now**, **Messages**, **To do**, **Updates**, **Reading**,
   **Archive** and **Inbox**. Additional views include Screener, Reply queue,
   Waiting on, Snoozed and Subscriptions.
@@ -100,7 +105,7 @@ or more of one sender's messages. Every sweep shows its preview first; the
 whole-place sweep opens on **Cancel**, so confirming it takes a deliberate
 extra step. Undo reverses every chunk of the last sweep. Mail keys (archive,
 star, trash) act on the message under the cursor. The keys are in the
-[keybindings reference](/reference/keybindings/#reading-and-paper-trail).
+[keybindings reference](/reference/keybindings/#reading).
 
 ## Archive
 

@@ -273,6 +273,7 @@ const COMMAND_EXAMPLES = {
     use: "People you talk with, one row each, with your conversations inside as topics: Your turn, Pinned, Recent and Quiet. `person` shows one person's page with each message's new text; `ack` sends Got it (preview with `--dry-run`); `merge` makes several addresses one person, by hand. See [Messages](/guides/messages/).",
     examples: [
       "mxr messages list --turn mine",
+      "mxr messages list --unread --past-pace",
       "mxr messages --format json | jq -r '.your_turn[] | .title'",
       "mxr messages person samir@launchpad.example",
       "mxr messages ack THREAD_ID --dry-run",
@@ -319,6 +320,23 @@ const COMMAND_EXAMPLES = {
       'mxr keys explain e --context todo',
       'mxr keys check',
       'mxr keys --client web --format json',
+    ],
+  },
+  classify: {
+    use: 'Grade how mxr sorts mail: per question (who sent it, which mode it goes to, whether it makes a to-do, whether it makes a record) how often today\'s rules match labelled scenarios, and every email they get wrong. Read-only. Only the demo mailbox carries labels. See [Measure how well mxr sorts](/guides/email-modes/#measure-how-well-mxr-sorts).',
+    examples: [
+      'mxr demo --no-tui',
+      'mxr classify eval',
+      'mxr classify eval --set full',
+      'mxr classify eval --set full --format json   # every mismatch',
+      'mxr demo stop',
+    ],
+  },
+  'thread-preview': {
+    use: 'Say what up to 100 threads are without reading them: subject, latest sender, date, snippet, message and unread counts and an attachment flag, with no bodies. Unknown thread ids are left out. See [JSON output](/reference/json-output/).',
+    examples: [
+      'mxr thread-preview THREAD_ID_1 THREAD_ID_2 --format json',
+      'mxr thread-preview THREAD_ID_1 THREAD_ID_2 --format csv',
     ],
   },
   modes: {

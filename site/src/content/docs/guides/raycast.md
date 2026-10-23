@@ -111,7 +111,7 @@ replaces the inbox with those results. Search runs through the daemon's
 index with the same query language as `mxr search`, so `from:`, `to:`,
 `subject:`, `is:unread`, `has:attachment`, `after:` and quoted phrases all
 work; see [Search](/guides/search/). `from:` takes a whole address
-(`from:support@corsair.zendesk.com`), not part of one; plain words match
+(`from:support@example.com`), not part of one; plain words match
 sender names.
 
 ## Every change is previewed

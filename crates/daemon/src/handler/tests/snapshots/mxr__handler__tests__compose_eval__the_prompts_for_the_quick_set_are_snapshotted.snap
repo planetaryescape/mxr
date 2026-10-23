@@ -943,7 +943,7 @@ Happy to take a look Monday.
 Avoid AI-writing patterns: no delve/tapestry/testament/underscore/moreover/additionally; no em dashes; no not-just-but framing; no comma + -ing tail clauses; no serves as/stands as/boasts; no filler phrases; no sycophantic openers; no knowledge-cutoff disclaimers; no curly quotes, emoji headings, or generic positive conclusions. Vary sentence rhythm. Use I when natural. Don't sound like a press release.
 
 [TASK]
-Rewrite only the part of my draft inside [EDIT ONLY THIS]; it is a piece of the text in [MY DRAFT SO FAR]. My instruction: make the selected sentence warmer Return the whole draft with everything outside that part exactly as it is, word for word.
+Rewrite only the part of my draft inside [EDIT ONLY THIS]; it is a piece of the text in [MY DRAFT SO FAR]. My instruction: make the selected sentence warmer. Return the whole draft with everything outside that part exactly as it is, word for word.
 
 == warmer-empty · near miss of warmer-selection · nothing typed · instruction "thank her for sending it, warm, I'll read it properly Monday" · max_tokens 600
 [ABOUT ME]
@@ -1061,7 +1061,7 @@ I've moved two other things so I can make it properly.
 Avoid AI-writing patterns: no delve/tapestry/testament/underscore/moreover/additionally; no em dashes; no not-just-but framing; no comma + -ing tail clauses; no serves as/stands as/boasts; no filler phrases; no sycophantic openers; no knowledge-cutoff disclaimers; no curly quotes, emoji headings, or generic positive conclusions. Vary sentence rhythm. Use I when natural. Don't sound like a press release.
 
 [TASK]
-Rewrite only the part of my draft inside [EDIT ONLY THIS]; it is a piece of the text in [MY DRAFT SO FAR]. My instruction: shorter Return the whole draft with everything outside that part exactly as it is, word for word.
+Rewrite only the part of my draft inside [EDIT ONLY THIS]; it is a piece of the text in [MY DRAFT SO FAR]. My instruction: shorter. Return the whole draft with everything outside that part exactly as it is, word for word.
 
 == shorter-empty · near miss of shorter-selection · nothing typed · instruction "shorter: yes, still on for the 3pm tomorrow" · max_tokens 600
 [ABOUT ME]
@@ -1510,7 +1510,7 @@ Monday at 10am works.
 Avoid AI-writing patterns: no delve/tapestry/testament/underscore/moreover/additionally; no em dashes; no not-just-but framing; no comma + -ing tail clauses; no serves as/stands as/boasts; no filler phrases; no sycophantic openers; no knowledge-cutoff disclaimers; no curly quotes, emoji headings, or generic positive conclusions. Vary sentence rhythm. Use I when natural. Don't sound like a press release.
 
 [TASK]
-Finish my reply to the TARGET message. My draft so far is in [MY DRAFT SO FAR]: keep every point and every sentence of it, word for word. Change a sentence only to fix a typo or to join it to a sentence you add. Add only what the email still needs: a greeting and a sign-off the way my examples have them, an answer to each question in the TARGET that my draft doesn't cover, and a closing line if I'd write one. Don't add points I didn't make; use [[?: ...]] for anything only I can decide. Match the tone of my examples with this person. Aim for about 24 words in all. Return the whole email body, my sentences included. My instruction: I'll have counsel's note by then
+Finish my reply to the TARGET message. My draft so far is in [MY DRAFT SO FAR]: keep every point and every sentence of it, word for word. Change a sentence only to fix a typo or to join it to a sentence you add. Add only what the email still needs: a greeting and a sign-off the way my examples have them, an answer to each question in the TARGET that my draft doesn't cover, and a closing line if I'd write one. Don't add points I didn't make; use [[?: ...]] for anything only I can decide. Match the tone of my examples with this person. Aim for about 24 words in all. Return the whole email body, my sentences included. My instruction: I'll have counsel's note by then.
 
 == clause-long-thread-empty · near miss of clause-long-thread · nothing typed · instruction "Monday at 10am works, I'll have counsel's note by then" · max_tokens 600
 [ABOUT ME]

@@ -691,7 +691,8 @@ mxr accounts addresses add --account <account> <email> --dry-run   # also valid 
 
 Add and remove reclassify the account's stored mail against the new owned set
 in the same command. A message is sent when its From is owned or the provider
-filed it as sent (Gmail's SENT label, IMAP's Sent folder). Arrival history is not rewritten. Each prints the counts as `to_outbound` (inbound mail that now reads as
+marks it as sent (Gmail's SENT label, or an English Sent folder over IMAP).
+Arrival history is not rewritten. Each prints the counts as `to_outbound` (inbound mail that now reads as
 sent) and `to_inbound` (sent mail that now reads as received); `--format json`
 returns them with a `dry_run` field. `add` and `remove` take `--dry-run`, which
 reports the same counts and changes nothing. Set-primary has no dry run. It

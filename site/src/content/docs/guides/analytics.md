@@ -21,9 +21,9 @@ upgrade, three commands prime the pipeline:
 ```bash
 # 1. Tell mxr which addresses are *yours* — direction inference depends
 #    on this. mxr classifies inbound vs outbound by comparing `from_email`
-#    against this set, and treats mail the provider filed as sent (Gmail's
-#    SENT label, IMAP's Sent folder) as outbound even when its sender is not
-#    in the set.
+#    against this set, and treats mail the provider marks as sent (Gmail's
+#    SENT label, or an English Sent folder over IMAP) as outbound even when
+#    its sender is not in the set.
 mxr accounts addresses add you@example.com --primary
 mxr accounts addresses add aliased@you-own.com   # repeat for each alias
 

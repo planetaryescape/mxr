@@ -98,11 +98,14 @@ pub enum MessageDirection {
 }
 
 impl MessageDirection {
-    /// The rule every direction decision follows. A message is outbound when
-    /// its From is an owned address, or when the provider filed it as sent.
-    /// Gmail send-as aliases are often not registered in mxr, yet Gmail still
-    /// labels that mail SENT. IMAP sets SENT from the Sent folder, so both
-    /// providers reach this through the same flag.
+    /// The direction rule. A message is outbound when its From is an owned
+    /// address, or when the provider set `MessageFlags::SENT`. Gmail send-as
+    /// aliases are often not registered in mxr, yet Gmail still labels that
+    /// mail SENT. IMAP sets SENT from Gmail's labels and from an English
+    /// leaf-folder name (`Sent`, `Sent Items`, `Sent Mail`, `Sent Messages`).
+    /// It does not carry the `\Sent` special-use attribute into the flag, so a
+    /// localised Sent folder does not set it. Screening does not use this rule:
+    /// it follows owned addresses only.
     pub fn for_message(from_owned: bool, flags: MessageFlags) -> Self {
         if from_owned || flags.contains(MessageFlags::SENT) {
             Self::Outbound

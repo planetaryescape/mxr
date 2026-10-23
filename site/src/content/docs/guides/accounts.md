@@ -114,10 +114,15 @@ DW   2026-10-22 21:58  2 msgs (0 unread)  Launch checklist for Project Aurora
 An account owns its configured account email plus any aliases you register.
 mxr uses that set, together with the provider's sent mark, to classify mail as
 inbound vs outbound, and to let you send from any of them. Mail is outbound when
-its From is one of your owned addresses, or when Gmail or IMAP filed it as
-sent. Gmail's SENT label and the IMAP Sent folder both count, so mail you send
-from a Gmail send-as address counts as sent even if you have not added that
-address as an alias. The current primary address cannot be removed; `remove` fails
+its From is one of your owned addresses, or when the provider marks it as sent.
+Gmail's SENT label marks mail sent from a Gmail send-as address, so that mail
+counts as sent even if you have not added the address as an alias. Over IMAP, mxr
+marks mail as sent from Gmail's labels and from a folder named in English, such
+as `Sent`, `Sent Items`, `Sent Mail` or `Sent Messages`. A localised Sent folder
+does not count yet, because mxr does not read the folder's special-use
+attribute. Screening still follows owned addresses only: a message from a
+screened sender is screened unless its From is one of your addresses, whatever
+the sent mark says. The current primary address cannot be removed; `remove` fails
 with `cannot remove the primary address; set another address as primary first`,
 so promote another address with `set-primary` first.
 

@@ -286,6 +286,12 @@ pub(crate) async fn serve_client_connection<S>(
                         {
                             can_send = false;
                             accept_requests = false;
+                            // `continue` would skip the exit check below, and
+                            // with nothing left to wait for the connection
+                            // would sit here until the daemon shuts down.
+                            if request_tasks.is_empty() {
+                                break;
+                            }
                             continue;
                         }
                         match send_frame(&mut sink, response).await {
@@ -528,20 +534,45 @@ async fn flush_queued_events<W>(
 where
     W: tokio::io::AsyncWrite + Unpin,
 {
-    // Only what was queued when the response was ready: a busy sync keeps
-    // emitting, and draining until empty could hold the response back.
-    for _ in 0..event_rx.len() {
-        let delivered = match event_rx.try_recv() {
-            Ok(event_msg) => forward_event(sink, state, event_profile, event_msg).await,
+    flush_queued_events_up_to(
+        sink,
+        state,
+        event_profile,
+        event_rx,
+        crate::state::EVENT_CHANNEL_CAPACITY,
+    )
+    .await
+}
+
+/// [`flush_queued_events`] with its bound spelled out. The bound is what was
+/// queued when the response was ready: a busy sync keeps emitting, and draining
+/// until empty could hold the response back. `len()` counts the positions a
+/// lagging receiver has missed as well as the ones it can still read, so it is
+/// capped at the channel's capacity, the most a receiver can hold. A lagged
+/// receiver gets the resync signal once and the flush stops there.
+async fn flush_queued_events_up_to<W>(
+    sink: &mut FramedWrite<W, IpcCodec>,
+    state: &AppState,
+    event_profile: Option<&'static str>,
+    event_rx: &mut broadcast::Receiver<IpcMessage>,
+    capacity: usize,
+) -> bool
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    for _ in 0..event_rx.len().min(capacity) {
+        match event_rx.try_recv() {
+            Ok(event_msg) => {
+                if !forward_event(sink, state, event_profile, event_msg).await {
+                    return false;
+                }
+            }
             Err(broadcast::error::TryRecvError::Lagged(skipped)) => {
-                signal_lagged(sink, event_profile, skipped).await
+                return signal_lagged(sink, event_profile, skipped).await;
             }
             Err(broadcast::error::TryRecvError::Empty | broadcast::error::TryRecvError::Closed) => {
-                return true
+                return true;
             }
-        };
-        if !delivered {
-            return false;
         }
     }
     true

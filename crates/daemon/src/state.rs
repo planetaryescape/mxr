@@ -506,6 +506,10 @@ pub(crate) struct WrappedCacheKey {
 /// current data.
 pub(crate) const WRAPPED_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 
+/// How many events the daemon's broadcast channel holds for a slow client
+/// before it drops the oldest and tells that client to resync.
+pub(crate) const EVENT_CHANNEL_CAPACITY: usize = 256;
+
 pub struct AppState {
     pub(crate) restore_pending: std::sync::atomic::AtomicBool,
     pub store: Arc<Store>,
@@ -869,7 +873,7 @@ impl AppState {
                 HashSet::new()
             }
         };
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
@@ -2319,7 +2323,7 @@ impl AppState {
             send_providers.insert(account_id.clone(), send_provider.clone());
         }
 
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
@@ -2415,7 +2419,7 @@ impl AppState {
             ContactsRefreshHandle::start(store.clone(), background_db.clone());
         runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
@@ -2536,7 +2540,7 @@ impl AppState {
         providers.insert(account_id.clone(), provider.clone());
         send_providers.insert(account_id, fake.clone() as Arc<dyn MailSendProvider>);
 
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));

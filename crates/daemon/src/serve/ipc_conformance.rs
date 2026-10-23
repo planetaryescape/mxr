@@ -1942,3 +1942,159 @@ mod scoped_events {
         finish(&state, served).await;
     }
 }
+
+/// What goes out ahead of a response (`flush_queued_events`) and what happens
+/// when that goes wrong.
+mod queued_events {
+    use super::super::flush_queued_events_up_to;
+    use super::*;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+    use tokio::io::{DuplexStream, ReadBuf};
+    use tokio::sync::broadcast;
+    use tokio_util::codec::FramedWrite;
+
+    /// Frames one flush wrote, read back from the other end of a duplex pipe.
+    async fn flushed(
+        sender_capacity: usize,
+        queued: usize,
+        limit: usize,
+    ) -> (bool, Vec<IpcMessage>) {
+        let state = AppState::in_memory().await.unwrap();
+        let (tx, mut rx) = broadcast::channel::<IpcMessage>(sender_capacity);
+        for _ in 0..queued {
+            tx.send(daemon_event(sample_event())).unwrap();
+        }
+        let (server, client) = tokio::io::duplex(1 << 20);
+        let mut sink = FramedWrite::new(server, IpcCodec::new());
+        let ok = flush_queued_events_up_to(&mut sink, &state, None, &mut rx, limit).await;
+        drop(sink);
+        let mut reader = Framed::new(client, IpcCodec::new());
+        let mut frames = Vec::new();
+        while let Some(frame) = reader.next().await {
+            frames.push(frame.unwrap());
+        }
+        (ok, frames)
+    }
+
+    fn is_lagged(frame: &IpcMessage) -> bool {
+        matches!(
+            frame.payload,
+            IpcPayload::Event(DaemonEvent::EventsLagged { .. })
+        )
+    }
+
+    #[tokio::test]
+    async fn the_flush_sends_what_was_queued_and_no_more_than_its_bound() {
+        let (ok, frames) = flushed(16, 3, 256).await;
+        assert!(ok);
+        assert_eq!(frames.len(), 3);
+        let (ok, frames) = flushed(16, 5, 2).await;
+        assert!(ok);
+        assert_eq!(frames.len(), 2, "the bound holds even with more queued");
+    }
+
+    #[tokio::test]
+    async fn a_lagged_receiver_gets_one_resync_signal_and_the_flush_stops() {
+        // Ten positions in a channel that holds four: `len()` says ten.
+        let (ok, frames) = flushed(4, 10, 256).await;
+        assert!(ok);
+        assert_eq!(frames.len(), 1, "{frames:?}");
+        assert!(is_lagged(&frames[0]));
+    }
+
+    /// A stream whose writes always fail, as a client that has gone away.
+    struct FailingWrites(DuplexStream);
+
+    impl AsyncRead for FailingWrites {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.0).poll_read(cx, buf)
+        }
+    }
+
+    impl AsyncWrite for FailingWrites {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+            _: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Poll::Ready(Err(std::io::ErrorKind::BrokenPipe.into()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    /// The flush before the last response fails: nothing is left to wait for,
+    /// so the connection ends instead of sitting until the daemon shuts down.
+    #[tokio::test]
+    async fn a_failed_flush_before_the_last_response_ends_the_connection() {
+        use mxr_llm::{
+            CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider,
+        };
+
+        struct InstantLlm;
+
+        #[async_trait]
+        impl LlmProvider for InstantLlm {
+            async fn complete(&self, _: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+                Ok(CompletionResponse {
+                    content: "Hi,\n\nSounds good.\n\nAlex".into(),
+                    model: "instant".into(),
+                    finish_reason: Some("stop".into()),
+                })
+            }
+
+            fn capabilities(&self) -> LlmCapabilities {
+                LlmCapabilities {
+                    context_window: 8192,
+                    supports_streaming: false,
+                }
+            }
+
+            fn model_name(&self) -> &str {
+                "instant"
+            }
+        }
+
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        state.llm.replace(Arc::new(InstantLlm));
+        let (hot, bulk) = lanes();
+        let (server_io, client_io) = tokio::io::duplex(1 << 20);
+        let event_rx = state.event_tx.subscribe();
+        let shutdown_rx = state.shutdown_receiver();
+        let server = tokio::spawn(serve_client_connection(
+            FailingWrites(server_io),
+            state.clone(),
+            hot,
+            bulk,
+            PeerInfo::local(),
+            None,
+            event_rx,
+            shutdown_rx,
+        ));
+        // The client stays connected and listening: only the daemon's writes
+        // fail. The quick run queues its progress events and finishes without
+        // yielding, so the flush is the first write the daemon attempts.
+        let mut client = Framed::new(client_io, IpcCodec::new());
+        client
+            .send(request(1, Request::DraftEvalQuick))
+            .await
+            .unwrap();
+        tokio::time::timeout(RECV_TIMEOUT, server)
+            .await
+            .expect("the connection ends once its last request is done")
+            .unwrap();
+        drop(client);
+        state.shutdown_runtime_tasks(JOIN_TIMEOUT).await;
+    }
+}

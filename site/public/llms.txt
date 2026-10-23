@@ -9,7 +9,8 @@
 
 ## Getting started
 
-- [Quick start](https://mxr.sh/getting-started/quick-start.md): install → first email in five minutes
+- [Quick start](https://mxr.sh/getting-started/quick-start.md): inspect synthetic mail locally, choose a client, then connect your own account
+- [Use mxr with an existing agent](https://mxr.sh/getting-started/agent-quick-start.md): local Codex MCP or CLI skill, synthetic mail, shared draft review
 - [Installation](https://mxr.sh/getting-started/install.md): Homebrew, cargo, or pre-built binaries
 - [Gmail setup](https://mxr.sh/getting-started/gmail-setup.md): OAuth flow plus SSH-friendly fallbacks
 - [IMAP / SMTP setup](https://mxr.sh/getting-started/imap-smtp-setup.md): Fastmail, Migadu, ProtonMail Bridge, Outlook, Yahoo, self-hosted
@@ -49,7 +50,7 @@
 ## Agents and automation
 
 - [For agents](https://mxr.sh/guides/for-agents.md): drive mxr through the CLI or first-party MCP; includes safety and authority boundaries
-- [Agent skill](https://mxr.sh/guides/agent-skill.md): install paths for Claude Code, Cursor, Continue, Aider, generic LLM
+- [Agent skill](https://mxr.sh/guides/agent-skill.md): install paths for Codex, Claude Code, Cursor, Continue, Aider, and custom prompts
 - [Automation contract](https://mxr.sh/guides/automation-contract.md): which commands return JSON, which support `--dry-run`, which accept piped IDs
 
 ## Concepts

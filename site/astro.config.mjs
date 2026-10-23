@@ -55,6 +55,7 @@ export default defineConfig({
           items: [
             { label: 'Installation', slug: 'getting-started/install' },
             { label: 'Quick Start', slug: 'getting-started/quick-start' },
+            { label: 'Use mxr with an Existing Agent', slug: 'getting-started/agent-quick-start' },
             { label: 'Examples', slug: 'examples' },
             { label: 'Video Gallery', slug: 'videos' },
             { label: 'Gmail Setup', slug: 'getting-started/gmail-setup' },

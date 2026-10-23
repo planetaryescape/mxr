@@ -1,30 +1,43 @@
 ---
 title: Why mxr
-description: Decide whether mxr fits your email workflow.
+description: Compare an agent connector with a local mail runtime for synced history.
 ---
 
-Use mxr when you want your whole mail history on your own machine, with
-one local runtime behind the TUI, CLI, web app, scripts and agents, and a
-mail client that sorts what needs you from what merely arrived.
+mxr is a local mail runtime for you and your agents. A Gmail connector gives
+an agent access to Gmail; mxr syncs mail from connected accounts into a
+local mailbox that you, your scripts, and your agents can use through common
+mail operations. A person and an agent using the same local daemon work with the
+same mailbox state, while client paths can expose different operations and
+authority. A client built on the daemon can reuse its existing sync, search,
+mail operations, and applicable policy checks instead of reimplementing
+those paths.
+
+The provider remains part of the system: mxr syncs new mail and sends or
+applies provider-backed changes through it. Synced messages and locally
+cached content can be read from this machine; sync, sending, uncached
+attachments, remote articles, and configured model endpoints may use the
+network. Initial sync can take time. The demo uses isolated synthetic mail.
+
+After [installing mxr](/getting-started/install/), try it with synthetic mail:
 
 ```bash
 mxr demo
-mxr desk
-mxr search "is:unread" --format json
-mxr web
+mxr subscriptions --rank --format json
 ```
 
-What you get: an isolated demo inbox, the desk's list of replies you owe
-and promises due, a machine-readable search result, and the browser UI
-served by the local bridge.
+The result is a limited candidate set. By default the query returns up to
+200 candidates; `--rank` sorts those results using the current READ flags.
+`opened_count` is the number currently marked READ, not a count of tracked
+opens.
 
 ## mxr keeps your mail local and works it by what you do with it
 
 mxr is a local mail runtime. It syncs provider mail into SQLite, indexes
-it locally, and exposes the same daemon-backed state through human and
-machine interfaces. Because the whole history is on your disk, search,
-analytics and an agent's questions run against it without a provider
-round trip.
+synced messages locally, and exposes daemon-backed state through human and
+machine interfaces. Local search and cached-mail reads do not need a
+provider request; sync, sending, provider-backed changes, uncached
+attachments, remote articles, and configured model endpoints can still use
+the network.
 
 On top of that store, mxr treats email as five jobs: conversations with
 people, things to do, updates to glance at, reading you chose, and records

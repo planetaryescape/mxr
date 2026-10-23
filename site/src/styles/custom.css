@@ -368,6 +368,50 @@ body {
 
 /* Provider support sits in the main hero reading path. Three unboxed rows
    separate sync, send, and extension support without another feature list. */
+.home-runtime {
+  max-width: 76rem;
+  margin: 0 auto clamp(1.25rem, 2vw, 2rem);
+  padding: 0 clamp(1.25rem, 4vw, 4rem);
+}
+
+.home-runtime-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.9rem;
+  border-block: 1px solid var(--rule);
+  padding-block: 0.9rem;
+}
+
+.home-runtime-flow div { display: grid; gap: 0.18rem; }
+.home-runtime-flow div span {
+  color: var(--paper-mute);
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.67rem;
+  letter-spacing: 0.04em;
+}
+.home-runtime-flow strong {
+  color: var(--paper);
+  font-size: clamp(0.8rem, 1.1vw, 0.95rem);
+  font-variation-settings: var(--rec-body-em);
+  font-weight: normal;
+}
+.home-runtime-arrow { color: var(--signal); font-family: var(--font-mono); }
+.home-runtime > p {
+  max-width: 68rem;
+  margin: 0.75rem 0 0;
+  color: var(--paper-soft);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+@media (max-width: 640px) {
+  .home-runtime { margin-top: 1.25rem; }
+  .home-runtime-flow { grid-template-columns: 1fr; gap: 0.55rem; }
+  .home-runtime-arrow { transform: rotate(90deg); justify-self: start; }
+}
+
 .hero-providers {
   max-width: 84rem;
   margin: clamp(-1.5rem, -2vw, -0.5rem) auto clamp(1rem, 2vw, 1.5rem);
@@ -1827,7 +1871,7 @@ body {
 @media (min-width: 1100px) {
   main:has(.hero-cast) .content-panel > .sl-container {
     display: grid;
-    grid-template-columns: minmax(20rem, 0.78fr) minmax(36rem, 1.22fr);
+    grid-template-columns: minmax(20rem, 0.95fr) minmax(32rem, 1.05fr);
     grid-template-rows: auto auto auto;
     column-gap: clamp(2.5rem, 5vw, 5.5rem);
     max-width: 92rem;
@@ -1853,29 +1897,29 @@ body {
   }
 
   main:has(.hero-cast) .hero h1 {
-    max-width: 10ch;
-    font-size: clamp(3.4rem, 4.6vw, 5.25rem);
+    max-width: none;
+    font-size: clamp(3rem, 4vw, 4rem);
   }
 
   main:has(.hero-cast) .hero .tagline {
-    max-width: 43ch;
+    max-width: 50ch;
   }
 
   main:has(.hero-cast) .hero-providers {
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 3;
     align-self: start;
     max-width: none;
-    margin: clamp(1.25rem, 2.5vw, 2rem) 0 0;
+    margin: 1rem 0 0;
     padding: 0.75rem 0 0;
   }
 
   main:has(.hero-cast) .hero-install {
     grid-column: 1;
-    grid-row: 3;
+    grid-row: 2;
     align-self: start;
     max-width: none;
-    margin: clamp(1.25rem, 2.5vw, 2rem) 0 0;
+    margin: 1rem 0 0;
     padding: 0;
   }
 
@@ -1886,6 +1930,14 @@ body {
   main:has(.hero-cast) .hero-install-alt {
     width: 100%;
     padding-left: 1.8rem;
+  }
+
+  main:has(.hero-cast) .home-runtime {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    max-width: none;
+    width: 100%;
+    padding-inline: 0;
   }
 
   main:has(.hero-cast) .hero-cast {

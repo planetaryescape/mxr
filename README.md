@@ -3,16 +3,15 @@
 [![CI](https://github.com/planetaryescape/mxr/actions/workflows/ci.yml/badge.svg)](https://github.com/planetaryescape/mxr/actions/workflows/ci.yml)
 [![MSRV](https://img.shields.io/badge/rust-1.94%2B-blue.svg)](https://github.com/planetaryescape/mxr/blob/main/Cargo.toml)
 
-**Your email, on your computer, usable from the terminal or your agent.**
+**A local mail runtime for you and your agents.**
 
-mxr syncs Gmail, Outlook, Microsoft 365, and IMAP accounts into one local
-mailbox. It keeps your message history in SQLite, builds a local search index,
-and exposes the same mail controls through a TUI, a pipeable CLI, a web app,
-MCP, and an agent skill. Attachment names, types, and sizes are local; mxr
-downloads attachment contents when you open them, except the PDFs of the
-receipts, orders and bills it files as records, which it fetches ahead of
-time within a 512 MB budget (`records.pdf_prefetch`). Send through Gmail,
-Outlook, or any SMTP server.
+mxr syncs mail from connected Gmail, Outlook, Microsoft 365, and IMAP accounts
+into a local mailbox. People, scripts, and agents can use its common mail
+operations against the same daemon-backed state when they share a local
+runtime. New clients can build on existing sync, search, mail operations, and
+applicable policy checks. Provider sync, sending, and provider-backed changes
+still use the remote mail service; attachments are local after download, and
+configured model endpoints may use the network.
 
 Start on Now for people waiting on you and tasks due soon. Open Messages to
 reply, To do to act on a deadline, Updates to check what changed, Reading for

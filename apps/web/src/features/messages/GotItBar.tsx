@@ -18,7 +18,9 @@ export function GotItBar({ pending, onUndo }: { pending: PendingAck; onUndo: () 
   }, []);
   const total = pending.plan.countdown_seconds * 1000;
   const left = Math.max(0, pending.endsAt - now);
-  const to = pending.plan.to.map((address) => address.name ?? address.email).join(", ");
+  const to = pending.plan.to
+    .map((address) => (address.name ? `${address.name} <${address.email}>` : address.email))
+    .join(", ");
   return (
     <section
       aria-label="Got it, about to send"
@@ -26,9 +28,14 @@ export function GotItBar({ pending, onUndo }: { pending: PendingAck; onUndo: () 
       className="mx-4 mb-3 rounded-none border border-primary/50 bg-surface px-4 py-3"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          Got it to <span className="text-foreground">{to}</span>
-        </p>
+        <div className="min-w-0 text-xs text-muted-foreground">
+          <p>
+            Got it to <span className="break-words text-foreground">{to || "No recipient"}</span>
+          </p>
+          <p className="mt-0.5">
+            From <span className="break-words text-foreground">{pending.plan.from}</span>
+          </p>
+        </div>
         <p
           data-testid="got-it-countdown"
           role="timer"

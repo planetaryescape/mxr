@@ -40,10 +40,11 @@ export function ConversationView({
           {conversation.earlier_count} earlier messages
         </li>
       ) : null}
-      {conversation.messages.map((message) => (
+      {conversation.messages.map((message, index) => (
         <MessageItem
           key={`${conversation.thread_id}:${message.message_id}`}
           message={message}
+          latest={index === conversation.messages.length - 1}
           threadId={conversation.thread_id}
           asSent={asSent === message.message_id}
           disclosuresEnabled={disclosuresEnabled}
@@ -61,25 +62,29 @@ function who(message: ConversationMessage): string {
 
 function MessageItem({
   message,
+  latest,
   threadId,
   asSent,
   disclosuresEnabled,
   onToggleAsSent,
 }: {
   message: ConversationMessage;
+  latest: boolean;
   threadId: string;
   asSent: boolean;
   disclosuresEnabled: boolean;
   onToggleAsSent: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
   const bodyId = useId();
   const { lead, hidden } = letterLead(message);
+  const expanded = expandedOverride ?? latest;
   const shown = expanded || hidden === 0 ? message.text : lead;
   const mine = message.from_me;
   return (
     <li
       data-testid="conversation-message"
+      data-latest={latest ? "true" : undefined}
       data-layout={message.layout}
       data-from-me={mine ? "true" : "false"}
       className="flex flex-col items-start border-t border-rule-soft py-4 first:border-t-0"
@@ -158,7 +163,7 @@ function MessageItem({
             type="button"
             aria-controls={bodyId}
             aria-expanded={expanded}
-            onClick={() => setExpanded((open) => !open)}
+            onClick={() => setExpandedOverride(!expanded)}
             className="hover:text-text-1 hover:underline"
           >
             {expanded ? "Show less" : `Read all ${message.paragraphs} paragraphs`}

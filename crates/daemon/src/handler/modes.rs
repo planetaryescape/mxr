@@ -413,7 +413,13 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
             > 32,
         asks: thread
             .iter()
-            .filter_map(|m| inputs.senders.asks.get(&m.id).map(|a| a.summary()))
+            .filter_map(|m| {
+                inputs
+                    .senders
+                    .asks
+                    .get(&m.id)
+                    .map(mxr_core::asks::AskAssessment::summary)
+            })
             .take(32)
             .collect(),
         asks_pending: thread

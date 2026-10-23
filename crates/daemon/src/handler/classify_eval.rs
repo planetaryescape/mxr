@@ -459,10 +459,6 @@ pub(super) async fn classify_eval(
     })
 }
 
-/// Each email's mail kind and the reason for it, over the sender signals
-/// placement reads: the thread, the sender's history, your choices. Also
-/// whether the desk reads it as asking for a reply.
-
 #[cfg(test)]
 mod tests {
     use super::*;

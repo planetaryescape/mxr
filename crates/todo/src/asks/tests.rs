@@ -68,7 +68,9 @@ fn judge_complete(
             owner_names: &["Owner".into()],
             owner_addresses: &["owner@example.com".into(), "alias@example.com".into()],
             is_owner: &matcher,
-            sent: Utc.with_ymd_and_hms(2026, 10, 23, 23, 50, 0).unwrap(),
+            sent: Utc
+                .with_ymd_and_hms(2026, 10, 23, 23, 50, 0)
+                .expect("resolved asks fixture"),
             predecessor: None,
             owner_replied_afterwards: replied,
             reply_capable: true,
@@ -192,12 +194,23 @@ fn separate_actions_have_separate_exact_quotes() {
     let result = judge(body, false);
     assert_eq!(answers(&result), [AskAnswer::AsksYou, AskAnswer::AsksYou]);
     assert_eq!(
-        result.units[0].tags.as_ref().unwrap().action,
+        result.units[0]
+            .tags
+            .as_ref()
+            .expect("resolved asks fixture")
+            .action,
         ActionKind::Sign
     );
-    assert_eq!(result.units[1].tags.as_ref().unwrap().reference, Some(0));
+    assert_eq!(
+        result.units[1]
+            .tags
+            .as_ref()
+            .expect("resolved asks fixture")
+            .reference,
+        Some(0)
+    );
     for unit in &result.units {
-        assert!(body.contains(result.quote(unit).unwrap()));
+        assert!(body.contains(result.quote(unit).expect("resolved asks fixture")));
     }
 }
 
@@ -339,7 +352,7 @@ fn authored_delegation_is_evidence_and_the_forward_stays_context() {
         .zones
         .iter()
         .find(|z| z.kind == ZoneKind::Forwarded && z.text.contains("Please pay"))
-        .unwrap();
+        .expect("resolved asks fixture");
     assert_eq!(forwarded.author.as_deref(), Some("other@example.com"));
 }
 
@@ -354,7 +367,7 @@ fn sign_and_pay_in_one_sentence_are_independent_units() {
         result
             .units
             .iter()
-            .map(|u| u.tags.as_ref().unwrap().action)
+            .map(|u| u.tags.as_ref().expect("resolved asks fixture").action)
             .collect::<Vec<_>>(),
         [ActionKind::Sign, ActionKind::Pay]
     );
@@ -367,7 +380,10 @@ fn a_multiline_document_keeps_required_fields_together() {
         false,
     );
     assert_eq!(answers(&result), [AskAnswer::AsksYou, AskAnswer::Nothing]);
-    let tags = result.units[0].tags.as_ref().unwrap();
+    let tags = result.units[0]
+        .tags
+        .as_ref()
+        .expect("resolved asks fixture");
     assert_eq!(tags.amount, Some(0));
     assert_eq!(tags.due, Some(0));
 }
@@ -383,7 +399,11 @@ fn a_task_question_is_an_action_and_an_unsupported_task_is_not_a_reply_guess() {
     let result = judge("Could you review the launch plan?", false);
     assert_eq!(answers(&result), [AskAnswer::AsksYou]);
     assert_eq!(
-        result.units[0].tags.as_ref().unwrap().action,
+        result.units[0]
+            .tags
+            .as_ref()
+            .expect("resolved asks fixture")
+            .action,
         ActionKind::Other
     );
     assert_eq!(
@@ -437,7 +457,7 @@ fn signature_footer_and_forward_authors_do_not_become_asks() {
             .zones
             .iter()
             .find(|z| z.kind == ZoneKind::Quoted)
-            .unwrap()
+            .expect("resolved asks fixture")
             .author
             .as_deref(),
         Some("other@example.com")
@@ -496,7 +516,13 @@ fn summary_bounds_text_without_altering_source_evidence() {
     let summary = result.summary();
     assert_eq!(summary.units.len(), 1);
     assert!(summary.units[0].quote.is_none());
-    assert!(result.quote(&result.units[0]).unwrap().len() > 4096);
+    assert!(
+        result
+            .quote(&result.units[0])
+            .expect("resolved asks fixture")
+            .len()
+            > 4096
+    );
 }
 
 #[test]
@@ -506,15 +532,21 @@ fn reference_headers_bind_following_payment_units_without_crossing_paragraphs() 
         .units
         .iter()
         .find(|u| u.tags.as_ref().is_some_and(|t| t.action == ActionKind::Pay))
-        .unwrap();
-    assert_eq!(pay.tags.as_ref().unwrap().reference, Some(0));
+        .expect("resolved asks fixture");
+    assert_eq!(
+        pay.tags.as_ref().expect("resolved asks fixture").reference,
+        Some(0)
+    );
     let separate = judge("Invoice number A100.\n\nAmount due £42 by tomorrow.", false);
     let pay = separate
         .units
         .iter()
         .find(|u| u.tags.as_ref().is_some_and(|t| t.action == ActionKind::Pay))
-        .unwrap();
-    assert_eq!(pay.tags.as_ref().unwrap().reference, None);
+        .expect("resolved asks fixture");
+    assert_eq!(
+        pay.tags.as_ref().expect("resolved asks fixture").reference,
+        None
+    );
 }
 
 #[test]
@@ -528,11 +560,21 @@ fn stored_calendar_rsvp_is_reply_provenance_and_never_an_attending_claim() {
         ..Default::default()
     };
     super::include_calendar(&mut result, Some(calendar));
-    let unit = result.units.last().unwrap();
+    let unit = result.units.last().expect("resolved asks fixture");
     assert_eq!(unit.answer, AskAnswer::AsksYou);
-    assert_eq!(unit.tags.as_ref().unwrap().action, ActionKind::Reply);
+    assert_eq!(
+        unit.tags.as_ref().expect("resolved asks fixture").action,
+        ActionKind::Reply
+    );
     assert_eq!(result.facts.zones[unit.zone].kind, ZoneKind::Calendar);
     assert_eq!(result.quote(unit), Some("Planning"));
     assert_eq!(unit.votes[0].rule, "ics_request_rsvp_needs_action");
-    assert_eq!(result.calendar.unwrap().uid.as_deref(), Some("event-uid"));
+    assert_eq!(
+        result
+            .calendar
+            .expect("resolved asks fixture")
+            .uid
+            .as_deref(),
+        Some("event-uid")
+    );
 }

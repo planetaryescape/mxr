@@ -824,12 +824,11 @@ fn field_texts(field: &str, item: &Item, row: &Row, sent: DateTime<Utc>) -> (Str
         ),
         "quote" | "actor" | "state" => {
             let value = |p: Option<&AskProvenance>| {
-                p.map(|p| match field {
+                p.map_or_else(none, |p| match field {
                     "quote" => p.quote.clone(),
                     "actor" => p.actor.clone(),
                     _ => p.state.clone(),
                 })
-                .unwrap_or_else(none)
             };
             (
                 value(item.provenance.as_ref()),

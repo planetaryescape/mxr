@@ -448,7 +448,7 @@ The Analytics screen has six views. Cycle them with `Tab` / `Shift-Tab`; refresh
 | View | Key | Action |
 |------|-----|--------|
 | Storage | `m` | Toggle Breakdown ↔ Largest-Messages mode |
-| Storage | `g` | Cycle `group_by` (sender / mimetype / label) in Breakdown mode |
+| Storage | `b` | Cycle `group_by` (sender / mimetype / label) in Breakdown mode |
 | Stale Threads | `p` | Toggle perspective (mine ↔ theirs) |
 | Stale Threads | `[` / `]` | ±7 days on `older_than_days` |
 | Stale Threads | `{` / `}` | ±30 days on `within_days` |
@@ -483,7 +483,7 @@ Open with `gP`. Lists [tracked packages](/guides/deliveries/) detected in your m
 | `r` | Resolve (mark delivered/done) |
 | `d` | Dismiss (hide a false positive) |
 | `D` | Cycle filter: active → delivered → all |
-| `g` | Refresh the list |
+| `R` | Refresh the list |
 | `Esc` | Close the preview, then return to Mailbox |
 
 ## Search query editor

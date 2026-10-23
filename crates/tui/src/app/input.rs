@@ -1831,8 +1831,9 @@ impl App {
                 self.deliveries.select_prev();
                 None
             }
-            (KeyCode::Char('g'), _) => {
-                // Refresh the list.
+            // Refresh the list. `R`, since `r` resolves and `g` starts the
+            // `g` + capital tool chords.
+            (KeyCode::Char('R'), modifiers) if plain_or_shift(modifiers) => {
                 self.deliveries.loading = true;
                 self.pending_deliveries_refresh = true;
                 None
@@ -1956,7 +1957,8 @@ impl App {
             {
                 Some(Action::CycleStorageMode)
             }
-            (KeyCode::Char('g'), KeyModifiers::NONE)
+            // `b` for group by: `g` starts the `g` + capital tool chords.
+            (KeyCode::Char('b'), KeyModifiers::NONE)
                 if view == crate::app::AnalyticsView::Storage
                     && storage_mode == crate::app::StorageMode::Breakdown =>
             {

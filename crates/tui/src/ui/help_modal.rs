@@ -391,7 +391,7 @@ fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
             ("r".into(), "Resolve (mark delivered)".into()),
             ("d".into(), "Dismiss (false positive)".into()),
             ("D".into(), "Cycle filter".into()),
-            ("g".into(), "Refresh".into()),
+            ("R".into(), "Refresh".into()),
         ],
     };
 
@@ -539,7 +539,7 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                 ("r".into(), "Resolve (mark delivered)".into()),
                 ("d".into(), "Dismiss (false positive)".into()),
                 ("D".into(), "Cycle filter".into()),
-                ("g".into(), "Refresh".into()),
+                ("R".into(), "Refresh".into()),
             ],
         }],
     }

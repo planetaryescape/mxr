@@ -202,7 +202,7 @@ Same surface as the CLI analytics commands (`mxr storage`,
 Six views:
 
 - **Storage**: sender / mimetype / label rollups (`m` toggles to
-  Largest Messages mode; `g` cycles `group_by` while in Breakdown).
+  Largest Messages mode; `b` cycles `group_by` while in Breakdown).
 - **Stale Threads**: threads waiting on a reply (`p` toggles
   perspective, `[`/`]` adjusts `older_than_days`, `{`/`}` adjusts
   `within_days`).

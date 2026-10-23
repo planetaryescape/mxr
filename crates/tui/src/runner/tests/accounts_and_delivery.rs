@@ -2441,3 +2441,30 @@ async fn auth_session_poller_aborts_after_max_consecutive_failures() {
         "poller must deliver AccountOperation(Err) after 5 consecutive failures"
     );
 }
+
+/// `g` + a capital opens a tool from the Deliveries screen and Analytics'
+/// storage breakdown too: refresh and group by moved off `g` to `R` and `b`.
+#[test]
+fn g_and_a_capital_leave_deliveries_and_the_storage_breakdown() {
+    let shift = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
+    let plain = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
+
+    let mut app = App::new();
+    app.screen = Screen::Deliveries;
+    assert_eq!(app.handle_key(plain('g')), None);
+    assert_eq!(app.handle_key(shift('R')), Some(Action::OpenTab3));
+    assert!(!app.pending_deliveries_refresh, "g R refreshed the list");
+    let _ = app.handle_key(shift('R'));
+    assert!(app.pending_deliveries_refresh, "R refreshes the list");
+
+    let mut app = App::new();
+    app.screen = Screen::Analytics;
+    app.analytics.view = crate::app::AnalyticsView::Storage;
+    app.analytics.storage_mode = crate::app::StorageMode::Breakdown;
+    assert_eq!(app.handle_key(plain('g')), None);
+    assert_eq!(app.handle_key(shift('R')), Some(Action::OpenTab3));
+    assert_eq!(
+        app.handle_key(plain('b')),
+        Some(Action::CycleStorageGroupBy)
+    );
+}

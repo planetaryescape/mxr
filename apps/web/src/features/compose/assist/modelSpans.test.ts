@@ -41,6 +41,12 @@ describe("addedSpans", () => {
     expect(spans).toEqual([{ start: 100 + 16, end: 100 + 16 + 7 }]);
   });
 
+  test("a run past the inserted text is clipped to it", () => {
+    // The proof ends in a newline, which the insert drops.
+    const pieces = [{ kind: "added" as const, text: "Hi\n" }];
+    expect(addedSpans(pieces, 10, "Hi".length)).toEqual([{ start: 10, end: 12 }]);
+  });
+
   test("an unmarked draft stays on one shared empty list", () => {
     const before = "Hi\n\n-- \nBK";
     expect(mapModelSpans(NO_SPANS, before, "Hi there\n\n-- \nBK")).toBe(NO_SPANS);

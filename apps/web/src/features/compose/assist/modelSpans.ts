@@ -49,13 +49,20 @@ export function mapModelSpans(
  * Only added runs are marked: the user's own words, and gaps the user still
  * has to fill, are not model prose to mark.
  */
-export function addedSpans(pieces: readonly ProofPiece[], textStart: number): ModelSpan[] {
+export function addedSpans(
+  pieces: readonly ProofPiece[],
+  textStart: number,
+  limit: number = Number.POSITIVE_INFINITY,
+): ModelSpan[] {
   const spans: ModelSpan[] = [];
   let offset = 0;
   for (const piece of pieces) {
     if (piece.kind === "removed") continue;
-    if (piece.kind === "added" && piece.text !== "") {
-      spans.push({ start: textStart + offset, end: textStart + offset + piece.text.length });
+    if (piece.kind === "added") {
+      // The insert drops trailing blank space, so a run past `limit` is clipped.
+      const start = Math.min(offset, limit);
+      const end = Math.min(offset + piece.text.length, limit);
+      if (end > start) spans.push({ start: textStart + start, end: textStart + end });
     }
     offset += piece.text.length;
   }

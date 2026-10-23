@@ -258,10 +258,12 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     const live = splitTextRegion(current.bodyMarkdown);
     if (live.text !== version.sentText) return;
     const { body, textStart } = joinTextRegion(live, version.proposal.text);
+    const inserted = version.proposal.text.trimEnd().length;
     const spans = mapModelSpans(current.modelSpans ?? NO_SPANS, current.bodyMarkdown, body);
     const added = addedSpans(
       proofPieces(version.proposal.changes, version.proposal.gaps),
       textStart,
+      inserted,
     );
     const modelSpans = added.length > 0 ? [...spans, ...added] : spans;
     setUndo({ before: current.bodyMarkdown, beforeSpans: current.modelSpans, after: body });

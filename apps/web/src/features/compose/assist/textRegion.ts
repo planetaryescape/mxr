@@ -1,76 +1,52 @@
 /*
- * The part of a draft the user wrote: the body without the forward header
- * above it and the signature block below it. Everything outside the region
- * is kept verbatim, so an accepted proof never touches the signature.
+ * The part of a draft the user wrote. The cut is the daemon's `split_body`
+ * (crates/composer/src/check/regions.rs): the text ends at the first line that
+ * is `--` once trailing space is ignored, or that starts with the forward
+ * header. Everything from that line on is kept byte for byte, so a signature
+ * or a forwarded message never reaches the model or changes on accept.
+ * Leading blank lines stay in the prefix. Offsets are UTF-8 bytes of the text
+ * region, as the contract says.
  */
 
 export const FORWARD_HEADER = "---------- Forwarded message ----------";
 
 export interface TextRegion {
-  /** Body before the region: a forward header, or a signature daemon put on top. */
+  /** Leading blank lines, kept as they are. */
   prefix: string;
-  /** The user's text, trimmed at both ends. */
+  /** The user's text: no leading or trailing blank space. */
   text: string;
-  /** Body after the region: the signature block. */
+  /** The blank space after the text, then the signature or forward, byte for byte. */
   suffix: string;
 }
 
-/**
- * The signature delimiter is `-- ` or `--` on a line of its own, the same
- * line `signature_block` writes in crates/compose/src/lib.rs. The last one
- * that is not inside a forward header marks the block; a body with no such
- * line has no signature.
- */
-const SIGNATURE_DELIMITER = /^--[ \t]?$/;
-
-function lineStarts(body: string): number[] {
-  const starts = [0];
-  for (let i = 0; i < body.length; i++) if (body[i] === "\n") starts.push(i + 1);
-  return starts;
-}
-
-function lastSignatureLine(body: string): number {
-  const starts = lineStarts(body);
-  for (let index = starts.length - 1; index >= 0; index--) {
-    const start = starts[index] ?? 0;
-    const end = body.indexOf("\n", start);
-    const line = body.slice(start, end === -1 ? body.length : end);
-    if (SIGNATURE_DELIMITER.test(line)) return start;
+/** UTF-16 offset of the first line that ends the text, or the body's length. */
+export function cutOffset(body: string): number {
+  let offset = 0;
+  for (;;) {
+    const newline = body.indexOf("\n", offset);
+    const end = newline === -1 ? body.length : newline;
+    const bare = body.slice(offset, end).trimEnd();
+    if (bare === "--" || bare.startsWith(FORWARD_HEADER)) return offset;
+    if (newline === -1) return body.length;
+    offset = newline + 1;
   }
-  return -1;
 }
 
 export function splitTextRegion(body: string): TextRegion {
-  let start = 0;
-  let end = body.length;
-
-  const headerAt = body.indexOf(FORWARD_HEADER);
-  const signatureAt = lastSignatureLine(body);
-  // A signature below the forward header ends the region; one above it
-  // (the daemon puts a forward's signature on top) belongs to the prefix.
-  if (signatureAt > (headerAt === -1 ? -1 : headerAt)) end = signatureAt;
-
-  if (headerAt !== -1 && headerAt < end) {
-    const afterHeader = headerAt + FORWARD_HEADER.length;
-    start = afterHeader;
-    while (start < end && (body[start] === "\n" || body[start] === "\r")) start++;
-  }
-
-  const raw = body.slice(start, end);
-  const trimmedStart = raw.length - raw.trimStart().length;
-  const text = raw.trim();
-  const regionStart = start + trimmedStart;
-  const regionEnd = regionStart + text.length;
+  const before = body.slice(0, cutOffset(body));
+  const head = before.trimStart();
+  const start = before.length - head.length;
+  const text = head.trimEnd();
   return {
-    prefix: body.slice(0, regionStart),
+    prefix: body.slice(0, start),
     text,
-    suffix: body.slice(regionEnd),
+    suffix: body.slice(start + text.length),
   };
 }
 
 export interface JoinedRegion {
   body: string;
-  /** UTF-16 index where `text` starts in `body`. */
+  /** UTF-16 index where the inserted text starts in `body`. */
   textStart: number;
 }
 
@@ -80,22 +56,23 @@ function needsBreak(left: string, right: string): boolean {
 }
 
 /**
- * Put a new text back between the prefix and suffix, byte for byte. The
- * prefix and suffix keep their own whitespace; a blank-line break is added
- * only where two pieces would otherwise run together. The text is inserted
- * as the proof has it, so `textStart` is exact for the offsets of its runs.
+ * The body with `text` in place of the user's text. Trailing blank space in
+ * `text` is dropped, as the daemon's `with_text` does; the suffix keeps its
+ * own spacing, and a blank-line break is added only where two pieces would
+ * otherwise run together.
  */
 export function joinTextRegion(region: TextRegion, text: string): JoinedRegion {
   const { prefix, suffix } = region;
-  if (text === "") {
+  const inserted = text.trimEnd();
+  if (inserted === "") {
     const separator = needsBreak(prefix, suffix) ? "\n\n" : "";
     return { body: prefix + separator + suffix, textStart: prefix.length };
   }
-  const beforeText = needsBreak(prefix, text) ? "\n\n" : "";
-  const afterText = needsBreak(text, suffix) ? "\n\n" : "";
+  const beforeText = needsBreak(prefix, inserted) ? "\n\n" : "";
+  const afterText = needsBreak(inserted, suffix) ? "\n\n" : "";
   const textStart = prefix.length + beforeText.length;
   return {
-    body: prefix + beforeText + text + afterText + suffix,
+    body: prefix + beforeText + inserted + afterText + suffix,
     textStart,
   };
 }

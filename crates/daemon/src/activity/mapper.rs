@@ -362,6 +362,16 @@ pub fn map_request(
             skip_activity!("classify_eval", "local evaluation; reads only")
         }
         Request::DraftRefine { .. } => ("draft.update", Some("draft"), None, None),
+        Request::ComposeAssist { .. } => skip_activity!(
+            "compose_assist",
+            "the handler records it with the size of what came back"
+        ),
+        Request::ApplyComposeProposal { draft_id, .. } => (
+            "draft.update",
+            Some("draft"),
+            Some(draft_id.as_str().clone()),
+            None,
+        ),
         Request::SaveDraft { draft } => (
             "draft.save",
             Some("draft"),

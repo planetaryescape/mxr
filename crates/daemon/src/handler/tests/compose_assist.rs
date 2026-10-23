@@ -1,0 +1,652 @@
+//! Writing help end to end in the daemon, with a scripted model: what reaches
+//! the model, what the proposal says, and what applying one may write.
+
+use super::*;
+use crate::handler::compose_assist::{apply, compose_assist, AssistRequest, PROGRESS_OPERATION};
+use mxr_composer::check::text_hash;
+use mxr_core::types::{Address, Draft, DraftContent};
+use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
+use mxr_protocol::{
+    AssistActionData, AssistAdjustData, ComposeProposalData, DaemonEvent, DraftTargetData,
+    ResponseData, TextChangeKindData, TextRangeData,
+};
+use std::sync::{Arc, Mutex};
+
+/// Answers every request with one scripted reply and keeps what it was asked.
+struct Scripted {
+    reply: String,
+    base_url: Option<&'static str>,
+    requests: Mutex<Vec<CompletionRequest>>,
+}
+
+impl Scripted {
+    fn new(reply: &str) -> Arc<Self> {
+        Arc::new(Self {
+            reply: reply.to_string(),
+            base_url: None,
+            requests: Mutex::default(),
+        })
+    }
+
+    fn cloud(reply: &str) -> Arc<Self> {
+        Arc::new(Self {
+            reply: reply.to_string(),
+            base_url: Some("https://api.example-cloud.com/v1"),
+            requests: Mutex::default(),
+        })
+    }
+
+    fn calls(&self) -> usize {
+        self.requests.lock().unwrap().len()
+    }
+
+    fn user_prompt(&self) -> String {
+        self.requests
+            .lock()
+            .unwrap()
+            .last()
+            .expect("the model was asked")
+            .messages[1]
+            .content
+            .clone()
+    }
+}
+
+#[async_trait]
+impl LlmProvider for Scripted {
+    async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        self.requests.lock().unwrap().push(req);
+        Ok(CompletionResponse {
+            content: self.reply.clone(),
+            model: "scripted".into(),
+            finish_reason: Some("stop".into()),
+        })
+    }
+
+    fn capabilities(&self) -> LlmCapabilities {
+        LlmCapabilities {
+            context_window: 8192,
+            supports_streaming: false,
+        }
+    }
+
+    fn model_name(&self) -> &str {
+        "scripted"
+    }
+
+    fn base_url(&self) -> Option<&str> {
+        self.base_url
+    }
+}
+
+fn sam() -> Address {
+    Address {
+        name: Some("Sam Rivers".into()),
+        email: "sam@example.com".into(),
+    }
+}
+
+fn new_message(state: &AppState) -> DraftTargetData {
+    DraftTargetData::New {
+        account_id: state.default_account_id(),
+        to: vec![sam()],
+        subject: "Thursday".into(),
+    }
+}
+
+struct Ask<'a> {
+    text: &'a str,
+    selection: Option<(u32, u32)>,
+    action: Option<AssistActionData>,
+    instruction: Option<&'a str>,
+}
+
+impl<'a> Ask<'a> {
+    fn text(text: &'a str) -> Self {
+        Self {
+            text,
+            selection: None,
+            action: None,
+            instruction: None,
+        }
+    }
+}
+
+async fn assist(
+    state: &AppState,
+    target: &DraftTargetData,
+    ask: &Ask<'_>,
+) -> Result<ComposeProposalData, String> {
+    let response = compose_assist(
+        state,
+        ::mxr_protocol::ClientKind::default(),
+        AssistRequest {
+            draft: target,
+            text: ask.text,
+            selection: ask
+                .selection
+                .map(|(start, end)| TextRangeData { start, end }),
+            action: ask.action,
+            instruction: ask.instruction,
+            adjust: AssistAdjustData::default(),
+        },
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    match response {
+        ResponseData::ComposeProposal { proposal } => Ok(proposal),
+        other => panic!("expected a proposal, got {other:?}"),
+    }
+}
+
+fn changed_kinds(proposal: &ComposeProposalData, kind: TextChangeKindData) -> Vec<&str> {
+    proposal
+        .changes
+        .iter()
+        .filter(|change| change.kind == kind)
+        .map(|change| change.text.as_str())
+        .collect()
+}
+
+#[tokio::test]
+async fn finishing_keeps_what_was_typed_and_sends_it_inside_the_markers() {
+    let state = AppState::in_memory().await.unwrap();
+    let model = Scripted::new("Hi Sam,\n\nThursday works.\nNumbers by wed.\n\nAlex");
+    state.llm.replace(model.clone());
+    let target = new_message(&state);
+
+    let ask = Ask {
+        instruction: Some("sound pleased"),
+        ..Ask::text("Thursday works.\nNumbers by wed.\n")
+    };
+    let proposal = assist(&state, &target, &ask).await.unwrap();
+
+    assert_eq!(proposal.action, AssistActionData::Finish);
+    assert_eq!(
+        proposal.text,
+        "Hi Sam,\n\nThursday works.\nNumbers by wed.\n\nAlex"
+    );
+    assert!(proposal.yours_changed.is_empty(), "{proposal:?}");
+    assert_eq!(
+        changed_kinds(&proposal, TextChangeKindData::Added),
+        ["Hi Sam,\n\n", "\n\nAlex"]
+    );
+    // The hash ignores the trailing newline the typed text ended with.
+    assert_eq!(proposal.base, text_hash("Thursday works.\nNumbers by wed."));
+    assert_eq!(proposal.provenance.model, "scripted");
+
+    let prompt = model.user_prompt();
+    let draft_at = prompt
+        .find("[MY DRAFT SO FAR]")
+        .expect("typed text is sent");
+    let begin = prompt[draft_at..].find("BEGIN UNTRUSTED").unwrap() + draft_at;
+    let typed_at = prompt.find("Numbers by wed.").unwrap();
+    let end = prompt[begin..].find("END UNTRUSTED").unwrap() + begin;
+    assert!(begin < typed_at && typed_at < end, "{prompt}");
+    let task = &prompt[prompt.find("[TASK]").unwrap()..];
+    assert!(task.contains("My instruction: sound pleased."), "{task}");
+    assert!(!task.contains("UNTRUSTED"), "the instruction stays outside");
+}
+
+#[tokio::test]
+async fn nothing_typed_writes_the_message() {
+    let state = AppState::in_memory().await.unwrap();
+    state
+        .llm
+        .replace(Scripted::new("Hi Sam,\n\nGlad to.\n\nAlex"));
+    let proposal = assist(&state, &new_message(&state), &Ask::text(""))
+        .await
+        .unwrap();
+    assert_eq!(proposal.action, AssistActionData::Write);
+    assert_eq!(proposal.base, text_hash(""));
+    assert!(proposal.yours_changed.is_empty());
+}
+
+#[tokio::test]
+async fn a_dropped_or_changed_sentence_is_listed() {
+    let state = AppState::in_memory().await.unwrap();
+    state
+        .llm
+        .replace(Scripted::new("Thursday works, I think. Bring the deck."));
+    let proposal = assist(
+        &state,
+        &new_message(&state),
+        &Ask::text("Thursday works. Numbers by wed. Bring the deck."),
+    )
+    .await
+    .unwrap();
+    assert_eq!(proposal.yours_changed, [0, 1]);
+}
+
+#[tokio::test]
+async fn a_figure_nobody_supplied_becomes_a_gap_showing_the_guess() {
+    let state = AppState::in_memory().await.unwrap();
+    state
+        .llm
+        .replace(Scripted::new("Thursday works. The fee is £40."));
+    let proposal = assist(&state, &new_message(&state), &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+    assert_eq!(
+        proposal.text,
+        "Thursday works. The fee is [[?: amount, the draft said £40]]."
+    );
+    assert_eq!(proposal.gaps.len(), 1);
+    let gap = &proposal.gaps[0];
+    assert_eq!(
+        &proposal.text[gap.start as usize..gap.end as usize],
+        "[[?: amount, the draft said £40]]"
+    );
+}
+
+#[tokio::test]
+async fn a_signature_the_model_writes_never_reaches_the_proposal() {
+    let state = AppState::in_memory().await.unwrap();
+    state
+        .llm
+        .replace(Scripted::new("Thursday works.\n\n-- \nAlex Demo\nFoundry"));
+    let proposal = assist(&state, &new_message(&state), &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+    assert_eq!(proposal.text, "Thursday works.");
+}
+
+#[tokio::test]
+async fn an_edit_outside_the_selection_is_put_back() {
+    let state = AppState::in_memory().await.unwrap();
+    // The model rewrote the first sentence too.
+    state.llm.replace(Scripted::new(
+        "Thursday is fine. numbers by Wednesday. Thanks.",
+    ));
+    let typed = "Thursday works. numbers by wed. Thanks.";
+    let ask = Ask {
+        selection: Some((16, 31)),
+        ..Ask::text(typed)
+    };
+    let proposal = assist(&state, &new_message(&state), &ask).await.unwrap();
+    assert_eq!(proposal.action, AssistActionData::EditSelection);
+    assert!(
+        proposal.text.starts_with("Thursday works. "),
+        "{proposal:?}"
+    );
+    assert!(proposal.text.ends_with(" Thanks."), "{proposal:?}");
+    assert!(proposal.text.contains("Wednesday"));
+    assert_eq!(proposal.yours_changed, [1]);
+}
+
+#[tokio::test]
+async fn a_selection_off_a_character_boundary_is_refused_before_the_model_is_asked() {
+    let state = AppState::in_memory().await.unwrap();
+    let model = Scripted::new("never used");
+    state.llm.replace(model.clone());
+    let ask = Ask {
+        selection: Some((1, 4)),
+        ..Ask::text("é works")
+    };
+    let error = assist(&state, &new_message(&state), &ask)
+        .await
+        .unwrap_err();
+    assert!(error.contains("inside a character"), "{error}");
+    assert_eq!(model.calls(), 0);
+}
+
+#[tokio::test]
+async fn an_explicit_action_that_needs_text_says_so() {
+    let state = AppState::in_memory().await.unwrap();
+    let model = Scripted::new("never used");
+    state.llm.replace(model.clone());
+    let ask = Ask {
+        action: Some(AssistActionData::Finish),
+        ..Ask::text("  ")
+    };
+    let error = assist(&state, &new_message(&state), &ask)
+        .await
+        .unwrap_err();
+    assert!(error.contains("no text to finish"), "{error}");
+    assert_eq!(model.calls(), 0);
+}
+
+#[tokio::test]
+async fn a_cloud_model_without_the_opt_in_refuses_text_an_earlier_suggestion_wrote_from_history() {
+    let state = AppState::in_memory().await.unwrap();
+    let mut config = state.config_snapshot();
+    config.llm.enabled = true;
+    config.llm.base_url = "https://api.example-cloud.com/v1".into();
+    config.llm.allow_cloud_relationship_data = false;
+    state.set_config_for_test(config).await;
+    let model = Scripted::cloud("Thursday works for the pricing review.");
+    state.llm.replace(model.clone());
+    let from_history = "Thursday works for me and I will bring the pricing review deck.";
+    crate::history_text::record(&state.store, &state.default_account_id(), from_history).await;
+
+    let error = assist(&state, &new_message(&state), &Ask::text(from_history))
+        .await
+        .unwrap_err();
+    assert!(error.contains("written from your history"), "{error}");
+    assert_eq!(model.calls(), 0, "nothing reached the cloud model");
+
+    // Text the user wrote themselves goes, and the proposal says no history
+    // was used.
+    let proposal = assist(&state, &new_message(&state), &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+    assert_eq!(
+        proposal.provenance.locality,
+        mxr_protocol::AiLocalityData::Cloud
+    );
+    assert!(!proposal.provenance.history_used);
+}
+
+#[tokio::test]
+async fn the_stages_are_reported_as_progress_in_order() {
+    let state = AppState::in_memory().await.unwrap();
+    state.llm.replace(Scripted::new("Thursday works."));
+    let mut events = state.event_tx.subscribe();
+    assist(&state, &new_message(&state), &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+    let mut lines = Vec::new();
+    while let Ok(message) = events.try_recv() {
+        if let mxr_protocol::IpcPayload::Event(DaemonEvent::OperationProgress {
+            operation,
+            current,
+            total,
+            message,
+            ..
+        }) = message.payload
+        {
+            assert_eq!(operation, PROGRESS_OPERATION);
+            lines.push((current, total, message));
+        }
+    }
+    assert_eq!(
+        lines,
+        [
+            (1, Some(3), "Reading the conversation".to_string()),
+            (2, Some(3), "Writing with scripted".to_string()),
+            (3, Some(3), "Checking".to_string()),
+        ]
+    );
+}
+
+fn stored_draft(state: &AppState, body: &str) -> Draft {
+    Draft {
+        revision: Some(1),
+        id: mxr_core::DraftId::new(),
+        account_id: state.default_account_id(),
+        from: None,
+        reply_headers: None,
+        intent: mxr_core::DraftIntent::New,
+        to: vec![sam()],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Thursday".into(),
+        content: DraftContent::markdown(body),
+        inline_assets: Vec::new(),
+        managed_attachments: None,
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+    }
+}
+
+async fn stored_body(state: &AppState, draft_id: &mxr_core::DraftId) -> String {
+    let draft = state.store.get_draft(draft_id).await.unwrap().unwrap();
+    draft.content.analysis_text().to_string()
+}
+
+const SIGNATURE: &str = "-- \nAlex Demo";
+
+#[tokio::test]
+async fn applying_writes_only_the_text_region_and_keeps_the_signature() {
+    let state = AppState::in_memory().await.unwrap();
+    state
+        .llm
+        .replace(Scripted::new("Hi Sam,\n\nThursday works.\n\nAlex"));
+    let draft = stored_draft(&state, &format!("Thursday works.\n\n{SIGNATURE}"));
+    state.store.insert_draft(&draft).await.unwrap();
+    let target = DraftTargetData::Stored {
+        draft_id: draft.id.clone(),
+    };
+
+    // The client sends the text region; the signature is not part of it.
+    let proposal = assist(&state, &target, &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+    assert_eq!(state.compose_proposals.len(), 1);
+    // Nothing changed yet.
+    assert_eq!(
+        stored_body(&state, &draft.id).await,
+        format!("Thursday works.\n\n{SIGNATURE}")
+    );
+
+    let ResponseData::ComposeApplied {
+        draft_id,
+        text_hash: applied,
+    } = apply(&state, &proposal.proposal_id, &draft.id)
+        .await
+        .unwrap()
+    else {
+        panic!("expected ComposeApplied");
+    };
+    assert_eq!(draft_id, draft.id);
+    assert_eq!(applied, text_hash("Hi Sam,\n\nThursday works.\n\nAlex"));
+    assert_eq!(
+        stored_body(&state, &draft.id).await,
+        format!("Hi Sam,\n\nThursday works.\n\nAlex\n\n{SIGNATURE}")
+    );
+    assert_eq!(state.compose_proposals.len(), 0, "a used proposal is gone");
+}
+
+#[tokio::test]
+async fn applying_refuses_when_the_draft_text_changed_since() {
+    let state = AppState::in_memory().await.unwrap();
+    state
+        .llm
+        .replace(Scripted::new("Hi Sam,\n\nThursday works."));
+    let draft = stored_draft(&state, &format!("Thursday works.\n\n{SIGNATURE}"));
+    state.store.insert_draft(&draft).await.unwrap();
+    let target = DraftTargetData::Stored {
+        draft_id: draft.id.clone(),
+    };
+    let proposal = assist(&state, &target, &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+
+    // The user kept typing: the text region is no longer what was proposed on.
+    let mut edited = state.store.get_draft(&draft.id).await.unwrap().unwrap();
+    edited.content = DraftContent::markdown(format!("Thursday works, honestly.\n\n{SIGNATURE}"));
+    assert!(state.store.update_draft(&edited).await.unwrap());
+
+    let error = apply(&state, &proposal.proposal_id, &draft.id)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("changed since"), "{error}");
+    assert_eq!(
+        stored_body(&state, &draft.id).await,
+        format!("Thursday works, honestly.\n\n{SIGNATURE}"),
+        "nothing was written"
+    );
+    // The proposal is still there to explain the refusal, until it expires.
+    assert_eq!(state.compose_proposals.len(), 1);
+}
+
+#[tokio::test]
+async fn a_change_to_the_signature_alone_does_not_stop_applying() {
+    let state = AppState::in_memory().await.unwrap();
+    state
+        .llm
+        .replace(Scripted::new("Hi Sam,\n\nThursday works."));
+    let draft = stored_draft(&state, &format!("Thursday works.\n\n{SIGNATURE}"));
+    state.store.insert_draft(&draft).await.unwrap();
+    let target = DraftTargetData::Stored {
+        draft_id: draft.id.clone(),
+    };
+    let proposal = assist(&state, &target, &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+    let mut edited = state.store.get_draft(&draft.id).await.unwrap().unwrap();
+    edited.content = DraftContent::markdown("Thursday works.\n\n-- \nAlex, Foundry");
+    assert!(state.store.update_draft(&edited).await.unwrap());
+
+    apply(&state, &proposal.proposal_id, &draft.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        stored_body(&state, &draft.id).await,
+        "Hi Sam,\n\nThursday works.\n\n-- \nAlex, Foundry"
+    );
+}
+
+#[tokio::test]
+async fn a_proposal_for_one_draft_cannot_be_applied_to_another() {
+    let state = AppState::in_memory().await.unwrap();
+    state
+        .llm
+        .replace(Scripted::new("Hi Sam,\n\nThursday works."));
+    let first = stored_draft(&state, "Thursday works.");
+    let second = stored_draft(&state, "Thursday works.");
+    state.store.insert_draft(&first).await.unwrap();
+    state.store.insert_draft(&second).await.unwrap();
+    let proposal = assist(
+        &state,
+        &DraftTargetData::Stored {
+            draft_id: first.id.clone(),
+        },
+        &Ask::text("Thursday works."),
+    )
+    .await
+    .unwrap();
+
+    let error = apply(&state, &proposal.proposal_id, &second.id)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("different draft"), "{error}");
+    assert_eq!(stored_body(&state, &second.id).await, "Thursday works.");
+}
+
+#[tokio::test]
+async fn an_unknown_or_expired_proposal_is_a_clear_error() {
+    let state = AppState::in_memory().await.unwrap();
+    let draft = stored_draft(&state, "Thursday works.");
+    state.store.insert_draft(&draft).await.unwrap();
+    let error = apply(&state, "no-such-proposal", &draft.id)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("expired or was never made"), "{error}");
+}
+
+#[tokio::test]
+async fn parallel_applies_write_the_text_once_and_never_lose_an_update() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    state
+        .llm
+        .replace(Scripted::new("Hi Sam,\n\nThursday works."));
+    let draft = stored_draft(&state, "Thursday works.");
+    state.store.insert_draft(&draft).await.unwrap();
+    let proposal = assist(
+        &state,
+        &DraftTargetData::Stored {
+            draft_id: draft.id.clone(),
+        },
+        &Ask::text("Thursday works."),
+    )
+    .await
+    .unwrap();
+
+    let (a, b) = tokio::join!(
+        apply(&state, &proposal.proposal_id, &draft.id),
+        apply(&state, &proposal.proposal_id, &draft.id),
+    );
+    // At least one wins; whatever the other did, the body is the proposal once.
+    assert!(a.is_ok() || b.is_ok(), "{a:?} {b:?}");
+    assert_eq!(
+        stored_body(&state, &draft.id).await,
+        "Hi Sam,\n\nThursday works."
+    );
+}
+
+#[tokio::test]
+async fn an_unfilled_gap_blocks_a_stored_send_and_a_scheduled_send() {
+    let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+    let state = Arc::new(state);
+    let _ = sync_and_get_first_id(&state).await;
+    let account = state.store.list_accounts().await.unwrap()[0].clone();
+
+    let mut draft = stored_draft(&state, "Meet on [[?: the date]] for [[?: the price]].");
+    draft.account_id = account.id.clone();
+    draft.to = vec![Address {
+        name: None,
+        email: "you@example.com".into(),
+    }];
+    state.store.insert_draft(&draft).await.unwrap();
+
+    // The safety check names every gap, and offers no way round them.
+    let ResponseData::DraftSafetyReportResponse { report } =
+        crate::handler::mutations::check_draft_safety_request(
+            &state,
+            &draft,
+            &mxr_protocol::DraftSafetyContextData {
+                allow_llm: false,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("expected a safety report");
+    };
+    let gap = report
+        .issues
+        .iter()
+        .find(|issue| issue.code == mxr_core::DraftSafetyIssueCode::UnfilledGap)
+        .expect("the gap is reported");
+    assert_eq!(gap.message, "2 gaps left: the date, the price");
+    assert_eq!(gap.severity, mxr_core::DraftSafetySeverity::Blocker);
+    assert!(gap.override_token.is_none(), "no override for a gap");
+    assert!(!report.allowed);
+
+    // A scheduled send that is due keeps the draft and clears the schedule.
+    state
+        .store
+        .schedule_send(&draft.id, chrono::Utc::now() - chrono::Duration::hours(1))
+        .await
+        .unwrap();
+    let fired = crate::loops::process_due_scheduled_sends(&state, chrono::Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(fired, 1);
+    assert_eq!(
+        state.store.get_draft_status(&draft.id).await.unwrap(),
+        Some(mxr_core::types::DraftStatus::Draft),
+        "the draft was not sent"
+    );
+    assert!(state
+        .store
+        .get_scheduled_send(&draft.id)
+        .await
+        .unwrap()
+        .is_none());
+
+    // Filling the gaps lets the same draft go.
+    let mut filled = state.store.get_draft(&draft.id).await.unwrap().unwrap();
+    filled.content = DraftContent::markdown("Meet on the 14th for £40.");
+    assert!(state.store.update_draft(&filled).await.unwrap());
+    state
+        .store
+        .schedule_send(&draft.id, chrono::Utc::now() - chrono::Duration::hours(1))
+        .await
+        .unwrap();
+    crate::loops::process_due_scheduled_sends(&state, chrono::Utc::now())
+        .await
+        .unwrap();
+    assert_ne!(
+        state.store.get_draft_status(&draft.id).await.unwrap(),
+        Some(mxr_core::types::DraftStatus::Draft),
+        "with the gaps filled the draft sends"
+    );
+}

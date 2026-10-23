@@ -1558,6 +1558,8 @@ pub enum Command {
         /// Has no effect on a real send.
         #[arg(long, requires = "check")]
         no_llm: bool,
+        #[command(subcommand)]
+        action: Option<ComposeAction>,
     },
     /// Reply to a message
     Reply {
@@ -2394,6 +2396,97 @@ pub enum ClassifySetArg {
     /// labelled demo mail and all of the generated mail, with held-out
     /// phrasings reported on their own line. Takes up to a minute.
     Full,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ComposeAction {
+    /// Ask for writing help and read the proposal. Nothing in the draft changes
+    /// until you accept it with `mxr compose apply`.
+    ///
+    /// With nothing typed the model writes the message; with text it finishes
+    /// it, keeping your sentences and adding what the message still needs
+    /// (greeting, sign-off, an answer to each question you haven't covered);
+    /// with a selection it rewrites only that part. Anything only you can
+    /// decide comes back as a `[[?: ...]]` gap, and a draft with a gap can't be
+    /// sent. Calls your LLM once; takes as long as the model does.
+    Assist(ComposeAssistArgs),
+    /// Write an accepted proposal into a stored draft. Refused if the draft's
+    /// text has changed since the proposal was made. Signature and forward
+    /// header stay as they are.
+    Apply {
+        /// Proposal id from `mxr compose assist`; proposals last 30 minutes.
+        proposal_id: String,
+        /// The stored draft to write into.
+        #[arg(long, value_name = "DRAFT_ID")]
+        draft: String,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+}
+
+#[derive(Debug, Clone, clap::Args)]
+#[command(group = clap::ArgGroup::new("target").required(true).multiple(false))]
+#[command(group = clap::ArgGroup::new("action").multiple(false))]
+pub struct ComposeAssistArgs {
+    /// Help with a stored draft. Its text is used unless `--text` is given.
+    #[arg(long, value_name = "DRAFT_ID", group = "target")]
+    pub draft: Option<String>,
+    /// Help with a reply to this message.
+    #[arg(long = "reply-to", value_name = "MESSAGE_ID", group = "target")]
+    pub reply_to: Option<String>,
+    /// With `--reply-to`: the reply goes to everyone.
+    #[arg(long, requires = "reply_to")]
+    pub all: bool,
+    /// Help with a note forwarding this message; needs `--to`.
+    #[arg(long, value_name = "MESSAGE_ID", group = "target", requires = "to")]
+    pub forward: Option<String>,
+    /// Help with a new message; needs `--account`, `--to` and `--subject`.
+    #[arg(long = "new", group = "target", requires_all = ["account", "to", "subject"])]
+    pub new_message: bool,
+    /// With `--new`: the account to write from (name, email or id).
+    #[arg(long, requires = "new_message")]
+    pub account: Option<String>,
+    /// With `--forward` or `--new`: who it goes to (comma-separated or repeated).
+    #[arg(long, value_delimiter = ',')]
+    pub to: Vec<String>,
+    /// With `--new`: the subject line.
+    #[arg(long, requires = "new_message")]
+    pub subject: Option<String>,
+    /// The text you have typed so far: a file path, or `-` for stdin. Only your
+    /// own text, with no signature or forward header. Empty or absent means
+    /// nothing typed (except with `--draft`, which reads the stored draft).
+    #[arg(long, value_name = "PATH")]
+    pub text: Option<String>,
+    /// Work on part of the text only, as byte offsets `START..END` that fall
+    /// between whole characters.
+    #[arg(long, value_name = "START..END")]
+    pub select: Option<String>,
+    /// Write the whole message, ignoring any text.
+    #[arg(long, group = "action")]
+    pub write: bool,
+    /// Keep what is typed and add what the message still needs.
+    #[arg(long, group = "action")]
+    pub finish: bool,
+    /// Fix and tighten what is typed without adding to it.
+    #[arg(long, group = "action")]
+    pub polish: bool,
+    /// What you want said or changed, in your words.
+    #[arg(long, value_name = "TEXT")]
+    pub instruction: Option<String>,
+    /// Make it shorter.
+    #[arg(long)]
+    pub shorter: bool,
+    /// Make it warmer.
+    #[arg(long)]
+    pub warmer: bool,
+    /// Make it more formal.
+    #[arg(long = "formal")]
+    pub more_formal: bool,
+    /// Fix typos, spelling and grammar only.
+    #[arg(long)]
+    pub proofread: bool,
+    #[arg(long)]
+    pub format: Option<OutputFormat>,
 }
 
 #[derive(Debug, Clone, Subcommand)]

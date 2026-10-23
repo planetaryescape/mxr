@@ -19,83 +19,101 @@ describe("splitTextRegion mirrors the daemon's split_body", () => {
     {
       name: "a signature ends the text",
       body: "Thursday works.\n\n-- \nAlex\nFoundry",
+      prefix: "",
       text: "Thursday works.",
       suffix: "\n\n-- \nAlex\nFoundry",
     },
     {
       name: "a forward with a signature ends the text at the signature",
       body: `Fyi.\n\n-- \nAlex\n\n${FORWARD_HEADER}\nFrom: a`,
+      prefix: "",
       text: "Fyi.",
+      suffix: `\n\n-- \nAlex\n\n${FORWARD_HEADER}\nFrom: a`,
     },
     {
       name: "a forward without a signature ends the text at the header",
       body: `Fyi.\n\n${FORWARD_HEADER}`,
+      prefix: "",
       text: "Fyi.",
       suffix: `\n\n${FORWARD_HEADER}`,
     },
     {
       name: "the forwarded original is never the text",
       body: `FYI\n\n${FORWARD_HEADER}\nOriginal words`,
+      prefix: "",
       text: "FYI",
+      suffix: `\n\n${FORWARD_HEADER}\nOriginal words`,
     },
     {
       name: "a forward with a signature keeps the original out of the text too",
       body: `FYI\n\n-- \nsig\n\n${FORWARD_HEADER}\nOriginal`,
+      prefix: "",
       text: "FYI",
+      suffix: `\n\n-- \nsig\n\n${FORWARD_HEADER}\nOriginal`,
     },
     {
       name: "a body that starts with its signature has no text",
       body: "-- \nAlex",
+      prefix: "",
       text: "",
       suffix: "-- \nAlex",
     },
     {
       name: "a body that starts with the forward header has no text",
       body: `${FORWARD_HEADER}\nFrom: a`,
+      prefix: "",
       text: "",
       suffix: `${FORWARD_HEADER}\nFrom: a`,
     },
     {
       name: "a body with neither is all text",
       body: "Just this.\n",
+      prefix: "",
       text: "Just this.",
       suffix: "\n",
     },
     {
       name: "a dash inside a line is not a signature",
       body: "Two -- no, three things.\n--- not a rule",
+      prefix: "",
       text: "Two -- no, three things.\n--- not a rule",
+      suffix: "",
     },
     {
       name: "CRLF bodies cut at the signature",
       body: "Hi\r\n\r\n-- \r\nBK",
+      prefix: "",
       text: "Hi",
       suffix: "\r\n\r\n-- \r\nBK",
     },
     {
       name: "a delimiter with trailing spaces still cuts",
       body: "Hi\n--  \nBK",
+      prefix: "",
       text: "Hi",
       suffix: "\n--  \nBK",
     },
     {
       name: "non-ASCII text before the cut keeps its characters",
       body: "Café — ok 🙂\n\n-- \nBK",
+      prefix: "",
       text: "Café — ok 🙂",
       suffix: "\n\n-- \nBK",
     },
     {
       name: "leading blank lines stay in the prefix, outside the text",
       body: "\n\nHi\n\n-- \nBK",
-      text: "Hi",
       prefix: "\n\n",
+      text: "Hi",
       suffix: "\n\n-- \nBK",
     },
-  ])("$name", ({ body, text, suffix, prefix }) => {
+  ])("$name", ({ body, prefix, text, suffix }) => {
     const region = splitTextRegion(body);
-    expect(region.text).toBe(text);
-    if (suffix !== undefined) expect(region.suffix).toBe(suffix);
-    if (prefix !== undefined) expect(region.prefix).toBe(prefix);
+    expect({ prefix: region.prefix, text: region.text, suffix: region.suffix }).toEqual({
+      prefix,
+      text,
+      suffix,
+    });
     expect(region.prefix + region.text + region.suffix).toBe(body);
   });
 });

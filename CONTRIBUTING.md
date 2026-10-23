@@ -439,8 +439,21 @@ examples; never edit generated pages under `reference/cli/`.
 
 The OpenAPI generator uses Cargo when available and otherwise retains
 `site/public/openapi.json`. For prose-only work, that committed spec is enough.
-When changing the HTTP API, build `dump_openapi_spec` and run the built binary
-directly into the output file; queue status text must never enter the JSON.
+When changing HTTP routes or transported protocol types, regenerate both clients
+and run the web crate's contract tests:
+
+```bash
+site/scripts/dump-openapi-spec.sh
+(cd apps/web && npm run gen:types)
+scripts/cargo-test -p mxr-web --tests
+```
+
+The dump script runs the built exporter separately so queue status text never
+enters the JSON. New schema types also change the separate
+`openapi_spec_summary` test snapshot. Regenerate it with
+`INSTA_UPDATE=always scripts/cargo-test -p mxr-web --lib openapi_spec_snapshot`,
+review the expected schema-name additions, then rerun the tests without update
+mode. Regenerating the public spec alone does not update that snapshot.
 
 Check `info.version` against the workspace version in `Cargo.toml` even when
 the routes have not changed. A successful Node-only build can retain an older

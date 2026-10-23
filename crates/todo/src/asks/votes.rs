@@ -28,6 +28,12 @@ pattern!(
     CONDITIONAL,
     r"(?i)(?:^if\b|\b(?:might|maybe|perhaps|would have|could have)\b|\blet (?:me|us) know if you have (?:any )?questions\b)"
 );
+pattern!(IF_WORD, r"(?i)\b(?:if|unless)\b");
+pattern!(
+    QUESTION_IF,
+    r"(?i)\b(?:let (?:me|us) know|tell (?:me|us)|confirm|see|check|(?:do|would) you mind|even)\s+if\b"
+);
+
 pattern!(
     DONE,
     r"(?i)\b(i(?:'ve| have) (?:sent|paid|signed|uploaded|provided)|already (?:sent|paid|signed|done)|has been (?:signed|completed))\b"
@@ -186,8 +192,8 @@ pub(super) fn label(
         AskState::Cancelled
     } else if DONE.is_match(text) {
         AskState::Done
-    } else if CONDITIONAL.is_match(text)
-        || CONDITIONAL.is_match(
+    } else if conditional_scope(text)
+        || conditional_scope(
             prefix
                 .rsplit(['.', '?', '!', '\n'])
                 .next()
@@ -312,7 +318,8 @@ pub(super) fn label(
         ));
     }
     if votes.is_empty() && RSVP.is_match(action_text) {
-        let public = PUBLIC_EVENT.is_match(action_text)
+        let public = !input.reply_capable
+            || PUBLIC_EVENT.is_match(action_text)
             || PUBLIC_EVENT.is_match(prefix.rsplit("\n\n").next().unwrap_or_default());
         votes.push(vote(
             if public {
@@ -427,4 +434,13 @@ fn named_addressee(text: &str, name: &str) -> bool {
                 .split_whitespace()
                 .next()
                 .is_some_and(|first| text.starts_with(&format!("{first},"))))
+}
+
+fn conditional_scope(text: &str) -> bool {
+    CONDITIONAL.is_match(text)
+        || IF_WORD.find_iter(text).any(|condition| {
+            !QUESTION_IF.find_iter(text).any(|question| {
+                question.start() <= condition.start() && question.end() >= condition.end()
+            })
+        })
 }

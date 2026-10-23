@@ -210,3 +210,48 @@ fn unmarked_account_headers_keep_equal_bills_distinct() {
         .collect();
     assert_eq!(refs, ["ag-1001", "ag-1002"]);
 }
+
+#[test]
+fn a_postposed_condition_attaches_to_its_task_but_an_embedded_question_is_firm() {
+    for body in [
+        "Please sign the agreement if the bank approves it.",
+        "Please send me your CV if you want to apply.",
+    ] {
+        let a = judge(body, false);
+        assert!(
+            !answers(&a).contains(&AskAnswer::AsksYou),
+            "contingent task: {body}: {a:?}"
+        );
+        assert!(a.units.iter().any(|u| u
+            .tags
+            .as_ref()
+            .is_some_and(|t| t.state == AskState::Conditional)));
+    }
+    assert!(
+        answers(&judge("Please sign the agreement by Friday.", false))
+            .contains(&AskAnswer::AsksYou)
+    );
+    assert!(
+        answers(&judge("Please let me know if Friday works.", false))
+            .contains(&AskAnswer::AsksYouToReply)
+    );
+    let a = judge(
+        "If you want to apply, please send me your CV. Please sign the agreement by Friday.",
+        false,
+    );
+    assert_eq!(
+        a.units
+            .iter()
+            .filter(|u| u.answer == AskAnswer::AsksYou)
+            .count(),
+        1
+    );
+    let a = judge(
+        "Please send the contract if the bank approves it and let me know if Friday works.",
+        false,
+    );
+    assert!(
+        !answers(&a).contains(&AskAnswer::AsksYou),
+        "a second embedded question cannot erase the task's condition"
+    );
+}

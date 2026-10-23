@@ -123,7 +123,7 @@ pub(super) async fn compose_assist(
     // The proposal being revised: the model sees its text, so it must be the
     // same account's, and a cloud model without the opt-in must not get text
     // that was written from the user's history.
-    let revised = match request.revise {
+    let (revised, revised_from_history) = match request.revise {
         Some(proposal_id) => {
             let stored = state
                 .compose_proposals
@@ -149,9 +149,12 @@ pub(super) async fn compose_assist(
                     HISTORY_BODY_REFUSAL.to_string(),
                 ));
             }
-            Some(stored.proposal.text)
+            (
+                Some(stored.proposal.text),
+                stored.proposal.provenance.history_used,
+            )
         }
-        None => None,
+        None => (None, false),
     };
 
     if let Some(person) = &gathered.counterparty {
@@ -230,7 +233,8 @@ pub(super) async fn compose_assist(
 
     // Only the examples that fit the prompt shaped the proposal.
     let examples_used = &material.examples[..prompt.examples_used];
-    let history_used = typed_from_history
+    let history_used = revised_from_history
+        || typed_from_history
         || !examples_used.is_empty()
         || !material.habits.is_empty()
         || prompt.background_used;

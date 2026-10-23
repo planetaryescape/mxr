@@ -1010,7 +1010,9 @@ async fn revising_a_proposal_that_is_gone_or_not_yours_is_a_clear_error() {
 async fn revisions_keep_history_provenance_for_the_next_cloud_request() {
     let state = AppState::in_memory().await.unwrap();
     let target = new_message(&state);
-    state.llm.replace(Scripted::new("A note from my earlier mail."));
+    state
+        .llm
+        .replace(Scripted::new("A note from my earlier mail."));
     let first = assist(&state, &target, &Ask::text("")).await.unwrap();
     assert!(!first.provenance.history_used);
 
@@ -1019,7 +1021,9 @@ async fn revisions_keep_history_provenance_for_the_next_cloud_request() {
     let mut retained = state.compose_proposals.get(&first.proposal_id).unwrap();
     retained.proposal.provenance.history_used = true;
     state.compose_proposals.insert(retained);
-    state.llm.replace(Scripted::new("A shorter note from my earlier mail."));
+    state
+        .llm
+        .replace(Scripted::new("A shorter note from my earlier mail."));
     let second = assist(
         &state,
         &target,

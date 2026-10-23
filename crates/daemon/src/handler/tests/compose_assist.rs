@@ -1007,6 +1007,53 @@ async fn revising_a_proposal_that_is_gone_or_not_yours_is_a_clear_error() {
 }
 
 #[tokio::test]
+async fn revisions_keep_history_provenance_for_the_next_cloud_request() {
+    let state = AppState::in_memory().await.unwrap();
+    let target = new_message(&state);
+    state.llm.replace(Scripted::new("A note from my earlier mail."));
+    let first = assist(&state, &target, &Ask::text("")).await.unwrap();
+    assert!(!first.provenance.history_used);
+
+    // A retained proposal can carry history even when this request has no
+    // fresh examples or relationship material to gather.
+    let mut retained = state.compose_proposals.get(&first.proposal_id).unwrap();
+    retained.proposal.provenance.history_used = true;
+    state.compose_proposals.insert(retained);
+    state.llm.replace(Scripted::new("A shorter note from my earlier mail."));
+    let second = assist(
+        &state,
+        &target,
+        &Ask {
+            revise: Some(&first.proposal_id),
+            instruction: Some("make it shorter"),
+            ..Ask::text("")
+        },
+    )
+    .await
+    .unwrap();
+    assert!(second.provenance.history_used);
+
+    let mut config = state.config_snapshot();
+    config.llm.enabled = true;
+    config.llm.allow_cloud_relationship_data = false;
+    state.set_config_for_test(config).await;
+    let cloud = Scripted::cloud("never used");
+    state.llm.replace(cloud.clone());
+    let error = assist(
+        &state,
+        &target,
+        &Ask {
+            revise: Some(&second.proposal_id),
+            ..Ask::text("")
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(error.contains("written from your history"), "{error}");
+    assert_eq!(cloud.calls(), 0);
+}
+
+#[tokio::test]
 async fn a_cloud_model_without_the_opt_in_is_not_given_a_proposal_written_from_history() {
     let state = AppState::in_memory().await.unwrap();
     let mut config = state.config_snapshot();

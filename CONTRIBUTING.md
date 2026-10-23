@@ -194,6 +194,13 @@ owed. Annotated items also grade the exact source quote, actor and state. The ev
 direction (the table that maps today's to-do kinds to these is
 `Row::from_asks` in `crates/daemon/src/handler/classify_eval_asks.rs`) and reports:
 
+The read-only packet takes assessments and task rows from one SQL snapshot.
+An ask counts as a delivered task only when its current fingerprint and unit
+provenance link to a stored row. Amount, currency, due date and counterparty
+come from that row; action, actor, state and exact quote come from the stored
+ask. Missing projections remain pending, and user-corrected rows are excluded
+from classifier measurement.
+
 The historical `attend` reporting bucket includes RSVP response tasks. Calendar
 asks retain their stored `Reply` action, owner and pending state; reporting an
 RSVP in this bucket does not assert a promise to attend. Ordinary reply asks

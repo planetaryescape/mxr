@@ -174,7 +174,7 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                 detection.object_key = format!(
                     "{}|calendar|{}|{}",
                     envelope.from.email.to_lowercase(),
-                    calendar.uid.as_deref().unwrap_or(envelope.id.as_str()),
+                    calendar.uid.clone().unwrap_or_else(|| envelope.id.as_str()),
                     calendar.recurrence_id.as_deref().unwrap_or_default()
                 );
                 if !quote.is_empty() {

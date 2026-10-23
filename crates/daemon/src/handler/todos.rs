@@ -52,13 +52,25 @@ pub(crate) fn pass_config(state: &AppState, now: DateTime<Utc>) -> PassConfig<Lo
 // Background work
 // ---------------------------------------------------------------------------
 
-/// Classify newly synced mail. Never errors the caller; failures are
-/// logged, like the delivery scan.
+/// The to-do scan as of now, for tests.
+#[cfg(test)]
 pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
+    scan_messages_at(state, message_ids, Utc::now()).await;
+}
+
+/// Classify newly synced mail as of `now`. Never errors the caller; failures
+/// are logged, like the delivery scan. A due date in mail is a day that ends
+/// at midnight, so the full classifier eval pins `now` to grade the same mail
+/// the same way at any hour.
+pub(crate) async fn scan_messages_at(
+    state: &AppState,
+    message_ids: &[MessageId],
+    now: DateTime<Utc>,
+) {
     if !state.config_snapshot().todo.enabled || message_ids.is_empty() {
         return;
     }
-    let cfg = pass_config(state, Utc::now());
+    let cfg = pass_config(state, now);
     match pass::scan_messages(&state.store, &cfg, message_ids).await {
         Ok(summary) => {
             super::todo_resolution::scan_messages(state, message_ids).await;

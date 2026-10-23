@@ -55,13 +55,24 @@ fn enabled(state: &AppState) -> bool {
 // Background work
 // ---------------------------------------------------------------------------
 
-/// File records from newly synced mail. Never errors the caller; failures
-/// are logged, like the to-do scan.
+/// The records scan as of now, for tests.
+#[cfg(test)]
 pub(crate) async fn scan_messages(state: &AppState, message_ids: &[MessageId]) {
+    scan_messages_at(state, message_ids, Utc::now()).await;
+}
+
+/// File records from newly synced mail as of `now`, which the full
+/// classifier eval pins as it does the to-do scan's. Never errors the caller;
+/// failures are logged, like the to-do scan.
+pub(crate) async fn scan_messages_at(
+    state: &AppState,
+    message_ids: &[MessageId],
+    now: DateTime<Utc>,
+) {
     if !enabled(state) || message_ids.is_empty() {
         return;
     }
-    match pass::scan_messages(&state.store, &pass_config(Utc::now()), message_ids).await {
+    match pass::scan_messages(&state.store, &pass_config(now), message_ids).await {
         Ok(summary) if summary.filed + summary.updated > 0 => {
             tracing::info!(
                 filed = summary.filed,

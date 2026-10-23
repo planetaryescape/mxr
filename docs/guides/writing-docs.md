@@ -102,14 +102,16 @@ material; real recipes solve a goal.
 > **Find threads where you're the bottleneck, ranked by overdue:**
 >
 > ```bash
-> mxr owed --format json \
+> mxr owed --account personal --limit 200 --format json \
 >   | jq -r 'sort_by(-.overdue_score) | .[0:20] | .[]
->            | "\(.overdue_score | tostring | .[0:4])\t\(.counterparty_email)\t\(.subject)"'
+>            | "\(.overdue_score | tostring | .[0:4])\t\(.from_email)\t\(.subject)"'
 > ```
 >
-> Top 20 threads, ranked by `waiting_days / expected_days`. Same set
-> as `mxr search 'is:owed-reply'` — pick whichever surface fits your
-> script.
+> Replace `personal` with your configured account key. Format up to 20
+> threads from the returned You owe lane, sorted by `overdue_score`.
+> The command returns at most 200 candidates before this pipeline sorts
+> them. `mxr owed --all` and `is:owed-reply` use the raw unanswered-thread
+> population instead; they are not interchangeable with the default lane.
 
 ❌ Filler recipe:
 
@@ -331,6 +333,44 @@ To change a CLI page:
 
 CI fails on snapshot drift. That's how we guarantee every flag is
 documented.
+
+### Match each claim to its verification
+
+Trace a metric to its calculation and selection path before naming what
+it measures. For example, subscription `opened_count` counts messages
+currently marked READ. The CLI ranks the account's returned candidates
+after the requested limit. Neither the field name nor a passing help
+test establishes a history of opens or a global ranking.
+
+```bash
+mxr subscriptions --account personal --limit 200 --rank --format json
+```
+
+Replace `personal` with your configured account key. Check the account,
+candidate limit and READ-state meaning alongside the output. Run examples
+against a known fixture when validating behavior; a source review or a
+synthetic JSON formatting check proves a smaller part of the recipe.
+
+For a recording, identify the version, fixture and edits. A montage can
+explain a workflow; proving a handoff requires following the same object
+between the actual clients. Recorded agent replies do not establish
+current model quality. Keep those limits in the caption and link the
+current command or guide.
+
+Inspect machine-readable exports separately from the rendered site:
+
+```bash
+node site/scripts/generate-llms-txt.mjs
+rg -n 'VideoGallery' site/dist/videos.md
+```
+
+Run this after the site build when checking HTML and exported text
+together. The exporter can also create text output without an HTML build.
+It copies authored Markdown/MDX bodies, including the homepage, without
+rendering Astro components. Gallery notes inside a component therefore do not appear in
+the Markdown sibling. Keep useful next actions in the authored body and
+check that they survive export. `site/public/llms.txt` is curated by hand;
+the generated siblings and `llms-full.txt` have a different source.
 
 ---
 

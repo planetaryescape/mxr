@@ -59,6 +59,7 @@ async fn assist(
             more_formal: args.more_formal,
             proofread: args.proofread,
         },
+        revise: args.revise.clone(),
     };
     // The model sets the pace and a local one can take minutes, so this takes
     // the no-deadline path. Stage lines go to stderr, leaving stdout for the

@@ -12485,6 +12485,13 @@
               "null"
             ]
           },
+          "revise": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id of the proposal on screen, when revising it: the model is shown\nthat proposal and the instruction is applied to it. `text` stays the\nuser's own text."
+          },
           "selection": {
             "oneOf": [
               {
@@ -29125,6 +29132,13 @@
                   "string",
                   "null"
                 ]
+              },
+              "revise": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The id of a proposal to revise. The model is shown that proposal's\ntext and the instruction is applied to it; `text` stays the user's\nown text, which the check and the diff still run against. Absent on\na first request."
               },
               "selection": {
                 "oneOf": [

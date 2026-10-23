@@ -1587,6 +1587,12 @@ pub enum Request {
         instruction: Option<String>,
         #[serde(default)]
         adjust: AssistAdjustData,
+        /// The id of a proposal to revise. The model is shown that proposal's
+        /// text and the instruction is applied to it; `text` stays the user's
+        /// own text, which the check and the diff still run against. Absent on
+        /// a first request.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        revise: Option<String>,
     },
     /// Accept a proposal: write its text into the stored draft's text region,
     /// keeping the signature and forward header, if that region still hashes

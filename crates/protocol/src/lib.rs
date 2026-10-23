@@ -2491,9 +2491,11 @@ mod tests {
             action: None,
             instruction: None,
             adjust: AssistAdjustData::default(),
+            revise: None,
         })
         .unwrap();
         assert_eq!(wire["cmd"], "ComposeAssist");
+        assert!(wire.get("revise").is_none(), "absent stays off the wire");
         assert_eq!(wire["draft"]["kind"], "reply");
         #[derive(serde::Deserialize)]
         #[serde(tag = "cmd")]
@@ -2525,6 +2527,47 @@ mod tests {
         };
         assert!(selection.is_none() && action.is_none() && instruction.is_none());
         assert_eq!(adjust, AssistAdjustData::default());
+    }
+
+    /// `revise` joined the request after it shipped. A request without it decodes
+    /// as a first request, and a daemon that predates the field ignores it (the
+    /// request is not tagged `deny_unknown_fields`) and answers a plain assist
+    /// from `text`.
+    #[test]
+    fn revise_is_optional_and_an_older_daemon_ignores_it() {
+        let message_id = MessageId::new();
+        let mut wire = serde_json::json!({
+            "cmd": "ComposeAssist",
+            "draft": {"kind": "reply", "message_id": message_id, "all": false},
+            "text": "Thursday works.",
+        });
+        let Request::ComposeAssist { revise, .. } = serde_json::from_value(wire.clone()).unwrap()
+        else {
+            panic!("expected ComposeAssist");
+        };
+        assert_eq!(revise, None);
+
+        wire["revise"] = serde_json::json!("proposal-1");
+        let Request::ComposeAssist { revise, .. } = serde_json::from_value(wire.clone()).unwrap()
+        else {
+            panic!("expected ComposeAssist");
+        };
+        assert_eq!(revise.as_deref(), Some("proposal-1"));
+
+        // The request as the daemon before `revise` read it.
+        #[derive(serde::Deserialize)]
+        #[serde(tag = "cmd")]
+        enum BeforeRevise {
+            ComposeAssist {
+                #[serde(default)]
+                instruction: Option<String>,
+                text: String,
+            },
+        }
+        let BeforeRevise::ComposeAssist { text, instruction } =
+            serde_json::from_value(wire).unwrap();
+        assert_eq!(text, "Thursday works.");
+        assert_eq!(instruction, None);
     }
 
     /// Request and response shapes the clients mirror; a change here is a

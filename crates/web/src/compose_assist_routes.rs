@@ -32,6 +32,11 @@ pub(crate) struct ComposeAssistBody {
     instruction: Option<String>,
     #[serde(default)]
     adjust: AssistAdjustData,
+    /// The id of the proposal on screen, when revising it: the model is shown
+    /// that proposal and the instruction is applied to it. `text` stays the
+    /// user's own text.
+    #[serde(default)]
+    revise: Option<String>,
 }
 
 /// Answer to `POST /api/v1/mail/compose/assist`.
@@ -73,6 +78,7 @@ async fn assist(
             action: body.action,
             instruction: body.instruction,
             adjust: body.adjust,
+            revise: body.revise,
         },
     )
     .await?;

@@ -491,6 +491,7 @@ mxr compose apply <proposal_id> --draft <draft_id>
 --select <START..END>    Byte offsets on character boundaries
 --write | --finish | --polish   Override the action picked from the text
 --instruction <TEXT>
+--revise <PROPOSAL_ID>   Apply the instruction to an earlier proposal (your text stays --text)
 --shorter --warmer --formal --proofread
 --format <FORMAT>        json prints the proposal; otherwise {+added+} [-removed-] and the gaps
 ```

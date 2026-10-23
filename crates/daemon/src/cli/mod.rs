@@ -2475,6 +2475,10 @@ pub struct ComposeAssistArgs {
     /// What you want said or changed, in your words.
     #[arg(long, value_name = "TEXT")]
     pub instruction: Option<String>,
+    /// Revise an earlier proposal: the instruction is applied to it. Your own
+    /// text stays what `--text` (or the stored draft) says.
+    #[arg(long, value_name = "PROPOSAL_ID")]
+    pub revise: Option<String>,
     /// Make it shorter.
     #[arg(long)]
     pub shorter: bool,

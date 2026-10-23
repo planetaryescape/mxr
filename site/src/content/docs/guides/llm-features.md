@@ -377,6 +377,9 @@ mxr compose assist --draft DRAFT_ID --instruction "mention the invoice"
 # Change only part of the text, as byte offsets between whole characters.
 mxr compose assist --draft DRAFT_ID --select 16..31 --warmer
 
+# Ask again about a proposal you have read: the note is applied to that proposal.
+mxr compose assist --draft DRAFT_ID --revise PROPOSAL_ID --instruction "drop the greeting"
+
 # Accept the proposal. Proposal ids are in the output; they last 30 minutes.
 mxr compose apply PROPOSAL_ID --draft DRAFT_ID
 ```

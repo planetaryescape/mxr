@@ -121,6 +121,7 @@ pub(crate) fn assemble(case: &Case, today: &str) -> Assembled {
             typed,
             selection: resolved.selection,
             adjust: Default::default(),
+            revise: None,
         },
         budget_chars: ASSEMBLED_MESSAGE_BUDGET_CHARS,
     });

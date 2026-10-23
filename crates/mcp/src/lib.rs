@@ -1768,6 +1768,7 @@ impl MxrMcpServer {
             action: None,
             instruction: Some(input.instruction),
             adjust: mxr_protocol::AssistAdjustData::default(),
+            revise: input.revise,
         })
         .await
     }
@@ -2710,6 +2711,9 @@ pub struct DraftAssistInput {
     /// What the user has typed of the reply so far, signature excluded. Omit
     /// to have the reply written from scratch.
     pub text: Option<String>,
+    /// The id of an earlier proposal to revise: the instruction is applied to
+    /// that proposal. `text` stays the user's own text.
+    pub revise: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -3099,6 +3103,7 @@ mod tests {
                 message_id: Some(message_id.as_str()),
                 instruction: "mention the invoice".into(),
                 text: Some("Thursday works.".into()),
+                revise: Some("proposal-7".into()),
             }))
             .await
             .expect("draft assist");
@@ -3112,6 +3117,7 @@ mod tests {
             text,
             action,
             instruction,
+            revise,
             ..
         }] = requests.as_slice()
         else {
@@ -3125,6 +3131,7 @@ mod tests {
             "the daemon picks the action from the text"
         );
         assert_eq!(instruction.as_deref(), Some("mention the invoice"));
+        assert_eq!(revise.as_deref(), Some("proposal-7"));
     }
 
     #[tokio::test]
@@ -3186,6 +3193,7 @@ mod tests {
                 message_id: None,
                 instruction: "decline politely".into(),
                 text: None,
+                revise: None,
             }))
             .await
             .expect("draft assist");

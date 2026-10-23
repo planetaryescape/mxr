@@ -2118,6 +2118,7 @@ async fn dispatch(
             action,
             instruction,
             adjust,
+            revise,
         } => {
             // Boxed: the gather, write and check stages hold a lot of state.
             Box::pin(compose_assist::compose_assist(
@@ -2130,6 +2131,7 @@ async fn dispatch(
                     action: *action,
                     instruction: instruction.as_deref(),
                     adjust: *adjust,
+                    revise: revise.as_deref(),
                 },
             ))
             .await

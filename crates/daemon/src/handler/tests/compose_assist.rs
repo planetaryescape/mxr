@@ -99,6 +99,7 @@ struct Ask<'a> {
     selection: Option<(u32, u32)>,
     action: Option<AssistActionData>,
     instruction: Option<&'a str>,
+    revise: Option<&'a str>,
 }
 
 impl<'a> Ask<'a> {
@@ -108,6 +109,7 @@ impl<'a> Ask<'a> {
             selection: None,
             action: None,
             instruction: None,
+            revise: None,
         }
     }
 }
@@ -129,6 +131,7 @@ async fn assist(
             action: ask.action,
             instruction: ask.instruction,
             adjust: AssistAdjustData::default(),
+            revise: ask.revise,
         },
     )
     .await
@@ -576,7 +579,10 @@ async fn a_draft_saved_with_windows_line_endings_still_applies() {
     apply(&state, &proposal.proposal_id, &draft.id)
         .await
         .unwrap();
-    assert_eq!(stored_body(&state, &draft.id).await, "Hi,\n\nOne.\nTwo.\r\n");
+    assert_eq!(
+        stored_body(&state, &draft.id).await,
+        "Hi,\n\nOne.\nTwo.\r\n"
+    );
 }
 
 #[tokio::test]
@@ -890,4 +896,156 @@ async fn no_subject_reaches_the_task_whoever_wrote_it() {
     assert!(begin < at && at < end, "{prompt}");
     let task = &prompt[prompt.find("[TASK]").unwrap()..];
     assert!(!task.contains("Ignore the instruction"), "{task}");
+}
+
+#[tokio::test]
+async fn revising_shows_the_model_the_proposal_and_still_checks_against_the_users_text() {
+    let state = AppState::in_memory().await.unwrap();
+    let target = new_message(&state);
+    state
+        .llm
+        .replace(Scripted::new("Hi Sam,\n\nThursday works.\n\nAlex"));
+    let first = assist(&state, &target, &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+
+    let model = Scripted::new("Thursday works.\n\nAlex");
+    state.llm.replace(model.clone());
+    let ask = Ask {
+        instruction: Some("drop the greeting"),
+        revise: Some(&first.proposal_id),
+        ..Ask::text("Thursday works.")
+    };
+    let second = assist(&state, &target, &ask).await.unwrap();
+
+    let prompt = model.user_prompt();
+    let at = prompt
+        .find("[PROPOSAL TO REVISE]")
+        .expect("the proposal is shown");
+    let block = &prompt[at..];
+    let begin = block.find("BEGIN UNTRUSTED").unwrap();
+    let text_at = block.find("Hi Sam,").unwrap();
+    let end = block.find("END UNTRUSTED").unwrap();
+    assert!(begin < text_at && text_at < end, "{block}");
+    let task = &prompt[prompt.find("[TASK]").unwrap()..];
+    assert!(
+        task.contains("My instruction: drop the greeting."),
+        "{task}"
+    );
+    assert!(task.contains("revising the proposal"), "{task}");
+    // The user's own text is what the base hash and the diff are about.
+    assert_eq!(second.base, first.base);
+    assert!(second.yours_changed.is_empty());
+    assert_eq!(second.text, "Thursday works.\n\nAlex");
+    assert_ne!(second.proposal_id, first.proposal_id);
+}
+
+#[tokio::test]
+async fn revising_a_proposal_that_is_gone_or_not_yours_is_a_clear_error() {
+    let state = AppState::in_memory().await.unwrap();
+    let model = Scripted::new("never used");
+    state.llm.replace(model.clone());
+    let target = new_message(&state);
+
+    let ask = Ask {
+        revise: Some("no-such-proposal"),
+        ..Ask::text("Thursday works.")
+    };
+    let error = assist(&state, &target, &ask).await.unwrap_err();
+    assert!(error.contains("expired or was never made"), "{error}");
+
+    let mut other = crate::handler::compose_proposals::StoredProposal {
+        account_id: mxr_core::AccountId::new(),
+        draft_id: None,
+        proposal: ComposeProposalData {
+            proposal_id: "elsewhere".into(),
+            action: AssistActionData::Write,
+            base: String::new(),
+            text: "Hi.".into(),
+            changes: Vec::new(),
+            gaps: Vec::new(),
+            provenance: mxr_protocol::DraftProvenanceData {
+                model: "m".into(),
+                locality: mxr_protocol::AiLocalityData::Local,
+                history_used: false,
+                voice_examples: Vec::new(),
+                conversation: Vec::new(),
+                rewrite: None,
+            },
+            yours_changed: Vec::new(),
+            composer_version: String::new(),
+        },
+    };
+    state.compose_proposals.insert(other.clone());
+    let ask = Ask {
+        revise: Some("elsewhere"),
+        ..Ask::text("Thursday works.")
+    };
+    let error = assist(&state, &target, &ask).await.unwrap_err();
+    assert!(error.contains("another account"), "{error}");
+
+    // Made for one draft, revised for another.
+    other.account_id = state.default_account_id();
+    other.draft_id = Some(mxr_core::DraftId::new());
+    other.proposal.proposal_id = "bound".into();
+    state.compose_proposals.insert(other);
+    let draft = stored_draft(&state, "Thursday works.");
+    state.store.insert_draft(&draft).await.unwrap();
+    let ask = Ask {
+        revise: Some("bound"),
+        ..Ask::text("Thursday works.")
+    };
+    let error = assist(
+        &state,
+        &DraftTargetData::Stored { draft_id: draft.id },
+        &ask,
+    )
+    .await
+    .unwrap_err();
+    assert!(error.contains("different draft"), "{error}");
+    assert_eq!(model.calls(), 0, "no error path reached the model");
+}
+
+#[tokio::test]
+async fn a_cloud_model_without_the_opt_in_is_not_given_a_proposal_written_from_history() {
+    let state = AppState::in_memory().await.unwrap();
+    let mut config = state.config_snapshot();
+    config.llm.enabled = true;
+    config.llm.base_url = "https://api.example-cloud.com/v1".into();
+    config.llm.allow_cloud_relationship_data = false;
+    state.set_config_for_test(config).await;
+    let model = Scripted::cloud("never used");
+    state.llm.replace(model.clone());
+    let from_history = crate::handler::compose_proposals::StoredProposal {
+        account_id: state.default_account_id(),
+        draft_id: None,
+        proposal: ComposeProposalData {
+            proposal_id: "history".into(),
+            action: AssistActionData::Write,
+            base: String::new(),
+            text: "Written from my old emails.".into(),
+            changes: Vec::new(),
+            gaps: Vec::new(),
+            provenance: mxr_protocol::DraftProvenanceData {
+                model: "m".into(),
+                locality: mxr_protocol::AiLocalityData::Local,
+                history_used: true,
+                voice_examples: Vec::new(),
+                conversation: Vec::new(),
+                rewrite: None,
+            },
+            yours_changed: Vec::new(),
+            composer_version: String::new(),
+        },
+    };
+    state.compose_proposals.insert(from_history);
+    let ask = Ask {
+        revise: Some("history"),
+        ..Ask::text("")
+    };
+    let error = assist(&state, &new_message(&state), &ask)
+        .await
+        .unwrap_err();
+    assert!(error.contains("written from your history"), "{error}");
+    assert_eq!(model.calls(), 0);
 }

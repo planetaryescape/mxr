@@ -63,7 +63,12 @@ pub(super) struct AssistRequest<'a> {
     pub action: Option<AssistActionData>,
     pub instruction: Option<&'a str>,
     pub adjust: AssistAdjustData,
+    /// The id of the proposal being revised.
+    pub revise: Option<&'a str>,
 }
+
+/// Said when a proposal is not (or no longer) in the daemon's memory.
+const PROPOSAL_GONE: &str = "That proposal expired or was never made. Ask for writing help again.";
 
 pub(super) async fn compose_assist(
     state: &AppState,
@@ -115,6 +120,40 @@ pub(super) async fn compose_assist(
         ));
     }
 
+    // The proposal being revised: the model sees its text, so it must be the
+    // same account's, and a cloud model without the opt-in must not get text
+    // that was written from the user's history.
+    let revised = match request.revise {
+        Some(proposal_id) => {
+            let stored = state
+                .compose_proposals
+                .get(proposal_id)
+                .ok_or_else(|| HandlerError::InvalidRequest(PROPOSAL_GONE.to_string()))?;
+            if &stored.account_id != account_id {
+                return Err(HandlerError::InvalidRequest(
+                    "That proposal was made for another account.".to_string(),
+                ));
+            }
+            if stored
+                .draft_id
+                .as_ref()
+                .zip(gathered.draft_id.as_ref())
+                .is_some_and(|(bound, asked)| bound != asked)
+            {
+                return Err(HandlerError::InvalidRequest(
+                    "That proposal was made for a different draft.".to_string(),
+                ));
+            }
+            if stored.proposal.provenance.history_used && !share {
+                return Err(HandlerError::InvalidRequest(
+                    HISTORY_BODY_REFUSAL.to_string(),
+                ));
+            }
+            Some(stored.proposal.text)
+        }
+        None => None,
+    };
+
     if let Some(person) = &gathered.counterparty {
         draft_context::ensure_contact_fresh(state, account_id, &person.email).await;
     }
@@ -150,6 +189,7 @@ pub(super) async fn compose_assist(
             typed: request.text,
             selection: resolved.selection.clone(),
             adjust: request.adjust,
+            revise: revised.as_deref(),
         },
         budget_chars,
     });
@@ -396,11 +436,10 @@ pub(super) async fn apply(
     proposal_id: &str,
     draft_id: &DraftId,
 ) -> HandlerResult {
-    let stored = state.compose_proposals.get(proposal_id).ok_or_else(|| {
-        HandlerError::InvalidRequest(
-            "That proposal expired or was never made. Ask for writing help again.".to_string(),
-        )
-    })?;
+    let stored = state
+        .compose_proposals
+        .get(proposal_id)
+        .ok_or_else(|| HandlerError::InvalidRequest(PROPOSAL_GONE.to_string()))?;
     if stored
         .draft_id
         .as_ref()

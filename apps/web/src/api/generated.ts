@@ -6152,6 +6152,12 @@ export interface components {
             /** @description What the help is for: a stored draft, a reply, a forward or a new message. */
             draft: components["schemas"]["DraftTargetData"];
             instruction?: string | null;
+            /**
+             * @description The id of the proposal on screen, when revising it: the model is shown
+             *     that proposal and the instruction is applied to it. `text` stays the
+             *     user's own text.
+             */
+            revise?: string | null;
             selection?: components["schemas"]["TextRangeData"] | null;
             /**
              * @description The text region of the compose box, without signature or forward header.
@@ -11565,6 +11571,13 @@ export interface components {
                   cmd: "ComposeAssist";
                   draft: components["schemas"]["DraftTargetData"];
                   instruction?: string | null;
+                  /**
+                   * @description The id of a proposal to revise. The model is shown that proposal's
+                   *     text and the instruction is applied to it; `text` stays the user's
+                   *     own text, which the check and the diff still run against. Absent on
+                   *     a first request.
+                   */
+                  revise?: string | null;
                   selection?: components["schemas"]["TextRangeData"] | null;
                   /** @description The user's text region only: no signature, no forward header. */
                   text: string;

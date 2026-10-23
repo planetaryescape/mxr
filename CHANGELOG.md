@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.158](https://github.com/planetaryescape/mxr/compare/v0.6.157...v0.6.158) (2026-10-23)
+
+
+### Bug Fixes
+
+* require desktop artifacts before release publication ([7636657](https://github.com/planetaryescape/mxr/commit/7636657ac48dae1846eb1e3d1c0a7c20ce8ca0c0))
+
 ## [0.6.157](https://github.com/planetaryescape/mxr/compare/v0.6.156...v0.6.157) (2026-10-23)
 
 

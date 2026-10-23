@@ -34,10 +34,8 @@ fn prompts_report() -> String {
         }
         let typed = match case.draft {
             DraftState::Empty => "nothing typed",
-            DraftState::Typed(_) => "typed text not sent: request has no field",
-            DraftState::Selection { .. } => {
-                "typed text and selection not sent: request has no field"
-            }
+            DraftState::Typed(_) => "typed text sent: finish",
+            DraftState::Selection { .. } => "typed text and selection sent: edit selection",
         };
         let near = case
             .twin_of

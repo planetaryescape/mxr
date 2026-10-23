@@ -60,7 +60,7 @@ use utoipa::{
         snippets_set, snippets_delete, sender_profile, contacts_autocomplete, screener_queue,
         screener_decisions_list, screener_decisions_set,
         screener_decisions_clear, thread_summarize, mail_draft_compose,
-        mail_draft_refine, mail_humanizer_score, mail_humanizer_rewrite,
+        mail_draft_refine, mail_compose_assist, mail_compose_apply, mail_humanizer_score, mail_humanizer_rewrite,
         mail_relationship_profile, mail_relationship_rebuild, mail_commitments_list,
         mail_commitments_resolve, mail_thread_briefing, mail_contacts_briefing, mail_contacts_expert,
         compose_session_start, compose_session_refresh, compose_session_restore,
@@ -519,6 +519,32 @@ endpoint!(delete screener_decisions_clear "/api/v1/mail/screener/decisions", "Cl
 endpoint!(post thread_summarize "/api/v1/mail/threads/{thread_id}/summarize", "Summarize a thread");
 endpoint!(post mail_draft_compose "/api/v1/mail/drafts/compose", "Generate an LLM draft (new message or reply)");
 endpoint!(post mail_draft_refine "/api/v1/mail/drafts/refine", "Refine draft text with LLM");
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/compose/assist",
+    summary = "Writing help for the text in a compose box: write it, finish it, polish it or edit a selection. Returns a proposal and changes nothing",
+    request_body = crate::compose_assist_routes::ComposeAssistBody,
+    responses(
+        (status = 200, description = "A proposal: the whole proposed text, the word diff from yours, the gaps left, and which of your sentences changed", body = crate::compose_assist_routes::ComposeAssistResponse),
+        (status = 401, description = "Missing or invalid bridge token"),
+        (status = 422, description = "Nothing to finish, a selection off a character boundary, text too long, or a privacy setting that stops the model")
+    )
+)]
+#[allow(dead_code)]
+fn mail_compose_assist() {}
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/compose/apply",
+    summary = "Write an accepted proposal into a stored draft's text region; refused if that text changed since the proposal",
+    request_body = crate::compose_assist_routes::ComposeApplyBody,
+    responses(
+        (status = 200, description = "The draft now holds the proposal", body = crate::compose_assist_routes::ComposeApplyResponse),
+        (status = 401, description = "Missing or invalid bridge token"),
+        (status = 422, description = "The proposal expired, belongs to another draft, or the draft's text changed")
+    )
+)]
+#[allow(dead_code)]
+fn mail_compose_apply() {}
 endpoint!(post mail_humanizer_score "/api/v1/mail/humanizer/score", "Score draft for human-like voice");
 endpoint!(post mail_humanizer_rewrite "/api/v1/mail/humanizer/rewrite", "Rewrite draft toward target voice");
 endpoint!(get mail_relationship_profile "/api/v1/mail/relationship", "Relationship profile for a contact");

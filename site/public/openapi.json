@@ -1916,6 +1916,76 @@
         }
       }
     },
+    "/api/v1/mail/compose/apply": {
+      "post": {
+        "tags": [],
+        "summary": "Write an accepted proposal into a stored draft's text region; refused if that text changed since the proposal",
+        "operationId": "mail_compose_apply",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeApplyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The draft now holds the proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeApplyResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The proposal expired, belongs to another draft, or the draft's text changed"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/compose/assist": {
+      "post": {
+        "tags": [],
+        "summary": "Writing help for the text in a compose box: write it, finish it, polish it or edit a selection. Returns a proposal and changes nothing",
+        "operationId": "mail_compose_assist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeAssistBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A proposal: the whole proposed text, the word diff from yours, the gaps left, and which of your sentences changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeAssistResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "Nothing to finish, a selection off a character boundary, text too long, or a privacy setting that stops the model"
+          }
+        }
+      }
+    },
     "/api/v1/mail/compose/session": {
       "post": {
         "tags": [],
@@ -9686,6 +9756,34 @@
           }
         }
       },
+      "AssistActionData": {
+        "type": "string",
+        "description": "What the writing help does with the text. A request without one lets the\ndaemon choose from what is typed.",
+        "enum": [
+          "write",
+          "finish",
+          "polish",
+          "edit_selection"
+        ]
+      },
+      "AssistAdjustData": {
+        "type": "object",
+        "description": "One-line adjustments the user ticked, each a single instruction to the model.",
+        "properties": {
+          "more_formal": {
+            "type": "boolean"
+          },
+          "proofread": {
+            "type": "boolean"
+          },
+          "shorter": {
+            "type": "boolean"
+          },
+          "warmer": {
+            "type": "boolean"
+          }
+        }
+      },
       "AssistantAnswerData": {
         "type": "object",
         "properties": {
@@ -12622,6 +12720,108 @@
           "expired"
         ]
       },
+      "ComposeApplyBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/compose/apply`.",
+        "required": [
+          "proposal_id",
+          "draft_id"
+        ],
+        "properties": {
+          "draft_id": {
+            "type": "string"
+          },
+          "proposal_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ComposeApplyResponse": {
+        "type": "object",
+        "description": "Answer to `POST /api/v1/mail/compose/apply`.",
+        "required": [
+          "draft_id",
+          "text_hash"
+        ],
+        "properties": {
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "text_hash": {
+            "type": "string",
+            "description": "Hex SHA-256 of the draft's new text region."
+          }
+        }
+      },
+      "ComposeAssistBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/compose/assist`: the fields of the daemon's\n`ComposeAssist` request.",
+        "required": [
+          "draft",
+          "text"
+        ],
+        "properties": {
+          "action": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AssistActionData",
+                "description": "Absent: the daemon picks write, finish or edit from the text."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "adjust": {
+            "$ref": "#/components/schemas/AssistAdjustData"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/DraftTargetData",
+            "description": "What the help is for: a stored draft, a reply, a forward or a new message."
+          },
+          "instruction": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revise": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id of the proposal on screen, when revising it: the model is shown\nthat proposal and the instruction is applied to it. `text` stays the\nuser's own text."
+          },
+          "selection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TextRangeData",
+                "description": "A byte range of `text` on character boundaries; the rest is kept as it is."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "The text region of the compose box, without signature or forward header.\nEmpty when nothing is typed."
+          }
+        }
+      },
+      "ComposeAssistResponse": {
+        "type": "object",
+        "description": "Answer to `POST /api/v1/mail/compose/assist`.",
+        "required": [
+          "proposal"
+        ],
+        "properties": {
+          "proposal": {
+            "$ref": "#/components/schemas/ComposeProposalData",
+            "description": "Never touches the draft; accept it by applying `text` or `compose/apply`."
+          }
+        }
+      },
       "ComposeAttachmentChunkResponse": {
         "type": "object",
         "required": [
@@ -12770,6 +12970,65 @@
           }
         }
       },
+      "ComposeProposalData": {
+        "type": "object",
+        "description": "What the writing help proposes. Nothing changes the draft until the user\naccepts it with `ApplyComposeProposal`.",
+        "required": [
+          "proposal_id",
+          "action",
+          "base",
+          "text",
+          "changes",
+          "gaps",
+          "provenance",
+          "yours_changed",
+          "composer_version"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/AssistActionData"
+          },
+          "base": {
+            "type": "string",
+            "description": "Hex SHA-256 of the request text with trailing blank space ignored: the\ntext region the proposal was written against. Applying refuses when the\ndraft's text region no longer hashes to it."
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TextChangeData"
+            }
+          },
+          "composer_version": {
+            "type": "string",
+            "description": "Version of the rules that checked this proposal."
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GapData"
+            }
+          },
+          "proposal_id": {
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/DraftProvenanceData",
+            "description": "Always filled: the model that answered, where it ran and what it read."
+          },
+          "text": {
+            "type": "string"
+          },
+          "yours_changed": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Positions, from zero, of the user's sentences that the proposal changed\nor dropped. Sentences are the request text split at `.`, `!`, `?` and\nline breaks, with empty ones skipped; case and spacing do not count as a\nchange."
+          }
+        }
+      },
       "ComposeSessionAttachmentRequest": {
         "type": "object",
         "required": [
@@ -12861,6 +13120,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "draftIntent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DraftIntent",
+                "description": "Stored intent when reopening a saved draft."
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "draftPath": {
@@ -16025,7 +16295,8 @@
           "tone_mismatch",
           "answer_coverage",
           "commitment_candidate",
-          "send_time_note"
+          "send_time_note",
+          "unfilled_gap"
         ]
       },
       "DraftSafetyModeData": {
@@ -16162,6 +16433,105 @@
             "$ref": "#/components/schemas/ThreadId"
           }
         }
+      },
+      "DraftTargetData": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "draft_id",
+              "kind"
+            ],
+            "properties": {
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "stored"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_id",
+              "all",
+              "kind"
+            ],
+            "properties": {
+              "all": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reply"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_id",
+              "to",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "forward"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "to": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Address"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "account_id",
+              "to",
+              "subject",
+              "kind"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "new"
+                ]
+              },
+              "subject": {
+                "type": "string"
+              },
+              "to": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Address"
+                }
+              }
+            }
+          }
+        ],
+        "description": "The draft a writing request is about. A stored draft is read from the\ndatabase; the other targets name the thing that does not exist yet, so a\nclient can ask for help before the first save."
       },
       "EntityCandidateData": {
         "type": "object",
@@ -16631,6 +17001,31 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "GapData": {
+        "type": "object",
+        "description": "A place the model could not fill, written `[[?: label]]` in the text.",
+        "required": [
+          "label",
+          "start",
+          "end"
+        ],
+        "properties": {
+          "end": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "label": {
+            "type": "string"
+          },
+          "start": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Byte range of the whole marker in the proposal text.",
+            "minimum": 0
           }
         }
       },
@@ -29076,6 +29471,89 @@
           },
           {
             "type": "object",
+            "description": "Writing help for the text in a draft's body region: write it, finish\nwhat is typed, polish it or edit a selection. Returns a proposal; the\ndraft is not changed until `ApplyComposeProposal`. A separate command\nfrom `DraftCompose`, so a daemon that predates it rejects it as unknown\ninstead of drafting over the typed text.",
+            "required": [
+              "draft",
+              "text",
+              "cmd"
+            ],
+            "properties": {
+              "action": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AssistActionData"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "adjust": {
+                "$ref": "#/components/schemas/AssistAdjustData"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ComposeAssist"
+                ]
+              },
+              "draft": {
+                "$ref": "#/components/schemas/DraftTargetData"
+              },
+              "instruction": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "revise": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The id of a proposal to revise. The model is shown that proposal's\ntext and the instruction is applied to it; `text` stays the user's\nown text, which the check and the diff still run against. Absent on\na first request."
+              },
+              "selection": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextRangeData"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "text": {
+                "type": "string",
+                "description": "The user's text region only: no signature, no forward header."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Accept a proposal: write its text into the stored draft's text region,\nkeeping the signature and forward header, if that region still hashes\nto the proposal's `base`.",
+            "required": [
+              "proposal_id",
+              "draft_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ApplyComposeProposal"
+                ]
+              },
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "proposal_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Replay the user's most recent replies: draft each one from what was\nknown just before they replied, and compare with what they sent.\nCalls the configured LLM once per case; nothing is saved or sent.",
             "required": [
               "limit",
@@ -34637,6 +35115,48 @@
               },
               "summary": {
                 "$ref": "#/components/schemas/DraftEvalSummaryData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ComposeAssist`.",
+            "required": [
+              "proposal",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ComposeProposal"
+                ]
+              },
+              "proposal": {
+                "$ref": "#/components/schemas/ComposeProposalData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ApplyComposeProposal`: the stored draft now holds\nthe proposal; `text_hash` is the hex SHA-256 of its new text region.",
+            "required": [
+              "draft_id",
+              "text_hash",
+              "kind"
+            ],
+            "properties": {
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ComposeApplied"
+                ]
+              },
+              "text_hash": {
+                "type": "string"
               }
             }
           },
@@ -40304,6 +40824,30 @@
           }
         }
       },
+      "TextChangeData": {
+        "type": "object",
+        "description": "One run of a word-level diff from the user's text to the proposal.",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TextChangeKindData"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "TextChangeKindData": {
+        "type": "string",
+        "enum": [
+          "kept",
+          "added",
+          "removed"
+        ]
+      },
       "TextPlainFormat": {
         "oneOf": [
           {
@@ -40332,6 +40876,26 @@
             }
           }
         ]
+      },
+      "TextRangeData": {
+        "type": "object",
+        "description": "A byte range into the request's `text`; both ends fall on char boundaries.",
+        "required": [
+          "start",
+          "end"
+        ],
+        "properties": {
+          "end": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "start": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
       },
       "Thread": {
         "type": "object",

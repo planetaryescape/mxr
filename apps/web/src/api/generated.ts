@@ -904,6 +904,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/compose/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Write an accepted proposal into a stored draft's text region; refused if that text changed since the proposal */
+        post: operations["mail_compose_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/compose/assist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Writing help for the text in a compose box: write it, finish it, polish it or edit a selection. Returns a proposal and changes nothing */
+        post: operations["mail_compose_assist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/compose/session": {
         parameters: {
             query?: never;
@@ -5107,6 +5141,19 @@ export interface components {
             templated_sender: boolean;
             written_to: boolean;
         };
+        /**
+         * @description What the writing help does with the text. A request without one lets the
+         *     daemon choose from what is typed.
+         * @enum {string}
+         */
+        AssistActionData: "write" | "finish" | "polish" | "edit_selection";
+        /** @description One-line adjustments the user ticked, each a single instruction to the model. */
+        AssistAdjustData: {
+            more_formal?: boolean;
+            proofread?: boolean;
+            shorter?: boolean;
+            warmer?: boolean;
+        };
         AssistantAnswerData: {
             other?: string | null;
             selected?: string[];
@@ -6172,6 +6219,45 @@ export interface components {
         CommitmentDirectionData: "yours" | "theirs";
         /** @enum {string} */
         CommitmentStatusData: "open" | "resolved" | "expired";
+        /** @description Body of `POST /api/v1/mail/compose/apply`. */
+        ComposeApplyBody: {
+            draft_id: string;
+            proposal_id: string;
+        };
+        /** @description Answer to `POST /api/v1/mail/compose/apply`. */
+        ComposeApplyResponse: {
+            draft_id: components["schemas"]["DraftId"];
+            /** @description Hex SHA-256 of the draft's new text region. */
+            text_hash: string;
+        };
+        /**
+         * @description Body of `POST /api/v1/mail/compose/assist`: the fields of the daemon's
+         *     `ComposeAssist` request.
+         */
+        ComposeAssistBody: {
+            action?: components["schemas"]["AssistActionData"] | null;
+            adjust?: components["schemas"]["AssistAdjustData"];
+            /** @description What the help is for: a stored draft, a reply, a forward or a new message. */
+            draft: components["schemas"]["DraftTargetData"];
+            instruction?: string | null;
+            /**
+             * @description The id of the proposal on screen, when revising it: the model is shown
+             *     that proposal and the instruction is applied to it. `text` stays the
+             *     user's own text.
+             */
+            revise?: string | null;
+            selection?: components["schemas"]["TextRangeData"] | null;
+            /**
+             * @description The text region of the compose box, without signature or forward header.
+             *     Empty when nothing is typed.
+             */
+            text: string;
+        };
+        /** @description Answer to `POST /api/v1/mail/compose/assist`. */
+        ComposeAssistResponse: {
+            /** @description Never touches the draft; accept it by applying `text` or `compose/apply`. */
+            proposal: components["schemas"]["ComposeProposalData"];
+        };
         ComposeAttachmentChunkResponse: {
             ok: boolean;
         };
@@ -6212,6 +6298,34 @@ export interface components {
             message: string;
             severity: string;
         };
+        /**
+         * @description What the writing help proposes. Nothing changes the draft until the user
+         *     accepts it with `ApplyComposeProposal`.
+         */
+        ComposeProposalData: {
+            action: components["schemas"]["AssistActionData"];
+            /**
+             * @description Hex SHA-256 of the request text with trailing blank space ignored: the
+             *     text region the proposal was written against. Applying refuses when the
+             *     draft's text region no longer hashes to it.
+             */
+            base: string;
+            changes: components["schemas"]["TextChangeData"][];
+            /** @description Version of the rules that checked this proposal. */
+            composer_version: string;
+            gaps: components["schemas"]["GapData"][];
+            proposal_id: string;
+            /** @description Always filled: the model that answered, where it ran and what it read. */
+            provenance: components["schemas"]["DraftProvenanceData"];
+            text: string;
+            /**
+             * @description Positions, from zero, of the user's sentences that the proposal changed
+             *     or dropped. Sentences are the request text split at `.`, `!`, `?` and
+             *     line breaks, with empty ones skipped; case and spacing do not count as a
+             *     change.
+             */
+            yours_changed: number[];
+        };
         ComposeSessionAttachmentRequest: {
             account_id: string;
             content_base64?: string | null;
@@ -6229,6 +6343,7 @@ export interface components {
             bodyMarkdown: string;
             cursorLine?: number | null;
             draftId?: string | null;
+            draftIntent?: components["schemas"]["DraftIntent"] | null;
             draftPath: string;
             editorCommand?: string | null;
             frontmatter: components["schemas"]["ComposeFrontmatter"];
@@ -7338,7 +7453,8 @@ export interface components {
             | "tone_mismatch"
             | "answer_coverage"
             | "commitment_candidate"
-            | "send_time_note";
+            | "send_time_note"
+            | "unfilled_gap";
         /** @enum {string} */
         DraftSafetyModeData: "check" | "send" | "scheduled_flush";
         DraftSafetyReport: {
@@ -7374,6 +7490,36 @@ export interface components {
             person_name?: string | null;
             thread_id: components["schemas"]["ThreadId"];
         };
+        /**
+         * @description The draft a writing request is about. A stored draft is read from the
+         *     database; the other targets name the thing that does not exist yet, so a
+         *     client can ask for help before the first save.
+         */
+        DraftTargetData:
+            | {
+                  draft_id: components["schemas"]["DraftId"];
+                  /** @enum {string} */
+                  kind: "stored";
+              }
+            | {
+                  all: boolean;
+                  /** @enum {string} */
+                  kind: "reply";
+                  message_id: components["schemas"]["MessageId"];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "forward";
+                  message_id: components["schemas"]["MessageId"];
+                  to: components["schemas"]["Address"][];
+              }
+            | {
+                  account_id: components["schemas"]["AccountId"];
+                  /** @enum {string} */
+                  kind: "new";
+                  subject: string;
+                  to: components["schemas"]["Address"][];
+              };
         EntityCandidateData: {
             display_name?: string | null;
             kind: string;
@@ -7527,6 +7673,17 @@ export interface components {
              */
             stale_after_secs: number;
             worst_account_id?: components["schemas"]["AccountId"] | null;
+        };
+        /** @description A place the model could not fill, written `[[?: label]]` in the text. */
+        GapData: {
+            /** Format: int32 */
+            end: number;
+            label: string;
+            /**
+             * Format: int32
+             * @description Byte range of the whole marker in the proposal text.
+             */
+            start: number;
         };
         /** @enum {string} */
         GistModelData: "available" | "disabled" | "blocked";
@@ -11513,6 +11670,30 @@ export interface components {
                   knobs: components["schemas"]["DraftRefineKnobsData"];
               }
             | {
+                  action?: components["schemas"]["AssistActionData"] | null;
+                  adjust?: components["schemas"]["AssistAdjustData"];
+                  /** @enum {string} */
+                  cmd: "ComposeAssist";
+                  draft: components["schemas"]["DraftTargetData"];
+                  instruction?: string | null;
+                  /**
+                   * @description The id of a proposal to revise. The model is shown that proposal's
+                   *     text and the instruction is applied to it; `text` stays the user's
+                   *     own text, which the check and the diff still run against. Absent on
+                   *     a first request.
+                   */
+                  revise?: string | null;
+                  selection?: components["schemas"]["TextRangeData"] | null;
+                  /** @description The user's text region only: no signature, no forward header. */
+                  text: string;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "ApplyComposeProposal";
+                  draft_id: components["schemas"]["DraftId"];
+                  proposal_id: string;
+              }
+            | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "DraftEval";
@@ -12964,6 +13145,17 @@ export interface components {
                   /** @enum {string} */
                   kind: "DraftEval";
                   summary: components["schemas"]["DraftEvalSummaryData"];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "ComposeProposal";
+                  proposal: components["schemas"]["ComposeProposalData"];
+              }
+            | {
+                  draft_id: components["schemas"]["DraftId"];
+                  /** @enum {string} */
+                  kind: "ComposeApplied";
+                  text_hash: string;
               }
             | {
                   cases: components["schemas"]["DraftEvalQuickCaseData"][];
@@ -14610,6 +14802,13 @@ export interface components {
              */
             provider_available: boolean;
         };
+        /** @description One run of a word-level diff from the user's text to the proposal. */
+        TextChangeData: {
+            kind: components["schemas"]["TextChangeKindData"];
+            text: string;
+        };
+        /** @enum {string} */
+        TextChangeKindData: "kept" | "added" | "removed";
         TextPlainFormat:
             | "Fixed"
             | {
@@ -14617,6 +14816,13 @@ export interface components {
                       delsp: boolean;
                   };
               };
+        /** @description A byte range into the request's `text`; both ends fall on char boundaries. */
+        TextRangeData: {
+            /** Format: int32 */
+            end: number;
+            /** Format: int32 */
+            start: number;
+        };
         Thread: {
             account_id: components["schemas"]["AccountId"];
             id: components["schemas"]["ThreadId"];
@@ -17865,6 +18071,82 @@ export interface operations {
             };
             /** @description Missing or invalid bridge token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_compose_apply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeApplyBody"];
+            };
+        };
+        responses: {
+            /** @description The draft now holds the proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposeApplyResponse"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The proposal expired, belongs to another draft, or the draft's text changed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_compose_assist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeAssistBody"];
+            };
+        };
+        responses: {
+            /** @description A proposal: the whole proposed text, the word diff from yours, the gaps left, and which of your sentences changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposeAssistResponse"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nothing to finish, a selection off a character boundary, text too long, or a privacy setting that stops the model */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

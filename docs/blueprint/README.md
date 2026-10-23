@@ -6,6 +6,11 @@ For verified implementation gaps, shipped features that these plans understate,
 and docs-site drift, see the [2026-10-20 implementation audit](../research/blueprint-implementation-audit-2026-10-20.md).
 It distinguishes missing code from historical designs and explicitly deferred work.
 
+For the proposed docs-website refresh around mxr as a local mail runtime, use the
+[website blueprint](../website-refresh/blueprint/README.md). It covers positioning,
+the connector distinction, all authored pages, design and delivery; it preserves
+this product blueprint as design history.
+
 ## Document Index
 
 | # | Document | What it covers |

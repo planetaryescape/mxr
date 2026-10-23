@@ -213,7 +213,7 @@ mxr/
 │   │
 │   ├── safety/                   # Local reply/composition safety checks
 │   │                             # Pure checks over caller-provided message/reply context.
-│   │                             # Depends on: core, reader, relationship
+│   │                             # Depends on: core, reader, relationship, outbound
 │   │
 │   ├── protocol/                 # IPC types: Request, Response, Command enums
 │   │                             # Shared between daemon and all clients.
@@ -277,7 +277,7 @@ These are strict. Violations should be caught in code review:
 6. **`llm` owns LLM provider clients and prompt/result DTOs.** It deliberately depends on no internal crates; higher layers pass plain data into it.
 6a. **`assistant` owns the in-app assistant's loop, approval gate and prompt.** It depends only on `llm`. Mail reaches it only through the `ToolHost`, `ChatModel` and `TurnSink` traits the daemon implements (with the MCP tools run in-process), so it can't bypass the daemon's dispatch, safety policy or activity log.
 7. **`relationship` owns relationship analytics and recipient intelligence.** It may depend on `core`, `store`, `reader`, and `llm`. It must not depend on protocol, daemon, clients, sync, search, semantic, or provider crates.
-8. **`safety` owns local reply/composition safety checks.** It may depend on `core`, `reader`, and `relationship`. It must not depend on store, protocol, daemon, clients, sync, search, semantic, or provider crates.
+8. **`safety` owns local reply/composition safety checks.** It may depend on `core`, `reader`, `relationship`, and `outbound` (to check a draft as it will be rendered and sent). It must not depend on store, protocol, daemon, clients, sync, search, semantic, or provider crates.
 9. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
 10. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
 11. **`tui` and `web` are clients.** They may depend on `core`, `protocol`, and client-local utility crates such as `config`, `compose`, `reader`, and `mail-parse`, but they must not depend on daemon, store, search, sync, semantic, or provider crates.

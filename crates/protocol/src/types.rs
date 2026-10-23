@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 mod arrivals;
 mod assistant;
 mod classify;
+mod compose_assist;
 mod desk;
 mod draft_provenance;
 mod freshness;
@@ -29,6 +30,7 @@ mod updates;
 pub use arrivals::*;
 pub use assistant::*;
 pub use classify::*;
+pub use compose_assist::*;
 pub use desk::*;
 pub use draft_provenance::*;
 pub use freshness::*;
@@ -1568,6 +1570,37 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         body: Option<String>,
     },
+    /// Writing help for the text in a draft's body region: write it, finish
+    /// what is typed, polish it or edit a selection. Returns a proposal; the
+    /// draft is not changed until `ApplyComposeProposal`. A separate command
+    /// from `DraftCompose`, so a daemon that predates it rejects it as unknown
+    /// instead of drafting over the typed text.
+    ComposeAssist {
+        draft: DraftTargetData,
+        /// The user's text region only: no signature, no forward header.
+        text: String,
+        #[serde(default)]
+        selection: Option<TextRangeData>,
+        #[serde(default)]
+        action: Option<AssistActionData>,
+        #[serde(default)]
+        instruction: Option<String>,
+        #[serde(default)]
+        adjust: AssistAdjustData,
+        /// The id of a proposal to revise. The model is shown that proposal's
+        /// text and the instruction is applied to it; `text` stays the user's
+        /// own text, which the check and the diff still run against. Absent on
+        /// a first request.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        revise: Option<String>,
+    },
+    /// Accept a proposal: write its text into the stored draft's text region,
+    /// keeping the signature and forward header, if that region still hashes
+    /// to the proposal's `base`.
+    ApplyComposeProposal {
+        proposal_id: String,
+        draft_id: DraftId,
+    },
     /// Replay the user's most recent replies: draft each one from what was
     /// known just before they replied, and compare with what they sent.
     /// Calls the configured LLM once per case; nothing is saved or sent.
@@ -2978,6 +3011,8 @@ impl Request {
             | Self::TriageSearch { .. }
             | Self::DraftCompose { .. }
             | Self::DraftRefine { .. }
+            | Self::ComposeAssist { .. }
+            | Self::ApplyComposeProposal { .. }
             | Self::DraftEval { .. }
             | Self::DraftEvalQuick
             | Self::ClassifyReport { .. }
@@ -3808,6 +3843,16 @@ pub enum ResponseData {
     DraftEval {
         cases: Vec<DraftEvalCaseData>,
         summary: DraftEvalSummaryData,
+    },
+    /// Returned by `Request::ComposeAssist`.
+    ComposeProposal {
+        proposal: ComposeProposalData,
+    },
+    /// Returned by `Request::ApplyComposeProposal`: the stored draft now holds
+    /// the proposal; `text_hash` is the hex SHA-256 of its new text region.
+    ComposeApplied {
+        draft_id: DraftId,
+        text_hash: String,
     },
     /// Returned by `Request::DraftEvalQuick`: the labelled synthetic corpus
     /// only, never the user's mail.
@@ -4647,6 +4692,8 @@ impl ResponseData {
             | Self::ThreadSummary { .. }
             | Self::TriageResults { .. }
             | Self::DraftSuggestion { .. }
+            | Self::ComposeProposal { .. }
+            | Self::ComposeApplied { .. }
             | Self::DraftEval { .. }
             | Self::DraftEvalQuick { .. }
             | Self::ClassifyReport { .. }

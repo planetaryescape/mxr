@@ -38,7 +38,7 @@ ALLOW = {
     "mxr-reading": {"mxr-llm", "mxr-reader"},
     "mxr-relationship": {"mxr-core", "mxr-llm", "mxr-reader", "mxr-store"},
     "mxr-rules": {"mxr-core"},
-    "mxr-safety": {"mxr-core", "mxr-reader", "mxr-relationship"},
+    "mxr-safety": {"mxr-core", "mxr-outbound", "mxr-reader", "mxr-relationship"},
     "mxr-store": {"mxr-core"},
     "mxr-search": {"mxr-core"},
     "mxr-semantic": {"mxr-core", "mxr-config", "mxr-reader", "mxr-store"},

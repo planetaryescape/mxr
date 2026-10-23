@@ -432,7 +432,18 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ExtractDraftCommitments { draft }
         | Request::SuggestCollaborators { draft, .. } => Targets(vec![T::DraftBody(draft)]),
         Request::GetSendOutcome { account_id, .. } => Targets(vec![T::Account(account_id)]),
+        Request::ComposeAssist { draft, .. } => match draft {
+            mxr_protocol::DraftTargetData::Stored { draft_id } => Targets(vec![T::Draft(draft_id)]),
+            mxr_protocol::DraftTargetData::Reply { message_id, .. }
+            | mxr_protocol::DraftTargetData::Forward { message_id, .. } => {
+                Targets(vec![T::Message(message_id)])
+            }
+            mxr_protocol::DraftTargetData::New { account_id, .. } => {
+                Targets(vec![T::Account(account_id)])
+            }
+        },
         Request::DraftRefine { draft_id, .. }
+        | Request::ApplyComposeProposal { draft_id, .. }
         | Request::SendStoredDraft { draft_id, .. }
         | Request::ScheduleSend { draft_id, .. }
         | Request::CancelScheduledSend { draft_id }

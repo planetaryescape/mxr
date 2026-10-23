@@ -22,7 +22,6 @@ import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { getRuntimeNavigate } from "@/lib/actions/runtime";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
-import { useModals } from "@/state/modalStore";
 import { useUiPrefs, type ReaderView } from "@/state/uiPrefsStore";
 
 import {
@@ -384,11 +383,23 @@ export function ThreadReader({
       summarize.mutate();
     },
     fullscreen: () => setReaderLayout(readerLayout === "full" ? "split" : "full"),
-    draftAssist: () =>
-      useModals.getState().openRightRail("draft-assist", {
-        threadId: data.thread.id,
-        messageId: target().primary?.id,
-      }),
+    draftAssist: () => {
+      const primary = target().primary;
+      if (!primary) return;
+      if (llm.isSuccess && !llm.enabled) {
+        toast.info("Drafting needs a language model", {
+          description: "Add one under Settings, then try again.",
+          action: {
+            label: "Set up",
+            onClick: () => getRuntimeNavigate().navigate("/settings/llm"),
+          },
+        });
+        return;
+      }
+      useComposeUi
+        .getState()
+        .openCompose({ ...replyIntent(primary.id, "single"), openAssist: true }, "inline");
+    },
     ...(nav?.queueLabel
       ? {
           route: () =>

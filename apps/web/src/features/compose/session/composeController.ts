@@ -12,13 +12,8 @@ import type {
   RuntimeAccount,
   SuggestedCollaborator,
 } from "../api";
-import type {
-  DraftLengthHint,
-  DraftRefineKnobs,
-  DraftSuggestionResponse,
-  VoiceRegister,
-} from "../types";
 import type { ComposeDraftState, ComposeIntent, Snippet } from "./composeDraft";
+import type { useDraftAssist } from "./useDraftAssist";
 import type { ComposeUploadProgress } from "./useComposeAttachments";
 
 export interface Signature {
@@ -28,7 +23,10 @@ export interface Signature {
 }
 
 /** Everything the compose UI consumes from the session lifecycle. */
-export interface ComposeController {
+/** The draft-assist surface: the help line, the proof and their actions. */
+export type DraftAssistController = ReturnType<typeof useDraftAssist>;
+
+export interface ComposeController extends DraftAssistController {
   intent: ComposeIntent;
   sessionLoading: boolean;
   sessionError: Error | null;
@@ -134,23 +132,4 @@ export interface ComposeController {
    * batch settles). */
   uploadProgress: ComposeUploadProgress[];
   removeAttachment: (path: string) => void;
-
-  assistOpen: boolean;
-  setAssistOpen: Dispatch<SetStateAction<boolean>>;
-  aiPurpose: string;
-  setAiPurpose: Dispatch<SetStateAction<string>>;
-  aiRegister: VoiceRegister;
-  onRegisterChange: (value: VoiceRegister) => void;
-  aiLength: DraftLengthHint;
-  onLengthChange: (value: DraftLengthHint) => void;
-  aiOverridden: boolean;
-  resetTone: () => void;
-  refineContext: string;
-  setRefineContext: Dispatch<SetStateAction<string>>;
-  draftSuggestion: DraftSuggestionResponse | null;
-  generateDraft: () => void;
-  generating: boolean;
-  runRefine: (knobs: DraftRefineKnobs) => void;
-  refining: boolean;
-  canRefine: boolean;
 }

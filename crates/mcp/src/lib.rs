@@ -156,6 +156,36 @@ impl MxrMcpServer {
         }
     }
 
+    /// The message a reply to this thread answers: the newest one somebody
+    /// else sent, else the newest message.
+    async fn reply_target(&self, thread_id: &str) -> Result<MessageId, ErrorData> {
+        let response = self
+            .requester
+            .request(Request::GetThread {
+                thread_id: parse_id(thread_id)?,
+            })
+            .await
+            .map_err(mcp_error)?;
+        let Response::Ok {
+            data: ResponseData::Thread { messages, .. },
+        } = response
+        else {
+            return response_to_json(response).and_then(|_| {
+                Err(ErrorData::internal_error(
+                    "daemon did not return the thread".to_string(),
+                    None,
+                ))
+            });
+        };
+        messages
+            .iter()
+            .filter(|message| !message.flags.contains(mxr_core::MessageFlags::SENT))
+            .max_by_key(|message| message.date)
+            .or_else(|| messages.iter().max_by_key(|message| message.date))
+            .map(|message| message.id.clone())
+            .ok_or_else(|| ErrorData::invalid_params("that thread has no messages", None))
+    }
+
     async fn daemon_json(&self, request: Request) -> Result<McpJson<Value>, ErrorData> {
         let response = self.requester.request(request).await.map_err(mcp_error)?;
         response_to_json(response).map(McpJson)
@@ -1747,20 +1777,27 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_draft_assist",
-        description = "Generate a draft reply suggestion for a thread through the daemon LLM/draft-assist workflow. It is never sent automatically."
+        description = "Writing help for a reply to a thread, through the daemon's compose pipeline. With no `text` it writes the reply from the conversation and your instruction; with `text` (what the user has typed so far) it finishes it, keeping their sentences and adding what the reply still needs. Unknowns come back as [[?: ...]] gaps and a draft with a gap can't be sent. Returns a proposal and changes nothing; it is never sent automatically."
     )]
     pub async fn draft_assist(
         &self,
         Parameters(input): Parameters<DraftAssistInput>,
     ) -> Result<McpJson<Value>, ErrorData> {
-        self.daemon_json(Request::DraftCompose {
-            account_id: None,
-            to: None,
-            instruction: input.instruction,
-            source_message_id: None,
-            thread_id: Some(parse_id(&input.thread_id)?),
-            register: None,
-            length_hint: None,
+        let message_id = match input.message_id {
+            Some(message_id) => parse_id(&message_id)?,
+            None => self.reply_target(&input.thread_id).await?,
+        };
+        self.daemon_json(Request::ComposeAssist {
+            draft: mxr_protocol::DraftTargetData::Reply {
+                message_id,
+                all: false,
+            },
+            text: input.text.unwrap_or_default(),
+            selection: None,
+            action: None,
+            instruction: Some(input.instruction),
+            adjust: mxr_protocol::AssistAdjustData::default(),
+            revise: input.revise,
         })
         .await
     }
@@ -2701,7 +2738,16 @@ pub struct UpdatesLetGoPreviewInput {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DraftAssistInput {
     pub thread_id: String,
+    /// Reply to this message of the thread; default is the newest one somebody
+    /// else sent.
+    pub message_id: Option<String>,
     pub instruction: String,
+    /// What the user has typed of the reply so far, signature excluded. Omit
+    /// to have the reply written from scratch.
+    pub text: Option<String>,
+    /// The id of an earlier proposal to revise: the instruction is applied to
+    /// that proposal. `text` stays the user's own text.
+    pub revise: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -3078,6 +3124,124 @@ mod tests {
         assert_eq!(item["flags"], "READ");
         assert_eq!(item["has_attachments"], false);
         assert_eq!(item["message_id"], json!(message_id));
+    }
+
+    #[tokio::test]
+    async fn draft_assist_asks_for_a_proposal_with_what_the_user_typed() {
+        let requester = Arc::new(FakeRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        let message_id = MessageId::new();
+        server
+            .draft_assist(Parameters(DraftAssistInput {
+                thread_id: ThreadId::new().as_str(),
+                message_id: Some(message_id.as_str()),
+                instruction: "mention the invoice".into(),
+                text: Some("Thursday works.".into()),
+                revise: Some("proposal-7".into()),
+            }))
+            .await
+            .expect("draft assist");
+        let requests = requester.requests.lock().expect("requests lock");
+        let [Request::ComposeAssist {
+            draft:
+                mxr_protocol::DraftTargetData::Reply {
+                    message_id: target,
+                    all,
+                },
+            text,
+            action,
+            instruction,
+            revise,
+            ..
+        }] = requests.as_slice()
+        else {
+            unreachable!("expected one ComposeAssist, got {requests:?}");
+        };
+        assert_eq!(target, &message_id);
+        assert!(!all);
+        assert_eq!(text, "Thursday works.");
+        assert!(
+            action.is_none(),
+            "the daemon picks the action from the text"
+        );
+        assert_eq!(instruction.as_deref(), Some("mention the invoice"));
+        assert_eq!(revise.as_deref(), Some("proposal-7"));
+    }
+
+    #[tokio::test]
+    async fn draft_assist_without_text_writes_the_reply_to_the_threads_newest_inbound_message() {
+        #[derive(Debug)]
+        struct ThreadRequester {
+            older: MessageId,
+            newest_inbound: MessageId,
+            my_reply: MessageId,
+            asked: Mutex<Vec<Request>>,
+        }
+        #[async_trait]
+        impl DaemonRequester for ThreadRequester {
+            async fn request(&self, request: Request) -> anyhow::Result<Response> {
+                self.asked.lock().expect("asked lock").push(request.clone());
+                let envelope = |id: &MessageId, date: &str, flags: &str| {
+                    serde_json::from_value(json!({
+                        "id": id, "account_id": AccountId::new(), "provider_id": "p",
+                        "thread_id": ThreadId::new(), "message_id_header": null,
+                        "in_reply_to": null, "references": [],
+                        "from": {"name": null, "email": "a@b.c"},
+                        "to": [], "cc": [], "bcc": [], "subject": "s",
+                        "date": date, "flags": flags, "snippet": "",
+                        "has_attachments": false, "size_bytes": 1, "unsubscribe": "None",
+                    }))
+                    .expect("fixture envelope")
+                };
+                let data = match request {
+                    Request::GetThread { .. } => ResponseData::Thread {
+                        thread: serde_json::from_value(json!({
+                            "id": ThreadId::new(), "account_id": AccountId::new(),
+                            "subject": "s", "participants": [], "message_count": 3,
+                            "unread_count": 0, "latest_date": "2026-10-03T09:00:00Z",
+                            "snippet": "",
+                        }))
+                        .expect("fixture thread"),
+                        messages: vec![
+                            envelope(&self.older, "2026-10-01T09:00:00Z", "READ"),
+                            envelope(&self.newest_inbound, "2026-10-02T09:00:00Z", "READ"),
+                            envelope(&self.my_reply, "2026-10-03T09:00:00Z", "READ | SENT"),
+                        ],
+                        summary: None,
+                    },
+                    _ => ResponseData::Pong,
+                };
+                Ok(Response::Ok { data })
+            }
+        }
+        let requester = Arc::new(ThreadRequester {
+            older: MessageId::new(),
+            newest_inbound: MessageId::new(),
+            my_reply: MessageId::new(),
+            asked: Mutex::default(),
+        });
+        let server = MxrMcpServer::from_requester(requester.clone());
+        server
+            .draft_assist(Parameters(DraftAssistInput {
+                thread_id: ThreadId::new().as_str(),
+                message_id: None,
+                instruction: "decline politely".into(),
+                text: None,
+                revise: None,
+            }))
+            .await
+            .expect("draft assist");
+        let asked = requester.asked.lock().expect("asked lock");
+        let Some(Request::ComposeAssist {
+            draft: mxr_protocol::DraftTargetData::Reply { message_id, .. },
+            text,
+            ..
+        }) = asked.last()
+        else {
+            unreachable!("expected ComposeAssist last, got {asked:?}");
+        };
+        assert_eq!(message_id, &requester.newest_inbound, "not my own reply");
+        assert!(text.is_empty(), "nothing typed means write");
     }
 
     #[tokio::test]

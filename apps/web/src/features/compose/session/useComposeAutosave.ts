@@ -339,14 +339,20 @@ export function useComposeAutosave({
       if (snapshot.binding) assertWorkspaceBinding(snapshot.binding);
       const latest = draftRef.current;
       if (latest && draftFingerprint(latest) === savedFingerprint) {
-        const next = {
-          ...draftFromSession(
-            { ...response.session, binding: snapshot.binding },
-            snapshot.accountId,
-          ),
-          recoverySourcePath: recoverySource,
-          preservedRecoveryPath: latest.preservedRecoveryPath,
+        const savedSession = {
+          ...response.session,
+          binding: snapshot.binding,
+          draftIntent: response.session.draftIntent ?? latest.draftIntent,
         };
+        const savedDraft = draftFromSession(savedSession, snapshot.accountId);
+        const next = savedDraft;
+        if (
+          response.session.bodyMarkdown === snapshot.body &&
+          latest.bodyMarkdown === snapshot.body
+        )
+          next.modelSpans = latest.modelSpans;
+        next.recoverySourcePath = recoverySource;
+        next.preservedRecoveryPath = latest.preservedRecoveryPath;
         setDraft(next);
         if (recoverySource)
           preservedFingerprintRef.current = `${next.draftPath}:${draftFingerprint(next)}`;

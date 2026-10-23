@@ -27,8 +27,10 @@ mod classify_eval_asks;
 mod codes;
 mod commitments;
 mod commitments_extract;
+pub(crate) mod compose_assist;
 mod compose_corpus;
 pub(crate) mod compose_eval;
+pub(crate) mod compose_proposals;
 mod conversation_shape;
 mod decisions_extract;
 pub(crate) mod deferral;
@@ -422,6 +424,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::CheckDraftSafety { .. }
         | Request::DraftCompose { .. }
         | Request::DraftRefine { .. }
+        | Request::ComposeAssist { .. }
         | Request::DraftEval { .. }
         | Request::DraftEvalQuick
         | Request::ExtractDraftCommitments { .. }
@@ -2111,6 +2114,35 @@ async fn dispatch(
         Request::DraftEval { account_id, limit } => {
             draft_eval::draft_eval(state, account_id.as_ref(), *limit).await
         }
+        Request::ComposeAssist {
+            draft,
+            text,
+            selection,
+            action,
+            instruction,
+            adjust,
+            revise,
+        } => {
+            // Boxed: the gather, write and check stages hold a lot of state.
+            Box::pin(compose_assist::compose_assist(
+                state,
+                source,
+                compose_assist::AssistRequest {
+                    draft,
+                    text,
+                    selection: *selection,
+                    action: *action,
+                    instruction: instruction.as_deref(),
+                    adjust: *adjust,
+                    revise: revise.as_deref(),
+                },
+            ))
+            .await
+        }
+        Request::ApplyComposeProposal {
+            proposal_id,
+            draft_id,
+        } => compose_assist::apply(state, proposal_id, draft_id).await,
         Request::DraftEvalQuick => compose_eval::quick(state).await,
         Request::ClassifyReport { account_id, limit } => {
             classifier_report::report(state, account_id.as_ref(), *limit).await
@@ -2596,6 +2628,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::TriageSearch { .. }
         | Request::DraftCompose { .. }
         | Request::DraftRefine { .. }
+        | Request::ComposeAssist { .. }
         | Request::DraftEval { .. }
         | Request::DraftEvalQuick
         | Request::PrepareReply { .. }
@@ -2645,6 +2678,7 @@ fn classify_request(req: &Request) -> RequestClass {
         // optional linked provider resource) ---
         Request::SaveDraft { .. }
         | Request::UpdateDraft { .. }
+        | Request::ApplyComposeProposal { .. }
         | Request::DeleteDraft { .. }
         | Request::BeginDraftAttachment { .. }
         | Request::WriteDraftAttachmentChunk { .. }
@@ -3038,6 +3072,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::TriageSearch { .. } => "triage_search",
         Request::DraftCompose { .. } => "draft_compose",
         Request::DraftRefine { .. } => "draft_refine",
+        Request::ComposeAssist { .. } => "compose_assist",
+        Request::ApplyComposeProposal { .. } => "apply_compose_proposal",
         Request::DraftEval { .. } => "draft_eval",
         Request::DraftEvalQuick => "draft_eval_quick",
         Request::ClassifyReport { .. } => "classify_report",
@@ -3276,6 +3312,10 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::SplitPerson { account_id, .. }
         | Request::SetReadingSource { account_id, .. } => Some(account_id),
         Request::DraftCompose { account_id, .. } => account_id.as_ref(),
+        Request::ComposeAssist {
+            draft: mxr_protocol::DraftTargetData::New { account_id, .. },
+            ..
+        } => Some(account_id),
         Request::DraftEval { account_id, .. } => account_id.as_ref(),
         Request::ClassifyReport { account_id, .. }
         | Request::ClassifyCompare { account_id, .. }

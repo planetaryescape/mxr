@@ -165,7 +165,7 @@ test("the ask lands without moving the messages and is marked in the message", a
 
   // With a model, the reply field offers the composer's draft in your voice.
   await page.getByRole("button", { name: "Draft in your voice" }).click();
-  await expect(composer(page).getByLabel("What should this say?")).toBeVisible();
+  await expect(composer(page).getByRole("textbox", { name: "Draft instruction" })).toBeVisible();
   await composer(page).getByRole("button", { name: "Close composer (saves draft)" }).click();
 });
 

@@ -235,3 +235,35 @@ async fn an_owner_authored_response_commitment_keeps_owner_authority() {
                 && t.act == Act::Commitment
                 && t.action == ActionKind::Reply)));
 }
+
+#[tokio::test]
+async fn nominal_response_requests_are_not_speaker_response_statements() {
+    let fx = fixture().await;
+    let mut failures = Vec::new();
+    for (text, reply) in [
+        ("I need a reply tomorrow.", true),
+        ("I need an urgent reply tomorrow.", true),
+        ("I need a clear and detailed reply tomorrow.", true),
+        ("I would appreciate your reply tomorrow.", true),
+        ("I received a reply yesterday.", false),
+        ("I need a chance to reply tomorrow.", false),
+    ] {
+        let mail = source(&fx, text).await;
+        let (answer, turn, errors) = observe(&fx, &mail, reply).await;
+        if errors != 0 || turn != reply {
+            failures.push(format!(
+                "{text}: errors={errors}, turn={turn}, expected={reply}"
+            ));
+        }
+        assert!(answer.units.iter().any(|u| answer.quote(u) == Some(text)));
+        if reply {
+            assert!(answer.units.iter().any(|u| u
+                .tags
+                .as_ref()
+                .is_some_and(|t| t.act == Act::Request
+                    && t.actor == Actor::Owner
+                    && t.action == ActionKind::Reply)));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

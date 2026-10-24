@@ -7,6 +7,10 @@ static SUBJECT: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)^(i|we|he|she|they)\b(.*)$").expect("response subject regex"));
 static ADDRESSED: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)\byou\b").expect("response addressee regex"));
+static NOMINAL_REQUEST: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)^\s+(?:(?:need|require|want|request)\s+|(?:would\s+)?appreciate\s+)(?:a|an|the|your)\s+(?:\p{L}+\s+)*$")
+        .expect("nominal response request regex")
+});
 static COMMITMENT: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)^(?:'ll|\s+(?:will|(?:am|are|is) going to|promise to|can commit to))\s+(?:(?:\p{L}+ly|also|still|soon|then|just)\s+)*$")
         .expect("response commitment predicate regex")
@@ -31,7 +35,11 @@ static FEEDBACK: Lazy<Regex> = Lazy::new(|| {
 /// Read the grammatical subject before the observed response verb. A mention
 /// of the addressee can instead govern an embedded request, so retain that
 /// request's existing evidence rather than attributing it to the speaker.
-pub(super) fn statement(prefix: &str, speaker: Actor) -> Option<(Act, Actor, bool)> {
+pub(super) fn statement(
+    prefix: &str,
+    speaker: Actor,
+    recipient: Actor,
+) -> Option<(Act, Actor, bool)> {
     let prefix = prefix.trim_start();
     let lower = prefix.to_ascii_lowercase();
     let prefix = if lower.starts_with("if ") || lower.starts_with("unless ") {
@@ -41,10 +49,19 @@ pub(super) fn statement(prefix: &str, speaker: Actor) -> Option<(Act, Actor, boo
     };
     let subject = SUBJECT.captures(prefix)?;
     let predicate = subject.get(2)?.as_str();
+    let first_person = matches!(subject[1].to_ascii_lowercase().as_str(), "i" | "we");
+    if first_person
+        && NOMINAL_REQUEST.is_match(predicate)
+        && !predicate
+            .split_whitespace()
+            .any(|word| word.eq_ignore_ascii_case("to"))
+    {
+        return Some((Act::Request, recipient, false));
+    }
     if ADDRESSED.is_match(predicate) {
         return None;
     }
-    let actor = if matches!(subject[1].to_ascii_lowercase().as_str(), "i" | "we") {
+    let actor = if first_person {
         speaker
     } else {
         Actor::ThirdParty

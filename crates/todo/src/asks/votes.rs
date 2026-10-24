@@ -414,7 +414,8 @@ pub(super) fn label(
         let statement = (!speech.ends_with('?') && !REQUEST.is_match(speech))
             .then(|| {
                 let prefix = &speech[..REPLY.find(speech)?.start()];
-                let (mut act, subject, declined) = super::reply::statement(prefix, promise_actor)?;
+                let (mut act, subject, declined) =
+                    super::reply::statement(prefix, promise_actor, actor)?;
                 if act == Act::Information && !declined {
                     if inherited_promise(prefix) {
                         act = Act::Commitment;

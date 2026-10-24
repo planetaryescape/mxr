@@ -379,6 +379,10 @@ async fn a_to_do_that_was_already_over_when_found_is_not_a_to_do() {
 async fn a_stored_ask_without_its_item_projection_is_not_graded_as_delivered() {
     let (state, _) = scenario_state().await;
     let (before, _) = eval(&state, None).await;
+    // The production read must not be credited with the fixture workers' writes.
+    state
+        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
+        .await;
     let removed = sqlx::query("DELETE FROM todos WHERE source_message_id IN (SELECT id FROM messages WHERE provider_id = 'demo-msg-9')")
         .execute(state.store.writer()).await.expect("remove only the synthetic projection").rows_affected();
     assert_eq!(removed, 1);
@@ -435,6 +439,10 @@ async fn a_stored_ask_without_its_item_projection_is_not_graded_as_delivered() {
 async fn linked_product_fields_are_measured_from_the_row_without_repairing_them() {
     let (state, _) = scenario_state().await;
     eval(&state, None).await;
+    // The production read must not be credited with the fixture workers' writes.
+    state
+        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
+        .await;
     let changed = sqlx::query("UPDATE todos SET amount_minor = amount_minor + 100, due_at = due_at + 172800 WHERE user_edited = 0 AND source_message_id IN (SELECT id FROM messages WHERE provider_id = 'demo-msg-9')")
         .execute(state.store.writer()).await.expect("change only projected fields").rows_affected();
     assert_eq!(changed, 1);

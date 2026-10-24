@@ -26,6 +26,16 @@ function contrastRatio(foreground: string, background: string): number {
 // white panel is expected.
 test.use({ colorScheme: "dark" });
 
+test.beforeEach(async ({ page }) => {
+  // These threads exist only in the fixtures, including their local mode metadata.
+  await page.route(
+    /\/api\/v1\/mail\/modes\/membership\?thread_id=thread-(html|attachment)$/,
+    async (route) => {
+      await route.fulfill({ contentType: "application/json", json: { threads: [] } });
+    },
+  );
+});
+
 test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
   const row = {
     id: "msg-html",

@@ -323,15 +323,13 @@ async fn a_response_noun_mention_does_not_hide_an_independent_signature_request(
     let mail = source(&fx, "A reply arrived yesterday. Please sign the form.").await;
     let (answer, _, errors) = observe(&fx, &mail, false).await;
     assert_eq!(errors, 0);
-    assert!(answer
-        .units
-        .iter()
-        .any(|unit| {
-            unit.answer == AskAnswer::AsksYou
-                && unit.tags.as_ref().is_some_and(|tags| {
-                    tags.actor == Actor::Owner && tags.action == ActionKind::Sign
-                })
-        }));
+    assert!(answer.units.iter().any(|unit| {
+        unit.answer == AskAnswer::AsksYou
+            && unit
+                .tags
+                .as_ref()
+                .is_some_and(|tags| tags.actor == Actor::Owner && tags.action == ActionKind::Sign)
+    }));
     assert!(!answer
         .units
         .iter()

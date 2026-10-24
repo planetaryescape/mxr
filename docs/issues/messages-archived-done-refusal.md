@@ -1,9 +1,10 @@
 # Messages offers Done on archived conversation history, then refuses it
 
-Status: validated locally; shipping authorized on 2026-10-24; release in progress.
+Status: resolved in [v0.6.160](https://github.com/planetaryescape/mxr/releases/tag/v0.6.160), installed and verified on 2026-10-24.
 
-BK reported two failures pressing `e` in the web app. The exact error text is
-still needed to establish whether the reproduction below explains those attempts.
+BK reported two failures pressing `e` in the web app but could not recall the
+error text. The mismatch below was reproduced independently; whether it explains
+both original attempts remains unconfirmed.
 
 The live Homebrew 0.6.159 daemon on port 42829 returned an unfinished Quiet
 topic in `GET /api/v1/mail/people`. A dry-run request to
@@ -16,7 +17,8 @@ At fetched `origin/main` b3c2f3b00aca85c2c7375030e86fb7f2380ba4fc,
 requiring inbox membership. `crates/daemon/src/handler/mode_done.rs` requires
 active mode membership, which excludes those archived topics.
 
-Fix commit: `60391fe6dd0a0bdbea1b6ced084e001964884ca7` on `fix/done-errors`.
+Fix merged in [PR #703](https://github.com/planetaryescape/mxr/pull/703) at
+`5213b493b7e7be40584b7f0bdf8d6a76158cc458` on `main`.
 Done accepts archived topics selected by the same gather path as the person page,
 records a local watermark, and retains the existing provider mutation selection.
 Failed Done outcomes now emit a structured warning. The regression test covers
@@ -35,12 +37,25 @@ Validation after memory pressure returned to normal:
   HTTP undo removed the mark and preserved the archived state. The smoke daemon
   was stopped. Its script and logs remain under the ignored `target-cli/` directory.
 
-Next: finish `scripts/pre-pr-rust-gate`, then push a draft PR, mark it ready and
-merge after CI passes. Continue through release-please, the tag release workflow,
-Homebrew upgrade and install.sh verification. The user authorized the full chain
-with “Ship it”. The fix is rebased onto fetched `origin/main`
-544da5355fbaa11a7cf64e0fecbd844ca119623a. Release manifest and latest tag agree on
-0.6.159; no release-please PR was open at preflight. No real mail was mutated.
+## The published binary passes the same Done path
 
-Working tree: `/tmp/mxr-done-clones/mxr`. The running web app still uses Homebrew
-0.6.159. Do not replace its binary with a debug build; install the release artifacts.
+[Release PR #704](https://github.com/planetaryescape/mxr/pull/704) merged at
+`673b3fdc526ee9f0d6340f8349737304f474f19c`, also the target of `v0.6.160`.
+The manifest on `main` agrees with the tag. The
+[release workflow](https://github.com/planetaryescape/mxr/actions/runs/40043527814)
+passed, published all six assets, and updated and verified the Homebrew formula
+and cask. Its initial Docs Build failure was resolved by updating only the two
+site lockfile entries for undici to 6.29.1 and 8.12.2; audit and full site build passed.
+
+- Homebrew and `install.sh` both report `mxr 0.6.160`; the installer checksum passed.
+- Homebrew, the published installer binary and the CI macOS archive contain the
+  same executable bytes. That release binary passed HTTP preview, Done and undo
+  against an isolated fake-account daemon, preserving the archived state.
+- The default live daemon restarted onto the Homebrew executable and reported
+  healthy. The exact archived-topic dry run that returned `not in Messages` on
+  0.6.159 returned `marked: true`, no error, and `Done in Messages.` on 0.6.160.
+- No real mail was mutated to verify the fix. Messages was opened in Dia.
+
+No release or installation steps remain. Investigation artifacts and the detailed
+local handover remain in `/tmp/mxr-done-clones/mxr`; the site audit fix was prepared
+in `/tmp/mxr-release-audit-clones/mxr`.

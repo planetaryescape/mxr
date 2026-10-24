@@ -61,6 +61,9 @@ account's assessment index. Account, policy, effective generation and timezone
 checks still apply. The native full-schema lookup regression measures SQLite
 VM work at 1,000 and 10,000 rows; the full-set test reports sync and
 classification stage times separately.
+Timezone resolution reads the current source on every call. A single cached
+snapshot reuses parsed rules only when the raw override and complete bytes
+match; changed, missing or corrupt files cannot reuse old TZif rules.
 
 Mode responses carry bounded summaries: policy, fingerprint, unit tags,
 candidate values, exact quotes when within the response limit, and

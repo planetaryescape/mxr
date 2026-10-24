@@ -132,3 +132,7 @@ pub(super) fn inside(
 ) -> bool {
     zone == candidate_zone && candidate.start >= span.start && candidate.end <= span.end
 }
+
+pub(super) fn has_due(text: &str) -> bool {
+    DUE.is_match(text) || RELATIVE_DUE.is_match(text)
+}

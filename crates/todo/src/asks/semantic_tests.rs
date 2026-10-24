@@ -429,3 +429,63 @@ fn security_notice_is_not_identity_work_but_independent_tasks_remain() {
         answers(&judge("Please verify your email address.", false)).contains(&AskAnswer::AsksYou)
     );
 }
+
+#[test]
+fn completion_evidence_keeps_one_dated_main_action() {
+    let body = "The security training must be completed by Tuesday 27 October. Please finish it and send me the certificate.";
+    let a = judge(body, false);
+    let actions: Vec<_> = a
+        .units
+        .iter()
+        .filter(|u| u.answer == AskAnswer::AsksYou)
+        .collect();
+    assert_eq!(actions.len(), 1, "{a:?}");
+    let unit = actions[0];
+    let tags = unit.tags.as_ref().expect("tags");
+    assert_eq!(tags.action, ActionKind::Other);
+    assert!(tags.due.is_some());
+    assert_eq!(a.quote(unit), Some(body));
+    for body in [
+        "The training must be completed by Tuesday.\n\nPlease send me the certificate.",
+        "The training must be completed by Tuesday. Please send me the deck.",
+        "The training must be completed by Tuesday. Please finish it and send me the certificate by Friday.",
+        "The training must be completed by Tuesday. Please finish it and please send me the deck.",
+    ] {
+        let a = judge(body, false);
+        assert!(a.units.iter().any(|u| u.answer == AskAnswer::AsksYou && u.tags.as_ref().is_some_and(|t| t.action == ActionKind::Send)), "independent send: {body}: {a:?}");
+    }
+    let a = judge("Alice, the training must be completed by Tuesday. Please finish it and send me the certificate.", false);
+    assert!(
+        !answers(&a).contains(&AskAnswer::AsksYou),
+        "a separate actor is not the owner: {a:?}"
+    );
+}
+
+#[test]
+fn a_coordinated_speaker_offer_never_assigns_its_tail_to_the_recipient() {
+    for outbound in [false, true] {
+        let a = judge(
+            "I can take the deployment follow-up item and send the concise update today.",
+            outbound,
+        );
+        assert!(!answers(&a).contains(&AskAnswer::AsksYou));
+        assert!(!answers(&a).contains(&AskAnswer::YouAskedThem));
+        assert!(!answers(&a).contains(&AskAnswer::YouPromised));
+    }
+    assert!(answers(&judge(
+        "I can take the follow-up item. Please send the deck.",
+        false
+    ))
+    .contains(&AskAnswer::AsksYou));
+    assert!(answers(&judge(
+        "I'll take the follow-up item and send the report.",
+        true
+    ))
+    .contains(&AskAnswer::YouPromised));
+}
+
+#[test]
+fn an_unaddressed_passive_completion_is_not_an_owner_instruction() {
+    let a = judge("The building work must be completed by Friday.", false);
+    assert!(!answers(&a).contains(&AskAnswer::AsksYou), "{a:?}");
+}

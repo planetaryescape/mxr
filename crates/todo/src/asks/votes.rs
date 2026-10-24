@@ -20,6 +20,7 @@ pattern!(
     PROMISE,
     r"(?i)\b(i(?:'ll| will)|we(?:'ll| will)|i promise to|i can commit to)\s+(send|provide|upload|sign|pay|book|contact|return|prepare|complete|deliver|go through|update)\b"
 );
+pattern!(OFFER_SPEAKER, r"(?i)\b(?:i|we) (?:can|could)\s+\p{L}");
 pattern!(FUTURE_SPEAKER, r"(?i)\b(?:i|we)(?:'ll| will)\s+\p{L}");
 pattern!(
     CANCELLED,
@@ -213,6 +214,8 @@ pub(super) fn label(
         AskState::Cancelled
     } else if DONE.is_match(text) {
         AskState::Done
+    } else if !REQUEST.is_match(text) && inherited_offer(prefix) {
+        AskState::Hypothetical
     } else if conditional_scope(text)
         || conditional_scope(
             prefix
@@ -232,6 +235,18 @@ pub(super) fn label(
         Actor::Correspondent
     };
     let mut votes = Vec::new();
+    if super::completion::required(text)
+        && (REQUEST.is_match(text) || super::completion::includes_delivery(text))
+    {
+        votes.push(vote(
+            "required_completion",
+            Act::Obligation,
+            state,
+            ActionKind::Other,
+            actor,
+        ));
+    }
+
     match doc.status {
         PaymentStatus::Complete | PaymentStatus::Credit | PaymentStatus::Automatic => {
             votes.push(vote(
@@ -292,6 +307,13 @@ pub(super) fn label(
         if pattern.is_match(action_text)
             && (explicit || matches!(action, ActionKind::Sign | ActionKind::Verify))
         {
+            if matches!(
+                action,
+                ActionKind::Send | ActionKind::Provide | ActionKind::Upload
+            ) && super::completion::includes_delivery(text)
+            {
+                continue;
+            }
             if action == ActionKind::Verify
                 && (crate::detect::SECURITY.is_match(text)
                     || crate::detect::SECURITY.is_match(input.subject)
@@ -401,6 +423,15 @@ fn agreed_candidate<T: PartialEq>(
 ) -> Option<usize> {
     let (first, value) = candidates.next()?;
     candidates.all(|(_, other)| other == value).then_some(first)
+}
+
+fn inherited_offer(prefix: &str) -> bool {
+    let preceding = prefix
+        .rsplit(['.', '?', '!', '\n', ';'])
+        .next()
+        .unwrap_or_default();
+    let lower = preceding.trim_end().to_ascii_lowercase();
+    (lower.ends_with(" and") || lower.ends_with(" then")) && OFFER_SPEAKER.is_match(preceding)
 }
 
 fn inherited_promise(prefix: &str) -> bool {

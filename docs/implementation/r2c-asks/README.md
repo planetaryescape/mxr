@@ -2,8 +2,8 @@
 
 Continue in the canonical worker checkout and `target-cli`. The candidate
 is unfinished. Canonical contracts and focused storage, lifecycle and client
-checks have passed, but the full classifier still fails its Send precision
-floor. That failure and the remaining integration checks prevent acceptance.
+checks have passed, but the last full measurement (policy8) failed its Send precision floor.
+Policy9 still needs full-corpus measurement and the remaining integration checks.
 The accepted contract remains [blueprint 37](../../blueprint/37-what-it-asks.md).
 Do not merge this candidate as completed R2c.
 
@@ -40,7 +40,7 @@ No uncertain row becomes a Now task.
 
 ## Home and asks commit together
 
-`asks-r2c-8` covers received and sent messages in the existing assessment
+`asks-r2c-9` covers received and sent messages in the existing assessment
 storage envelope. `r2-1` remains the inbound home policy. Home-version
 reports exclude the reserved asks namespace, and outbound asks cannot
 create a home. Both facets share one generation CAS, transaction and dirty
@@ -60,16 +60,22 @@ one predecessor and full cached body parts, including HTML text fallback.
 Desk snippets are not the evidence boundary. Owner matching uses
 `OwnedAddresses`, including send-as aliases.
 
-Policy `asks-r2c-8` also distinguishes an explicit salutation to another
+Policy `asks-r2c-9` also distinguishes an explicit salutation to another
 person from an owner request. Name-only salutations attach locally; an
 addressed action cannot veto an independent unit. An adjacent cancellation
 of the same actor's reply question is re-read as one verbatim span, including
-“No need to reply”, without cancelling separate action tasks. Policy4, Policy5, Policy6 and Policy7 answers
+“No need to reply”, without cancelling separate action tasks. Policy4, Policy5, Policy6, Policy7 and Policy8 answers
 remain retained history and read pending until the current policy is stored.
 Coordinated future actions retain their speaker: a correspondent saying they
 will rework a plan and send a revision does not ask the owner to send it.
 Security-notice wording only suppresses the verification task; independent
 actions and ordinary email activation remain eligible.
+A required completion followed by “finish it” and coordinated proof delivery
+is one action. Its full authored span retains the original date candidate;
+separate paragraphs, explicit new requests and separately dated deliveries
+remain separate. A coordinated “I can” offer does not assign its tail to the
+recipient or claim the speaker made a firm promise.
+
 
 Singleton asks reads start with the distinct requested message IDs before
 joining assessments. This keeps per-message projection from walking the
@@ -97,7 +103,11 @@ or Now. User-edited task dates survive later provenance changes. It projects own
 stored tags. Reply-only asks gate Your turn; owner requests and their
 commitments gate automatic Waiting on. Explicit timers retain their
 existing authority. Relationship commitment projection commits with asks;
-background model commitment extraction is no longer scheduled. Optional
+background model commitment extraction is no longer scheduled.
+Confirmed sends reconcile their stored asks before returning the local receipt.
+An assessment failure cannot undo provider acceptance or authorize a resend:
+dirty work remains available to the normal bounded reconciler.
+ Optional
 compose safety and draft promise proposals remain separate existing paths.
 
 Commitment history reads retain legacy records, including unverified dates.

@@ -3,6 +3,11 @@ use crate::text;
 use mxr_core::asks::ActionKind;
 
 pub(super) fn title(action: ActionKind, quote: &str, subject: &str, person: &str) -> String {
+    if action == ActionKind::Other {
+        if let Some(label) = super::completion::title(quote) {
+            return text::clip(&label, 120);
+        }
+    }
     match action {
         ActionKind::Pay => {
             if let Some(thing) =

@@ -3922,6 +3922,17 @@ async fn send_stored_draft_locked(
     {
         tracing::warn!(error = %e, "commitments promotion failed after send_stored_draft");
     }
+    // The provider already accepted this send. Classification can remain dirty
+    // for durable replay on failure, but cannot turn acceptance into a resend.
+    if let Err(error) = super::assessments::reconcile_messages(
+        state,
+        &draft.account_id,
+        std::slice::from_ref(&local_message_id),
+    )
+    .await
+    {
+        tracing::warn!(%error, "accepted send asks projection pending");
+    }
     state
         .store
         .record_sent_draft_receipt(

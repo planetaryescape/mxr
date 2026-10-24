@@ -1,5 +1,6 @@
 //! Deterministic asks judge. Facts and votes are retained before any item projection.
 mod calendar;
+mod completion;
 mod html;
 mod sender_auth;
 pub use html::include_html;

@@ -172,8 +172,22 @@ pub(super) fn unit_spans(text: &str) -> Vec<AskSpan> {
         }
     }
     push_span(text, start, text.len(), &mut spans);
-    let mut clauses = Vec::new();
+    let mut requests: Vec<AskSpan> = Vec::with_capacity(spans.len());
     for span in spans {
+        if let Some(previous) = requests.last_mut().filter(|previous| {
+            !text[previous.end..span.start].contains("\n\n")
+                && super::completion::continues(
+                    &text[previous.start..previous.end],
+                    &text[span.start..span.end],
+                )
+        }) {
+            previous.end = span.end;
+        } else {
+            requests.push(span);
+        }
+    }
+    let mut clauses = Vec::new();
+    for span in requests {
         let mut start = span.start;
         for conjunction in NEXT_ACTION.captures_iter(&text[span.start..span.end]) {
             let (Some(whole), Some(next)) = (conjunction.get(0), conjunction.name("next")) else {
@@ -185,6 +199,13 @@ pub(super) fn unit_spans(text: &str) -> Vec<AskSpan> {
                     .to_ascii_lowercase()
                     .ends_with("review")
             {
+                continue;
+            }
+            if super::completion::delivery_tail(
+                &text[span.start..span.start + whole.start()],
+                &text[span.start + next.start()..span.end],
+                whole.as_str(),
+            ) {
                 continue;
             }
             // Signing and returning the same document is one obligation.

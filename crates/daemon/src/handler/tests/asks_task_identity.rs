@@ -531,14 +531,14 @@ async fn review6_payment_documents_retain_the_observed_speaker() {
         {
             failures.push(format!("non-obligation confirmed: {text}"));
         }
-        if prefix == "She will pay" {
-            if !stored.units.iter().any(|u| {
+        if prefix == "She will pay"
+            && !stored.units.iter().any(|u| {
                 u.tags
                     .as_ref()
                     .is_some_and(|t| t.actor == Actor::ThirdParty)
-            }) {
-                failures.push("third-party subject lost".into());
-            }
+            })
+        {
+            failures.push("third-party subject lost".into());
         }
     }
     assert!(failures.is_empty(), "{failures:?}");

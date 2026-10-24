@@ -1171,8 +1171,12 @@ mod tests {
 
     #[test]
     fn fields_are_compared_on_matched_pairs_only() {
-        let item = pay().amount(4_820, "GBP").due(Due::AfterSent(48));
+        let item = pay()
+            .amount(4_820, "GBP")
+            .due(Due::AfterSent(48))
+            .provenance("Please pay the invoice.", "owner", "pending");
         let found = Row {
+            provenance: item.provenance.clone(),
             amount: Some((4_820, "GBP".into())),
             due_at: due_on(2),
             counterparty: Some("acme".into()),

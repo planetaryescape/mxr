@@ -2,22 +2,38 @@
 use chrono::{Datelike, FixedOffset, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Timelike};
 use jiff::tz::{AmbiguousOffset, TimeZone as Rules};
 use sha2::{Digest, Sha256};
-use std::{io, path::Path};
+use std::{
+    io,
+    path::Path,
+    sync::{Arc, Mutex, OnceLock},
+};
 
 #[derive(Clone, Debug)]
 pub struct AsksTimezone {
     rules: Rules,
-    token: String,
+    token: Arc<str>,
 }
+
+struct CachedTimezone {
+    raw_spec: Option<String>,
+    bytes: Option<Vec<u8>>,
+    timezone: AsksTimezone,
+}
+
+type SnapshotCache = Mutex<Option<CachedTimezone>>;
+static SNAPSHOT_CACHE: OnceLock<SnapshotCache> = OnceLock::new();
 
 impl AsksTimezone {
     pub fn resolve() -> io::Result<Self> {
         Self::from_spec(std::env::var("TZ").ok().as_deref())
     }
 
-    // Read TZif bytes once: both the resolver and token own this snapshot.
     fn from_spec(spec: Option<&str>) -> io::Result<Self> {
-        let spec = match spec {
+        Self::from_spec_using(spec, SNAPSHOT_CACHE.get_or_init(|| Mutex::new(None)))
+    }
+
+    fn from_spec_using(raw_spec: Option<&str>, cache: &SnapshotCache) -> io::Result<Self> {
+        let spec = match raw_spec {
             Some("") => "UTC0",
             Some(spec) => spec,
             None => "",
@@ -30,17 +46,42 @@ impl AsksTimezone {
         } else {
             Path::new("/usr/share/zoneinfo").join(zone)
         };
-        match std::fs::read(&path) {
-            Ok(bytes) => Self::from_tzif(spec, &bytes),
-            Err(error) if !zone.is_empty() && !Path::new(zone).is_absolute() => {
-                let rules = Rules::posix(zone).map_err(|_| error)?;
-                Ok(Self {
-                    rules,
-                    token: hash(spec.as_bytes()),
-                })
+        // Always read current bytes before consulting the bounded parse cache.
+        // Metadata and elapsed time cannot establish that future offset rules agree.
+        let source = match std::fs::read(&path) {
+            Ok(bytes) => Ok(bytes),
+            Err(error) if !zone.is_empty() && !Path::new(zone).is_absolute() => Err(error),
+            Err(error) => return Err(error),
+        };
+        let mut cached = cache
+            .lock()
+            .map_err(|_| io::Error::other("timezone snapshot cache poisoned"))?;
+        if let Some(previous) = cached.as_ref() {
+            if previous.raw_spec.as_deref() == raw_spec
+                && previous.bytes.as_deref() == source.as_ref().ok().map(Vec::as_slice)
+            {
+                return Ok(previous.timezone.clone());
             }
-            Err(error) => Err(error),
         }
+        let (timezone, bytes) = match source {
+            Ok(bytes) => (Self::from_tzif(spec, &bytes)?, Some(bytes)),
+            Err(error) => {
+                let rules = Rules::posix(zone).map_err(|_| error)?;
+                (
+                    Self {
+                        rules,
+                        token: hash(spec.as_bytes()).into(),
+                    },
+                    None,
+                )
+            }
+        };
+        *cached = Some(CachedTimezone {
+            raw_spec: raw_spec.map(str::to_owned),
+            bytes,
+            timezone: timezone.clone(),
+        });
+        Ok(timezone)
     }
 
     fn from_tzif(name: &str, bytes: &[u8]) -> io::Result<Self> {
@@ -50,7 +91,7 @@ impl AsksTimezone {
         source.extend_from_slice(bytes);
         Ok(Self {
             rules,
-            token: hash(&source),
+            token: hash(&source).into(),
         })
     }
 
@@ -207,5 +248,96 @@ mod tests {
         assert!(AsksTimezone::from_spec(Some(":Europe/London")).is_ok());
         assert!(AsksTimezone::from_spec(Some("EST5EDT,M3.2.0,M11.1.0")).is_ok());
         assert!(AsksTimezone::from_spec(Some("missing/zone")).is_err());
+    }
+    #[test]
+    fn repeated_resolution_reports_native_parse_work() {
+        let bytes = std::fs::read("/usr/share/zoneinfo/Europe/London").unwrap();
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), bytes).unwrap();
+        let started = std::time::Instant::now();
+        for _ in 0..500 {
+            AsksTimezone::from_spec(file.path().to_str()).unwrap();
+        }
+        eprintln!(
+            "500 fresh-source timezone resolutions: {:?}",
+            started.elapsed()
+        );
+    }
+    #[test]
+    fn exact_source_reuses_one_parsed_snapshot_and_raw_overrides_remain_distinct() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(
+            file.path(),
+            std::fs::read("/usr/share/zoneinfo/Europe/London").unwrap(),
+        )
+        .unwrap();
+        let cache = Mutex::new(None);
+        let first = AsksTimezone::from_spec_using(file.path().to_str(), &cache).unwrap();
+        for _ in 0..500 {
+            let next = AsksTimezone::from_spec_using(file.path().to_str(), &cache).unwrap();
+            assert!(
+                Arc::ptr_eq(&first.token, &next.token),
+                "reuse the parsed snapshot, not only its token value"
+            );
+        }
+        let utc = AsksTimezone::from_spec_using(Some("UTC0"), &cache).unwrap();
+        let empty = AsksTimezone::from_spec_using(Some(""), &cache).unwrap();
+        assert_eq!(utc.token(), empty.token());
+        assert!(
+            !Arc::ptr_eq(&utc.token, &empty.token),
+            "raw override changes must miss the cache"
+        );
+        let eastern =
+            AsksTimezone::from_spec_using(Some("EST5EDT,M3.2.0,M11.1.0"), &cache).unwrap();
+        assert_ne!(utc.token(), eastern.token());
+        assert!(AsksTimezone::from_spec_using(Some("missing/zone"), &cache).is_err());
+    }
+
+    #[test]
+    fn current_complete_bytes_detect_hot_replacement_and_errors_without_changing_frozen_rules() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let cache = Mutex::new(None);
+        let spec = file.path().to_str();
+        let london = std::fs::read("/usr/share/zoneinfo/Europe/London").unwrap();
+        std::fs::write(file.path(), &london).unwrap();
+        let frozen = AsksTimezone::from_spec_using(spec, &cache).unwrap();
+        let summer = NaiveDate::from_ymd_opt(2026, 7, 15).unwrap();
+        assert_eq!(
+            frozen.offset_from_utc_date(&summer).fix().local_minus_utc(),
+            3600
+        );
+        std::fs::write(
+            file.path(),
+            std::fs::read("/usr/share/zoneinfo/UTC").unwrap(),
+        )
+        .unwrap();
+        let utc = AsksTimezone::from_spec_using(spec, &cache).unwrap();
+        assert_ne!(frozen.token(), utc.token());
+        assert_eq!(utc.offset_from_utc_date(&summer).fix().local_minus_utc(), 0);
+        let one = std::fs::read("/usr/share/zoneinfo/Etc/GMT+1").unwrap();
+        let two = std::fs::read("/usr/share/zoneinfo/Etc/GMT+2").unwrap();
+        assert_eq!(one.len(), two.len());
+        std::fs::write(file.path(), &one).unwrap();
+        let first = AsksTimezone::from_spec_using(spec, &cache).unwrap();
+        std::fs::write(file.path(), &two).unwrap();
+        let second = AsksTimezone::from_spec_using(spec, &cache).unwrap();
+        assert_ne!(first.token(), second.token());
+        assert_ne!(
+            first.offset_from_utc_date(&summer).fix(),
+            second.offset_from_utc_date(&summer).fix()
+        );
+        std::fs::write(file.path(), vec![0; two.len()]).unwrap();
+        assert!(AsksTimezone::from_spec_using(spec, &cache).is_err());
+        std::fs::remove_file(file.path()).unwrap();
+        assert!(AsksTimezone::from_spec_using(spec, &cache).is_err());
+        std::fs::write(file.path(), &london).unwrap();
+        assert_eq!(
+            AsksTimezone::from_spec_using(spec, &cache).unwrap().token(),
+            frozen.token()
+        );
+        assert_eq!(
+            frozen.offset_from_utc_date(&summer).fix().local_minus_utc(),
+            3600
+        );
     }
 }

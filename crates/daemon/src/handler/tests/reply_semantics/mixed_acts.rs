@@ -226,7 +226,7 @@ async fn review7_mixed_acts_keep_archive_automation_copy_and_owner_response_gate
                 .await
                 .unwrap(),
             "automation" => {
-                body(&fx, &mail, TEXT, Some("Auto-Submitted: auto-generated\r\n")).await
+                body(&fx, &mail, TEXT, Some("Auto-Submitted: auto-generated\r\n")).await;
             }
             "copied" => {
                 mail.cc = mail.to.clone();

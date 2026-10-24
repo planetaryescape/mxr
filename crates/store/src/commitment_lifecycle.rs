@@ -39,18 +39,19 @@ async fn todo(
 }
 
 impl Store {
-    /// A closed or missing commitment cannot acquire a new Done decision.
+    /// Desk requires Open; an explicit direct command may repair closed history.
     pub async fn resolve_promise_with_todos(
         &self,
         account: &AccountId,
         id: &str,
+        expected_status: Option<CommitmentStatus>,
         now: DateTime<Utc>,
     ) -> Result<Option<PromiseResolution>, sqlx::Error> {
         let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
         let Some(before) = commitment(&mut tx, account, id).await? else {
             return Ok(None);
         };
-        if before.status != CommitmentStatus::Open {
+        if expected_status.is_some_and(|status| before.status != status) {
             return Ok(None);
         }
         let sql = format!(

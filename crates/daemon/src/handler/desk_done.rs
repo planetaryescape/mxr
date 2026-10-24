@@ -477,9 +477,13 @@ async fn put_away(
         let Some(commitment) = plan.commitment.as_ref() else {
             continue;
         };
-        if let Some(resolution) =
-            super::commitments::resolve_promise(state, &commitment.account_id, &commitment.id)
-                .await?
+        if let Some(resolution) = super::commitments::resolve_promise(
+            state,
+            &commitment.account_id,
+            &commitment.id,
+            Some(CommitmentStatus::Open),
+        )
+        .await?
         {
             desk.promise_resolutions.push(resolution);
         } else {

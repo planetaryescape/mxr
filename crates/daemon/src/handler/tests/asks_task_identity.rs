@@ -33,7 +33,7 @@ async fn review2_sign_verify_speech_acts_control_stored_task_admission() {
         let answers = fx
             .state
             .store
-            .asks_for_messages(&fx.account, &[mail.id.clone()])
+            .asks_for_messages(&fx.account, std::slice::from_ref(&mail.id))
             .await
             .unwrap();
         let tasks = fx
@@ -168,7 +168,7 @@ async fn firm_sign_and_verify_promises_retain_speaker_and_exact_quote() {
             let answers = fx
                 .state
                 .store
-                .asks_for_messages(&fx.account, &[mail.id.clone()])
+                .asks_for_messages(&fx.account, std::slice::from_ref(&mail.id))
                 .await
                 .unwrap();
             let answer = &answers[&mail.id];
@@ -447,7 +447,7 @@ async fn currency_upgrade_preserves_the_exact_durable_correction_undo() {
     let packets = fx
         .state
         .store
-        .classify_eval_packet(&[mail.id.clone()])
+        .classify_eval_packet(std::slice::from_ref(&mail.id))
         .await
         .unwrap();
     assert_eq!(packets[0].projected_todos.len(), 2);

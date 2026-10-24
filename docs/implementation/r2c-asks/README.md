@@ -72,7 +72,7 @@ remain retained history and read pending until the current policy is stored.
 A response noun mention alone does not establish a recipient question.
 Direct requests, questions, response imperatives and reply withdrawals retain
 their evidence; exact source quotes and spans stay unchanged. Previous policy13
-answers remain retained history and read pending until policy14 is stored.
+answers remain retained history and read pending until policy14 is stored. Waiting uses the first external To recipient, then Cc, with the same owned-address matching as commitment projection. A failed-payment notice and its immediate polite remediation share one task and the complete source quote. Different explicit payment references, currencies, amounts or due dates remain independent. Policy13 saved decisions retain their original rows and correction Undo snapshots when the two old units become one.
 Coordinated future actions retain their speaker: a correspondent saying they
 will rework a plan and send a revision does not ask the owner to send it.
 Security-notice wording only suppresses the verification task; independent

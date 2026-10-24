@@ -137,6 +137,20 @@ async fn review3_failed_payment_and_polite_remediation_have_one_stored_task() {
     eprintln!("REVIEW3_PAYMENT answers={answers:?} tasks={tasks:?} packets={packets:?}");
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].reason, text);
+    let ResponseData::Todos { todos } = request(
+        &fx,
+        Request::ListTodos {
+            account_id: Some(fx.account.clone()),
+            state: mxr_protocol::TodoStateData::Open,
+            limit: 100,
+        },
+    )
+    .await
+    else {
+        panic!("public todos")
+    };
+    assert_eq!(todos.len(), 1);
+    assert_eq!(todos[0].id, tasks[0].id);
     assert_eq!(
         answers[&mail.id]
             .units

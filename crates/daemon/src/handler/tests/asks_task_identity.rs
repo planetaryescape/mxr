@@ -551,6 +551,7 @@ async fn review6_financial_speakers_keep_remediation_and_independent_owner_work(
         ("She will update your payment details.", 0),
         ("Please update your payment details.", 1),
         ("Your payment failed. Please update your payment details.", 1),
+        ("We couldn't charge your card. Update your payment details.", 1),
         ("I can pay invoice #K918 £25 by 1 November 2026.\n\nPlease sign the contract.", 1),
         ("She will pay invoice #K918 £25 by 1 November 2026.\n\nPlease pay invoice #Q222 €40 by 1 December 2026.", 1),
     ] {
@@ -559,6 +560,6 @@ async fn review6_financial_speakers_keep_remediation_and_independent_owner_work(
         replace(&fx,&mail,text).await; settle(&fx,&mail).await;
         let rows=fx.state.store.list_todos_in_state(Some(&fx.account),TodoState::Open,100).await.unwrap();
         assert_eq!(rows.len(),expected,"{text}");
-        for row in rows {assert!(text.contains(&row.reason));assert!(row.reason.starts_with("Please") || row.reason.starts_with("Your payment"));}
+        for row in rows {assert!(text.contains(&row.reason));assert!(row.reason.starts_with("Please") || row.reason.starts_with("Your payment") || row.reason.starts_with("We couldn't"));}
     }
 }

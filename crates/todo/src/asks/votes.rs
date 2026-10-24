@@ -294,7 +294,12 @@ pub(super) fn label(
             } else {
                 PAY_PROMISE.find(action_text)
             };
-            let prefix = found.map_or("", |found| &action_text[..found.start()]);
+            let prefix = found.map_or("", |found| {
+                action_text[..found.start()]
+                    .rsplit(['.', '?', '!', '\n', ';'])
+                    .next()
+                    .unwrap_or_default()
+            });
             if let Some((act, action_actor, declined)) = action_speech(
                 prefix,
                 promise_actor,

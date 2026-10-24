@@ -53,7 +53,7 @@ impl CommitmentStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ContactCommitmentRecord {
     pub id: String,
     pub account_id: AccountId,
@@ -342,7 +342,9 @@ impl super::Store {
     }
 }
 
-fn row_to_commitment(row: sqlx::sqlite::SqliteRow) -> Result<ContactCommitmentRecord, sqlx::Error> {
+pub(crate) fn row_to_commitment(
+    row: sqlx::sqlite::SqliteRow,
+) -> Result<ContactCommitmentRecord, sqlx::Error> {
     Ok(ContactCommitmentRecord {
         id: row.get("id"),
         account_id: decode_id(row.get::<String, _>("account_id").as_str())?,

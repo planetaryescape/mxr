@@ -780,4 +780,7 @@ async fn dispatch_future_stays_well_inside_a_worker_stack() {
 mod rule_treatment;
 mod rule_trust;
 
+mod asks_task_identity;
+mod promise_lifecycle;
 mod promise_projection;
+mod promise_recipients;

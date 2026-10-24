@@ -58,6 +58,7 @@ pub enum TodoPromptKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TodoPromptState {
+    pub pending: Option<crate::app::MutationId>,
     pub kind: TodoPromptKind,
     pub input: String,
     pub time: crate::ui::time_preview::TimePreview,
@@ -67,6 +68,7 @@ pub struct TodoPromptState {
 impl TodoPromptState {
     pub fn new(kind: TodoPromptKind, input: String) -> Self {
         Self {
+            pending: None,
             kind,
             input,
             time: crate::ui::time_preview::TimePreview::default(),

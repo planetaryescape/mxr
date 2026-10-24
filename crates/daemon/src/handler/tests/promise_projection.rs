@@ -5,9 +5,9 @@ use chrono::{Duration, Utc};
 use mxr_core::{Envelope, MessageBody, MessageDirection, MessageFlags, ThreadId};
 use mxr_store::{ByWhenSource, CommitmentStatus, TodoState};
 
-const QUOTE: &str = "I'll send the report tomorrow.";
+pub(super) const QUOTE: &str = "I'll send the report tomorrow.";
 
-async fn source(fx: &Fixture, text: &str) -> Envelope {
+pub(super) async fn source(fx: &Fixture, text: &str) -> Envelope {
     let mut mail = fx
         .message(
             &ThreadId::new(),
@@ -23,7 +23,7 @@ async fn source(fx: &Fixture, text: &str) -> Envelope {
     mail
 }
 
-async fn replace(fx: &Fixture, mail: &Envelope, text: &str) {
+pub(super) async fn replace(fx: &Fixture, mail: &Envelope, text: &str) {
     fx.state
         .store
         .insert_body(&MessageBody {
@@ -38,14 +38,14 @@ async fn replace(fx: &Fixture, mail: &Envelope, text: &str) {
         .unwrap();
 }
 
-fn chosen() -> chrono::DateTime<Utc> {
+pub(super) fn chosen() -> chrono::DateTime<Utc> {
     (Utc::now().date_naive() + Duration::days(9))
         .and_hms_opt(12, 0, 0)
         .unwrap()
         .and_utc()
 }
 
-async fn accept(fx: &Fixture, mail: &Envelope) -> String {
+pub(super) async fn accept(fx: &Fixture, mail: &Envelope) -> String {
     let ResponseData::RecordedPromise { commitment, .. } = request(
         fx,
         Request::RecordPromise {
@@ -62,7 +62,7 @@ async fn accept(fx: &Fixture, mail: &Envelope) -> String {
     commitment.id
 }
 
-async fn settle(fx: &Fixture, mail: &Envelope) {
+pub(super) async fn settle(fx: &Fixture, mail: &Envelope) {
     super::super::assessments::reconcile_messages(
         &fx.state,
         &fx.account,

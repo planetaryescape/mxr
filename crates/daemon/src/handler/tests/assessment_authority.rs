@@ -303,7 +303,7 @@ async fn actual_reconciler_distinguishes_shape_only_and_timezone_only_context_ch
 
 #[test]
 fn a_settled_previous_policy_is_reconciled_by_startup_and_the_first_normal_tick() {
-    for old_policy in ["asks-r2c-9", "asks-r2c-10", "asks-r2c-11"] {
+    for old_policy in ["asks-r2c-9", "asks-r2c-10", "asks-r2c-11", "asks-r2c-12"] {
         assert_previous_policy_activates_once(old_policy);
     }
 }

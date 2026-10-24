@@ -258,6 +258,16 @@ impl super::Store {
         record: &TodoRecord,
         answer: &mxr_core::asks::AskAssessment,
     ) -> Result<TodoUpsert, sqlx::Error> {
+        if record.user_edited {
+            if let Some(prior) = self
+                .get_todo_by_dedup(&record.account_id, &record.dedup_key)
+                .await?
+            {
+                if prior.user_touched() {
+                    return self.update_accepted_asks_date(record, answer, &prior).await;
+                }
+            }
+        }
         let mut record = record.clone();
         if record.due_at.is_none() {
             if let Some((identity, _period)) = record
@@ -266,7 +276,7 @@ impl super::Store {
                 .filter(|(_, period)| period.starts_with("sent:") || period.starts_with("due:"))
             {
                 let keys: Vec<String> = sqlx::query_scalar(
-                    "SELECT dedup_key FROM todos WHERE account_id = ? AND dedup_key LIKE ? LIMIT 2",
+                    "SELECT dedup_key FROM todos WHERE account_id = ?1 AND dedup_key LIKE ?2 UNION SELECT l.dedup_key FROM asks_legacy_links l JOIN todos t ON t.id=l.todo_id WHERE t.account_id=?1 AND l.dedup_key LIKE ?2 LIMIT 2",
                 )
                 .bind(record.account_id.as_str())
                 .bind(format!("{identity}|%"))

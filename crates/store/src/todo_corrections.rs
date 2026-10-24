@@ -88,7 +88,7 @@ async fn correction_row(
     crate::todos::row_to_todo(&row)
 }
 
-async fn replace_row(
+pub(crate) async fn replace_row(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     record: &TodoRecord,
 ) -> Result<(), sqlx::Error> {

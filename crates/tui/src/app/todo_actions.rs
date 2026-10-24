@@ -457,6 +457,9 @@ impl App {
         let Some(prompt) = self.mailbox.todo_page.prompt.as_mut() else {
             return;
         };
+        if prompt.pending.is_some() && code != KeyCode::Esc {
+            return;
+        }
         let is_schedule = matches!(prompt.kind, TodoPromptKind::Schedule { .. });
         match code {
             KeyCode::Enter => self.confirm_todo_prompt(),
@@ -573,9 +576,17 @@ impl App {
                 )
             }
         };
-        self.mailbox.todo_page.prompt = None;
         let (request, status) = request;
-        self.queue_mutation(request, MutationEffect::Todo(status), "Saving...".into());
+        let retain = matches!(request, Request::CorrectTodo { .. });
+        let id = self.queue_mutation(request, MutationEffect::Todo(status), "Saving...".into());
+        if retain {
+            if let Some(prompt) = self.mailbox.todo_page.prompt.as_mut() {
+                prompt.pending = Some(id);
+                prompt.error = None;
+            }
+        } else {
+            self.mailbox.todo_page.prompt = None;
+        }
     }
 
     fn decide_catchup_row(&mut self, keep: bool) {

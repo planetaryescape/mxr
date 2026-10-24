@@ -49,6 +49,10 @@ pattern!(
     r"(?i)\b(sign (?:the|your|this|our|my|a) (?:[a-z]+\s+){0,2}(?:form|contract|agreement|waiver|document|lease|nda)|signature (?:required|requested)|awaiting your signature|please sign\b|review and sign\b|(?:form|document|contract|agreement) must be signed)\b|^sign:\s*\S+"
 );
 pattern!(
+    SIGN_REQUIREMENT,
+    r"(?i)\b(?:signature (?:required|requested)|awaiting your signature|(?:form|document|contract|agreement) must be signed)\b|^(?:a|the|your) document to review and sign\b|\bsent you (?:a |the |your )?document(?: \S+){0,3} to review and sign\b"
+);
+pattern!(
     VERIFY,
     r"(?i)\b(?:verify|confirm|activate) (?:your |the |this )?(?:email(?: address)?|identity|account|phone number|registration)\b"
 );
@@ -289,7 +293,17 @@ pub(super) fn label(
     }
     let lower = text.to_ascii_lowercase();
     let imperative = [
-        "send ", "provide ", "upload ", "book ", "contact ", "review ",
+        "send ",
+        "provide ",
+        "upload ",
+        "book ",
+        "contact ",
+        "review ",
+        "sign ",
+        "sign:",
+        "verify ",
+        "confirm ",
+        "activate ",
     ]
     .iter()
     .any(|verb| lower.starts_with(verb));
@@ -304,9 +318,26 @@ pub(super) fn label(
         (&*REVIEW, ActionKind::Other, "review"),
         (&*CONTACT, ActionKind::Contact, "contact"),
     ] {
-        if pattern.is_match(action_text)
-            && (explicit || matches!(action, ActionKind::Sign | ActionKind::Verify))
-        {
+        if let Some(found) = pattern.find(action_text) {
+            // The observed grammatical subject governs this action before a
+            // recipient default can turn it into an owner request.
+            let statement =
+                super::reply::statement(&action_text[..found.start()], promise_actor, actor);
+            let (act, action_actor, declined) = match statement {
+                Some((Act::Question, actor, declined))
+                    if explicit
+                        || action == ActionKind::Sign && SIGN_REQUIREMENT.is_match(action_text) =>
+                {
+                    (Act::Request, actor, declined)
+                }
+                Some(statement) => statement,
+                None if promise => (Act::Commitment, promise_actor, false),
+                None if explicit => (Act::Request, actor, false),
+                None if action == ActionKind::Sign && SIGN_REQUIREMENT.is_match(action_text) => {
+                    (Act::Obligation, actor, false)
+                }
+                None => continue,
+            };
             if matches!(
                 action,
                 ActionKind::Send | ActionKind::Provide | ActionKind::Upload
@@ -337,19 +368,13 @@ pub(super) fn label(
             {
                 continue;
             }
-            let (act, actor) = if promise {
-                (
-                    Act::Commitment,
-                    if facts.owner_authored {
-                        Actor::Owner
-                    } else {
-                        Actor::Correspondent
-                    },
-                )
-            } else {
-                (Act::Request, actor)
-            };
-            votes.push(vote(rule, act, state, action, actor));
+            votes.push(vote(
+                rule,
+                act,
+                if declined { AskState::Cancelled } else { state },
+                action,
+                action_actor,
+            ));
         }
     }
     if promise && PAY_PROMISE.is_match(text) {

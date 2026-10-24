@@ -315,13 +315,18 @@ pub(super) async fn record_promise(
             }
         }
     }
-    let Some(recipient) = envelope.to.first().or_else(|| envelope.cc.first()) else {
+    let owned = state.owned_addresses(&envelope.account_id).await?;
+    let Some(recipient) =
+        mxr_core::first_non_owned_recipient(&envelope.to, &envelope.cc, |email| {
+            owned.contains(email)
+        })
+    else {
         return Err(format!("Message {message_id} has no recipient to keep a promise to").into());
     };
     let mut record = ContactCommitmentRecord {
         id: format!("{message_id}::promise::{}", new_candidate_id()),
         account_id: envelope.account_id.clone(),
-        email: recipient.email.clone(),
+        email: recipient.email.to_lowercase(),
         thread_id: envelope.thread_id.clone(),
         direction: CommitmentDirection::Yours,
         status: CommitmentStatus::Open,

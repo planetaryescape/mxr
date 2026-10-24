@@ -27,28 +27,30 @@ pub(super) async fn list_commitments(
     Ok(ResponseData::CommitmentList { commitments })
 }
 
+/// Shared by the direct command and Desk Done, including Archive filing.
+pub(super) async fn resolve_promise(
+    state: &AppState,
+    account: &AccountId,
+    id: &str,
+) -> Result<Option<mxr_store::PromiseResolution>, super::HandlerError> {
+    let resolution = state
+        .store
+        .resolve_promise_with_todos(account, id, chrono::Utc::now())
+        .await?;
+    if let Some(resolution) = &resolution {
+        let changed: Vec<_> = resolution
+            .todos
+            .iter()
+            .map(|(_, after)| after.clone())
+            .collect();
+        super::records::file_ticked_todos(state, &changed).await;
+    }
+    Ok(resolution)
+}
+
 pub(super) async fn resolve_commitment(state: &AppState, commitment_id: &str) -> HandlerResult {
     if let Some(commitment) = state.store.get_contact_commitment(commitment_id).await? {
-        let ids: Vec<_> = state
-            .store
-            .list_promise_todos(&commitment.account_id)
-            .await?
-            .into_iter()
-            .filter(|todo| {
-                todo.commitment_id.as_deref() == Some(commitment_id)
-                    && todo.state == mxr_store::TodoState::Open
-            })
-            .map(|todo| todo.id)
-            .collect();
-        if !ids.is_empty() {
-            super::todos::set_state(state, &ids, mxr_protocol::TodoStateActionData::Done, false)
-                .await?;
-        }
+        resolve_promise(state, &commitment.account_id, commitment_id).await?;
     }
-    state
-        .store
-        .resolve_contact_commitment(commitment_id)
-        .await
-        .map_err(|error| error.to_string())?;
     Ok(ResponseData::Ack)
 }

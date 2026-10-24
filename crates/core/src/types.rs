@@ -50,6 +50,17 @@ pub struct Address {
     pub email: String,
 }
 
+/// Choose the first external To recipient, then Cc, within the sending account.
+pub fn first_non_owned_recipient<'a>(
+    to: &'a [Address],
+    cc: &'a [Address],
+    is_owner: impl Fn(&str) -> bool,
+) -> Option<&'a Address> {
+    to.iter()
+        .chain(cc)
+        .find(|address| !is_owner(&address.email))
+}
+
 // -- Account ------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

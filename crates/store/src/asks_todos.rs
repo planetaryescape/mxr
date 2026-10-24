@@ -3,6 +3,60 @@ use crate::{Store, TodoRecord};
 use mxr_core::AccountId;
 
 impl Store {
+    /// Move automatic identities; alias protected history so its exact Undo survives.
+    pub async fn adopt_asks_payment_identity(
+        &self,
+        record: &TodoRecord,
+        answer: &mxr_core::asks::AskAssessment,
+        legacy_key: &str,
+    ) -> Result<(), sqlx::Error> {
+        if self
+            .get_todo_by_dedup(&record.account_id, legacy_key)
+            .await?
+            .is_none()
+        {
+            return Ok(());
+        }
+        let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
+        let current: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id=a.message_id AND m.account_id=a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id=m.account_id AND i.thread_id=m.thread_id WHERE a.message_id=?1 AND a.account_id=?2 AND a.policy_version=?3 AND a.input_fingerprint=?4 AND a.input_revision=i.effective_revision AND json_extract(a.assessment_json, '$.context_token')=?5)")
+            .bind(answer.message_id.as_str()).bind(record.account_id.as_str()).bind(&answer.policy_version).bind(&answer.input_fingerprint)
+            .bind(crate::asks_context_token().map_err(sqlx::Error::Io)?).fetch_one(&mut *tx).await?;
+        if !current {
+            return Ok(());
+        }
+        let sql = format!("SELECT {} FROM todos WHERE account_id=? AND dedup_key=? AND currency IS ? AND rules_version>=2 AND json_extract(field_sources, '$.asks_provenance.evidence') IS NOT NULL", crate::todos::COLUMNS);
+        let prior = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(record.account_id.as_str())
+            .bind(legacy_key)
+            .bind(&record.currency)
+            .fetch_optional(&mut *tx)
+            .await?;
+        let Some(prior) = prior.as_ref().map(crate::todos::row_to_todo).transpose()? else {
+            return Ok(());
+        };
+        if prior.user_touched()
+            || matches!(
+                prior.state,
+                crate::TodoState::Done | crate::TodoState::Dismissed
+            )
+        {
+            sqlx::query("INSERT INTO asks_legacy_links(todo_id, dedup_key) VALUES(?, ?) ON CONFLICT DO NOTHING")
+                .bind(&prior.id).bind(&record.dedup_key).execute(&mut *tx).await?;
+        } else {
+            let moved = sqlx::query("UPDATE todos SET dedup_key=? WHERE id=? AND NOT EXISTS (SELECT 1 FROM todos target WHERE target.account_id=? AND target.dedup_key=?)")
+                .bind(&record.dedup_key).bind(&prior.id).bind(record.account_id.as_str()).bind(&record.dedup_key).execute(&mut *tx).await?.rows_affected();
+            if moved > 0 {
+                sqlx::query("DELETE FROM asks_legacy_links WHERE todo_id=? AND dedup_key=?")
+                    .bind(&prior.id)
+                    .bind(&record.dedup_key)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Manual/history rows stand on the user's decision. Automatic open rows
     /// stand only on the exact current stored answer that produced them.
     pub async fn fresh_asks_todos(

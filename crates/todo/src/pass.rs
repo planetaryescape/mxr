@@ -342,7 +342,28 @@ where
                 FieldProvenance::with_evidence(FieldSource::User, "your recorded promise date"),
             );
         }
+        let legacy_payment_identity =
+            if matches!(detection.kind, TodoKind::Bill | TodoKind::PaymentFailed) {
+                let prefix = format!("{}|payment|", envelope.from.email.to_lowercase());
+                detection.object_key.strip_prefix(&prefix).and_then(|rest| {
+                    rest.split_once('|')
+                        .map(|(_, object)| format!("{prefix}{object}"))
+                })
+            } else {
+                None
+            };
         let (mut record, placement) = stored_record(&frozen, row, detection, run_in_progress);
+        if let Some(identity) = legacy_payment_identity {
+            if let Some((_, period)) = record.dedup_key.rsplit_once('|') {
+                let legacy_key = format!(
+                    "asks|payment|{}|{period}",
+                    mxr_store::assessment_fingerprint(&identity)
+                );
+                store
+                    .adopt_asks_payment_identity(&record, answer, &legacy_key)
+                    .await?;
+            }
+        }
         record.user_edited = user_date.is_some();
         record.commitment_id = commitment.map(|c| c.id);
         if let Some(id) = &record.commitment_id {

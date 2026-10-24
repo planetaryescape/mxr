@@ -788,6 +788,13 @@ fn comma_edits_a_field_and_refuses_a_line_without_equals() {
         }] if todo_id == "todo_1" && edits.len() == 1
             && edits[0].field == "due" && edits[0].value == "fri"
     ));
+    assert_eq!(
+        app.mailbox.todo_page.prompt.as_ref().unwrap().input,
+        "due=fri"
+    );
+    let saved = app.pending_mutation_queue[0].clone();
+    let effect = app.with_done_note(saved.id, saved.effect);
+    app.apply_mutation_completion(effect, true);
     assert!(app.mailbox.todo_page.prompt.is_none());
     let change = TodoChangeData {
         correction_undo: Some("correction-1".into()),
@@ -1152,4 +1159,88 @@ fn help_in_to_do_lists_to_dos_own_keys() {
         "help names the mode's key table"
     );
     assert!(text.contains("Schedule"), "and lists To do's Z");
+}
+
+#[test]
+fn review2_correction_failure_retains_input_and_stale_success_keeps_replacement() {
+    let mut app = todo_app(true);
+    press(&mut app, KeyCode::Char(','));
+    app.mailbox.todo_page.prompt.as_mut().unwrap().input = "due=not-a-time".into();
+    press(&mut app, KeyCode::Enter);
+    let queued = app.pending_mutation_queue.remove(0);
+    assert_eq!(
+        app.mailbox
+            .todo_page
+            .prompt
+            .as_ref()
+            .expect("retain until ACK")
+            .input,
+        "due=not-a-time"
+    );
+    app.handle_mutation_failure_result(
+        queued.id,
+        false,
+        &mxr_core::MxrError::Ipc("invalid date".into()),
+    );
+    assert_eq!(
+        app.mailbox.todo_page.prompt.as_ref().unwrap().input,
+        "due=not-a-time"
+    );
+    assert!(app
+        .mailbox
+        .todo_page
+        .prompt
+        .as_ref()
+        .unwrap()
+        .error
+        .as_ref()
+        .unwrap()
+        .contains("invalid date"));
+    app.modals.error = None;
+    press(&mut app, KeyCode::Enter);
+    let retry = app.pending_mutation_queue.remove(0);
+    assert_eq!(
+        format!("{:?}", retry.request),
+        format!("{:?}", queued.request)
+    );
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char(','));
+    app.mailbox.todo_page.prompt.as_mut().unwrap().input = "title=New editor".into();
+    let effect = app.with_done_note(retry.id, retry.effect);
+    app.apply_mutation_completion(effect, true);
+    assert_eq!(
+        app.mailbox.todo_page.prompt.as_ref().unwrap().input,
+        "title=New editor"
+    );
+}
+
+#[test]
+fn correction_stale_failure_keeps_replacement_input_and_pending_owner() {
+    let mut app = todo_app(true);
+    press(&mut app, KeyCode::Char(','));
+    app.mailbox.todo_page.prompt.as_mut().unwrap().input = "title=First".into();
+    press(&mut app, KeyCode::Enter);
+    let first = app.pending_mutation_queue.remove(0);
+    press(&mut app, KeyCode::Enter);
+    assert!(
+        app.pending_mutation_queue.is_empty(),
+        "pending save is not submitted twice"
+    );
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char(','));
+    app.mailbox.todo_page.prompt.as_mut().unwrap().input = "title=Replacement".into();
+    press(&mut app, KeyCode::Enter);
+    let second = app.pending_mutation_queue.remove(0);
+    app.handle_mutation_failure_result(
+        first.id,
+        false,
+        &mxr_core::MxrError::Ipc("first failed".into()),
+    );
+    let prompt = app.mailbox.todo_page.prompt.as_ref().unwrap();
+    assert_eq!(prompt.input, "title=Replacement");
+    assert_eq!(prompt.pending, Some(second.id));
+    assert!(prompt.error.is_none());
+    let effect = app.with_done_note(second.id, second.effect);
+    app.apply_mutation_completion(effect, true);
+    assert!(app.mailbox.todo_page.prompt.is_none());
 }

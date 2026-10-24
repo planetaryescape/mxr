@@ -55,12 +55,12 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                 ActionKind::Other => "review",
             };
             let counterparty = if promised {
-                envelope.to.iter().find(|a| {
-                    !answer
+                mxr_core::first_non_owned_recipient(&envelope.to, &envelope.cc, |email| {
+                    answer
                         .facts
                         .owner_addresses
                         .iter()
-                        .any(|own| own.eq_ignore_ascii_case(&a.email))
+                        .any(|own| own.eq_ignore_ascii_case(email))
                 })
             } else {
                 Some(&envelope.from)
@@ -166,7 +166,10 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
             // domain from being merged. Explicit references survive reminder wording.
             let action_identity = if matches!(tags.action, ActionKind::Pay | ActionKind::FixPayment)
             {
-                "payment".into()
+                format!(
+                    "payment|{}",
+                    amount.as_ref().map_or("unknown", |a| a.currency.as_str())
+                )
             } else {
                 format!("{:?}", tags.action)
             };

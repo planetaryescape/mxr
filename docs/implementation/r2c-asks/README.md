@@ -1,9 +1,9 @@
 # R2c has stored projections and still needs acceptance
 
-Continue in the canonical worker checkout and `target-cli`. The candidate
-is unfinished. Canonical contracts and focused storage, lifecycle and client
-checks have passed, but the last full measurement (policy8) failed its Send precision floor.
-Policy9 still needs full-corpus measurement and the remaining integration checks.
+The published policy12 baseline has an accepted classifier assessment. This
+candidate uses policy13 for action attribution and currency identity; its
+fresh full measurement and final whole-PR acceptance remain pending. Native
+storage, lifecycle and client checks are recorded in the implementation handoff.
 The accepted contract remains [blueprint 37](../../blueprint/37-what-it-asks.md).
 Do not merge this candidate as completed R2c.
 
@@ -32,6 +32,9 @@ without approval. Committing either still asks for approval, including in a
 trusted conversation. Step titles distinguish previews from calls that ran;
 they do not repeat edited fields or claim that a correction succeeded.
 The web and TUI `X` paths choose a reason; TUI choices use 1–4 and Enter.
+A failed correction save retains the entered value for retry. The TUI keeps
+the editor until acknowledgment and binds completion to its submitted mutation,
+so an old response cannot close a replacement editor.
 Web rows keep the requester and exact quote on one truncated secondary line.
 The full quote remains available in its title, details and source reader.
 Eligible ask uncertainty is a separate `might_need_you` collection on the
@@ -40,7 +43,7 @@ No uncertain row becomes a Now task.
 
 ## Home and asks commit together
 
-`asks-r2c-12` covers received and sent messages in the existing assessment
+`asks-r2c-13` covers received and sent messages in the existing assessment
 storage envelope. `r2-1` remains the inbound home policy. Home-version
 reports exclude the reserved asks namespace, and outbound asks cannot
 create a home. Both facets share one generation CAS, transaction and dirty
@@ -60,7 +63,7 @@ one predecessor and full cached body parts, including HTML text fallback.
 Desk snippets are not the evidence boundary. Owner matching uses
 `OwnedAddresses`, including send-as aliases.
 
-Policy `asks-r2c-12` also distinguishes an explicit salutation to another
+The stored asks policy also distinguishes an explicit salutation to another
 person from an owner request. Name-only salutations attach locally; an
 addressed action cannot veto an independent unit. An adjacent cancellation
 of the same actor's reply question is re-read as one verbatim span, including
@@ -68,8 +71,8 @@ of the same actor's reply question is re-read as one verbatim span, including
 remain retained history and read pending until the current policy is stored.
 A response noun mention alone does not establish a recipient question.
 Direct requests, questions, response imperatives and reply withdrawals retain
-their evidence; exact source quotes and spans stay unchanged. Previous policy11
-answers remain retained history and read pending until policy12 is stored.
+their evidence; exact source quotes and spans stay unchanged. Previous policy12
+answers remain retained history and read pending until policy13 is stored.
 Coordinated future actions retain their speaker: a correspondent saying they
 will rework a plan and send a revision does not ask the owner to send it.
 Security-notice wording only suppresses the verification task; independent
@@ -99,8 +102,29 @@ reports omitted units; membership reports additional omitted messages.
 ## Tasks and commitments project the persisted answer
 
 Recording a User promise date immediately reprojects that message’s stored
-answer before returning. The existing task ID, quote and user edits remain
-protected by the same projection CAS; recording does not judge the mail again.
+answer before returning. Repeating acceptance can move the prior accepted date
+on the same open task, including across months. Independently corrected task
+dates and other edited fields, scheduled dates, Done and Dismissed decisions
+retain their authority. Recording does not judge the mail again.
+
+Acceptance and canonical projection share the first non-owned To recipient,
+then the first non-owned Cc recipient. Owned aliases cannot split a promise
+into a second commitment or task. The exact source quote stays intact.
+
+Desk Done and the direct commitment command resolve the commitment and linked
+open tasks in one transaction. Desk Undo retains both exact prior states and
+restores them only while neither side has changed. Other tasks and later user
+decisions remain intact; the usual Archive filing path still applies.
+
+Payment identity includes normalized currency alongside counterparty,
+reference and period. Same-currency reminders retain one identity. Old automatic
+rows move to the currency key; protected history uses the existing identity
+links so its saved correction Undo remains valid.
+
+Sign and verification actions use observed speech-act and actor evidence before
+admission. Sender offers and third-party statements cannot default to owner
+tasks. Recipient requests, institutional signing requirements and firm promises
+retain their quoted evidence.
 
 The To do scan no longer calls the legacy first-hit detector or mirrors
 background model commitment rows. Explicitly recorded promises and draft

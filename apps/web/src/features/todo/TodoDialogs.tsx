@@ -187,9 +187,9 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {TODO_KINDS.map(([kind, label]) => (
+                    {TODO_KINDS.map(([kind, kindLabel]) => (
                       <SelectItem key={kind} value={kind}>
-                        {label}
+                        {kindLabel}
                       </SelectItem>
                     ))}
                   </SelectContent>

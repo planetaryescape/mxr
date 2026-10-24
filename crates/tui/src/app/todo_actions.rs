@@ -651,7 +651,7 @@ impl App {
     pub(super) fn todo_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         if plain_or_shift(key.modifiers) {
             let page = &mut self.mailbox.todo_page;
-            if key.code == KeyCode::Char('m') {
+            if key.code == KeyCode::Char('m') && self.input.pending_prefix().is_none() {
                 page.uncertain_open = !page.uncertain_open;
                 return None;
             }

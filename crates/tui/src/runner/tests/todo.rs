@@ -744,6 +744,21 @@ fn schedule_sends_the_previewed_time() {
 }
 
 #[test]
+fn the_uncertain_picker_does_not_capture_the_messages_key_sequence() {
+    let mut app = todo_app(true);
+    press(&mut app, KeyCode::Char('m'));
+    assert!(app.mailbox.todo_page.uncertain_open);
+    press(&mut app, KeyCode::Esc);
+    assert!(!app.mailbox.todo_page.uncertain_open);
+    press(&mut app, KeyCode::Char('g'));
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE)),
+        Some(Action::OpenMessages)
+    );
+    assert!(!app.mailbox.todo_page.uncertain_open);
+}
+
+#[test]
 fn comma_edits_a_field_and_refuses_a_line_without_equals() {
     let mut app = todo_app(true);
     press(&mut app, KeyCode::Char(','));
@@ -764,7 +779,31 @@ fn comma_edits_a_field_and_refuses_a_line_without_equals() {
     press(&mut app, KeyCode::Enter);
     assert!(matches!(
         queued(&app).as_slice(),
-        [Request::UpdateTodo { edits, .. }] if edits[0].field == "due" && edits[0].value == "fri"
+        [Request::CorrectTodo {
+            todo_id,
+            reason: mxr_protocol::TodoCorrectionData::WrongDetails,
+            edits,
+            dry_run: false,
+            ..
+        }] if todo_id == "todo_1" && edits.len() == 1
+            && edits[0].field == "due" && edits[0].value == "fri"
+    ));
+    assert!(app.mailbox.todo_page.prompt.is_none());
+    let change = TodoChangeData {
+        correction_undo: Some("correction-1".into()),
+        dry_run: false,
+        action: "correct".into(),
+        changed: vec![todo("todo_1", "Check the agreement")],
+        unchanged: vec![],
+        summary: "Correction saved".into(),
+    };
+    app.pending_mutation_queue.clear();
+    app.set_pending_undo(crate::runner::todo_undo(&change).expect("durable correction offers undo"));
+    press(&mut app, KeyCode::Char('u'));
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::UndoTodoCorrection { todo_id, correction_id, dry_run: false }]
+            if todo_id == "todo_1" && correction_id == "correction-1"
     ));
 }
 

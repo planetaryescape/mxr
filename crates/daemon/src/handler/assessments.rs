@@ -428,7 +428,8 @@ pub(crate) async fn reconciler_loop(
         let shape = super::conversation_shape::shape_config(&state);
         let asks_context = mxr_store::asks_context_token().ok();
         if previous_shape != Some(shape) || previous_asks_context != asks_context {
-            if let Err(error) = state.store.invalidate_all_assessments().await {
+            let context = format!("{}:{asks_context:?}", shape.large_thread_recipients);
+            if let Err(error) = state.store.sync_assessment_context(&context).await {
                 tracing::warn!(%error, "assessment initialization pending");
                 continue;
             }

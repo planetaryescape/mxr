@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn schema_99_round_trip_preserves_correction_undo_and_projection_retry() {
+async fn schema_100_round_trip_preserves_correction_undo_and_projection_retry() {
     let source = tempfile::tempdir().unwrap();
     let stage = tempfile::tempdir().unwrap();
     let store = Store::fresh_backup(&source.path().join("mxr.db"))
@@ -49,7 +49,7 @@ async fn schema_99_round_trip_preserves_correction_undo_and_projection_retry() {
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 99);
+    assert_eq!(manifest.schema_version, 100);
     inspect(stage.path()).await.unwrap();
     retire_restored(&stage.path().join("mxr.db")).await.unwrap();
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
@@ -86,8 +86,8 @@ async fn schema_99_round_trip_preserves_correction_undo_and_projection_retry() {
 }
 
 #[tokio::test]
-async fn exact_schema_97_and_98_backups_upgrade_without_rewriting_closed_history() {
-    for version in [97, 98] {
+async fn exact_schema_97_98_and_99_backups_upgrade_without_rewriting_closed_history() {
+    for version in [97, 98, 99] {
         let source = tempfile::tempdir().unwrap();
         let stage = tempfile::tempdir().unwrap();
         let store = Store::fresh_backup(&source.path().join("mxr.db"))
@@ -107,7 +107,7 @@ async fn exact_schema_97_and_98_backups_upgrade_without_rewriting_closed_history
         )
         .await
         .unwrap();
-        sqlx::raw_sql("DROP TABLE asks_projection_outbox; DROP TABLE asks_legacy_links;")
+        sqlx::raw_sql(if version < 99 { "DROP TABLE assessment_authority; DROP TABLE asks_projection_outbox; DROP TABLE asks_legacy_links;" } else { "DROP TABLE assessment_authority;" })
             .execute(&mut db)
             .await
             .unwrap();
@@ -148,7 +148,7 @@ async fn exact_schema_97_and_98_backups_upgrade_without_rewriting_closed_history
             .fetch_all(restored.reader())
             .await
             .unwrap();
-            assert_eq!(versions, [98, 99]);
+            assert_eq!(versions, [98, 99, 100]);
             restored.reader().close().await;
             restored.writer().close().await;
         }

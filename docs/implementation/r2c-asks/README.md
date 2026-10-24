@@ -227,7 +227,15 @@ receiver trust never enables one-click payment.
 
 This follows [RFC8601’s trust boundary](https://www.rfc-editor.org/rfc/rfc8601.html#section-1.6)
 and [Gmail’s aligned sender requirement](https://developers.google.com/workspace/gmail/markup/registering-with-google).
-The parser dependency uses `msg-auth-status`0.2.0 with `std` and `mail_parser`:
+The parser dependency uses `msg-auth-status` 0.2.0 with `std` and `mail_parser`:
 its upstream feature gate otherwise fails to compile its `HeaderValue` adapters.
-Only that compatibility edge uses mail-parser0.9.4; the workspace parser remains
+Only that compatibility edge uses `mail-parser` 0.9.4; the workspace parser remains
 0.11. No verifier, DNS, crypto or network feature is enabled.
+
+Schema100 persists receiver authority per account and global shape/timezone
+context. Startup and the background reconciler compare the durable values;
+unchanged authority uses reads only. A receiver change advances only that
+account’s generations, while an actual global context change advances all
+accounts. The first migration without a marker can invalidate once. Receiver
+IDs use the same lowercase/sorted/deduplicated policy in matching, fingerprints
+and persisted authority; whitespace is preserved and never silently trusted.

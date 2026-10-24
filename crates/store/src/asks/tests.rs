@@ -441,3 +441,169 @@ async fn evaluation_packet_reads_generation_matched_facets_and_record_in_one_rea
     assert!(packet[0].asks.is_none());
     assert_eq!(packet[0].envelope.subject, "replacement");
 }
+
+#[tokio::test]
+async fn unchanged_receiver_authority_survives_persistent_reopen_without_retiring_answers() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("authority.db");
+    let store = Store::new(&path).await.unwrap();
+    store
+        .sync_assessment_context("shape10:timezone-a")
+        .await
+        .unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let mail = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    store
+        .upsert_envelope_with_direction(&mail, MessageDirection::Inbound)
+        .await
+        .unwrap();
+    let revisions = store
+        .assessment_thread_revisions(&account.id, std::slice::from_ref(&mail.thread_id))
+        .await
+        .unwrap();
+    let mut ask = answer(&account.id, &mail);
+    ask.pending_body = false;
+    assert!(store
+        .save_assessment_facets(&account.id, &revisions, &[], &[ask.clone()])
+        .await
+        .unwrap());
+    store.reader().close().await;
+    store.writer().close().await;
+    let store = Store::new(&path).await.unwrap();
+    let before: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+    let tickets: i64 = sqlx::query_scalar("SELECT count(*) FROM asks_projection_outbox")
+        .fetch_one(store.reader())
+        .await
+        .unwrap();
+    store
+        .sync_assessment_context("shape10:timezone-a")
+        .await
+        .unwrap();
+    store
+        .sync_assessment_context("shape10:timezone-a")
+        .await
+        .unwrap();
+    // Startup and every reconciliation tick use the same durable authority seam.
+    store
+        .sync_receiver_authority(&Default::default())
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .asks_for_messages(&account.id, std::slice::from_ref(&mail.id))
+            .await
+            .unwrap()
+            .get(&mail.id),
+        Some(&ask),
+        "unchanged startup must retain its current answer"
+    );
+    assert!(store
+        .dirty_assessment_threads(&account.id, None)
+        .await
+        .unwrap()
+        .is_empty());
+    let after: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+    assert_eq!(after, before, "unchanged authority performs no writes");
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM asks_projection_outbox")
+            .fetch_one(store.reader())
+            .await
+            .unwrap(),
+        tickets
+    );
+}
+
+#[tokio::test]
+async fn receiver_changes_only_retire_their_account_and_global_context_changes_retire_both() {
+    let store = Store::in_memory().await.unwrap();
+    let accounts = [test_account(), test_account()];
+    let mut mails = Vec::new();
+    for account in &accounts {
+        store.insert_account(account).await.unwrap();
+        let mail = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        store
+            .upsert_envelope_with_direction(&mail, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        mails.push(mail);
+    }
+    store
+        .sync_assessment_context("shape10:zone-a")
+        .await
+        .unwrap();
+    let mut config = std::collections::HashMap::from([(
+        accounts[0].id.as_str(),
+        vec!["MX.EXAMPLE.NET".into(), "mx.example.net".into()],
+    )]);
+    store.sync_receiver_authority(&config).await.unwrap();
+    for (account, mail) in accounts.iter().zip(&mails) {
+        let revisions = store
+            .assessment_thread_revisions(&account.id, std::slice::from_ref(&mail.thread_id))
+            .await
+            .unwrap();
+        store
+            .save_assessment_facets(&account.id, &revisions, &[], &[answer(&account.id, mail)])
+            .await
+            .unwrap();
+    }
+    let b_before = store
+        .assessment_thread_revisions(&accounts[1].id, std::slice::from_ref(&mails[1].thread_id))
+        .await
+        .unwrap();
+    let before: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(store.writer())
+        .await
+        .unwrap();
+    config.insert(accounts[0].id.as_str(), vec!["mx.example.net".into()]);
+    store.sync_receiver_authority(&config).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT total_changes()")
+            .fetch_one(store.writer())
+            .await
+            .unwrap(),
+        before,
+        "normalization matches the judging policy"
+    );
+    config.clear();
+    store.sync_receiver_authority(&config).await.unwrap();
+    assert!(store
+        .asks_for_messages(&accounts[0].id, std::slice::from_ref(&mails[0].id))
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        store
+            .asks_for_messages(&accounts[1].id, std::slice::from_ref(&mails[1].id))
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        store
+            .assessment_thread_revisions(&accounts[1].id, std::slice::from_ref(&mails[1].thread_id))
+            .await
+            .unwrap(),
+        b_before
+    );
+    store
+        .sync_assessment_context("shape11:zone-b")
+        .await
+        .unwrap();
+    assert!(store
+        .asks_for_messages(&accounts[1].id, std::slice::from_ref(&mails[1].id))
+        .await
+        .unwrap()
+        .is_empty());
+}

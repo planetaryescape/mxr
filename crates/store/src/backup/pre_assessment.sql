@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS assessment_authority;
 DROP TABLE IF EXISTS asks_projection_outbox;
 DROP TABLE IF EXISTS asks_legacy_links;
 DROP TABLE IF EXISTS todo_corrections;

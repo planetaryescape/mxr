@@ -818,9 +818,17 @@ impl AppState {
         let index_path = data_dir.join("search_index");
 
         let store = Arc::new(Store::new(&db_path).await?);
+        let context = format!(
+            "{}:{:?}",
+            config.messages.large_thread_recipients,
+            mxr_store::asks_context_token().ok()
+        );
+        store.sync_assessment_context(&context).await?;
         // Cached auth authority belongs to the loaded receiver configuration.
         // Invalidate before IPC opens, rather than waiting for the first loop tick.
-        store.invalidate_all_assessments().await?;
+        store
+            .sync_receiver_authority(&config.todo.trusted_authentication_services)
+            .await?;
         std::fs::create_dir_all(&index_path)?;
         let pending = store.restore_pending().await?;
         if pending {
@@ -2054,7 +2062,7 @@ impl AppState {
             != config.todo.trusted_authentication_services
         {
             self.store
-                .invalidate_all_assessments()
+                .sync_receiver_authority(&config.todo.trusted_authentication_services)
                 .await
                 .map_err(|error| error.to_string())?;
         }
@@ -2074,7 +2082,7 @@ impl AppState {
             != config.todo.trusted_authentication_services
         {
             self.store
-                .invalidate_all_assessments()
+                .sync_receiver_authority(&config.todo.trusted_authentication_services)
                 .await
                 .expect("invalidate receiver authority");
         }
@@ -2281,7 +2289,7 @@ impl AppState {
             != config.todo.trusted_authentication_services
         {
             self.store
-                .invalidate_all_assessments()
+                .sync_receiver_authority(&config.todo.trusted_authentication_services)
                 .await
                 .map_err(|error| error.to_string())?;
         }

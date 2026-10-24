@@ -86,10 +86,10 @@ template_family  vet-balance-now-payable            emails      1 expected     1
 thread_position  first                              emails    166 expected    33 found    33 tp    33 fp     0 fn     0 precision 100.0% recall 100.0%
 thread_position  followed_by_owner                  emails      2 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
 thread_position  reply                              emails     17 expected     3 found     3 tp     3 fp     0 fn     0 precision 100.0% recall 100.0%
-zone             authored+calendar+subject          emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
-zone             authored+forwarded+subject         emails      2 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
-zone             authored+quoted+signature+subject  emails      1 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
-zone             authored+subject                   emails    181 expected    35 found    35 tp    35 fp     0 fn     0 precision 100.0% recall 100.0%
+zone             authored+calendar+subject+unattributed emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
+zone             authored+forwarded+subject+unattributed emails      2 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
+zone             authored+quoted+signature+subject+unattributed emails      1 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
+zone             authored+subject+unattributed      emails    181 expected    35 found    35 tp    35 fp     0 fn     0 precision 100.0% recall 100.0%
 
 57 mismatches
 application-auto-ack demo-msg-148 who: expected machine, got list [label to check]

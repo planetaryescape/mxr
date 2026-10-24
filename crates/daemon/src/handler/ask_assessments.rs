@@ -26,6 +26,7 @@ pub(super) async fn prepare(
         .get(&account.as_str())
         .cloned()
         .unwrap_or_default();
+    let trusted_services = mxr_store::Store::normalized_receiver_services(&trusted_services);
     let envelopes = state.store.list_envelopes_by_ids(&ids).await?;
     let envelopes: HashMap<_, _> = envelopes.iter().map(|e| (&e.id, e)).collect();
     let source_bodies = if stored.len() == ids.len() {

@@ -268,7 +268,7 @@ async fn resolution_queue_round_trips_through_backup_and_restore() {
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 99);
+    assert_eq!(manifest.schema_version, 100);
     inspect(stage.path()).await.unwrap();
     std::fs::copy(stage.path().join("mxr.db"), restored.path().join("mxr.db")).unwrap();
     retire_restored(&restored.path().join("mxr.db"))
@@ -327,7 +327,7 @@ async fn unsubscribe_receipts_round_trip_through_backup_and_restore() {
         .await
         .unwrap();
 
-    assert_eq!(manifest.schema_version, 99);
+    assert_eq!(manifest.schema_version, 100);
     let restored_store = Store::new(&restored.path().join("mxr.db")).await.unwrap();
     assert!(
         restored_store
@@ -434,7 +434,7 @@ async fn microsoft_link_baselines_and_uncertain_receipts_survive_backup_and_rest
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 99);
+    assert_eq!(manifest.schema_version, 100);
     inspect(stage.path()).await.unwrap();
     retire_restored(&stage.path().join("mxr.db")).await.unwrap();
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
@@ -723,7 +723,7 @@ async fn schema_92_source_backfills_receipts_from_its_event_log() {
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 99);
+    assert_eq!(manifest.schema_version, 100);
     inspect(stage.path()).await.unwrap();
 
     let mut staged = SqliteConnection::connect_with(
@@ -1138,7 +1138,7 @@ async fn older_sources_back_up_their_highlights_as_made_in_mxr() {
         db.close().await.unwrap();
 
         let manifest = populate(source.path(), stage.path()).await.unwrap();
-        assert_eq!(manifest.schema_version, 99, "source {source_version}");
+        assert_eq!(manifest.schema_version, 100, "source {source_version}");
         let mut copied = SqliteConnection::connect_with(
             &SqliteConnectOptions::new()
                 .filename(stage.path().join("mxr.db"))
@@ -1172,7 +1172,7 @@ async fn exact_schema_85_backup_without_marginalia_is_inspectable_and_86_is_not_
         populate(source.path(), stage.path()).await.unwrap(),
     );
     // Written at the current schema: the bundle keeps Marginalia and the paragraph and inspects as-is.
-    assert_eq!(manifest.schema_version, 99);
+    assert_eq!(manifest.schema_version, 100);
     inspect(stage.path()).await.unwrap();
 
     let mut db = SqliteConnection::connect_with(
@@ -1241,7 +1241,7 @@ async fn exact_schema_86_backup_without_paragraph_is_inspectable_and_87_is_not_r
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 99);
+    assert_eq!(manifest.schema_version, 100);
 
     let mut db = SqliteConnection::connect_with(
         &SqliteConnectOptions::new().filename(stage.path().join("mxr.db")),
@@ -1368,7 +1368,7 @@ async fn a_backup_from_before_95_marks_dated_draft_candidates_as_unverified() {
 
     let manifest = populate(source.path(), stage.path()).await.unwrap();
 
-    assert_eq!(manifest.schema_version, 99);
+    assert_eq!(manifest.schema_version, 100);
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
     let rows = restored
         .list_draft_commitment_candidates(&draft)
@@ -1439,7 +1439,7 @@ async fn a_backup_from_before_94_backfills_where_each_commitment_date_came_from(
 
     let manifest = populate(source.path(), stage.path()).await.unwrap();
 
-    assert_eq!(manifest.schema_version, 99);
+    assert_eq!(manifest.schema_version, 100);
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
     let mut sources: Vec<(String, Option<ByWhenSource>)> = restored
         .list_contact_commitments(&account.id, None, None)
@@ -1531,7 +1531,7 @@ async fn stored_assessment_policy_history_survives_schema_97_backup_and_restore(
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 99);
+    assert_eq!(manifest.schema_version, 100);
     inspect(stage.path()).await.unwrap();
     retire_restored(&stage.path().join("mxr.db")).await.unwrap();
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();

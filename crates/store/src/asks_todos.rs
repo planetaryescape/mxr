@@ -61,14 +61,16 @@ impl Store {
                 sqlx::query("INSERT INTO asks_legacy_links(todo_id, dedup_key) VALUES(?, ?) ON CONFLICT DO NOTHING")
                     .bind(&prior.id).bind(&record.dedup_key).execute(&mut *tx).await?;
             }
-        } else if let Some(prior) = prior
+        } else if let Some(candidate) = prior
             .iter()
             .find(|row| row.state == crate::TodoState::Open)
             .or_else(|| prior.first())
         {
-            let moved = sqlx::query("UPDATE todos SET dedup_key=? WHERE id=? AND NOT EXISTS (SELECT 1 FROM todos target WHERE target.account_id=? AND target.dedup_key=?)")
-                .bind(&record.dedup_key).bind(&prior.id).bind(record.account_id.as_str()).bind(&record.dedup_key).execute(&mut *tx).await?.rows_affected();
-            if moved > 0 {
+            sqlx::query("UPDATE todos SET dedup_key=? WHERE id=? AND NOT EXISTS (SELECT 1 FROM todos target WHERE target.account_id=? AND target.dedup_key=?)")
+                .bind(&record.dedup_key).bind(&candidate.id).bind(record.account_id.as_str()).bind(&record.dedup_key).execute(&mut *tx).await?;
+            // Undo revokes suppression even when the canonical automatic row
+            // already exists and no predecessor can move into its identity.
+            for prior in &prior {
                 sqlx::query("DELETE FROM asks_legacy_links WHERE todo_id=? AND dedup_key=?")
                     .bind(&prior.id)
                     .bind(&record.dedup_key)

@@ -216,7 +216,7 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
         mxr_protocol::TodoCorrectionData::NotATodo,
         mxr_protocol::TodoCorrectionData::WrongDetails,
     ] {
-        for protected_index in [0, 1] {
+        for (protected_index, prior_grouped) in [(0, false), (1, false), (1, true)] {
             let fx = Fixture::new().await;
             let mail = fx
                 .message(
@@ -230,6 +230,13 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
             let text = "Your payment of £25 failed. Please update your payment details.";
             replace(&fx, &mail, text).await;
             settle(&fx, &mail).await;
+            let grouped = fx
+                .state
+                .store
+                .list_todos_in_state(Some(&fx.account), TodoState::Open, 100)
+                .await
+                .unwrap()
+                .remove(0);
             let mut old = fx
                 .state
                 .store
@@ -327,6 +334,25 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
                 .await
                 .unwrap()
                 .unwrap();
+            if prior_grouped {
+                // Policy14 already moved the untouched first row to the merged
+                // identity while missing the NULL-currency correction on the second.
+                let fields = grouped
+                    .field_sources
+                    .replace(
+                        &format!("{}:", mxr_core::asks::ASKS_POLICY_VERSION),
+                        "asks-r2c-14:",
+                    )
+                    .replace(&old.input_fingerprint, "retained-policy14-fingerprint");
+                sqlx::query("UPDATE todos SET dedup_key=?, reason=?, field_sources=? WHERE id=?")
+                    .bind(&grouped.dedup_key)
+                    .bind(text)
+                    .bind(fields)
+                    .bind(&rows[0].id)
+                    .execute(fx.state.store.writer())
+                    .await
+                    .unwrap();
+            }
             sqlx::query("UPDATE mail_assessments SET policy_version='asks-r2c-13', assessment_json=? WHERE message_id=? AND policy_version=?")
             .bind(serde_json::to_string(&old).unwrap()).bind(mail.id.as_str()).bind(mxr_core::asks::ASKS_POLICY_VERSION).execute(fx.state.store.writer()).await.unwrap();
             assert!(fx
@@ -375,10 +401,12 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
                 assert_eq!(saved.id, original.id);
                 assert_eq!(saved.title, corrected.title);
             }
-            assert_eq!(
-                open.len(),
-                usize::from(reason == mxr_protocol::TodoCorrectionData::WrongDetails)
-            );
+            if !prior_grouped {
+                assert_eq!(
+                    open.len(),
+                    usize::from(reason == mxr_protocol::TodoCorrectionData::WrongDetails)
+                );
+            }
             request(
                 &fx,
                 Request::UndoTodoCorrection {
@@ -398,6 +426,34 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
                 original
             );
             settle(&fx, &mail).await;
+            let ResponseData::Todos { todos: active } = request(
+                &fx,
+                Request::ListTodos {
+                    account_id: Some(fx.account.clone()),
+                    state: mxr_protocol::TodoStateData::Open,
+                    limit: 100,
+                },
+            )
+            .await
+            else {
+                panic!("public active after Undo and replay")
+            };
+            eprintln!(
+                "REVIEW4_UNDO prior_grouped={prior_grouped} reason={reason:?} active={active:?}"
+            );
+            assert_eq!(
+                active.len(),
+                1,
+                "Undo must restore a current obligation after policy14 grouping"
+            );
+            let current = fx
+                .state
+                .store
+                .get_todo(&active[0].id)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(current.reason, text);
             assert_eq!(
                 fx.state
                     .store

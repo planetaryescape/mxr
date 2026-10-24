@@ -98,7 +98,7 @@ pub(crate) async fn write(
 }
 
 impl crate::Store {
-    /// A new explicit acceptance owns the date, not independently edited fields.
+    /// Refresh an accepted date and its kind-derived timing, not independently edited fields.
     pub(crate) async fn update_accepted_todo_date(
         &self,
         record: &crate::TodoRecord,
@@ -106,13 +106,14 @@ impl crate::Store {
         answer: Option<&AskAssessment>,
     ) -> Result<crate::TodoUpsert, sqlx::Error> {
         let authority = if answer.is_some() {
-            "AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id=a.message_id AND m.account_id=a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id=m.account_id AND i.thread_id=m.thread_id WHERE a.message_id=?12 AND a.account_id=?10 AND a.policy_version=?13 AND a.input_fingerprint=?14 AND a.input_revision=i.effective_revision AND json_extract(a.assessment_json, '$.context_token')=?15)"
+            "AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id=a.message_id AND m.account_id=a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id=m.account_id AND i.thread_id=m.thread_id WHERE a.message_id=?13 AND a.account_id=?10 AND a.policy_version=?14 AND a.input_fingerprint=?15 AND a.input_revision=i.effective_revision AND json_extract(a.assessment_json, '$.context_token')=?16)"
         } else {
             "AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.id=todos.source_message_id AND (m.account_id != todos.account_id OR m.direction != 'outbound'))"
         };
+        // Timing uses record.kind; a concurrent kind correction must win.
         let sql = format!("UPDATE todos SET due_at=?1, due_words=?2, act_by_at=?3, surface_at=?4, relevant_until=?5, window_source=?6, field_sources=json_set(field_sources, '$.due_at', json_extract(?7, '$.due_at')), user_edited=1, updated_at=?8
-            WHERE id=?9 AND account_id=?10 AND state='open' AND commitment_id=?11
-            AND (due_at IS NOT ?1 OR json_extract(field_sources, '$.due_at.source') IS NOT 'user')
+            WHERE id=?9 AND account_id=?10 AND state='open' AND commitment_id=?11 AND kind=?12
+            AND (due_at IS NOT ?1 OR json_extract(field_sources, '$.due_at.source') IS NOT 'user' OR act_by_at IS NOT ?3 OR surface_at IS NOT ?4 OR relevant_until IS NOT ?5 OR window_source IS NOT ?6)
             AND (json_extract(field_sources, '$.due_at.source') IS NOT 'user' OR json_extract(field_sources, '$.due_at.evidence') IN ('your recorded promise date', 'accepted promise date provenance'))
             AND EXISTS (SELECT 1 FROM contact_commitments c WHERE c.account_id=?10 AND c.id=?11 AND c.evidence_msg_id=todos.source_message_id AND c.what=todos.reason AND c.direction='yours' AND c.status='open' AND c.by_when_source='user' AND c.by_when IS ?1)
             {authority}");
@@ -127,7 +128,8 @@ impl crate::Store {
             .bind(record.updated_at.timestamp())
             .bind(&prior.id)
             .bind(record.account_id.as_str())
-            .bind(&record.commitment_id);
+            .bind(&record.commitment_id)
+            .bind(&record.kind);
         if let Some(answer) = answer {
             query = query
                 .bind(answer.message_id.as_str())

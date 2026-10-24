@@ -407,3 +407,84 @@ async fn unchanged_canonical_and_corrected_accepted_only_kinds_keep_their_own_ti
         );
     }
 }
+
+#[tokio::test]
+async fn replay_repairs_previously_persisted_promise_timing_without_changing_the_accepted_date() {
+    let fx = Fixture::new().await;
+    let (mail, expected) = corrected_kind_journey(&fx).await;
+    let cfg = super::super::todos::pass_config(&fx.state, chrono::Utc::now());
+    let input = TimingInput {
+        kind: TodoKind::Promise,
+        doc_type: None,
+        arrived: mail.date,
+        due: expected.due_at,
+        event_start: None,
+    };
+    let old = lead_time(&input, &Local, cfg.morning_hour);
+    // Faithful published row: Lease fields/provenance, but Promise-derived dates from reacceptance.
+    sqlx::query("UPDATE todos SET act_by_at=?, surface_at=?, relevant_until=? WHERE id=?")
+        .bind(old.act_by.map(|at| at.timestamp()))
+        .bind(old.surface_at.map(|at| at.timestamp()))
+        .bind(window(&input).until.map(|at| at.timestamp()))
+        .bind(&expected.id)
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    let broken = fx
+        .state
+        .store
+        .get_todo(&expected.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(broken.kind, "lease");
+    assert_eq!(broken.due_at, expected.due_at);
+    assert_ne!(broken.act_by_at, expected.act_by_at);
+    settle(&fx, &mail).await;
+    let actual = fx
+        .state
+        .store
+        .get_todo(&expected.id)
+        .await
+        .unwrap()
+        .unwrap();
+    eprintln!("REVIEW8_RETAINED_ROW broken={broken:?} replayed={actual:?}");
+    assert_eq!(actual.act_by_at, expected.act_by_at);
+    assert_eq!(actual.surface_at, expected.surface_at);
+    assert_eq!(actual.relevant_until, expected.relevant_until);
+    assert_eq!(actual.field_sources, expected.field_sources);
+    assert_eq!(actual.due_at, expected.due_at);
+    assert_eq!(actual.kind, expected.kind);
+    assert_eq!(actual.reason, expected.reason);
+    assert_eq!(actual.commitment_id, expected.commitment_id);
+    assert_eq!(actual.dedup_key, expected.dedup_key);
+    // A projector that read the old kind cannot replace the corrected kind's timing.
+    let mut stale = actual.clone();
+    stale.kind = "promise".into();
+    stale.act_by_at = old.act_by;
+    stale.surface_at = old.surface_at;
+    stale.relevant_until = window(&input).until;
+    let answers = fx
+        .state
+        .store
+        .asks_for_messages(&fx.account, std::slice::from_ref(&mail.id))
+        .await
+        .unwrap();
+    assert!(matches!(
+        fx.state
+            .store
+            .upsert_asks_todo(&stale, &answers[&mail.id])
+            .await
+            .unwrap(),
+        mxr_store::TodoUpsert::Unchanged
+    ));
+    assert_eq!(
+        fx.state.store.get_todo(&expected.id).await.unwrap(),
+        Some(actual.clone())
+    );
+    settle(&fx, &mail).await;
+    assert_eq!(
+        fx.state.store.get_todo(&expected.id).await.unwrap(),
+        Some(actual)
+    );
+}

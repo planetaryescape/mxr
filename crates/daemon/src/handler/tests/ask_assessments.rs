@@ -1096,3 +1096,84 @@ async fn retired_policy_reads_pending_then_reconciles_to_current_policy() {
         assert_eq!(retained, 1);
     }
 }
+
+#[tokio::test]
+async fn kind_correction_previews_retimes_and_restores_the_exact_row() {
+    let fx = Fixture::new().await;
+    let mail = fx
+        .message(
+            &ThreadId::new(),
+            "billing@example.com",
+            ME,
+            Duration::minutes(5),
+            None,
+        )
+        .await;
+    body(
+        &fx,
+        &mail,
+        "Please pay invoice #A123 £25 by 1 November 2026.",
+    )
+    .await;
+    crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
+    let before = fx
+        .state
+        .store
+        .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
+        .await
+        .unwrap()
+        .remove(0);
+    let edit = |dry_run| Request::CorrectTodo {
+        todo_id: before.id.clone(),
+        reason: mxr_protocol::TodoCorrectionData::WrongDetails,
+        edits: vec![mxr_protocol::TodoEditData {
+            field: "kind".into(),
+            value: "sign".into(),
+        }],
+        time_zone: None,
+        dry_run,
+    };
+    let changes: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(fx.state.store.writer())
+        .await
+        .unwrap();
+    let ResponseData::TodoChange { change: preview } = request(&fx, edit(true)).await else {
+        panic!("preview");
+    };
+    assert_eq!(
+        changes,
+        sqlx::query_scalar::<_, i64>("SELECT total_changes()")
+            .fetch_one(fx.state.store.writer())
+            .await
+            .unwrap()
+    );
+    assert!(preview.correction_undo.is_none());
+    assert_eq!(
+        fx.state.store.get_todo(&before.id).await.unwrap(),
+        Some(before.clone())
+    );
+    let ResponseData::TodoChange { change } = request(&fx, edit(false)).await else {
+        panic!("correct");
+    };
+    let after = fx.state.store.get_todo(&before.id).await.unwrap().unwrap();
+    assert_eq!(after.kind, "sign");
+    assert_eq!(after.verb, "sign");
+    assert_eq!(after.reason, before.reason);
+    assert_eq!(after.due_at, before.due_at);
+    assert_ne!(after.surface_at, before.surface_at);
+    assert_eq!(preview.changed[0].kind, change.changed[0].kind);
+    assert_eq!(preview.changed[0].surface_at, change.changed[0].surface_at);
+    request(
+        &fx,
+        Request::UndoTodoCorrection {
+            todo_id: before.id.clone(),
+            correction_id: change.correction_undo.unwrap(),
+            dry_run: false,
+        },
+    )
+    .await;
+    assert_eq!(
+        fx.state.store.get_todo(&before.id).await.unwrap(),
+        Some(before)
+    );
+}

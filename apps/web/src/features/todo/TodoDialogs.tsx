@@ -22,6 +22,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { describeChoice, type TimeChoice } from "@/features/time/api";
 import { NaturalTimeInput } from "@/features/time/NaturalTimeInput";
 import { useNaturalTime } from "@/features/time/useNaturalTime";
@@ -85,11 +92,26 @@ export function TodoScheduleDialog({ todo, onClose }: { todo: Todo; onClose: () 
   );
 }
 
+const TODO_KINDS = [
+  ["bill", "Bill"],
+  ["payment_failed", "Failed payment"],
+  ["renewal", "Renewal"],
+  ["document", "Document"],
+  ["lease", "Lease"],
+  ["return", "Return"],
+  ["rsvp", "RSVP"],
+  ["verify", "Verify"],
+  ["sign", "Sign"],
+  ["promise", "Promise"],
+  ["other", "Other"],
+] as const;
+
 const EDIT_FIELDS = [
   { field: "title", label: "What to do", hint: "Starts with the verb: Pay council tax" },
   { field: "counterparty", label: "Who", hint: "Camden Council" },
   { field: "amount", label: "Amount", hint: "£142.00" },
   { field: "due", label: "Due", hint: "fri 9 oct, in 2w; empty clears it" },
+  { field: "kind", label: "Kind", hint: "" },
 ] as const;
 
 /** The due date as a phrase the daemon reads back: "9 Oct 2026". */
@@ -108,6 +130,7 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
     counterparty: currentValue(todo, "counterparty"),
     amount: currentValue(todo, "amount"),
     due: dueValue(todo),
+    kind: currentValue(todo, "kind"),
   };
   const [values, setValues] = useState(initial);
   const changed = EDIT_FIELDS.filter(({ field }) => values[field].trim() !== initial[field].trim());
@@ -155,12 +178,30 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
           {EDIT_FIELDS.map(({ field, label, hint }, index) => (
             <label key={field} className="grid gap-1 text-sm">
               <span className="font-medium">{label}</span>
-              <Input
-                autoFocus={index === 0}
-                value={values[field]}
-                placeholder={hint}
-                onChange={(event) => setValues({ ...values, [field]: event.target.value })}
-              />
+              {field === "kind" ? (
+                <Select
+                  value={values.kind}
+                  onValueChange={(kind) => setValues({ ...values, kind })}
+                >
+                  <SelectTrigger aria-label="Kind">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TODO_KINDS.map(([kind, label]) => (
+                      <SelectItem key={kind} value={kind}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  autoFocus={index === 0}
+                  value={values[field]}
+                  placeholder={hint}
+                  onChange={(event) => setValues({ ...values, [field]: event.target.value })}
+                />
+              )}
             </label>
           ))}
           <DialogFooter>

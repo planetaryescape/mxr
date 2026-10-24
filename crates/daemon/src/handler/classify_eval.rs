@@ -320,7 +320,7 @@ pub(super) async fn classify_eval(
     let mut records = std::collections::HashSet::new();
     for entry in packet {
         let message = entry.envelope;
-        if entry.projected_todos.iter().any(|t| t.user_edited != 0) {
+        if entry.user_corrected {
             corrected_projection.insert(message.id.clone());
         }
         if entry.projection_pending || entry.asks.as_ref().is_some_and(|a| a.pending_body) {

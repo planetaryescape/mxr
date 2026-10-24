@@ -706,3 +706,153 @@ async fn public_record_promise_preserves_closed_and_user_edited_task_decisions()
         );
     }
 }
+
+#[tokio::test]
+async fn multiline_record_promise_keeps_canonical_identity() {
+    const TEXT: &str = "I'll pay invoice #A123 £25.\nDue by 1 November 2026.";
+    for accepted_first in [false, true] {
+        let fx = Fixture::new().await;
+        let mail = source(&fx, TEXT).await;
+        if !accepted_first {
+            settle(&fx, &mail).await;
+        }
+        let before = fx
+            .state
+            .store
+            .list_contact_commitments(&fx.account, None, None)
+            .await
+            .unwrap();
+        let before_tasks = fx
+            .state
+            .store
+            .list_promise_todos(&fx.account)
+            .await
+            .unwrap();
+        let changes: i64 = sqlx::query_scalar("SELECT total_changes()")
+            .fetch_one(fx.state.store.writer())
+            .await
+            .unwrap();
+        let ResponseData::RecordedPromise {
+            commitment: preview,
+            ..
+        } = request(
+            &fx,
+            Request::RecordPromise {
+                message_id: mail.id.clone(),
+                what: TEXT.into(),
+                due_at: chosen(),
+                dry_run: true,
+            },
+        )
+        .await
+        else {
+            panic!("preview");
+        };
+        assert_eq!(
+            changes,
+            sqlx::query_scalar::<_, i64>("SELECT total_changes()")
+                .fetch_one(fx.state.store.writer())
+                .await
+                .unwrap()
+        );
+        let ResponseData::RecordedPromise { commitment, .. } = request(
+            &fx,
+            Request::RecordPromise {
+                message_id: mail.id.clone(),
+                what: TEXT.into(),
+                due_at: chosen(),
+                dry_run: false,
+            },
+        )
+        .await
+        else {
+            panic!("record");
+        };
+        if !accepted_first {
+            let immediate = fx
+                .state
+                .store
+                .get_todo(&before_tasks[0].id)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(immediate.due_at, Some(chosen()));
+            assert_eq!(immediate.reason, TEXT);
+        }
+        settle(&fx, &mail).await;
+        let rows = fx
+            .state
+            .store
+            .list_contact_commitments(&fx.account, None, None)
+            .await
+            .unwrap();
+        let tasks = fx
+            .state
+            .store
+            .list_promise_todos(&fx.account)
+            .await
+            .unwrap();
+        eprintln!("MULTILINE accepted_first={accepted_first} preview={preview:?} accepted={commitment:?} before={before:?} rows={rows:?} tasks={tasks:?}");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(preview.what, TEXT);
+        if !accepted_first {
+            assert_eq!(commitment.id, before[0].id);
+            assert_eq!(tasks[0].id, before_tasks[0].id);
+        }
+        assert_eq!(rows[0].id, commitment.id);
+        assert_eq!(rows[0].what, TEXT);
+        assert_eq!(rows[0].by_when, Some(chosen()));
+        assert_eq!(rows[0].by_when_source, Some(ByWhenSource::User));
+        assert_eq!(
+            tasks[0].commitment_id.as_deref(),
+            Some(commitment.id.as_str())
+        );
+        assert_eq!(tasks[0].reason, TEXT);
+        assert_eq!(tasks[0].due_at, Some(chosen()));
+        let task_id = tasks[0].id.clone();
+        settle(&fx, &mail).await;
+        assert_eq!(
+            fx.state
+                .store
+                .list_promise_todos(&fx.account)
+                .await
+                .unwrap()[0]
+                .id,
+            task_id
+        );
+    }
+}
+
+#[tokio::test]
+async fn source_acceptance_keeps_freeform_cleanup_and_rejects_other_controls() {
+    let fx = Fixture::new().await;
+    let mail = source(&fx, "I'll send the \u{1b}report.").await;
+    for (supplied, expected) in [
+        ("I'll send the \u{1b}report.", "I'll send the report."),
+        ("**send #deck**\nnext", "send deck next"),
+    ] {
+        let ResponseData::RecordedPromise { commitment, .. } = request(
+            &fx,
+            Request::RecordPromise {
+                message_id: mail.id.clone(),
+                what: supplied.into(),
+                due_at: chosen(),
+                dry_run: true,
+            },
+        )
+        .await
+        else {
+            panic!("preview");
+        };
+        assert_eq!(commitment.what, expected);
+        assert!(!commitment.what.chars().any(char::is_control));
+    }
+    assert!(fx
+        .state
+        .store
+        .list_contact_commitments(&fx.account, None, None)
+        .await
+        .unwrap()
+        .is_empty());
+}

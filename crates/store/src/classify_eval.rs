@@ -75,6 +75,7 @@ pub struct EvalStoredMessage {
     pub record: bool,
     pub projected_todos: Vec<EvalProjectedTodo>,
     pub projection_pending: bool,
+    pub user_corrected: bool,
 }
 
 impl super::Store {
@@ -87,6 +88,7 @@ impl super::Store {
             h.assessment_json AS home_json, a.assessment_json AS asks_json,
             EXISTS(SELECT 1 FROM record_messages r WHERE r.message_id = m.id) AS is_record,
             (SELECT json_group_array(json_object('unit_provenance', json_extract(t.field_sources, '$.asks_provenance.evidence'), 'user_edited', t.user_edited, 'todo', json_object('source_message_id', t.source_message_id, 'kind', t.kind, 'title', t.title, 'counterparty', t.counterparty, 'amount_minor', t.amount_minor, 'currency', t.currency, 'due_words', t.due_words, 'due_at', t.due_at))) FROM todos t WHERE t.account_id = m.account_id AND t.source_message_id = m.id AND t.expired_at_birth = 0 AND json_extract(t.field_sources, '$.asks_fingerprint.evidence') = a.input_fingerprint AND json_extract(t.field_sources, '$.asks_provenance.evidence') IS NOT NULL) AS projected_todos,
+            EXISTS(SELECT 1 FROM todos t WHERE t.account_id = m.account_id AND t.source_message_id = m.id AND t.expired_at_birth = 0 AND t.user_edited != 0) AS user_corrected,
             EXISTS(SELECT 1 FROM asks_projection_outbox q WHERE q.message_id = m.id AND q.account_id = m.account_id AND q.input_fingerprint = a.input_fingerprint) AS projection_pending
             FROM messages m LEFT JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id
             LEFT JOIN mail_assessments a ON a.message_id = m.id AND a.account_id = m.account_id AND a.policy_version = ?2 AND a.input_revision = i.effective_revision AND json_extract(a.assessment_json, '$.context_token') = ?4
@@ -110,6 +112,7 @@ impl super::Store {
                         &row.try_get::<String, _>("projected_todos")?,
                     )?,
                     projection_pending: row.try_get("projection_pending")?,
+                    user_corrected: row.try_get("user_corrected")?,
                 })
             })
             .collect()

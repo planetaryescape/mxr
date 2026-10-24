@@ -474,3 +474,177 @@ async fn linked_product_fields_are_measured_from_the_row_without_repairing_them(
         "evaluation leaves the erroneous projection unchanged"
     );
 }
+
+#[tokio::test]
+async fn a_correction_remains_excluded_after_source_fingerprint_changes() {
+    for (reason, owner_reply) in [
+        (mxr_protocol::TodoCorrectionData::WrongDetails, false),
+        (mxr_protocol::TodoCorrectionData::NotMine, true),
+        (mxr_protocol::TodoCorrectionData::AlreadyDone, true),
+    ] {
+        let (state, account) = scenario_state().await;
+        eval(&state, Some(&account)).await;
+        state
+            .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
+            .await;
+        let id: String = sqlx::query_scalar(
+            "SELECT id FROM messages WHERE provider_id = 'demo-msg-9' AND account_id = ?",
+        )
+        .bind(account.as_str())
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap();
+        let id: mxr_core::MessageId = id.parse().unwrap();
+        let before = state
+            .store
+            .classify_eval_packet(std::slice::from_ref(&id))
+            .await
+            .unwrap()
+            .remove(0);
+        let task = state
+            .store
+            .list_todos_in_state(Some(&account), mxr_store::TodoState::Open, 1000)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|t| t.source_message_id.as_ref() == Some(&id))
+            .unwrap();
+        let msg = IpcMessage {
+            expected_workspace: None,
+            id: 2,
+            source: Default::default(),
+            payload: IpcPayload::Request(Request::CorrectTodo {
+                todo_id: task.id.clone(),
+                reason,
+                edits: if reason == mxr_protocol::TodoCorrectionData::WrongDetails {
+                    vec![mxr_protocol::TodoEditData {
+                        field: "title".into(),
+                        value: "My payment plan".into(),
+                    }]
+                } else {
+                    vec![]
+                },
+                time_zone: None,
+                dry_run: false,
+            }),
+        };
+        assert!(matches!(
+            handle_request(&state, &msg).await.payload,
+            IpcPayload::Response(Response::Ok { .. })
+        ));
+        let corrected = state.store.get_todo(&task.id).await.unwrap().unwrap();
+        let mut mail = state.store.get_envelope(&id).await.unwrap().unwrap();
+        if owner_reply {
+            let mut reply = mail.clone();
+            reply.id = mxr_core::MessageId::new();
+            reply.provider_id = "review5-owner-reply".into();
+            reply.message_id_header = Some("<review5-owner-reply@example.com>".into());
+            reply.in_reply_to = mail.message_id_header.clone();
+            reply.from = mxr_core::Address {
+                name: None,
+                email: SELF_EMAIL.into(),
+            };
+            reply.to = vec![mail.from.clone()];
+            reply.cc.clear();
+            reply.date = Utc::now();
+            reply.flags = mxr_core::MessageFlags::SENT;
+            state
+                .store
+                .upsert_envelope_with_direction(&reply, mxr_core::MessageDirection::Outbound)
+                .await
+                .unwrap();
+            state
+                .store
+                .insert_body(&mxr_core::MessageBody {
+                    message_id: reply.id,
+                    text_plain: Some("Thanks for the account copy.".into()),
+                    text_html: None,
+                    attachments: vec![],
+                    fetched_at: Utc::now(),
+                    metadata: Default::default(),
+                })
+                .await
+                .unwrap();
+        } else {
+            mail.subject.push_str(" — account copy");
+            state.store.upsert_envelope(&mail).await.unwrap();
+        }
+        crate::handler::assessments::reconcile_account(&state, &account)
+            .await
+            .unwrap();
+        crate::handler::todos::scan_messages(&state, std::slice::from_ref(&id)).await;
+        let mut fingerprints = std::collections::HashMap::new();
+        while crate::handler::todos::tick(&state, Utc::now(), &mut fingerprints)
+            .await
+            .unwrap()
+        {}
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM asks_projection_outbox WHERE account_id = ?"
+            )
+            .bind(account.as_str())
+            .fetch_one(state.store.reader())
+            .await
+            .unwrap(),
+            0
+        );
+        let after = state
+            .store
+            .classify_eval_packet(std::slice::from_ref(&id))
+            .await
+            .unwrap()
+            .remove(0);
+        assert_ne!(
+            before.asks.unwrap().input_fingerprint,
+            after.asks.as_ref().unwrap().input_fingerprint
+        );
+        assert!(!after.projection_pending);
+        let changes: i64 = sqlx::query_scalar("SELECT total_changes()")
+            .fetch_one(state.store.writer())
+            .await
+            .unwrap();
+        let ResponseData::ClassifyEval {
+            summary,
+            mismatches,
+        } = classify_eval(&state, Some(&account), ClassifyEvalSetData::Quick)
+            .await
+            .unwrap()
+        else {
+            panic!("eval");
+        };
+        eprintln!(
+            "CORRECTION fingerprint={:?} pending={} correction_slices={:?} source_mismatches={:?}",
+            after.asks.as_ref().map(|a| &a.input_fingerprint),
+            after.projection_pending,
+            summary.asks.as_ref().map(|a| a
+                .slices
+                .iter()
+                .filter(|s| s.dimension == "projection")
+                .collect::<Vec<_>>()),
+            mismatches
+                .iter()
+                .filter(|m| m.provider_id == "demo-msg-9")
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            changes,
+            sqlx::query_scalar::<_, i64>("SELECT total_changes()")
+                .fetch_one(state.store.writer())
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            state.store.get_todo(&task.id).await.unwrap(),
+            Some(corrected)
+        );
+        assert!(summary
+            .asks
+            .unwrap()
+            .slices
+            .iter()
+            .any(|s| s.dimension == "projection" && s.value == "user_corrected" && s.emails == 1));
+        assert!(!mismatches
+            .iter()
+            .any(|m| m.provider_id == "demo-msg-9" && m.question == "ask"));
+    }
+}

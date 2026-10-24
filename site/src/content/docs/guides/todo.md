@@ -47,7 +47,9 @@ merely because it appears in `Needs a look`.
 
 Press `X` in the web app or TUI and choose `Not a to-do`, `Not mine`,
 `Already done` or `Wrong details`. Wrong details opens the editor and keeps
-the task until you save. A failed save keeps your entered correction available
+the task until you save. The web editor lets you change the title, who, amount,
+due date and kind; changing kind also updates its action and timing. A failed
+save keeps your entered correction available
 for retry in both clients; the editor closes after the daemon confirms the save.
 The asking quote stays unchanged. Undo restores
 the prior task; if you edited it again, mxr keeps the newer work.

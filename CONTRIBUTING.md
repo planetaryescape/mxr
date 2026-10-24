@@ -200,7 +200,9 @@ provenance link to a stored row. Amount, currency, due date and counterparty
 come from that row; action, actor, state and exact quote come from the stored
 ask. Incomplete bodies and unsettled projection retries remain pending. A
 missing task after projection has settled counts as a miss; user-corrected
-rows are excluded from classifier measurement.
+rows are excluded from classifier measurement, including after later mail
+changes their source fingerprint. Correction authority is read in the same SQL
+snapshot as the current automatic projection links.
 
 The historical `attend` reporting bucket includes RSVP response tasks. Calendar
 asks retain their stored `Reply` action, owner and pending state; reporting an

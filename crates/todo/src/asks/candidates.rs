@@ -31,9 +31,10 @@ pub(super) fn billing_fields_conflict(before: &str, after: &str) -> bool {
         REFERENCE
             .captures_iter(text)
             .filter_map(|c| {
+                let kind = c.name("kind")?.as_str().to_ascii_lowercase();
                 let value = c.name("value")?.as_str().to_ascii_lowercase();
                 (c.name("marker").is_some() || value.chars().any(|c| c.is_ascii_digit()))
-                    .then(|| (c.name("kind").unwrap().as_str().to_ascii_lowercase(), value))
+                    .then_some((kind, value))
             })
             .collect::<Vec<_>>()
     };

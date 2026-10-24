@@ -296,3 +296,40 @@ test("the visible row keeps requester and the exact ask after title edits", () =
   expect(within(row).getByTestId("todo-ask-quote")).toHaveTextContent(quote);
   expect(within(row).getByTestId("todo-title")).toHaveTextContent("Sign the corrected contract");
 });
+
+test("source evidence and the phone window share one secondary line with full evidence available", () => {
+  const quote =
+    "Please sign the original agreement,\nincluding the unchanged payment schedule by Friday.";
+  const todo = todoFixture({
+    title: "Sign the corrected agreement",
+    person_label: "Alex asked",
+    thread_id: null,
+    fields: [
+      {
+        field: "quote",
+        evidence: quote,
+        source: "rule",
+        source_label: "a pattern in the email",
+        checked: true,
+      },
+    ],
+  });
+  const { row } = renderRow(todo, "now", { details: true });
+  const evidence = within(row).getByTestId("todo-ask-quote");
+  expect(evidence).not.toHaveClass("block");
+  expect(evidence.textContent).toBe(`“${quote}”`);
+  expect(evidence).toHaveAccessibleDescription(quote);
+  const summary = within(row).getByTestId("todo-request-and-quote");
+  expect(summary).toHaveTextContent("Alex asked");
+  expect(summary).toContainElement(evidence);
+  expect(summary).toHaveClass("min-w-0", "flex-1", "truncate");
+  const secondary = within(row).getByTestId("todo-secondary");
+  expect(secondary).toHaveClass("flex", "items-baseline");
+  expect(secondary.querySelector("br")).toBeNull();
+  const phoneWindow = within(secondary).getByTestId("todo-mobile-when");
+  expect(phoneWindow).toHaveTextContent(todo.when_label);
+  expect(phoneWindow).toHaveClass("shrink-0", "truncate", "sm:hidden");
+  expect(within(row).getByRole("checkbox", { name: `Tick off ${todo.title}` })).toBeEnabled();
+  const details = within(row).getByTestId("todo-source");
+  expect(details).toHaveTextContent("including the unchanged payment schedule by Friday.");
+});

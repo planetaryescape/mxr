@@ -226,7 +226,7 @@ const TODO_KEYS: &[(&str, &str)] = &[
     ("todo.done", "tick off"),
     ("todo.schedule", "schedule"),
     ("todo.edit", "edit"),
-    ("todo.dismiss", "not a to-do"),
+    ("todo.dismiss", "correct to-do"),
     ("todo.open-email", "open the email"),
     ("mail.undo", "undo"),
     ("todo.catchup", "catch up"),

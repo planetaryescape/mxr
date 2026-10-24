@@ -169,8 +169,7 @@ impl App {
         self.refresh_todo();
     }
 
-    /// Enter: open the link when the gate passed, otherwise the email. The
-    /// footer printed the domain before the key was pressed.
+    /// Enter opens the source email; its link remains in context.
     fn todo_primary(&mut self) {
         let Some(todo) = self.selected_todo().cloned() else {
             return;

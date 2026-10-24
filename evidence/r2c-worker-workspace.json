@@ -264,5 +264,77 @@
     "real_mail": "prohibited/not used; no model calls; synthetic tests only",
     "temporary_dependencies": "owned site/node_modules and runtime node_modules symlinks unlinked after sitebuild; parent targets untouched",
     "report": "external evidence/r2c-worker-report.md; prior preserved r2c-worker-round3-report.md"
+  },
+  "round5": {
+    "recorded_at": "2026-10-24T00:45:57.838857+00:00",
+    "started_at": "2026-10-24T00:10:05Z",
+    "deadline": "2026-10-24T00:55:05Z",
+    "canonical_path": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b",
+    "branch": "t3/asks-r2c-to-do-classifier",
+    "starting_head": "5a516bfb8eb1eb15654a24ea7326f97d157f52ba",
+    "source_checkpoint": "abd87f6b3897c6a20a2086b74c553231e1ddb90f",
+    "source_tree": "ab6e03a8efb995b88d5f2ca150b866678bf7a6c9",
+    "production_rust": "622cefa8db9cc8e4cc109489761298bed5363531",
+    "fresh_main": "f9d316de44c4081d2a5f314c54763525d5884d83",
+    "merge_base": "673b3fdc526ee9f0d6340f8349737304f474f19c",
+    "main_change": "one docs issue file27+/12-; parent integration after quiescence",
+    "target": "target-cli",
+    "target_kib_last": 34668628,
+    "runtime_kib_last": 63120,
+    "limits": {
+      "target_gib": 60,
+      "whole_run_gib": 100,
+      "workers": 4
+    },
+    "new_workers": 0,
+    "new_checkouts": 0,
+    "new_targets": 0,
+    "native_query": {
+      "before_1k_steps": 10200,
+      "before_10k_steps": 100099,
+      "after_1k_steps": 114,
+      "after_10k_steps": 114,
+      "store_tests": "10/10PASS10.60s; build3.86s"
+    },
+    "timezone": {
+      "before_500_ms": 385.608167,
+      "after_500_ms": 23.05425,
+      "tests": "4/4PASS0.02s; build3.42s",
+      "store_freshness_backup": "12/12PASS10.60s"
+    },
+    "backup": "2/2PASS2.69s; build5.16s; schema97/98inverse+99durability",
+    "assistant": "60/60PASS2.47s; typecheckPASS; scopedoxlint0(explicitthreads4); anti-slopchanged0",
+    "first_full_run": "query90b source; cancelled owned252 after10m24 nativeexecution; exit143/no metrics",
+    "active_job": {
+      "queue": 251,
+      "session": 87945,
+      "cargo_pid": 53221,
+      "native_pid": 62266,
+      "rust_source": "622cefa8db9cc8e4cc109489761298bed5363531",
+      "log": "r2c-round5-tz-full50k.log",
+      "build": "1m04s",
+      "execution_started_approx": "2026-10-24T00:36:23Z",
+      "execution_budget_until": "2026-10-24T00:46:23Z",
+      "result": "pending atrecording"
+    },
+    "remaining_at_recording": [
+      "currentfullgrading",
+      "scopedmatrixrerunafterfixturefix",
+      "finalscopedRustgate",
+      "cargo build -p mxr",
+      "canonicalOpenAPI/types/helpverification",
+      "parentcurrentbinaryruntime/CI/release",
+      "oneweekcountsdogfood"
+    ],
+    "runtime_ownership": {
+      "parent_daemon": 60822,
+      "parent_bridge": 22777,
+      "parent_vite": 61080,
+      "parent_web": 5573,
+      "released_daemon": 29767,
+      "released_port": 21777,
+      "action": "untouched; no child runtime"
+    },
+    "report": "external r2c-worker-report.md; round4 preserved as r2c-worker-round4-report.md"
   }
 }

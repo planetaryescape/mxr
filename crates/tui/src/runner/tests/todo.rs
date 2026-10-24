@@ -1112,7 +1112,7 @@ fn the_hint_bar_offers_to_dos_verbs_for_a_lit_task() {
             ("e", "Done"),
             ("o", "Email"),
             ("Z", "Schedule"),
-            ("X", "Not a to-do"),
+            ("X", "Correct…"),
             (",", "Edit"),
         ]
     );

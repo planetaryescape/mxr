@@ -20,6 +20,10 @@ pattern!(
     PROMISE,
     r"(?i)\b(i(?:'ll| will)|we(?:'ll| will)|i promise to|i can commit to)\s+(send|provide|upload|sign|pay|book|contact|return|prepare|complete|deliver|go through|update)\b"
 );
+pattern!(
+    REPLY_COMMITMENT,
+    r"(?i)^(?:i(?:'ll| will)|we(?:'ll| will)|i promise to|i can commit to)\s+(?:reply|respond)\b"
+);
 pattern!(OFFER_SPEAKER, r"(?i)\b(?:i|we) (?:can|could)\s+\p{L}");
 pattern!(FUTURE_SPEAKER, r"(?i)\b(?:i|we)(?:'ll| will)\s+\p{L}");
 pattern!(
@@ -398,12 +402,20 @@ pub(super) fn label(
         && (REPLY.is_match(text)
             || text.ends_with('?') && QUESTION.is_match(text) && !PLEASANTRY.is_match(text))
     {
+        // A response verb can describe the speaker's commitment. Require its
+        // own clause opening so an embedded future cannot steal a request.
+        let speech = salutation(text).map_or(text, |(_, rest)| rest).trim_start();
+        let commitment = REPLY_COMMITMENT.is_match(speech);
         votes.push(vote(
             "reply",
-            Act::Question,
+            if commitment {
+                Act::Commitment
+            } else {
+                Act::Question
+            },
             state,
             ActionKind::Reply,
-            actor,
+            if commitment { promise_actor } else { actor },
         ));
     }
     if votes.is_empty() && (PLEASANTRY.is_match(text) || state != AskState::Pending) {

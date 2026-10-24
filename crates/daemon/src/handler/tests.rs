@@ -746,6 +746,7 @@ mod projection_diagnostics;
 mod reading;
 mod record_subscriptions;
 mod records;
+mod reply_semantics;
 mod routing_and_search;
 mod send_outcomes;
 mod sent_assessments;

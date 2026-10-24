@@ -101,8 +101,7 @@ reports omitted units; membership reports additional omitted messages.
 
 ## Tasks and commitments project the persisted answer
 
-Recording a User promise date immediately reprojects that message’s stored
-answer before returning. Repeating acceptance can move the prior accepted date
+Recording a User promise date mirrors the accepted commitment before returning. Repeating acceptance can move the prior accepted date
 on the same open task, including across months. Independently corrected task
 dates and other edited fields, scheduled dates, Done and Dismissed decisions
 retain their authority. A current stored answer is reused. Before that answer

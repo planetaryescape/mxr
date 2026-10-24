@@ -43,8 +43,8 @@ locale           en-US                              emails     16 expected     0
 locale           en-ZA                              emails      1 expected     1 found     1 tp     1 fp     0 fn     0 precision 100.0% recall 100.0%
 phrasing         held_out                           emails  11115 expected    16 found    12 tp    12 fp     0 fn     4 precision 100.0% recall  75.0%
 phrasing         visible                            emails  27633 expected    68 found    29 tp    29 fp     0 fn    39 precision 100.0% recall  42.6%
-rules_abstained  no                                 emails  36919 expected    63 found    35 tp    35 fp     0 fn    28 precision 100.0% recall  55.6%
-rules_abstained  yes                                emails   1829 expected    21 found     6 tp     6 fp     0 fn    15 precision 100.0% recall  28.6%
+rules_abstained  no                                 emails  36831 expected    63 found    35 tp    35 fp     0 fn    28 precision 100.0% recall  55.6%
+rules_abstained  yes                                emails   1917 expected    21 found     6 tp     6 fp     0 fn    15 precision 100.0% recall  28.6%
 sender_kind      list                               emails   2837 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
 sender_kind      organisation                       emails  11993 expected    49 found    30 tp    30 fp     0 fn    19 precision 100.0% recall  61.2%
 sender_kind      person                             emails  21795 expected    33 found     9 tp     9 fp     0 fn    24 precision 100.0% recall  27.3%

@@ -250,6 +250,13 @@ fn billing_continuation(before: &str, after: &str, separator: char) -> bool {
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase();
+    let after = after
+        .strip_prefix("please ")
+        .filter(|rest| {
+            rest.starts_with("update your ")
+                && !super::candidates::billing_fields_conflict(&before, rest)
+        })
+        .unwrap_or(&after);
     [
         "invoice",
         "bill",

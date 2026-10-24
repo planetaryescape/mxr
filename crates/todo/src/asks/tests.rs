@@ -156,7 +156,7 @@ fn resolved_failure_and_current_failure_are_different() {
             "Your payment failed. Please update your payment details.",
             false
         )),
-        [AskAnswer::AsksYou, AskAnswer::AsksYou]
+        [AskAnswer::AsksYou]
     );
 }
 

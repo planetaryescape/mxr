@@ -1,7 +1,7 @@
 # R2c has stored projections and still needs acceptance
 
 The published policy12 baseline has an accepted classifier assessment. This
-candidate uses policy13 for action attribution and currency identity; its
+candidate uses policy14 for failed-payment grouping, retaining policy13 action attribution and currency identity; its
 fresh full measurement and final whole-PR acceptance remain pending. Native
 storage, lifecycle and client checks are recorded in the implementation handoff.
 The accepted contract remains [blueprint 37](../../blueprint/37-what-it-asks.md).
@@ -43,7 +43,7 @@ No uncertain row becomes a Now task.
 
 ## Home and asks commit together
 
-`asks-r2c-13` covers received and sent messages in the existing assessment
+`asks-r2c-14` covers received and sent messages in the existing assessment
 storage envelope. `r2-1` remains the inbound home policy. Home-version
 reports exclude the reserved asks namespace, and outbound asks cannot
 create a home. Both facets share one generation CAS, transaction and dirty
@@ -71,8 +71,8 @@ of the same actor's reply question is re-read as one verbatim span, including
 remain retained history and read pending until the current policy is stored.
 A response noun mention alone does not establish a recipient question.
 Direct requests, questions, response imperatives and reply withdrawals retain
-their evidence; exact source quotes and spans stay unchanged. Previous policy12
-answers remain retained history and read pending until policy13 is stored.
+their evidence; exact source quotes and spans stay unchanged. Previous policy13
+answers remain retained history and read pending until policy14 is stored.
 Coordinated future actions retain their speaker: a correspondent saying they
 will rework a plan and send a revision does not ask the owner to send it.
 Security-notice wording only suppresses the verification task; independent

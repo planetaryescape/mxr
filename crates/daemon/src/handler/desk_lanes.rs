@@ -621,7 +621,7 @@ fn waiting_row(
     }
     let timer = inputs.timers.waiting(conversation.all, &answers, now);
     let recipient = if inputs.is_outbound(sent) {
-        sent.to.iter().find(|a| !(inputs.is_self)(&a.email))?
+        mxr_core::first_non_owned_recipient(&sent.to, &sent.cc, inputs.is_self)?
     } else {
         &sent.from
     };

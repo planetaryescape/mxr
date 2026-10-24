@@ -297,6 +297,17 @@ where
         return Ok(summary);
     };
     let detections = crate::asks::items::detections(answer, &envelope);
+    let previous = if detections
+        .iter()
+        .any(|(_, d)| d.kind == TodoKind::PaymentFailed)
+    {
+        store
+            .asks_before_payment_grouping(answer)
+            .await?
+            .filter(|old| old.facts.zones == answer.facts.zones)
+    } else {
+        None
+    };
     let timezone = mxr_store::AsksTimezone::resolve()?;
     if timezone.token() != answer.context_token {
         return Ok(summary);
@@ -309,7 +320,7 @@ where
         catchup_max: cfg.catchup_max,
     };
     let mut current_keys = Vec::new();
-    for (_, mut detection) in detections {
+    for (unit_index, mut detection) in detections {
         let commitment = if detection.kind == TodoKind::Promise {
             match store
                 .asks_owner_commitment_id(answer, &detection.reason)
@@ -353,6 +364,38 @@ where
                 None
             };
         let (mut record, placement) = stored_record(&frozen, row, detection, run_in_progress);
+        if record.kind == "payment_failed" {
+            if let Some(old) = &previous {
+                let unit = &answer.units[unit_index];
+                let grouped: Vec<_> =
+                    crate::asks::items::detections(old, &envelope)
+                        .into_iter()
+                        .filter(|(index, prior)| {
+                            let previous = &old.units[*index];
+                            prior.kind == TodoKind::PaymentFailed
+                                && previous.zone == unit.zone
+                                && previous.span.start >= unit.span.start
+                                && previous.span.end <= unit.span.end
+                                && previous.tags.as_ref().zip(unit.tags.as_ref()).is_some_and(
+                                    |(a, b)| a.actor == b.actor && a.action == b.action,
+                                )
+                        })
+                        .collect();
+                if grouped.len() > 1 {
+                    let keys: Vec<_> = grouped
+                        .into_iter()
+                        .map(|(_, prior)| {
+                            stored_record(&frozen, row, prior, run_in_progress)
+                                .0
+                                .dedup_key
+                        })
+                        .collect();
+                    store
+                        .adopt_asks_payment_identities(&record, answer, &keys)
+                        .await?;
+                }
+            }
+        }
         if let Some(identity) = legacy_payment_identity {
             if let Some((_, period)) = record.dedup_key.rsplit_once('|') {
                 let legacy_key = format!(
@@ -360,7 +403,11 @@ where
                     mxr_store::assessment_fingerprint(&identity)
                 );
                 store
-                    .adopt_asks_payment_identity(&record, answer, &legacy_key)
+                    .adopt_asks_payment_identities(
+                        &record,
+                        answer,
+                        std::slice::from_ref(&legacy_key),
+                    )
                     .await?;
             }
         }

@@ -1030,6 +1030,9 @@ async fn retired_policy_reads_pending_then_reconciles_to_current_policy() {
         "asks-r2c-8",
         "asks-r2c-9",
         "asks-r2c-10",
+        "asks-r2c-11",
+        "asks-r2c-12",
+        "asks-r2c-13",
     ] {
         let fx = Fixture::new().await;
         let mail = fx

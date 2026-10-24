@@ -3,18 +3,28 @@ use crate::{Store, TodoRecord};
 use mxr_core::AccountId;
 
 impl Store {
+    /// Policy 13 split failed-payment notices from their polite remediation.
+    /// Its exact source spans let projection adopt those identities without
+    /// changing protected rows or their durable correction snapshots.
+    pub async fn asks_before_payment_grouping(
+        &self,
+        answer: &mxr_core::asks::AskAssessment,
+    ) -> Result<Option<mxr_core::asks::AskAssessment>, sqlx::Error> {
+        let prior: Option<String> = sqlx::query_scalar("SELECT assessment_json FROM mail_assessments WHERE account_id=? AND message_id=? AND policy_version='asks-r2c-13'")
+            .bind(answer.account_id.as_str()).bind(answer.message_id.as_str()).fetch_optional(self.reader()).await?;
+        prior.map(|json| crate::decode_json(&json)).transpose()
+    }
+
     /// Move automatic identities; alias protected history so its exact Undo survives.
-    pub async fn adopt_asks_payment_identity(
+    pub async fn adopt_asks_payment_identities(
         &self,
         record: &TodoRecord,
         answer: &mxr_core::asks::AskAssessment,
-        legacy_key: &str,
+        legacy_keys: &[String],
     ) -> Result<(), sqlx::Error> {
-        if self
-            .get_todo_by_dedup(&record.account_id, legacy_key)
-            .await?
-            .is_none()
-        {
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM todos WHERE account_id=? AND dedup_key IN (SELECT value FROM json_each(?)))")
+            .bind(record.account_id.as_str()).bind(crate::encode_json(&legacy_keys)?).fetch_one(self.reader()).await?;
+        if !exists {
             return Ok(());
         }
         let mut tx = self.writer().begin_with("BEGIN IMMEDIATE").await?;
@@ -24,25 +34,35 @@ impl Store {
         if !current {
             return Ok(());
         }
-        let sql = format!("SELECT {} FROM todos WHERE account_id=? AND dedup_key=? AND currency IS ? AND rules_version>=2 AND json_extract(field_sources, '$.asks_provenance.evidence') IS NOT NULL", crate::todos::COLUMNS);
-        let prior = sqlx::query(sqlx::AssertSqlSafe(sql))
+        let sql = format!("SELECT {} FROM todos WHERE account_id=? AND dedup_key IN (SELECT value FROM json_each(?)) AND currency IS ? AND rules_version>=2 AND json_extract(field_sources, '$.asks_provenance.evidence') IS NOT NULL ORDER BY created_at, id", crate::todos::COLUMNS);
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(record.account_id.as_str())
-            .bind(legacy_key)
+            .bind(crate::encode_json(&legacy_keys)?)
             .bind(&record.currency)
-            .fetch_optional(&mut *tx)
+            .fetch_all(&mut *tx)
             .await?;
-        let Some(prior) = prior.as_ref().map(crate::todos::row_to_todo).transpose()? else {
-            return Ok(());
+        let prior = rows
+            .iter()
+            .map(crate::todos::row_to_todo)
+            .collect::<Result<Vec<_>, _>>()?;
+        let protected = |row: &&TodoRecord| {
+            row.user_touched()
+                || matches!(
+                    row.state,
+                    crate::TodoState::Done | crate::TodoState::Dismissed
+                )
         };
-        if prior.user_touched()
-            || matches!(
-                prior.state,
-                crate::TodoState::Done | crate::TodoState::Dismissed
-            )
+        let saved: Vec<_> = prior.iter().filter(protected).collect();
+        if !saved.is_empty() {
+            for prior in saved {
+                sqlx::query("INSERT INTO asks_legacy_links(todo_id, dedup_key) VALUES(?, ?) ON CONFLICT DO NOTHING")
+                    .bind(&prior.id).bind(&record.dedup_key).execute(&mut *tx).await?;
+            }
+        } else if let Some(prior) = prior
+            .iter()
+            .find(|row| row.state == crate::TodoState::Open)
+            .or_else(|| prior.first())
         {
-            sqlx::query("INSERT INTO asks_legacy_links(todo_id, dedup_key) VALUES(?, ?) ON CONFLICT DO NOTHING")
-                .bind(&prior.id).bind(&record.dedup_key).execute(&mut *tx).await?;
-        } else {
             let moved = sqlx::query("UPDATE todos SET dedup_key=? WHERE id=? AND NOT EXISTS (SELECT 1 FROM todos target WHERE target.account_id=? AND target.dedup_key=?)")
                 .bind(&record.dedup_key).bind(&prior.id).bind(record.account_id.as_str()).bind(&record.dedup_key).execute(&mut *tx).await?.rows_affected();
             if moved > 0 {

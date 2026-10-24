@@ -19,6 +19,37 @@ static REFERENCE: Lazy<Regex> = Lazy::new(|| {
 ).expect("reference regex")
 });
 
+/// A remediation with different explicit billing fields is a separate request.
+pub(super) fn billing_fields_conflict(before: &str, after: &str) -> bool {
+    let amounts = |text: &str| {
+        crate::money::find_candidates(text)
+            .into_iter()
+            .map(|(_, amount)| (amount.currency, amount.minor))
+            .collect::<Vec<_>>()
+    };
+    let references = |text: &str| {
+        REFERENCE
+            .captures_iter(text)
+            .filter_map(|c| {
+                let value = c.name("value")?.as_str().to_ascii_lowercase();
+                (c.name("marker").is_some() || value.chars().any(|c| c.is_ascii_digit()))
+                    .then(|| (c.name("kind").unwrap().as_str().to_ascii_lowercase(), value))
+            })
+            .collect::<Vec<_>>()
+    };
+    let dates = |text: &str| {
+        DUE.captures_iter(text)
+            .filter_map(|c| c.name("date").map(|d| d.as_str().to_ascii_lowercase()))
+            .collect::<Vec<_>>()
+    };
+    fn different<T: PartialEq>(before: Vec<T>, after: Vec<T>) -> bool {
+        !before.is_empty() && after.iter().any(|value| !before.contains(value))
+    }
+    different(amounts(before), amounts(after))
+        || different(references(before), references(after))
+        || different(dates(before), dates(after))
+}
+
 pub(super) fn extract<Tz>(facts: &mut AskFacts, anchor: DateTime<Tz>, email: &str)
 where
     Tz: TimeZone,

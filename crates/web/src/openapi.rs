@@ -95,7 +95,7 @@ use utoipa::{
         compose_session_promises, mail_commitments_record,
         mail_place_list, mail_place_sweep, mail_message_kind, mail_messages_pin,
         mail_sender_kind, mail_todos_runway, mail_todos_create, mail_todos_in_state,
-        mail_todo_get, mail_todos_state, mail_todo_resolve, mail_todo_schedule, mail_todo_edit,
+        mail_todo_get, mail_todos_state, mail_todo_correct, mail_todo_undo_correction, mail_todo_resolve, mail_todo_schedule, mail_todo_edit,
         mail_microsoft_todo_status, mail_microsoft_todo_link, mail_microsoft_todo_sync,
         mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_hint_seen,
         mail_classify_report, mail_now, mail_rail, mail_codes, mail_freshness, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done,
@@ -134,6 +134,8 @@ use utoipa::{
         ThreadGistsBody,
         SenderKindBody,
         crate::todo_routes::TodoStateBody,
+        crate::todo_routes::TodoCorrectionBody,
+        crate::todo_routes::TodoCorrectionUndoBody,
         crate::todo_routes::TodoResolutionBody,
         crate::todo_routes::TodoScheduleBody,
         crate::todo_routes::TodoEditBody,
@@ -2075,3 +2077,10 @@ fn archive_query() {}
 
 endpoint!(post rule_categories "/api/v1/platform/rules/categories", "Preview or apply complete category-rule reconciliation");
 endpoint!(get category_why "/api/v1/mail/categories/why", "Explain category membership and rule provenance");
+
+#[utoipa::path(post, path = "/api/v1/mail/todos/{todo_id}/correct", summary = "Correct ownership, task status or details with safe undo", params(("todo_id" = String, Path)), request_body = crate::todo_routes::TodoCorrectionBody, responses((status = 200, description = "The `TodoChange` variant", body = ResponseData)))]
+#[allow(dead_code)]
+fn mail_todo_correct() {}
+#[utoipa::path(post, path = "/api/v1/mail/todos/{todo_id}/correction/undo", summary = "Undo a correction unless the row has changed", params(("todo_id" = String, Path)), request_body = crate::todo_routes::TodoCorrectionUndoBody, responses((status = 200, description = "The `TodoChange` variant", body = ResponseData)))]
+#[allow(dead_code)]
+fn mail_todo_undo_correction() {}

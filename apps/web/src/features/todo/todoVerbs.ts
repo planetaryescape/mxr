@@ -1,3 +1,4 @@
+import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 /*
  * To do's verbs: tick off, not a to-do, schedule, edit, make one, and the
  * catch-up's keep and let go. Each is one daemon request; the row leaves
@@ -19,7 +20,8 @@ import { getActiveQueryClient } from "@/lib/queryClient";
 
 import {
   createTodo,
-  editTodo,
+  correctTodo,
+  undoTodoCorrection,
   scheduleTodo,
   resolveTodoSuggestion,
   setCatchup,
@@ -229,16 +231,9 @@ export function resolveSuggestion(todo: Todo, action: "preview" | "accept" | "di
 }
 
 /** `X`: not a to-do, kept as a correction so that email never comes back. */
-export function markNotTodo(todos: readonly Todo[], how: LeaveVia = "pointer") {
-  const ids = todos.map((todo) => todo.id);
-  if (ids.length === 0 || refuseWhileDaemonDown("change it")) return;
-  startLeaving(ids, how);
-  return withUndo("todo-dismiss", () => setTodoState(ids, "dismiss"), {
-    message: (change) => titled(change, VERB_FEEDBACK["todo-dismiss"].pastTense),
-    reverse: reopen,
-    failure: "Couldn't change it",
-    ids,
-  });
+export function markNotTodo(todos: readonly Todo[], _how: LeaveVia = "pointer") {
+  const todo = todos[0];
+  if (todo) openMailDialog({ kind: "todo-correct", todo });
 }
 
 /** Undo from a list: bring rows back (Done this week, the Expired list). */
@@ -274,11 +269,18 @@ export function scheduleRow(todo: Todo, at: string, label: string) {
 /** `,`: correct fields. Undo writes the earlier values back. */
 export function editRow(todo: Todo, edits: { field: string; value: string }[]) {
   if (edits.length === 0 || refuseWhileDaemonDown("change it")) return;
-  const before = edits.map(({ field }) => ({ field, value: currentValue(todo, field) }));
-  return withUndo("todo-edit", () => editTodo(todo.id, edits), {
-    message: (change) => titled(change, VERB_FEEDBACK["todo-edit"].pastTense),
-    reverse: () => undoBy(() => editTodo(todo.id, before)),
-    failure: "Couldn't change it",
+  return correctRow(todo, "wrong_details", edits);
+}
+
+export function correctRow(todo: Todo, reason: "not_a_todo" | "not_mine" | "already_done" | "wrong_details", edits: { field: string; value: string }[] = []) {
+  if (refuseWhileDaemonDown("correct it")) return;
+  return withUndo(reason === "wrong_details" ? "todo-edit" : "todo-dismiss", () => correctTodo(todo.id, reason, edits), {
+    message: (change) => change.summary,
+    reverse: (change) => {
+      const token = change.correction_undo;
+      return token ? undoBy(() => undoTodoCorrection(todo.id, token)) : () => Promise.resolve(false);
+    },
+    failure: "Couldn't save that correction",
   });
 }
 

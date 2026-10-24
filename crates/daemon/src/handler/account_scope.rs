@@ -466,6 +466,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::GetTodo { todo_id }
         | Request::ScheduleTodo { todo_id, .. }
         | Request::UpdateTodo { todo_id, .. }
+        | Request::CorrectTodo { todo_id, .. }
+        | Request::UndoTodoCorrection { todo_id, .. }
         | Request::ResolveTodoSuggestion { todo_id, .. } => Targets(vec![T::Todo(todo_id)]),
         Request::SetTodoState { todo_ids, .. } => {
             Targets(todo_ids.iter().map(|id| T::Todo(id)).collect())

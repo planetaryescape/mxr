@@ -1,3 +1,4 @@
+import { TodoCorrectionDialog } from "@/features/todo/TodoCorrectionDialog";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { MoveToModeDialog } from "@/features/arrivals/MoveToModeDialog";
 import {
@@ -104,8 +105,10 @@ export function MailDialogs() {
       return <MoveToModeDialog subject={dialog.subject} sender={dialog.sender} onClose={close} />;
     case "todo-schedule":
       return <TodoScheduleDialog todo={dialog.todo} onClose={close} />;
+    case "todo-correct":
+      return <TodoCorrectionDialog key={dialog.todo.id} todo={dialog.todo} onClose={close} />;
     case "todo-edit":
-      return <TodoEditDialog todo={dialog.todo} onClose={close} />;
+      return <TodoEditDialog key={dialog.todo.id} todo={dialog.todo} onClose={close} />;
     case "todo-make":
       return (
         <MakeTodoDialog

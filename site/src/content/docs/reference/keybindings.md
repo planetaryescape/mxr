@@ -334,10 +334,10 @@ Open To do with `gx`. See [Act on To dos](/guides/todo/).
 | Key | Action |
 |-----|--------|
 | `e` | Tick off the selected task |
-| `Enter` | Use the row's primary action |
+| `Enter` | Open the source email (TUI); use the row's primary action (web) |
 | `Z` (web) | Schedule when the task returns |
 | `,` (web) | Edit extracted fields |
-| `X` (web) | Mark as not a to-do |
+| `X` | Correct the selected to-do |
 | `o` | Open the source email |
 | `E` (web) | Open Expired |
 | `C` (web) | Open Catch-up |
@@ -876,11 +876,11 @@ On a lit new sender, `1` to `4` answer its question.
 | `Ctrl+U`, `PageUp` | Half page up |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
-| `Enter` | Do it: what the row's button says | Opens a link only when the sender passed the check; otherwise the email |
+| `Enter` | Do it: what the row's button says | The TUI opens the source email; the web opens it or a reply for a promise. Links stay in the email. |
 | `e` | Done |  |
 | `Z` | Schedule… |  |
 | `,` | Edit what mxr read… |  |
-| `X` | Not a to-do |  |
+| `X` | Correct to-do |  |
 | `o` | Open the email it came from |  |
 | `E` | Expired list |  |
 | `C` | Catch-up |  |

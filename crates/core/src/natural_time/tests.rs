@@ -539,3 +539,30 @@ fn real_zone_gaps_move_forward_by_their_own_length() {
         Utc.with_ymd_and_hms(2024, 5, 8, 9, 0, 0).unwrap()
     );
 }
+
+#[test]
+fn word_durations_use_the_same_grammar_and_due_words_resolution() {
+    let now = anchor();
+    for (words, days) in [("two", 2), ("seven", 7), ("twelve", 12)] {
+        let phrase = format!("in {words} days");
+        assert_eq!(
+            resolve_time(&phrase, &now, &TimePrefs::default())
+                .expect("word duration")
+                .at,
+            resolve_time(&format!("in {days} days"), &now, &TimePrefs::default())
+                .expect("numeric duration")
+                .at
+        );
+        let phrase = format!("within {words} days");
+        assert_eq!(
+            due_words(&phrase, &phrase, &now, &TimePrefs::default())
+                .expect("source duration")
+                .unambiguous_at(),
+            Some(
+                resolve_time(&format!("in {days} days"), &now, &TimePrefs::default())
+                    .expect("same duration")
+                    .at
+            )
+        );
+    }
+}

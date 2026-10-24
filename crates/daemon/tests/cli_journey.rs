@@ -935,6 +935,28 @@ fn cli_journey_relationship_draft_and_humanizer_surfaces_round_trip() {
         );
     }
 
+    let sent_promise = run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &[
+            "compose",
+            "--to",
+            "alice@work.com",
+            "--subject",
+            "Explicit deployment promise",
+            "--body",
+            "I'll send the concise update today.",
+            "--no-signature",
+            "--yes",
+        ],
+    );
+    let promise_source = sent_promise
+        .stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("Local message id: "))
+        .unwrap_or_else(|| panic!("send must name its stored source: {}", sent_promise.stdout));
+
     let profile = run_json(
         &instance,
         &data_dir,
@@ -953,14 +975,24 @@ fn cli_journey_relationship_draft_and_humanizer_surfaces_round_trip() {
                 .any(|topic| topic.as_str() == Some("deployment"))),
         "relationship summary should expose known topics from the LLM response: {profile:#}"
     );
-    let first_commitment = profile["open_commitments"]
+    let canonical = profile["open_commitments"]
         .as_array()
-        .and_then(|items| items.first())
-        .unwrap_or_else(|| panic!("profile should include extracted open commitment: {profile:#}"));
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|item| item["evidence_msg_id"].as_str() == Some(promise_source))
+        })
+        .unwrap_or_else(|| {
+            panic!("confirmed send must already expose its canonical promise: {profile:#}")
+        });
     assert_eq!(
-        first_commitment["what"].as_str(),
-        Some("confirm dashboard is quiet")
+        canonical["what"].as_str(),
+        Some("I'll send the concise update today.")
     );
+    assert_eq!(canonical["direction"].as_str(), Some("yours"));
+    assert!(canonical["id"]
+        .as_str()
+        .is_some_and(|id| id.starts_with("ask_")));
 
     let open_before = run_json(
         &instance,
@@ -1008,9 +1040,13 @@ fn cli_journey_relationship_draft_and_humanizer_surfaces_round_trip() {
 
     let commitment_id = open_after
         .as_array()
-        .and_then(|items| items.first())
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|item| item["evidence_msg_id"].as_str() == Some(promise_source))
+        })
         .and_then(|item| item["id"].as_str())
-        .unwrap_or_else(|| panic!("open commitment should have id: {open_after:#}"))
+        .unwrap_or_else(|| panic!("canonical promise survives rebuild: {open_after:#}"))
         .to_string();
     run_status_only(
         &instance,
@@ -1144,6 +1180,18 @@ fn cli_journey_relationship_draft_and_humanizer_surfaces_round_trip() {
         "humanizer rewrite should improve to a passing score: {rewritten:#}"
     );
 
+    assert!(
+        llm.requests
+            .lock()
+            .expect("requests lock")
+            .iter()
+            .all(|request| {
+                !request
+                    .to_string()
+                    .contains("Extract only explicit open asks")
+            }),
+        "relationship rebuild must not revive background commitment extraction"
+    );
     let requested_models = llm.requested_models();
     assert!(
         requested_models

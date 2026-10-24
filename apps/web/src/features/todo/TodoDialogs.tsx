@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import {
   AlertDialog,
@@ -22,6 +22,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { describeChoice, type TimeChoice } from "@/features/time/api";
 import { NaturalTimeInput } from "@/features/time/NaturalTimeInput";
 import { useNaturalTime } from "@/features/time/useNaturalTime";
@@ -85,11 +92,26 @@ export function TodoScheduleDialog({ todo, onClose }: { todo: Todo; onClose: () 
   );
 }
 
+const TODO_KINDS = [
+  ["bill", "Bill"],
+  ["payment_failed", "Failed payment"],
+  ["renewal", "Renewal"],
+  ["document", "Document"],
+  ["lease", "Lease"],
+  ["return", "Return"],
+  ["rsvp", "RSVP"],
+  ["verify", "Verify"],
+  ["sign", "Sign"],
+  ["promise", "Promise"],
+  ["other", "Other"],
+] as const;
+
 const EDIT_FIELDS = [
   { field: "title", label: "What to do", hint: "Starts with the verb: Pay council tax" },
   { field: "counterparty", label: "Who", hint: "Camden Council" },
   { field: "amount", label: "Amount", hint: "£142.00" },
   { field: "due", label: "Due", hint: "fri 9 oct, in 2w; empty clears it" },
+  { field: "kind", label: "Kind", hint: "" },
 ] as const;
 
 /** The due date as a phrase the daemon reads back: "9 Oct 2026". */
@@ -108,20 +130,42 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
     counterparty: currentValue(todo, "counterparty"),
     amount: currentValue(todo, "amount"),
     due: dueValue(todo),
+    kind: currentValue(todo, "kind"),
   };
   const [values, setValues] = useState(initial);
   const changed = EDIT_FIELDS.filter(({ field }) => values[field].trim() !== initial[field].trim());
-  function submit(event: FormEvent) {
+  const [saving, setSaving] = useState(false);
+  const active = useRef(true);
+  const inFlight = useRef(false);
+  const currentId = useRef(todo.id);
+  useEffect(() => {
+    currentId.current = todo.id;
+  }, [todo.id]);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
+  async function submit(event: FormEvent) {
     event.preventDefault();
-    if (changed.length === 0 || !values.title.trim()) return;
-    onClose();
-    void editRow(
-      todo,
-      changed.map(({ field }) => ({ field, value: values[field].trim() })),
-    );
+    if (inFlight.current || changed.length === 0 || !values.title.trim()) return;
+    inFlight.current = true;
+    setSaving(true);
+    const requestedId = todo.id;
+    try {
+      const saved = await editRow(
+        todo,
+        changed.map(({ field }) => ({ field, value: values[field].trim() })),
+      );
+      if (saved && active.current && currentId.current === requestedId) onClose();
+    } finally {
+      inFlight.current = false;
+      if (active.current) setSaving(false);
+    }
   }
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && !saving && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Edit to-do</DialogTitle>
@@ -129,23 +173,46 @@ export function TodoEditDialog({ todo, onClose }: { todo: Todo; onClose: () => v
             What you change here is yours: mxr won't rewrite it.
           </DialogDescription>
         </DialogHeader>
-        <form className="grid gap-3" onSubmit={submit}>
+        <blockquote className="border-l border-rule pl-3 text-text-2">{todo.why}</blockquote>
+        <form className="grid gap-3" onSubmit={(event) => void submit(event)}>
           {EDIT_FIELDS.map(({ field, label, hint }, index) => (
             <label key={field} className="grid gap-1 text-sm">
               <span className="font-medium">{label}</span>
-              <Input
-                autoFocus={index === 0}
-                value={values[field]}
-                placeholder={hint}
-                onChange={(event) => setValues({ ...values, [field]: event.target.value })}
-              />
+              {field === "kind" ? (
+                <Select
+                  value={values.kind}
+                  onValueChange={(kind) => setValues({ ...values, kind })}
+                >
+                  <SelectTrigger aria-label="Kind">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TODO_KINDS.map(([kind, kindLabel]) => (
+                      <SelectItem key={kind} value={kind}>
+                        {kindLabel}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  autoFocus={index === 0}
+                  value={values[field]}
+                  placeholder={hint}
+                  onChange={(event) => setValues({ ...values, [field]: event.target.value })}
+                />
+              )}
             </label>
           ))}
           <DialogFooter>
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={changed.length === 0 || !values.title.trim()}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={saving || changed.length === 0 || !values.title.trim()}
+            >
               Save
             </Button>
           </DialogFooter>

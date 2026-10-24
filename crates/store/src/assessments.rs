@@ -29,10 +29,22 @@ impl super::Store {
         revisions: &HashMap<ThreadId, i64>,
         answers: &[MailAssessment],
     ) -> Result<bool, sqlx::Error> {
+        self.save_assessment_facets(account, revisions, answers, &[])
+            .await
+    }
+
+    /// Home and asks share one CAS and one commit, including dirty acknowledgement.
+    pub async fn save_assessment_facets(
+        &self,
+        account: &AccountId,
+        revisions: &HashMap<ThreadId, i64>,
+        answers: &[MailAssessment],
+        asks: &[mxr_core::asks::AskAssessment],
+    ) -> Result<bool, sqlx::Error> {
         let expected = encode_json(revisions)?;
         // A settled read must not queue behind the writer. One SELECT checks
         // both CAS and pending acknowledgements against one SQLite snapshot.
-        if answers.is_empty() {
+        if answers.is_empty() && asks.is_empty() {
             let (changed, dirty): (bool, bool) = sqlx::query_as("SELECT COALESCE(max(COALESCE(i.effective_revision, -1) != expected.value), 0), COALESCE(max(i.dirty != 0 OR i.revision != i.effective_revision), 0) FROM json_each(?2) expected LEFT JOIN assessment_effective_thread_inputs i ON i.account_id = ?1 AND i.thread_id = expected.key")
                 .bind(account.as_str()).bind(&expected).fetch_one(self.reader()).await?;
             if changed || !dirty {
@@ -47,13 +59,26 @@ impl super::Store {
             return Ok(false);
         }
         for answer in answers {
+            if answer.account_id != *account
+                || answer.policy_version != mxr_core::assessment::CLASSIFIER_POLICY_VERSION
+            {
+                return Err(sqlx::Error::Protocol(
+                    "home batch account or policy mismatch".into(),
+                ));
+            }
+            let revision: Option<i64> = sqlx::query_scalar("SELECT expected.value FROM messages m JOIN json_each(?3) expected ON expected.key = m.thread_id WHERE m.id = ?1 AND m.account_id = ?2")
+                .bind(answer.message_id.as_str()).bind(account.as_str()).bind(&expected).fetch_optional(&mut *tx).await?;
+            let revision = revision.ok_or_else(|| {
+                sqlx::Error::Protocol("home message outside observed threads".into())
+            })?;
             sqlx::query("INSERT INTO mail_assessments (message_id, account_id, policy_version, input_fingerprint, input_revision, assessment_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                 ON CONFLICT(message_id, policy_version) DO UPDATE SET input_fingerprint = excluded.input_fingerprint, input_revision = excluded.input_revision, assessment_json = excluded.assessment_json
-                WHERE mail_assessments.input_fingerprint != excluded.input_fingerprint")
+                WHERE mail_assessments.input_fingerprint != excluded.input_fingerprint OR mail_assessments.input_revision != excluded.input_revision")
                 .bind(answer.message_id.as_str()).bind(account.as_str()).bind(&answer.policy_version)
-                .bind(&answer.input_fingerprint).bind(revisions.values().max().copied().unwrap_or(0))
+                .bind(&answer.input_fingerprint).bind(revision)
                 .bind(encode_json(answer)?).execute(&mut *tx).await?;
         }
+        crate::asks::write_asks(&mut tx, account, &expected, asks).await?;
         sqlx::query(ACKNOWLEDGE_BATCH)
             .bind(account.as_str())
             .bind(&expected)
@@ -173,7 +198,9 @@ impl super::Store {
         &self,
         accounts: &[AccountId],
     ) -> Result<Vec<String>, sqlx::Error> {
-        sqlx::query_scalar("SELECT DISTINCT policy_version FROM mail_assessments WHERE account_id IN (SELECT value FROM json_each(?)) ORDER BY policy_version")
+        // The asks namespace has a different payload and includes sent mail;
+        // home reports must never try to decode it as an inbound home row.
+        sqlx::query_scalar("SELECT DISTINCT policy_version FROM mail_assessments WHERE account_id IN (SELECT value FROM json_each(?)) AND policy_version NOT LIKE 'asks-%' ORDER BY policy_version")
             .bind(encode_json(&accounts.iter().map(AccountId::as_str).collect::<Vec<_>>())?).fetch_all(self.reader()).await
     }
 }

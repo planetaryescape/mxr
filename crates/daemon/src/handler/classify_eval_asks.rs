@@ -17,17 +17,30 @@ use mxr_protocol::{
     ClassifyEvalAskKindData, ClassifyEvalAsksData, ClassifyEvalCountsData, ClassifyEvalFieldData,
     ClassifyEvalMismatchData, ClassifyEvalReplyData, ClassifyEvalSliceData, ClassifyEvalTwinsData,
 };
-use mxr_provider_fake::fixtures::scenarios::{AskKind, Direction, Due, Item, Labelled};
+use mxr_provider_fake::fixtures::scenarios::{
+    AskKind, AskProvenance, Direction, Due, Item, Labelled,
+};
+#[cfg(test)]
 use mxr_store::EvalTodo;
 use mxr_todo::dates::{parse_date, DateOrder, YearIntent};
+#[cfg(test)]
 use mxr_todo::TodoKind;
 use std::collections::BTreeMap;
 
 /// What the Your turn answer reads, for the output.
-pub(super) const REPLY_PROJECTION: &str = "Your turn as the desk reads it for one message: `mail_kind::requires_reply` (a request directed to you, `reply_request`, from a sender that classifies as a person, mail_kind.rs:408-418, the call the You owe lane makes at desk_lanes.rs:483) with nothing you sent after it in the thread (desk_lanes.rs:438, an outbound latest message is Waiting). The lane's other gates (copied threads, decay, snoozes, the screener) are not mirrored";
+pub(super) const REPLY_PROJECTION: &str = "Stored asks unit answer asks_you_to_reply; missing or stale rows remain pending and eval never materializes them.";
 
 /// The mismatch questions the asks add, in the order they are listed.
-pub(super) const ASK_QUESTIONS: [&str; 5] = ["ask", "amount", "due", "counterparty", "reply"];
+pub(super) const ASK_QUESTIONS: [&str; 8] = [
+    "ask",
+    "amount",
+    "due",
+    "counterparty",
+    "reply",
+    "quote",
+    "actor",
+    "state",
+];
 
 /// A to-do row, translated to chapter 37's vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +55,7 @@ pub(super) struct Row {
     /// daemon's time zone.
     pub due_at: Option<DateTime<Utc>>,
     pub due_words: Option<String>,
+    pub provenance: Option<AskProvenance>,
 }
 
 /// Today's to-do kinds in chapter 37's kinds, in one place.
@@ -54,6 +68,7 @@ pub(super) struct Row {
 /// * `Promise` is a promise in the owner's sent mail, so its direction is
 ///   `you_promised` and its kind comes from the verb its title starts with
 ///   ([`promise_kind`]); a title that starts with anything else is `other`.
+#[cfg(test)]
 pub(super) fn translate(todo: &TodoKind, title: &str) -> (AskKind, Direction) {
     let asked = |kind| (kind, Direction::AsksYou);
     match todo {
@@ -71,6 +86,7 @@ pub(super) fn translate(todo: &TodoKind, title: &str) -> (AskKind, Direction) {
 
 /// The kind of a promise from the first word of its title ("Send the signed
 /// form" is `send`); `other` when the verb is not one of the vocabulary's.
+#[cfg(test)]
 fn promise_kind(title: &str) -> AskKind {
     match title
         .split_whitespace()
@@ -93,6 +109,106 @@ fn promise_kind(title: &str) -> AskKind {
 }
 
 impl Row {
+    pub(super) fn from_asks(
+        answer: &mxr_core::asks::AskAssessment,
+        counterparty: &str,
+        projected_todos: &[mxr_store::EvalProjectedTodo],
+    ) -> Vec<Self> {
+        use mxr_core::asks::{ActionKind as A, AskAnswer};
+        let mut projected: std::collections::HashMap<&str, Vec<&mxr_store::EvalTodo>> =
+            std::collections::HashMap::new();
+        for item in projected_todos {
+            projected
+                .entry(&item.unit_provenance)
+                .or_default()
+                .push(&item.todo);
+        }
+        answer
+            .units
+            .iter()
+            .enumerate()
+            .filter_map(|(index, unit)| {
+                if !projected.contains_key(
+                    mxr_todo::asks::items::unit_provenance(answer, index, unit).as_str(),
+                ) {
+                    return None;
+                }
+                let direction = match unit.answer {
+                    AskAnswer::AsksYou => Direction::AsksYou,
+                    AskAnswer::YouPromised => Direction::YouPromised,
+                    _ => return None,
+                };
+                let tags = unit.tags.as_ref()?;
+                let kind = match tags.action {
+                    A::Pay => AskKind::Pay,
+                    A::FixPayment => AskKind::FixPayment,
+                    A::Sign => AskKind::Sign,
+                    A::Verify => AskKind::Verify,
+                    // Attend is the historical RSVP reporting bucket; the stored
+                    // action and its provenance remain Reply.
+                    A::Reply if mxr_todo::asks::items::is_rsvp(answer, unit) => AskKind::Attend,
+                    A::Reply => AskKind::Reply,
+                    A::Send => AskKind::Send,
+                    A::Provide => AskKind::Provide,
+                    A::Upload => AskKind::Upload,
+                    A::Book => AskKind::Book,
+                    A::Attend => AskKind::Attend,
+                    A::RenewOrCancel => AskKind::RenewOrCancel,
+                    A::Register => AskKind::Register,
+                    A::Contact => AskKind::Contact,
+                    A::Other => AskKind::Other,
+                };
+                let due = tags.due.and_then(|i| answer.facts.dates.get(i));
+                Some(Self {
+                    kind,
+                    direction,
+                    made_as: format!("{}:unit", answer.policy_version),
+                    counterparty: Some(counterparty.into()),
+                    amount: tags
+                        .amount
+                        .and_then(|i| answer.facts.amounts.get(i))
+                        .map(|a| (a.minor, a.currency.clone())),
+                    due_at: due.map(|d| d.at),
+                    provenance: Some(AskProvenance {
+                        quote: answer.quote(unit).unwrap_or_default().into(),
+                        actor: serde_json::to_value(tags.actor)
+                            .ok()
+                            .and_then(|v| v.as_str().map(str::to_string))
+                            .unwrap_or_default(),
+                        state: serde_json::to_value(tags.state)
+                            .ok()
+                            .and_then(|v| v.as_str().map(str::to_string))
+                            .unwrap_or_default(),
+                    }),
+                    due_words: due.map(|d| {
+                        answer.facts.zones[d.zone].text[d.span.start..d.span.end].to_string()
+                    }),
+                })
+                .map(|row| {
+                    (
+                        row,
+                        mxr_todo::asks::items::unit_provenance(answer, index, unit),
+                    )
+                })
+            })
+            .flat_map(|(row, key)| {
+                projected
+                    .get(key.as_str())
+                    .into_iter()
+                    .flatten()
+                    .map(move |todo| {
+                        let mut actual = row.clone();
+                        actual.counterparty = todo.counterparty.clone();
+                        actual.amount = todo.amount_minor.zip(todo.currency.clone());
+                        actual.due_at = todo.due_at.and_then(|at| DateTime::from_timestamp(at, 0));
+                        actual.due_words = todo.due_words.clone();
+                        actual
+                    })
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
     pub(super) fn from_todo(todo: &EvalTodo) -> Self {
         let parsed = TodoKind::parse(&todo.kind).unwrap_or(TodoKind::Other);
         let (kind, direction) = translate(&parsed, &todo.title);
@@ -109,6 +225,7 @@ impl Row {
                 .due_at
                 .and_then(|seconds| DateTime::from_timestamp(seconds, 0)),
             due_words: todo.due_words.clone(),
+            provenance: None,
         }
     }
 }
@@ -179,7 +296,7 @@ enum Verdict {
     Present,
 }
 
-const FIELDS: [&str; 3] = ["amount", "due", "counterparty"];
+const FIELDS: [&str; 6] = ["amount", "due", "counterparty", "quote", "actor", "state"];
 
 /// What was graded for one email, kept for the checks that need the whole
 /// set: merges and twin pairs.
@@ -204,6 +321,7 @@ struct Outcome {
 
 /// One email to grade.
 pub(super) struct AskInput<'a> {
+    pub provenance_slices: Vec<(&'static str, String)>,
     pub label: &'a Labelled,
     pub rows: Vec<Row>,
     /// Whether the classifier says a reply is owed; `None` for sent mail,
@@ -218,7 +336,7 @@ pub(super) struct AskGrader {
     emails: u32,
     total: Counts,
     kinds: BTreeMap<(AskKind, Direction), Counts>,
-    fields: [FieldTally; 3],
+    fields: [FieldTally; 6],
     duplicates: u32,
     outcomes: Vec<Outcome>,
     slices: BTreeMap<(&'static str, String), (u32, Counts)>,
@@ -262,6 +380,20 @@ impl AskGrader {
                 .filter(|review| review.questions.contains(&"todo"))
                 .map(|review| review.why.to_string()),
         }
+    }
+
+    pub(super) fn corrected(&mut self) {
+        self.slices
+            .entry(("projection", "user_corrected".into()))
+            .or_default()
+            .0 += 1;
+    }
+
+    pub(super) fn pending(&mut self) {
+        self.slices
+            .entry(("rules_abstained", "pending".into()))
+            .or_default()
+            .0 += 1;
     }
 
     /// Match `rows` to the label's items and tally the result.
@@ -338,6 +470,9 @@ impl AskGrader {
         for &(i, j) in &matched {
             let (item, row) = (&expected[i], &rows[j]);
             for (slot, field) in FIELDS.iter().enumerate() {
+                if matches!(*field, "quote" | "actor" | "state") && item.provenance.is_none() {
+                    continue;
+                }
                 let verdict = verdict(field, item, row, input.sent);
                 let tally = &mut self.fields[slot];
                 tally.pairs += 1;
@@ -368,12 +503,13 @@ impl AskGrader {
         } else {
             "visible"
         };
-        let slice_keys: [(&'static str, String); 4] = [
+        let mut slice_keys = vec![
             ("sender_kind", label.sender.as_str().to_string()),
             ("locale", label.locale.to_string()),
             ("template_family", label.family.to_string()),
             ("phrasing", held.to_string()),
         ];
+        slice_keys.extend(input.provenance_slices);
         for key in slice_keys {
             let entry = self.slices.entry(key).or_default();
             entry.0 += 1;
@@ -645,6 +781,24 @@ fn verdict(field: &str, item: &Item, row: &Row, sent: DateTime<Utc>) -> Verdict 
                 None => Verdict::Present,
             },
         },
+        "quote" | "actor" | "state" => {
+            let Some(expected) = item.provenance.as_ref() else {
+                return Verdict::Present;
+            };
+            let Some(actual) = row.provenance.as_ref() else {
+                return Verdict::Missing;
+            };
+            let (want, got) = match field {
+                "quote" => (&expected.quote, &actual.quote),
+                "actor" => (&expected.actor, &actual.actor),
+                _ => (&expected.state, &actual.state),
+            };
+            if want == got {
+                Verdict::Exact
+            } else {
+                Verdict::Wrong
+            }
+        }
         _ => match (&item.counterparty, &row.counterparty) {
             (None, None) => Verdict::Exact,
             (Some(_), None) => Verdict::Missing,
@@ -720,6 +874,19 @@ fn field_texts(field: &str, item: &Item, row: &Row, sent: DateTime<Utc>) -> (Str
             expected_due_text(item.due),
             actual_due_text(item, row, sent),
         ),
+        "quote" | "actor" | "state" => {
+            let value = |p: Option<&AskProvenance>| {
+                p.map_or_else(none, |p| match field {
+                    "quote" => p.quote.clone(),
+                    "actor" => p.actor.clone(),
+                    _ => p.state.clone(),
+                })
+            };
+            (
+                value(item.provenance.as_ref()),
+                value(row.provenance.as_ref()),
+            )
+        }
         _ => (
             item.counterparty.clone().unwrap_or_else(none),
             row.counterparty.clone().unwrap_or_else(none),
@@ -885,6 +1052,7 @@ mod tests {
             amount: None,
             due_at: None,
             due_words: None,
+            provenance: None,
         }
     }
 
@@ -899,6 +1067,7 @@ mod tests {
         let mut grader = AskGrader::default();
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label,
                 rows,
                 reply_found: Some(false),
@@ -1002,8 +1171,12 @@ mod tests {
 
     #[test]
     fn fields_are_compared_on_matched_pairs_only() {
-        let item = pay().amount(4_820, "GBP").due(Due::AfterSent(48));
+        let item = pay()
+            .amount(4_820, "GBP")
+            .due(Due::AfterSent(48))
+            .provenance("Please pay the invoice.", "owner", "pending");
         let found = Row {
+            provenance: item.provenance.clone(),
             amount: Some((4_820, "GBP".into())),
             due_at: due_on(2),
             counterparty: Some("acme".into()),
@@ -1210,6 +1383,7 @@ mod tests {
         let mut grader = AskGrader::default();
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &sent_mail,
                 rows: vec![found],
                 reply_found: None,
@@ -1220,6 +1394,7 @@ mod tests {
         // A promise row does not satisfy an ask of the same kind.
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &label("ask", vec![Item::asks(AskKind::Send, "Priya")]),
                 rows: vec![Row {
                     direction: Direction::YouPromised,
@@ -1269,6 +1444,7 @@ mod tests {
         // Only the later email kept the row, as the store does.
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &first,
                 rows: Vec::new(),
                 reply_found: Some(false),
@@ -1278,6 +1454,7 @@ mod tests {
         );
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &second,
                 rows: vec![row(AskKind::Pay)],
                 reply_found: Some(false),
@@ -1296,6 +1473,7 @@ mod tests {
         let mut grader = AskGrader::default();
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &first,
                 rows: Vec::new(),
                 reply_found: Some(false),
@@ -1305,6 +1483,7 @@ mod tests {
         );
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &second,
                 rows: vec![row(AskKind::Pay)],
                 reply_found: Some(false),
@@ -1328,6 +1507,7 @@ mod tests {
             for (l, rows) in [(&plain, plain_rows), (&twin, twin_rows)] {
                 grader.grade(
                     AskInput {
+                        provenance_slices: vec![],
                         label: l,
                         rows,
                         reply_found: Some(false),
@@ -1356,6 +1536,7 @@ mod tests {
         let mut grader = AskGrader::default();
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &twin,
                 rows: Vec::new(),
                 reply_found: Some(false),
@@ -1382,6 +1563,7 @@ mod tests {
             for (l, found) in [(&open, open_found), (&answered, answered_found)] {
                 grader.grade(
                     AskInput {
+                        provenance_slices: vec![],
                         label: l,
                         rows: Vec::new(),
                         reply_found: Some(found),
@@ -1424,6 +1606,7 @@ mod tests {
             for (l, code) in [(&plain, "GBP"), (&twin, currency)] {
                 grader.grade(
                     AskInput {
+                        provenance_slices: vec![],
                         label: l,
                         rows: vec![Row {
                             amount: Some((123_456, code.into())),
@@ -1513,6 +1696,7 @@ mod tests {
         ] {
             grader.grade(
                 AskInput {
+                    provenance_slices: vec![],
                     label: l,
                     rows: Vec::new(),
                     reply_found: Some(found),
@@ -1547,6 +1731,7 @@ mod tests {
         let mut grader = AskGrader::default();
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &held,
                 rows: vec![row(AskKind::Pay)],
                 reply_found: Some(false),
@@ -1556,6 +1741,7 @@ mod tests {
         );
         grader.grade(
             AskInput {
+                provenance_slices: vec![],
                 label: &label("quiet", Vec::new()),
                 rows: Vec::new(),
                 reply_found: Some(false),
@@ -1625,5 +1811,122 @@ mod tests {
             due_at: None,
         };
         assert_eq!(Row::from_todo(&todo).kind, AskKind::Other);
+    }
+}
+
+#[cfg(test)]
+mod provenance_tests {
+    use super::*;
+    #[test]
+    fn calendar_reply_uses_the_historical_rsvp_bucket_without_changing_the_action() {
+        use mxr_core::asks::*;
+        let message = mxr_core::MessageId::new();
+        let account = mxr_core::AccountId::new();
+        let tags = AskTags {
+            act: Act::Request,
+            actor: Actor::Owner,
+            state: AskState::Pending,
+            action: ActionKind::Reply,
+            amount: None,
+            due: None,
+            reference: None,
+        };
+        let mut a = AskAssessment {
+            message_id: message,
+            account_id: account,
+            policy_version: ASKS_POLICY_VERSION.into(),
+            input_fingerprint: "test".into(),
+            pending_body: false,
+            context_token: "test".into(),
+            calendar: None,
+            html: None,
+            facts: AskFacts {
+                zones: vec![AskZone {
+                    kind: ZoneKind::Calendar,
+                    author: None,
+                    text: "Planning".into(),
+                }],
+                recipient_role: RecipientRole::AloneTo,
+                owner_authored: false,
+                owner_names: vec![],
+                owner_addresses: vec![],
+                predecessor: None,
+                owner_replied_afterwards: false,
+                amounts: vec![],
+                dates: vec![],
+                references: vec![],
+                template_key: "test".into(),
+            },
+            units: vec![AskUnit {
+                zone: 0,
+                span: AskSpan { start: 0, end: 8 },
+                votes: vec![],
+                tags: Some(tags.clone()),
+                document: DocumentReading {
+                    kind: DocumentKind::Other,
+                    status: PaymentStatus::None,
+                    required_fields_present: true,
+                },
+                answer: AskAnswer::AsksYou,
+            }],
+        };
+        let links = vec![mxr_store::EvalProjectedTodo {
+            unit_provenance: mxr_todo::asks::items::unit_provenance(&a, 0, &a.units[0]),
+            user_edited: 0,
+            todo: mxr_store::EvalTodo {
+                source_message_id: a.message_id.clone(),
+                kind: "rsvp".into(),
+                title: "Planning".into(),
+                counterparty: Some("Organiser".into()),
+                amount_minor: None,
+                currency: None,
+                due_words: None,
+                due_at: None,
+            },
+        }];
+        let calendar = Row::from_asks(&a, "Organiser", &links);
+        assert_eq!(calendar[0].kind, AskKind::Attend);
+        assert!(mxr_todo::asks::items::is_rsvp(&a, &a.units[0]));
+        let provenance = calendar[0].provenance.as_ref().expect("stored provenance");
+        assert_eq!(
+            (&*provenance.quote, &*provenance.actor, &*provenance.state),
+            ("Planning", "owner", "pending")
+        );
+        assert_eq!(a.units[0].tags.as_ref(), Some(&tags));
+        a.facts.zones[0].kind = ZoneKind::Authored;
+        assert_eq!(Row::from_asks(&a, "Sender", &links)[0].kind, AskKind::Reply);
+        assert!(!mxr_todo::asks::items::is_rsvp(&a, &a.units[0]));
+        assert_eq!(a.units[0].tags.as_ref(), Some(&tags));
+    }
+
+    #[test]
+    fn exact_quote_actor_and_state_have_independent_verdicts() {
+        let item = Item::asks(AskKind::Sign, "Alex").provenance(
+            "Please sign the contract.",
+            "owner",
+            "pending",
+        );
+        let mut row = Row {
+            kind: AskKind::Sign,
+            direction: Direction::AsksYou,
+            made_as: "stored".into(),
+            counterparty: Some("Alex".into()),
+            amount: None,
+            due_at: None,
+            due_words: None,
+            provenance: item.provenance.clone(),
+        };
+        let sent = Utc::now();
+        for field in ["quote", "actor", "state"] {
+            assert_eq!(verdict(field, &item, &row, sent), Verdict::Exact);
+        }
+        row.provenance.as_mut().unwrap().quote = "Sign it".into();
+        assert_eq!(verdict("quote", &item, &row, sent), Verdict::Wrong);
+        row.provenance.as_mut().unwrap().actor = "correspondent".into();
+        assert_eq!(verdict("actor", &item, &row, sent), Verdict::Wrong);
+        row.provenance.as_mut().unwrap().state = "done".into();
+        assert_eq!(verdict("state", &item, &row, sent), Verdict::Wrong);
+        row.provenance = None;
+        assert_eq!(verdict("quote", &item, &row, sent), Verdict::Missing);
     }
 }

@@ -64,6 +64,10 @@ pub struct TodoConfig {
     /// The first run's catch-up window: undated to-dos from this many days
     /// back are shown once to keep or let go; older ones are let go.
     pub catchup_days: u32,
+    /// Account-ID -> receiver authserv-ids, configured only after its border MTA
+    /// is known to strip forged Authentication-Results claiming those IDs.
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub trusted_authentication_services: HashMap<String, Vec<String>>,
 }
 
 impl Default for TodoConfig {
@@ -71,6 +75,7 @@ impl Default for TodoConfig {
         Self {
             enabled: true,
             catchup_days: 14,
+            trusted_authentication_services: HashMap::new(),
         }
     }
 }

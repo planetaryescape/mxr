@@ -182,6 +182,20 @@ impl App {
                                 status,
                             );
                         }
+                        UndoAction::TodoCorrection {
+                            todo_id,
+                            correction_id,
+                        } => {
+                            self.queue_mutation(
+                                Request::UndoTodoCorrection {
+                                    todo_id,
+                                    correction_id,
+                                    dry_run: false,
+                                },
+                                MutationEffect::Todo("Correction undone".into()),
+                                status,
+                            );
+                        }
                         UndoAction::TodoResolution {
                             todo_id,
                             suggestion_id,

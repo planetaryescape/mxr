@@ -205,6 +205,15 @@ impl App {
     /// note, kept under this mutation, goes around the daemon's copy.
     /// Any other mutation's completion is left as it is.
     pub fn with_done_note(&mut self, id: MutationId, effect: MutationEffect) -> MutationEffect {
+        if self
+            .mailbox
+            .todo_page
+            .prompt
+            .as_ref()
+            .is_some_and(|prompt| prompt.pending == Some(id))
+        {
+            self.mailbox.todo_page.prompt = None;
+        }
         let note = self.mailbox.messages_page.done_notes.remove(&id);
         match (effect, note) {
             (MutationEffect::ModeDone(msg), Some(note)) if !msg.is_empty() => {
@@ -674,6 +683,16 @@ impl App {
         best_effort: bool,
         error: &MxrError,
     ) {
+        if let Some(prompt) = self
+            .mailbox
+            .todo_page
+            .prompt
+            .as_mut()
+            .filter(|prompt| prompt.pending == Some(id))
+        {
+            prompt.pending = None;
+            prompt.error = Some(error.to_string());
+        }
         let compose = self.compose.pending_send_mutations.remove(&id);
         self.handle_mutation_reconciliation_failed(id);
         self.pending_optimistic.clear(id);

@@ -134,7 +134,7 @@ pub async fn plan<Tz: TimeZone>(
             field_sources: fields.to_json(),
             user_edited: false,
             commitment_id: None,
-            rules_version: 1,
+            rules_version: mxr_todo::RULES_VERSION,
             dedup_key,
             surfaced_at: None,
             created_at: now,

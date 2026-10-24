@@ -185,14 +185,29 @@ was made. It prints the accuracy per question.
 
 What an email asks of you is not a yes or no, and it has no accuracy line:
 nearly every email asks nothing, so accuracy would measure the true negatives.
-Each label (label schema v2) lists the items the email should make, each with a
+Each label (label schema v3) lists the items the email should make, each with a
 kind of ask from blueprint 37 (`pay`, `fix_payment`, `sign`, `verify`, `reply`,
 `send`, `provide`, `upload`, `book`, `attend`, `renew_or_cancel`, `register`,
 `contact`, `other`), a direction (`asks_you`, or `you_promised` for your sent
 mail), the counterparty, the amount and the due words, plus whether a reply is
-owed. The eval matches each email's to-do rows to its expected items by kind and
+owed. Annotated items also grade the exact source quote, actor and state. The eval matches each email's stored asks units to its expected items by kind and
 direction (the table that maps today's to-do kinds to these is
-`translate` in `crates/daemon/src/handler/classify_eval_asks.rs`) and reports:
+`Row::from_asks` in `crates/daemon/src/handler/classify_eval_asks.rs`) and reports:
+
+The read-only packet takes assessments and task rows from one SQL snapshot.
+An ask counts as a delivered task only when its current fingerprint and unit
+provenance link to a stored row. Amount, currency, due date and counterparty
+come from that row; action, actor, state and exact quote come from the stored
+ask. Incomplete bodies and unsettled projection retries remain pending. A
+missing task after projection has settled counts as a miss; user-corrected
+rows are excluded from classifier measurement, including after later mail
+changes their source fingerprint. Correction authority is read in the same SQL
+snapshot as the current automatic projection links.
+
+The historical `attend` reporting bucket includes RSVP response tasks. Calendar
+asks retain their stored `Reply` action, owner and pending state; reporting an
+RSVP in this bucket does not assert a promise to attend. Ordinary reply asks
+retain `reply`. The packet excludes tasks born expired, as the product does.
 
 - true positives, false positives, false negatives, precision and recall per
   kind of ask, and for all kinds together;
@@ -257,6 +272,14 @@ resolver changes its answer. Matching policy and input fingerprints deliberately
 reuse the stored answer without judging again. Activation selects that version
 and bounded startup/ingest reconciliation; evaluation never repairs it. Old
 version rows remain available for explicit comparisons.
+
+R2c's developing asks facet uses a separate `asks-r2c-16` policy in the
+assessment table. Its records include sent mail; home assessments remain
+inbound-only under `r2-1`. Inspect the stored facet and pending message IDs
+in `mxr modes why MESSAGE_ID --format json`. To do, Your turn, Waiting on and relationship commitments read the stored
+answer; item projection retries persist across restart. See the
+[implementation contract](docs/implementation/r2c-asks/README.md) before
+connecting another consumer or interpreting these records as shipped R2c.
 
 `mxr classify report --limit 1000 --format json` counts stored fallbacks by
 home, sender kind, deciding rule and observed address/header/body facts. `mxr classify eval --compare POLICY`

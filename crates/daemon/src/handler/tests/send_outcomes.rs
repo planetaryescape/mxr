@@ -1,7 +1,7 @@
 use super::*;
 use mxr_core::{Draft, DraftSendOutcome, SendIdentity, SendOutcomeState};
 
-async fn fixture() -> (Arc<AppState>, Arc<mxr_provider_fake::FakeProvider>, Draft) {
+pub(super) async fn fixture() -> (Arc<AppState>, Arc<mxr_provider_fake::FakeProvider>, Draft) {
     fixture_with_sender(None).await
 }
 async fn fixture_with_sender(
@@ -45,7 +45,7 @@ async fn fixture_with_sender(
     state.store.insert_draft(&draft).await.unwrap();
     (state, fake, draft)
 }
-async fn call(state: &Arc<AppState>, request: Request) -> Response {
+pub(super) async fn call(state: &Arc<AppState>, request: Request) -> Response {
     match handle_request(
         state,
         &IpcMessage {
@@ -62,7 +62,7 @@ async fn call(state: &Arc<AppState>, request: Request) -> Response {
         other => panic!("unexpected {other:?}"),
     }
 }
-fn send(draft: &Draft, identity: SendIdentity) -> Request {
+pub(super) fn send(draft: &Draft, identity: SendIdentity) -> Request {
     Request::SendStoredDraft {
         managed_attachments_reviewed: true,
         send_identity: Some(identity),
@@ -70,7 +70,7 @@ fn send(draft: &Draft, identity: SendIdentity) -> Request {
         override_safety_token: None,
     }
 }
-async fn outcome(
+pub(super) async fn outcome(
     state: &Arc<AppState>,
     draft: &Draft,
     identity: &SendIdentity,

@@ -137,7 +137,7 @@ test("never more than one hint, and dismissing one doesn't bring up the next", a
       if ((await updates.getByTestId("now-row").getAttribute("data-focused")) === "true") break;
       await page.keyboard.press("j");
     }
-    await expect(updates.getByTestId("hint")).toContainText("A lets go of this digest only");
+    await expect(updates.getByTestId("hint")).toContainText("E lets go of this digest only");
     await expect(hints(page)).toHaveCount(1);
   }
 });
@@ -270,7 +270,7 @@ test("the topics hint sits under a person's topic list and } dismisses it", asyn
   await expect(person.getByTestId("topic").nth(1)).toBeVisible();
   await expect(hints(page)).toHaveCount(0);
   // Any click on the page is a use; the topic list is already its need.
-  await person.getByTestId("person-name").click();
+  await person.getByTestId("relationship-line").click();
   const hint = person.getByRole("navigation", { name: "Topics" }).getByTestId("hint");
   await expect(hint).toContainText("Every conversation with this person, yours to answer first");
   await page.keyboard.press("}");

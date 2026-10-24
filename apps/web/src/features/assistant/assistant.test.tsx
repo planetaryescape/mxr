@@ -515,18 +515,21 @@ describe("transcript", () => {
     const replyWith = (rows: unknown[]) => ({ ...turn[2]!, rows }) as AssistantItem;
     const list = () =>
       within(screen.getByRole("list", { name: "The emails and people in this reply" }));
+    const rowNow = new Date(2026, 9, 20, 12);
+    afterEach(() => vi.useRealTimers());
     const rich = {
       title: "Invoice 4471 overdue",
       detail: "Dana Ruiz",
       sender: "Dana Ruiz",
       snippet: "Please confirm payment by Friday",
-      at: Math.floor(Date.now() / 1000) - 10 * 60,
+      at: Math.floor(rowNow.getTime() / 1000) - 10 * 60,
       attachment: true,
       unread: true,
       link: { kind: "thread", thread_id: "t-rich" },
     };
 
     test("show the sender, the start of the text, a clip, the mode glyph and the time", async () => {
+      vi.useFakeTimers({ toFake: ["Date"], now: rowNow });
       answerLookups([
         {
           thread_id: "t-rich",

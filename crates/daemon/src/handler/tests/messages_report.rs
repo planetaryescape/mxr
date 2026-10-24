@@ -172,6 +172,7 @@ async fn messages_report() {
             let inputs = AccountInputs {
                 pending_threads: &std::collections::HashSet::new(),
                 assessments: &HashMap::new(),
+                asks: &senders.asks,
                 account_id: account,
                 messages: &messages,
                 contacts: &senders.contacts,

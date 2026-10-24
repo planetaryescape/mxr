@@ -27,11 +27,31 @@ pub(super) async fn list_commitments(
     Ok(ResponseData::CommitmentList { commitments })
 }
 
-pub(super) async fn resolve_commitment(state: &AppState, commitment_id: &str) -> HandlerResult {
-    state
+/// Shared by the direct command and Desk Done, including Archive filing.
+pub(super) async fn resolve_promise(
+    state: &AppState,
+    account: &AccountId,
+    id: &str,
+    expected_status: Option<CommitmentStatus>,
+) -> Result<Option<mxr_store::PromiseResolution>, super::HandlerError> {
+    let resolution = state
         .store
-        .resolve_contact_commitment(commitment_id)
-        .await
-        .map_err(|error| error.to_string())?;
+        .resolve_promise_with_todos(account, id, expected_status, chrono::Utc::now())
+        .await?;
+    if let Some(resolution) = &resolution {
+        let changed: Vec<_> = resolution
+            .todos
+            .iter()
+            .map(|(_, after)| after.clone())
+            .collect();
+        super::records::file_ticked_todos(state, &changed).await;
+    }
+    Ok(resolution)
+}
+
+pub(super) async fn resolve_commitment(state: &AppState, commitment_id: &str) -> HandlerResult {
+    if let Some(commitment) = state.store.get_contact_commitment(commitment_id).await? {
+        resolve_promise(state, &commitment.account_id, commitment_id, None).await?;
+    }
     Ok(ResponseData::Ack)
 }

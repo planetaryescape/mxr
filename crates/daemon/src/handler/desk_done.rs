@@ -31,9 +31,8 @@ use mxr_protocol::{
     MutationCommand, ResponseData,
 };
 use mxr_store::{
-    CommitmentPrior, CommitmentStatus, ContactCommitmentRecord, DeskDismissal, DeskDismissalMark,
-    DeskMessage, DeskUndo, ReminderState, ReplyLaterState, UndoEntry, UndoEntrySnapshot,
-    UndoableMutationKind,
+    CommitmentStatus, ContactCommitmentRecord, DeskDismissal, DeskDismissalMark, DeskMessage,
+    DeskUndo, ReminderState, ReplyLaterState, UndoEntry, UndoEntrySnapshot, UndoableMutationKind,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -478,17 +477,15 @@ async fn put_away(
         let Some(commitment) = plan.commitment.as_ref() else {
             continue;
         };
-        if state
-            .store
-            .resolve_account_commitment(&commitment.account_id, &commitment.id)
-            .await?
+        if let Some(resolution) = super::commitments::resolve_promise(
+            state,
+            &commitment.account_id,
+            &commitment.id,
+            Some(CommitmentStatus::Open),
+        )
+        .await?
         {
-            desk.commitments.push(CommitmentPrior {
-                account_id: commitment.account_id.clone(),
-                id: commitment.id.clone(),
-                status: commitment.status,
-                resolved_at: commitment.resolved_at,
-            });
+            desk.promise_resolutions.push(resolution);
         } else {
             plan.error = Some("the promise was removed before it could be resolved".into());
             plan.commitment = None;
@@ -539,6 +536,10 @@ pub(super) async fn restore_desk_state(
         .collect();
     let reopened = state.store.get_todos(&reopened).await?;
     super::records::unfile_todos(state, &reopened).await;
+    for resolution in &desk.promise_resolutions {
+        let restored = state.store.undo_promise_resolution(resolution).await?;
+        super::records::unfile_todos(state, &restored).await;
+    }
     for commitment in &desk.commitments {
         state
             .store

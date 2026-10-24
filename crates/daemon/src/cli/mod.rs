@@ -2594,6 +2594,14 @@ Each row is one thing to do, written as what to do rather than the email's subje
 
 With no subcommand, prints the runway: Now, Coming up by week, Later, Whenever and Done this week.";
 
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum TodoCorrectionArg {
+    NotATodo,
+    NotMine,
+    AlreadyDone,
+    WrongDetails,
+}
+
 #[derive(Debug, Clone, Subcommand)]
 pub enum TodoAction {
     /// Link tasks with the optional ms-todo CLI and keep shared fields in sync.
@@ -2647,6 +2655,23 @@ pub enum TodoAction {
     Dismiss {
         #[arg(value_name = "TODO_ID", required = true)]
         todo_ids: Vec<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Record one of four durable correction reasons.
+    Correct {
+        todo_id: String,
+        #[arg(value_enum)]
+        reason: TodoCorrectionArg,
+        #[arg(value_name = "FIELD=VALUE")]
+        edits: Vec<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Undo a correction using its returned token, preserving newer edits.
+    UndoCorrection {
+        todo_id: String,
+        correction_id: String,
         #[arg(long)]
         dry_run: bool,
     },

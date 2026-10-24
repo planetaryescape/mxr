@@ -122,12 +122,14 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_thread_context", Rule::Read),
     ("mxr_thread_gists", Rule::Read),
     ("mxr_thread_previews", Rule::Read),
+    ("mxr_todo_correct", Rule::Confirm),
     ("mxr_todo_get", Rule::Read),
     ("mxr_todo_list", Rule::Read),
     // Confirmed links and syncs can write to an external service.
     ("mxr_todo_microsoft", Rule::Confirm),
     ("mxr_todo_resolve", Rule::Confirm),
     ("mxr_todo_set_state", Rule::Confirm),
+    ("mxr_todo_undo_correction", Rule::Confirm),
     // Replaces the user's draft content.
     ("mxr_update_draft", Rule::Always),
     ("mxr_updates_digest", Rule::Read),
@@ -309,6 +311,42 @@ mod tests {
                     }
                 );
                 assert!(!auto_approvable("mxr_todo_microsoft", &committing));
+            }
+        }
+    }
+
+    #[test]
+    fn todo_corrections_preview_but_commits_and_malformed_confirmation_wait() {
+        for tool in ["mxr_todo_correct", "mxr_todo_undo_correction"] {
+            let arguments = json!({
+                "todo_id": "todo_1", "reason": "wrong_details",
+                "edits": [{"field": "title", "value": "Updated task"}],
+                "correction_id": "exact-change",
+            });
+            for preview in [
+                arguments.clone(),
+                with(&arguments, "confirm", json!(false)),
+                with(&arguments, "confirm", Value::Null),
+            ] {
+                assert_eq!(classify(tool, &preview), Gate::Run);
+                assert!(!auto_approvable(tool, &preview));
+            }
+            for confirm in [
+                json!(true),
+                json!("true"),
+                json!("false"),
+                json!(0),
+                json!([]),
+                json!({}),
+            ] {
+                let committing = with(&arguments, "confirm", confirm);
+                assert_eq!(
+                    classify(tool, &committing),
+                    Gate::Approve {
+                        preview: Some((tool.into(), with(&arguments, "confirm", json!(false)))),
+                    }
+                );
+                assert!(!auto_approvable(tool, &committing));
             }
         }
     }

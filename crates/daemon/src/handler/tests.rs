@@ -788,3 +788,4 @@ mod promise_lifecycle;
 mod promise_ordering;
 mod promise_projection;
 mod promise_recipients;
+mod promise_timing;

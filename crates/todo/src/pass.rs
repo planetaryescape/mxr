@@ -353,6 +353,22 @@ where
                 FieldProvenance::with_evidence(FieldSource::User, "your recorded promise date"),
             );
         }
+        let prior = match &commitment {
+            Some(promise) => {
+                store
+                    .unique_commitment_todo(&row.account_id, &promise.id)
+                    .await?
+            }
+            None => None,
+        };
+        // An accepted date moves the retained task's deadline, including its corrected lead time.
+        if let Some(kind) = prior
+            .as_ref()
+            .filter(|_| user_date.is_some())
+            .and_then(|todo| TodoKind::parse(&todo.kind))
+        {
+            detection.kind = kind;
+        }
         let legacy_payment_identity =
             if matches!(detection.kind, TodoKind::Bill | TodoKind::PaymentFailed) {
                 let prefix = format!("{}|payment|", envelope.from.email.to_lowercase());
@@ -413,10 +429,8 @@ where
         }
         record.user_edited = user_date.is_some();
         record.commitment_id = commitment.map(|c| c.id);
-        if let Some(id) = &record.commitment_id {
-            if let Some(prior) = store.unique_commitment_todo(&row.account_id, id).await? {
-                record.dedup_key = prior.dedup_key;
-            }
+        if let Some(prior) = prior {
+            record.dedup_key = prior.dedup_key;
         }
         current_keys.push(record.reason.clone());
         record_outcome(

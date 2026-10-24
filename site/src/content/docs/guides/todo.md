@@ -82,7 +82,8 @@ names the action, not the email's subject. `edit` accepts `title`, `due`,
 `amount`, `counterparty` and `kind` as `field=value`; an empty value clears
 due, amount or counterparty. A task you create or edit is yours: it no
 longer expires automatically. Recording a new promise date updates its open task
-while keeping your other edits. A due date you corrected directly on the task
+while keeping your other edits. If you changed its kind, its lead time is
+recalculated for the new date. A due date you corrected directly on the task
 keeps its own authority. Accepting a unique excerpt of a sent promise keeps its
 full source quote and the same task. If the excerpt matches several promises,
 use the exact one. Check the preview before applying either change.

@@ -166,6 +166,26 @@ async fn observe(
                 mxr_protocol::DeskLaneKind::Owed | mxr_protocol::DeskLaneKind::PeopleNew
             )
     });
+    let (stored_revision, effective_revision): (i64, i64) = sqlx::query_as(
+        "SELECT a.input_revision, i.effective_revision FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ? AND a.account_id = ? AND a.policy_version = ?"
+    ).bind(mail.id.as_str()).bind(fx.account.as_str()).bind(ASKS_POLICY_VERSION)
+        .fetch_one(fx.state.store.reader()).await.unwrap();
+    assert_eq!(stored_revision, effective_revision);
+    let source = fx
+        .state
+        .store
+        .desk_messages_in_threads(&fx.account, std::slice::from_ref(&mail.thread_id))
+        .await
+        .unwrap();
+    let senders = crate::handler::desk::Senders::load_raw(&fx.state, &fx.account, &source)
+        .await
+        .unwrap();
+    let own = crate::handler::desk::self_matcher(&fx.state, &fx.account)
+        .await
+        .unwrap();
+    let message = source.iter().find(|m| m.id == mail.id).unwrap();
+    let reply_capable = !message.trashed
+        && crate::handler::mail_kind::human_response(&senders.signals(message, &own));
     let units: Vec<_> = answer
         .units
         .iter()
@@ -181,6 +201,10 @@ async fn observe(
         "REPLY_PACKET {}",
         serde_json::json!({
             "source": mail.id, "policy": answer.policy_version, "fingerprint": answer.input_fingerprint,
+        "stored_revision": stored_revision, "effective_revision": effective_revision,
+        "reply_capable": reply_capable, "auto_generated": message.evidence.auto_generated,
+        "bulk": message.evidence.bulk, "is_reply": message.evidence.is_reply,
+        "thread_correspondence": message.evidence.thread_correspondence,
             "context": answer.context_token, "home": entry.home.unwrap().home,
             "role": answer.facts.recipient_role, "owner_authored": answer.facts.owner_authored,
             "owner_replied_afterwards": answer.facts.owner_replied_afterwards,
@@ -372,13 +396,12 @@ async fn approved_visible_followup_and_notice_packets_expose_source_normalizatio
     notice.subject = "Rate your journey".into();
     fx.store_envelope(&notice, MessageDirection::Inbound).await;
     let (answer, turn, errors) = observe(&fx, &notice, false).await;
-    eprintln!(
-        "VISIBLE_NOTICE_DIAGNOSTIC reply_errors={errors} delivered_turn={turn} owner_debt={}",
-        answer
-            .units
-            .iter()
-            .any(|u| u.answer == AskAnswer::AsksYouToReply)
-    );
+    assert_eq!(errors, 0);
+    assert!(!turn);
+    assert!(answer.units.iter().any(|u| answer.quote(u) == Some(text)
+        && u.tags
+            .as_ref()
+            .is_some_and(|t| t.act == mxr_core::asks::Act::Offer)));
 }
 
 #[tokio::test]
@@ -393,3 +416,7 @@ async fn embedded_speaker_future_does_not_steal_an_owner_request() {
         .iter()
         .any(|u| u.answer == AskAnswer::AsksYouToReply));
 }
+
+mod invitations;
+
+mod projection;

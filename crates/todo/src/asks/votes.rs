@@ -20,10 +20,6 @@ pattern!(
     PROMISE,
     r"(?i)\b(i(?:'ll| will)|we(?:'ll| will)|i promise to|i can commit to)\s+(send|provide|upload|sign|pay|book|contact|return|prepare|complete|deliver|go through|update)\b"
 );
-pattern!(
-    REPLY_COMMITMENT,
-    r"(?i)^(?:i(?:'ll| will)|we(?:'ll| will)|i promise to|i can commit to)\s+(?:reply|respond)\b"
-);
 pattern!(OFFER_SPEAKER, r"(?i)\b(?:i|we) (?:can|could)\s+\p{L}");
 pattern!(FUTURE_SPEAKER, r"(?i)\b(?:i|we)(?:'ll| will)\s+\p{L}");
 pattern!(
@@ -398,6 +394,15 @@ pub(super) fn label(
             if public { Actor::Nobody } else { actor },
         ));
     }
+    if votes.is_empty() && super::reply::feedback_invitation(text) {
+        votes.push(vote(
+            "optional_feedback",
+            Act::Offer,
+            state,
+            ActionKind::Reply,
+            Actor::Nobody,
+        ));
+    }
     if votes.is_empty()
         && (REPLY.is_match(text)
             || text.ends_with('?') && QUESTION.is_match(text) && !PLEASANTRY.is_match(text))
@@ -405,17 +410,17 @@ pub(super) fn label(
         // A response verb can describe the speaker's commitment. Require its
         // own clause opening so an embedded future cannot steal a request.
         let speech = salutation(text).map_or(text, |(_, rest)| rest).trim_start();
-        let commitment = REPLY_COMMITMENT.is_match(speech);
+        let speaker_act = super::reply::speaker_act(speech);
         votes.push(vote(
             "reply",
-            if commitment {
-                Act::Commitment
-            } else {
-                Act::Question
-            },
+            speaker_act.unwrap_or(Act::Question),
             state,
             ActionKind::Reply,
-            if commitment { promise_actor } else { actor },
+            if speaker_act.is_some() {
+                promise_actor
+            } else {
+                actor
+            },
         ));
     }
     if votes.is_empty() && (PLEASANTRY.is_match(text) || state != AskState::Pending) {

@@ -223,7 +223,7 @@ fn unchanged_persistent_startup_and_actual_first_and_later_reconciler_ticks_are_
                     .await;
                 state.store.reader().close().await;
                 state.store.writer().close().await;
-            })
+            });
         },
     );
 }

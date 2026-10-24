@@ -287,11 +287,24 @@ pub(super) async fn record_promise(
     due_at: DateTime<Utc>,
     dry_run: bool,
 ) -> HandlerResult {
-    let mut what = plain_text(what, WHAT_MAX_CHARS);
+    let supplied = what.trim();
+    let mut what = plain_text(supplied, WHAT_MAX_CHARS);
     if what.is_empty() {
         return Err("Say what you promised, such as \"send the deck\".".into());
     }
     let envelope = sent_envelope(state, message_id).await?;
+    // Source punctuation is part of the natural identity, including invoice #s.
+    // Keep the existing display cleanup for free-form acceptance text.
+    if supplied.chars().count() <= WHAT_MAX_CHARS && !supplied.chars().any(char::is_control) {
+        let body = state.store.get_body(message_id).await?;
+        if body
+            .as_ref()
+            .and_then(|body| body.text_plain.as_ref())
+            .is_some_and(|text| text.contains(supplied))
+        {
+            what = supplied.to_string();
+        }
+    }
     let stored = state
         .store
         .asks_for_messages(&envelope.account_id, std::slice::from_ref(message_id))

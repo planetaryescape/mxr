@@ -227,7 +227,7 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
                     None,
                 )
                 .await;
-            let text = "Your payment failed. Please update your payment details.";
+            let text = "Your payment of £25 failed. Please update your payment details.";
             replace(&fx, &mail, text).await;
             settle(&fx, &mail).await;
             let mut old = fx
@@ -254,6 +254,11 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
                 start: first.span.end + 1,
                 end: text.len(),
             };
+            // Policy13 selected amounts within each unit's exact byte span.
+            second.tags.as_mut().unwrap().amount = None;
+            for vote in &mut second.votes {
+                vote.tags.amount = None;
+            }
             old.units.splice(unit_index..=unit_index, [first, second]);
             old.policy_version = "asks-r2c-13".into();
             sqlx::query("DELETE FROM todos WHERE source_message_id=?")
@@ -282,6 +287,9 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
                 rows.push(row);
             }
             assert_eq!(rows.len(), 2);
+            assert_eq!(rows[0].currency.as_deref(), Some("GBP"));
+            assert_eq!(rows[1].currency, None);
+            eprintln!("REVIEW4_OLD_UNITS {old:?} rows={rows:?}");
             let original = fx
                 .state
                 .store
@@ -346,6 +354,27 @@ async fn review3_policy13_grouping_preserves_saved_decisions_and_exact_undo() {
                 .list_todos_in_state(Some(&fx.account), TodoState::Open, 100)
                 .await
                 .unwrap();
+            let ResponseData::Todos { todos } = request(
+                &fx,
+                Request::ListTodos {
+                    account_id: Some(fx.account.clone()),
+                    state: mxr_protocol::TodoStateData::Open,
+                    limit: 100,
+                },
+            )
+            .await
+            else {
+                panic!("public active todos")
+            };
+            eprintln!("REVIEW4_GROUPED protected={protected_index} reason={reason:?} open={open:?} public={todos:?}");
+            assert_eq!(
+                todos.len(),
+                usize::from(reason == mxr_protocol::TodoCorrectionData::WrongDetails)
+            );
+            if let Some(saved) = todos.first() {
+                assert_eq!(saved.id, original.id);
+                assert_eq!(saved.title, corrected.title);
+            }
             assert_eq!(
                 open.len(),
                 usize::from(reason == mxr_protocol::TodoCorrectionData::WrongDetails)

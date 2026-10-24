@@ -53,6 +53,18 @@ pub(crate) async fn write(
                 || quote.to_lowercase(),
                 |r| format!("{}:{}", r.kind, r.value),
             );
+        let object = if matches!(
+            tags.action,
+            mxr_core::asks::ActionKind::Pay | mxr_core::asks::ActionKind::FixPayment
+        ) {
+            let currency = tags
+                .amount
+                .and_then(|i| answer.facts.amounts.get(i))
+                .map_or("unknown", |amount| amount.currency.as_str());
+            format!("{currency}|{object}")
+        } else {
+            object
+        };
         let period = due
             .map(|d| d.at.format("%Y-%m").to_string())
             .unwrap_or_default();

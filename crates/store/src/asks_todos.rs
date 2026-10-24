@@ -34,11 +34,14 @@ impl Store {
         if !current {
             return Ok(());
         }
-        let sql = format!("SELECT {} FROM todos WHERE account_id=? AND dedup_key IN (SELECT value FROM json_each(?)) AND currency IS ? AND rules_version>=2 AND json_extract(field_sources, '$.asks_provenance.evidence') IS NOT NULL ORDER BY created_at, id", crate::todos::COLUMNS);
+        let sql = format!("SELECT {} FROM todos WHERE account_id=? AND dedup_key IN (SELECT value FROM json_each(?)) AND (currency IS ? OR (currency IS NULL AND ?)) AND rules_version>=2 AND json_extract(field_sources, '$.asks_provenance.evidence') IS NOT NULL ORDER BY created_at, id", crate::todos::COLUMNS);
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(record.account_id.as_str())
             .bind(crate::encode_json(&legacy_keys)?)
+            // Multiple keys come only from exact prior spans inside one grouped
+            // obligation. An amount-less remediation shares its saved decision.
             .bind(&record.currency)
+            .bind(legacy_keys.len() > 1)
             .fetch_all(&mut *tx)
             .await?;
         let prior = rows

@@ -253,8 +253,22 @@ async fn plan(
 ) -> Result<Vec<Plan>, HandlerError> {
     let archive_on_last_done = state.config_snapshot().modes.archive_on_last_done;
     let mut placed: HashMap<ThreadId, Placement> = HashMap::new();
+    let mut history_topics = HashSet::new();
     for (account, threads) in threads_by_account(state, thread_ids).await? {
-        for placement in Box::pin(place_threads(state, &account, &threads, now)).await? {
+        let placements = Box::pin(place_threads(state, &account, &threads, now)).await?;
+        if mode == ModeKindData::Messages {
+            let history: Vec<_> = placements
+                .iter()
+                .filter(|placement| !placement.data.in_inbox)
+                .map(|placement| placement.data.thread_id.clone())
+                .collect();
+            if !history.is_empty() {
+                history_topics.extend(
+                    Box::pin(super::messages::done_topics(state, &account, &history, now)).await?,
+                );
+            }
+        }
+        for placement in placements {
             placed.insert(placement.data.thread_id.clone(), placement);
         }
     }
@@ -268,9 +282,15 @@ async fn plan(
                 return Plan::failed(thread_id, mode, "this thread is already in the request");
             }
             match placed.get(thread_id) {
-                Some(placement) => {
-                    plan_one(placement, mode, todo_ids, exact, archive_on_last_done, now)
-                }
+                Some(placement) => plan_one(
+                    placement,
+                    mode,
+                    todo_ids,
+                    exact,
+                    archive_on_last_done,
+                    now,
+                    history_topics.contains(thread_id),
+                ),
                 None => Plan::failed(thread_id, mode, "conversation not found"),
             }
         })
@@ -284,6 +304,7 @@ fn plan_one(
     exact: Option<&Exact<'_>>,
     archive_on_last_done: bool,
     now: DateTime<Utc>,
+    history_topic: bool,
 ) -> Plan {
     let data = &placement.data;
     let provider = provider_name(placement.provider.as_ref());
@@ -293,9 +314,11 @@ fn plan_one(
         .iter()
         .cloned()
         .partition(|todo| todo_ids.is_empty() || todo_ids.contains(&todo.id));
-    // Only the mode holding a thread can let it go: done elsewhere would
-    // archive mail no mode placed, such as an invite still to answer.
-    let refusal = if data.modes.iter().any(|entry| entry.mode == mode) {
+    // Only the mode holding a thread can let inbox mail go. Messages also
+    // lists archived history; done there only records its local watermark.
+    let refusal = if data.modes.iter().any(|entry| entry.mode == mode)
+        || (mode == ModeKindData::Messages && history_topic)
+    {
         None
     } else if data.done_in.contains(&mode) {
         Some(format!("already done in {}", mode.name()))
@@ -499,6 +522,13 @@ async fn run(state: &AppState, mut plans: Vec<Plan>) -> HandlerResult {
             }
         }
     };
+
+    for plan in &plans {
+        if let Some(error) = &plan.error {
+            tracing::warn!(thread_id = %plan.thread_id, mode = %plan.mode.name(), %error,
+                "could not mark conversation done");
+        }
+    }
 
     Ok(ResponseData::ModeDone {
         items: plans.iter().map(Plan::outcome).collect(),

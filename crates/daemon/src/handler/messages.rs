@@ -95,6 +95,23 @@ enum Scope<'a> {
     Threads(&'a [ThreadId]),
 }
 
+/// Recent and Quiet include conversation history outside the inbox. Done
+/// must accept those topics too, using the same selection as the person page.
+pub(super) async fn done_topics(
+    state: &AppState,
+    account_id: &AccountId,
+    threads: &[ThreadId],
+    now: DateTime<Utc>,
+) -> Result<HashSet<ThreadId>, HandlerError> {
+    Ok(gather(state, account_id, Scope::Threads(threads), now)
+        .await?
+        .topics
+        .into_iter()
+        .filter(|topic| topic.data.state != TopicStateData::Done)
+        .map(|topic| topic.data.thread_id)
+        .collect())
+}
+
 async fn gather(
     state: &AppState,
     account_id: &AccountId,

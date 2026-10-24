@@ -1819,7 +1819,7 @@ fn update_llm_config_rejects_blank_model() {
                     std::fs::read(mxr_config::config_file_path()).expect("unchanged config"),
                     disk_before
                 );
-            })
+            });
         },
     );
 }

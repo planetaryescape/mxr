@@ -27,13 +27,13 @@ you_promised/send            expected     2 found     2 tp     2 fp     0 fn    
 
 field amount        pairs    36 exact    36 (100.0%) missing 0 wrong 0 spurious 0
 field due           pairs    36 exact    35 (97.2%) missing 1 wrong 0 spurious 0
-field counterparty  pairs    36 exact    34 (94.4%) missing 0 wrong 2 spurious 0
+field counterparty  pairs    36 exact    36 (100.0%) missing 0 wrong 0 spurious 0
 field quote         pairs     1 exact     1 (100.0%) missing 0 wrong 0 spurious 0
 field actor         pairs     1 exact     1 (100.0%) missing 0 wrong 0 spurious 0
 field state         pairs     1 exact     1 (100.0%) missing 0 wrong 0 spurious 0
 
 duplicates 0 merges 0
-twin pairs 43 both right 41; differing pairs 32 both right 30
+twin pairs 43 both right 42; differing pairs 32 both right 31
 reply owed (182 emails) expected    13 found    13 tp    13 fp     0 fn     0 precision 100.0% recall 100.0%
 
 locale           en-GB                              emails    163 expected    32 found    32 tp    32 fp     0 fn     0 precision 100.0% recall 100.0%
@@ -91,7 +91,7 @@ zone             authored+forwarded+subject         emails      2 expected     0
 zone             authored+quoted+signature+subject  emails      1 expected     0 found     0 tp     0 fp     0 fn     0 precision      - recall      -
 zone             authored+subject                   emails    181 expected    35 found    35 tp    35 fp     0 fn     0 precision 100.0% recall 100.0%
 
-59 mismatches
+57 mismatches
 application-auto-ack demo-msg-148 who: expected machine, got list [label to check]
 application-auto-ack demo-msg-148 home: expected updates, got reading [label to check]
 calendar-invite demo-msg-128 due: expected 7 days 11 hours after it was sent, got none [label to check]
@@ -123,7 +123,6 @@ sign-completed demo-msg-154 who: expected machine, got person
 sign-completed demo-msg-154 home: expected updates, got messages
 sign-request demo-msg-153 who: expected machine, got person
 sign-request demo-msg-153 home: expected updates, got messages
-sign-request demo-msg-153 counterparty: expected Marlow Ltd, got Marlow Ltd via DocuSign
 subscriptions-disney-cancellation demo-msg-106 who: expected machine, got person
 subscriptions-disney-cancellation demo-msg-106 home: expected updates, got messages
 subscriptions-disney-receipt demo-msg-103 who: expected machine, got person
@@ -145,7 +144,6 @@ todo-council-statement demo-msg-8 home: expected updates, got messages
 todo-council-statement demo-msg-8 record: expected yes, got no [label to check]
 todo-document-to-sign demo-msg-16 who: expected machine, got person
 todo-document-to-sign demo-msg-16 home: expected updates, got messages
-todo-document-to-sign demo-msg-16 counterparty: expected Foxtons, got Foxtons via DocuSign
 todo-statement-ready demo-msg-13 record: expected no, got yes [label to check]
 vet-balance-now-payable demo-msg-199 who: expected machine, got person
 vet-balance-now-payable demo-msg-199 home: expected updates, got messages

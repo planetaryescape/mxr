@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { expectCursorOn, mailRows, rowById } from "./helpers/mail";
 import { openApp, readE2EState } from "./helpers/state";
+import { freshWaitingConversations } from "./helpers/waiting-request";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -104,36 +105,45 @@ test("e on an owed row is Done: it leaves at once, is read and archived, and u p
 });
 
 test("the row's check is Done too, and the toast's Undo brings it back", async ({ page }) => {
-  // Not the cursor's row: the check shows there without a pointer.
-  const row = (await laneRows(page, "waiting"))[1]!;
-  const before = await threadState(page, row.thread_id);
+  const fixture = await freshWaitingConversations(page);
+  try {
+    // Not the cursor's row: the check shows there without a pointer.
+    const row = (await laneRows(page, "waiting")).find(
+      (candidate) => candidate.thread_id === fixture.rows[1]?.thread_id,
+    );
+    if (!row) throw new Error("The second owned waiting request is missing from the desk");
+    const before = await threadState(page, row.thread_id);
 
-  await openApp(page, "/desk?lane=waiting");
-  const target = rowById(page, domId(row));
-  await expect(target).toBeVisible();
-  const check = target.getByTestId("desk-done");
-  // With a mouse it waits for the pointer.
-  await expect(check).toHaveCSS("opacity", "0");
-  await target.hover();
-  await expect(check).toHaveCSS("opacity", "1");
+    await openApp(page, "/desk?lane=waiting");
+    const target = rowById(page, domId(row));
+    await expect(target).toBeVisible();
+    const check = target.getByTestId("desk-done");
+    // With a mouse it waits for the pointer.
+    await expect(check).toHaveCSS("opacity", "0");
+    await target.hover();
+    await expect(check).toHaveCSS("opacity", "1");
 
-  const done = page.waitForResponse("**/api/v1/mail/desk/done");
-  await check.click();
-  await expect(target).toHaveCount(0);
-  const body = (await (await done).json()) as { items: { lane: string; dismissed: boolean }[] };
-  expect(body.items[0]).toMatchObject({ lane: "waiting", dismissed: true });
-  // Waiting on is marked read but never archived.
-  const after = await threadState(page, row.thread_id);
-  expect(after.every((message) => !message.unread)).toBe(true);
-  expect(after.map((message) => message.inInbox)).toEqual(before.map((m) => m.inInbox));
-  // Opening the row was not part of it.
-  await expect(page).toHaveURL(/\/desk\?lane=waiting$/);
+    const done = page.waitForResponse("**/api/v1/mail/desk/done");
+    await check.click();
+    await expect(target).toHaveCount(0);
+    // SAFETY: this is the fake bridge's DeskDone response; its waiting outcome is checked below.
+    const body = (await (await done).json()) as { items: { lane: string; dismissed: boolean }[] };
+    expect(body.items[0]).toMatchObject({ lane: "waiting", dismissed: true });
+    // Waiting on is marked read but never archived.
+    const after = await threadState(page, row.thread_id);
+    expect(after.every((message) => !message.unread)).toBe(true);
+    expect(after.map((message) => message.inInbox)).toEqual(before.map((m) => m.inInbox));
+    // Opening the row was not part of it.
+    await expect(page).toHaveURL(/\/desk\?lane=waiting$/);
 
-  const undone = page.waitForResponse("**/api/v1/mail/mutations/undo");
-  await page.getByRole("button", { name: "Undo" }).click();
-  expect((await undone).ok()).toBe(true);
-  await expect(rowById(page, domId(row))).toBeVisible();
-  expect(await threadState(page, row.thread_id)).toEqual(before);
+    const undone = page.waitForResponse("**/api/v1/mail/mutations/undo");
+    await page.getByRole("button", { name: "Undo" }).click();
+    expect((await undone).ok()).toBe(true);
+    await expect(rowById(page, domId(row))).toBeVisible();
+    expect(await threadState(page, row.thread_id)).toEqual(before);
+  } finally {
+    await fixture.finish();
+  }
 });
 
 test("a held e puts away one row, not the lane", async ({ page }) => {

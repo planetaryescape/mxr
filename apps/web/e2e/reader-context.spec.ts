@@ -125,7 +125,11 @@ test("the ask lands without moving the messages and is marked in the message", a
     await route.abort();
   });
   const newestId = await stubNewestBody(page);
-  await stubModel(page, newestId, 1_200);
+  await page.route("**/api/v1/mail/modes/membership?thread_id=*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    await route.continue();
+  });
+  await stubModel(page, newestId, 2_400);
   await openFirstConversation(page);
 
   const slot = page.getByTestId("thread-gist");

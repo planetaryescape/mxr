@@ -132,7 +132,10 @@ test("a drafted reply says which model wrote it, and each source opens the cited
   await composer(page).getByRole("textbox", { name: "Draft instruction" }).press("Enter");
   await expect.poll(() => draftRequest).not.toBeNull();
   expect(draftRequest).toHaveProperty("draft.kind", "reply");
-  expect(draftRequest).toHaveProperty("draft.message_id", oldest.id);
+  const newest = inbox.messages.at(-1);
+  if (!newest) throw new Error("the inbox conversation has no reply target");
+  expect(draftRequest).toHaveProperty("draft.message_id", newest.id);
+  expect(newest.id).not.toBe(oldest.id);
 
   const provenance = composer(page).getByTestId("draft-provenance");
   await expect(provenance.getByTestId("draft-provenance-line")).toHaveText(

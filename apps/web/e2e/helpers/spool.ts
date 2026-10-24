@@ -24,6 +24,8 @@ export interface SpoolMessage {
   thread?: string;
   /** Provider label ids; the default is INBOX and UNREAD. */
   labels?: string[];
+  /** RFC3339 fixture time; omitted messages arrive now. */
+  date?: string;
 }
 
 /** Drop a message that arrives on the next sync. Returns its file name. */
@@ -37,6 +39,7 @@ export function deliver(message: SpoolMessage): string {
     `Subject: ${message.subject}`,
     message.thread ? `Thread: ${message.thread}` : null,
     message.labels ? `Labels: ${message.labels.join(", ")}` : null,
+    message.date ? `Date: ${message.date}` : null,
   ].filter(Boolean);
   writeFileSync(
     join(spoolDir(), `${name}.msg`),

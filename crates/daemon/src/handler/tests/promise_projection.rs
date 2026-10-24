@@ -376,3 +376,230 @@ async fn resolving_an_accepted_or_canonical_promise_closes_its_task_without_reop
         );
     }
 }
+
+#[tokio::test]
+async fn public_record_promise_updates_the_existing_task_without_a_settle_helper() {
+    let mut config = mxr_config::MxrConfig::default();
+    config.llm.enabled = false;
+    config.search.semantic.enabled = false;
+    config.search.semantic.auto_download_models = false;
+    config.activity.enabled = false;
+    let fx = Fixture::with_config(config).await;
+    let mail = source(&fx, "I'll send the report.").await;
+    settle(&fx, &mail).await;
+    let original = fx
+        .state
+        .store
+        .list_promise_todos(&fx.account)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(original.due_at, None);
+    let before = fx
+        .state
+        .store
+        .promise_fingerprint(&fx.account)
+        .await
+        .unwrap();
+    let response = request(
+        &fx,
+        Request::RecordPromise {
+            message_id: mail.id.clone(),
+            what: original.reason.clone(),
+            due_at: chosen(),
+            dry_run: true,
+        },
+    )
+    .await;
+    assert!(matches!(
+        response,
+        ResponseData::RecordedPromise { dry_run: true, .. }
+    ));
+    assert_eq!(
+        fx.state
+            .store
+            .promise_fingerprint(&fx.account)
+            .await
+            .unwrap(),
+        before
+    );
+    assert_eq!(
+        fx.state
+            .store
+            .get_todo(&original.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        original
+    );
+    let ResponseData::RecordedPromise { commitment, .. } = request(
+        &fx,
+        Request::RecordPromise {
+            message_id: mail.id.clone(),
+            what: original.reason.clone(),
+            due_at: chosen(),
+            dry_run: false,
+        },
+    )
+    .await
+    else {
+        panic!("recorded promise")
+    };
+    assert_eq!(
+        original.commitment_id.as_deref(),
+        Some(commitment.id.as_str())
+    );
+    // No scan, assessment reconciliation or tick between these public requests.
+    let ResponseData::Todo { todo } = request(
+        &fx,
+        Request::GetTodo {
+            todo_id: original.id.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("public todo")
+    };
+    let stored = fx
+        .state
+        .store
+        .get_todo(&original.id)
+        .await
+        .unwrap()
+        .unwrap();
+    eprintln!(
+        "PUBLIC_PROMISE_PACKET {}",
+        serde_json::json!({"task_id": original.id, "commitment_id": commitment.id, "original_due": original.due_at, "contact_due": commitment.by_when, "public_due": todo.due_at, "stored_due": stored.due_at, "user_edited": stored.user_edited, "field_sources": stored.field_sources, "reason": stored.reason})
+    );
+    assert_eq!(todo.due_at, Some(chosen()));
+    assert_eq!(stored.due_at, Some(chosen()));
+    assert!(stored.user_edited);
+    assert_eq!(
+        mxr_todo::provenance::FieldSources::from_json(&stored.field_sources)
+            .get("due_at")
+            .unwrap()
+            .source,
+        mxr_todo::provenance::FieldSource::User
+    );
+    assert_eq!(stored.reason, original.reason);
+    assert_eq!(stored.title, original.title);
+    assert_eq!(
+        fx.state
+            .store
+            .list_promise_todos(&fx.account)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn public_record_promise_preserves_closed_and_user_edited_task_decisions() {
+    for decision in ["done", "dismissed", "edited"] {
+        let mut config = mxr_config::MxrConfig::default();
+        config.llm.enabled = false;
+        config.search.semantic.enabled = false;
+        config.search.semantic.auto_download_models = false;
+        config.activity.enabled = false;
+        let fx = Fixture::with_config(config).await;
+        let mail = source(&fx, "I'll send the report.").await;
+        settle(&fx, &mail).await;
+        let original = fx
+            .state
+            .store
+            .list_promise_todos(&fx.account)
+            .await
+            .unwrap()
+            .remove(0);
+        if decision == "edited" {
+            request(
+                &fx,
+                Request::UpdateTodo {
+                    todo_id: original.id.clone(),
+                    edits: vec![
+                        mxr_protocol::TodoEditData {
+                            field: "title".into(),
+                            value: "My chosen report title".into(),
+                        },
+                        mxr_protocol::TodoEditData {
+                            field: "due".into(),
+                            value: "2026-11-06T12:00:00Z".into(),
+                        },
+                    ],
+                    time_zone: Some("UTC".into()),
+                    dry_run: false,
+                },
+            )
+            .await;
+        } else {
+            request(
+                &fx,
+                Request::SetTodoState {
+                    todo_ids: vec![original.id.clone()],
+                    action: if decision == "done" {
+                        mxr_protocol::TodoStateActionData::Done
+                    } else {
+                        mxr_protocol::TodoStateActionData::Dismiss
+                    },
+                    dry_run: false,
+                },
+            )
+            .await;
+        }
+        let protected = fx
+            .state
+            .store
+            .get_todo(&original.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let ResponseData::RecordedPromise { commitment, .. } = request(
+            &fx,
+            Request::RecordPromise {
+                message_id: mail.id.clone(),
+                what: original.reason.clone(),
+                due_at: chosen(),
+                dry_run: false,
+            },
+        )
+        .await
+        else {
+            panic!("recorded promise")
+        };
+        assert_eq!(
+            original.commitment_id.as_deref(),
+            Some(commitment.id.as_str())
+        );
+        let ResponseData::Todo { todo } = request(
+            &fx,
+            Request::GetTodo {
+                todo_id: original.id.clone(),
+            },
+        )
+        .await
+        else {
+            panic!("public todo")
+        };
+        assert_eq!(todo.id, original.id);
+        assert_eq!(
+            fx.state
+                .store
+                .get_todo(&original.id)
+                .await
+                .unwrap()
+                .unwrap(),
+            protected,
+            "{decision}"
+        );
+        assert_eq!(
+            fx.state
+                .store
+                .list_promise_todos(&fx.account)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+}

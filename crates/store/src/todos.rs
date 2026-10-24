@@ -353,6 +353,7 @@ impl super::Store {
                 expired_at_birth = CASE WHEN {REOPENS} THEN 0 ELSE todos.expired_at_birth END,
                 updated_at = excluded.updated_at
              WHERE {UNTOUCHED_EXISTING}
+               AND (excluded.user_edited = 0 OR todos.state NOT IN ('done', 'dismissed'))
                AND ({newer_source})
                AND (todos.source_message_id IS NOT excluded.source_message_id
                     OR todos.due_at IS NOT excluded.due_at

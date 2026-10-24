@@ -98,6 +98,10 @@ reports omitted units; membership reports additional omitted messages.
 
 ## Tasks and commitments project the persisted answer
 
+Recording a User promise date immediately reprojects that message’s stored
+answer before returning. The existing task ID, quote and user edits remain
+protected by the same projection CAS; recording does not judge the mail again.
+
 The To do scan no longer calls the legacy first-hit detector or mirrors
 background model commitment rows. Explicitly recorded promises and draft
 promises accepted by sending retain their existing user authority. Their

@@ -318,6 +318,13 @@ pub(super) async fn record_promise(
             .record_own_promise(&record)
             .await
             .map_err(|error| error.to_string())?;
+        if state.config_snapshot().todo.enabled {
+            // Reproject the stored answer now: a contact-only edit does not dirty mail evidence.
+            let cfg = super::todos::pass_config(state, Utc::now());
+            mxr_todo::pass::project_stored_ask(&state.store, &cfg, message_id)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
     }
     Ok(ResponseData::RecordedPromise {
         commitment: commitment_data(record),

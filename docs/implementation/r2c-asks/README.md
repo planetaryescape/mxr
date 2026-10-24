@@ -105,7 +105,11 @@ Recording a User promise date immediately reprojects that message’s stored
 answer before returning. Repeating acceptance can move the prior accepted date
 on the same open task, including across months. Independently corrected task
 dates and other edited fields, scheduled dates, Done and Dismissed decisions
-retain their authority. Recording does not judge the mail again.
+retain their authority. A current stored answer is reused. Before that answer
+exists, acceptance uses the same canonical preparer over cached thread data
+under a coherent revision read. A unique fragment selects the full authored
+promise before preview or mutation, so later reconciliation retains the accepted
+identity and User date. Preview publishes no assessment and never fetches a body.
 
 Acceptance and canonical projection share the first non-owned To recipient,
 then the first non-owned Cc recipient. Owned aliases cannot split a promise
@@ -134,7 +138,9 @@ model-written or unknown dates stay visible as unverified and never drive Due
 or Now. User-edited task dates survive later provenance changes. It projects owner requests and owner promises from
 stored tags. Reply-only asks gate Your turn; owner requests and their
 commitments gate automatic Waiting on. Explicit timers retain their
-existing authority. Relationship commitment projection commits with asks;
+existing authority. A correspondent promise does not hide a separate stored
+owner reply request: Your turn wins over automatic Waiting, after explicit Reply
+later returns. Relationship commitment projection commits with asks;
 background model commitment extraction is no longer scheduled.
 Confirmed sends reconcile their stored asks before returning the local receipt.
 An assessment failure cannot undo provider acceptance or authorize a resend:

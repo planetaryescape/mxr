@@ -289,10 +289,7 @@ pub(super) async fn record_promise(
 ) -> HandlerResult {
     let supplied = what.trim();
     let envelope = sent_envelope(state, message_id).await?;
-    let stored = state
-        .store
-        .asks_for_messages(&envelope.account_id, std::slice::from_ref(message_id))
-        .await?;
+    let answer = super::ask_assessments::promise_source(state, &envelope).await?;
     // Match source text before display cleanup can change its natural identity.
     let source_safe = supplied.chars().count() <= WHAT_MAX_CHARS
         && !supplied
@@ -300,7 +297,7 @@ pub(super) async fn record_promise(
             .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'));
     let canonical_match = source_safe
         && !supplied.is_empty()
-        && stored.get(message_id).is_some_and(|answer| {
+        && answer.as_ref().is_some_and(|answer| {
             !answer.pending_body
                 && answer.units.iter().any(|unit| {
                     unit.answer == mxr_core::asks::AskAnswer::YouPromised
@@ -329,7 +326,7 @@ pub(super) async fn record_promise(
     if what.is_empty() {
         return Err("Say what you promised, such as \"send the deck\".".into());
     }
-    if let Some(answer) = stored.get(message_id).filter(|answer| !answer.pending_body) {
+    if let Some(answer) = answer.as_ref().filter(|answer| !answer.pending_body) {
         // The model offers a verbatim fragment; identity belongs to the stored
         // authored unit, so accepting its date must not create another promise.
         let quotes: Vec<_> = answer

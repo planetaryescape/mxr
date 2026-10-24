@@ -2,10 +2,60 @@
 use super::HandlerError;
 use crate::state::AppState;
 use mxr_core::asks::{AskAssessment, ASKS_POLICY_VERSION};
-use mxr_core::{AccountId, ThreadId};
+use mxr_core::{AccountId, Envelope, ThreadId};
 use mxr_store::DeskMessage;
 use mxr_todo::asks::{assess, AskInput, Predecessor};
 use std::collections::HashMap;
+
+/// Acceptance uses the same authored units even before the reconciler stores them.
+/// Preview reads cached source only and never publishes an assessment.
+pub(super) async fn promise_source(
+    state: &AppState,
+    envelope: &Envelope,
+) -> Result<Option<AskAssessment>, HandlerError> {
+    let _config = state.assessment_config_gate.read().await;
+    let account = &envelope.account_id;
+    let threads = std::slice::from_ref(&envelope.thread_id);
+    let ids = std::slice::from_ref(&envelope.id);
+    for _ in 0..3 {
+        let revision = state
+            .store
+            .assessment_thread_revisions(account, threads)
+            .await?;
+        let mut stored = state.store.asks_for_messages(account, ids).await?;
+        let answer = if let Some(answer) = stored.remove(&envelope.id) {
+            Some(answer)
+        } else {
+            let messages = state
+                .store
+                .desk_messages_in_threads(account, threads)
+                .await?;
+            let senders = super::desk::Senders::load_raw(state, account, &messages).await?;
+            let own = super::desk::self_matcher(state, account).await?;
+            let prepared = prepare(state, account, &messages, &senders, &own).await?;
+            // A concurrent reconciler may have stored the answer before prepare read it.
+            state
+                .store
+                .asks_for_messages(account, ids)
+                .await?
+                .remove(&envelope.id)
+                .or_else(|| {
+                    prepared
+                        .into_iter()
+                        .find(|answer| answer.message_id == envelope.id)
+                })
+        };
+        if revision
+            == state
+                .store
+                .assessment_thread_revisions(account, threads)
+                .await?
+        {
+            return Ok(answer);
+        }
+    }
+    Err("The promise source changed while reading it. Try recording it again.".into())
+}
 
 pub(super) async fn prepare(
     state: &AppState,

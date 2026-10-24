@@ -785,5 +785,6 @@ mod asks_task_identity;
 mod promise_closed_history;
 mod promise_currencies;
 mod promise_lifecycle;
+mod promise_ordering;
 mod promise_projection;
 mod promise_recipients;

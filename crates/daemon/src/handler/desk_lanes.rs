@@ -468,13 +468,6 @@ fn thread_row(
         }
     }
 
-    if inputs.asks.get(&latest.id).is_some_and(|a| {
-        a.units
-            .iter()
-            .any(|u| u.answer == mxr_core::asks::AskAnswer::TheyPromisedYou)
-    }) {
-        return waiting_row(inputs, conversation, latest, latest_inbound.is_some());
-    }
     let inbound = latest_inbound?;
     // You said you'd reply by now: owed, wherever the mail is and whoever
     // sent it, since you asked for it back. The newest message from a
@@ -494,6 +487,23 @@ fn thread_row(
             ));
         }
     }
+    let owes_reply = inputs.asks.get(&inbound.id).is_some_and(|answer| {
+        answer
+            .units
+            .iter()
+            .any(|u| u.answer == mxr_core::asks::AskAnswer::AsksYouToReply)
+    });
+    // Their promise can coexist with your response; explicit return times above still win.
+    if !owes_reply
+        && inputs.asks.get(&latest.id).is_some_and(|answer| {
+            answer
+                .units
+                .iter()
+                .any(|u| u.answer == mxr_core::asks::AskAnswer::TheyPromisedYou)
+        })
+    {
+        return waiting_row(inputs, conversation, latest, latest_inbound.is_some());
+    }
     if inbound.trashed || !in_inbox || inputs.sender_kind(inbound) != SenderKind::Person {
         return None;
     }
@@ -504,12 +514,7 @@ fn thread_row(
     }
     // Human response occurrence is not a new obligation. Unknown semantics
     // stays in Messages' Recent/Quiet views, never the attention rail.
-    if !inputs.asks.get(&inbound.id).is_some_and(|answer| {
-        answer
-            .units
-            .iter()
-            .any(|u| u.answer == mxr_core::asks::AskAnswer::AsksYouToReply)
-    }) {
+    if !owes_reply {
         return None;
     }
     let email = inbound.from.email.as_str();

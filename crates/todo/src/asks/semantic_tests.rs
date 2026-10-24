@@ -422,7 +422,7 @@ fn security_notice_is_not_identity_work_but_independent_tasks_remain() {
         .units
         .iter()
         .filter(|u| u.answer == AskAnswer::AsksYou)
-        .map(|u| u.tags.as_ref().unwrap().action)
+        .map(|u| u.tags.as_ref().expect("actionable unit tags").action)
         .collect();
     assert_eq!(actions, [ActionKind::Sign]);
     assert!(

@@ -984,7 +984,7 @@ mod tests {
         screener: HashMap<String, ScreenerDisposition>,
     ) -> ThreadLanes {
         let account = AccountId::new();
-        let contacts = contacts
+        let contacts: HashMap<String, DeskContact> = contacts
             .iter()
             .map(|c| (c.email.to_ascii_lowercase(), c.clone()))
             .collect();
@@ -992,10 +992,48 @@ mod tests {
         let timers = DeskTimers::default();
         let is_self = |email: &str| email.eq_ignore_ascii_case(ME);
         let moves = HashMap::new();
+        let asks: HashMap<_, _> = messages
+            .iter()
+            .map(|message| {
+                let reply_capable = mail_kind::human_response(&desk_signals(
+                    message,
+                    contacts.get(&message.from.email.to_ascii_lowercase()),
+                    screener
+                        .get(&message.from.email.to_ascii_lowercase())
+                        .copied(),
+                    None,
+                    &is_self,
+                ));
+                let answer = mxr_todo::asks::assess(
+                    &mxr_todo::asks::AskInput {
+                        message_id: &message.id,
+                        account_id: &account,
+                        subject: &message.subject,
+                        body: message.evidence.text.as_deref(),
+                        from: &message.from,
+                        to: &message.to,
+                        cc: &message.cc,
+                        bcc: &message.bcc,
+                        list_mail: message.list_id.is_some(),
+                        bulk: message.evidence.bulk,
+                        owner_names: &[],
+                        owner_addresses: &[ME.into()],
+                        is_owner: &is_self,
+                        sent: message.date,
+                        predecessor: None,
+                        owner_replied_afterwards: false,
+                        reply_capable,
+                    },
+                    &Utc,
+                    "lane-fixture".into(),
+                );
+                (message.id.clone(), answer)
+            })
+            .collect();
         thread_lanes(&AccountInputs {
             pending_threads: &HashSet::new(),
             assessments: &HashMap::new(),
-            asks: &HashMap::new(),
+            asks: &asks,
             account_id: &account,
             messages,
             contacts: &contacts,

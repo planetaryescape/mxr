@@ -18,7 +18,7 @@ pattern!(
 );
 pattern!(
     PROMISE,
-    r"(?i)\b(i(?:'ll| will)|we(?:'ll| will)|i promise to|i can commit to)\s+(send|provide|upload|sign|pay|book|contact|return|prepare|complete|deliver)\b"
+    r"(?i)\b(i(?:'ll| will)|we(?:'ll| will)|i promise to|i can commit to)\s+(send|provide|upload|sign|pay|book|contact|return|prepare|complete|deliver|go through|update)\b"
 );
 pattern!(FUTURE_SPEAKER, r"(?i)\b(?:i|we)(?:'ll| will)\s+\p{L}");
 pattern!(
@@ -45,7 +45,7 @@ pattern!(
 );
 pattern!(
     SIGN,
-    r"(?i)\b(sign (?:the|your|this|our|my|a) (?:[a-z]+\s+){0,2}(?:form|contract|agreement|waiver|document|lease|nda)|signature (?:required|requested)|awaiting your signature|please sign\b|(?:form|document|contract|agreement) must be signed)\b|^sign:\s*\S+"
+    r"(?i)\b(sign (?:the|your|this|our|my|a) (?:[a-z]+\s+){0,2}(?:form|contract|agreement|waiver|document|lease|nda)|signature (?:required|requested)|awaiting your signature|please sign\b|review and sign\b|(?:form|document|contract|agreement) must be signed)\b|^sign:\s*\S+"
 );
 pattern!(
     VERIFY,
@@ -63,7 +63,7 @@ pattern!(UPLOAD, r"(?i)\bupload (?:the |your |a |an )[^?!.\n]+\b");
 pattern!(BOOK, r"(?i)\bbook (?:the |your |a |an )[^?!.\n]+\b");
 pattern!(
     REVIEW,
-    r"(?i)\b(?:review (?:the |your |this |my |our |a )[^?!.\n]+|take a look)\b"
+    r"(?i)\b(?:(?:review|go through|update) (?:the |your |this |my |our |a )[^?!.\n]+|take a look)\b"
 );
 pattern!(
     PAY_PROMISE,
@@ -305,6 +305,9 @@ pub(super) fn label(
                     action,
                     Actor::Nobody,
                 ));
+                continue;
+            }
+            if action == ActionKind::Other && doc.kind == DocumentKind::FailedPayment {
                 continue;
             }
             if action == ActionKind::Send && doc.kind == DocumentKind::Bill

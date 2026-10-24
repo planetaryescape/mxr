@@ -1253,7 +1253,7 @@ async fn promises_you_made_join_through_the_catch_up_and_tick_off_with_their_com
     assert_eq!(titles(&catchup.todos), vec!["Send the signed form"]);
     assert_eq!(
         catchup.todos[0].person_label.as_deref(),
-        Some("you promised priya@work.com")
+        Some("you promised Priya Shah")
     );
     let id = catchup.todos[0].id.clone();
     request(
@@ -1270,6 +1270,10 @@ async fn promises_you_made_join_through_the_catch_up_and_tick_off_with_their_com
     let today = runway(&fx, now).await;
     assert_eq!(titles(&today.whenever), vec!["Send the signed form"]);
     let record = fx.state.store.get_todo(&id).await.unwrap().unwrap();
+    let canonical_commitment = record
+        .commitment_id
+        .clone()
+        .expect("stored asks owner promise");
     let later = fx
         .message(
             &thread,
@@ -1338,7 +1342,7 @@ async fn promises_you_made_join_through_the_catch_up_and_tick_off_with_their_com
         let commitment = fx
             .state
             .store
-            .get_contact_commitment("c-form")
+            .get_contact_commitment(&canonical_commitment)
             .await
             .unwrap()
             .unwrap();
@@ -1510,11 +1514,11 @@ async fn promise_rows_built_from_inbound_mail_are_dismissed_unless_touched() {
     // What an earlier version left behind: the same rows, but their
     // evidence is mail someone else sent. The user moved one of them.
     for id in &evidence {
-        sqlx::query("UPDATE messages SET direction = 'inbound' WHERE id = ?")
-            .bind(id.as_str())
-            .execute(fx.state.store.writer())
-            .await
-            .unwrap();
+        let mut incoming = fx.state.store.get_envelope(id).await.unwrap().unwrap();
+        incoming.from.email = "someone-else@example.com".into();
+        incoming.flags.remove(MessageFlags::SENT);
+        fx.store_envelope(&incoming, MessageDirection::Inbound)
+            .await;
     }
     let touched = rows
         .iter()
@@ -1526,6 +1530,10 @@ async fn promise_rows_built_from_inbound_mail_are_dismissed_unless_touched() {
         .await
         .unwrap();
 
+    // Normal background reconciliation settles the changed source before the tick.
+    crate::handler::assessments::reconcile_messages(&fx.state, &fx.account, &evidence)
+        .await
+        .unwrap();
     // A restart mirrors promises afresh.
     finish_first_run(&fx, now + Duration::minutes(5)).await;
 
@@ -1571,6 +1579,12 @@ async fn a_promise_names_the_person_without_a_glued_on_id() {
         &id,
     )
     .await;
+    let mut source = fx.state.store.get_envelope(&id).await.unwrap().unwrap();
+    source.to = vec![Address {
+        email: "licensing@acme.example".into(),
+        name: Some("Acme Licensing2026-09-27887d708f6e134fe8bd5c9e0584954c5b".into()),
+    }];
+    fx.store_envelope(&source, MessageDirection::Outbound).await;
     finish_first_run(&fx, now).await;
     let rows = promise_rows(&fx).await;
     assert_eq!(rows.len(), 1);

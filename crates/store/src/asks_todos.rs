@@ -28,6 +28,9 @@ impl Store {
             if row.state != crate::TodoState::Open || row.user_touched() {
                 return true;
             }
+            if row.kind == "renewal" && row.dedup_key.starts_with("record-renewal|") {
+                return true;
+            }
             if row.rules_version < 2
                 && matches!(row.origin.as_str(), "rule" | "schema" | "model" | "ics")
             {
@@ -60,8 +63,8 @@ impl Store {
         if answer.pending_body {
             return Ok(());
         }
-        sqlx::query("UPDATE todos SET state = 'expired' WHERE account_id = ?1 AND source_message_id = ?2 AND json_extract(field_sources, '$.asks_fingerprint.evidence') IS NOT NULL AND kind != 'rsvp' AND state = 'open' AND user_edited = 0 AND scheduled_for IS NULL AND reason NOT IN (SELECT value FROM json_each(?3)) AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ?2 AND a.account_id = ?1 AND a.policy_version = ?4 AND a.input_fingerprint = ?5 AND a.input_revision = i.effective_revision)")
-            .bind(answer.account_id.as_str()).bind(answer.message_id.as_str()).bind(crate::encode_json(&quotes)?).bind(mxr_core::asks::ASKS_POLICY_VERSION).bind(&answer.input_fingerprint).execute(self.writer()).await?;
+        sqlx::query("UPDATE todos SET state = CASE WHEN kind = 'promise' AND ?6 = 0 THEN 'dismissed' ELSE 'expired' END WHERE account_id = ?1 AND source_message_id = ?2 AND json_extract(field_sources, '$.asks_fingerprint.evidence') IS NOT NULL AND kind != 'rsvp' AND state = 'open' AND user_edited = 0 AND scheduled_for IS NULL AND reason NOT IN (SELECT value FROM json_each(?3)) AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ?2 AND a.account_id = ?1 AND a.policy_version = ?4 AND a.input_fingerprint = ?5 AND a.input_revision = i.effective_revision)")
+            .bind(answer.account_id.as_str()).bind(answer.message_id.as_str()).bind(crate::encode_json(&quotes)?).bind(mxr_core::asks::ASKS_POLICY_VERSION).bind(&answer.input_fingerprint).bind(answer.facts.owner_authored).execute(self.writer()).await?;
         Ok(())
     }
 
@@ -69,7 +72,7 @@ impl Store {
         &self,
         account: &AccountId,
     ) -> Result<Vec<TodoRecord>, sqlx::Error> {
-        let sql = format!("SELECT {} FROM todos WHERE account_id = ? AND rules_version < 2 AND origin IN ('rule', 'schema', 'model', 'ics') AND (source_message_id IS NULL OR EXISTS (SELECT 1 FROM bodies b WHERE b.message_id = todos.source_message_id AND (b.text_plain IS NOT NULL OR b.text_html IS NOT NULL)) OR EXISTS (SELECT 1 FROM calendar_invites c WHERE c.message_id = todos.source_message_id)) ORDER BY id LIMIT 100", crate::todos::COLUMNS);
+        let sql = format!("SELECT {} FROM todos WHERE account_id = ? AND rules_version < 2 AND origin IN ('rule', 'schema', 'model', 'ics') AND NOT (kind = 'renewal' AND dedup_key LIKE 'record-renewal|%') AND (source_message_id IS NULL OR EXISTS (SELECT 1 FROM bodies b WHERE b.message_id = todos.source_message_id AND (b.text_plain IS NOT NULL OR b.text_html IS NOT NULL)) OR EXISTS (SELECT 1 FROM calendar_invites c WHERE c.message_id = todos.source_message_id)) ORDER BY id LIMIT 100", crate::todos::COLUMNS);
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account.as_str())
             .fetch_all(self.reader())

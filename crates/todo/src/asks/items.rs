@@ -3,7 +3,7 @@ use crate::dates::FoundDate;
 use crate::detect::{Detection, Origin};
 use crate::money::Amount;
 use crate::provenance::{FieldProvenance, FieldSource, FieldSources};
-use crate::{text, TodoKind};
+use crate::TodoKind;
 use mxr_core::asks::*;
 use mxr_core::Envelope;
 
@@ -65,9 +65,7 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
             } else {
                 Some(&envelope.from)
             }?;
-            let person = counterparty
-                .name
-                .clone()
+            let person = crate::detect::counterparty(counterparty.name.as_deref(), None)
                 .unwrap_or_else(|| counterparty.email.clone());
             let amount = tags
                 .amount
@@ -98,7 +96,7 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                 FieldProvenance::with_evidence(
                     FieldSource::Rule,
                     if promised {
-                        format!("You promised {person}")
+                        format!("you promised {person}")
                     } else {
                         format!("{person} asked")
                     },
@@ -192,14 +190,27 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                     kind,
                     verb: verb.into(),
                     doc_type: None,
-                    title: text::clip(quote, 120),
+                    title: super::titles::title(
+                        if promised {
+                            ActionKind::Other
+                        } else {
+                            tags.action
+                        },
+                        quote,
+                        &envelope.subject,
+                        &person,
+                    ),
                     object_key,
                     counterparty: Some(person),
                     sender_domain: crate::action_link::email_domain(&counterparty.email),
                     amount,
                     due,
                     event_start: None,
-                    link: None,
+                    link: crate::action_link::pick_link(
+                        None,
+                        &answer.facts.zones[unit.zone].text,
+                        kind,
+                    ),
                     origin: Origin::Rule,
                     reason: quote.to_string(),
                     fields,

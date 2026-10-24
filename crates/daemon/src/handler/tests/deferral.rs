@@ -94,7 +94,7 @@ fn drain(events: &mut tokio::sync::broadcast::Receiver<IpcMessage>) -> Vec<Messa
 async fn owed(fx: &Fixture, age: Duration) -> (ThreadId, Envelope) {
     let thread = ThreadId::new();
     let mine = fx
-        .message(
+        .attention_message(
             &thread,
             ME,
             "maya@example.com",
@@ -103,7 +103,7 @@ async fn owed(fx: &Fixture, age: Duration) -> (ThreadId, Envelope) {
         )
         .await;
     let answer = fx
-        .message(
+        .attention_message(
             &thread,
             "maya@example.com",
             ME,
@@ -118,7 +118,7 @@ async fn owed(fx: &Fixture, age: Duration) -> (ThreadId, Envelope) {
 async fn waiting(fx: &Fixture, age: Duration) -> (ThreadId, Envelope, Envelope) {
     let thread = ThreadId::new();
     let question = fx
-        .message(
+        .attention_message(
             &thread,
             "jon@example.com",
             ME,
@@ -127,7 +127,7 @@ async fn waiting(fx: &Fixture, age: Duration) -> (ThreadId, Envelope, Envelope) 
         )
         .await;
     let mine = fx
-        .message(
+        .attention_message(
             &thread,
             ME,
             "jon@example.com",
@@ -279,7 +279,7 @@ async fn a_reply_cancels_the_wait() {
     defer(&fx, std::slice::from_ref(&thread), until, false).await;
 
     // Jon answers before the time: owed at once, never brought back.
-    fx.message(
+    fx.attention_message(
         &thread,
         "jon@example.com",
         ME,
@@ -318,7 +318,7 @@ async fn missing_plaintext_preserves_response_occurrence_and_explicit_later_not_
             "jon@example.com"
         };
         let reply = fx
-            .message(
+            .attention_message(
                 &thread,
                 sender,
                 ME,
@@ -402,7 +402,7 @@ async fn billing_response_only_and_automatic_acknowledgement_settle_waiting_diff
         let fx = Fixture::new().await;
         let thread = ThreadId::new();
         let mine = fx
-            .message(
+            .attention_message(
                 &thread,
                 ME,
                 "billing@vendor.example",
@@ -413,7 +413,7 @@ async fn billing_response_only_and_automatic_acknowledgement_settle_waiting_diff
         let until = Utc::now() + Duration::days(3);
         defer(&fx, std::slice::from_ref(&thread), until, false).await;
         let acknowledgement = fx
-            .message(
+            .attention_message(
                 &thread,
                 "billing@vendor.example",
                 ME,
@@ -481,7 +481,7 @@ async fn a_human_acknowledgement_cancels_the_wait_without_creating_reply_debt() 
     let until = Utc::now() + Duration::days(3);
     defer(&fx, std::slice::from_ref(&thread), until, false).await;
     let acknowledgement = fx
-        .message(
+        .attention_message(
             &thread,
             "jon@example.com",
             ME,
@@ -784,7 +784,7 @@ async fn storage_order_decides_who_wrote_last_and_whether_they_replied() {
     let (thread, _, mine) = waiting(&fx, Duration::days(1)).await;
     due_reminder(&fx, &mine, Utc::now() - Duration::minutes(1)).await;
     // Their reply arrives after yours, but its clock says two days ago.
-    fx.message(
+    fx.attention_message(
         &thread,
         "jon@example.com",
         ME,
@@ -821,7 +821,7 @@ async fn storage_order_decides_who_wrote_last_and_whether_they_replied() {
 async fn an_auto_responder_neither_answers_a_wait_nor_makes_it_theirs() {
     let fx = Fixture::new().await;
     let (thread, _, mine) = waiting(&fx, Duration::days(2)).await;
-    fx.message(
+    fx.attention_message(
         &thread,
         "notifications@example.com",
         ME,
@@ -851,7 +851,7 @@ async fn an_auto_responder_neither_answers_a_wait_nor_makes_it_theirs() {
 async fn a_conversation_is_announced_once_however_many_messages_came_back() {
     let fx = Fixture::new().await;
     let (thread, answer) = owed(&fx, Duration::hours(3)).await;
-    fx.message(
+    fx.attention_message(
         &thread,
         "maya@example.com",
         ME,
@@ -889,7 +889,7 @@ async fn a_reply_stored_between_the_check_and_the_claim_stops_the_firing() {
     due_reminder(&fx, &mine, Utc::now() - Duration::minutes(1)).await;
 
     let reply_lands = async {
-        fx.message(
+        fx.attention_message(
             &thread,
             "jon@example.com",
             ME,
@@ -926,7 +926,7 @@ async fn a_reply_filed_under_another_thread_still_answers_by_its_headers() {
     let (_, _, mine) = waiting(&fx, Duration::days(2)).await;
     due_reminder(&fx, &mine, Utc::now() - Duration::minutes(1)).await;
     // IMAP threading put the answer in a thread of its own.
-    fx.message(
+    fx.attention_message(
         &ThreadId::new(),
         "jon@example.com",
         ME,
@@ -954,7 +954,7 @@ async fn an_auto_responder_filed_under_another_thread_does_not_answer() {
     let fx = Fixture::new().await;
     let (_, _, mine) = waiting(&fx, Duration::days(2)).await;
     due_reminder(&fx, &mine, Utc::now() - Duration::minutes(1)).await;
-    fx.message(
+    fx.attention_message(
         &ThreadId::new(),
         "notifications@example.com",
         ME,
@@ -975,7 +975,7 @@ async fn a_backdated_reply_brings_reply_later_back_to_you_owe() {
     let fx = Fixture::new().await;
     let (thread, _, mine) = waiting(&fx, Duration::days(1)).await;
     // Stored after yours, dated before it.
-    fx.message(
+    fx.attention_message(
         &thread,
         "jon@example.com",
         ME,

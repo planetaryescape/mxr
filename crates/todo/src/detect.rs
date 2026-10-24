@@ -837,7 +837,7 @@ fn pay_method(detection: &Detection, text: &str) -> &'static str {
     }
 }
 
-fn bill_thing(text: &str) -> Option<String> {
+pub(crate) fn bill_thing(text: &str) -> Option<String> {
     let lower = text.to_ascii_lowercase();
     BILL_THINGS.iter().find_map(|(needle, thing)| {
         let found = lower.find(needle)?;

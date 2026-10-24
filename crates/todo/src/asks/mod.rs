@@ -5,6 +5,7 @@ pub use calendar::include_calendar;
 mod document;
 mod facts;
 pub mod items;
+mod titles;
 mod votes;
 
 use chrono::{DateTime, TimeZone, Utc};

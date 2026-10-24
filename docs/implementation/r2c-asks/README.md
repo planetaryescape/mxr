@@ -243,11 +243,12 @@ its upstream feature gate otherwise fails to compile its `HeaderValue` adapters.
 Only that compatibility edge uses `mail-parser` 0.9.4; the workspace parser remains
 0.11. No verifier, DNS, crypto or network feature is enabled.
 
-Schema 100 persists receiver authority per account and global shape/timezone
-context. Startup and the background reconciler compare the durable values;
+Schema 100 persists receiver authority per account and a global context containing
+the current home and asks policy IDs, recipient shape, and immutable timezone token. Startup and the background reconciler compare the durable values;
 unchanged authority uses reads only. A receiver change advances only that
 account’s generations, while an actual global context change advances all
-accounts. The first migration without a marker can invalidate once. Receiver
+accounts. The first migration without a marker, or startup after a policy change, can invalidate
+once; unchanged restarts retain settled answers. Receiver
 IDs use the same lowercase/sorted/deduplicated policy in matching, fingerprints
 and persisted authority; whitespace is preserved and never silently trusted.
 
@@ -258,7 +259,10 @@ retiring another account’s answer or task. The persistent-startup test opens
 `AppState` twice with the same configured receiver and checks the actual first
 and later reconciler ticks for unchanged answers, outbox and writer counts.
 Separate shape-only and timezone-context-only changes test both accounts’
-generations without modifying process-wide timezone settings. Run these proofs
+generations without modifying process-wide timezone settings. A settled policy8
+profile with no dirty threads or projection tickets upgrades through actual startup
+and the normal reconciler, retains its old answer history, and remains read-only
+on the next unchanged restart. Run these proofs
 with:
 
 ```sh

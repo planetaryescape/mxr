@@ -300,3 +300,72 @@ async fn actual_reconciler_distinguishes_shape_only_and_timezone_only_context_ch
     assert_eq!(changes(&state).await, settled);
     reconciler.stop().await;
 }
+
+#[test]
+fn a_settled_previous_policy_is_reconciled_by_startup_and_the_first_normal_tick() {
+    let dir = tempfile::tempdir().unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    temp_env::with_vars(
+        [
+            ("MXR_CONFIG_DIR", Some(dir.path().join("config"))),
+            ("MXR_DATA_DIR", Some(dir.path().join("data"))),
+            ("MXR_SOCKET_PATH", Some(dir.path().join("socket"))),
+        ],
+        || {
+            runtime.block_on(async {
+                let mut config = mxr_config::MxrConfig::default();
+                config.llm.enabled = false;
+                config.search.semantic.enabled = false;
+                config.search.semantic.auto_download_models = false;
+                config.activity.enabled = false;
+                mxr_config::save_config(&config).unwrap();
+                let state = Arc::new(AppState::new().await.unwrap());
+                let mail = seed(&state).await;
+                let shape = state.config_snapshot().messages.large_thread_recipients;
+                let token = mxr_store::asks_context_token().unwrap();
+                // The published policy8 daemon persisted this exact policy-free marker.
+                state.store.sync_assessment_context(&format!("{shape}:{:?}", Some(token.as_str()))).await.unwrap();
+                assessments::reconcile_account(&state, &mail.account_id).await.unwrap();
+                sqlx::query("UPDATE mail_assessments SET policy_version='asks-r2c-8', assessment_json=json_set(assessment_json,'$.policy_version','asks-r2c-8') WHERE message_id=? AND policy_version=?")
+                    .bind(mail.id.as_str()).bind(mxr_core::asks::ASKS_POLICY_VERSION).execute(state.store.writer()).await.unwrap();
+                assert!(state.store.dirty_assessment_threads(&mail.account_id, None).await.unwrap().is_empty());
+                assert!(stored_snapshot(&state).await[2].is_empty(), "old profile is fully settled");
+                assert!(state.store.asks_for_messages(&mail.account_id, std::slice::from_ref(&mail.id)).await.unwrap().is_empty());
+                state.shutdown_runtime_tasks(std::time::Duration::from_secs(2)).await;
+                state.store.reader().close().await;
+                state.store.writer().close().await;
+                drop(state);
+
+                let state = Arc::new(AppState::new().await.unwrap());
+                let reconciler = Reconciler::start(state.clone(), None);
+                reconciler.tick().await;
+                assert_current(&state, std::slice::from_ref(&mail)).await;
+                let history: i64 = sqlx::query_scalar("SELECT count(*) FROM mail_assessments WHERE message_id=? AND policy_version='asks-r2c-8'")
+                    .bind(mail.id.as_str()).fetch_one(state.store.reader()).await.unwrap();
+                assert_eq!(history, 1, "activation retains previous policy history");
+                reconciler.stop().await;
+                let settled = stored_snapshot(&state).await;
+                state.shutdown_runtime_tasks(std::time::Duration::from_secs(2)).await;
+                state.store.reader().close().await;
+                state.store.writer().close().await;
+                drop(state);
+
+                let state = Arc::new(AppState::new().await.unwrap());
+                assert_eq!(stored_snapshot(&state).await, settled, "subsequent startup retains the activated answer");
+                let before = changes(&state).await;
+                let reconciler = Reconciler::start(state.clone(), None);
+                reconciler.tick().await;
+                assert_eq!(changes(&state).await, before, "unchanged restart and first tick do not invalidate again");
+                assert_eq!(stored_snapshot(&state).await, settled);
+                assert_current(&state, std::slice::from_ref(&mail)).await;
+                reconciler.stop().await;
+                state.shutdown_runtime_tasks(std::time::Duration::from_secs(2)).await;
+                state.store.reader().close().await;
+                state.store.writer().close().await;
+            });
+        },
+    );
+}

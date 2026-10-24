@@ -418,7 +418,10 @@ fn placement_rule(rule: KindRuleData) -> String {
 }
 
 pub(crate) fn context_key(recipients: usize, timezone_token: Option<&str>) -> String {
-    format!("{recipients}:{timezone_token:?}")
+    format!(
+        "{CLASSIFIER_POLICY_VERSION}:{}:{recipients}:{timezone_token:?}",
+        mxr_core::asks::ASKS_POLICY_VERSION
+    )
 }
 
 fn reconciler_context_token() -> Option<String> {

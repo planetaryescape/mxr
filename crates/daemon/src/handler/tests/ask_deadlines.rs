@@ -61,11 +61,27 @@ async fn dated_completion_continuations_keep_the_generated_source_deadline() {
                 serde_json::json!({"account": account, "provider": provider_id, "message": mail.id, "sent": mail.date, "now": now, "body": body.text_plain, "dates": answer.facts.dates, "units": answer.units, "zones": answer.facts.zones, "label_items": format!("{:?}", label.items)})
             );
             assert!(!answer.facts.dates.is_empty());
-            for unit in answer
+            let actions: Vec<_> = answer
                 .units
                 .iter()
                 .filter(|u| u.answer == AskAnswer::AsksYou)
-            {
+                .collect();
+            assert_eq!(
+                actions.len(),
+                1,
+                "the generated completion is one actual action"
+            );
+            for unit in actions {
+                assert_eq!(
+                    unit.tags.as_ref().unwrap().action,
+                    mxr_core::asks::ActionKind::Other
+                );
+                assert_eq!(
+                    answer.quote(unit),
+                    body.text_plain
+                        .as_deref()
+                        .and_then(|text| text.split("\n\n").next())
+                );
                 if unit.tags.as_ref().and_then(|t| t.due).is_none() {
                     missing.push((account.clone(), provider_id));
                 }

@@ -99,11 +99,16 @@ async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
     for (id, provider) in [(&personal.id, personal_provider), (&work.id, work_provider)] {
         let started = Instant::now();
         let mut pages = 0;
+        let mut sync_time = std::time::Duration::ZERO;
+        let mut classify_time = std::time::Duration::ZERO;
         loop {
+            let stage = Instant::now();
             let outcome = engine
                 .sync_account_with_outcome(provider.as_ref())
                 .await
                 .unwrap();
+            sync_time += stage.elapsed();
+            let stage = Instant::now();
             // As the daemon seeds a demo: every page but the last is part of
             // the initial backfill, which leaves Reading's whole-account
             // sweep to the last page. Run on every page it is quadratic and
@@ -117,11 +122,12 @@ async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
                 now,
             )
             .await;
+            classify_time += stage.elapsed();
             pages += 1;
             // A line per few pages: a queued job that prints nothing for
             // minutes is taken for stuck.
             if pages % 5 == 0 {
-                eprintln!("  {id}: {pages} pages in {:?}", started.elapsed());
+                eprintln!("  {id}: {pages} pages in {:?} (sync {sync_time:?}, classify {classify_time:?})", started.elapsed());
             }
             if !outcome.has_more {
                 break;

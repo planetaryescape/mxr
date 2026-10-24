@@ -2,7 +2,7 @@ use crate::{test_fixtures::*, Store};
 use mxr_core::asks::*;
 use mxr_core::{AccountId, MessageDirection};
 
-fn answer(account: &AccountId, message: &mxr_core::Envelope) -> AskAssessment {
+pub(super) fn answer(account: &AccountId, message: &mxr_core::Envelope) -> AskAssessment {
     AskAssessment {
         account_id: account.clone(),
         message_id: message.id.clone(),

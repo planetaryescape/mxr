@@ -5,6 +5,10 @@ use mxr_core::asks::{AskAssessment, ASKS_POLICY_VERSION};
 use mxr_core::{AccountId, MessageId, ThreadId};
 use std::collections::HashMap;
 
+// Keep the requested IDs outermost: an account index scan makes per-message projection quadratic.
+const ASKS_FOR_MESSAGES: &str = "SELECT a.assessment_json FROM (SELECT DISTINCT value FROM json_each(?3)) requested CROSS JOIN mail_assessments a ON a.message_id = requested.value JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id
+            WHERE a.account_id = ?1 AND a.policy_version = ?2 AND a.input_revision = i.effective_revision ORDER BY a.message_id";
+
 type CachedBodies = HashMap<MessageId, (Option<String>, Option<String>)>;
 
 impl super::Store {
@@ -111,9 +115,12 @@ impl super::Store {
         account: &AccountId,
         ids: &[MessageId],
     ) -> Result<HashMap<MessageId, AskAssessment>, sqlx::Error> {
-        let rows: Vec<String> = sqlx::query_scalar("SELECT a.assessment_json FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id
-            WHERE a.account_id = ?1 AND a.policy_version = ?2 AND a.input_revision = i.effective_revision AND a.message_id IN (SELECT value FROM json_each(?3)) ORDER BY a.message_id")
-            .bind(account.as_str()).bind(ASKS_POLICY_VERSION).bind(encode_json(&ids)?).fetch_all(self.reader()).await?;
+        let rows: Vec<String> = sqlx::query_scalar(ASKS_FOR_MESSAGES)
+            .bind(account.as_str())
+            .bind(ASKS_POLICY_VERSION)
+            .bind(encode_json(&ids)?)
+            .fetch_all(self.reader())
+            .await?;
         let context = asks_context_token().map_err(sqlx::Error::Io)?;
         rows.iter()
             .map(|json| {
@@ -128,6 +135,8 @@ impl super::Store {
     }
 }
 
+#[cfg(test)]
+mod lookup_tests;
 #[cfg(test)]
 mod tests;
 

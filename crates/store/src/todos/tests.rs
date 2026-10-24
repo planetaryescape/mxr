@@ -284,6 +284,8 @@ async fn the_catch_up_keeps_the_cap_across_accounts_by_act_by_then_newest() {
         let mut row = fx.record(&format!("t{n}"), &source, at(n));
         row.dedup_key = format!("k{n}");
         row.catchup = Some(TodoCatchup::Pending);
+        // This test ranks the current first run, not pending legacy upgrades.
+        row.rules_version = 2;
         row.act_by_at = (n == 0).then(|| at(300));
         if n % 2 == 1 {
             row.account_id = other.id.clone();
@@ -704,4 +706,15 @@ async fn missing_body_legacy_rows_cannot_starve_ready_sources_beyond_the_page() 
     let ready = fx.store.legacy_asks_todos(&fx.account).await.unwrap();
     assert_eq!(ready.len(), 1);
     assert_eq!(ready[0].id, "legacy-100");
+}
+
+#[tokio::test]
+async fn pending_legacy_catchup_keeps_history_until_source_reconciliation() {
+    let fx = Fx::new().await;
+    let source = fx.message("legacy", at(0)).await;
+    let mut row = fx.record("legacy", &source, at(0));
+    row.catchup = Some(TodoCatchup::Pending);
+    fx.store.upsert_detected_todo(&row).await.unwrap();
+    assert!(fx.store.list_catchup_todos(None).await.unwrap().is_empty());
+    assert_eq!(fx.store.get_todo(&row.id).await.unwrap(), Some(row));
 }

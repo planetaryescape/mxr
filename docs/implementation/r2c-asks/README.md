@@ -80,6 +80,10 @@ existing authority. Relationship commitment projection commits with asks;
 background model commitment extraction is no longer scheduled. Optional
 compose safety and draft promise proposals remain separate existing paths.
 
+Commitment history reads retain legacy records, including unverified dates.
+The explicit open view still requires current stored asks or a user-recorded
+promise; history retention does not put retired model detections into Waiting on.
+
 Task identity uses the full counterparty address, action, explicit reference
 or action object and due month. Payment reminders and failed-payment
 escalations share the payment identity. A reminder without a date only
@@ -129,6 +133,12 @@ thread generation in the same transaction. A successful matching projection
 acknowledges that ticket; an error leaves it queued across restart. A stale
 acknowledgement cannot consume a later generation, even when its fingerprint
 is unchanged. Settled reads select without taking the writer.
+
+Reconciliation continues through projection-only pages after thread work has
+finished. Each call acknowledges at most 100 tickets, yields between pages,
+and retains failed work. A settled call performs no writes. Synthetic grading
+settles through this same bounded seam before taking its read-only packet;
+reconciliation is not part of the production evaluator.
 
 Legacy reconciliation blocks only the corresponding source and task kind.
 When one old row could represent several actions, untouched automatic work

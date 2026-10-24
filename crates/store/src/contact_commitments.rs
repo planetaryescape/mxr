@@ -205,7 +205,12 @@ impl super::Store {
         if status.is_some() {
             sql.push_str(" AND status = ?");
         }
-        sql.push_str(" AND (direction != 'yours' OR NOT EXISTS (SELECT 1 FROM todos t WHERE t.account_id = contact_commitments.account_id AND t.source_message_id = contact_commitments.evidence_msg_id AND t.reason = contact_commitments.what AND t.state IN ('done', 'dismissed'))) AND (status != 'open' OR instr(id, '::promise::') > 0 OR (id LIKE 'ask_%' AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = contact_commitments.evidence_msg_id AND a.policy_version = ? AND a.input_revision = i.effective_revision AND json_extract(a.assessment_json, '$.context_token') = ?))) ORDER BY extracted_at DESC");
+        // History reads retain legacy evidence. Only the active view depends on
+        // current stored asks; retiring an extractor must not hide old records.
+        if status == Some(CommitmentStatus::Open) {
+            sql.push_str(" AND (direction != 'yours' OR NOT EXISTS (SELECT 1 FROM todos t WHERE t.account_id = contact_commitments.account_id AND t.source_message_id = contact_commitments.evidence_msg_id AND t.reason = contact_commitments.what AND t.state IN ('done', 'dismissed'))) AND (status != 'open' OR instr(id, '::promise::') > 0 OR (id LIKE 'ask_%' AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = contact_commitments.evidence_msg_id AND a.policy_version = ? AND a.input_revision = i.effective_revision AND json_extract(a.assessment_json, '$.context_token') = ?)))");
+        }
+        sql.push_str(" ORDER BY extracted_at DESC");
         let mut query =
             sqlx::query(sqlx::AssertSqlSafe(sql.as_str())).bind(account_id.as_str().clone());
         if let Some(email) = email {
@@ -214,11 +219,12 @@ impl super::Store {
         if let Some(status) = status {
             query = query.bind(status.as_str().to_string());
         }
-        let rows = query
-            .bind(mxr_core::asks::ASKS_POLICY_VERSION)
-            .bind(crate::asks_context_token().map_err(sqlx::Error::Io)?)
-            .fetch_all(self.reader())
-            .await?;
+        if status == Some(CommitmentStatus::Open) {
+            query = query
+                .bind(mxr_core::asks::ASKS_POLICY_VERSION)
+                .bind(crate::asks_context_token().map_err(sqlx::Error::Io)?);
+        }
+        let rows = query.fetch_all(self.reader()).await?;
         rows.into_iter().map(row_to_commitment).collect()
     }
 

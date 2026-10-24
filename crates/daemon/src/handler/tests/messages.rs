@@ -80,6 +80,16 @@ async fn mail(
         MessageDirection::Inbound
     };
     fx.store_envelope(&envelope, direction).await;
+    if direction == MessageDirection::Inbound {
+        // These journeys owe a conversation reply; action requests have separate fixtures.
+        body(
+            fx,
+            &envelope.id,
+            Some("Could you reply with your availability?"),
+            None,
+        )
+        .await;
+    }
     envelope
 }
 

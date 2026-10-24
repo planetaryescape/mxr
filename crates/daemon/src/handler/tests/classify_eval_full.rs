@@ -390,6 +390,43 @@ async fn the_quick_set_on_a_generated_demo_still_grades_only_the_curated_mail() 
 async fn grading_the_full_set_twice_gives_the_same_answer() {
     let (state, _, _) = demo_state(1_200).await;
     let first = eval(&state, None, ClassifyEvalSetData::Full).await;
+    let before: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(state.store.writer())
+        .await
+        .unwrap();
+    let pending_before: i64 = sqlx::query_scalar("SELECT count(*) FROM asks_projection_outbox")
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap();
+    let read_only = classify_eval(&state, None, ClassifyEvalSetData::Full)
+        .await
+        .unwrap();
+    let after: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(state.store.writer())
+        .await
+        .unwrap();
+    let pending_after: i64 = sqlx::query_scalar("SELECT count(*) FROM asks_projection_outbox")
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap();
+    assert_eq!(before, after);
+    assert_eq!(pending_before, pending_after);
+    assert_eq!(
+        pending_after, 0,
+        "fixture must finish projection before grading"
+    );
+    let ResponseData::ClassifyEval {
+        summary,
+        mismatches,
+    } = read_only
+    else {
+        panic!("grading response")
+    };
+    assert_eq!(
+        first,
+        (summary, mismatches),
+        "production reads are stable without repair"
+    );
     let second = eval(&state, None, ClassifyEvalSetData::Full).await;
     assert_eq!(first, second, "no state carries over between runs");
 }

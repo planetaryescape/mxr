@@ -825,6 +825,15 @@ async fn equal_bills_from_one_sender_keep_unmarked_account_headers_as_distinct_o
         .await;
         crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
     }
+    let identities = raw_todo_identities(&fx).await;
+    crate::handler::assessments::reconcile_dirty_page(&fx.state, &fx.account, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        raw_todo_identities(&fx).await,
+        identities,
+        "settling preserves stored identities"
+    );
     let rows = fx
         .state
         .store
@@ -878,6 +887,15 @@ async fn distinct_undated_calendar_uids_never_use_the_reminder_period_lookup() {
         crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
         crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
     }
+    let identities = raw_todo_identities(&fx).await;
+    crate::handler::assessments::reconcile_dirty_page(&fx.state, &fx.account, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        raw_todo_identities(&fx).await,
+        identities,
+        "settling preserves stored identities"
+    );
     let rows = fx
         .state
         .store
@@ -890,4 +908,73 @@ async fn distinct_undated_calendar_uids_never_use_the_reminder_period_lookup() {
         "three UIDs mean three identities, including on replay"
     );
     assert!(rows.iter().all(|t| t.kind == "rsvp"));
+}
+
+async fn raw_todo_identities(fx: &Fixture) -> Vec<(String, String, String)> {
+    sqlx::query_as("SELECT id, dedup_key, source_message_id FROM todos ORDER BY id")
+        .fetch_all(fx.state.store.reader())
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn reply_only_mail_and_action_requests_keep_distinct_stored_answers() {
+    let fx = Fixture::new().await;
+    for (sender, text, action, reply) in [
+        (
+            "reviewer@example.com",
+            "Could you review the launch plan?",
+            true,
+            false,
+        ),
+        (
+            "person@example.com",
+            "Are you around Thursday?",
+            false,
+            true,
+        ),
+        (
+            "notifications@github.com",
+            "Are you around Thursday?",
+            false,
+            false,
+        ),
+        (
+            "founders@club.example",
+            "Could you reply with your availability?",
+            false,
+            true,
+        ),
+    ] {
+        let mail = fx
+            .message(&ThreadId::new(), sender, ME, Duration::minutes(5), None)
+            .await;
+        body(&fx, &mail, text).await;
+        crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
+        let answers = fx
+            .state
+            .store
+            .asks_for_messages(&fx.account, std::slice::from_ref(&mail.id))
+            .await
+            .unwrap();
+        let answer = &answers[&mail.id];
+        assert_eq!(
+            answer.units.iter().any(|u| u.answer == AskAnswer::AsksYou),
+            action
+        );
+        assert_eq!(
+            answer
+                .units
+                .iter()
+                .any(|u| u.answer == AskAnswer::AsksYouToReply),
+            reply
+        );
+        let tasks: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM todos WHERE source_message_id = ?")
+                .bind(mail.id.as_str())
+                .fetch_one(fx.state.store.reader())
+                .await
+                .unwrap();
+        assert_eq!(tasks, i64::from(action));
+    }
 }

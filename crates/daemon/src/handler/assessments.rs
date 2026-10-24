@@ -369,6 +369,12 @@ pub(crate) async fn reconcile_account(
         materialize_threads(state, account, &threads, || async { Ok(()) }).await?;
         tokio::task::yield_now().await;
     }
+    // A thread page can contain more than 100 messages. Finish its durable
+    // projection pages through the same bounded seam as the background worker.
+    let mut after = None;
+    while let Some(last) = reconcile_dirty_page(state, account, after.as_deref()).await? {
+        after = Some(last);
+    }
     Ok(())
 }
 
@@ -428,10 +434,11 @@ pub(crate) async fn reconciler_loop(
     }
 }
 
-async fn replay_projections(state: &AppState, account: &AccountId) -> Result<(), HandlerError> {
+async fn replay_projections(state: &AppState, account: &AccountId) -> Result<usize, HandlerError> {
     if !state.config_snapshot().todo.enabled {
-        return Ok(());
+        return Ok(0);
     }
+    let mut acknowledged = 0;
     let mut failure = None;
     for ticket in state.store.pending_asks_projections(account).await? {
         match mxr_todo::pass::project_stored_ask(
@@ -442,7 +449,9 @@ async fn replay_projections(state: &AppState, account: &AccountId) -> Result<(),
         .await
         {
             Ok(()) => {
-                state.store.acknowledge_asks_projection(&ticket).await?;
+                if state.store.acknowledge_asks_projection(&ticket).await? {
+                    acknowledged += 1;
+                }
             }
             Err(error) => {
                 tracing::warn!(message = %ticket.answer.message_id, %error, "stored asks projection remains queued");
@@ -453,7 +462,7 @@ async fn replay_projections(state: &AppState, account: &AccountId) -> Result<(),
     if let Some(error) = failure {
         return Err(error);
     }
-    Ok(())
+    Ok(acknowledged)
 }
 
 pub(super) async fn reconcile_dirty_page(
@@ -461,10 +470,12 @@ pub(super) async fn reconcile_dirty_page(
     account: &AccountId,
     after: Option<&str>,
 ) -> Result<Option<String>, HandlerError> {
-    replay_projections(state, account).await?;
+    let replayed = replay_projections(state, account).await?;
     let threads = state.store.dirty_assessment_threads(account, after).await?;
     let Some(last) = threads.last().map(mxr_core::ThreadId::as_str) else {
-        return Ok(None);
+        // Yield between bounded projection pages even when no thread is dirty.
+        // Keep the cursor so completing an outbox page never rescans the account.
+        return Ok((replayed == 100).then(|| after.unwrap_or_default().to_string()));
     };
     materialize_threads(state, account, &threads, || async { Ok(()) }).await?;
     Ok(Some(last))

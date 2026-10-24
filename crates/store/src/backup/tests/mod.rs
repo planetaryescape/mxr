@@ -1463,6 +1463,16 @@ async fn a_backup_from_before_94_backfills_where_each_commitment_date_came_from(
     ];
     expected.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(sources, expected);
+    let active = restored
+        .list_contact_commitments(&account.id, None, Some(crate::CommitmentStatus::Open))
+        .await
+        .unwrap();
+    assert_eq!(
+        active.len(),
+        2,
+        "only explicit user promises remain active without stored asks"
+    );
+    assert!(active.iter().all(|row| row.id.contains("::promise::")));
 }
 
 #[tokio::test]

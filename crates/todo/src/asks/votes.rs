@@ -112,6 +112,26 @@ pattern!(
 );
 pattern!(RSVP, r"(?i)\brsvp\b");
 
+fn action_speech(
+    prefix: &str,
+    speaker: Actor,
+    recipient: Actor,
+    promise: bool,
+    explicit: bool,
+    required: bool,
+) -> Option<(Act, Actor, bool)> {
+    match super::reply::statement(prefix, speaker, recipient) {
+        Some((Act::Question, actor, declined)) if explicit || required => {
+            Some((Act::Request, actor, declined))
+        }
+        Some(statement) => Some(statement),
+        None if promise => Some((Act::Commitment, speaker, false)),
+        None if explicit => Some((Act::Request, recipient, false)),
+        None if required => Some((Act::Obligation, recipient, false)),
+        None => None,
+    }
+}
+
 pub(super) fn label(
     text: &str,
     prefix: &str,
@@ -264,21 +284,33 @@ pub(super) fn label(
         PaymentStatus::Due | PaymentStatus::PastDue | PaymentStatus::Failed
             if doc.required_fields_present =>
         {
-            votes.push(vote(
-                "document_required_fields",
-                if promise {
-                    Act::Commitment
-                } else {
-                    Act::Obligation
-                },
-                state,
-                if doc.status == PaymentStatus::Failed {
-                    ActionKind::FixPayment
-                } else {
-                    ActionKind::Pay
-                },
-                if promise { promise_actor } else { actor },
-            ));
+            let action = if doc.status == PaymentStatus::Failed {
+                ActionKind::FixPayment
+            } else {
+                ActionKind::Pay
+            };
+            let found = if action == ActionKind::FixPayment {
+                REVIEW.find(action_text)
+            } else {
+                PAY_PROMISE.find(action_text)
+            };
+            let prefix = found.map_or("", |found| &action_text[..found.start()]);
+            if let Some((act, action_actor, declined)) = action_speech(
+                prefix,
+                promise_actor,
+                actor,
+                promise,
+                REQUEST.is_match(action_text),
+                true,
+            ) {
+                votes.push(vote(
+                    "document_required_fields",
+                    act,
+                    if declined { AskState::Cancelled } else { state },
+                    action,
+                    action_actor,
+                ));
+            }
         }
         _ if doc.kind == DocumentKind::Offer => {
             votes.push(vote(
@@ -319,24 +351,15 @@ pub(super) fn label(
         (&*CONTACT, ActionKind::Contact, "contact"),
     ] {
         if let Some(found) = pattern.find(action_text) {
-            // The observed grammatical subject governs this action before a
-            // recipient default can turn it into an owner request.
-            let statement =
-                super::reply::statement(&action_text[..found.start()], promise_actor, actor);
-            let (act, action_actor, declined) = match statement {
-                Some((Act::Question, actor, declined))
-                    if explicit
-                        || action == ActionKind::Sign && SIGN_REQUIREMENT.is_match(action_text) =>
-                {
-                    (Act::Request, actor, declined)
-                }
-                Some(statement) => statement,
-                None if promise => (Act::Commitment, promise_actor, false),
-                None if explicit => (Act::Request, actor, false),
-                None if action == ActionKind::Sign && SIGN_REQUIREMENT.is_match(action_text) => {
-                    (Act::Obligation, actor, false)
-                }
-                None => continue,
+            let Some((act, action_actor, declined)) = action_speech(
+                &action_text[..found.start()],
+                promise_actor,
+                actor,
+                promise,
+                explicit,
+                action == ActionKind::Sign && SIGN_REQUIREMENT.is_match(action_text),
+            ) else {
+                continue;
             };
             if matches!(
                 action,

@@ -385,6 +385,14 @@ pub(super) async fn record_promise(
             mxr_todo::pass::project_stored_ask(&state.store, &cfg, message_id)
                 .await
                 .map_err(|error| error.to_string())?;
+            mxr_todo::accepted_promises::sync_commitment(
+                &state.store,
+                &cfg,
+                &envelope.account_id,
+                &record.id,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
         }
     }
     Ok(ResponseData::RecordedPromise {

@@ -20,19 +20,61 @@ where
     Tz: TimeZone,
     Tz::Offset: std::fmt::Display,
 {
-    let existing: HashMap<_, _> = store
-        .list_promise_todos(account)
-        .await?
+    sync_selected(store, cfg, account, first_run, None).await
+}
+
+/// Acknowledging one explicit date does not scan unrelated account promises.
+pub async fn sync_commitment<Tz>(
+    store: &Store,
+    cfg: &PassConfig<Tz>,
+    account: &AccountId,
+    id: &str,
+) -> anyhow::Result<PassSummary>
+where
+    Tz: TimeZone,
+    Tz::Offset: std::fmt::Display,
+{
+    sync_selected(store, cfg, account, false, Some(id)).await
+}
+
+async fn sync_selected<Tz>(
+    store: &Store,
+    cfg: &PassConfig<Tz>,
+    account: &AccountId,
+    first_run: bool,
+    id: Option<&str>,
+) -> anyhow::Result<PassSummary>
+where
+    Tz: TimeZone,
+    Tz::Offset: std::fmt::Display,
+{
+    let promises = if let Some(id) = id {
+        store
+            .promise_for_todo(account, id)
+            .await?
+            .into_iter()
+            .collect()
+    } else {
+        store.list_promises_for_todos(account).await?
+    };
+    let todos = if let Some(id) = id {
+        store
+            .unique_commitment_todo(account, id)
+            .await?
+            .into_iter()
+            .collect()
+    } else {
+        store.list_promise_todos(account).await?
+    };
+    let existing: HashMap<_, _> = todos
         .into_iter()
         .filter_map(|todo| Some((todo.commitment_id.clone()?, todo)))
         .collect();
     let mut summary = PassSummary::default();
-    for promise in store.list_promises_for_todos(account).await? {
-        // Closed and manually changed tasks retain the user's decision.
+    for promise in promises {
+        // Closed tasks retain the user's decision; edited fields are protected by the date-only CAS.
         let prior = existing.get(&promise.commitment_id);
-        if prior.is_some_and(|todo| {
-            todo.user_touched() || matches!(todo.state, TodoState::Done | TodoState::Dismissed)
-        }) {
+        if prior.is_some_and(|todo| matches!(todo.state, TodoState::Done | TodoState::Dismissed)) {
             continue;
         }
         if promise.status != "open" {
@@ -101,7 +143,9 @@ where
         };
         let what = text::strip_urls(&promise.what);
         let detection = Detection {
-            kind: TodoKind::Promise,
+            kind: prior
+                .and_then(|todo| TodoKind::parse(&todo.kind))
+                .unwrap_or(TodoKind::Promise),
             verb: what
                 .split_whitespace()
                 .next()

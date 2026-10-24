@@ -81,7 +81,9 @@ Use a source message ID from search or the reader for `--from`. The title
 names the action, not the email's subject. `edit` accepts `title`, `due`,
 `amount`, `counterparty` and `kind` as `field=value`; an empty value clears
 due, amount or counterparty. A task you create or edit is yours: it no
-longer expires automatically. Check the preview before applying either
+longer expires automatically. Recording a new promise date updates its open task
+while keeping your other edits. A due date you corrected directly on the task
+keeps its own authority. Check the preview before applying either
 change.
 
 ## Review the first-run catch-up

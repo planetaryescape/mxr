@@ -223,6 +223,31 @@ impl super::Store {
         &self,
         account_id: &AccountId,
     ) -> Result<Vec<PromiseForTodo>, sqlx::Error> {
+        self.promises_for_todos(account_id, None).await
+    }
+
+    pub async fn promise_for_todo(
+        &self,
+        account_id: &AccountId,
+        commitment_id: &str,
+    ) -> Result<Option<PromiseForTodo>, sqlx::Error> {
+        Ok(self
+            .promises_for_todos(account_id, Some(commitment_id))
+            .await?
+            .into_iter()
+            .next())
+    }
+
+    async fn promises_for_todos(
+        &self,
+        account_id: &AccountId,
+        commitment_id: Option<&str>,
+    ) -> Result<Vec<PromiseForTodo>, sqlx::Error> {
+        let commitment_filter = if commitment_id.is_some() {
+            "AND c.id = ?2"
+        } else {
+            ""
+        };
         // A date a model wrote before due words existed is not a due date:
         // the promise is mirrored undated rather than nagging on it.
         let sql = format!(
@@ -237,12 +262,13 @@ impl super::Store {
                AND (m.id IS NULL OR (m.account_id = c.account_id AND m.direction = 'outbound'))
                AND (c.id GLOB c.evidence_msg_id || '::????????-????-????-????-????????????'
                     OR c.id GLOB c.evidence_msg_id || '::promise::?*'
-                    OR c.by_when_source = 'user')"
+                    OR c.by_when_source = 'user') {commitment_filter}"
         );
-        let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
-            .bind(account_id.as_str())
-            .fetch_all(self.reader())
-            .await?;
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql)).bind(account_id.as_str());
+        if let Some(id) = commitment_id {
+            query = query.bind(id);
+        }
+        let rows = query.fetch_all(self.reader()).await?;
         rows.iter()
             .map(|row| {
                 Ok(PromiseForTodo {

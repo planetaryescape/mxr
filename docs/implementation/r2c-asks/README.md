@@ -1,8 +1,8 @@
 # R2c has stored projections and still needs acceptance
 
 The published policy12 baseline has an accepted classifier assessment. This
-candidate uses policy15 for payment commitment identity and grouped saved decisions, retaining policy14 failed-payment grouping; its
-fresh full measurement and final whole-PR acceptance remain pending. Native
+candidate uses policy16 for financial speaker attribution, retaining policy15
+payment identity and grouped saved decisions. Its fresh full measurement and final whole-PR acceptance remain pending. Native
 storage, lifecycle and client checks are recorded in the implementation handoff.
 The accepted contract remains [blueprint 37](../../blueprint/37-what-it-asks.md).
 Do not merge this candidate as completed R2c.
@@ -43,7 +43,7 @@ No uncertain row becomes a Now task.
 
 ## Home and asks commit together
 
-`asks-r2c-15` covers received and sent messages in the existing assessment
+`asks-r2c-16` covers received and sent messages in the existing assessment
 storage envelope. `r2-1` remains the inbound home policy. Home-version
 reports exclude the reserved asks namespace, and outbound asks cannot
 create a home. Both facets share one generation CAS, transaction and dirty
@@ -71,8 +71,8 @@ of the same actor's reply question is re-read as one verbatim span, including
 remain retained history and read pending until the current policy is stored.
 A response noun mention alone does not establish a recipient question.
 Direct requests, questions, response imperatives and reply withdrawals retain
-their evidence; exact source quotes and spans stay unchanged. Previous policies13 and14
-answers remain retained history and read pending until policy15 is stored. Waiting uses the first external To recipient, then Cc, with the same owned-address matching as commitment projection. A failed-payment notice and its immediate polite remediation share one task and the complete source quote. Different explicit payment references, currencies, amounts or due dates remain independent. Policy13 saved decisions retain their original rows and correction Undo snapshots when the two old units become one, including an amount-less remediation next to a priced failure.
+their evidence; exact source quotes and spans stay unchanged. Previous policies13 through15
+remain retained history and read pending until policy16 is stored. Waiting uses the first external To recipient, then Cc, with the same owned-address matching as commitment projection. A failed-payment notice and its immediate polite remediation share one task and the complete source quote. Different explicit payment references, currencies, amounts or due dates remain independent. Policy13 saved decisions retain their original rows and correction Undo snapshots when the two old units become one, including an amount-less remediation next to a priced failure.
 Coordinated future actions retain their speaker: a correspondent saying they
 will rework a plan and send a revision does not ask the owner to send it.
 Security-notice wording only suppresses the verification task; independent

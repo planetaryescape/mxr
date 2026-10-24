@@ -452,3 +452,113 @@ async fn currency_upgrade_preserves_the_exact_durable_correction_undo() {
         .unwrap();
     assert_eq!(packets[0].projected_todos.len(), 2);
 }
+
+#[tokio::test]
+async fn review6_payment_documents_retain_the_observed_speaker() {
+    use mxr_core::asks::{Actor, AskAnswer};
+    let due = (chrono::Utc::now() + Duration::days(9))
+        .format("%-d %B %Y")
+        .to_string();
+    let mut failures = vec![];
+    for (prefix, outbound, expected, answer) in [
+        ("I can pay", false, 0, None),
+        ("She will pay", false, 0, None),
+        ("Please pay", false, 1, Some(AskAnswer::AsksYou)),
+        ("I'll pay", false, 0, Some(AskAnswer::TheyPromisedYou)),
+        ("I'll pay", true, 1, Some(AskAnswer::YouPromised)),
+        ("I can pay", true, 0, None),
+        ("Amount due for", false, 1, Some(AskAnswer::AsksYou)),
+    ] {
+        let fx = Fixture::new().await;
+        let text = format!("{prefix} invoice #K918 £25 by {due}.");
+        let mail = if outbound {
+            source(&fx, &text).await
+        } else {
+            let mail = fx
+                .message(
+                    &ThreadId::new(),
+                    "nora@example.com",
+                    ME,
+                    Duration::minutes(5),
+                    None,
+                )
+                .await;
+            replace(&fx, &mail, &text).await;
+            mail
+        };
+        settle(&fx, &mail).await;
+        let assessments = fx
+            .state
+            .store
+            .asks_for_messages(&fx.account, std::slice::from_ref(&mail.id))
+            .await
+            .unwrap();
+        let stored = &assessments[&mail.id];
+        let ResponseData::Todos { todos } = request(
+            &fx,
+            Request::ListTodos {
+                account_id: Some(fx.account.clone()),
+                state: mxr_protocol::TodoStateData::Open,
+                limit: 100,
+            },
+        )
+        .await
+        else {
+            panic!("list");
+        };
+        eprintln!(
+            "REVIEW6_SPEAKER text={text:?} outbound={outbound} units={:?} todos={todos:?}",
+            stored.units
+        );
+        if todos.len() != expected {
+            failures.push(format!(
+                "{prefix} outbound={outbound}: {} tasks vs {expected}",
+                todos.len()
+            ));
+        }
+        if let Some(answer) = answer {
+            assert!(
+                stored
+                    .units
+                    .iter()
+                    .any(|u| u.answer == answer && stored.quote(u) == Some(text.as_str())),
+                "{text}"
+            );
+        } else if stored
+            .units
+            .iter()
+            .any(|u| u.answer == AskAnswer::AsksYou || u.answer == AskAnswer::YouPromised)
+        {
+            failures.push(format!("non-obligation confirmed: {text}"));
+        }
+        if prefix == "She will pay" {
+            if !stored.units.iter().any(|u| {
+                u.tags
+                    .as_ref()
+                    .is_some_and(|t| t.actor == Actor::ThirdParty)
+            }) {
+                failures.push("third-party subject lost".into());
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[tokio::test]
+async fn review6_financial_speakers_keep_remediation_and_independent_owner_work() {
+    for (text, expected) in [
+        ("I can update your payment details.", 0),
+        ("She will update your payment details.", 0),
+        ("Please update your payment details.", 1),
+        ("Your payment failed. Please update your payment details.", 1),
+        ("I can pay invoice #K918 £25 by 1 November 2026.\n\nPlease sign the contract.", 1),
+        ("She will pay invoice #K918 £25 by 1 November 2026.\n\nPlease pay invoice #Q222 €40 by 1 December 2026.", 1),
+    ] {
+        let fx=Fixture::new().await;
+        let mail=fx.message(&ThreadId::new(),"nora@example.com",ME,Duration::minutes(5),None).await;
+        replace(&fx,&mail,text).await; settle(&fx,&mail).await;
+        let rows=fx.state.store.list_todos_in_state(Some(&fx.account),TodoState::Open,100).await.unwrap();
+        assert_eq!(rows.len(),expected,"{text}");
+        for row in rows {assert!(text.contains(&row.reason));assert!(row.reason.starts_with("Please") || row.reason.starts_with("Your payment"));}
+    }
+}

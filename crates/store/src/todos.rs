@@ -264,7 +264,9 @@ impl super::Store {
                 .await?
             {
                 if prior.user_touched() {
-                    return self.update_accepted_asks_date(record, answer, &prior).await;
+                    return self
+                        .update_accepted_todo_date(record, &prior, Some(answer))
+                        .await;
                 }
             }
         }
@@ -299,6 +301,28 @@ impl super::Store {
         record: &TodoRecord,
         promise: &crate::PromiseForTodo,
     ) -> Result<TodoUpsert, sqlx::Error> {
+        if record.account_id != promise.account_id
+            || record.commitment_id.as_deref() != Some(&promise.commitment_id)
+        {
+            return Err(sqlx::Error::Protocol(
+                "to-do does not match accepted commitment".into(),
+            ));
+        }
+        if let Some(prior) = self
+            .get_todo_by_dedup(&record.account_id, &record.dedup_key)
+            .await?
+        {
+            if prior.user_touched() {
+                if promise.by_when_source != Some(crate::ByWhenSource::User)
+                    || promise.status != "open"
+                    || promise.by_when != record.due_at
+                    || promise.what != record.reason
+                {
+                    return Ok(TodoUpsert::Unchanged);
+                }
+                return self.update_accepted_todo_date(record, &prior, None).await;
+            }
+        }
         self.upsert_todo_from_assessment(record, None, Some(promise))
             .await
     }

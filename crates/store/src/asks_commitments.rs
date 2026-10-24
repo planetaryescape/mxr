@@ -99,26 +99,43 @@ pub(crate) async fn write(
 
 impl crate::Store {
     /// A new explicit acceptance owns the date, not independently edited fields.
-    pub(crate) async fn update_accepted_asks_date(
+    pub(crate) async fn update_accepted_todo_date(
         &self,
         record: &crate::TodoRecord,
-        answer: &AskAssessment,
         prior: &crate::TodoRecord,
+        answer: Option<&AskAssessment>,
     ) -> Result<crate::TodoUpsert, sqlx::Error> {
-        let changed = sqlx::query("UPDATE todos SET due_at=?1, due_words=?2, act_by_at=?3, surface_at=?4, relevant_until=?5, window_source=?6, field_sources=json_set(field_sources, '$.due_at', json_extract(?7, '$.due_at')), user_edited=1, updated_at=?8
+        let authority = if answer.is_some() {
+            "AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id=a.message_id AND m.account_id=a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id=m.account_id AND i.thread_id=m.thread_id WHERE a.message_id=?12 AND a.account_id=?10 AND a.policy_version=?13 AND a.input_fingerprint=?14 AND a.input_revision=i.effective_revision AND json_extract(a.assessment_json, '$.context_token')=?15)"
+        } else {
+            "AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.id=todos.source_message_id AND (m.account_id != todos.account_id OR m.direction != 'outbound'))"
+        };
+        let sql = format!("UPDATE todos SET due_at=?1, due_words=?2, act_by_at=?3, surface_at=?4, relevant_until=?5, window_source=?6, field_sources=json_set(field_sources, '$.due_at', json_extract(?7, '$.due_at')), user_edited=1, updated_at=?8
             WHERE id=?9 AND account_id=?10 AND state='open' AND commitment_id=?11
             AND (due_at IS NOT ?1 OR json_extract(field_sources, '$.due_at.source') IS NOT 'user')
             AND (json_extract(field_sources, '$.due_at.source') IS NOT 'user' OR json_extract(field_sources, '$.due_at.evidence') IN ('your recorded promise date', 'accepted promise date provenance'))
             AND EXISTS (SELECT 1 FROM contact_commitments c WHERE c.account_id=?10 AND c.id=?11 AND c.evidence_msg_id=todos.source_message_id AND c.what=todos.reason AND c.direction='yours' AND c.status='open' AND c.by_when_source='user' AND c.by_when IS ?1)
-            AND EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id=a.message_id AND m.account_id=a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id=m.account_id AND i.thread_id=m.thread_id WHERE a.message_id=?12 AND a.account_id=?10 AND a.policy_version=?13 AND a.input_fingerprint=?14 AND a.input_revision=i.effective_revision AND json_extract(a.assessment_json, '$.context_token')=?15)")
-            .bind(record.due_at.map(|at| at.timestamp())).bind(&record.due_words)
-            .bind(record.act_by_at.map(|at| at.timestamp())).bind(record.surface_at.map(|at| at.timestamp()))
-            .bind(record.relevant_until.map(|at| at.timestamp())).bind(&record.window_source)
-            .bind(&record.field_sources).bind(record.updated_at.timestamp()).bind(&prior.id)
-            .bind(record.account_id.as_str()).bind(&record.commitment_id)
-            .bind(answer.message_id.as_str()).bind(&answer.policy_version).bind(&answer.input_fingerprint)
-            .bind(crate::asks_context_token().map_err(sqlx::Error::Io)?)
-            .execute(self.writer()).await?.rows_affected();
+            {authority}");
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(record.due_at.map(|at| at.timestamp()))
+            .bind(&record.due_words)
+            .bind(record.act_by_at.map(|at| at.timestamp()))
+            .bind(record.surface_at.map(|at| at.timestamp()))
+            .bind(record.relevant_until.map(|at| at.timestamp()))
+            .bind(&record.window_source)
+            .bind(&record.field_sources)
+            .bind(record.updated_at.timestamp())
+            .bind(&prior.id)
+            .bind(record.account_id.as_str())
+            .bind(&record.commitment_id);
+        if let Some(answer) = answer {
+            query = query
+                .bind(answer.message_id.as_str())
+                .bind(&answer.policy_version)
+                .bind(&answer.input_fingerprint)
+                .bind(crate::asks_context_token().map_err(sqlx::Error::Io)?);
+        }
+        let changed = query.execute(self.writer()).await?.rows_affected();
         Ok(if changed == 0 {
             crate::TodoUpsert::Unchanged
         } else {

@@ -407,20 +407,34 @@ pub(super) fn label(
         && (REPLY.is_match(text)
             || text.ends_with('?') && QUESTION.is_match(text) && !PLEASANTRY.is_match(text))
     {
-        // A response verb can describe the speaker's commitment. Require its
-        // own clause opening so an embedded future cannot steal a request.
+        // Attach the observed response to its own subject. Preserve requests
+        // with embedded futures, and reuse the same coordinated promise/offer
+        // attachment as non-reply actions without splitting review-and-reply.
         let speech = salutation(text).map_or(text, |(_, rest)| rest).trim_start();
-        let speaker_act = super::reply::speaker_act(speech);
+        let statement = (!speech.ends_with('?') && !REQUEST.is_match(speech))
+            .then(|| {
+                let prefix = &speech[..REPLY.find(speech)?.start()];
+                let (mut act, subject, declined) = super::reply::statement(prefix, promise_actor)?;
+                if act == Act::Information && !declined {
+                    if inherited_promise(prefix) {
+                        act = Act::Commitment;
+                    } else if inherited_offer(prefix) {
+                        act = Act::Offer;
+                    }
+                }
+                Some((act, subject, declined))
+            })
+            .flatten();
         votes.push(vote(
             "reply",
-            speaker_act.unwrap_or(Act::Question),
-            state,
-            ActionKind::Reply,
-            if speaker_act.is_some() {
-                promise_actor
+            statement.map_or(Act::Question, |(act, _, _)| act),
+            if statement.is_some_and(|(_, _, declined)| declined) {
+                AskState::Cancelled
             } else {
-                actor
+                state
             },
+            ActionKind::Reply,
+            statement.map_or(actor, |(_, subject, _)| subject),
         ));
     }
     if votes.is_empty() && (PLEASANTRY.is_match(text) || state != AskState::Pending) {

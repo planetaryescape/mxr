@@ -798,7 +798,9 @@ fn comma_edits_a_field_and_refuses_a_line_without_equals() {
         summary: "Correction saved".into(),
     };
     app.pending_mutation_queue.clear();
-    app.set_pending_undo(crate::runner::todo_undo(&change).expect("durable correction offers undo"));
+    app.set_pending_undo(
+        crate::runner::todo_undo(&change).expect("durable correction offers undo"),
+    );
     press(&mut app, KeyCode::Char('u'));
     assert!(matches!(
         queued(&app).as_slice(),

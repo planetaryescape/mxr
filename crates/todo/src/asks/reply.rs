@@ -1,15 +1,23 @@
 //! Reply wording distinguishes a speaker's promise or offer from a recipient's turn.
-use mxr_core::asks::Act;
+use mxr_core::asks::{Act, Actor};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+static SUBJECT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)^(i|we|he|she|they)\b(.*)$").expect("response subject regex"));
+static ADDRESSED: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)\byou\b").expect("response addressee regex"));
 static COMMITMENT: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-    r"(?i)^(?:i(?:'ll| will)|we(?:'ll| will)|i promise to|i can commit to)\s+(?:reply|respond)\b"
-).expect("reply commitment regex")
+    Regex::new(r"(?i)^(?:'ll|\s+(?:will|(?:am|are|is) going to|promise to|can commit to))\s+(?:(?:\p{L}+ly|also|still|soon|then|just)\s+)*$")
+        .expect("response commitment predicate regex")
 });
 static OFFER: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)^(?:i|we) (?:can|could)\s+(?:reply|respond)\b").expect("reply offer regex")
+    Regex::new(r"(?i)^\s+(?:can|could)\s+(?:(?:\p{L}+ly|also|still|soon|then|just)\s+)*$")
+        .expect("response offer predicate regex")
+});
+static DECLINED: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)^\s+(?:will not|won't|cannot|can't)\s+(?:(?:\p{L}+ly|also|still|soon|then|just)\s+)*$")
+        .expect("declined response predicate regex")
 });
 static EXPERIENCE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)^how (?:was|were|did)\b").expect("experience question regex"));
@@ -20,14 +28,36 @@ static FEEDBACK: Lazy<Regex> = Lazy::new(|| {
     .expect("optional feedback invitation regex")
 });
 
-pub(super) fn speaker_act(text: &str) -> Option<Act> {
-    if COMMITMENT.is_match(text) {
-        Some(Act::Commitment)
-    } else if OFFER.is_match(text) {
-        Some(Act::Offer)
+/// Read the grammatical subject before the observed response verb. A mention
+/// of the addressee can instead govern an embedded request, so retain that
+/// request's existing evidence rather than attributing it to the speaker.
+pub(super) fn statement(prefix: &str, speaker: Actor) -> Option<(Act, Actor, bool)> {
+    let prefix = prefix.trim_start();
+    let lower = prefix.to_ascii_lowercase();
+    let prefix = if lower.starts_with("if ") || lower.starts_with("unless ") {
+        prefix.split_once(',')?.1.trim_start()
     } else {
-        None
+        prefix
+    };
+    let subject = SUBJECT.captures(prefix)?;
+    let predicate = subject.get(2)?.as_str();
+    if ADDRESSED.is_match(predicate) {
+        return None;
     }
+    let actor = if matches!(subject[1].to_ascii_lowercase().as_str(), "i" | "we") {
+        speaker
+    } else {
+        Actor::ThirdParty
+    };
+    let declined = DECLINED.is_match(predicate);
+    let act = if COMMITMENT.is_match(predicate) {
+        Act::Commitment
+    } else if OFFER.is_match(predicate) {
+        Act::Offer
+    } else {
+        Act::Information
+    };
+    Some((act, actor, declined))
 }
 
 pub(super) fn joins_feedback(question: &str, invitation: &str) -> bool {

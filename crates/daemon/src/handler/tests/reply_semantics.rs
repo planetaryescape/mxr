@@ -95,7 +95,14 @@ async fn observe(
     );
     assert!(!answer.input_fingerprint.is_empty());
     assert!(!answer.pending_body);
-    assert!(entry.home.is_some());
+    if answer.facts.owner_authored {
+        assert!(
+            entry.home.is_none(),
+            "sent mail has no delivered inbound home"
+        );
+    } else {
+        assert!(entry.home.is_some());
+    }
     // Feed the packet's semantic reply answer through the existing grader;
     // a synthetic oracle avoids resolving any mixed-generator scenario.
     let reply = !entry.envelope.flags.contains(MessageFlags::SPAM)
@@ -205,7 +212,7 @@ async fn observe(
         "reply_capable": reply_capable, "auto_generated": message.evidence.auto_generated,
         "bulk": message.evidence.bulk, "is_reply": message.evidence.is_reply,
         "thread_correspondence": message.evidence.thread_correspondence,
-            "context": answer.context_token, "home": entry.home.unwrap().home,
+            "context": answer.context_token, "home": entry.home.map(|home| home.home),
             "role": answer.facts.recipient_role, "owner_authored": answer.facts.owner_authored,
             "owner_replied_afterwards": answer.facts.owner_replied_afterwards,
             "units": units, "semantic_reply": reply, "semantic_counts": counts, "delivered_turn": turn,
@@ -420,3 +427,5 @@ async fn embedded_speaker_future_does_not_steal_an_owner_request() {
 mod invitations;
 
 mod projection;
+
+mod speech_acts;

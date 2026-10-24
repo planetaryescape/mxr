@@ -385,7 +385,7 @@ impl super::Store {
                 .bind(&promise.commitment_id)
                 .bind(promise.account_id.as_str())
                 .bind(promise.recorded_by_when.map(|at| at.timestamp()))
-                .bind(promise.by_when_source.map(|source| source.as_str()))
+                .bind(promise.by_when_source.map(crate::ByWhenSource::as_str))
                 .bind(&promise.status)
                 .bind(&promise.what)
         } else {

@@ -705,6 +705,7 @@ mod arrivals;
 mod arrivals_report;
 mod ask_assessments;
 mod asks_projection_replay;
+mod assessment_authority;
 mod assistant;
 mod assistant_models;
 mod body_and_invites;

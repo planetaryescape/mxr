@@ -818,10 +818,9 @@ impl AppState {
         let index_path = data_dir.join("search_index");
 
         let store = Arc::new(Store::new(&db_path).await?);
-        let context = format!(
-            "{}:{:?}",
+        let context = crate::handler::assessments::context_key(
             config.messages.large_thread_recipients,
-            mxr_store::asks_context_token().ok()
+            mxr_store::asks_context_token().ok().as_deref(),
         );
         store.sync_assessment_context(&context).await?;
         // Cached auth authority belongs to the loaded receiver configuration.
@@ -2077,6 +2076,7 @@ impl AppState {
             .await
             .expect("apply semantic config");
         apply_llm_config_to_runtime(&self.llm, &config.llm);
+        let _ = crate::handler::assessments::BEFORE_AUTHORITY_WRITE.try_with(|observe| observe());
         let _assessment_config = self.assessment_config_gate.write().await;
         if self.config.read().todo.trusted_authentication_services
             != config.todo.trusted_authentication_services

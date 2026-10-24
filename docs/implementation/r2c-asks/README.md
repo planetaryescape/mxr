@@ -232,10 +232,24 @@ its upstream feature gate otherwise fails to compile its `HeaderValue` adapters.
 Only that compatibility edge uses `mail-parser` 0.9.4; the workspace parser remains
 0.11. No verifier, DNS, crypto or network feature is enabled.
 
-Schema100 persists receiver authority per account and global shape/timezone
+Schema 100 persists receiver authority per account and global shape/timezone
 context. Startup and the background reconciler compare the durable values;
 unchanged authority uses reads only. A receiver change advances only that
 account’s generations, while an actual global context change advances all
 accounts. The first migration without a marker can invalidate once. Receiver
 IDs use the same lowercase/sorted/deduplicated policy in matching, fingerprints
 and persisted authority; whitespace is preserved and never silently trusted.
+
+The native authority tests pause materialization at its existing commit barrier
+and queue a trust-revocation writer at the config gate. Publication finishes
+under the old authority, then revocation makes that account pending without
+retiring another account’s answer or task. The persistent-startup test opens
+`AppState` twice with the same configured receiver and checks the actual first
+and later reconciler ticks for unchanged answers, outbox and writer counts.
+Separate shape-only and timezone-context-only changes test both accounts’
+generations without modifying process-wide timezone settings. Run these proofs
+with:
+
+```sh
+cargo nextest run -p mxr --lib -E 'test(handler::tests::assessment_authority::) | test(receiver_revocation_waits_for_preparation)'
+```

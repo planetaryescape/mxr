@@ -25,6 +25,9 @@ type BeforeCommit = std::sync::Arc<
 #[cfg(test)]
 tokio::task_local! {
     pub(super) static BEFORE_COMMIT: BeforeCommit;
+    pub(crate) static BEFORE_AUTHORITY_WRITE: std::sync::Arc<dyn Fn() + Send + Sync>;
+    pub(super) static AFTER_RECONCILE_TICK: std::sync::Arc<dyn Fn() + Send + Sync>;
+    pub(super) static RECONCILER_CONTEXT_TOKEN: std::sync::Arc<dyn Fn() -> Option<String> + Send + Sync>;
 }
 
 pub(super) fn describe(assessment: &MailAssessment) -> mxr_protocol::MailKindData {
@@ -414,6 +417,18 @@ fn placement_rule(rule: KindRuleData) -> String {
         .unwrap_or_else(|| "person".into())
 }
 
+pub(crate) fn context_key(recipients: usize, timezone_token: Option<&str>) -> String {
+    format!("{recipients}:{timezone_token:?}")
+}
+
+fn reconciler_context_token() -> Option<String> {
+    #[cfg(test)]
+    if let Ok(resolve) = RECONCILER_CONTEXT_TOKEN.try_with(std::sync::Arc::clone) {
+        return resolve();
+    }
+    mxr_store::asks_context_token().ok()
+}
+
 pub(crate) async fn reconciler_loop(
     state: std::sync::Arc<AppState>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
@@ -426,9 +441,9 @@ pub(crate) async fn reconciler_loop(
             if changed.is_err() || *shutdown.borrow_and_update() { break; } continue;
         }}
         let shape = super::conversation_shape::shape_config(&state);
-        let asks_context = mxr_store::asks_context_token().ok();
+        let asks_context = reconciler_context_token();
         if previous_shape != Some(shape) || previous_asks_context != asks_context {
-            let context = format!("{}:{asks_context:?}", shape.large_thread_recipients);
+            let context = context_key(shape.large_thread_recipients, asks_context.as_deref());
             if let Err(error) = state.store.sync_assessment_context(&context).await {
                 tracing::warn!(%error, "assessment initialization pending");
                 continue;
@@ -461,6 +476,8 @@ pub(crate) async fn reconciler_loop(
                 tracing::warn!(account = %account.id, %error, "arrival placement pending after assessment reconciliation");
             }
         }
+        #[cfg(test)]
+        let _ = AFTER_RECONCILE_TICK.try_with(|observe| observe());
     }
 }
 

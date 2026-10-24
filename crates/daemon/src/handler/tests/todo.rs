@@ -21,6 +21,7 @@ use mxr_store::{
 use mxr_todo::pass;
 use std::collections::HashMap;
 
+mod bank_transfer;
 mod html_evidence;
 mod provenance_cases;
 mod resolution_budget;

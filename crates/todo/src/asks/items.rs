@@ -11,6 +11,17 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
     if answer.pending_body {
         return Vec::new();
     }
+    let bills = answer
+        .units
+        .iter()
+        .filter(|unit| {
+            unit.answer == AskAnswer::AsksYou
+                && unit
+                    .tags
+                    .as_ref()
+                    .is_some_and(|tags| tags.action == ActionKind::Pay)
+        })
+        .count();
     answer
         .units
         .iter()
@@ -213,12 +224,42 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                 }
                 return Some((index, detection));
             }
+            // A sibling obligation's link or bank instructions do not describe this bill.
+            let html = answer
+                .html
+                .as_ref()
+                .and_then(|html| answer.facts.zones.get(html.zone))
+                .map(|zone| zone.text.as_str());
+            let link = crate::action_link::pick_link(
+                if kind == TodoKind::Bill && bills > 1 {
+                    None
+                } else {
+                    html
+                },
+                if kind == TodoKind::Bill && bills > 1 {
+                    quote
+                } else {
+                    &answer.facts.zones[unit.zone].text
+                },
+                kind,
+            );
+            let doc_type = if kind == TodoKind::Bill {
+                crate::detect::bank_transfer_evidence(link.is_some(), quote).map(|evidence| {
+                    fields.set(
+                        "payment_method",
+                        FieldProvenance::with_evidence(FieldSource::Rule, evidence),
+                    );
+                    "bill_bank".to_string()
+                })
+            } else {
+                None
+            };
             Some((
                 index,
                 Detection {
                     kind,
                     verb: verb.into(),
-                    doc_type: None,
+                    doc_type,
                     title: if kind == TodoKind::Rsvp {
                         format!(
                             "RSVP to {}",
@@ -242,15 +283,7 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                     amount,
                     due,
                     event_start: None,
-                    link: crate::action_link::pick_link(
-                        answer
-                            .html
-                            .as_ref()
-                            .and_then(|html| answer.facts.zones.get(html.zone))
-                            .map(|zone| zone.text.as_str()),
-                        &answer.facts.zones[unit.zone].text,
-                        kind,
-                    ),
+                    link,
                     origin: Origin::Rule,
                     reason: quote.to_string(),
                     fields,

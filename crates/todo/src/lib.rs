@@ -38,10 +38,10 @@ pub mod timing;
 
 use serde::{Deserialize, Serialize};
 
-/// Bumped when detection changes enough that old mail should be classified
-/// again. A new version starts a new first run, which never clears a claim,
+/// Bumped when detection or derived projection changes require replaying old mail.
+/// A new version starts a new first run, which never clears a claim,
 /// an expiry or a user decision.
-pub const RULES_VERSION: i64 = 2;
+pub const RULES_VERSION: i64 = 3;
 
 /// The kind of action, which picks the lead time and the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

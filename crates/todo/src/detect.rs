@@ -830,11 +830,19 @@ fn source_label(source: FieldSource) -> &'static str {
 
 /// Pay link, bank transfer, or neither: picks the bill's act-by rule.
 fn pay_method(detection: &Detection, text: &str) -> &'static str {
-    if detection.link.is_none() && BANK_DETAILS.is_match(text) {
+    if bank_transfer_evidence(detection.link.is_some(), text).is_some() {
         "bill_bank"
     } else {
         "bill_link"
     }
+}
+
+/// Factual payment instructions; the caller has already established the obligation.
+pub(crate) fn bank_transfer_evidence(has_pay_link: bool, text: &str) -> Option<&str> {
+    if has_pay_link {
+        return None;
+    }
+    BANK_DETAILS.find(text).map(|found| found.as_str())
 }
 
 pub(crate) fn bill_thing(text: &str) -> Option<String> {

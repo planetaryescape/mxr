@@ -29,7 +29,7 @@ the due date. Use a row's ID from the JSON output for the CLI commands below.
 mxr todo why TODO_ID --format json
 ```
 
-Inspect where the title, amount and dates came from. In the web app, press
+Inspect where the title, amount, payment method and dates came from. In the web app, press
 `o` to open the source email beside the list, **details** on the row (or
 in the palette) for why the row is here and where each field came from (a
 field mxr wasn't sure of reads "unchecked"), `,` to fix a field,

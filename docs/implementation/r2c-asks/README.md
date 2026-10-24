@@ -55,6 +55,13 @@ one predecessor and full cached body parts, including HTML text fallback.
 Desk snippets are not the evidence boundary. Owner matching uses
 `OwnedAddresses`, including send-as aliases.
 
+Singleton asks reads start with the distinct requested message IDs before
+joining assessments. This keeps per-message projection from walking the
+account's assessment index. Account, policy, effective generation and timezone
+checks still apply. The native full-schema lookup regression measures SQLite
+VM work at 1,000 and 10,000 rows; the full-set test reports sync and
+classification stage times separately.
+
 Mode responses carry bounded summaries: policy, fingerprint, unit tags,
 candidate values, exact quotes when within the response limit, and
 message/zone/span provenance. Full zones remain in local storage. A summary

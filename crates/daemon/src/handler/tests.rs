@@ -711,6 +711,7 @@ mod body_and_invites;
 mod categories;
 mod category_rules;
 mod classify_eval;
+mod classify_eval_diagnostics;
 mod classify_eval_floor;
 mod classify_eval_full;
 mod codes;

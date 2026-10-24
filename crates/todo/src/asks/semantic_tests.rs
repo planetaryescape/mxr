@@ -376,3 +376,56 @@ fn salutation_review_another_emails_cancellation_does_not_cancel_this_reply() {
     );
     assert!(answers(&a).contains(&AskAnswer::AsksYouToReply), "{a:?}");
 }
+
+#[test]
+fn coordinated_sender_future_actions_do_not_become_owner_requests() {
+    for body in [
+        "I'll rework the plan around it and send you a revised version.",
+        "I'll find a suitable slot and send an invite.",
+    ] {
+        let incoming = judge(body, false);
+        assert!(
+            !answers(&incoming).contains(&AskAnswer::AsksYou),
+            "{incoming:?}"
+        );
+        assert!(
+            answers(&incoming).contains(&AskAnswer::TheyPromisedYou),
+            "{incoming:?}"
+        );
+        let outgoing = judge(body, true);
+        assert!(
+            answers(&outgoing).contains(&AskAnswer::YouPromised),
+            "{outgoing:?}"
+        );
+    }
+    let direct = judge(
+        "I'll rework the plan and could you send me the contract?",
+        false,
+    );
+    assert!(answers(&direct).contains(&AskAnswer::AsksYou), "{direct:?}");
+    let independent = judge("I'll rework the plan. Send me the contract.", false);
+    assert!(answers(&independent).contains(&AskAnswer::AsksYou));
+}
+
+#[test]
+fn security_notice_is_not_identity_work_but_independent_tasks_remain() {
+    let notice = judge("We detected an unusual sign-in attempt on your account. To protect it, confirm your identity now or access will be limited.", false);
+    assert!(
+        !answers(&notice).contains(&AskAnswer::AsksYou),
+        "{notice:?}"
+    );
+    let mixed = judge(
+        "We detected a new sign-in attempt. Confirm your identity now. Please sign the agreement.",
+        false,
+    );
+    let actions: Vec<_> = mixed
+        .units
+        .iter()
+        .filter(|u| u.answer == AskAnswer::AsksYou)
+        .map(|u| u.tags.as_ref().unwrap().action)
+        .collect();
+    assert_eq!(actions, [ActionKind::Sign]);
+    assert!(
+        answers(&judge("Please verify your email address.", false)).contains(&AskAnswer::AsksYou)
+    );
+}

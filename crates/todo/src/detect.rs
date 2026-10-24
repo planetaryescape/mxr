@@ -148,7 +148,7 @@ static VERIFY: Lazy<Regex> = Lazy::new(|| {
         .expect("valid verify regex")
 });
 
-static SECURITY: Lazy<Regex> = Lazy::new(|| {
+pub(crate) static SECURITY: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\b((verification|security|one[- ]time|login|sign[- ]in|access|confirmation) code|passcode|\botp\b|new sign[- ]?in (to|from|on|detected)|sign[- ]in attempt|login attempt|was this you|password (reset|change)|reset your password)")
         .expect("valid security regex")
 });

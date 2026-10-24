@@ -1021,63 +1021,66 @@ async fn outbound_waiting_stays_pending_until_an_authored_request_is_stored() {
 }
 
 #[tokio::test]
-async fn retired_policy_four_reads_pending_then_reconciles_to_current_policy() {
-    let fx = Fixture::new().await;
-    let mail = fx
-        .message(
-            &ThreadId::new(),
-            "reviewer@example.com",
-            ME,
-            Duration::hours(2),
-            None,
-        )
-        .await;
-    crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
-    sqlx::query("UPDATE mail_assessments SET policy_version='asks-r2c-4', assessment_json=json_set(assessment_json,'$.policy_version','asks-r2c-4') WHERE message_id=? AND policy_version=?")
-        .bind(mail.id.as_str()).bind(ASKS_POLICY_VERSION).execute(fx.state.store.writer()).await.unwrap();
-    assert!(fx
-        .state
-        .store
-        .asks_for_messages(&fx.account, std::slice::from_ref(&mail.id))
-        .await
-        .unwrap()
-        .is_empty());
-    assert!(fx
-        .state
-        .store
-        .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
-        .await
-        .unwrap()
-        .is_empty());
-    crate::handler::assessments::reconcile_messages(
-        &fx.state,
-        &fx.account,
-        std::slice::from_ref(&mail.id),
-    )
-    .await
-    .unwrap();
-    let current = fx
-        .state
-        .store
-        .asks_for_messages(&fx.account, std::slice::from_ref(&mail.id))
-        .await
-        .unwrap();
-    assert_eq!(current[&mail.id].policy_version, ASKS_POLICY_VERSION);
-    assert_eq!(
-        fx.state
+async fn retired_policy_reads_pending_then_reconciles_to_current_policy() {
+    for old_policy in ["asks-r2c-4", "asks-r2c-5"] {
+        let fx = Fixture::new().await;
+        let mail = fx
+            .message(
+                &ThreadId::new(),
+                "reviewer@example.com",
+                ME,
+                Duration::hours(2),
+                None,
+            )
+            .await;
+        crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&mail.id)).await;
+        sqlx::query("UPDATE mail_assessments SET policy_version=?1, assessment_json=json_set(assessment_json,'$.policy_version',?1) WHERE message_id=?2 AND policy_version=?3")
+        .bind(old_policy).bind(mail.id.as_str()).bind(ASKS_POLICY_VERSION).execute(fx.state.store.writer()).await.unwrap();
+        assert!(fx
+            .state
+            .store
+            .asks_for_messages(&fx.account, std::slice::from_ref(&mail.id))
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(fx
+            .state
             .store
             .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
             .await
             .unwrap()
-            .len(),
-        1
-    );
-    let retained: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM mail_assessments WHERE message_id=? AND policy_version='asks-r2c-4'",
-    )
-    .bind(mail.id.as_str())
-    .fetch_one(fx.state.store.reader())
-    .await
-    .unwrap();
-    assert_eq!(retained, 1);
+            .is_empty());
+        crate::handler::assessments::reconcile_messages(
+            &fx.state,
+            &fx.account,
+            std::slice::from_ref(&mail.id),
+        )
+        .await
+        .unwrap();
+        let current = fx
+            .state
+            .store
+            .asks_for_messages(&fx.account, std::slice::from_ref(&mail.id))
+            .await
+            .unwrap();
+        assert_eq!(current[&mail.id].policy_version, ASKS_POLICY_VERSION);
+        assert_eq!(
+            fx.state
+                .store
+                .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        let retained: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM mail_assessments WHERE message_id=? AND policy_version=?",
+        )
+        .bind(mail.id.as_str())
+        .bind(old_policy)
+        .fetch_one(fx.state.store.reader())
+        .await
+        .unwrap();
+        assert_eq!(retained, 1);
+    }
 }

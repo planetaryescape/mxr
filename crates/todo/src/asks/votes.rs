@@ -20,6 +20,7 @@ pattern!(
     PROMISE,
     r"(?i)\b(i(?:'ll| will)|we(?:'ll| will)|i promise to|i can commit to)\s+(send|provide|upload|sign|pay|book|contact|return|prepare|complete|deliver)\b"
 );
+pattern!(FUTURE_SPEAKER, r"(?i)\b(?:i|we)(?:'ll| will)\s+\p{L}");
 pattern!(
     CANCELLED,
     r"(?i)\b(do not|don't|no longer (?:need|require)|cancelled|canceled|not required|need not|no need to|not necessary)\b"
@@ -224,7 +225,7 @@ pub(super) fn label(
     } else {
         AskState::Pending
     };
-    let promise = PROMISE.is_match(text) || inherited_promise(prefix);
+    let promise = PROMISE.is_match(text) || (!REQUEST.is_match(text) && inherited_promise(prefix));
     let promise_actor = if facts.owner_authored {
         Actor::Owner
     } else {
@@ -291,6 +292,21 @@ pub(super) fn label(
         if pattern.is_match(action_text)
             && (explicit || matches!(action, ActionKind::Sign | ActionKind::Verify))
         {
+            if action == ActionKind::Verify
+                && (crate::detect::SECURITY.is_match(text)
+                    || crate::detect::SECURITY.is_match(input.subject)
+                    || crate::detect::SECURITY
+                        .is_match(prefix.rsplit("\n\n").next().unwrap_or_default()))
+            {
+                votes.push(vote(
+                    "security_notice",
+                    Act::Information,
+                    state,
+                    action,
+                    Actor::Nobody,
+                ));
+                continue;
+            }
             if action == ActionKind::Send && doc.kind == DocumentKind::Bill
                 || action == ActionKind::Other && REPLY.is_match(action_text)
             {
@@ -390,7 +406,7 @@ fn inherited_promise(prefix: &str) -> bool {
         .next()
         .unwrap_or_default();
     let lower = preceding.trim_end().to_ascii_lowercase();
-    (lower.ends_with(" and") || lower.ends_with(" then")) && PROMISE.is_match(preceding)
+    (lower.ends_with(" and") || lower.ends_with(" then")) && FUTURE_SPEAKER.is_match(preceding)
 }
 
 fn actor(text: &str, prefix: &str, facts: &AskFacts, input: &AskInput<'_>) -> Actor {

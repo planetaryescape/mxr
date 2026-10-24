@@ -13,6 +13,7 @@
 //!   set selection, the held-out accounting and the per-account scoping are
 //!   checked on every run.
 
+use super::classify_eval_diagnostics::emit_ask_diagnostics;
 use super::classify_eval_floor;
 use super::*;
 use crate::handler::classify_eval::classify_eval;
@@ -311,6 +312,7 @@ async fn the_full_set_is_graded_on_the_whole_demo() {
         summary.present
     );
     assert!(summary.held_out_present > 5_000);
+    emit_ask_diagnostics(&state, &summary, &mismatches).await;
     classify_eval_floor::check("full", summary.asks.as_ref().expect("asks"));
     insta::assert_snapshot!(report(&summary, &mismatches));
 }
@@ -390,6 +392,7 @@ async fn the_quick_set_on_a_generated_demo_still_grades_only_the_curated_mail() 
 async fn grading_the_full_set_twice_gives_the_same_answer() {
     let (state, _, _) = demo_state(1_200).await;
     let first = eval(&state, None, ClassifyEvalSetData::Full).await;
+    emit_ask_diagnostics(&state, &first.0, &first.1).await;
     let before: i64 = sqlx::query_scalar("SELECT total_changes()")
         .fetch_one(state.store.writer())
         .await

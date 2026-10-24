@@ -1839,6 +1839,7 @@ mod provenance_tests {
             pending_body: false,
             context_token: "test".into(),
             calendar: None,
+            html: None,
             facts: AskFacts {
                 zones: vec![AskZone {
                     kind: ZoneKind::Calendar,

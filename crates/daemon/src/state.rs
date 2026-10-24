@@ -818,6 +818,9 @@ impl AppState {
         let index_path = data_dir.join("search_index");
 
         let store = Arc::new(Store::new(&db_path).await?);
+        // Cached auth authority belongs to the loaded receiver configuration.
+        // Invalidate before IPC opens, rather than waiting for the first loop tick.
+        store.invalidate_all_assessments().await?;
         std::fs::create_dir_all(&index_path)?;
         let pending = store.restore_pending().await?;
         if pending {
@@ -2047,6 +2050,14 @@ impl AppState {
             .map_err(|e| e.to_string())?;
         apply_llm_config_to_runtime(&self.llm, &config.llm);
         let _assessment_config = self.assessment_config_gate.write().await;
+        if self.config.read().todo.trusted_authentication_services
+            != config.todo.trusted_authentication_services
+        {
+            self.store
+                .invalidate_all_assessments()
+                .await
+                .map_err(|error| error.to_string())?;
+        }
         *self.config.write() = config.clone();
         Ok(config)
     }
@@ -2059,6 +2070,14 @@ impl AppState {
             .expect("apply semantic config");
         apply_llm_config_to_runtime(&self.llm, &config.llm);
         let _assessment_config = self.assessment_config_gate.write().await;
+        if self.config.read().todo.trusted_authentication_services
+            != config.todo.trusted_authentication_services
+        {
+            self.store
+                .invalidate_all_assessments()
+                .await
+                .expect("invalidate receiver authority");
+        }
         *self.config.write() = config;
     }
 
@@ -2258,6 +2277,14 @@ impl AppState {
             .map_err(|e| e.to_string())?;
         apply_llm_config_to_runtime(&self.llm, &config.llm);
         let _assessment_config = self.assessment_config_gate.write().await;
+        if self.config.read().todo.trusted_authentication_services
+            != config.todo.trusted_authentication_services
+        {
+            self.store
+                .invalidate_all_assessments()
+                .await
+                .map_err(|error| error.to_string())?;
+        }
         *self.config.write() = config;
         crate::loops::spawn_sync_loops(self.clone());
         Ok(())

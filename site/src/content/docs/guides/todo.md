@@ -216,3 +216,14 @@ dismiss or undo that offer.
 - [Annual renewal reviews](/guides/archive/#subscriptions-are-receipts-that-recur)
 - [Keyboard reference](/reference/keybindings/#to-do)
 - [Review later evidence](/guides/todo-resolution/)
+
+## Structured bill fields need receiver trust
+
+By default, mxr does not use email markup to supply a bill’s amount or deadline.
+A mail administrator can enable receiver-reported authentication for one account
+through `mxr config edit`, using `[todo.trusted_authentication_services]` and the
+account ID as the key. Configure an authserv-id only after confirming that the
+receiving server strips forged reports claiming that ID, then restart mxr.
+Raw authentication headers alone are insufficient. A receiver-reported aligned
+DKIM or SPF pass can supplement an authored bill; it never makes a payment link
+trusted. The action still opens the email so you can inspect its source.

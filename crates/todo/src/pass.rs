@@ -58,7 +58,7 @@ pub struct PassSummary {
 }
 
 impl PassSummary {
-    fn add(&mut self, other: &Self) {
+    pub fn add(&mut self, other: &Self) {
         self.scanned += other.scanned;
         self.bodies_read += other.bodies_read;
         self.created += other.created;
@@ -123,21 +123,24 @@ pub async fn project_stored_ask<Tz>(
     store: &Store,
     cfg: &PassConfig<Tz>,
     id: &MessageId,
-) -> anyhow::Result<()>
+) -> anyhow::Result<PassSummary>
 where
     Tz: TimeZone,
     Tz::Offset: std::fmt::Display,
 {
+    let mut summary = PassSummary::default();
     for row in store.list_todo_scan_rows(std::slice::from_ref(id)).await? {
-        classify(
-            store,
-            cfg,
-            &row,
-            run_in_progress(store, &row.account_id).await?,
-        )
-        .await?;
+        summary.add(
+            &classify(
+                store,
+                cfg,
+                &row,
+                run_in_progress(store, &row.account_id).await?,
+            )
+            .await?,
+        );
     }
-    Ok(())
+    Ok(summary)
 }
 
 async fn run_in_progress(store: &Store, account_id: &AccountId) -> anyhow::Result<bool> {
@@ -364,7 +367,7 @@ where
     (record, placement)
 }
 
-fn record_outcome(
+pub(crate) fn record_outcome(
     summary: &mut PassSummary,
     record: &TodoRecord,
     placement: Placement,
@@ -411,7 +414,7 @@ pub fn parse_ics_time(value: &str) -> Option<DateTime<Utc>> {
     Some(Utc.from_utc_datetime(&naive))
 }
 
-fn build_record<Tz>(
+pub(crate) fn build_record<Tz>(
     cfg: &PassConfig<Tz>,
     row: &TodoScanRow,
     detection: Detection,

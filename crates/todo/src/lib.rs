@@ -22,6 +22,7 @@
     expect(clippy::panic, reason = "unit tests panic on an unexpected variant")
 )]
 
+pub mod accepted_promises;
 pub mod action_link;
 pub mod asks;
 pub mod complete;

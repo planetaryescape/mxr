@@ -19,6 +19,13 @@ pub(super) async fn prepare(
     let context_token = timezone.token().to_string();
     let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
     let stored = state.store.asks_for_messages(account, &ids).await?;
+    let trusted_services = state
+        .config_snapshot()
+        .todo
+        .trusted_authentication_services
+        .get(&account.as_str())
+        .cloned()
+        .unwrap_or_default();
     let envelopes = state.store.list_envelopes_by_ids(&ids).await?;
     let envelopes: HashMap<_, _> = envelopes.iter().map(|e| (&e.id, e)).collect();
     let source_bodies = if stored.len() == ids.len() {
@@ -28,7 +35,7 @@ pub(super) async fn prepare(
     };
     let plain_bodies: HashMap<_, _> = source_bodies
         .iter()
-        .map(|(id, (plain, html))| {
+        .map(|(id, (plain, html, _))| {
             (
                 id.clone(),
                 mxr_reader::plain_text(plain.as_deref(), html.as_deref()),
@@ -86,6 +93,12 @@ pub(super) async fn prepare(
                 })
                 .or_else(|| position.checked_sub(1).and_then(|p| ordered.get(p)));
             let body = plain_bodies.get(&message.id);
+            let source = source_bodies.get(&message.id);
+            let html = source.and_then(|(_, html, _)| html.as_deref());
+            let metadata: mxr_core::MessageMetadata = source
+                .map(|(_, _, metadata)| serde_json::from_str(metadata))
+                .transpose()?
+                .unwrap_or_default();
             let calendar = if !is_owner(&message.from.email) {
                 state.store.invite_awaiting_reply(&message.id).await?
             } else {
@@ -107,6 +120,8 @@ pub(super) async fn prepare(
                 "owner_replied_afterwards": replied,
                 "context_token": context_token,
                 "calendar": calendar,
+                "html": [html, &source.map(|(_, _, metadata)| metadata)],
+                "trusted_authentication_services": trusted_services,
             }).to_string());
             timezone
                 .validate_timestamp(message.date)
@@ -136,6 +151,14 @@ pub(super) async fn prepare(
                     && super::mail_kind::human_response(&senders.signals(message, is_owner)),
             };
             let mut answer = assess(&input, &timezone, fingerprint);
+            mxr_todo::asks::include_html(
+                &mut answer,
+                &input,
+                html,
+                &metadata.auth_results,
+                &trusted_services,
+                &timezone,
+            );
             mxr_todo::asks::include_calendar(&mut answer, calendar);
             answer.context_token = context_token.clone();
             answers.push(answer);

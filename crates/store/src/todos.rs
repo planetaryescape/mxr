@@ -250,7 +250,7 @@ impl super::Store {
         &self,
         record: &TodoRecord,
     ) -> Result<TodoUpsert, sqlx::Error> {
-        self.upsert_todo_from_assessment(record, None).await
+        self.upsert_todo_from_assessment(record, None, None).await
     }
 
     pub async fn upsert_asks_todo(
@@ -279,7 +279,17 @@ impl super::Store {
                 }
             }
         }
-        self.upsert_todo_from_assessment(&record, Some(answer))
+        self.upsert_todo_from_assessment(&record, Some(answer), None)
+            .await
+    }
+
+    /// The accepted commitment snapshot and user-edit guard share the insert CAS.
+    pub async fn upsert_accepted_promise_todo(
+        &self,
+        record: &TodoRecord,
+        promise: &crate::PromiseForTodo,
+    ) -> Result<TodoUpsert, sqlx::Error> {
+        self.upsert_todo_from_assessment(record, None, Some(promise))
             .await
     }
 
@@ -287,6 +297,7 @@ impl super::Store {
         &self,
         record: &TodoRecord,
         answer: Option<&mxr_core::asks::AskAssessment>,
+        promise: Option<&crate::PromiseForTodo>,
     ) -> Result<TodoUpsert, sqlx::Error> {
         // Read for the report only: the conflict clause below decides.
         let prior = self
@@ -294,6 +305,8 @@ impl super::Store {
             .await?;
         let predicate = if answer.is_some() {
             "WHERE EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ?41 AND a.account_id = ?42 AND a.policy_version = ?43 AND a.input_fingerprint = ?44 AND a.input_revision = i.effective_revision AND json_extract(a.assessment_json, '$.context_token') = ?45) AND NOT EXISTS (SELECT 1 FROM todos legacy WHERE legacy.account_id = ?42 AND legacy.rules_version < 2 AND legacy.origin IN ('rule', 'schema', 'model', 'ics') AND legacy.source_message_id = ?41 AND legacy.kind = ?6) AND NOT EXISTS (SELECT 1 FROM asks_legacy_links l JOIN todos old ON old.id = l.todo_id WHERE old.account_id = ?42 AND l.dedup_key = ?35)"
+        } else if promise.is_some() {
+            "WHERE EXISTS (SELECT 1 FROM contact_commitments c WHERE c.id = ?41 AND c.account_id = ?42 AND c.by_when IS ?43 AND c.by_when_source IS ?44 AND c.status = ?45 AND c.what = ?46 AND c.direction = 'yours' AND (c.id GLOB c.evidence_msg_id || '::????????-????-????-????-????????????' OR c.id GLOB c.evidence_msg_id || '::promise::?*' OR c.by_when_source = 'user') AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.id = c.evidence_msg_id AND (m.account_id != c.account_id OR m.direction != 'outbound')))"
         } else {
             "WHERE 1"
         };
@@ -360,6 +373,21 @@ impl super::Store {
                 .bind(&answer.policy_version)
                 .bind(&answer.input_fingerprint)
                 .bind(crate::asks_context_token().map_err(sqlx::Error::Io)?)
+        } else if let Some(promise) = promise {
+            if record.account_id != promise.account_id
+                || record.commitment_id.as_deref() != Some(&promise.commitment_id)
+            {
+                return Err(sqlx::Error::Protocol(
+                    "to-do does not match accepted commitment".into(),
+                ));
+            }
+            query
+                .bind(&promise.commitment_id)
+                .bind(promise.account_id.as_str())
+                .bind(promise.recorded_by_when.map(|at| at.timestamp()))
+                .bind(promise.by_when_source.map(|source| source.as_str()))
+                .bind(&promise.status)
+                .bind(&promise.what)
         } else {
             query
         };

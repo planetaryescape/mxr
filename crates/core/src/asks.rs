@@ -3,7 +3,7 @@ use crate::{AccountId, MessageId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-pub const ASKS_POLICY_VERSION: &str = "asks-r2c-7";
+pub const ASKS_POLICY_VERSION: &str = "asks-r2c-8";
 
 macro_rules! tags {
     ($name:ident { $($variant:ident),+ $(,)? }) => {
@@ -101,6 +101,24 @@ tags!(PaymentStatus {
     Credit,
     None
 });
+
+/// A configured receiving service reported an aligned pass; this is not a
+/// cryptographic verification performed by mxr. The exact header is retained.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AskSenderAlignment {
+    pub authserv_id: String,
+    pub method: String,
+    pub domain: String,
+    pub header_zone: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AskHtmlEvidence {
+    pub zone: usize,
+    pub alignment: Option<AskSenderAlignment>,
+}
 
 /// UTF-8 byte offsets into the unmodified zone text; end is exclusive.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -216,6 +234,8 @@ pub struct AskAssessment {
     pub context_token: String,
     #[serde(default)]
     pub calendar: Option<crate::CalendarMetadata>,
+    #[serde(default)]
+    pub html: Option<AskHtmlEvidence>,
     pub facts: AskFacts,
     pub units: Vec<AskUnit>,
 }

@@ -9,8 +9,7 @@ use chrono::{DateTime, Duration, FixedOffset, Utc};
 use mxr_core::id::ThreadId;
 use mxr_core::types::{Address, Draft, DraftContent, DraftIntent, MessageDirection};
 use mxr_store::{
-    ByWhenSource, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord,
-    DraftCommitmentCandidate, TodoState,
+    ByWhenSource, CommitmentDirection, CommitmentStatus, DraftCommitmentCandidate, TodoState,
 };
 use std::collections::{BTreeSet, HashMap};
 
@@ -60,36 +59,69 @@ async fn seed(
     source: Option<ByWhenSource>,
     direction: CommitmentDirection,
     status: CommitmentStatus,
-) {
+) -> String {
     let thread = ThreadId::new();
     let sent = fx
         .message(&thread, ME, "nora@example.com", Duration::days(3), None)
         .await;
     fx.store_envelope(&sent, MessageDirection::Outbound).await;
+    let at = Utc::now();
+    let draft = Draft {
+        revision: Some(1),
+        id: mxr_core::DraftId::new(),
+        account_id: fx.account.clone(),
+        from: None,
+        reply_headers: None,
+        intent: DraftIntent::New,
+        to: vec![Address {
+            name: None,
+            email: "nora@example.com".into(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Accepted promise".into(),
+        content: DraftContent::markdown(format!("promise {id}")),
+        inline_assets: vec![],
+        managed_attachments: None,
+        attachments: vec![],
+        inline_calendar_reply: None,
+        created_at: at,
+        updated_at: at,
+    };
+    let candidate = DraftCommitmentCandidate {
+        id: mxr_store::new_candidate_id(),
+        draft_id: draft.id.clone(),
+        account_id: fx.account.clone(),
+        email: "nora@example.com".into(),
+        direction,
+        who_owes: "you".into(),
+        what: format!("promise {id}"),
+        by_when: Some(by_when),
+        by_when_source: source,
+        extracted_at: at,
+    };
     fx.state
         .store
-        .upsert_contact_commitment(&ContactCommitmentRecord {
-            id: id.into(),
-            account_id: fx.account.clone(),
-            email: "nora@example.com".into(),
-            thread_id: thread,
-            direction,
-            status,
-            who_owes: "you".into(),
-            what: format!("promise {id}"),
-            by_when: Some(by_when),
-            by_when_source: source,
-            evidence_msg_id: sent.id.clone(),
-            extracted_at: Utc::now(),
-            resolved_at: None,
-        })
+        .upsert_draft_commitment_candidate(&candidate)
         .await
         .unwrap();
+    commitments_extract::promote_after_send(&fx.state, &draft, &sent.id)
+        .await
+        .unwrap();
+    let stored_id = format!("{}::{}", sent.id, candidate.id);
+    fx.state
+        .store
+        .set_contact_commitment_status(&fx.account, &stored_id, status, None)
+        .await
+        .unwrap();
+    stored_id
 }
 
 async fn run_todo_pass(fx: &Fixture, at: DateTime<Utc>) {
+    super::projection_diagnostics::trace(&fx.state, &fx.account, "before promise tick").await;
     let mut fingerprints = HashMap::new();
     while todos::tick(&fx.state, at, &mut fingerprints).await.unwrap() {}
+    super::projection_diagnostics::trace(&fx.state, &fx.account, "after promise tick").await;
 }
 
 #[tokio::test]
@@ -103,13 +135,14 @@ async fn every_acting_surface_agrees_on_which_commitment_dates_count() {
         for direction in DIRECTIONS {
             for status in STATUSES {
                 let id = case_id(source, direction, status);
-                seed(&fx, &id, due, source, direction, status).await;
-                cases.push((id, acts(source, direction, status)));
+                let stored_id = seed(&fx, &id, due, source, direction, status).await;
+                cases.push((id, stored_id, acts(source, direction, status)));
             }
         }
     }
     assert_eq!(cases.len(), 24);
 
+    super::projection_diagnostics::trace(&fx.state, &fx.account, "24 seeded commitments").await;
     // The desk's Due lane.
     let ResponseData::Desk { due: lane, .. } = fx.desk(100).await else {
         panic!("expected a desk");
@@ -121,8 +154,8 @@ async fn every_acting_surface_agrees_on_which_commitment_dates_count() {
         .collect();
     let expected: BTreeSet<String> = cases
         .iter()
-        .filter(|(_, acts)| *acts)
-        .map(|(id, _)| id.clone())
+        .filter(|(_, _, acts)| *acts)
+        .map(|(_, stored_id, _)| stored_id.clone())
         .collect();
     assert_eq!(on_desk, expected, "desk due rows");
     assert_eq!(expected.len(), 2, "words and user, yours and open");
@@ -138,8 +171,8 @@ async fn every_acting_surface_agrees_on_which_commitment_dates_count() {
         .into_iter()
         .filter_map(|todo| Some((todo.commitment_id?, todo.due_at)))
         .collect();
-    for (id, acts) in &cases {
-        match mirrored.get(id) {
+    for (id, stored_id, acts) in &cases {
+        match mirrored.get(stored_id) {
             // Only open promises of yours are mirrored at all.
             None => assert!(
                 !id.contains("-yours-open"),
@@ -207,18 +240,21 @@ async fn a_mirrored_promise_loses_its_due_date_when_the_date_turns_out_to_be_a_m
     let fx = Fixture::new().await;
     let at = Utc::now();
     let soon = at + Duration::hours(2);
-    let (open, touched) = ("c-untouched", "c-touched");
-    for id in [open, touched] {
-        seed(
-            &fx,
-            id,
-            soon,
-            Some(ByWhenSource::Words),
-            CommitmentDirection::Yours,
-            CommitmentStatus::Open,
-        )
-        .await;
+    let mut accepted_ids = Vec::new();
+    for id in ["c-untouched", "c-touched"] {
+        accepted_ids.push(
+            seed(
+                &fx,
+                id,
+                soon,
+                Some(ByWhenSource::Words),
+                CommitmentDirection::Yours,
+                CommitmentStatus::Open,
+            )
+            .await,
+        );
     }
+    let (open, touched) = (accepted_ids[0].as_str(), accepted_ids[1].as_str());
     run_todo_pass(&fx, at).await;
     let promise_todos = || async {
         let mut rows = fx

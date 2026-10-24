@@ -120,13 +120,39 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
             if let Some(a) = &amount {
                 fields.set(
                     "amount",
-                    FieldProvenance::with_evidence(FieldSource::Rule, &a.text),
+                    FieldProvenance::with_evidence(
+                        if tags
+                            .amount
+                            .and_then(|i| answer.facts.amounts.get(i))
+                            .is_some_and(|a| {
+                                answer.html.as_ref().is_some_and(|html| html.zone == a.zone)
+                            })
+                        {
+                            FieldSource::Schema
+                        } else {
+                            FieldSource::Rule
+                        },
+                        &a.text,
+                    ),
                 );
             }
             if let Some(d) = &due {
                 fields.set(
                     "due_at",
-                    FieldProvenance::with_evidence(FieldSource::Rule, &d.words),
+                    FieldProvenance::with_evidence(
+                        if tags
+                            .due
+                            .and_then(|i| answer.facts.dates.get(i))
+                            .is_some_and(|d| {
+                                answer.html.as_ref().is_some_and(|html| html.zone == d.zone)
+                            })
+                        {
+                            FieldSource::Schema
+                        } else {
+                            FieldSource::Rule
+                        },
+                        &d.words,
+                    ),
                 );
             }
             let object = tags
@@ -190,16 +216,23 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                     kind,
                     verb: verb.into(),
                     doc_type: None,
-                    title: super::titles::title(
-                        if promised {
-                            ActionKind::Other
-                        } else {
-                            tags.action
-                        },
-                        quote,
-                        &envelope.subject,
-                        &person,
-                    ),
+                    title: if kind == TodoKind::Rsvp {
+                        format!(
+                            "RSVP to {}",
+                            crate::text::clip(&crate::text::strip_urls(&envelope.subject), 100)
+                        )
+                    } else {
+                        super::titles::title(
+                            if promised {
+                                ActionKind::Other
+                            } else {
+                                tags.action
+                            },
+                            quote,
+                            &envelope.subject,
+                            &person,
+                        )
+                    },
                     object_key,
                     counterparty: Some(person),
                     sender_domain: crate::action_link::email_domain(&counterparty.email),
@@ -207,7 +240,11 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                     due,
                     event_start: None,
                     link: crate::action_link::pick_link(
-                        None,
+                        answer
+                            .html
+                            .as_ref()
+                            .and_then(|html| answer.facts.zones.get(html.zone))
+                            .map(|zone| zone.text.as_str()),
                         &answer.facts.zones[unit.zone].text,
                         kind,
                     ),

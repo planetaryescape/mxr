@@ -188,13 +188,38 @@ pub(super) async fn materialize_threads<F, Fut>(
     state: &AppState,
     account: &AccountId,
     threads: &[mxr_core::ThreadId],
-    mut before_commit: F,
+    before_commit: F,
 ) -> Result<HashMap<MessageId, MailAssessment>, HandlerError>
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = Result<(), HandlerError>>,
 {
+    Ok(
+        materialize_threads_at(state, account, threads, before_commit, chrono::Utc::now())
+            .await?
+            .0,
+    )
+}
+
+pub(super) async fn materialize_threads_at<F, Fut>(
+    state: &AppState,
+    account: &AccountId,
+    threads: &[mxr_core::ThreadId],
+    mut before_commit: F,
+    projection_now: chrono::DateTime<chrono::Utc>,
+) -> Result<
+    (
+        HashMap<MessageId, MailAssessment>,
+        mxr_todo::pass::PassSummary,
+    ),
+    HandlerError,
+>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<(), HandlerError>>,
+{
     let _config = state.assessment_config_gate.read().await;
+    let mut projected = mxr_todo::pass::PassSummary::default();
     for _ in 0..3 {
         let revision = state
             .store
@@ -325,7 +350,11 @@ where
         {
             continue;
         }
-        replay_projections(state, account).await?;
+        projected.add(
+            &replay_projections_at(state, account, projection_now)
+                .await?
+                .1,
+        );
         let mut persisted = state
             .store
             .assessments_for_messages(account, CLASSIFIER_POLICY_VERSION, &ids)
@@ -342,12 +371,12 @@ where
                 .assessment_thread_revisions(account, threads)
                 .await?
         {
-            return Ok(persisted);
+            return Ok((persisted, projected));
         }
     }
     // Relevant inputs kept moving. Readers must expose pending, never a
     // newly computed home or a stale stored answer. Dirty work stays queued.
-    Ok(HashMap::new())
+    Ok((HashMap::new(), projected))
 }
 
 /// Synthetic fixtures that bypass sync also cover historical/no-arrivals mail.
@@ -434,23 +463,29 @@ pub(crate) async fn reconciler_loop(
     }
 }
 
-async fn replay_projections(state: &AppState, account: &AccountId) -> Result<usize, HandlerError> {
+async fn replay_projections_at(
+    state: &AppState,
+    account: &AccountId,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(usize, mxr_todo::pass::PassSummary), HandlerError> {
     if !state.config_snapshot().todo.enabled {
-        return Ok(0);
+        return Ok((0, mxr_todo::pass::PassSummary::default()));
     }
     let mut acknowledged = 0;
+    let mut projected = mxr_todo::pass::PassSummary::default();
     let mut failure = None;
     for ticket in state.store.pending_asks_projections(account).await? {
         match mxr_todo::pass::project_stored_ask(
             &state.store,
-            &super::todos::pass_config(state, chrono::Utc::now()),
+            &super::todos::pass_config(state, now),
             &ticket.answer.message_id,
         )
         .await
         {
-            Ok(()) => {
+            Ok(summary) => {
                 if state.store.acknowledge_asks_projection(&ticket).await? {
                     acknowledged += 1;
+                    projected.add(&summary);
                 }
             }
             Err(error) => {
@@ -462,7 +497,7 @@ async fn replay_projections(state: &AppState, account: &AccountId) -> Result<usi
     if let Some(error) = failure {
         return Err(error);
     }
-    Ok(acknowledged)
+    Ok((acknowledged, projected))
 }
 
 pub(super) async fn reconcile_dirty_page(
@@ -470,7 +505,9 @@ pub(super) async fn reconcile_dirty_page(
     account: &AccountId,
     after: Option<&str>,
 ) -> Result<Option<String>, HandlerError> {
-    let replayed = replay_projections(state, account).await?;
+    let replayed = replay_projections_at(state, account, chrono::Utc::now())
+        .await?
+        .0;
     let threads = state.store.dirty_assessment_threads(account, after).await?;
     let Some(last) = threads.last().map(mxr_core::ThreadId::as_str) else {
         // Yield between bounded projection pages even when no thread is dirty.
@@ -488,6 +525,17 @@ pub(crate) async fn reconcile_messages(
     account: &AccountId,
     ids: &[MessageId],
 ) -> Result<(), HandlerError> {
+    reconcile_messages_at(state, account, ids, chrono::Utc::now()).await?;
+    Ok(())
+}
+
+pub(crate) async fn reconcile_messages_at(
+    state: &AppState,
+    account: &AccountId,
+    ids: &[MessageId],
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<mxr_todo::pass::PassSummary, HandlerError> {
+    let mut summary = mxr_todo::pass::PassSummary::default();
     let mut threads: Vec<_> = state
         .store
         .list_envelopes_by_ids(ids)
@@ -499,7 +547,11 @@ pub(crate) async fn reconcile_messages(
     threads.sort_by_key(mxr_core::ThreadId::as_str);
     threads.dedup();
     for chunk in threads.chunks(100) {
-        materialize_threads(state, account, chunk, || async { Ok(()) }).await?;
+        summary.add(
+            &materialize_threads_at(state, account, chunk, || async { Ok(()) }, now)
+                .await?
+                .1,
+        );
     }
-    Ok(())
+    Ok(summary)
 }

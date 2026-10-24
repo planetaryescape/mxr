@@ -11,6 +11,7 @@ pub(super) fn answer(account: &AccountId, message: &mxr_core::Envelope) -> AskAs
         pending_body: true,
         context_token: crate::asks_context_token().unwrap(),
         calendar: None,
+        html: None,
         facts: AskFacts {
             zones: vec![],
             recipient_role: RecipientRole::Unknown,

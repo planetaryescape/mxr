@@ -1,5 +1,8 @@
 //! Deterministic asks judge. Facts and votes are retained before any item projection.
 mod calendar;
+mod html;
+mod sender_auth;
+pub use html::include_html;
 mod candidates;
 pub use calendar::include_calendar;
 mod document;
@@ -194,6 +197,7 @@ where
         pending_body: input.body.is_none(),
         context_token: String::new(),
         calendar: None,
+        html: None,
         facts,
         units,
     }

@@ -609,6 +609,7 @@ async fn ambiguous_legacy_preserves_closed_manual_history_without_freezing_unrel
         pending_body: false,
         context_token: crate::asks_context_token().unwrap(),
         calendar: None,
+        html: None,
         facts: AskFacts {
             zones: vec![],
             recipient_role: RecipientRole::AloneTo,

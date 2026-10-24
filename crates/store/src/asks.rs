@@ -9,7 +9,7 @@ use std::collections::HashMap;
 const ASKS_FOR_MESSAGES: &str = "SELECT a.assessment_json FROM (SELECT DISTINCT value FROM json_each(?3)) requested CROSS JOIN mail_assessments a ON a.message_id = requested.value JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id
             WHERE a.account_id = ?1 AND a.policy_version = ?2 AND a.input_revision = i.effective_revision ORDER BY a.message_id";
 
-type CachedBodies = HashMap<MessageId, (Option<String>, Option<String>)>;
+type CachedBodies = HashMap<MessageId, (Option<String>, Option<String>, String)>;
 
 impl super::Store {
     /// Full cached source parts for bounded asks batches. Desk snippets are
@@ -19,10 +19,12 @@ impl super::Store {
         account: &AccountId,
         ids: &[MessageId],
     ) -> Result<CachedBodies, sqlx::Error> {
-        let rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as("SELECT b.message_id, b.text_plain, b.text_html FROM bodies b JOIN messages m ON m.id = b.message_id WHERE m.account_id = ?1 AND m.id IN (SELECT value FROM json_each(?2))")
+        let rows: Vec<(String, Option<String>, Option<String>, String)> = sqlx::query_as("SELECT b.message_id, b.text_plain, b.text_html, b.metadata_json FROM bodies b JOIN messages m ON m.id = b.message_id WHERE m.account_id = ?1 AND m.id IN (SELECT value FROM json_each(?2))")
             .bind(account.as_str()).bind(encode_json(&ids)?).fetch_all(self.reader()).await?;
         rows.into_iter()
-            .map(|(id, plain, html)| Ok((crate::decode_id(&id)?, (plain, html))))
+            .map(|(id, plain, html, metadata)| {
+                Ok((crate::decode_id(&id)?, (plain, html, metadata)))
+            })
             .collect()
     }
 

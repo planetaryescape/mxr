@@ -112,7 +112,7 @@ pub(crate) async fn scan_messages_at(
 pub(crate) async fn tick(
     state: &AppState,
     now: DateTime<Utc>,
-    _promise_fingerprints: &mut HashMap<AccountId, String>,
+    promise_fingerprints: &mut HashMap<AccountId, String>,
 ) -> Result<bool, HandlerError> {
     if !state.config_snapshot().todo.enabled {
         return Ok(false);
@@ -140,7 +140,7 @@ pub(crate) async fn tick(
                 .await?;
             let ids: Vec<_> = page.iter().map(|row| row.id.clone()).collect();
             if let Err(error) =
-                super::assessments::reconcile_messages(state, &account.id, &ids).await
+                super::assessments::reconcile_messages_at(state, &account.id, &ids, now).await
             {
                 tracing::warn!(%error, "first-run asks pending");
                 running = true;
@@ -167,6 +167,14 @@ pub(crate) async fn tick(
             super::todo_resolution::scan_messages(state, &progress.scanned_message_ids).await;
         }
         running |= !progress.complete;
+        let fingerprint = state.store.promise_fingerprint(&account.id).await?;
+        if promise_fingerprints.get(&account.id) != Some(&fingerprint) {
+            mxr_todo::accepted_promises::sync(&state.store, &cfg, &account.id, !progress.complete)
+                .await
+                .map_err(|error| error.to_string())?;
+            promise_fingerprints.insert(account.id.clone(), fingerprint);
+        }
+
         if progress.summary.created > 0 {
             tracing::info!(
                 account = %account.id,

@@ -49,6 +49,8 @@ pub struct PromiseForTodo {
     pub contact_name: Option<String>,
     pub what: String,
     pub by_when: Option<DateTime<Utc>>,
+    pub recorded_by_when: Option<DateTime<Utc>>,
+    pub by_when_source: Option<crate::ByWhenSource>,
     /// open | resolved | expired
     pub status: String,
 }
@@ -226,13 +228,16 @@ impl super::Store {
         let sql = format!(
             "SELECT c.id, c.account_id, c.thread_id, c.evidence_msg_id, c.email, c.what,
                     CASE WHEN c.{ACTIONABLE_BY_WHEN_SQL} THEN c.by_when END AS by_when,
-                    c.status, m.date AS evidence_date,
+                    c.by_when AS recorded_by_when, c.by_when_source, c.status, COALESCE(m.date, c.extracted_at) AS evidence_date,
                     (SELECT ct.display_name FROM contacts ct
                      WHERE ct.account_id = c.account_id AND ct.email = c.email) AS contact_name
              FROM contact_commitments c
-             JOIN messages m ON m.id = c.evidence_msg_id
+             LEFT JOIN messages m ON m.id = c.evidence_msg_id
              WHERE c.account_id = ? AND c.direction = 'yours'
-               AND m.direction = 'outbound'"
+               AND (m.id IS NULL OR (m.account_id = c.account_id AND m.direction = 'outbound'))
+               AND (c.id GLOB c.evidence_msg_id || '::????????-????-????-????-????????????'
+                    OR c.id GLOB c.evidence_msg_id || '::promise::?*'
+                    OR c.by_when_source = 'user')"
         );
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account_id.as_str())
@@ -250,6 +255,11 @@ impl super::Store {
                     contact_name: row.try_get("contact_name")?,
                     what: row.try_get("what")?,
                     by_when: decode_optional_timestamp(row.try_get("by_when")?)?,
+                    recorded_by_when: decode_optional_timestamp(row.try_get("recorded_by_when")?)?,
+                    by_when_source: row
+                        .try_get::<Option<String>, _>("by_when_source")?
+                        .as_deref()
+                        .and_then(crate::ByWhenSource::parse),
                     status: row.try_get("status")?,
                 })
             })

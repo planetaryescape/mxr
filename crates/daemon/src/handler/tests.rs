@@ -740,6 +740,7 @@ mod owed;
 mod owned_addresses;
 mod places;
 mod platform_and_export;
+mod projection_diagnostics;
 mod reading;
 mod record_subscriptions;
 mod records;

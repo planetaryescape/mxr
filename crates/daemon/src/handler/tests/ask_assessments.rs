@@ -1022,7 +1022,7 @@ async fn outbound_waiting_stays_pending_until_an_authored_request_is_stored() {
 
 #[tokio::test]
 async fn retired_policy_reads_pending_then_reconciles_to_current_policy() {
-    for old_policy in ["asks-r2c-4", "asks-r2c-5", "asks-r2c-6"] {
+    for old_policy in ["asks-r2c-4", "asks-r2c-5", "asks-r2c-6", "asks-r2c-7"] {
         let fx = Fixture::new().await;
         let mail = fx
             .message(

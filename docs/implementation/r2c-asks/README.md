@@ -39,7 +39,7 @@ No uncertain row becomes a Now task.
 
 ## Home and asks commit together
 
-`asks-r2c-7` covers received and sent messages in the existing assessment
+`asks-r2c-8` covers received and sent messages in the existing assessment
 storage envelope. `r2-1` remains the inbound home policy. Home-version
 reports exclude the reserved asks namespace, and outbound asks cannot
 create a home. Both facets share one generation CAS, transaction and dirty
@@ -59,11 +59,11 @@ one predecessor and full cached body parts, including HTML text fallback.
 Desk snippets are not the evidence boundary. Owner matching uses
 `OwnedAddresses`, including send-as aliases.
 
-Policy `asks-r2c-7` also distinguishes an explicit salutation to another
+Policy `asks-r2c-8` also distinguishes an explicit salutation to another
 person from an owner request. Name-only salutations attach locally; an
 addressed action cannot veto an independent unit. An adjacent cancellation
 of the same actor's reply question is re-read as one verbatim span, including
-“No need to reply”, without cancelling separate action tasks. Policy4, Policy5 and Policy6 answers
+“No need to reply”, without cancelling separate action tasks. Policy4, Policy5, Policy6 and Policy7 answers
 remain retained history and read pending until the current policy is stored.
 Coordinated future actions retain their speaker: a correspondent saying they
 will rework a plan and send a revision does not ask the owner to send it.
@@ -88,7 +88,11 @@ reports omitted units; membership reports additional omitted messages.
 ## Tasks and commitments project the persisted answer
 
 The To do scan no longer calls the legacy first-hit detector or mirrors
-model commitment rows. It projects owner requests and owner promises from
+background model commitment rows. Explicitly recorded promises and draft
+promises accepted by sending retain their existing user authority. Their
+projection checks the accepted record and date provenance in the write CAS;
+model-written or unknown dates stay visible as unverified and never drive Due
+or Now. User-edited task dates survive later provenance changes. It projects owner requests and owner promises from
 stored tags. Reply-only asks gate Your turn; owner requests and their
 commitments gate automatic Waiting on. Explicit timers retain their
 existing authority. Relationship commitment projection commits with asks;
@@ -196,3 +200,34 @@ provenance, held-out, migration and release acceptance still require the exact
 candidate's recorded results. To inspect the synthetic quick set's retained
 facts, units, votes and candidates while diagnosing a failure, run its focused
 test with `MXR_CLASSIFY_TRACE=1` and `--nocapture`.
+
+## HTML facts require an explicitly trusted receiving service
+
+The default receiver trust map is empty. Raw `Authentication-Results` headers
+alone never authorize structured bill fields. After the receiving server’s
+administrator has confirmed that its border removes forged reports claiming
+its own authserv-id, configure that service for the exact account ID through
+`mxr config edit`:
+
+```toml
+[todo.trusted_authentication_services]
+"ACCOUNT_ID" = ["mx.example.net"]
+```
+
+Restart the daemon to apply an edited config file. Do not copy a service name
+from an email or infer trust from a sender, `Received` header or a pass string.
+The first matching configured receiver report is authoritative, including a
+failure; mxr requires a parsed aligned DKIM or SPF pass. The stored fact says
+that the receiver reported alignment, not that mxr performed cryptographic
+verification. Account trust changes invalidate cached answers before reuse.
+The raw HTML and exact report remain local provenance. A structured due date
+can supplement one authored bill without changing its exact ask quote, and
+cannot turn an unrelated offer into a task. Link actions still open the email;
+receiver trust never enables one-click payment.
+
+This follows [RFC8601’s trust boundary](https://www.rfc-editor.org/rfc/rfc8601.html#section-1.6)
+and [Gmail’s aligned sender requirement](https://developers.google.com/workspace/gmail/markup/registering-with-google).
+The parser dependency uses `msg-auth-status`0.2.0 with `std` and `mail_parser`:
+its upstream feature gate otherwise fails to compile its `HeaderValue` adapters.
+Only that compatibility edge uses mail-parser0.9.4; the workspace parser remains
+0.11. No verifier, DNS, crypto or network feature is enabled.

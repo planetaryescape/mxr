@@ -193,4 +193,109 @@ async fn promoted_and_recorded_promises_stay_visible_without_reviving_model_hist
     assert!(active
         .iter()
         .any(|p| p.id.contains("::promise::") && p.by_when_source == Some(ByWhenSource::User)));
+    let mut fingerprints = std::collections::HashMap::new();
+    while crate::handler::todos::tick(&fx.state, now, &mut fingerprints)
+        .await
+        .unwrap()
+    {}
+    let rows = fx
+        .state
+        .store
+        .list_promise_todos(&fx.account)
+        .await
+        .unwrap();
+    assert_eq!(
+        rows.len(),
+        3,
+        "only the two promoted and one user-recorded promises project"
+    );
+    let user = active
+        .iter()
+        .find(|p| p.by_when_source == Some(ByWhenSource::User))
+        .unwrap();
+    let todo = rows
+        .iter()
+        .find(|row| row.commitment_id.as_deref() == Some(&user.id))
+        .unwrap();
+    assert_eq!(
+        todo.due_at.map(|at| at.timestamp()),
+        user.by_when.map(|at| at.timestamp())
+    );
+    assert!(rows
+        .iter()
+        .filter(|row| row.id != todo.id)
+        .all(|row| row.due_at.is_none()));
+    let before = fx
+        .state
+        .store
+        .list_promises_for_todos(&fx.account)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|p| p.commitment_id == user.id)
+        .unwrap();
+    sqlx::query("UPDATE contact_commitments SET by_when_source='model_date' WHERE id=?")
+        .bind(&user.id)
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.state
+            .store
+            .upsert_accepted_promise_todo(todo, &before)
+            .await
+            .unwrap(),
+        mxr_store::TodoUpsert::Unchanged,
+        "stale accepted-date snapshot cannot win its CAS"
+    );
+    fingerprints.clear();
+    while crate::handler::todos::tick(&fx.state, now, &mut fingerprints)
+        .await
+        .unwrap()
+    {}
+    let undated = fx.state.store.get_todo(&todo.id).await.unwrap().unwrap();
+    assert_eq!(
+        undated.due_at, None,
+        "downgraded model date stops driving To do"
+    );
+    assert_eq!(undated.state, mxr_store::TodoState::Open);
+    let manual = now + Duration::days(42);
+    sqlx::query("UPDATE todos SET user_edited=1, due_at=? WHERE id=?")
+        .bind(manual.timestamp())
+        .bind(&todo.id)
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    sqlx::query("UPDATE contact_commitments SET by_when_source='words' WHERE id=?")
+        .bind(&user.id)
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    fingerprints.clear();
+    while crate::handler::todos::tick(&fx.state, now, &mut fingerprints)
+        .await
+        .unwrap()
+    {}
+    assert_eq!(
+        fx.state
+            .store
+            .get_todo(&todo.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .due_at
+            .map(|at| at.timestamp()),
+        Some(manual.timestamp()),
+        "manual edits survive restart and date-source changes"
+    );
+    assert_eq!(
+        fx.state
+            .store
+            .list_promise_todos(&fx.account)
+            .await
+            .unwrap()
+            .len(),
+        3,
+        "repeated projection has stable identities"
+    );
 }

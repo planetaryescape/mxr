@@ -866,6 +866,20 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
             v("Listing", "Listed", "list", &format!("your {state} to-dos"))
         }
         "mxr_todo_get" => v("Opening", "Opened", "open", "a to-do"),
+        "mxr_todo_correct" => {
+            if run {
+                v("Correcting", "Corrected", "correct", "a to-do")
+            } else {
+                preview_of("Correcting", "a to-do")
+            }
+        }
+        "mxr_todo_undo_correction" => {
+            if run {
+                v("Undoing", "Undid", "undo", "a to-do correction")
+            } else {
+                preview_of("Undoing", "a to-do correction")
+            }
+        }
         "mxr_todo_microsoft" => match arguments.get("action").and_then(Value::as_str) {
             Some("link") if run => v("Linking", "Linked", "link", "a to-do with Microsoft To Do"),
             Some("link") => v(
@@ -1486,6 +1500,69 @@ mod tests {
                 .done,
                 format!("Ran: {action_title}")
             );
+        }
+    }
+
+    #[test]
+    fn todo_correction_titles_preview_and_never_invent_success_or_echo_edits() {
+        for (tool, action, preview) in [
+            (
+                "mxr_todo_correct",
+                "correct a to-do",
+                "Checked what correcting a to-do would change",
+            ),
+            (
+                "mxr_todo_undo_correction",
+                "undo a to-do correction",
+                "Checked what undoing a to-do correction would change",
+            ),
+        ] {
+            for reason in ["not_a_todo", "not_mine", "already_done", "wrong_details"] {
+                let args = json!({
+                    "todo_id": HOSTILE, "reason": reason, "correction_id": HOSTILE,
+                    "edits": [{"field": "title", "value": HOSTILE}],
+                });
+                for confirm in [None, Some(json!(false)), Some(Value::Null)] {
+                    let mut preview_args = args.clone();
+                    if let Some(confirm) = confirm {
+                        preview_args["confirm"] = confirm;
+                    }
+                    assert_eq!(titles(tool, &preview_args, State::Done).done, preview);
+                }
+                let mut committing = args;
+                committing["confirm"] = json!(true);
+                assert_eq!(change_title(tool, &committing, None), capitalised(action));
+                assert_eq!(
+                    titles(tool, &committing, State::Waiting).done,
+                    format!("Waiting for you: {action}")
+                );
+                for result in [
+                    "{}",
+                    r#"{"change":{"dry_run":false,"changed":[{"id":"t1"}],"correction_undo":"token"}}"#,
+                ] {
+                    let title = step_title(
+                        tool,
+                        &committing,
+                        State::Approved,
+                        Context::default(),
+                        Some(result),
+                    );
+                    assert_eq!(title.done, format!("Ran: {action}"));
+                    assert_clean(&title.running);
+                    assert_clean(&title.done);
+                }
+                let title = step_title(
+                    tool,
+                    &committing,
+                    State::Done,
+                    Context::default(),
+                    Some(r#"{"error":"hostile details"}"#),
+                );
+                assert_eq!(
+                    title.done,
+                    format!("Couldn't {action}: mxr reported an error")
+                );
+            }
         }
     }
 

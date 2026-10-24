@@ -28,6 +28,10 @@ editor saves nothing. Quotes remain source evidence. The returned
 state and provenance, unless newer work has changed it.
 
 CLI, IPC, HTTP bridge, MCP, web and TUI use the same correction requests.
+The assistant can preview `mxr_todo_correct` and `mxr_todo_undo_correction`
+without approval. Committing either still asks for approval, including in a
+trusted conversation. Step titles distinguish previews from calls that ran;
+they do not repeat edited fields or claim that a correction succeeded.
 The web and TUI `X` paths choose a reason; TUI choices use 1–4 and Enter.
 Eligible ask uncertainty is a separate `might_need_you` collection on the
 runway. The web disclosure starts closed; TUI `m` opens its source list.

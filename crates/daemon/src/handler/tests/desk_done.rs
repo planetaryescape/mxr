@@ -78,10 +78,10 @@ async fn lanes(fx: &Fixture) -> [Vec<ThreadId>; 4] {
 async fn owed_thread(fx: &Fixture) -> (ThreadId, Envelope, Envelope) {
     let thread = ThreadId::new();
     let mine = fx
-        .message(&thread, ME, "maya@example.com", Duration::days(2), None)
+        .attention_message(&thread, ME, "maya@example.com", Duration::days(2), None)
         .await;
     let mut seen = fx
-        .message(
+        .attention_message(
             &thread,
             "maya@example.com",
             ME,
@@ -92,7 +92,7 @@ async fn owed_thread(fx: &Fixture) -> (ThreadId, Envelope, Envelope) {
     seen.flags |= MessageFlags::READ;
     fx.store_envelope(&seen, MessageDirection::Inbound).await;
     let fresh = fx
-        .message(
+        .attention_message(
             &thread,
             "maya@example.com",
             ME,
@@ -169,7 +169,7 @@ async fn a_new_message_brings_a_done_thread_back() {
     done(&fx, vec![item(&thread, Some(DeskLaneKind::Owed))], false).await;
     assert!(lanes(&fx).await[0].is_empty());
 
-    fx.message(
+    fx.attention_message(
         &thread,
         "maya@example.com",
         ME,
@@ -185,7 +185,7 @@ async fn done_on_new_from_people_puts_it_away() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let hello = fx
-        .message(&thread, "iris@example.com", ME, Duration::hours(2), None)
+        .attention_message(&thread, "iris@example.com", ME, Duration::hours(2), None)
         .await;
     assert_eq!(lanes(&fx).await[3], vec![thread.clone()]);
 
@@ -206,10 +206,10 @@ async fn done_on_waiting_marks_read_without_archiving_and_undo_restores_the_prio
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let question = fx
-        .message(&thread, "jon@example.com", ME, Duration::days(5), None)
+        .attention_message(&thread, "jon@example.com", ME, Duration::days(5), None)
         .await;
     let mine = fx
-        .message(
+        .attention_message(
             &thread,
             ME,
             "jon@example.com",
@@ -226,7 +226,7 @@ async fn done_on_waiting_marks_read_without_archiving_and_undo_restores_the_prio
         },
     )
     .await;
-    fx.message(
+    fx.attention_message(
         &thread,
         ME,
         "jon@example.com",
@@ -264,10 +264,10 @@ async fn done_on_a_promise_resolves_it_marks_its_thread_read_and_undo_reopens_it
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let ask = fx
-        .message(&thread, "nora@example.com", ME, Duration::days(3), None)
+        .attention_message(&thread, "nora@example.com", ME, Duration::days(3), None)
         .await;
     let promise = fx
-        .message(
+        .attention_message(
             &thread,
             ME,
             "nora@example.com",
@@ -275,8 +275,7 @@ async fn done_on_a_promise_resolves_it_marks_its_thread_read_and_undo_reopens_it
             ask.message_id_header.as_deref(),
         )
         .await;
-    fx.promise(&thread, &promise.id, Duration::days(1)).await;
-    let commitment = format!("c-{thread}");
+    let commitment = fx.promise(&thread, &promise.id, Duration::days(1)).await;
     assert_eq!(lanes(&fx).await[1], vec![thread.clone()]);
 
     // Due without its promise is refused, item by item.
@@ -412,19 +411,29 @@ async fn keeping_one_promise_leaves_the_other_promises_on_that_thread_under_due(
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let mine = fx
-        .message(&thread, ME, "nora@example.com", Duration::days(2), None)
+        .attention_message(&thread, ME, "nora@example.com", Duration::days(2), None)
         .await;
+    let mut recorded = Vec::new();
     for id in ["first", "second"] {
-        fx.state
-            .store
-            .upsert_contact_commitment(&promise_record(id, &fx.account, &thread, &mine.id))
-            .await
-            .unwrap();
+        let ResponseData::RecordedPromise { commitment, .. } = request(
+            &fx,
+            Request::RecordPromise {
+                message_id: mine.id.clone(),
+                what: format!("promise {id}"),
+                due_at: chrono::Utc::now() + Duration::days(1),
+                dry_run: false,
+            },
+        )
+        .await
+        else {
+            panic!("recorded promise")
+        };
+        recorded.push(commitment.id);
     }
     let due = DeskDoneItemData {
         thread_id: thread.clone(),
         lane: Some(DeskLaneKind::Due),
-        commitment_id: Some("first".into()),
+        commitment_id: Some(recorded[0].clone()),
     };
     let (outcome, _) = done(&fx, vec![due], false).await;
     assert!(outcome[0].error.is_none());
@@ -438,7 +447,7 @@ async fn a_promise_from_another_account_is_refused() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let mine = fx
-        .message(&thread, ME, "nora@example.com", Duration::days(2), None)
+        .attention_message(&thread, ME, "nora@example.com", Duration::days(2), None)
         .await;
     let other = mxr_core::Account {
         id: mxr_core::AccountId::new(),
@@ -524,10 +533,10 @@ async fn a_half_done_archive_is_undone_to_the_original_state() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let mine = fx
-        .message(&thread, ME, "maya@example.com", Duration::days(2), None)
+        .attention_message(&thread, ME, "maya@example.com", Duration::days(2), None)
         .await;
     let fresh = fx
-        .message(
+        .attention_message(
             &thread,
             "maya@example.com",
             ME,

@@ -22,7 +22,7 @@ pattern!(
 );
 pattern!(
     CANCELLED,
-    r"(?i)\b(do not|don't|no longer (?:need|require)|cancelled|canceled|not required|need not|not necessary)\b"
+    r"(?i)\b(do not|don't|no longer (?:need|require)|cancelled|canceled|not required|need not|no need to|not necessary)\b"
 );
 pattern!(
     CONDITIONAL,
@@ -79,6 +79,11 @@ pattern!(
 pattern!(
     REPLY,
     r"(?i)\b(reply|respond|let me know|let us know|what do you think|are you available|does (?:this|that) work|(?:can|could|would) you confirm|tell me (?:if|whether)|(?:share|send)(?: me| us)? your availability|would you have|shall we|are you (?:around|free))\b"
+);
+
+pattern!(
+    SALUTATION,
+    r"^(?:(?i:hi|hello|hey|dear|good morning|good afternoon|good evening)[ \t]+)?(?P<name>\p{Lu}[\p{L}'’-]+(?:[ \t]+\p{Lu}[\p{L}'’-]+){0,2})[,:](?P<rest>.*)$"
 );
 
 pattern!(PURPOSE, r"(?i)\s+so (?:that )?(?:i|we) (?:can|will|know)\b");
@@ -383,6 +388,37 @@ fn actor(text: &str, prefix: &str, facts: &AskFacts, input: &AskInput<'_>) -> Ac
     if facts.owner_authored {
         return Actor::Correspondent;
     }
+    // An explicit salutation cannot assign another person's request to the
+    // account owner merely because the email has only one To recipient.
+    let addressed = salutation(text).map(|(name, _)| name).or_else(|| {
+        let mut paragraphs = prefix.rsplitn(2, "\n\n");
+        let current = paragraphs.next().unwrap_or_default();
+        salutation_header(current).or_else(|| {
+            // A name-only salutation may introduce the next paragraph, but an
+            // addressed action in another paragraph cannot veto this unit.
+            let previous = paragraphs.next()?.rsplit("\n\n").next()?;
+            (previous
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .count()
+                == 1)
+                .then(|| salutation_header(previous))
+                .flatten()
+        })
+    });
+    if let Some(name) = addressed {
+        return if facts.owner_names.iter().any(|own| {
+            own.eq_ignore_ascii_case(name)
+                || own
+                    .split_whitespace()
+                    .next()
+                    .is_some_and(|first| first.eq_ignore_ascii_case(name))
+        }) {
+            Actor::Owner
+        } else {
+            Actor::ThirdParty
+        };
+    }
     let lower = text.to_lowercase();
     let own_name = facts
         .owner_names
@@ -430,6 +466,45 @@ pub(super) fn eligible_uncertainty(text: &str, doc: &DocumentReading) -> bool {
         )
         || SIGN.is_match(text)
         || VERIFY.is_match(text)
+}
+
+fn salutation_header(part: &str) -> Option<&str> {
+    part.lines()
+        .filter(|line| !line.trim().is_empty())
+        .find_map(|line| {
+            salutation(line).and_then(|(name, rest)| rest.trim().is_empty().then_some(name))
+        })
+}
+
+fn salutation(text: &str) -> Option<(&str, &str)> {
+    let captures = SALUTATION.captures(text.trim())?;
+    let name = captures.name("name")?.as_str();
+    if matches!(
+        name.to_ascii_lowercase().as_str(),
+        "hi" | "hello"
+            | "hey"
+            | "dear"
+            | "good morning"
+            | "good afternoon"
+            | "good evening"
+            | "thanks"
+            | "thank you"
+            | "please"
+            | "kindly"
+            | "fyi"
+            | "invoice"
+            | "account"
+            | "order"
+            | "reference"
+            | "policy"
+            | "date"
+            | "amount"
+    ) {
+        return None;
+    }
+    let rest = captures.name("rest")?.as_str();
+    (rest.trim().is_empty() || REQUEST.is_match(rest) || REPLY.is_match(rest))
+        .then_some((name, rest))
 }
 
 fn named_addressee(text: &str, name: &str) -> bool {

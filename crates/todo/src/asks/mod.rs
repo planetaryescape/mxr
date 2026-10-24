@@ -107,6 +107,48 @@ where
             });
         }
     }
+    // An adjacent explicit reply cancellation belongs to that reply question,
+    // not to independent tasks elsewhere in the email. Re-label the combined
+    // verbatim span so its stored quote includes the cancellation evidence.
+    let mut joined: Vec<AskUnit> = Vec::with_capacity(units.len());
+    for unit in units {
+        let previous = joined.last_mut().filter(|previous| {
+            previous.zone == unit.zone
+                && previous.tags.as_ref().is_some_and(|tags| {
+                    tags.action == ActionKind::Reply && tags.state == AskState::Pending
+                })
+                && unit.tags.as_ref().is_some_and(|tags| {
+                    tags.action == ActionKind::Reply && tags.state == AskState::Cancelled
+                })
+                && previous.tags.as_ref().map(|tags| tags.actor)
+                    == unit.tags.as_ref().map(|tags| tags.actor)
+                && !facts.zones[unit.zone].text[previous.span.end..unit.span.start].contains("\n\n")
+        });
+        if let Some(previous) = previous {
+            previous.span.end = unit.span.end;
+            let source = &facts.zones[unit.zone].text;
+            let text = &source[previous.span.start..previous.span.end];
+            previous.document = document::read(text, unit.zone, &previous.span, &facts);
+            previous.votes = votes::label(
+                text,
+                &source[..previous.span.start],
+                unit.zone,
+                &previous.span,
+                &facts,
+                &previous.document,
+                input,
+            );
+            previous.tags = previous
+                .votes
+                .first()
+                .map(|vote| vote.tags.clone())
+                .filter(|first| previous.votes.iter().all(|vote| &vote.tags == first));
+            previous.answer = resolve(previous.tags.as_ref(), input.owner_replied_afterwards);
+        } else {
+            joined.push(unit);
+        }
+    }
+    let mut units = joined;
     // A subject may summarize the same body obligation. A different explicit
     // reference remains a distinct action, including when one bill is closed.
     let body_tags: Vec<_> = units

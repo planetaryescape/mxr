@@ -35,7 +35,7 @@ No uncertain row becomes a Now task.
 
 ## Home and asks commit together
 
-`asks-r2c-4` covers received and sent messages in the existing assessment
+`asks-r2c-5` covers received and sent messages in the existing assessment
 storage envelope. `r2-1` remains the inbound home policy. Home-version
 reports exclude the reserved asks namespace, and outbound asks cannot
 create a home. Both facets share one generation CAS, transaction and dirty
@@ -54,6 +54,13 @@ storage sequence and prefers a preceding `In-Reply-To` match. It supplies
 one predecessor and full cached body parts, including HTML text fallback.
 Desk snippets are not the evidence boundary. Owner matching uses
 `OwnedAddresses`, including send-as aliases.
+
+Policy `asks-r2c-5` also distinguishes an explicit salutation to another
+person from an owner request. Name-only salutations attach locally; an
+addressed action cannot veto an independent unit. An adjacent cancellation
+of the same actor's reply question is re-read as one verbatim span, including
+“No need to reply”, without cancelling separate action tasks. Policy4 answers
+remain retained history and read pending until the current policy is stored.
 
 Singleton asks reads start with the distinct requested message IDs before
 joining assessments. This keeps per-message projection from walking the
@@ -135,8 +142,8 @@ acknowledgement cannot consume a later generation, even when its fingerprint
 is unchanged. Settled reads select without taking the writer.
 
 Reconciliation continues through projection-only pages after thread work has
-finished. Each call acknowledges at most 100 tickets, yields between pages,
-and retains failed work. A settled call performs no writes. Synthetic grading
+finished. Each replay batch acknowledges at most 100 tickets and retains failed work.
+The background loop yields between projection-only continuation pages. A settled call performs no writes. Synthetic grading
 settles through this same bounded seam before taking its read-only packet;
 reconciliation is not part of the production evaluator.
 

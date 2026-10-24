@@ -267,3 +267,79 @@ fn card_expiry_and_payment_method_deadline_are_distinct_date_roles() {
     let date = &a.facts.dates[unit.tags.as_ref().expect("tags").due.expect("deadline")];
     assert_eq!(date.at.date_naive().to_string(), "2026-10-30");
 }
+
+#[test]
+fn explicit_salutations_do_not_assign_another_persons_actions_to_the_owner() {
+    for body in [
+        "Alice,\nCould you send the deck?",
+        "Hi Brian, could you send the deck?",
+        "Dear Alice:\nPlease sign the agreement.",
+    ] {
+        let answer = judge(body, false);
+        assert!(
+            !answer
+                .units
+                .iter()
+                .any(|unit| matches!(unit.answer, AskAnswer::AsksYou | AskAnswer::AsksYouToReply)),
+            "{body}: {answer:?}"
+        );
+    }
+    for body in [
+        "Hi,\nCould you send the deck?",
+        "Owner,\nCould you send the deck?",
+        "Hi Owner, could you send the deck?",
+        "Hope you're well,\nCould you send the deck?",
+    ] {
+        assert!(
+            answers(&judge(body, false)).contains(&AskAnswer::AsksYou),
+            "{body}"
+        );
+    }
+    let separate = judge(
+        "Alice, please sign the agreement.\n\nPlease send the deck.",
+        false,
+    );
+    assert_eq!(
+        separate
+            .units
+            .iter()
+            .filter(|unit| unit.answer == AskAnswer::AsksYou)
+            .count(),
+        1,
+        "a named action does not veto another unit"
+    );
+}
+
+#[test]
+fn reply_cancellation_is_attached_without_cancelling_an_independent_action() {
+    let cancelled = judge("Hi, could you confirm? No need to reply.", false);
+    assert!(!answers(&cancelled).contains(&AskAnswer::AsksYouToReply));
+    assert!(cancelled.units.iter().any(|unit| unit
+        .tags
+        .as_ref()
+        .is_some_and(|tags| tags.state == AskState::Cancelled)
+        && cancelled
+            .quote(unit)
+            .is_some_and(|quote| quote.contains("No need to reply"))));
+    let another_actor = judge("Could you confirm? Alice, no need to reply.", false);
+    assert!(answers(&another_actor).contains(&AskAnswer::AsksYouToReply));
+    let sign = judge("Please sign the agreement. No need to reply.", false);
+    assert!(answers(&sign).contains(&AskAnswer::AsksYou));
+    let independent = judge(
+        "Could you confirm the meeting?\n\nNo need to reply to Alice's other email.",
+        false,
+    );
+    assert!(answers(&independent).contains(&AskAnswer::AsksYouToReply));
+    let scoped = judge(
+        "Alice,\nPlease sign the agreement.\n\nPlease send the deck.",
+        false,
+    );
+    assert_eq!(
+        scoped
+            .units
+            .iter()
+            .filter(|u| u.answer == AskAnswer::AsksYou)
+            .count(),
+        1
+    );
+}

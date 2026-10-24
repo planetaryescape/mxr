@@ -120,6 +120,9 @@ where
                 && unit.tags.as_ref().is_some_and(|tags| {
                     tags.action == ActionKind::Reply && tags.state == AskState::Cancelled
                 })
+                && votes::withdraws_previous_reply(
+                    &facts.zones[unit.zone].text[unit.span.start..unit.span.end],
+                )
                 && previous.tags.as_ref().map(|tags| tags.actor)
                     == unit.tags.as_ref().map(|tags| tags.actor)
                 && !facts.zones[unit.zone].text[previous.span.end..unit.span.start].contains("\n\n")

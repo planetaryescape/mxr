@@ -83,7 +83,16 @@ pattern!(
 
 pattern!(
     SALUTATION,
-    r"^(?:(?i:hi|hello|hey|dear|good morning|good afternoon|good evening)[ \t]+)?(?P<name>\p{Lu}[\p{L}'’-]+(?:[ \t]+\p{Lu}[\p{L}'’-]+){0,2})[,:](?P<rest>.*)$"
+    r"^(?:(?P<greeting>(?i:hi|hello|hey|dear|howzit|good morning|good afternoon|good evening))[ \t]+)?(?P<name>\p{Lu}[\p{L}'’-]+(?:[ \t]+\p{Lu}[\p{L}'’-]+){0,2})(?P<separator>[,:])(?P<rest>.*)$"
+);
+
+pattern!(
+    RECIPIENT_ROLE,
+    r"(?i)^(?:valued )?(?:customer|member|ratepayer|subscriber|resident|tenant|account holder|card ?holder|policy ?holder)$"
+);
+pattern!(
+    REPLY_WITHDRAWAL,
+    r"(?i)^(?:no need to|do not|don't|need not) (?:reply|respond|confirm)(?: to (?:me|us|this (?:email|message|question)))?[.!]?$"
 );
 
 pattern!(PURPOSE, r"(?i)\s+so (?:that )?(?:i|we) (?:can|will|know)\b");
@@ -468,6 +477,10 @@ pub(super) fn eligible_uncertainty(text: &str, doc: &DocumentReading) -> bool {
         || VERIFY.is_match(text)
 }
 
+pub(super) fn withdraws_previous_reply(text: &str) -> bool {
+    REPLY_WITHDRAWAL.is_match(text.trim())
+}
+
 fn salutation_header(part: &str) -> Option<&str> {
     part.lines()
         .filter(|line| !line.trim().is_empty())
@@ -479,6 +492,13 @@ fn salutation_header(part: &str) -> Option<&str> {
 fn salutation(text: &str) -> Option<(&str, &str)> {
     let captures = SALUTATION.captures(text.trim())?;
     let name = captures.name("name")?.as_str();
+    // A colon alone introduces a heading, not an observed person's name.
+    // Generic recipient roles likewise do not name a different actor.
+    if captures.name("greeting").is_none() && captures.name("separator")?.as_str() == ":"
+        || RECIPIENT_ROLE.is_match(name)
+    {
+        return None;
+    }
     if matches!(
         name.to_ascii_lowercase().as_str(),
         "hi" | "hello"

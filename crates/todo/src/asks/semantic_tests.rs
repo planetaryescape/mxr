@@ -343,3 +343,36 @@ fn reply_cancellation_is_attached_without_cancelling_an_independent_action() {
         1
     );
 }
+
+#[test]
+fn salutation_review_reminder_heading_is_not_a_person() {
+    let a = judge("Reminder: Please sign the agreement.", false);
+    assert!(answers(&a).contains(&AskAnswer::AsksYou), "{a:?}");
+}
+
+#[test]
+fn salutation_review_action_heading_is_not_a_person() {
+    let a = judge("Action Required: Please send the deck.", false);
+    assert!(answers(&a).contains(&AskAnswer::AsksYou), "{a:?}");
+}
+
+#[test]
+fn salutation_review_generic_role_is_not_another_person() {
+    let a = judge("Dear Ratepayer,\n\nYour account 123456 shows an amount due of £100. Please pay by 28 October 2026.", false);
+    assert!(answers(&a).contains(&AskAnswer::AsksYou), "{a:?}");
+}
+
+#[test]
+fn salutation_review_greeting_uses_the_observed_owner_name() {
+    let a = judge("Howzit Owner,\n\nCould you send the deck?", false);
+    assert!(answers(&a).contains(&AskAnswer::AsksYou), "{a:?}");
+}
+
+#[test]
+fn salutation_review_another_emails_cancellation_does_not_cancel_this_reply() {
+    let a = judge(
+        "Could you confirm the meeting? No need to reply to Alice's other email.",
+        false,
+    );
+    assert!(answers(&a).contains(&AskAnswer::AsksYouToReply), "{a:?}");
+}

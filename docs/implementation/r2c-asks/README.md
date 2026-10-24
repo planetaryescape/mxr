@@ -1,10 +1,9 @@
 # R2c has stored projections and still needs acceptance
 
 Continue in the canonical worker checkout and `target-cli`. The candidate
-is unfinished: targeted storage and component checks have passed, and the
-OpenAPI and TypeScript contracts are generated. Daemon lifecycle checks,
-evaluator floors, public fake-mail journeys and the actual UI design matrix
-still require acceptance.
+is unfinished. Canonical contracts and focused storage, lifecycle and client
+checks have passed, but the full classifier still fails its Send precision
+floor. That failure and the remaining integration checks prevent acceptance.
 The accepted contract remains [blueprint 37](../../blueprint/37-what-it-asks.md).
 Do not merge this candidate as completed R2c.
 
@@ -20,8 +19,8 @@ mxr todo undo-correction TODO_ID CORRECTION_ID --format json
 mxr todo correct TODO_ID wrong-details 'title=Sign the right contract' --dry-run
 ```
 
-These are source-defined commands for the candidate, pending runtime
-verification. `not-a-todo`, `not-mine`, `already-done` and `wrong-details`
+These commands share the daemon correction path. The parent has exercised
+all four reasons, previews and undo through isolated fake-mail clients. `not-a-todo`, `not-mine`, `already-done` and `wrong-details`
 are separate durable reasons. Wrong details takes field edits; opening its
 editor saves nothing. Quotes remain source evidence. The returned
 `correction_undo` token restores the prior row, including its fields,
@@ -33,6 +32,8 @@ without approval. Committing either still asks for approval, including in a
 trusted conversation. Step titles distinguish previews from calls that ran;
 they do not repeat edited fields or claim that a correction succeeded.
 The web and TUI `X` paths choose a reason; TUI choices use 1–4 and Enter.
+Web rows keep the requester and exact quote on one truncated secondary line.
+The full quote remains available in its title, details and source reader.
 Eligible ask uncertainty is a separate `might_need_you` collection on the
 runway. The web disclosure starts closed; TUI `m` opens its source list.
 No uncertain row becomes a Now task.

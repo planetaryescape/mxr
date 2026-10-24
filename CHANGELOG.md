@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.160](https://github.com/planetaryescape/mxr/compare/v0.6.159...v0.6.160) (2026-10-23)
+
+
+### Bug Fixes
+
+* allow done on archived Messages topics ([#703](https://github.com/planetaryescape/mxr/issues/703)) ([5213b49](https://github.com/planetaryescape/mxr/commit/5213b493b7e7be40584b7f0bdf8d6a76158cc458))
+
+
+### Documentation
+
+* align discovery and synthetic recordings with mxr runtime ([a9b1346](https://github.com/planetaryescape/mxr/commit/a9b1346f763e7f43a1ece10f50c63b74140f0f12))
+* connect the five mail jobs to the shared runtime ([16b1ada](https://github.com/planetaryescape/mxr/commit/16b1adaed540bd0fdd9e2d447ecd6f6711abcf60))
+* explain local workflows and daemon authority ([cd08cfe](https://github.com/planetaryescape/mxr/commit/cd08cfe5eb72b0959bc623ad15439bbf09cbe2c3))
+* reconcile runtime knowledge and example semantics ([#701](https://github.com/planetaryescape/mxr/issues/701)) ([544da53](https://github.com/planetaryescape/mxr/commit/544da5355fbaa11a7cf64e0fecbd844ca119623a))
+* record completed runtime website rollout ([b3c2f3b](https://github.com/planetaryescape/mxr/commit/b3c2f3b00aca85c2c7375030e86fb7f2380ba4fc))
+
 ## [0.6.159](https://github.com/planetaryescape/mxr/compare/v0.6.158...v0.6.159) (2026-10-23)
 
 

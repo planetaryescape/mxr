@@ -287,11 +287,34 @@ pub(super) async fn record_promise(
     due_at: DateTime<Utc>,
     dry_run: bool,
 ) -> HandlerResult {
-    let what = plain_text(what, WHAT_MAX_CHARS);
+    let mut what = plain_text(what, WHAT_MAX_CHARS);
     if what.is_empty() {
         return Err("Say what you promised, such as \"send the deck\".".into());
     }
     let envelope = sent_envelope(state, message_id).await?;
+    let stored = state
+        .store
+        .asks_for_messages(&envelope.account_id, std::slice::from_ref(message_id))
+        .await?;
+    if let Some(answer) = stored.get(message_id).filter(|answer| !answer.pending_body) {
+        // The model offers a verbatim fragment; identity belongs to the stored
+        // authored unit, so accepting its date must not create another promise.
+        let quotes: Vec<_> = answer
+            .units
+            .iter()
+            .filter(|unit| unit.answer == mxr_core::asks::AskAnswer::YouPromised)
+            .filter_map(|unit| answer.quote(unit))
+            .filter(|quote| quote.contains(&what))
+            .collect();
+        if !quotes.contains(&what.as_str()) {
+            if let Some(quote) = quotes.first() {
+                if quotes.iter().any(|other| other != quote) {
+                    return Err("Those words match more than one promise. Use the exact promise from the sent email.".into());
+                }
+                what = (*quote).to_string();
+            }
+        }
+    }
     let Some(recipient) = envelope.to.first().or_else(|| envelope.cc.first()) else {
         return Err(format!("Message {message_id} has no recipient to keep a promise to").into());
     };

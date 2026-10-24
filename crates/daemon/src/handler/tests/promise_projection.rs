@@ -495,6 +495,109 @@ async fn public_record_promise_updates_the_existing_task_without_a_settle_helper
 }
 
 #[tokio::test]
+async fn accepting_a_verbatim_promise_fragment_keeps_the_canonical_quote_task_and_date() {
+    let fx = Fixture::new().await;
+    let mail = source(&fx, QUOTE).await;
+    settle(&fx, &mail).await;
+    let original = fx
+        .state
+        .store
+        .list_promise_todos(&fx.account)
+        .await
+        .unwrap()
+        .remove(0);
+    for dry_run in [true, false, false] {
+        let ResponseData::RecordedPromise { commitment, .. } = request(
+            &fx,
+            Request::RecordPromise {
+                message_id: mail.id.clone(),
+                what: "send the report".into(),
+                due_at: chosen(),
+                dry_run,
+            },
+        )
+        .await
+        else {
+            panic!("recorded promise")
+        };
+        assert_eq!(commitment.what, QUOTE);
+        if !dry_run {
+            assert_eq!(
+                original.commitment_id.as_deref(),
+                Some(commitment.id.as_str())
+            );
+            let rows = fx
+                .state
+                .store
+                .list_contact_commitments(&fx.account, None, None)
+                .await
+                .unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].by_when, Some(chosen()));
+            assert_eq!(rows[0].by_when_source, Some(ByWhenSource::User));
+            let tasks = fx
+                .state
+                .store
+                .list_promise_todos(&fx.account)
+                .await
+                .unwrap();
+            assert_eq!(tasks.len(), 1);
+            assert_eq!(tasks[0].id, original.id);
+            assert_eq!(tasks[0].reason, QUOTE);
+            assert_eq!(tasks[0].due_at, Some(chosen()));
+        } else {
+            assert_eq!(
+                fx.state
+                    .store
+                    .get_todo(&original.id)
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                original
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn an_ambiguous_promise_fragment_cannot_choose_or_change_either_promise() {
+    let fx = Fixture::new().await;
+    let mail = source(
+        &fx,
+        "I'll send the report tomorrow. I'll send the report on Friday.",
+    )
+    .await;
+    settle(&fx, &mail).await;
+    let before = fx
+        .state
+        .store
+        .list_contact_commitments(&fx.account, None, None)
+        .await
+        .unwrap();
+    assert_eq!(before.len(), 2);
+    for dry_run in [true, false] {
+        let error = super::super::promises::record_promise(
+            &fx.state,
+            &mail.id,
+            "send the report",
+            chosen(),
+            dry_run,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("more than one promise"));
+        assert_eq!(
+            fx.state
+                .store
+                .list_contact_commitments(&fx.account, None, None)
+                .await
+                .unwrap(),
+            before
+        );
+    }
+}
+
+#[tokio::test]
 async fn public_record_promise_preserves_closed_and_user_edited_task_decisions() {
     for decision in ["done", "dismissed", "edited"] {
         let mut config = mxr_config::MxrConfig::default();

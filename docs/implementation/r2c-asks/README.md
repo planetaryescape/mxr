@@ -40,7 +40,7 @@ No uncertain row becomes a Now task.
 
 ## Home and asks commit together
 
-`asks-r2c-11` covers received and sent messages in the existing assessment
+`asks-r2c-12` covers received and sent messages in the existing assessment
 storage envelope. `r2-1` remains the inbound home policy. Home-version
 reports exclude the reserved asks namespace, and outbound asks cannot
 create a home. Both facets share one generation CAS, transaction and dirty
@@ -60,12 +60,16 @@ one predecessor and full cached body parts, including HTML text fallback.
 Desk snippets are not the evidence boundary. Owner matching uses
 `OwnedAddresses`, including send-as aliases.
 
-Policy `asks-r2c-11` also distinguishes an explicit salutation to another
+Policy `asks-r2c-12` also distinguishes an explicit salutation to another
 person from an owner request. Name-only salutations attach locally; an
 addressed action cannot veto an independent unit. An adjacent cancellation
 of the same actor's reply question is re-read as one verbatim span, including
 “No need to reply”, without cancelling separate action tasks. Policy4, Policy5, Policy6, Policy7 and Policy8 answers
 remain retained history and read pending until the current policy is stored.
+A response noun mention alone does not establish a recipient question.
+Direct requests, questions, response imperatives and reply withdrawals retain
+their evidence; exact source quotes and spans stay unchanged. Previous policy11
+answers remain retained history and read pending until policy12 is stored.
 Coordinated future actions retain their speaker: a correspondent saying they
 will rework a plan and send a revision does not ask the owner to send it.
 Security-notice wording only suppresses the verification task; independent

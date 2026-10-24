@@ -59,7 +59,7 @@ pub(super) fn statement(
         return Some((Act::Request, recipient, false));
     }
     if ADDRESSED.is_match(predicate) {
-        return None;
+        return Some((Act::Question, recipient, false));
     }
     let actor = if first_person {
         speaker

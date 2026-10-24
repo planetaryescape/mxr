@@ -3,7 +3,7 @@ use crate::{AccountId, MessageId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-pub const ASKS_POLICY_VERSION: &str = "asks-r2c-11";
+pub const ASKS_POLICY_VERSION: &str = "asks-r2c-12";
 
 macro_rules! tags {
     ($name:ident { $($variant:ident),+ $(,)? }) => {

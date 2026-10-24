@@ -426,16 +426,26 @@ pub(super) fn label(
                 Some((act, subject, declined))
             })
             .flatten();
+        // A response mention alone does not establish a recipient question.
+        // Keep the existing request, interrogative, imperative and withdrawal evidence.
+        let directed = speech.ends_with('?')
+            || REQUEST.is_match(speech)
+            || REPLY
+                .find(speech)
+                .is_some_and(|response| response.start() == 0)
+            || withdraws_previous_reply(speech);
+        let fallback = if directed {
+            (Act::Question, actor, false)
+        } else {
+            (Act::Information, Actor::Nobody, false)
+        };
+        let (act, subject, declined) = statement.unwrap_or(fallback);
         votes.push(vote(
             "reply",
-            statement.map_or(Act::Question, |(act, _, _)| act),
-            if statement.is_some_and(|(_, _, declined)| declined) {
-                AskState::Cancelled
-            } else {
-                state
-            },
+            act,
+            if declined { AskState::Cancelled } else { state },
             ActionKind::Reply,
-            statement.map_or(actor, |(_, subject, _)| subject),
+            subject,
         ));
     }
     if votes.is_empty() && (PLEASANTRY.is_match(text) || state != AskState::Pending) {

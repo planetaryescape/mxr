@@ -267,3 +267,73 @@ async fn nominal_response_requests_are_not_speaker_response_statements() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+#[tokio::test]
+async fn response_noun_mentions_do_not_invent_a_recipient_question() {
+    let fx = fixture().await;
+    let mut failures = Vec::new();
+    for (text, reply) in [
+        ("A reply arrived yesterday.", false),
+        ("The reply contains the revised schedule.", false),
+        ("Your reply is in the folder.", false),
+        ("A reply was received yesterday.", false),
+        ("Riley received a reply yesterday.", false),
+        ("That reply resolved the question.", false),
+        ("Reply tomorrow.", true),
+        ("Respond tomorrow.", true),
+        ("Let me know your decision.", true),
+        ("Could you reply tomorrow?", true),
+        ("When is the meeting?", true),
+        ("I need a reply tomorrow.", true),
+        ("I would appreciate your reply tomorrow.", true),
+        ("Let me know when you will reply.", true),
+    ] {
+        let mail = source(&fx, text).await;
+        let (answer, turn, errors) = observe(&fx, &mail, reply).await;
+        if errors != 0 || turn != reply {
+            failures.push(format!(
+                "{text}: semantic errors={errors}, delivered turn={turn}, expected={reply}"
+            ));
+        }
+        assert!(
+            answer
+                .units
+                .iter()
+                .any(|unit| answer.quote(unit) == Some(text)),
+            "source quote retained: {text}"
+        );
+        if !reply
+            && answer.units.iter().any(|unit| {
+                unit.tags.as_ref().is_some_and(|tags| {
+                    tags.actor == Actor::Owner && matches!(tags.act, Act::Request | Act::Question)
+                })
+            })
+        {
+            failures.push(format!(
+                "{text}: a response mention invented an owner request/question"
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[tokio::test]
+async fn a_response_noun_mention_does_not_hide_an_independent_signature_request() {
+    let fx = fixture().await;
+    let mail = source(&fx, "A reply arrived yesterday. Please sign the form.").await;
+    let (answer, _, errors) = observe(&fx, &mail, false).await;
+    assert_eq!(errors, 0);
+    assert!(answer
+        .units
+        .iter()
+        .any(|unit| {
+            unit.answer == AskAnswer::AsksYou
+                && unit.tags.as_ref().is_some_and(|tags| {
+                    tags.actor == Actor::Owner && tags.action == ActionKind::Sign
+                })
+        }));
+    assert!(!answer
+        .units
+        .iter()
+        .any(|unit| unit.answer == AskAnswer::AsksYouToReply));
+}

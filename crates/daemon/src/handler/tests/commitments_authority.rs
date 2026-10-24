@@ -119,6 +119,7 @@ async fn promoted_and_recorded_promises_stay_visible_without_reviving_model_hist
         .all(|p| p.date_unverified() && p.actionable_by_when().is_none()));
     for id in [
         "commitment-retired-model".to_string(),
+        format!("{}::promise::undated", mxr_core::MessageId::new()),
         format!("{}::unknown", sent.id),
         format!(
             "{}::{}",
@@ -151,7 +152,7 @@ async fn promoted_and_recorded_promises_stay_visible_without_reviving_model_hist
             .await
             .unwrap()
             .len(),
-        5
+        6
     );
     let ResponseData::Desk { due, .. } = fx.desk(100).await else {
         panic!("desk")

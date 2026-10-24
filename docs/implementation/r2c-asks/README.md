@@ -97,8 +97,8 @@ compose safety and draft promise proposals remain separate existing paths.
 
 Commitment history reads retain legacy records, including unverified dates.
 The explicit open view still requires current stored asks, a user-recorded
-promise or a retained draft promise promoted against the same account’s sent
-message; history retention does not put retired model detections into Waiting on.
+promise or a retained draft promise promoted after sending. A cached source
+must belong to that account; missing cached Sent mail retains promotion recovery. History retention does not put retired model detections into Waiting on.
 
 Task identity uses the full counterparty address, action, explicit reference
 or action object and due month. Payment reminders and failed-payment

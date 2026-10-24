@@ -412,10 +412,29 @@ async fn a_ticked_off_council_tax_bill_is_filed_and_undo_takes_the_tick_back() {
         Utc::now() - Duration::hours(20),
     )
     .await;
-    let cfg = crate::handler::todos::pass_config(&fx.state, Utc::now());
-    mxr_todo::pass::scan_messages(&fx.state.store, &cfg, std::slice::from_ref(&bill))
+    assert!(
+        fx.state
+            .store
+            .asks_for_messages(&fx.account, std::slice::from_ref(&bill))
+            .await
+            .unwrap()
+            .is_empty(),
+        "a cached body has not yet settled its asks facet"
+    );
+    crate::handler::todos::scan_messages(&fx.state, std::slice::from_ref(&bill)).await;
+    let answers = fx
+        .state
+        .store
+        .asks_for_messages(&fx.account, std::slice::from_ref(&bill))
         .await
         .unwrap();
+    assert!(
+        answers[&bill]
+            .units
+            .iter()
+            .any(|unit| unit.answer == mxr_core::asks::AskAnswer::AsksYou),
+        "canonical settlement stores the bill ask before projecting it"
+    );
     let todo = fx
         .state
         .store

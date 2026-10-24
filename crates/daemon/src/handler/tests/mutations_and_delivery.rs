@@ -1762,37 +1762,65 @@ fn update_notification_chimes_persists_and_updates_daemon_snapshot() {
     );
 }
 
-#[tokio::test]
-async fn update_llm_config_rejects_blank_model() {
-    let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 1,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::UpdateLlmConfig {
-            config: Box::new(mxr_protocol::LlmConfigData {
-                enabled: true,
-                base_url: "http://127.0.0.1:11434/v1".into(),
-                model: "  ".into(),
-                api_key_env: String::new(),
-                context_window: 4096,
-                request_timeout_secs: 30,
-                allow_cloud_relationship_data: false,
-                overrides: None,
-            }),
-        }),
-    };
+#[test]
+fn update_llm_config_rejects_blank_model() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let config_dir = temp_dir.path().join("config");
+    let data_dir = temp_dir.path().join("data");
+    let socket_path = temp_dir.path().join("mxr.sock");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    temp_env::with_vars(
+        [
+            ("MXR_CONFIG_DIR", Some(config_dir)),
+            ("MXR_DATA_DIR", Some(data_dir)),
+            ("MXR_SOCKET_PATH", Some(socket_path)),
+        ],
+        || {
+            runtime.block_on(async {
+                mxr_config::save_config(&mxr_config::MxrConfig::default())
+                    .expect("seed isolated config");
+                let disk_before =
+                    std::fs::read(mxr_config::config_file_path()).expect("seeded config");
+                let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+                let msg = IpcMessage {
+                    expected_workspace: None,
+                    id: 1,
+                    source: ::mxr_protocol::ClientKind::default(),
+                    payload: IpcPayload::Request(Request::UpdateLlmConfig {
+                        config: Box::new(mxr_protocol::LlmConfigData {
+                            enabled: true,
+                            base_url: "http://127.0.0.1:11434/v1".into(),
+                            model: "  ".into(),
+                            api_key_env: String::new(),
+                            context_window: 4096,
+                            request_timeout_secs: 30,
+                            allow_cloud_relationship_data: false,
+                            overrides: None,
+                        }),
+                    }),
+                };
 
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Error { message, .. }) => {
-            assert!(message.contains("llm.model must not be empty"));
-        }
-        other => panic!("Expected error response, got {other:?}"),
-    }
-    assert_eq!(
-        state.config_snapshot().llm.model,
-        mxr_config::LlmConfig::default().model
+                let resp = handle_request(&state, &msg).await;
+                match resp.payload {
+                    IpcPayload::Response(Response::Error { message, .. }) => {
+                        assert!(message.contains("llm.model must not be empty"));
+                    }
+                    other => panic!("Expected error response, got {other:?}"),
+                }
+                assert_eq!(
+                    state.config_snapshot().llm.model,
+                    mxr_config::LlmConfig::default().model
+                );
+                assert_eq!(
+                    std::fs::read(mxr_config::config_file_path()).expect("unchanged config"),
+                    disk_before
+                );
+            })
+        },
     );
 }
 

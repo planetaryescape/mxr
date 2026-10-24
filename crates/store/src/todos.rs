@@ -304,7 +304,7 @@ impl super::Store {
             .get_todo_by_dedup(&record.account_id, &record.dedup_key)
             .await?;
         let predicate = if answer.is_some() {
-            "WHERE EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ?41 AND a.account_id = ?42 AND a.policy_version = ?43 AND a.input_fingerprint = ?44 AND a.input_revision = i.effective_revision AND json_extract(a.assessment_json, '$.context_token') = ?45) AND NOT EXISTS (SELECT 1 FROM todos legacy WHERE legacy.account_id = ?42 AND legacy.rules_version < 2 AND legacy.origin IN ('rule', 'schema', 'model', 'ics') AND legacy.source_message_id = ?41 AND legacy.kind = ?6) AND NOT EXISTS (SELECT 1 FROM asks_legacy_links l JOIN todos old ON old.id = l.todo_id WHERE old.account_id = ?42 AND l.dedup_key = ?35)"
+            "WHERE EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ?41 AND a.account_id = ?42 AND a.policy_version = ?43 AND a.input_fingerprint = ?44 AND a.input_revision = i.effective_revision AND json_extract(a.assessment_json, '$.context_token') = ?45) AND NOT EXISTS (SELECT 1 FROM todos legacy WHERE legacy.account_id = ?42 AND legacy.rules_version < 2 AND legacy.origin IN ('rule', 'schema', 'model', 'ics') AND legacy.source_message_id = ?41 AND legacy.kind = ?6) AND NOT EXISTS (SELECT 1 FROM asks_legacy_links l JOIN todos old ON old.id = l.todo_id WHERE old.account_id = ?42 AND l.dedup_key = ?35) AND NOT EXISTS (SELECT 1 FROM contact_commitments c WHERE c.account_id=?42 AND c.id=?33 AND (c.status != 'open' OR (c.by_when_source='user' AND (?32 != 1 OR c.by_when IS NOT ?14)) OR (c.by_when_source IS NOT 'user' AND ?32 = 1)))"
         } else if promise.is_some() {
             "WHERE EXISTS (SELECT 1 FROM contact_commitments c WHERE c.id = ?41 AND c.account_id = ?42 AND c.by_when IS ?43 AND c.by_when_source IS ?44 AND c.status = ?45 AND c.what = ?46 AND c.direction = 'yours' AND (c.id GLOB c.evidence_msg_id || '::????????-????-????-????-????????????' OR c.id GLOB c.evidence_msg_id || '::promise::?*' OR c.by_when_source = 'user') AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.id = c.evidence_msg_id AND (m.account_id != c.account_id OR m.direction != 'outbound')))"
         } else {
@@ -345,6 +345,8 @@ impl super::Store {
                 origin = excluded.origin,
                 reason = excluded.reason,
                 field_sources = excluded.field_sources,
+                user_edited = excluded.user_edited,
+                commitment_id = excluded.commitment_id,
                 rules_version = excluded.rules_version,
                 state = CASE WHEN {REOPENS} THEN 'open' ELSE todos.state END,
                 expired_at = CASE WHEN {REOPENS} THEN NULL ELSE todos.expired_at END,

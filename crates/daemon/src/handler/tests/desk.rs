@@ -17,6 +17,19 @@ pub(super) struct Fixture {
 }
 
 impl Fixture {
+    pub(super) fn with_persistent_state(state: Arc<AppState>) -> Self {
+        let account = state.default_account_id();
+        let inbox = LabelId::from_scoped_provider_id(&account, "fake", "INBOX");
+        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account.clone()));
+        Self {
+            state,
+            fake,
+            account,
+            inbox,
+            now: chrono::Utc::now(),
+        }
+    }
+
     pub(super) async fn new() -> Self {
         Self::with_config(mxr_config::MxrConfig::default()).await
     }

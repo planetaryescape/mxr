@@ -309,12 +309,46 @@ where
         catchup_max: cfg.catchup_max,
     };
     let mut current_keys = Vec::new();
-    for (_, detection) in detections {
+    for (_, mut detection) in detections {
+        let commitment = if detection.kind == TodoKind::Promise {
+            match store
+                .asks_owner_commitment_id(answer, &detection.reason)
+                .await?
+            {
+                Some(id) => store.get_contact_commitment(&id).await?,
+                None => None,
+            }
+        } else {
+            None
+        };
+        if commitment
+            .as_ref()
+            .is_some_and(|c| c.status != mxr_store::CommitmentStatus::Open)
+        {
+            current_keys.push(detection.reason.clone());
+            continue;
+        }
+        let user_date = commitment
+            .as_ref()
+            .filter(|c| c.by_when_source == Some(mxr_store::ByWhenSource::User));
+        if let Some(promise) = user_date {
+            detection.due = promise.by_when.map(|at| crate::dates::FoundDate {
+                at,
+                words: "your chosen promise date".into(),
+                checked: true,
+            });
+            detection.fields.set(
+                "due_at",
+                FieldProvenance::with_evidence(FieldSource::User, "your recorded promise date"),
+            );
+        }
         let (mut record, placement) = stored_record(&frozen, row, detection, run_in_progress);
-        if record.kind == "promise" {
-            record.commitment_id = store
-                .asks_owner_commitment_id(answer, &record.reason)
-                .await?;
+        record.user_edited = user_date.is_some();
+        record.commitment_id = commitment.map(|c| c.id);
+        if let Some(id) = &record.commitment_id {
+            if let Some(prior) = store.unique_commitment_todo(&row.account_id, id).await? {
+                record.dedup_key = prior.dedup_key;
+            }
         }
         current_keys.push(record.reason.clone());
         record_outcome(

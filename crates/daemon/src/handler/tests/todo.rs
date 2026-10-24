@@ -22,6 +22,7 @@ use mxr_todo::pass;
 use std::collections::HashMap;
 
 mod html_evidence;
+mod provenance_cases;
 mod resolution_budget;
 
 const CAMDEN_AUTH: &str =

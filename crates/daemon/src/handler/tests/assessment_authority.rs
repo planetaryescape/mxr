@@ -326,10 +326,10 @@ fn a_settled_previous_policy_is_reconciled_by_startup_and_the_first_normal_tick(
                 let mail = seed(&state).await;
                 let shape = state.config_snapshot().messages.large_thread_recipients;
                 let token = mxr_store::asks_context_token().unwrap();
-                // The published policy8 daemon persisted this exact policy-free marker.
-                state.store.sync_assessment_context(&format!("{shape}:{:?}", Some(token.as_str()))).await.unwrap();
+                // The published policy9 daemon persisted this exact policy-aware marker.
+                state.store.sync_assessment_context(&format!("{}:asks-r2c-9:{shape}:{:?}", mxr_core::assessment::CLASSIFIER_POLICY_VERSION, Some(token.as_str()))).await.unwrap();
                 assessments::reconcile_account(&state, &mail.account_id).await.unwrap();
-                sqlx::query("UPDATE mail_assessments SET policy_version='asks-r2c-8', assessment_json=json_set(assessment_json,'$.policy_version','asks-r2c-8') WHERE message_id=? AND policy_version=?")
+                sqlx::query("UPDATE mail_assessments SET policy_version='asks-r2c-9', assessment_json=json_set(assessment_json,'$.policy_version','asks-r2c-9') WHERE message_id=? AND policy_version=?")
                     .bind(mail.id.as_str()).bind(mxr_core::asks::ASKS_POLICY_VERSION).execute(state.store.writer()).await.unwrap();
                 assert!(state.store.dirty_assessment_threads(&mail.account_id, None).await.unwrap().is_empty());
                 assert!(stored_snapshot(&state).await[2].is_empty(), "old profile is fully settled");
@@ -343,7 +343,7 @@ fn a_settled_previous_policy_is_reconciled_by_startup_and_the_first_normal_tick(
                 let reconciler = Reconciler::start(state.clone(), None);
                 reconciler.tick().await;
                 assert_current(&state, std::slice::from_ref(&mail)).await;
-                let history: i64 = sqlx::query_scalar("SELECT count(*) FROM mail_assessments WHERE message_id=? AND policy_version='asks-r2c-8'")
+                let history: i64 = sqlx::query_scalar("SELECT count(*) FROM mail_assessments WHERE message_id=? AND policy_version='asks-r2c-9'")
                     .bind(mail.id.as_str()).fetch_one(state.store.reader()).await.unwrap();
                 assert_eq!(history, 1, "activation retains previous policy history");
                 reconciler.stop().await;

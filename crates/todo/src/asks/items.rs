@@ -137,23 +137,23 @@ pub fn detections(answer: &AskAssessment, envelope: &Envelope) -> Vec<(usize, De
                 );
             }
             if let Some(d) = &due {
-                fields.set(
-                    "due_at",
-                    FieldProvenance::with_evidence(
-                        if tags
-                            .due
-                            .and_then(|i| answer.facts.dates.get(i))
-                            .is_some_and(|d| {
-                                answer.html.as_ref().is_some_and(|html| html.zone == d.zone)
-                            })
-                        {
-                            FieldSource::Schema
-                        } else {
-                            FieldSource::Rule
-                        },
-                        &d.words,
-                    ),
+                let checked = d.checked;
+                let mut provenance = FieldProvenance::with_evidence(
+                    if tags
+                        .due
+                        .and_then(|i| answer.facts.dates.get(i))
+                        .is_some_and(|d| {
+                            answer.html.as_ref().is_some_and(|html| html.zone == d.zone)
+                        })
+                    {
+                        FieldSource::Schema
+                    } else {
+                        FieldSource::Rule
+                    },
+                    &d.words,
                 );
+                provenance.checked = checked;
+                fields.set("due_at", provenance);
             }
             let object = tags
                 .reference

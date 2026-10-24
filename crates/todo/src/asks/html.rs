@@ -97,16 +97,32 @@ pub fn include_html<Tz>(
         crate::schema_org::SchemaDate::Day(day) => crate::dates::end_of_day(day, tz),
         crate::schema_org::SchemaDate::At(at) => at,
     };
-    let due = answer.facts.dates.len();
-    answer.facts.dates.push(AskDate {
-        zone,
-        span: AskSpan {
-            start: source.start + offset,
-            end: source.start + offset + words.len(),
-        },
-        at: at.with_timezone(&Utc),
-        checked: true,
-    });
+    let unit = &answer.units[index];
+    let dates: Vec<_> = answer
+        .facts
+        .dates
+        .iter()
+        .enumerate()
+        .filter(|(_, date)| inside(unit.zone, &unit.span, date.zone, &date.span))
+        .collect();
+    let due = match dates.as_slice() {
+        [(index, date)] if date.at == at => *index,
+        [] => {
+            let index = answer.facts.dates.len();
+            answer.facts.dates.push(AskDate {
+                zone,
+                span: AskSpan {
+                    start: source.start + offset,
+                    end: source.start + offset + words.len(),
+                },
+                at: at.with_timezone(&Utc),
+                checked: true,
+            });
+            index
+        }
+        // Structured evidence cannot pick between authored dates or contradict one.
+        _ => return,
+    };
     let unit = &answer.units[index];
     let amounts: Vec<_> = answer
         .facts

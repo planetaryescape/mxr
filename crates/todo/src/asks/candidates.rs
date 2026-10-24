@@ -9,6 +9,7 @@ static DUE: Lazy<Regex> = Lazy::new(|| {
         r"due|pay(?:ment)?\s+by|payable\s+by|no\s+later\s+than|deadline|on\s+or\s+before|by|before|expires|renew\s+by",
     )
 });
+static ALTERNATIVE_DATE: Lazy<Regex> = Lazy::new(|| trigger_regex("or"));
 static RELATIVE_DUE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\bwithin\s+(?:[0-9]{1,3}|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:hours?|days?|weeks?)\b").expect("relative due candidate")
 });
@@ -39,6 +40,48 @@ where
             let Some(matched) = captures.get(0) else {
                 continue;
             };
+            if let Some(date) = resolve_due_match(
+                &source.text,
+                &captures,
+                &anchor,
+                order_for(
+                    &crate::action_link::email_domain(email).unwrap_or_default(),
+                    facts
+                        .amounts
+                        .iter()
+                        .find(|a| a.zone == zone)
+                        .map(|a| a.currency.as_str()),
+                ),
+            ) {
+                facts.dates.push(AskDate {
+                    zone,
+                    span: AskSpan {
+                        start: matched.start(),
+                        end: matched.end(),
+                    },
+                    at: date.at,
+                    checked: date.checked,
+                });
+            }
+        }
+        // Enumerate an alternative only inside the same unit as an existing
+        // deadline. It is evidence of ambiguity, not another independent ask.
+        let units = super::facts::unit_spans(&source.text);
+        for captures in ALTERNATIVE_DATE.captures_iter(&source.text) {
+            let Some(matched) = captures.get(0) else {
+                continue;
+            };
+            let Some(unit) = units
+                .iter()
+                .find(|unit| matched.start() >= unit.start && matched.end() <= unit.end)
+            else {
+                continue;
+            };
+            if !facts.dates.iter().any(|date| {
+                inside(zone, unit, date.zone, &date.span) && date.span.end <= matched.start()
+            }) {
+                continue;
+            }
             if let Some(date) = resolve_due_match(
                 &source.text,
                 &captures,

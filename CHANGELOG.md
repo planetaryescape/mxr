@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.161](https://github.com/planetaryescape/mxr/compare/v0.6.160...v0.6.161) (2026-10-25)
+
+
+### Features
+
+* review writing proposals in TUI and Raycast ([64be20a](https://github.com/planetaryescape/mxr/commit/64be20ae34d5a28cb3d9ac0b8f578df3cd2cc757))
+
+
+### Documentation
+
+* close archived Messages done regression ([#705](https://github.com/planetaryescape/mxr/issues/705)) ([f9d316d](https://github.com/planetaryescape/mxr/commit/f9d316de44c4081d2a5f314c54763525d5884d83))
+
 ## [0.6.160](https://github.com/planetaryescape/mxr/compare/v0.6.159...v0.6.160) (2026-10-23)
 
 

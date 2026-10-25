@@ -15,6 +15,7 @@ workspace = true
 base16ct = { workspace = true }
 mxr-humanizer = { workspace = true }
 mxr-llm = { workspace = true }
+mxr-compose = { workspace = true }
 mxr-protocol = { workspace = true }
 sha2 = { workspace = true }
 similar = { workspace = true }

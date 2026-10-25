@@ -34,7 +34,8 @@ pub use assistant::{
 };
 pub use command_palette::CommandPaletteState;
 pub use compose::{
-    ComposeAction, ComposeState, DeferredCompose, PendingSend, PendingSendMode, ReplyContextPair,
+    ComposeAction, ComposeAssistReview, ComposeState, DeferredCompose, PendingSend,
+    PendingSendMode, ReplyContextPair,
 };
 pub use deliveries::{DeliveriesState, DeliveryFilter};
 pub use diagnostics::{

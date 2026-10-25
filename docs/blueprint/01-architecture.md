@@ -188,12 +188,12 @@ mxr/
 │   │                             # Depends on: core, store, search
 │   │
 │   ├── compose/                  # $EDITOR workflow, frontmatter parsing, draft UX
-│   │                             # Draft management, context block generation.
+│   │                             # Draft management, context blocks, body regions shared by clients.
 │   │                             # Depends on: core, outbound
 │   │
 │   ├── composer/                 # The composer's check stage: graders that say whether
 │   │                             # a draft did what its case required. Pure: plain text in.
-│   │                             # Depends on: humanizer
+│   │                             # Depends on: compose, humanizer
 │   │
 │   ├── reader/                   # Reader mode: HTML→text, signature stripping,
 │   │                             # quote collapsing, boilerplate removal.

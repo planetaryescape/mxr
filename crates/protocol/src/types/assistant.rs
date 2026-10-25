@@ -392,6 +392,10 @@ pub struct AssistantAvailabilityData {
     pub reason: Option<String>,
 }
 
+fn unknown_model_context() -> String {
+    "unknown".to_string()
+}
+
 /// One model a client can choose.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -638,8 +642,4 @@ mod tests {
             "Making room: summarising earlier messages"
         );
     }
-}
-
-fn unknown_model_context() -> String {
-    "unknown".to_string()
 }

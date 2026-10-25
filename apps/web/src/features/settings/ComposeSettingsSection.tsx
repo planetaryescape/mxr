@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { ConfirmDelete, Field, SelectSetting } from "./settingsParts";
 import { apiFetch } from "@/api/client";
+import type { components } from "@/api/generated";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,13 @@ export function ComposeSettingsSection() {
     queryKey: ["llm-config"],
     queryFn: () => apiFetch<{ config: LlmConfig }>("/api/v1/platform/llm/config"),
   });
+  const composeModels = useQuery({
+    queryKey: ["compose-models"],
+    queryFn: () =>
+      apiFetch<{ models: components["schemas"]["AssistantModelsData"] }>(
+        "/api/v1/mail/compose/models",
+      ),
+  });
   const saveComposeModel = useMutation({
     mutationFn: (model: string) => {
       const config = llmConfig.data?.config;
@@ -70,8 +78,12 @@ export function ComposeSettingsSection() {
     onSuccess: () => {
       toast.success("Drafting model saved");
       void qc.invalidateQueries({ queryKey: ["llm-config"] });
+      void qc.invalidateQueries({ queryKey: ["compose-models"] });
     },
-    onError: (error) => toast.error("Drafting model could not be saved", { description: error.message }),
+    onError: (error) =>
+      toast.error("Drafting model could not be saved", {
+        description: error.message,
+      }),
   });
   const [signatureName, setSignatureName] = useState("");
   const [signatureBody, setSignatureBody] = useState("");
@@ -82,7 +94,9 @@ export function ComposeSettingsSection() {
       void qc.invalidateQueries({ queryKey: ["accounts"] });
     },
     onError: (error) =>
-      toast.error("Default account update failed", { description: error.message }),
+      toast.error("Default account update failed", {
+        description: error.message,
+      }),
   });
   const save = useMutation({
     mutationFn: () => saveSignature(signatureName.trim(), signatureBody),
@@ -124,12 +138,17 @@ export function ComposeSettingsSection() {
           <SelectSetting
             label="Draft with"
             description="Default model for each new draft. You can choose another model for an individual draft."
-            value={llmConfig.data?.config.compose_model || ""}
+            value={llmConfig.data?.config?.compose_model || "__default"}
             options={[
-              { value: "", label: `Use language model default (${llmConfig.data?.config.model ?? "not set"})` },
-              ...((llmConfig.data?.config.models ?? []).map((model) => ({ value: model, label: model }))),
+              {
+                value: "__default",
+                label: `Use language model default (${llmConfig.data?.config?.model ?? "not set"})`,
+              },
+              ...(composeModels.data?.models?.choices ?? [])
+                .filter((choice) => choice.available)
+                .map((choice) => ({ value: choice.id, label: choice.label })),
             ]}
-            onChange={(model) => saveComposeModel.mutate(model)}
+            onChange={(model) => saveComposeModel.mutate(model === "__default" ? "" : model)}
           />
           <SelectSetting<ComposeEditor>
             label="Editor"

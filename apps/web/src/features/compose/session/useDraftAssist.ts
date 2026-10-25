@@ -193,15 +193,7 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
         "/api/v1/mail/compose/models",
       ),
   });
-  const composeConfig = useQuery({
-    queryKey: ["llm-config"],
-    queryFn: () =>
-      apiFetch<{ config: { compose_model?: string | null; model: string } }>(
-        "/api/v1/platform/llm/config",
-      ),
-  });
-  const defaultModel =
-    composeConfig.data?.config.compose_model?.trim() || composeConfig.data?.config.model || "";
+  const defaultModel = models.data?.models?.current ?? "";
 
   useEffect(() => {
     setModel(undefined);
@@ -283,7 +275,7 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
       const answeredModel = response.proposal.provenance?.model;
       const selectedModel =
         chosen ??
-        (answeredModel && models.data?.models.choices.some((choice) => choice.id === answeredModel)
+        (answeredModel && models.data?.models?.choices.some((choice) => choice.id === answeredModel)
           ? answeredModel
           : undefined);
       setModel(selectedModel);
@@ -464,7 +456,7 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     model,
     setModel,
     defaultModel,
-    modelChoices: models.data?.models.choices ?? [],
+    modelChoices: models.data?.models?.choices ?? [],
     version,
     versionCount: versions.length,
     versionIndex,

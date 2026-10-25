@@ -105,6 +105,7 @@ export function LlmSettingsSection() {
       setDraft(saved.config);
       toast.success("LLM config saved");
       void qc.invalidateQueries({ queryKey: ["llm-config"] });
+      void qc.invalidateQueries({ queryKey: ["compose-models"] });
       void qc.invalidateQueries({ queryKey: ["llm-status"] });
       // Gists written under the old model or privacy setting are stale.
       void qc.invalidateQueries({ predicate: isGistQuery });

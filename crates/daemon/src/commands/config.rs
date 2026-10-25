@@ -37,7 +37,17 @@ pub async fn run(action: Option<ConfigAction>) -> anyhow::Result<()> {
             let value = get_config_value(&config, &key)?;
             println!("{value}");
         }
-        ConfigAction::Set { key, value } => {
+        ConfigAction::Set {
+            key,
+            value,
+            dry_run,
+        } => {
+            if dry_run {
+                let mut preview = mxr_config::load_config()?;
+                set_config_value(&mut preview, &key, &value)?;
+                println!("Would set {key} = {value}");
+                return Ok(());
+            }
             // Held from the read to the write: the running daemon saves config
             // too, and must not restore what this changes.
             mxr_config::update_config(|config| set_config_value(config, &key, &value))?;
@@ -105,6 +115,8 @@ fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result
         "llm.enabled" => Ok(config.llm.enabled.to_string()),
         "llm.base_url" => Ok(config.llm.base_url.clone()),
         "llm.model" => Ok(config.llm.model.clone()),
+        "llm.compose.model" => Ok(config.llm.compose.as_ref().and_then(|compose| compose.model.clone()).unwrap_or_else(|| "(inherits llm.model)".into())),
+        "llm.models" => Ok(toml::Value::try_from(&config.llm.assistant_model_ids())?.to_string()),
         "llm.api_key_env" => Ok(config.llm.api_key_env.clone()),
         "llm.context_window" => Ok(config.llm.context_window.to_string()),
         "llm.request_timeout_secs" => Ok(config.llm.request_timeout_secs.to_string()),
@@ -125,7 +137,7 @@ fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result
         // appearance
         "appearance.theme" => Ok(config.appearance.theme.clone()),
         key if mxr_config::RETIRED_CONFIG_KEYS.contains(&key) => anyhow::bail!(retired_key_message(key)),
-        _ => anyhow::bail!("Unknown config key: {key}\n\nAvailable keys:\n  general.editor, general.default_account, general.sync_interval, general.hook_timeout, general.attachment_dir\n  render.html_command, render.reader_mode, render.show_reader_stats, render.html_remote_content\n  search.default_sort, search.max_results, search.semantic.enabled\n  llm.enabled, llm.base_url, llm.model, llm.api_key_env, llm.context_window, llm.request_timeout_secs, llm.allow_cloud_relationship_data\n  snooze.morning_hour, snooze.evening_hour, snooze.weekend_day, snooze.weekend_hour\n  logging.level, logging.max_size_mb, logging.max_files, logging.stderr, logging.event_retention_days\n  appearance.theme"),
+        _ => anyhow::bail!("Unknown config key: {key}\n\nAvailable keys:\n  general.editor, general.default_account, general.sync_interval, general.hook_timeout, general.attachment_dir\n  render.html_command, render.reader_mode, render.show_reader_stats, render.html_remote_content\n  search.default_sort, search.max_results, search.semantic.enabled\n  llm.enabled, llm.base_url, llm.model, llm.compose.model, llm.models, llm.api_key_env, llm.context_window, llm.request_timeout_secs, llm.allow_cloud_relationship_data\n  snooze.morning_hour, snooze.evening_hour, snooze.weekend_day, snooze.weekend_hour\n  logging.level, logging.max_size_mb, logging.max_files, logging.stderr, logging.event_retention_days\n  appearance.theme"),
     }
 }
 
@@ -177,6 +189,37 @@ fn set_config_value(
         }
         "llm.base_url" => config.llm.base_url = value.to_string(),
         "llm.model" => config.llm.model = value.to_string(),
+        "llm.compose.model" => {
+            let models = config.llm.assistant_model_ids();
+            if !value.trim().is_empty() && !models.iter().any(|model| model == value.trim()) {
+                anyhow::bail!(
+                    "llm.compose.model must be one of llm.models: {}",
+                    models.join(", ")
+                );
+            }
+            let compose = config.llm.compose.get_or_insert_with(Default::default);
+            compose.model = (!value.trim().is_empty()).then(|| value.trim().to_string());
+        }
+        "llm.models" => {
+            config.llm.models = value.parse::<toml::Value>()?.as_array().ok_or_else(|| anyhow::anyhow!("llm.models must be a TOML array of model ids"))?.iter().map(|value| value.as_str().map(str::to_string).ok_or_else(|| anyhow::anyhow!("llm.models must contain only strings"))).collect::<anyhow::Result<Vec<_>>>()?;
+            if let Some(model) = config
+                .llm
+                .compose
+                .as_ref()
+                .and_then(|compose| compose.model.as_deref())
+            {
+                if !config
+                    .llm
+                    .assistant_model_ids()
+                    .iter()
+                    .any(|choice| choice == model)
+                {
+                    anyhow::bail!(
+                        "llm.models must keep the compose default `{model}` or clear it first with `mxr config set llm.compose.model ''`"
+                    );
+                }
+            }
+        }
         "llm.api_key_env" => config.llm.api_key_env = value.to_string(),
         "llm.context_window" => {
             config.llm.context_window = value
@@ -306,6 +349,21 @@ mod tests {
         assert_eq!(config.llm.context_window, 80_000);
         assert_eq!(config.llm.request_timeout_secs, 30);
         assert!(config.llm.allow_cloud_relationship_data);
+    }
+
+    #[test]
+    fn compose_model_config_is_trimmed_before_storage() {
+        let mut config = mxr_config::MxrConfig::default();
+        set_config_value(&mut config, "llm.compose.model", "  gpt-6-luna  ")
+            .expect("set compose model");
+        assert_eq!(
+            config
+                .llm
+                .compose
+                .and_then(|compose| compose.model)
+                .as_deref(),
+            Some("gpt-6-luna")
+        );
     }
 
     #[test]

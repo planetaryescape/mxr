@@ -12,7 +12,7 @@ mod readout;
 mod titles;
 mod view;
 
-pub(crate) use models::{models, set_model};
+pub(crate) use models::{compose_models, models, set_model};
 pub(crate) use readout::step_rows;
 pub(crate) use view::{conversation_view, summary_view};
 

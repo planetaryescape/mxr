@@ -285,6 +285,10 @@ pub struct LlmConfigData {
     pub enabled: bool,
     pub base_url: String,
     pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compose_model: Option<String>,
+    #[serde(default)]
+    pub models: Vec<String>,
     pub api_key_env: String,
     pub context_window: u32,
     pub request_timeout_secs: u64,
@@ -1587,6 +1591,10 @@ pub enum Request {
         instruction: Option<String>,
         #[serde(default)]
         adjust: AssistAdjustData,
+        /// A catalogue model for this draft only. Does not change the
+        /// persistent compose default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
         /// The id of a proposal to revise. The model is shown that proposal's
         /// text and the instruction is applied to it; `text` stays the user's
         /// own text, which the check and the diff still run against. Absent on
@@ -2621,6 +2629,9 @@ pub enum Request {
     /// The models the assistant can be set to and the one it uses now.
     /// Returns `ResponseData::AssistantModels`.
     GetAssistantModels,
+    /// The models available to compose under its own routing and privacy policy.
+    /// Returns `ResponseData::ComposeModels`.
+    GetComposeModels,
     /// Set the model the assistant's next turn uses, for every conversation.
     /// Refused for a model that isn't in the list, has no key, or would send
     /// mail off this machine without `llm.allow_cloud_relationship_data`.
@@ -3109,6 +3120,7 @@ impl Request {
             | Self::SyncMarginaliaHighlights { .. }
             | Self::GetAssistantAvailability
             | Self::GetAssistantModels
+            | Self::GetComposeModels
             | Self::SetAssistantModel { .. }
             | Self::AssistantSend { .. }
             | Self::AssistantDecide { .. }
@@ -4477,6 +4489,10 @@ pub enum ResponseData {
     AssistantModels {
         models: AssistantModelsData,
     },
+    /// Returned by `Request::GetComposeModels`.
+    ComposeModels {
+        models: AssistantModelsData,
+    },
     /// Returned by `Request::SetAssistantModel`.
     AssistantModelChange {
         change: AssistantModelChangeData,
@@ -4782,6 +4798,7 @@ impl ResponseData {
             | Self::MarginaliaSync { .. }
             | Self::AssistantAvailability { .. }
             | Self::AssistantModels { .. }
+            | Self::ComposeModels { .. }
             | Self::AssistantModelChange { .. }
             | Self::AssistantConversation { .. }
             | Self::AssistantConversations { .. }

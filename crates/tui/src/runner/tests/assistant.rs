@@ -762,6 +762,7 @@ fn model_choice(
         id: id.into(),
         label: label.into(),
         cloud,
+        sees: "this conversation only".into(),
         available: reason.is_none(),
         unavailable_reason: reason.map(str::to_string),
     }

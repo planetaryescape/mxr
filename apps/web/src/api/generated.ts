@@ -938,6 +938,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/compose/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List models available to compose under the compose route and privacy policy */
+        get: operations["mail_compose_models"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/compose/session": {
         parameters: {
             query?: never;
@@ -5363,25 +5380,9 @@ export interface components {
             models: components["schemas"]["AssistantModelsData"];
             previous?: string | null;
         };
-        /** @description One model the assistant can run on. */
-        AssistantModelChoiceData: {
-            /** @description Whether it can be picked now. */
-            available: boolean;
-            /** @description True when conversations with it go to a provider off this machine. */
-            cloud: boolean;
-            /** @description The model id, as `set` takes it. */
-            id: string;
-            /** @description What a person calls it ("Claude Haiku 5.5"). */
-            label: string;
-            /**
-             * @description Why it can't be picked, with the command that fixes it when there is
-             *     one. Set exactly when `available` is false.
-             */
-            unavailable_reason?: string | null;
-        };
         /** @description The models the assistant can be set to, and the one it uses now. */
         AssistantModelsData: {
-            choices: components["schemas"]["AssistantModelChoiceData"][];
+            choices: components["schemas"]["ModelChoiceData"][];
             /**
              * @description The model the next turn uses. It may not be in `choices`: a model set
              *     by hand in config.toml stays as it is until one is picked.
@@ -6240,6 +6241,8 @@ export interface components {
             /** @description What the help is for: a stored draft, a reply, a forward or a new message. */
             draft: components["schemas"]["DraftTargetData"];
             instruction?: string | null;
+            /** @description Optional configured model for this draft only. */
+            model?: string | null;
             /**
              * @description The id of the proposal on screen, when revising it: the model is shown
              *     that proposal and the instruction is applied to it. `text` stays the
@@ -6297,6 +6300,10 @@ export interface components {
         ComposeIssueView: {
             message: string;
             severity: string;
+        };
+        /** @description The models available to the compose writer under its own policy. */
+        ComposeModelsResponse: {
+            models: components["schemas"]["AssistantModelsData"];
         };
         /**
          * @description What the writing help proposes. Nothing changes the draft until the user
@@ -7913,10 +7920,12 @@ export interface components {
             allow_cloud_relationship_data?: boolean;
             api_key_env: string;
             base_url: string;
+            compose_model?: string | null;
             /** Format: int32 */
             context_window: number;
             enabled: boolean;
             model: string;
+            models?: string[];
             overrides?: components["schemas"]["LlmOverridesData"] | null;
             /** Format: int64 */
             request_timeout_secs: number;
@@ -8614,6 +8623,27 @@ export interface components {
             tag?: string | null;
             /** @description To do: the open rows holding the thread. */
             todo_ids?: string[];
+        };
+        /** @description One model a client can choose. */
+        ModelChoiceData: {
+            /** @description Whether it can be picked now. */
+            available: boolean;
+            /** @description True when conversations with it go to a provider off this machine. */
+            cloud: boolean;
+            /** @description The model id, as `set` takes it. */
+            id: string;
+            /** @description What a person calls it ("Claude Haiku 5.5"). */
+            label: string;
+            /**
+             * @description The context sent with this choice: the current conversation alone, or
+             *     the conversation and the user's past mail.
+             */
+            sees: string;
+            /**
+             * @description Why it can't be picked, with the command that fixes it when there is
+             *     one. Set exactly when `available` is false.
+             */
+            unavailable_reason?: string | null;
         };
         /** @description Body of `POST /api/v1/mail/messages/{message_id}/move`. */
         MoveBody: {
@@ -11677,6 +11707,11 @@ export interface components {
                   draft: components["schemas"]["DraftTargetData"];
                   instruction?: string | null;
                   /**
+                   * @description A catalogue model for this draft only. Does not change the
+                   *     persistent compose default.
+                   */
+                  model?: string | null;
+                  /**
                    * @description The id of a proposal to revise. The model is shown that proposal's
                    *     text and the instruction is applied to it; `text` stays the user's
                    *     own text, which the check and the diff still run against. Absent on
@@ -12523,6 +12558,10 @@ export interface components {
             | {
                   /** @enum {string} */
                   cmd: "GetAssistantModels";
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "GetComposeModels";
               }
             | {
                   /** @enum {string} */
@@ -13956,6 +13995,11 @@ export interface components {
             | {
                   /** @enum {string} */
                   kind: "AssistantModels";
+                  models: components["schemas"]["AssistantModelsData"];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "ComposeModels";
                   models: components["schemas"]["AssistantModelsData"];
               }
             | {
@@ -18147,6 +18191,33 @@ export interface operations {
             };
             /** @description Nothing to finish, a selection off a character boundary, text too long, or a privacy setting that stops the model */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_compose_models: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Compose model choices, locality and availability */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposeModelsResponse"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

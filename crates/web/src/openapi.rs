@@ -60,7 +60,7 @@ use utoipa::{
         snippets_set, snippets_delete, sender_profile, contacts_autocomplete, screener_queue,
         screener_decisions_list, screener_decisions_set,
         screener_decisions_clear, thread_summarize, mail_draft_compose,
-        mail_draft_refine, mail_compose_assist, mail_compose_apply, mail_humanizer_score, mail_humanizer_rewrite,
+        mail_draft_refine, mail_compose_models, mail_compose_assist, mail_compose_apply, mail_humanizer_score, mail_humanizer_rewrite,
         mail_relationship_profile, mail_relationship_rebuild, mail_commitments_list,
         mail_commitments_resolve, mail_thread_briefing, mail_contacts_briefing, mail_contacts_expert,
         compose_session_start, compose_session_refresh, compose_session_restore,
@@ -376,6 +376,17 @@ fn categories_list() {}
 #[allow(dead_code)]
 fn categories_messages() {}
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/mail/compose/models",
+    summary = "List models available to compose under the compose route and privacy policy",
+    responses(
+        (status = 200, description = "Compose model choices, locality and availability", body = crate::compose_assist_routes::ComposeModelsResponse),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_compose_models() {}
 #[utoipa::path(
     post,
     path = "/api/v1/mail/categories/memberships",

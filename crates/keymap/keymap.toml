@@ -4356,6 +4356,16 @@ keys = ["n"]
 contexts = ["compose-assist-proof"]
 
 [[action]]
+id = "compose.proof.model"
+label = "Try writing proof with another model"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofModel"
+keys = ["m"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
 id = "compose.proof.keep"
 label = "Keep my draft"
 group = "Compose"

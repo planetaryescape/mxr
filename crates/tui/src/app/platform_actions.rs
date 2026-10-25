@@ -59,63 +59,14 @@ impl App {
                     return;
                 }
                 let pending = pending.clone();
-                let draft_id = pending.draft_id();
-                let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
-                let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
-                    mxr_core::types::ReplyHeaders {
-                        in_reply_to: in_reply_to.clone(),
-                        references: pending.fm.references.clone(),
-                        thread_id: pending.fm.thread_id.clone(),
-                    }
-                });
-                let now = chrono::Utc::now();
-                let draft = mxr_core::Draft {
-                    revision: None,
-                    id: draft_id.clone(),
-                    account_id: pending.account_id.clone(),
-                    from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from)
-                        .ok()
-                        .flatten(),
-                    reply_headers,
-                    intent: pending.intent,
-                    to: parse_addrs(&pending.fm.to),
-                    cc: parse_addrs(&pending.fm.cc),
-                    bcc: parse_addrs(&pending.fm.bcc),
-                    subject: pending.fm.subject.clone(),
-                    content: mxr_core::DraftContent::markdown(pending.body.clone()),
-                    managed_attachments: None,
-                    attachments: pending
-                        .fm
-                        .attach
-                        .iter()
-                        .map(std::path::PathBuf::from)
-                        .collect(),
-                    inline_assets: Vec::new(),
-                    inline_calendar_reply: pending.invite_reply.clone(),
-                    created_at: now,
-                    updated_at: now,
-                };
-                let text = mxr_compose::body_regions::split_body(&pending.body)
-                    .text
-                    .to_string();
-                self.queue_platform_request_after(
-                    vec![Request::SaveDraft { draft }],
-                    Request::ComposeAssist {
-                        draft: mxr_protocol::DraftTargetData::Stored { draft_id },
-                        text,
-                        selection: None,
-                        action: None,
-                        instruction: None,
-                        adjust: mxr_protocol::AssistAdjustData::default(),
-                        revise: None,
-                    },
-                    "Writing proof",
-                    "Preparing a proof against your current draft...",
+                self.queue_platform_request(
+                    Request::GetComposeModels,
+                    "Choose a writing model",
+                    "Loading compose models...",
                 );
                 if let Some(dispatch) = self.modals.pending_platform_dispatch.last_mut() {
-                    dispatch.compose_assist = Some(Box::new(pending));
-                    self.compose.assist_request_id = self.compose.assist_request_id.wrapping_add(1);
-                    dispatch.compose_assist_request_id = Some(self.compose.assist_request_id);
+                    dispatch.compose_model_picker =
+                        Some((Box::new(pending), ComposeModelPickerPurpose::InitialDraft));
                 }
             }
             Action::OpenVoiceProfile => {
@@ -203,6 +154,7 @@ impl App {
                 compose: None,
                 compose_assist: None,
                 compose_assist_request_id: None,
+                compose_model_picker: None,
                 compose_assist_accept: None,
                 compose_assist_reopen_editor: false,
                 prelude: Vec::new(),
@@ -230,6 +182,7 @@ impl App {
                 compose: None,
                 compose_assist: None,
                 compose_assist_request_id: None,
+                compose_model_picker: None,
                 compose_assist_accept: None,
                 compose_assist_reopen_editor: false,
                 prelude,
@@ -241,6 +194,71 @@ impl App {
 
     pub(crate) fn take_pending_platform_dispatch(&mut self) -> Vec<PendingPlatformDispatch> {
         std::mem::take(&mut self.modals.pending_platform_dispatch)
+    }
+
+    pub(crate) fn request_compose_assist(&mut self, pending: PendingSend, model: Option<String>) {
+        let draft_id = pending.draft_id();
+        let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
+        let reply_headers =
+            pending
+                .fm
+                .in_reply_to
+                .as_ref()
+                .map(|in_reply_to| mxr_core::types::ReplyHeaders {
+                    in_reply_to: in_reply_to.clone(),
+                    references: pending.fm.references.clone(),
+                    thread_id: pending.fm.thread_id.clone(),
+                });
+        let now = chrono::Utc::now();
+        let draft = mxr_core::Draft {
+            revision: None,
+            id: draft_id.clone(),
+            account_id: pending.account_id.clone(),
+            from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from)
+                .ok()
+                .flatten(),
+            reply_headers,
+            intent: pending.intent,
+            to: parse_addrs(&pending.fm.to),
+            cc: parse_addrs(&pending.fm.cc),
+            bcc: parse_addrs(&pending.fm.bcc),
+            subject: pending.fm.subject.clone(),
+            content: mxr_core::DraftContent::markdown(pending.body.clone()),
+            managed_attachments: None,
+            attachments: pending
+                .fm
+                .attach
+                .iter()
+                .map(std::path::PathBuf::from)
+                .collect(),
+            inline_assets: Vec::new(),
+            inline_calendar_reply: pending.invite_reply.clone(),
+            created_at: now,
+            updated_at: now,
+        };
+        let text = mxr_compose::body_regions::split_body(&pending.body)
+            .text
+            .to_string();
+        self.queue_platform_request_after(
+            vec![Request::SaveDraft { draft }],
+            Request::ComposeAssist {
+                draft: mxr_protocol::DraftTargetData::Stored { draft_id },
+                text,
+                selection: None,
+                action: None,
+                instruction: None,
+                adjust: mxr_protocol::AssistAdjustData::default(),
+                model,
+                revise: None,
+            },
+            "Writing proof",
+            "Preparing a proof against your current draft...",
+        );
+        if let Some(dispatch) = self.modals.pending_platform_dispatch.last_mut() {
+            dispatch.compose_assist = Some(Box::new(pending));
+            self.compose.assist_request_id = self.compose.assist_request_id.wrapping_add(1);
+            dispatch.compose_assist_request_id = Some(self.compose.assist_request_id);
+        }
     }
 
     fn platform_account_id(&self) -> Option<mxr_core::AccountId> {

@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { fetchAccounts, setDefaultAccount } from "@/features/accounts/api";
 import { useUiPrefs, type ComposeEditor, type UndoSendSeconds } from "@/state/uiPrefsStore";
 import { SectionHeading } from "@/components/SectionHeading";
+import type { LlmConfig } from "./LlmSettingsSection";
 
 interface Signature {
   id: string;
@@ -52,6 +53,25 @@ export function ComposeSettingsSection() {
     queryKey: ["signature-defaults"],
     queryFn: fetchSignatureDefaults,
     staleTime: 60_000,
+  });
+  const llmConfig = useQuery({
+    queryKey: ["llm-config"],
+    queryFn: () => apiFetch<{ config: LlmConfig }>("/api/v1/platform/llm/config"),
+  });
+  const saveComposeModel = useMutation({
+    mutationFn: (model: string) => {
+      const config = llmConfig.data?.config;
+      if (!config) throw new Error("Language model settings are not loaded");
+      return apiFetch("/api/v1/platform/llm/config", {
+        method: "POST",
+        body: { ...config, compose_model: model },
+      });
+    },
+    onSuccess: () => {
+      toast.success("Drafting model saved");
+      void qc.invalidateQueries({ queryKey: ["llm-config"] });
+    },
+    onError: (error) => toast.error("Drafting model could not be saved", { description: error.message }),
   });
   const [signatureName, setSignatureName] = useState("");
   const [signatureBody, setSignatureBody] = useState("");
@@ -101,6 +121,16 @@ export function ComposeSettingsSection() {
     <div className="space-y-6">
       <div className="space-y-4">
         <section>
+          <SelectSetting
+            label="Draft with"
+            description="Default model for each new draft. You can choose another model for an individual draft."
+            value={llmConfig.data?.config.compose_model || ""}
+            options={[
+              { value: "", label: `Use language model default (${llmConfig.data?.config.model ?? "not set"})` },
+              ...((llmConfig.data?.config.models ?? []).map((model) => ({ value: model, label: model }))),
+            ]}
+            onChange={(model) => saveComposeModel.mutate(model)}
+          />
           <SelectSetting<ComposeEditor>
             label="Editor"
             description="CodeMirror with vim keys, or a rich-text editor."

@@ -392,16 +392,19 @@ pub struct AssistantAvailabilityData {
     pub reason: Option<String>,
 }
 
-/// One model the assistant can run on.
+/// One model a client can choose.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct AssistantModelChoiceData {
+pub struct ModelChoiceData {
     /// The model id, as `set` takes it.
     pub id: String,
     /// What a person calls it ("Claude Haiku 5.5").
     pub label: String,
     /// True when conversations with it go to a provider off this machine.
     pub cloud: bool,
+    /// The context sent with this choice: the current conversation alone, or
+    /// the conversation and the user's past mail.
+    pub sees: String,
     /// Whether it can be picked now.
     pub available: bool,
     /// Why it can't be picked, with the command that fixes it when there is
@@ -409,6 +412,9 @@ pub struct AssistantModelChoiceData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unavailable_reason: Option<String>,
 }
+
+/// Kept as a source-compatibility name for assistant clients.
+pub type AssistantModelChoiceData = ModelChoiceData;
 
 /// The models the assistant can be set to, and the one it uses now.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -639,8 +639,12 @@ context_window = 8192
 request_timeout_secs = 120
 background_request_timeout_secs = 45
 allow_cloud_relationship_data = false
-# The assistant's model picker. Left out, or empty, these five are offered.
-assistant_models = ["gemma4:latest", "gpt-6-luna", "gpt-5.6-terra", "claude-haiku-5-5", "claude-sonnet-5-5"]
+# Shared catalogue for the assistant and compose pickers.
+models = ["gemma4:latest", "gpt-6-luna", "gpt-5.6-terra", "claude-haiku-5-5", "claude-sonnet-5-5"]
+
+[llm.compose]
+# Omit to inherit llm.model. A per-draft choice never changes this default.
+model = "gemma4:latest"
 ```
 
 The API key is read from `api_key_env` at runtime and is never persisted
@@ -652,9 +656,14 @@ is sent — correct for Ollama and LM Studio.
 summaries and commitment extraction, so a dead endpoint can't hold a background
 worker for the full foreground wait.
 
-`assistant_models` lists the model ids the [assistant's picker](/guides/assistant/#pick-the-model)
-offers. A pick is written to `[llm.overrides.assistant] model`, not here. Saving
-LLM settings in the web app keeps this list as you wrote it.
+`models` lists the model ids the assistant and compose pickers offer. The old
+`assistant_models` key still loads and is saved as `models`. Compose uses
+`[llm.compose] model` as the default for each new draft; omit it to inherit
+`llm.model`. `mxr config set llm.compose.model <id>` sets it, and
+`mxr config get llm.compose.model` reads it. Use `mxr config set
+llm.compose.model <id> --dry-run` to preview the same catalogue-checked change
+without writing it. Legacy drafting overrides keep working when this setting
+is absent and warn that `[llm.compose] model` is the replacement.
 
 `gist_concurrency` (default 1, at most 8) sets how many list-row gists the
 daemon writes at once in the background. A local model does best one at a

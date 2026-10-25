@@ -178,12 +178,12 @@ field.
 
 The [assistant](/guides/assistant/#pick-the-model) has a model picker: the web
 app's model mark under the message box, `M` in the terminal pane, and `mxr
-assistant model set <id>`. It lists the models in `llm.assistant_models`, five
+assistant model set <id>`. It lists the models in `llm.models`, five
 by default:
 
 ```toml
 [llm]
-assistant_models = ["gemma4:latest", "gpt-6-luna", "gpt-5.6-terra", "claude-haiku-5-5", "claude-sonnet-5-5"]
+models = ["gemma4:latest", "gpt-6-luna", "gpt-5.6-terra", "claude-haiku-5-5", "claude-sonnet-5-5"]
 ```
 
 Each entry is a model id, and where it runs follows from the id as above.
@@ -364,7 +364,7 @@ whichever action runs, `--instruction` says what you want said, and
 mxr compose assist --reply-to MESSAGE_ID --text - <<< "Thursday works. numbers by wed"
 
 # Work on a stored draft; its text (without signature) is read for you.
-mxr compose assist --draft DRAFT_ID --instruction "mention the invoice"
+mxr compose assist --draft DRAFT_ID --instruction "mention the invoice" --model gpt-6-luna
 
 # Change only part of the text, as byte offsets between whole characters.
 mxr compose assist --draft DRAFT_ID --select 16..31 --warmer
@@ -380,6 +380,16 @@ The other targets are `--forward MESSAGE_ID --to ADDRESS` and `--new
 --account ACCOUNT --to ADDRESS --subject SUBJECT`. It makes one model call
 and takes as long as the model does; the stage lines ("Reading the
 conversation", "Writing with gemma4", "Checking") go to stderr.
+
+`--model` must name an id in `llm.models` and applies to this request only.
+The web help line and proof, Raycast's **Draft for Me** submenu and the TUI's
+pre-proof model list and proof `m` picker use the compose catalogue. Inspect it
+with `mxr compose models --format json`. New drafts start from
+`[llm.compose] model`; set
+it in Settings → Compose or with `mxr config set llm.compose.model <id>`. A
+cloud model can draft with the current conversation while relationship
+sharing is off; it does not receive past-mail context, and mxr never enables
+that sharing setting for you.
 
 The readable output shows your words plain, what was added in `{+…+}` and
 what was removed in `[-…-]`, then the gaps still to fill and which of your

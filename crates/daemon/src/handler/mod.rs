@@ -1915,6 +1915,7 @@ async fn dispatch(
         }
         Request::GetAssistantAvailability
         | Request::GetAssistantModels
+        | Request::GetComposeModels
         | Request::SetAssistantModel { .. }
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }
@@ -2121,6 +2122,7 @@ async fn dispatch(
             action,
             instruction,
             adjust,
+            model,
             revise,
         } => {
             // Boxed: the gather, write and check stages hold a lot of state.
@@ -2134,6 +2136,7 @@ async fn dispatch(
                     action: *action,
                     instruction: instruction.as_deref(),
                     adjust: *adjust,
+                    model: model.as_deref(),
                     revise: revise.as_deref(),
                 },
             ))
@@ -2599,6 +2602,7 @@ fn classify_request(req: &Request) -> RequestClass {
         // classified on its own when it runs.
         | Request::GetAssistantAvailability
         | Request::GetAssistantModels
+        | Request::GetComposeModels
         | Request::SetAssistantModel { dry_run: true, .. }
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }
@@ -3151,6 +3155,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SyncMarginaliaHighlights { .. } => "sync_marginalia_highlights",
         Request::GetAssistantAvailability => "get_assistant_availability",
         Request::GetAssistantModels => "get_assistant_models",
+        Request::GetComposeModels => "get_compose_models",
         Request::SetAssistantModel { .. } => "set_assistant_model",
         Request::AssistantSend { .. } => "assistant_send",
         Request::AssistantDecide { .. } => "assistant_decide",
@@ -4735,6 +4740,7 @@ fn is_assistant_request(req: &Request) -> bool {
         req,
         Request::GetAssistantAvailability
             | Request::GetAssistantModels
+            | Request::GetComposeModels
             | Request::SetAssistantModel { .. }
             | Request::AssistantSend { .. }
             | Request::AssistantDecide { .. }

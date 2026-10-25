@@ -100,6 +100,7 @@ struct Ask<'a> {
     action: Option<AssistActionData>,
     instruction: Option<&'a str>,
     revise: Option<&'a str>,
+    model: Option<&'a str>,
 }
 
 impl<'a> Ask<'a> {
@@ -110,6 +111,7 @@ impl<'a> Ask<'a> {
             action: None,
             instruction: None,
             revise: None,
+            model: None,
         }
     }
 }
@@ -131,6 +133,7 @@ async fn assist(
             action: ask.action,
             instruction: ask.instruction,
             adjust: AssistAdjustData::default(),
+            model: ask.model,
             revise: ask.revise,
         },
     )
@@ -140,6 +143,40 @@ async fn assist(
         ResponseData::ComposeProposal { proposal } => Ok(proposal),
         other => panic!("expected a proposal, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn a_per_draft_model_must_be_in_the_configured_catalogue() {
+    let state = AppState::in_memory().await.unwrap();
+    let mut config = state.config_snapshot();
+    config.llm.enabled = true;
+    state.set_config_for_test(config).await;
+    let mut ask = Ask::text("Thursday works.");
+    ask.model = Some("not-configured");
+
+    let error = assist(&state, &new_message(&state), &ask)
+        .await
+        .unwrap_err();
+
+    assert!(
+        error.contains("not in the configured model catalogue"),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn compose_model_availability_uses_compose_enabled_state() {
+    let state = AppState::in_memory().await.unwrap();
+    let config = state.config_snapshot();
+    state.set_config_for_test(config).await;
+    let mut ask = Ask::text("Thursday works.");
+    ask.model = Some("gemma4:latest");
+
+    let error = assist(&state, &new_message(&state), &ask)
+        .await
+        .unwrap_err();
+
+    assert!(error.contains("AI features are off"), "{error}");
 }
 
 fn changed_kinds(proposal: &ComposeProposalData, kind: TextChangeKindData) -> Vec<&str> {

@@ -63,6 +63,7 @@ pub(super) struct AssistRequest<'a> {
     pub action: Option<AssistActionData>,
     pub instruction: Option<&'a str>,
     pub adjust: AssistAdjustData,
+    pub model: Option<&'a str>,
     /// The id of the proposal being revised.
     pub revise: Option<&'a str>,
 }
@@ -106,7 +107,51 @@ pub(super) async fn compose_assist(
     let me = draft_voice::me(state, account_id).await;
 
     // The user's other mail only reaches a cloud model with their opt-in.
-    let policy = DraftPolicy::pin(state, gathered.feature);
+    let config = state.config_snapshot();
+    let selected_model = request
+        .model
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .or_else(|| config.llm.compose.as_ref()?.model.as_deref().map(str::trim));
+    if let Some(model) = selected_model {
+        if !config
+            .llm
+            .assistant_model_ids()
+            .iter()
+            .any(|choice| choice == model)
+        {
+            return Err(HandlerError::InvalidRequest(format!(
+                "`{model}` is not in the configured model catalogue"
+            )));
+        }
+        if let Some(choice) = crate::assistant::compose_models(state)
+            .choices
+            .into_iter()
+            .find(|choice| choice.id == model)
+        {
+            if !choice.available {
+                return Err(HandlerError::InvalidRequest(
+                    choice
+                        .unavailable_reason
+                        .unwrap_or_else(|| "That model is unavailable.".to_string()),
+                ));
+            }
+        }
+    }
+    let feature = if request.revise.is_some() {
+        LlmFeature::DraftRefine
+    } else {
+        gathered.feature
+    };
+    let policy = DraftPolicy::pin_compose(state, &config, feature, selected_model);
+    if !policy.llm.is_configured() {
+        return Err(HandlerError::Message(
+            "No AI model is set up. Choose one in Settings, or run `mxr config set llm.model`, then try again.".to_string(),
+        ));
+    }
+    if let Some(reason) = policy.llm.blocked_reason() {
+        return Err(HandlerError::Message(reason.to_string()));
+    }
     let share = policy.share_history;
     let typed = resolved.action != AssistActionData::Write && !request.text.trim().is_empty();
     // Typed text may carry an earlier suggestion written from history.
@@ -170,7 +215,7 @@ pub(super) async fn compose_assist(
     let typed_words = u32::try_from(request.text.split_whitespace().count()).unwrap_or(u32::MAX);
     let words = plan::target_words(target_words(None, &material), resolved.action, typed_words);
     let max_tokens = max_tokens_for_words(words);
-    let budget_chars = prompt_budget_chars(state.llm.capabilities().context_window, max_tokens);
+    let budget_chars = prompt_budget_chars(policy.llm.context_window(), max_tokens);
     let today = draft_voice::today();
     let prompt = draft_prompt::build(&PromptInput {
         mode: gathered.mode,

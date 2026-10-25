@@ -571,6 +571,8 @@ async fn llm_config_endpoint_forwards_update_to_daemon() {
                         enabled: false,
                         base_url: "http://localhost:11434/v1".into(),
                         model: "qwen2.5:3b-instruct".into(),
+                        compose_model: None,
+                        models: vec![],
                         api_key_env: String::new(),
                         context_window: 8192,
                         request_timeout_secs: 120,

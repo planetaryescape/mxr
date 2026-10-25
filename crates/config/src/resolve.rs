@@ -517,6 +517,7 @@ fn warn_retired_config_keys_once(contents: &str) {
     let Ok(table) = contents.parse::<toml::Table>() else {
         return;
     };
+    warn_legacy_draft_models_once(&table);
     let keys = retired_config_keys_in(&table);
     if keys.is_empty() {
         return;
@@ -524,6 +525,37 @@ fn warn_retired_config_keys_once(contents: &str) {
     WARNED.call_once(|| {
         tracing::warn!("config keys ignored: no longer used: {}", keys.join(", "));
     });
+}
+
+fn warn_legacy_draft_models_once(table: &toml::Table) {
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    let Some(overrides) = table
+        .get("llm")
+        .and_then(toml::Value::as_table)
+        .and_then(|llm| llm.get("overrides"))
+        .and_then(toml::Value::as_table)
+    else {
+        return;
+    };
+    let keys = [
+        "draft_assist",
+        "draft_new",
+        "draft_refine",
+        "humanize_rewrite",
+    ];
+    let found: Vec<_> = keys
+        .iter()
+        .copied()
+        .filter(|key| overrides.contains_key(*key))
+        .collect();
+    if !found.is_empty() {
+        WARNED.call_once(|| {
+            tracing::warn!(
+                "legacy drafting model overrides ({}) are still loaded; use [llm.compose] model",
+                found.join(", ")
+            );
+        });
+    }
 }
 
 /// Load config from a specific file path. Returns defaults if file doesn't exist.
@@ -608,5 +640,26 @@ fn apply_env_overrides(config: &mut MxrConfig) {
         if let Some(policy) = crate::types::SafetyPolicy::parse_env(&val) {
             config.general.safety_policy = policy;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_old_assistant_catalogue_key_loads_and_saves_as_models() {
+        let config = load_config_from_str(
+            "[llm]\nassistant_models = [\"local-one\"]\n[llm.compose]\nmodel = \"local-one\"\n",
+        )
+        .unwrap();
+        assert_eq!(config.llm.models, ["local-one"]);
+        assert_eq!(
+            config.llm.compose.as_ref().unwrap().model.as_deref(),
+            Some("local-one")
+        );
+        let saved = toml::to_string(&config).unwrap();
+        assert!(saved.contains("models = [\"local-one\"]"));
+        assert!(!saved.contains("assistant_models"));
     }
 }

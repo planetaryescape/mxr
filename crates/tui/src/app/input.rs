@@ -755,6 +755,10 @@ impl App {
             }
         }
 
+        if self.compose.model_picker.is_some() {
+            return self.handle_compose_model_picker_key(key);
+        }
+
         // Route keys to send confirmation prompt
         if self.compose.assist_review.is_some() {
             return self.handle_compose_assist_key(key);

@@ -112,6 +112,7 @@
     "build": "ray build",
     "dev": "ray develop",
     "lint": "ray lint",
+    "test": "node --test scripts/*.test.cjs",
     "fix-lint": "ray lint --fix",
     "typecheck": "tsc --noEmit"
   },

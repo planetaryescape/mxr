@@ -15,7 +15,7 @@ expression: snapshot
 "     │Humanizer: scored on AI draft outputs                     │     "
 "     │                                                          │     "
 "     │[s] send   [a] send at   [n] remind   [d] save draft      │     "
-"     │[r] refine   [e/Esc] edit again   [#] discard draft       │     "
+"     │[r] draft for me   [e/Esc] edit again   [#] discard draft │     "
 "     ╰──────────────────────────────────────────────────────────╯     "
 "                                                                      "
 "                                                                      "

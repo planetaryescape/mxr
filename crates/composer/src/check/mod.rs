@@ -7,8 +7,9 @@ mod proposal;
 mod regions;
 mod text;
 
+pub use mxr_compose::body_regions::{split_body, BodyRegions};
 pub use proposal::{check_proposal, Checked, Fixes, ProposalInput};
-pub use regions::{split_body, text_hash, BodyRegions};
+pub use regions::text_hash;
 pub use text::{invented_numbers, replay_invented_numbers};
 
 /// The question a case asks of the target message, and the words a reply

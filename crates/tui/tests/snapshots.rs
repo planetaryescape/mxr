@@ -287,7 +287,7 @@ fn send_confirm_snapshot() {
     });
     assert!(snapshot.contains("Send this draft?"));
     assert!(snapshot.contains("Subject: Snapshot draft"));
-    assert!(snapshot.contains("[r] refine"));
+    assert!(snapshot.contains("[r] draft for me"));
     insta::assert_snapshot!("send_confirm_snapshot", snapshot);
 }
 

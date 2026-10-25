@@ -43,6 +43,38 @@ pub struct PendingSend {
     pub resolved_from: Option<mxr_core::types::Address>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ComposeAssistReview {
+    pub pending: PendingSend,
+    /// Proposals for this unchanged draft baseline, oldest first.
+    pub proposals: Vec<mxr_protocol::ComposeProposalData>,
+    pub current_index: usize,
+    pub note_input: Option<String>,
+    pub proof_scroll_offset: u16,
+    pub request_pending: bool,
+}
+
+impl ComposeAssistReview {
+    pub fn proposal(&self) -> Option<&mxr_protocol::ComposeProposalData> {
+        self.proposals.get(self.current_index)
+    }
+
+    pub fn select_version(&mut self, index: usize) {
+        if index < self.proposals.len() {
+            self.current_index = index;
+            self.proof_scroll_offset = 0;
+        }
+    }
+
+    pub fn push_proposal(&mut self, proposal: mxr_protocol::ComposeProposalData) {
+        self.proposals.push(proposal);
+        self.current_index = self.proposals.len().saturating_sub(1);
+        self.note_input = None;
+        self.proof_scroll_offset = 0;
+        self.request_pending = false;
+    }
+}
+
 impl PendingSend {
     pub(crate) fn draft_id(&self) -> mxr_core::DraftId {
         mxr_core::DraftId::from_provider_id("compose-file", &self.draft_path.to_string_lossy())
@@ -139,6 +171,9 @@ pub struct ComposeState {
     pub active_draft_cleanup: std::collections::HashSet<std::path::PathBuf>,
     pub pending_compose: Option<ComposeAction>,
     pub pending_send_confirm: Option<PendingSend>,
+    pub assist_review: Option<ComposeAssistReview>,
+    pub assist_request_id: u64,
+    pub assist_after_editor: bool,
     pub pending_send_at_input: Option<String>,
     pub pending_remind_at_input: Option<String>,
     /// The send-at / remind prompt's previewed time and selected reading.

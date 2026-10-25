@@ -248,8 +248,9 @@ fix).
 
 - `clean_draft` (moved from `draft_output.rs`): strip a subject line,
   preamble, markdown fences and a repeated signature.
-- **Regions.** The output may not contain the signature or forward header;
-  if it does, they are removed.
+- **Regions.** `mxr-compose` owns the shared body partition used by clients and
+  the checker. The output may not contain the signature or forward header; if
+  it does, they are removed.
 - **Kept.** For Finish, Polish and Edit selection, each of your sentences
   is matched in the output; a missing or changed one goes into
   `yours_changed`. For Edit selection, any change outside the selection is
@@ -787,7 +788,7 @@ catalogue are built inside the first rung that needs them.
 | Rung | After it ships, you can… | Builds | Status |
 |---|---|---|---|
 | C0 | see how good drafts are, case by case, and have every prompt change show as a diff | the compose corpus (40 cases), `mxr draft eval --set quick`, the snapshot gate over today's pipeline | planned |
-| C1 | type a few words, press `⌘J`, and get your draft finished, as a proof you accept, in every client | `ComposeAssist` with `text`, `selection` and `DraftTarget`; `mxr-composer` (plan, check: regions, kept, gaps); `ComposeProposalData` with `changes`; the help line and proof on web; the TUI and Raycast proofs; `mxr compose assist`/`apply`; Unfilled gap; the MCP tool on the new request | planned |
+| C1 | type a few words, press `⌘J`, and get your draft finished, as a proof you accept, in every client | `ComposeAssist` with `text`, `selection` and `DraftTarget`; `mxr-compose` (shared body regions); `mxr-composer` (plan, check: kept, gaps); `ComposeProposalData` with `changes`; the help line and proof on web; the TUI and Raycast proofs; `mxr compose assist`/`apply`; Unfilled gap; the MCP tool on the new request | planned |
 | C2 | pick which model drafts, with a default in Settings | `[llm.compose] model`, `llm.models`, `ModelChoiceData.sees`, `model` on the request, the picker in all clients, old keys warn | planned |
 | C3 | get drafts that follow humanizer 3.1 and your own habits | the catalogue, `PatternRates`, the style block, the voice-relative check, sentence repair, style marks, the invented-fact check | planned |
 | C4 | reply inline under the message, with one recipients line and one Send | the compose screen above on web and desktop; sheet for new messages; `⋯` for the rest | planned |

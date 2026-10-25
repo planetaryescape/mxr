@@ -3,7 +3,7 @@
 //! selection, turn figures nobody supplied into gaps, find the gaps, report
 //! which of the user's sentences moved, and diff from what they typed.
 
-use super::regions::split_body;
+use super::split_body;
 use super::text::{invented_spans, sentences};
 use mxr_protocol::{AssistActionData, GapData, TextChangeData, TextChangeKindData};
 use similar::{ChangeTag, DiffTag, TextDiff};

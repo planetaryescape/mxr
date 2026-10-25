@@ -1061,6 +1061,7 @@ pub fn map_request(
         }
         Request::GetAssistantAvailability
         | Request::GetAssistantModels
+        | Request::GetComposeModels
         | Request::SetAssistantModel { .. }
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }

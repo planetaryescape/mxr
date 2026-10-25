@@ -2410,6 +2410,11 @@ pub enum ClassifySetArg {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ComposeAction {
+    /// List models available to compose under compose routing and privacy policy.
+    Models {
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Ask for writing help and read the proposal. Nothing in the draft changes
     /// until you accept it with `mxr compose apply`.
     ///
@@ -2483,6 +2488,9 @@ pub struct ComposeAssistArgs {
     /// What you want said or changed, in your words.
     #[arg(long, value_name = "TEXT")]
     pub instruction: Option<String>,
+    /// Use one configured model for this draft only.
+    #[arg(long, value_name = "MODEL_ID")]
+    pub model: Option<String>,
     /// Revise an earlier proposal: the instruction is applied to it. Your own
     /// text stays what `--text` (or the stored draft) says.
     #[arg(long, value_name = "PROPOSAL_ID")]

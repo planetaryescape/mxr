@@ -108,6 +108,9 @@ async fn handle_compose_action_owned(
                 .map_err(|error| MxrError::Ipc(error.to_string()))?;
             return Ok(ComposeReadyData {
                 account_id,
+                draft_revision: retained
+                    .as_ref()
+                    .map(|(_, identity)| identity.expected_revision),
                 intent: mxr_core::DraftIntent::New,
                 draft_path: path,
                 cursor_line: 1,
@@ -274,6 +277,7 @@ async fn handle_compose_action_owned(
         .map_err(|error| MxrError::Ipc(error.to_string()))?;
     Ok(ComposeReadyData {
         account_id,
+        draft_revision: None,
         intent,
         draft_path: path,
         cursor_line,
@@ -612,6 +616,7 @@ pub(crate) async fn pending_send_from_edited_draft(
 
     Ok(PendingSend {
         account_id: data.account_id.clone(),
+        draft_revision: data.draft_revision,
         intent: if fm.intent == mxr_core::DraftIntent::New {
             data.intent
         } else {
@@ -793,7 +798,7 @@ fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
             });
     let now = chrono::Utc::now();
     mxr_core::Draft {
-        revision: Some(1),
+        revision: pending.draft_revision.or(Some(1)),
         id: pending.draft_id(),
         account_id: pending.account_id.clone(),
         // `fm.from` is already validated by `validate_draft` in
@@ -977,6 +982,7 @@ mod tests {
         std::fs::write(&temp, "---\n").unwrap();
 
         let data = ComposeReadyData {
+            draft_revision: None,
             account_id: mxr_core::AccountId::new(),
             intent: mxr_core::DraftIntent::New,
             draft_path: temp.clone(),
@@ -1156,6 +1162,7 @@ mod tests {
         assert!(temp.exists(), "test setup: file must exist before discard");
 
         let data = ComposeReadyData {
+            draft_revision: None,
             account_id: mxr_core::AccountId::new(),
             intent: mxr_core::DraftIntent::New,
             draft_path: temp.clone(),

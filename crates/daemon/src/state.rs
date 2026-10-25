@@ -232,7 +232,7 @@ impl RuntimeTasks {
 /// through `DemoLlmProvider` instead. That short-circuits all outbound LLM
 /// traffic so a demo runs fully offline and can never spend the user's
 /// real-account API key by accident, even if `[llm]` is configured.
-fn build_llm_provider(
+pub(crate) fn build_llm_provider(
     config: &mxr_config::EffectiveLlmConfig,
     health: &mxr_llm::RouteHealth,
 ) -> Arc<dyn mxr_llm::LlmProvider> {

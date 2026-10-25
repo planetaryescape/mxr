@@ -4,7 +4,7 @@ import type { components } from "@/api/generated";
 type Schemas = components["schemas"];
 export type AssistantAvailability = Schemas["AssistantAvailabilityData"];
 export type AssistantModels = Schemas["AssistantModelsData"];
-export type AssistantModelChoice = Schemas["AssistantModelChoiceData"];
+export type AssistantModelChoice = Schemas["ModelChoiceData"];
 export type AssistantConversation = Schemas["AssistantConversationData"];
 export type AssistantSummary = Schemas["AssistantConversationSummaryData"];
 export type AssistantItem = Schemas["AssistantItemData"];

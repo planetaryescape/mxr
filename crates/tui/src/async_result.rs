@@ -328,8 +328,14 @@ pub(crate) enum AsyncResult {
     },
     ComposeAssistLoaded {
         pending: Box<app::PendingSend>,
+        model: Option<String>,
         request_id: u64,
         result: Result<mxr_protocol::ComposeProposalData, MxrError>,
+    },
+    ComposeModelsLoaded {
+        pending: Box<app::PendingSend>,
+        purpose: app::ComposeModelPickerPurpose,
+        result: Result<mxr_protocol::AssistantModelsData, MxrError>,
     },
     ComposeAssistAccepted {
         pending: Box<app::PendingSend>,
@@ -459,6 +465,7 @@ pub(crate) enum AnalyticsResultPayload {
 
 pub(crate) struct ComposeReadyData {
     pub(crate) account_id: mxr_core::AccountId,
+    pub(crate) draft_revision: Option<i64>,
     pub(crate) intent: mxr_core::DraftIntent,
     pub(crate) draft_path: std::path::PathBuf,
     pub(crate) cursor_line: usize,

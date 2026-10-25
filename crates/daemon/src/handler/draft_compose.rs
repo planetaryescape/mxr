@@ -257,7 +257,7 @@ async fn draft_with(
     .await;
     let target_words = target_words(request.length_hint, &material);
     let max_tokens = max_tokens_for_words(target_words);
-    let budget_chars = prompt_budget_chars(state.llm.capabilities().context_window, max_tokens);
+    let budget_chars = prompt_budget_chars(policy.llm.context_window(), max_tokens);
     let today = draft_voice::today();
     let prompt = draft_prompt::build(&PromptInput {
         mode,

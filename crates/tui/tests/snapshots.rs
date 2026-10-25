@@ -248,6 +248,7 @@ fn label_picker_snapshot() {
 #[test]
 fn send_confirm_snapshot() {
     let pending = PendingSend {
+        draft_revision: None,
         account_id: AccountId::new(),
         fm: ComposeFrontmatter {
             to: "bob@example.com".into(),

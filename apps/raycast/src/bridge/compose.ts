@@ -7,6 +7,8 @@ import type {
   Reply,
   SafetyReport,
   Workspace,
+  ComposeModelChoice,
+  ComposeModelCatalogue,
 } from "./types";
 
 // Compose sessions are private daemon work, bound to the archive workspace
@@ -17,6 +19,11 @@ export type ReplyKind = "reply" | "reply_all";
 export interface ReplyDraft {
   session: ComposeSession;
   workspace: Workspace;
+}
+
+export async function composeModelChoices(): Promise<ComposeModelChoice[]> {
+  const response = await request<{ models: ComposeModelCatalogue }>("/api/v1/mail/compose/models");
+  return response.models.choices;
 }
 
 async function workspace(): Promise<Workspace> {
@@ -50,7 +57,12 @@ export async function assistReply(
   messageId: string,
   kind: ReplyKind,
   text: string,
-  options: { action?: ComposeAssistAction; revise?: string; instruction?: string } = {},
+  options: {
+    action?: ComposeAssistAction;
+    revise?: string;
+    instruction?: string;
+    model?: string;
+  } = {},
 ): Promise<ComposeAssistProposal> {
   const body: ComposeAssistRequest = {
     draft: { kind: "reply", message_id: messageId, all: kind === "reply_all" },
@@ -59,6 +71,7 @@ export async function assistReply(
   if (options.action) body.action = options.action;
   if (options.revise) body.revise = options.revise;
   if (options.instruction) body.instruction = options.instruction;
+  if (options.model) body.model = options.model;
   const { proposal } = await owned<{ proposal: ComposeAssistProposal }>(
     "/api/v1/mail/compose/assist",
     body,

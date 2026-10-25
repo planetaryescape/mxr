@@ -73,11 +73,13 @@ test("a drafted reply says which model wrote it, and each source opens the cited
   const sent = await openFirst(page, "/m/sent");
   const yourEmail = sent.messages.at(-1);
   if (!yourEmail) throw new Error("the demo's Sent list opened an empty conversation");
-  // The conversation being answered; its oldest message is cited too.
+  // The conversation being answered; the oldest message is cited too.
   const inbox = await openFirst(page, "/m/inbox", 2);
   const oldest = inbox.messages[0];
-  if (!oldest) throw new Error("the demo's inbox opened an empty conversation");
-  expect(inbox.messages.length).toBeGreaterThan(1);
+  const newest = inbox.messages.at(-1);
+  if (!oldest || !newest || inbox.messages.length < 2) {
+    throw new Error("the demo's inbox opened a conversation with fewer than two messages");
+  }
   // Folded until something asks for it.
   await expect(reader(page).locator(`[data-message-id="${oldest.id}"]`)).toHaveAttribute(
     "data-collapsed",
@@ -132,8 +134,6 @@ test("a drafted reply says which model wrote it, and each source opens the cited
   await composer(page).getByRole("textbox", { name: "Draft instruction" }).press("Enter");
   await expect.poll(() => draftRequest).not.toBeNull();
   expect(draftRequest).toHaveProperty("draft.kind", "reply");
-  const newest = inbox.messages.at(-1);
-  if (!newest) throw new Error("the inbox conversation has no reply target");
   expect(draftRequest).toHaveProperty("draft.message_id", newest.id);
   expect(newest.id).not.toBe(oldest.id);
 

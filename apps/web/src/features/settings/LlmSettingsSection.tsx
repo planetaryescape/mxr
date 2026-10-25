@@ -27,30 +27,12 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { SectionHeading } from "@/components/SectionHeading";
 import { useHeldPending } from "@/hooks/useDelayedPending";
+import type { components } from "@/api/generated";
 
-interface LlmConfig {
-  enabled: boolean;
-  base_url: string;
-  model: string;
-  api_key_env: string;
-  context_window: number;
-  request_timeout_secs: number;
-  allow_cloud_relationship_data: boolean;
-  overrides?: LlmOverrides | null;
-}
+export type LlmConfig = components["schemas"]["LlmConfigData"];
 
 type LlmOverrideKey = (typeof llmOverrideFeatures)[number]["key"];
-
-interface LlmOverrideConfig {
-  enabled?: boolean | null;
-  base_url?: string | null;
-  model?: string | null;
-  api_key_env?: string | null;
-  context_window?: number | null;
-  request_timeout_secs?: number | null;
-}
-
-type LlmOverrides = Partial<Record<LlmOverrideKey, LlmOverrideConfig | null>>;
+type LlmOverrideConfig = components["schemas"]["LlmOverrideData"];
 
 interface LlmStatus {
   enabled: boolean;
@@ -72,22 +54,20 @@ const defaultLlmConfig: LlmConfig = {
   enabled: false,
   base_url: "http://localhost:11434/v1",
   model: "qwen2.5:3b-instruct",
+  compose_model: null,
+  models: [],
   api_key_env: "",
   context_window: 8192,
   request_timeout_secs: 120,
   allow_cloud_relationship_data: false,
-  overrides: {},
+  overrides: emptyLlmOverrides(),
 };
 
 const llmOverrideFeatures = [
   { key: "summarize", label: "Summaries" },
   { key: "relationship_summary", label: "Relationship summaries" },
   { key: "commitments", label: "Commitments" },
-  { key: "draft_assist", label: "Draft assist" },
-  { key: "draft_new", label: "Draft new" },
-  { key: "draft_refine", label: "Draft refine" },
   { key: "voice_match", label: "Voice match" },
-  { key: "humanize_rewrite", label: "Humanizer rewrite" },
 ] as const;
 
 export function LlmSettingsSection() {
@@ -125,6 +105,7 @@ export function LlmSettingsSection() {
       setDraft(saved.config);
       toast.success("LLM config saved");
       void qc.invalidateQueries({ queryKey: ["llm-config"] });
+      void qc.invalidateQueries({ queryKey: ["compose-models"] });
       void qc.invalidateQueries({ queryKey: ["llm-status"] });
       // Gists written under the old model or privacy setting are stale.
       void qc.invalidateQueries({ predicate: isGistQuery });
@@ -387,31 +368,67 @@ function llmConfigFromStatus(status: LlmStatus): LlmConfig {
         ? status.request_timeout_secs
         : defaultLlmConfig.request_timeout_secs,
     allow_cloud_relationship_data: defaultLlmConfig.allow_cloud_relationship_data,
-    overrides: {},
+    overrides: emptyLlmOverrides(),
   };
 }
 
 function normalizeLlmConfig(config: LlmConfig): LlmConfig {
-  return { ...config, overrides: config.overrides ?? {} };
+  return {
+    ...config,
+    models: config.models ?? [],
+    overrides: config.overrides ?? emptyLlmOverrides(),
+  };
 }
 
 function updateLlmOverride(
   config: LlmConfig,
   key: LlmOverrideKey,
-  patch: LlmOverrideConfig,
+  patch: Partial<LlmOverrideConfig>,
 ): LlmConfig {
-  const current = config.overrides?.[key] ?? {};
+  const current = config.overrides?.[key] ?? emptyLlmOverride();
   const next = pruneOverride({ ...current, ...patch });
   return {
     ...config,
     overrides: {
+      ...emptyLlmOverrides(),
       ...config.overrides,
       [key]: next,
     },
   };
 }
 
-function pruneOverride(override: LlmOverrideConfig): LlmOverrideConfig | null {
+function emptyLlmOverride(): LlmOverrideConfig {
+  return {
+    enabled: null,
+    base_url: null,
+    model: null,
+    api_key_env: null,
+    context_window: null,
+    request_timeout_secs: null,
+  };
+}
+
+function emptyLlmOverrides(): components["schemas"]["LlmOverridesData"] {
+  return {
+    answer_coverage: null,
+    archive_ask: null,
+    assistant: null,
+    briefing: null,
+    commitments: null,
+    decision_log: null,
+    delivery_extraction: null,
+    draft_assist: null,
+    draft_new: null,
+    draft_refine: null,
+    expert: null,
+    humanize_rewrite: null,
+    relationship_summary: null,
+    summarize: null,
+    voice_match: null,
+  };
+}
+
+function pruneOverride(override: Partial<LlmOverrideConfig>): LlmOverrideConfig | null {
   const next: LlmOverrideConfig = {
     enabled: override.enabled ?? null,
     base_url: emptyToNull(override.base_url),

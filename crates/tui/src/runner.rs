@@ -1706,7 +1706,12 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let title = pending.title.clone();
             let compose_assist = pending.compose_assist.clone();
+            let compose_model = match &pending.request {
+                Request::ComposeAssist { model, .. } => model.clone(),
+                _ => None,
+            };
             let compose_assist_request_id = pending.compose_assist_request_id.unwrap_or_default();
+            let compose_model_picker = pending.compose_model_picker.clone();
             let compose_assist_accept = pending.compose_assist_accept.clone();
             let compose_assist_reopen_editor = pending.compose_assist_reopen_editor;
             let result_tx_inner = result_tx.clone();
@@ -1736,6 +1741,23 @@ pub async fn run() -> anyhow::Result<()> {
                     ipc_call(&bg, pending.request).await
                 }
                 .await;
+                if let Some((pending, purpose)) = compose_model_picker {
+                    let result = match result {
+                        Ok(Response::Ok {
+                            data: ResponseData::ComposeModels { models },
+                        }) => Ok(models),
+                        Ok(Response::Ok { .. }) => Err(MxrError::Ipc(
+                            "The daemon returned no compose model catalogue".into(),
+                        )),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(error) => Err(error),
+                    };
+                    return AsyncResult::ComposeModelsLoaded {
+                        pending,
+                        purpose,
+                        result,
+                    };
+                }
                 if let Some(compose) = compose_assist {
                     let proposal = match result {
                         Ok(Response::Ok {
@@ -1749,6 +1771,7 @@ pub async fn run() -> anyhow::Result<()> {
                     };
                     return AsyncResult::ComposeAssistLoaded {
                         pending: compose,
+                        model: compose_model,
                         request_id: compose_assist_request_id,
                         result: proposal,
                     };
@@ -4829,7 +4852,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 Err(e) => app.modals.platform.set_error(e.to_string()),
                             }
                         }
-                        AsyncResult::ComposeAssistLoaded { pending, request_id, result } => {
+                        AsyncResult::ComposeAssistLoaded { pending, model, request_id, result } => {
                             let current_matches = app.compose.pending_send_confirm.as_ref()
                                 .is_some_and(|current| current.draft_path == pending.draft_path);
                             if !current_matches
@@ -4844,11 +4867,12 @@ pub async fn run() -> anyhow::Result<()> {
                                     if let Some(review) = app.compose.assist_review.as_mut().filter(|review| {
                                         review.pending.draft_path == pending.draft_path
                                     }) {
-                                        review.push_proposal(proposal);
+                                        review.push_proposal(proposal, model);
                                     } else {
                                         app.compose.assist_review = Some(app::ComposeAssistReview {
                                             pending: *pending,
                                             proposals: vec![proposal],
+                                            proposal_models: vec![model],
                                             current_index: 0,
                                             note_input: None,
                                             proof_scroll_offset: 0,
@@ -4864,6 +4888,48 @@ pub async fn run() -> anyhow::Result<()> {
                                 }
                             }
                         }
+                        AsyncResult::ComposeModelsLoaded { pending, purpose, result } => {
+                            if !app.modals.platform.visible
+                                || app.modals.platform.title != "Choose a writing model"
+                            {
+                                continue;
+                            }
+                            app.modals.platform.close();
+                            let still_owned = match purpose {
+                                app::ComposeModelPickerPurpose::InitialDraft => app
+                                    .compose
+                                    .pending_send_confirm
+                                    .as_ref()
+                                    .is_some_and(|current| {
+                                        current.draft_path == pending.draft_path
+                                    }),
+                                app::ComposeModelPickerPurpose::RetryProof => app
+                                    .compose
+                                    .assist_review
+                                    .as_ref()
+                                    .is_some_and(|review| {
+                                        review.pending.draft_path == pending.draft_path
+                                            && !review.request_pending
+                                    }),
+                            };
+                            if !still_owned {
+                                continue;
+                            }
+                            match result {
+                                Ok(choices) => {
+                                    app.compose.model_picker = Some(app::ComposeModelPicker {
+                                        choices,
+                                        selected_index: 0,
+                                        pending,
+                                        purpose,
+                                    });
+                                }
+                                Err(error) => app.report_error(
+                                    "Compose models unavailable",
+                                    error.to_string(),
+                                ),
+                            }
+                        }
                         AsyncResult::ComposeAssistAccepted { pending, request_id, reopen_editor, result } => {
                             if app.compose.assist_request_id != request_id {
                                 continue;
@@ -4877,6 +4943,7 @@ pub async fn run() -> anyhow::Result<()> {
                                     };
                                     let mut pending_send = *pending;
                                     pending_send.body = body;
+                                    pending_send.draft_revision = draft.revision;
                                     pending_send.mode = app::PendingSendMode::SendOrSave;
                                     match safety {
                                         Ok(report) => {
@@ -4901,6 +4968,17 @@ pub async fn run() -> anyhow::Result<()> {
                                     if let Err(error) = std::fs::write(&pending_send.draft_path, content) {
                                         app.compose.pending_send_confirm = Some(pending_send);
                                         app.report_error("Accepted draft file could not be updated", error.to_string());
+                                        continue;
+                                    }
+                                    #[cfg(not(test))]
+                                    if let Err(error) = crate::send_recovery_state::retain_reviewed_compose(
+                                        &draft.account_id,
+                                        &draft.id,
+                                        &mxr_core::SendIdentity::for_draft(&draft),
+                                        &pending_send.draft_path,
+                                    ) {
+                                        app.compose.pending_send_confirm = Some(pending_send);
+                                        app.report_error("Accepted draft could not be tracked", error.to_string());
                                         continue;
                                     }
                                     if reopen_editor {

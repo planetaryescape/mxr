@@ -376,11 +376,17 @@ pub struct LlmConfig {
     /// model answers one request at a time well; raise it for a hosted
     /// endpoint. Clamped to 1..=8.
     pub gist_concurrency: usize,
-    /// The models the assistant's picker offers, by id. Where each runs
+    /// The models the assistant and compose pickers offer, by id. Where each runs
     /// follows from its id: `claude-*` goes to Anthropic, `gpt-*` to OpenAI,
     /// anything else to `base_url`. Empty means the defaults.
-    #[serde(skip_serializing_if = "is_default_assistant_models")]
-    pub assistant_models: Vec<String>,
+    #[serde(
+        alias = "assistant_models",
+        skip_serializing_if = "is_default_assistant_models"
+    )]
+    pub models: Vec<String>,
+    /// One persistent default for new drafts. When unset, legacy feature
+    /// overrides continue to apply and otherwise drafting inherits `[llm]`.
+    pub compose: Option<LlmComposeConfig>,
     /// Optional feature-specific provider overrides. Each override inherits
     /// unspecified fields from this base `[llm]` section.
     pub overrides: LlmOverrides,
@@ -398,7 +404,8 @@ impl Default for LlmConfig {
             background_request_timeout_secs: 45,
             allow_cloud_relationship_data: false,
             gist_concurrency: 1,
-            assistant_models: DEFAULT_ASSISTANT_MODELS.map(String::from).to_vec(),
+            models: DEFAULT_ASSISTANT_MODELS.map(String::from).to_vec(),
+            compose: None,
             overrides: LlmOverrides::default(),
         }
     }
@@ -442,6 +449,12 @@ pub struct LlmOverrides {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
+pub struct LlmComposeConfig {
+    pub model: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct LlmOverrideConfig {
     pub enabled: Option<bool>,
     pub base_url: Option<String>,
@@ -462,11 +475,11 @@ pub struct EffectiveLlmConfig {
 }
 
 impl LlmConfig {
-    /// The picker's models: `assistant_models` without blanks and repeats,
+    /// The picker models: `models` without blanks and repeats,
     /// or the defaults when it names none.
     pub fn assistant_model_ids(&self) -> Vec<String> {
         let mut ids: Vec<String> = Vec::new();
-        for id in self.assistant_models.iter().map(|id| id.trim()) {
+        for id in self.models.iter().map(|id| id.trim()) {
             if !id.is_empty() && !ids.iter().any(|seen| seen == id) {
                 ids.push(id.to_string());
             }

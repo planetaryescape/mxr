@@ -74,7 +74,9 @@ function proposal(text: string, changes: { kind: "kept" | "added" | "removed"; t
   };
 }
 
-const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY }, mutations: { retry: false } },
+});
 
 function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
@@ -84,9 +86,79 @@ beforeEach(() => {
   apiFetch.mockReset();
   resetWorkspaceOwnerForTest();
   queryClient.clear();
+  queryClient.setQueryData(["compose-models"], {
+    kind: "AssistantModels",
+    models: { current: "gemma4:latest", choices: [] },
+  });
+  queryClient.setQueryData(["llm-config"], {
+    config: { compose_model: null, model: "gemma4:latest" },
+  });
 });
 
 describe("useDraftAssist", () => {
+  test("a new draft starts from the configured default after a per-draft choice", async () => {
+    const { result, rerender } = renderHook(
+      ({ intent }: { intent: ComposeIntent }) => useHarness(draftWith("Draft body."), intent),
+      { initialProps: { intent: REPLY }, wrapper },
+    );
+    act(() => result.current.assist.setModel("gpt-6-luna"));
+    await waitFor(() => expect(result.current.assist.model).toBe("gpt-6-luna"));
+
+    rerender({ intent: { key: "new-draft", title: "New", kind: "new" } });
+    await waitFor(() => expect(result.current.assist.model).toBeUndefined());
+    expect(result.current.assist.defaultModel).toBe("gemma4:latest");
+  });
+
+  test("a model retry becomes the draft choice for later revisions", async () => {
+    apiFetch.mockResolvedValue(
+      proposal("Thursday works.", [{ kind: "kept", text: "Thursday works." }]),
+    );
+    const { result } = renderHook(() => useHarness(draftWith("Thursday works.")), { wrapper });
+    act(() => result.current.assist.setSelection({ from: 0, to: 8 }));
+    act(() => result.current.assist.setModel("gpt-6-luna"));
+    await waitFor(() => expect(result.current.assist.model).toBe("gpt-6-luna"));
+    await waitFor(() => expect(result.current.assist.selection).toEqual({ from: 0, to: 8 }));
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
+    expect(apiFetch.mock.calls[0]?.[1]?.body).toMatchObject({
+      model: "gpt-6-luna",
+      text: "Thursday works.",
+      action: "edit_selection",
+    });
+
+    act(() => result.current.assist.againWithModel("claude-haiku-5-5"));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
+    const retryBody = apiFetch.mock.calls[1]?.[1]?.body;
+    expect(retryBody).toMatchObject({
+      model: "claude-haiku-5-5",
+      text: "Thursday works.",
+      action: "edit_selection",
+      selection: { start: 0, end: 8 },
+    });
+    expect(retryBody).not.toHaveProperty("revise");
+    expect(result.current.assist.model).toBe("claude-haiku-5-5");
+
+    act(() => result.current.assist.again("Keep the same meaning."));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(3));
+    expect(apiFetch.mock.calls[2]?.[1]?.body).toMatchObject({
+      model: "claude-haiku-5-5",
+      revise: "p1",
+      text: "Thursday works.",
+      selection: { start: 0, end: 8 },
+    });
+  });
+
+  test("retrying with another model after editing uses the live text", async () => {
+    apiFetch.mockResolvedValue(proposal("Thursday works.", [{ kind: "kept", text: "Thursday works." }]));
+    const { result } = renderHook(() => useHarness(draftWith("Thursday works.")), { wrapper });
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
+    act(() => result.current.setDraft(draftWith("Friday works.\n\n-- \nBK")));
+    act(() => result.current.assist.againWithModel("gpt-6-luna"));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
+    expect(apiFetch.mock.calls[1]?.[1]?.body).toMatchObject({ model: "gpt-6-luna", text: "Friday works.", action: "finish" });
+  });
+
   test("the request carries the text without the signature and UTF-8 selection offsets", async () => {
     apiFetch.mockResolvedValue(proposal("café au lait", [{ kind: "kept", text: "café au lait" }]));
     const { result } = renderHook(() => useHarness(draftWith("café au lait\n\n-- \nBK")), {

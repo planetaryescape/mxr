@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.161"
+    "version": "0.6.162"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -1982,6 +1982,28 @@
           },
           "422": {
             "description": "Nothing to finish, a selection off a character boundary, text too long, or a privacy setting that stops the model"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/compose/models": {
+      "get": {
+        "tags": [],
+        "summary": "List models available to compose under the compose route and privacy policy",
+        "operationId": "mail_compose_models",
+        "responses": {
+          "200": {
+            "description": "Compose model choices, locality and availability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeModelsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
           }
         }
       }
@@ -10779,41 +10801,6 @@
           }
         }
       },
-      "AssistantModelChoiceData": {
-        "type": "object",
-        "description": "One model the assistant can run on.",
-        "required": [
-          "id",
-          "label",
-          "cloud",
-          "available"
-        ],
-        "properties": {
-          "available": {
-            "type": "boolean",
-            "description": "Whether it can be picked now."
-          },
-          "cloud": {
-            "type": "boolean",
-            "description": "True when conversations with it go to a provider off this machine."
-          },
-          "id": {
-            "type": "string",
-            "description": "The model id, as `set` takes it."
-          },
-          "label": {
-            "type": "string",
-            "description": "What a person calls it (\"Claude Haiku 5.5\")."
-          },
-          "unavailable_reason": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Why it can't be picked, with the command that fixes it when there is\none. Set exactly when `available` is false."
-          }
-        }
-      },
       "AssistantModelsData": {
         "type": "object",
         "description": "The models the assistant can be set to, and the one it uses now.",
@@ -10824,7 +10811,7 @@
           "choices": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/AssistantModelChoiceData"
+              "$ref": "#/components/schemas/ModelChoiceData"
             }
           },
           "current": {
@@ -13176,6 +13163,13 @@
               "null"
             ]
           },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional configured model for this draft only."
+          },
           "revise": {
             "type": [
               "string",
@@ -13358,6 +13352,18 @@
           },
           "severity": {
             "type": "string"
+          }
+        }
+      },
+      "ComposeModelsResponse": {
+        "type": "object",
+        "description": "The models available to the compose writer under its own policy.",
+        "required": [
+          "models"
+        ],
+        "properties": {
+          "models": {
+            "$ref": "#/components/schemas/AssistantModelsData"
           }
         }
       },
@@ -18048,6 +18054,12 @@
           "base_url": {
             "type": "string"
           },
+          "compose_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "context_window": {
             "type": "integer",
             "format": "int32",
@@ -18058,6 +18070,15 @@
           },
           "model": {
             "type": "string"
+          },
+          "models": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
           },
           "overrides": {
             "oneOf": [
@@ -20020,6 +20041,45 @@
               "type": "string"
             },
             "description": "To do: the open rows holding the thread."
+          }
+        }
+      },
+      "ModelChoiceData": {
+        "type": "object",
+        "description": "One model a client can choose.",
+        "required": [
+          "id",
+          "label",
+          "cloud",
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether it can be picked now."
+          },
+          "cloud": {
+            "type": "boolean",
+            "description": "True when conversations with it go to a provider off this machine."
+          },
+          "id": {
+            "type": "string",
+            "description": "The model id, as `set` takes it."
+          },
+          "label": {
+            "type": "string",
+            "description": "What a person calls it (\"Claude Haiku 5.5\")."
+          },
+          "sees": {
+            "type": "string",
+            "description": "The context sent with this choice: the current conversation alone, or\nthe conversation and the user's past mail."
+          },
+          "unavailable_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it can't be picked, with the command that fixes it when there is\none. Set exactly when `available` is false."
           }
         }
       },
@@ -29897,6 +29957,13 @@
                   "null"
                 ]
               },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "A catalogue model for this draft only. Does not change the\npersistent compose default."
+              },
               "revise": {
                 "type": [
                   "string",
@@ -33218,6 +33285,21 @@
                 "type": "string",
                 "enum": [
                   "GetAssistantModels"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The models available to compose under its own routing and privacy policy.\nReturns `ResponseData::ComposeModels`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetComposeModels"
                 ]
               }
             }
@@ -38635,6 +38717,25 @@
                 "type": "string",
                 "enum": [
                   "AssistantModels"
+                ]
+              },
+              "models": {
+                "$ref": "#/components/schemas/AssistantModelsData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::GetComposeModels`.",
+            "required": [
+              "models",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ComposeModels"
                 ]
               },
               "models": {

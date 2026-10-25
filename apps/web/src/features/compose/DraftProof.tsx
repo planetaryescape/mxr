@@ -13,6 +13,9 @@ import { cn } from "@/lib/utils";
 import { DraftProvenanceLine } from "./DraftProvenanceLine";
 import type { ProofRun, ProofRunKind } from "./assist/proof";
 import type { DraftProvenance } from "./draftProvenanceFormat";
+import type { components } from "@/api/generated";
+
+type ModelChoice = components["schemas"]["ModelChoiceData"];
 
 /** How a run is drawn outside a gap. */
 const RUN_CLASS = {
@@ -34,6 +37,10 @@ interface DraftProofProps {
   onKeep: () => void;
   onStep: (delta: number) => void;
   onAgain: () => void;
+  onRetryModel: (model: string | undefined) => void;
+  modelChoices: ModelChoice[];
+  defaultModel: string;
+  generating: boolean;
   onRevise: () => void;
 }
 
@@ -48,6 +55,10 @@ export function DraftProof({
   onKeep,
   onStep,
   onAgain,
+  onRetryModel,
+  modelChoices,
+  defaultModel,
+  generating,
   onRevise,
 }: DraftProofProps) {
   const containerRef = useRef<HTMLElement>(null);
@@ -132,6 +143,36 @@ export function DraftProof({
             <Button type="button" variant="outline" onClick={onAgain} disabled={stale}>
               Try again
             </Button>
+            <label className="sr-only" htmlFor="draft-proof-model">
+              Try again with a model
+            </label>
+            <select
+              id="draft-proof-model"
+              aria-label="Try again with a model"
+              defaultValue=""
+              disabled={generating || modelChoices.length === 0}
+              onChange={(event) => {
+                const selected = event.currentTarget.value;
+                event.currentTarget.value = "";
+                if (selected) onRetryModel(selected === "__default" ? undefined : selected);
+              }}
+              className="h-8 border border-border bg-background px-2 text-xs text-muted-foreground"
+            >
+              <option value="" disabled>
+                Try again with…
+              </option>
+              <option value="__default">Default{defaultModel ? ` · ${defaultModel}` : ""}</option>
+              {modelChoices.map((choice) => {
+                return (
+                  <option key={choice.id} value={choice.id} disabled={!choice.available}>
+                    {choice.label}
+                    {choice.cloud ? " · cloud" : " · this Mac"} · {choice.sees}
+                    {choice.id === defaultModel ? " · default" : ""}
+                    {choice.available ? "" : ` · ${choice.unavailable_reason ?? "unavailable"}`}
+                  </option>
+                );
+              })}
+            </select>
             <Button type="button" variant="ghost" onClick={onRevise}>
               Revise
             </Button>

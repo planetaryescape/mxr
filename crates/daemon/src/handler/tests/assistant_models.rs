@@ -599,7 +599,7 @@ fn a_list_naming_an_unknown_id_shows_it_instead_of_failing() {
     isolated(|state| async move {
         use_model(&state, "gemma4", LOCAL).await;
         let mut config = state.config_snapshot();
-        config.llm.assistant_models = vec!["gemma4:latest".into(), "mystery-model-9".into()];
+        config.llm.models = vec!["gemma4:latest".into(), "mystery-model-9".into()];
         state.set_config_for_test(config).await;
 
         let listed = models(&state).await;
@@ -635,7 +635,7 @@ fn saving_llm_settings_keeps_the_edited_model_list() {
     isolated(|state| async move {
         use_model(&state, "gemma4", LOCAL).await;
         let mut config = state.config_snapshot();
-        config.llm.assistant_models = vec!["gemma4:latest".into(), "claude-haiku-5-5".into()];
+        config.llm.models = vec!["gemma4:latest".into(), "claude-haiku-5-5".into()];
         save(&state, config).await;
 
         let Response::Ok {
@@ -653,7 +653,7 @@ fn saving_llm_settings_keeps_the_edited_model_list() {
         .await;
         assert!(matches!(saved, Response::Ok { .. }), "{saved:?}");
         assert_eq!(
-            state.config_snapshot().llm.assistant_models,
+            state.config_snapshot().llm.models,
             ["gemma4:latest", "claude-haiku-5-5"]
         );
     });

@@ -22,7 +22,7 @@ fn draft_from_pending(
                 thread_id: pending.fm.thread_id.clone(),
             });
     mxr_core::Draft {
-        revision: Some(1),
+        revision: pending.draft_revision.or(Some(1)),
         id: draft_id,
         account_id: pending.account_id.clone(),
         from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from)
@@ -755,6 +755,10 @@ impl App {
             }
         }
 
+        if self.compose.model_picker.is_some() {
+            return self.handle_compose_model_picker_key(key);
+        }
+
         // Route keys to send confirmation prompt
         if self.compose.assist_review.is_some() {
             return self.handle_compose_assist_key(key);
@@ -845,7 +849,7 @@ impl App {
                                     managed_attachments_reviewed: true,
                                     draft_id,
                                     send_at,
-                                    expected_revision: Some(1),
+                                    expected_revision: pending.draft_revision.or(Some(1)),
                                 },
                                 "Scheduled send",
                                 "Saving draft and scheduling send...",
@@ -980,7 +984,7 @@ impl App {
                         });
                         let now = chrono::Utc::now();
                         let draft = mxr_core::Draft {
-                            revision: Some(1),
+                            revision: pending.draft_revision.or(Some(1)),
                             id: pending.draft_id(),
                             account_id: pending.account_id.clone(),
                             from: mxr_compose::draft_codec::parse_from_field(&pending.fm.from)

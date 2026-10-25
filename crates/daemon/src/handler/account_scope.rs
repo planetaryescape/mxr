@@ -119,6 +119,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         // read any account.
         Request::GetAssistantAvailability
         | Request::GetAssistantModels
+        | Request::GetComposeModels
         | Request::SetAssistantModel { .. }
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }

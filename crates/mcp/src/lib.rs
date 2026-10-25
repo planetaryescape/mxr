@@ -1845,6 +1845,7 @@ impl MxrMcpServer {
             action: None,
             instruction: Some(input.instruction),
             adjust: mxr_protocol::AssistAdjustData::default(),
+            model: input.model,
             revise: input.revise,
         })
         .await
@@ -2796,6 +2797,8 @@ pub struct DraftAssistInput {
     /// The id of an earlier proposal to revise: the instruction is applied to
     /// that proposal. `text` stays the user's own text.
     pub revise: Option<String>,
+    /// Configured model to use for this draft only.
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -3186,6 +3189,7 @@ mod tests {
                 instruction: "mention the invoice".into(),
                 text: Some("Thursday works.".into()),
                 revise: Some("proposal-7".into()),
+                model: Some("gpt-6-luna".into()),
             }))
             .await
             .expect("draft assist");
@@ -3199,6 +3203,7 @@ mod tests {
             text,
             action,
             instruction,
+            model,
             revise,
             ..
         }] = requests.as_slice()
@@ -3213,6 +3218,7 @@ mod tests {
             "the daemon picks the action from the text"
         );
         assert_eq!(instruction.as_deref(), Some("mention the invoice"));
+        assert_eq!(model.as_deref(), Some("gpt-6-luna"));
         assert_eq!(revise.as_deref(), Some("proposal-7"));
     }
 
@@ -3276,6 +3282,7 @@ mod tests {
                 instruction: "decline politely".into(),
                 text: None,
                 revise: None,
+                model: None,
             }))
             .await
             .expect("draft assist");

@@ -366,6 +366,10 @@ pub(super) struct LlmConfigRequest {
     pub(super) enabled: bool,
     pub(super) base_url: String,
     pub(super) model: String,
+    #[serde(default)]
+    pub(super) compose_model: Option<String>,
+    #[serde(default)]
+    pub(super) models: Option<Vec<String>>,
     pub(super) api_key_env: String,
     pub(super) context_window: u32,
     pub(super) request_timeout_secs: u64,
@@ -381,6 +385,8 @@ impl From<LlmConfigRequest> for LlmConfigData {
             enabled: value.enabled,
             base_url: value.base_url,
             model: value.model,
+            compose_model: value.compose_model,
+            models: value.models,
             api_key_env: value.api_key_env,
             context_window: value.context_window,
             request_timeout_secs: value.request_timeout_secs,

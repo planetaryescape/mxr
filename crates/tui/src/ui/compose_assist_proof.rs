@@ -1,6 +1,6 @@
 use mxr_protocol::{ComposeProposalData, TextChangeKindData};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
@@ -41,6 +41,70 @@ pub fn draw(
             no_color: std::env::var_os("NO_COLOR").is_some(),
         },
     )
+}
+
+pub fn draw_model_picker(
+    frame: &mut Frame,
+    area: Rect,
+    models: &mxr_protocol::AssistantModelsData,
+    selected_index: usize,
+    theme: &crate::theme::Theme,
+) {
+    let popup = super::centered_rect(66, 58, area);
+    frame.render_widget(Clear, popup);
+    let block = Block::default()
+        .title(" Choose a compose model · ↑/↓ move · Enter select · Esc cancel ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.accent))
+        .style(Style::default().bg(theme.modal_bg));
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+    let mut items = vec![ListItem::new(format!(
+        "Use compose default{}",
+        models
+            .current
+            .as_deref()
+            .map(|model| format!(" · {model}"))
+            .unwrap_or_default()
+    ))
+    .style(Style::default().fg(theme.text_primary))];
+    items.extend(models.choices.iter().map(|choice| {
+        let location = if choice.cloud {
+            "cloud"
+        } else {
+            "this machine"
+        };
+        let availability = choice
+            .unavailable_reason
+            .as_deref()
+            .map_or("available", |reason| reason);
+        let current = if models.current.as_deref() == Some(choice.id.as_str()) {
+            " · default"
+        } else {
+            ""
+        };
+        let line = format!(
+            "{} · {} · {}{} — {}",
+            choice.label, location, choice.sees, current, availability
+        );
+        let style = if choice.available {
+            Style::default().fg(theme.text_primary)
+        } else {
+            Style::default().fg(theme.text_muted)
+        };
+        ListItem::new(line).style(style)
+    }));
+    let selected = Some(selected_index.min(items.len() - 1));
+    let list = List::new(items)
+        .highlight_style(
+            Style::default()
+                .bg(theme.selection_bg)
+                .fg(theme.text_primary)
+                .bold(),
+        )
+        .highlight_symbol("› ");
+    let mut state = ListState::default().with_selected(selected);
+    frame.render_stateful_widget(list, inner, &mut state);
 }
 
 fn draw_with_color_mode(
@@ -96,7 +160,8 @@ fn draw_with_color_mode(
     )));
     lines.push(Line::from(Span::styled(
         format!(
-            "{} revise · {} keep · {} previous · {} next · {}/{} scroll · {}/{} page · {}/{} top/end",
+            "{} another model · {} revise · {} keep · {} previous · {} next · {}/{} scroll · {}/{} page · {}/{} top/end",
+            key("ComposeProofModel"),
             key("ComposeProofRevise"),
             key("ComposeProofKeep"),
             key("ComposeProofPrevious"),

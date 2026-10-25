@@ -153,20 +153,23 @@ fn judge_compose(
         Some("The demo profile runs a built-in script, not a model.".to_string())
     } else if !effective.enabled {
         Some("AI features are off. Turn them on: mxr config set llm.enabled true".to_string())
-    } else if let Some(missing) = routes.as_deref().and_then(|routes| {
-        let first = routes.first()?;
-        routes
-            .iter()
-            .all(|route| keys.api_key(route.provider).is_none())
-            .then_some(first.provider)
-    }) {
-        Some(format!(
-            "Add an {} key: mxr llm key set {}",
-            missing.label(),
-            missing.key()
-        ))
     } else {
-        None
+        routes
+            .as_deref()
+            .and_then(|routes| {
+                let first = routes.first()?;
+                routes
+                    .iter()
+                    .all(|route| keys.api_key(route.provider).is_none())
+                    .then_some(first.provider)
+            })
+            .map(|missing| {
+                format!(
+                    "Add an {} key: mxr llm key set {}",
+                    missing.label(),
+                    missing.key()
+                )
+            })
     };
     AssistantModelChoiceData {
         id: id.to_string(),

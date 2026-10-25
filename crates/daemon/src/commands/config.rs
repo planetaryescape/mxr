@@ -116,7 +116,7 @@ fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result
         "llm.base_url" => Ok(config.llm.base_url.clone()),
         "llm.model" => Ok(config.llm.model.clone()),
         "llm.compose.model" => Ok(config.llm.compose.as_ref().and_then(|compose| compose.model.clone()).unwrap_or_else(|| "(inherits llm.model)".into())),
-        "llm.models" => Ok(toml::Value::try_from(&config.llm.assistant_model_ids())?.to_string()),
+        "llm.models" => Ok(toml::Value::try_from(config.llm.assistant_model_ids())?.to_string()),
         "llm.api_key_env" => Ok(config.llm.api_key_env.clone()),
         "llm.context_window" => Ok(config.llm.context_window.to_string()),
         "llm.request_timeout_secs" => Ok(config.llm.request_timeout_secs.to_string()),

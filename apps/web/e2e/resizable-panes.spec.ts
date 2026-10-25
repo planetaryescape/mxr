@@ -363,7 +363,9 @@ test.describe("at 390px", () => {
       .getByRole("button", { name: /^Reply to / })
       .first()
       .click();
-    const composer = page.locator("#inline-composer-slot [data-compose-surface]");
+    const composer = page
+      .getByTestId("person-page")
+      .locator('[id^="inline-composer-slot-"] [data-compose-surface]');
     const body = composer.locator(".cm-content");
     await expect(body).toBeVisible();
     await body.click();

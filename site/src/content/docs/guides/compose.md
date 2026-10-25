@@ -558,7 +558,9 @@ days. Use `mxr stale --mine --older-than-days 7 --format ids | xargs
 ## The compose sheet in the web app
 
 Popout and fullscreen open the editor as a sheet over a scrim, so the rows
-behind stop answering until you close it (the draft is saved). A reply started
-inline stays in the thread; if you leave the thread it docks in the corner
-without a scrim. **Rich text** and **Markdown** are one switch. The Markdown
-editor is the vim one and shows its mode line; Rich text has none.
+behind stop answering until you close it (the draft is saved). An inline reply
+stays attached to its source conversation. If you leave that conversation, it
+docks in the corner without a scrim and names its source subject; returning to
+the source conversation puts it back inline. It never moves into another
+conversation's reply slot. **Rich text** and **Markdown** are one switch. The
+Markdown editor is the vim one and shows its mode line; Rich text has none.

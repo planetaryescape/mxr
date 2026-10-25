@@ -421,7 +421,12 @@ function MessagesBody({
   const openReply = useCallback(
     (all: boolean) => {
       if (!conversation) return;
-      const intent = replyIntent(conversation.composer.reply_to_message_id, all ? "all" : "single");
+      const intent = {
+        ...replyIntent(conversation.composer.reply_to_message_id, all ? "all" : "single"),
+        contextThreadId: conversation.thread_id,
+        contextTitle: conversation.subject,
+        quiet: true,
+      };
       replyKeys.current.add(intent.key);
       setPageOpen(true);
       useComposeUi.getState().openCompose(intent, "inline");
@@ -635,11 +640,16 @@ function MessagesBody({
     open: () => selectedId && select(selectedId, { open: true }),
     personPage: () => {
       setPageOpen(true);
-      document
-        .querySelector<HTMLElement>(
-          '[data-testid="person-page"] [data-testid="topic"][aria-current="true"]',
-        )
-        ?.focus();
+      requestAnimationFrame(() => {
+        const personPage = document.querySelector<HTMLElement>('[data-testid="person-page"]');
+        const currentTopic = personPage?.querySelector<HTMLElement>(
+          '[data-testid="topic"][aria-current="true"]',
+        );
+        const topicTrigger = personPage?.querySelector<HTMLElement>(
+          '[data-testid="topics-trigger"]',
+        );
+        (currentTopic ?? topicTrigger)?.focus();
+      });
     },
     reply: () => openReply(replyAll),
     replyAll: () => openReply(true),

@@ -66,24 +66,23 @@ Mockups are at 1440px with the rail expanded and the assistant closed, unless no
 │ MESSAGES                                     │ Pat Colleague                     ⋯          │
 │ People you write with. Reply, or done here.  │ You've written 14 times since 2024. Usually  │
 │ YOUR TURN                                    │ replies in a day.                            │
-│▌(P) Pat Colleague                     6d  ●  │ ─────────────────────────────────────────── │
-│     "I asked my manager and they'll…"        │ TOPICS                                        │
-│ (D) Diana, Eve                        5d  ●  │ ■ RustConf 2026 invite         your turn 6d  │
-│     Q1 report body text section 3…           │    Hotel for the conference    waiting  2w  │
-│ (U) Uma Designer                new   5d     │ ─────────────────────────────────────────── │
-│ PINNED                                       │  Pat · Mon 20 Oct, 09:12                     │
-│ (M) Maya Ortiz                        1w     │  I asked my manager and they'll cover the    │
-│ RECENT                                       │  ticket. Can you confirm by Friday so I can  │
-│ (I) Iris Chen                         3w     │  book?                     (reading voice)   │
+│▌(P) Pat Colleague                     6d  ●  │ RustConf 2026 invite · Direct · 1 of 2      │
+│     "I asked my manager and they'll…"        │ PEOPLE                                        │
+│ (D) Diana, Eve                        5d  ●  │                                               │
+│     Q1 report body text section 3…           │ Pat · Mon 20 Oct, 09:12                     │
+│ (U) Uma Designer                new   5d     │ I asked my manager and they'll cover the     │
+│ PINNED                                       │ ticket. Can you confirm by Friday so I can  │
+│ (M) Maya Ortiz                        1w     │ book?                     (latest, full)    │
+│ RECENT                                       │ Reply to Pat…                                │
+│ (I) Iris Chen                         3w     │ To: pat@example…                            │
 │ QUIET · 12                              ›    │                                              │
 │                                              │ ┌──────────────────────────────────────────┐ │
-│                                              │ │ Reply to Pat…                            │ │
-│                                              │ └──────────────────────────────────────────┘ │
-│                                              │  r reply  . got it  e done here  t to-do     │
+│                                              │ From: work@example… · Account: Work          │
+│                                              │  Reply  Reply all  . got it  e done  t to-do │
 └──────────────────────────────────────────────┴──────────────────────────────────────────────┘
 ```
 
-**Intent.** iMessage's shape (D112): people on the left, the conversation as a page on the right. The eye lands on the first Your-turn person, then on the open conversation's newest message in the reading voice. Nothing opens until asked (BK, 2026-10-09). The person's page has one Title (their name), one purpose line (the relationship in one sentence), the topics, then the conversation. The reply field sits where reading ends (D095).
+**Intent.** iMessage's shape (D112): people on the left, the conversation as a page on the right. The eye lands on the first Your-turn person, then on the open conversation's newest message in the reading voice. Nothing opens until asked (BK, 2026-10-09). The person's page has one Title (their name), one purpose line (the relationship in one sentence), a compact topic control naming the selected subject, then the conversation. The latest message opens in full at its start. A folded People disclosure expands through the reading area and scrolls long address lists internally; message info retains message-specific roles. Reply mode is explicit, and the live draft's populated audience and sending identity appear when writing opens. Done folds recipient editing again; an empty To field offers Add recipient. A reply docks with its source subject when the user changes topics.
 
 **The lit row** shows the verbs in its trail, and for a new sender the keep-or-move choice with keys (`1` to `4`) in place of the verbs; the status bar gives the reason.
 

@@ -42,6 +42,10 @@ export interface ComposeIntent {
   title: string;
   kind: ComposeSessionKind;
   messageId?: string;
+  /** Keeps a Messages reply in its own conversation slot when the route changes. */
+  contextThreadId?: string;
+  /** Names a docked reply's source without changing its canonical draft key. */
+  contextTitle?: string;
   /** Required when `kind` is `invite_reply`. */
   inviteAction?: InviteReplyAction;
   draftId?: string;

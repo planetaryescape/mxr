@@ -144,8 +144,10 @@ The 10-recipient line is `messages.large_thread_recipients` in
 ## What a conversation shows
 
 Opening a person shows how you know them ("You've written 48 times since
-2023. Last: Tuesday."), every topic with them, group threads as "with
-Ruth: Pricing copy", and the selected topic as a conversation.
+2023. Last: Tuesday.") and opens the selected topic as a conversation. The
+compact conversation control names the selected subject and shows whether it
+is direct or a group; open it to switch topics. Group topics name their other
+participants, and the `{` and `}` keys step through topics.
 
 In the web app, choose a person's name to inspect and copy their linked email
 addresses. Choose a message's sender name to see the original From address;
@@ -156,8 +158,13 @@ empty Bcc list says it was not recorded in this copy, which cannot confirm that
 nobody was hidden. If the message details cannot be loaded, the app reports that
 or offers a retry. Long address lists scroll within the dialog. Escape closes
 the address panel or message info and returns focus to its trigger.
-These identity and audience details require changes made after
-`v0.6.158`; that release does not include them.
+Choose `People` below the conversation subject to inspect and copy addresses
+that appear as senders or recorded To, Cc or available Bcc recipients in this
+thread. It expands across the reading area and scrolls internally for a long
+list. This is historical context: message audiences can differ. `Message info`
+remains the source for the recorded roles on an individual message. People
+stays closed until you open it and reports an error with a retry if the thread
+cannot be loaded.
 
 Read the conversation directly. mxr removes repeated trailing history,
 signatures and footers when it can identify them. Quoted questions beside
@@ -169,20 +176,26 @@ When something was removed, the message says `trimmed: quote, sig` (or
 sent. A reply containing only repeated quoted text says `(only quoted text)`.
 The CLI, TUI, web app and MCP use the same extracted text.
 
-Short messages read like chat. Longer letters lead with the paragraph
-containing the request when one is identified; otherwise they show the
-opening paragraph, including the next paragraph if the first is only a
-greeting. Choose `Read all N paragraphs` to expand the letter, then
-`Show less` to collapse it. Retained inline or forwarded context is shown
-in full.
+Short messages read like chat. The latest message opens in full at its start.
+Older long letters lead with the paragraph containing the request when one is identified;
+otherwise they show the opening paragraph, including the next paragraph if
+the first is only a greeting. Choose `Read all N paragraphs` to expand an
+older letter, then `Show less` to collapse it. Retained inline or forwarded
+context is shown in full.
 
 If mxr has only a provider preview, it labels that text as incomplete.
 Choose `Check the original` to try loading the full message. If it is still
 unavailable, mxr says so. HTML shown as sent follows your global or saved
 sender [mail appearance choice](/guides/web-app/#the-reader).
 
-The reply box sits at the bottom, already addressed ("Reply to Samir ·
-Contract renewal"), with reply all on by default in a group.
+Choose `Reply` or `Reply all` above the footer to set the next reply mode. When
+writing opens, the compact header shows the actual To recipients, populated Cc
+and Bcc fields, From address and sending account from the draft. An empty To
+field offers an add-recipient action. Choose `Edit` to open the existing fields
+and `Done` to fold them again; edits stay in the draft and appear in the compact
+header immediately. The reply uses the selected message's prepared recipients,
+including its Reply-To when present. If you switch topics, the reply docks with
+its source subject in the title and returns to that topic.
 
 Topic labels show the state and recency for your turn, waiting and done topics.
 Quiet topics show only recency; the separate Quiet band for people remains.
@@ -192,8 +205,9 @@ Quiet topics show only recency; the separate Quiet band for people remains.
 `.` replies with a short acknowledgement in your own words for that
 person, such as "Hi Samir,\n\nGot it, thanks.\n\nCheers,\nAlex". The
 greeting and sign-off are the ones you actually use with them, read from
-your sent mail; no model writes it. It shows the exact text and counts
-down for five seconds before sending, and `u` cancels it.
+your sent mail; no model writes it. It shows the exact text, To address and
+From address from its preview plan, then counts down for five seconds before
+sending. Press `u` to cancel it.
 
 ```bash
 mxr messages ack THREAD_ID --dry-run   # the exact text, nothing sent

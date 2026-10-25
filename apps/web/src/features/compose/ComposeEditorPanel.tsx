@@ -317,6 +317,10 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         generating={controller.generating}
         focusNonce={controller.focusNonce}
         disabled={controller.busy}
+        model={controller.model}
+        defaultModel={controller.defaultModel}
+        modelChoices={controller.modelChoices}
+        onModelChange={controller.setModel}
       />
 
       <div
@@ -339,7 +343,10 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         {controller.proofOpen && controller.version ? (
           <div className="mx-auto h-full w-full max-w-[860px]">
             <DraftProof
-              runs={proofRuns(controller.version.proposal.changes, controller.version.proposal.gaps)}
+              runs={proofRuns(
+                controller.version.proposal.changes,
+                controller.version.proposal.gaps,
+              )}
               gapCount={controller.version.proposal.gaps.length}
               provenance={controller.version.proposal.provenance}
               versionIndex={controller.versionIndex}
@@ -349,6 +356,10 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
               onKeep={controller.keepMine}
               onStep={controller.stepVersion}
               onAgain={() => controller.again()}
+              onRetryModel={controller.againWithModel}
+              modelChoices={controller.modelChoices}
+              defaultModel={controller.defaultModel}
+              generating={controller.generating}
               onRevise={controller.openHelp}
             />
           </div>

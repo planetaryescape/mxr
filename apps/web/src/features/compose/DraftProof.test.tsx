@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
+import type { components } from "@/api/generated";
 import { DraftProof } from "./DraftProof";
 import type { ProofRun } from "./assist/proof";
 
@@ -9,7 +10,14 @@ const runs: ProofRun[] = [
   { kind: "kept", text: "[[?: a time]]", gap: 0 },
 ];
 
-function renderProof(overrides: { onAccept?: () => void; onAgain?: () => void } = {}) {
+function renderProof(
+  overrides: {
+    onAccept?: () => void;
+    onAgain?: () => void;
+    onRetryModel?: (model: string | undefined) => void;
+    modelChoices?: components["schemas"]["ModelChoiceData"][];
+  } = {},
+) {
   const onAccept = vi.fn<() => void>();
   const onAgain = vi.fn<() => void>();
   render(
@@ -24,6 +32,10 @@ function renderProof(overrides: { onAccept?: () => void; onAgain?: () => void } 
       onKeep={vi.fn<() => void>()}
       onStep={vi.fn<(delta: number) => void>()}
       onAgain={overrides.onAgain ?? onAgain}
+      onRetryModel={overrides.onRetryModel ?? vi.fn<(model: string | undefined) => void>()}
+      modelChoices={overrides.modelChoices ?? []}
+      defaultModel="gemma4:latest"
+      generating={false}
       onRevise={vi.fn<() => void>()}
     />,
   );
@@ -31,6 +43,26 @@ function renderProof(overrides: { onAccept?: () => void; onAgain?: () => void } 
 }
 
 describe("DraftProof keys", () => {
+  test("choosing a model retries the shown proof with that model", () => {
+    const onRetryModel = vi.fn<(model: string | undefined) => void>();
+    renderProof({
+      onRetryModel,
+      modelChoices: [
+        {
+          id: "gemma4:latest",
+          label: "Gemma 4",
+          cloud: false,
+          available: true,
+          sees: "this conversation and your past mail",
+        },
+      ],
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Try again with a model" }), {
+      target: { value: "gemma4:latest" },
+    });
+    expect(onRetryModel).toHaveBeenCalledWith("gemma4:latest");
+  });
+
   test("Enter on the proof accepts it", () => {
     const { onAccept } = renderProof();
     fireEvent.keyDown(screen.getByRole("region", { name: "Draft proof" }), { key: "Enter" });
@@ -80,6 +112,10 @@ describe("DraftProof keys", () => {
         onKeep={vi.fn<() => void>()}
         onStep={vi.fn<(delta: number) => void>()}
         onAgain={vi.fn<() => void>()}
+        onRetryModel={vi.fn<(model: string | undefined) => void>()}
+        modelChoices={[]}
+        defaultModel="gemma4:latest"
+        generating={false}
         onRevise={vi.fn<() => void>()}
       />,
     );

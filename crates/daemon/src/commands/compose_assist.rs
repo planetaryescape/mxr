@@ -21,12 +21,48 @@ use std::str::FromStr;
 
 pub async fn run(action: ComposeAction, parent_format: Option<OutputFormat>) -> anyhow::Result<()> {
     match action {
+        ComposeAction::Models { format } => models(format.or(parent_format)).await,
         ComposeAction::Assist(args) => assist(*args, parent_format).await,
         ComposeAction::Apply {
             proposal_id,
             draft,
             format,
         } => apply(proposal_id, &draft, format.or(parent_format)).await,
+    }
+}
+
+async fn models(format: Option<OutputFormat>) -> anyhow::Result<()> {
+    let format = resolve_format(format);
+    let mut client = IpcClient::connect().await?;
+    match client.request(Request::GetComposeModels).await? {
+        Response::Ok {
+            data: ResponseData::ComposeModels { models },
+        } => match format {
+            OutputFormat::Json | OutputFormat::Jsonl => {
+                println!("{}", serde_json::to_string(&models)?);
+                Ok(())
+            }
+            OutputFormat::Table | OutputFormat::Ids | OutputFormat::Csv => {
+                for choice in models.choices {
+                    let place = if choice.cloud {
+                        "cloud"
+                    } else {
+                        "this machine"
+                    };
+                    let status = choice
+                        .unavailable_reason
+                        .as_deref()
+                        .map_or("available", |reason| reason);
+                    println!(
+                        "{}\t{}\t{}\t{}\t{}",
+                        choice.id, choice.label, place, choice.sees, status
+                    );
+                }
+                Ok(())
+            }
+        },
+        Response::Ok { .. } => anyhow::bail!("Unexpected response to GetComposeModels"),
+        Response::Error { message, .. } => anyhow::bail!(message),
     }
 }
 
@@ -59,6 +95,7 @@ async fn assist(
             more_formal: args.more_formal,
             proofread: args.proofread,
         },
+        model: args.model.clone(),
         revise: args.revise.clone(),
     };
     // The model sets the pace and a local one can take minutes, so this takes

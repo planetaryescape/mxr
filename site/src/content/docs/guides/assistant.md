@@ -110,7 +110,7 @@ op read "op://<vault>/<item>/credential" | mxr llm key set openai      # GPT-6 L
 op read "op://<vault>/<item>/credential" | mxr llm key set anthropic    # Claude Haiku, Claude Sonnet
 ```
 
-`OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in the daemon's environment work too, and an OpenRouter key (`mxr llm key set openrouter`) serves all four hosted models. Each model call in a turn may write up to 16,384 tokens, so a prepaid key needs credit for that much; a key that runs short gets "The model's provider wants more credits for this request" with the provider's message under **Details**. See [LLM features](/guides/llm-features/#pick-the-assistants-model) for the list in `llm.assistant_models`, which you can edit, and [Use GPT models](/guides/llm-features/#use-gpt-models-through-openai-with-openrouter-as-fallback).
+`OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in the daemon's environment work too, and an OpenRouter key (`mxr llm key set openrouter`) serves all four hosted models. Each model call in a turn may write up to 16,384 tokens, so a prepaid key needs credit for that much; a key that runs short gets "The model's provider wants more credits for this request" with the provider's message under **Details**. See [LLM features](/guides/llm-features/#pick-the-assistants-model) for the shared list in `llm.models` (formerly `llm.assistant_models`), which you can edit, and [Use GPT models](/guides/llm-features/#use-gpt-models-through-openai-with-openrouter-as-fallback).
 
 ## What it reads, and where it goes
 

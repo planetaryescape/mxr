@@ -382,6 +382,9 @@ pub enum ConfigAction {
         key: String,
         /// Value to set
         value: String,
+        /// Show the change without writing config.toml.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

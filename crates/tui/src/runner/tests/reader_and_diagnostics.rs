@@ -1247,7 +1247,7 @@ fn draft_new_for_sender_action_queues_selected_sender_request() {
 }
 
 #[test]
-fn refine_pending_draft_saves_current_body_then_queues_compose_assist() {
+fn refine_pending_draft_loads_the_daemon_compose_catalogue_before_proof() {
     let mut app = App::new();
     let account_id = AccountId::new();
     app.compose.pending_send_confirm = Some(PendingSend {
@@ -1282,40 +1282,78 @@ fn refine_pending_draft_saves_current_body_then_queues_compose_assist() {
 
     let queue = app.take_pending_platform_dispatch();
     assert_eq!(queue.len(), 1);
-    assert_eq!(queue[0].prelude.len(), 1);
-    let draft_id = match &queue[0].prelude[0] {
-        Request::SaveDraft { draft } => {
-            assert_eq!(draft.account_id, account_id);
-            assert_eq!(draft.subject, "Quarterly plan");
-            assert_eq!(
-                draft.content.analysis_text(),
-                "Could you review the plan?\n\n-- \nBK"
-            );
-            draft.id.clone()
-        }
-        other => panic!("expected SaveDraft prelude, got {other:?}"),
+    assert!(queue[0].prelude.is_empty());
+    assert!(matches!(queue[0].request, Request::GetComposeModels));
+    assert_eq!(
+        queue[0]
+            .compose_model_picker
+            .as_ref()
+            .map(|(_, purpose)| *purpose),
+        Some(crate::app::ComposeModelPickerPurpose::InitialDraft)
+    );
+}
+
+#[test]
+fn selecting_a_compose_model_keeps_the_saved_body_as_the_proof_baseline() {
+    let mut app = App::new();
+    let account_id = AccountId::new();
+    let pending = PendingSend {
+        draft_revision: None,
+        account_id: account_id.clone(),
+        fm: mxr_compose::frontmatter::ComposeFrontmatter {
+            to: "sender@example.com".into(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: "Quarterly plan".into(),
+            from: "me@example.com".into(),
+            in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
+            references: vec![],
+            thread_id: None,
+            attach: vec![],
+            signature: None,
+        },
+        body: "Could you review the plan?\n\n-- \nBK".into(),
+        draft_path: std::path::PathBuf::from("/tmp/mxr-model-picker.md"),
+        intent: mxr_core::DraftIntent::New,
+        mode: PendingSendMode::SendOrSave,
+        safety_report: None,
+        safety_check_failed: None,
+        override_token: None,
+        suggested_collaborators: vec![],
+        invite_reply: None,
+        resolved_from: None,
     };
-    match &queue[0].request {
-        Request::ComposeAssist {
-            draft,
-            text,
-            selection,
-            action,
-            instruction,
-            adjust,
-            revise,
-        } => {
-            assert_eq!(draft, &mxr_protocol::DraftTargetData::Stored { draft_id });
-            assert_eq!(text, "Could you review the plan?");
-            assert_eq!(selection, &None);
-            assert_eq!(action, &None);
-            assert_eq!(instruction, &None);
-            assert_eq!(adjust, &mxr_protocol::AssistAdjustData::default());
-            assert_eq!(revise, &None);
-        }
-        other => panic!("expected ComposeAssist, got {other:?}"),
-    }
-    assert!(queue[0].compose_assist.is_some());
+    app.compose.pending_send_confirm = Some(pending.clone());
+    app.compose.model_picker = Some(crate::app::ComposeModelPicker {
+        choices: mxr_protocol::AssistantModelsData {
+            current: Some("gpt-6-luna".into()),
+            choices: vec![mxr_protocol::ModelChoiceData {
+                id: "gpt-6-luna".into(),
+                label: "GPT-6 Luna".into(),
+                cloud: true,
+                sees: "this conversation only".into(),
+                available: true,
+                unavailable_reason: None,
+            }],
+        },
+        selected_index: 1,
+        pending: Box::new(pending),
+        purpose: crate::app::ComposeModelPickerPurpose::InitialDraft,
+    });
+
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    let queue = app.take_pending_platform_dispatch();
+    assert_eq!(queue.len(), 1);
+    assert!(
+        matches!(queue[0].prelude.as_slice(), [Request::SaveDraft { draft }] if draft.account_id == account_id && draft.content.analysis_text() == "Could you review the plan?\n\n-- \nBK")
+    );
+    assert!(
+        matches!(queue[0].request, Request::ComposeAssist { model: Some(ref model), ref text, .. } if model == "gpt-6-luna" && text == "Could you review the plan?")
+    );
 }
 
 #[test]
@@ -1352,6 +1390,7 @@ fn proof_revision_keeps_the_original_body_and_names_the_displayed_proposal() {
     app.compose.assist_review = Some(crate::app::ComposeAssistReview {
         pending,
         proposals: vec![test_compose_proposal()],
+        proposal_models: vec![Some("gemma4:latest".into())],
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
@@ -1378,12 +1417,14 @@ fn proof_revision_keeps_the_original_body_and_names_the_displayed_proposal() {
             action,
             instruction,
             revise,
+            model,
             ..
         } => {
             assert_eq!(text, "Original text.");
             assert_eq!(action, &Some(mxr_protocol::AssistActionData::Polish));
             assert_eq!(instruction.as_deref(), Some("Keep it concise"));
             assert_eq!(revise.as_deref(), Some("proposal-1"));
+            assert_eq!(model.as_deref(), Some("gemma4:latest"));
         }
         other => panic!("expected ComposeAssist revision, got {other:?}"),
     }
@@ -1423,6 +1464,7 @@ fn proof_accept_calls_apply_then_reloads_the_draft_for_safety_review() {
     app.compose.assist_review = Some(crate::app::ComposeAssistReview {
         pending,
         proposals: vec![test_compose_proposal()],
+        proposal_models: vec![None; 1],
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
@@ -1484,6 +1526,7 @@ fn proof_with_gaps_can_be_accepted_and_send_safety_is_rechecked() {
     app.compose.assist_review = Some(crate::app::ComposeAssistReview {
         pending,
         proposals: vec![proposal],
+        proposal_models: vec![None; 1],
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
@@ -1518,6 +1561,7 @@ fn proof_with_gaps_accept_edit_reopens_the_draft_editor() {
     app.compose.assist_review = Some(crate::app::ComposeAssistReview {
         pending,
         proposals: vec![proposal],
+        proposal_models: vec![None; 1],
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
@@ -1548,6 +1592,7 @@ fn proof_history_selects_revision_and_escape_keeps_original_review() {
     app.compose.assist_review = Some(crate::app::ComposeAssistReview {
         pending,
         proposals: vec![first],
+        proposal_models: vec![None; 1],
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
@@ -1579,7 +1624,7 @@ fn proof_history_selects_revision_and_escape_keeps_original_review() {
         .assist_review
         .as_mut()
         .unwrap()
-        .push_proposal(second);
+        .push_proposal(second, None);
     assert_eq!(app.compose.assist_review.as_ref().unwrap().current_index, 1);
     app.handle_key(crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::Left,
@@ -1605,6 +1650,7 @@ fn proof_history_selects_revision_and_escape_keeps_original_review() {
     canceled.compose.assist_review = Some(crate::app::ComposeAssistReview {
         pending,
         proposals: vec![test_compose_proposal()],
+        proposal_models: vec![None; 1],
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
@@ -1642,6 +1688,7 @@ fn proof_scroll_keys_reach_long_text_and_reset_on_version_change() {
     app.compose.assist_review = Some(crate::app::ComposeAssistReview {
         pending,
         proposals: vec![long, test_compose_proposal()],
+        proposal_models: vec![None; 2],
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,

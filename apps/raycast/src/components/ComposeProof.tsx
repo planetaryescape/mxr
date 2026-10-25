@@ -10,7 +10,7 @@ import {
   showToast,
 } from "@raycast/api";
 import { useState } from "react";
-import type { ComposeAssistProposal } from "../bridge/types";
+import type { ComposeAssistProposal, ComposeModelChoice } from "../bridge/types";
 import { message } from "./previewed";
 import { proposalMarkdown } from "./proofMarkdown";
 
@@ -20,6 +20,11 @@ interface Props {
   onKeepMine: () => void;
   onRevisionPop: () => void;
   onRetry: (proposal: ComposeAssistProposal) => Promise<ComposeAssistProposal | undefined>;
+  modelChoices?: ComposeModelChoice[];
+  onRetryModel?: (
+    proposal: ComposeAssistProposal,
+    model: string,
+  ) => Promise<ComposeAssistProposal | undefined>;
   onRevise: (
     proposal: ComposeAssistProposal,
     note: string,
@@ -36,6 +41,8 @@ export function ComposeProof({
   onKeepMine,
   onRevisionPop,
   onRetry,
+  modelChoices = [],
+  onRetryModel,
   onRevise,
 }: Props) {
   const { push } = useNavigation();
@@ -125,6 +132,38 @@ export function ComposeProof({
             }}
           />
           <Action title="Retry" icon={Icon.ArrowClockwise} shortcut={RETRY} onAction={retry} />
+          {onRetryModel && modelChoices.length > 0 ? (
+            <ActionPanel.Submenu title="Try Again with Another Model" icon={Icon.Gear}>
+              {modelChoices.map((choice) => {
+                return (
+                  <Action
+                    key={choice.id}
+                    title={`${choice.label}${choice.cloud ? " · cloud" : " · this Mac"} · ${choice.sees}`}
+                    onAction={async () => {
+                      if (loading) return;
+                      if (!choice.available) {
+                        await showToast({ style: Toast.Style.Failure, title: "Model unavailable", message: choice.unavailable_reason ?? "Choose another model." });
+                        return;
+                      }
+                      setLoading(true);
+                      try {
+                        const next = await onRetryModel(proposal, choice.id);
+                        if (next) setProposal(next);
+                      } catch (failure) {
+                        await showToast({
+                          style: Toast.Style.Failure,
+                          title: "No new proof",
+                          message: message(failure),
+                        });
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                  />
+                );
+              })}
+            </ActionPanel.Submenu>
+          ) : null}
           <Action
             title="Revise with Note"
             icon={Icon.Pencil}

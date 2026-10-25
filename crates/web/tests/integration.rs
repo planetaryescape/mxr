@@ -664,6 +664,7 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
                 action,
                 instruction,
                 adjust,
+                model,
                 revise,
             } => {
                 let kind = match draft {
@@ -681,8 +682,8 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
                             action: action.unwrap_or(AssistActionData::Finish),
                             base: "abc".into(),
                             text: format!(
-                                "{kind}|{text}|{selection:?}|{instruction:?}|{}|{revise:?}",
-                                adjust.shorter
+                                "{kind}|{text}|{selection:?}|{instruction:?}|{}|{model:?}|{revise:?}",
+                                adjust.shorter,
                             ),
                             changes: vec![],
                             gaps: vec![],
@@ -734,6 +735,7 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
             "selection": {"start": 0, "end": 8},
             "instruction": "warmer",
             "adjust": {"shorter": true},
+            "model": "gpt-6-luna",
             "revise": "p0",
         }))
         .send()
@@ -747,7 +749,7 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
     assert_eq!(json["proposal"]["action"], "finish");
     assert_eq!(
         json["proposal"]["text"],
-        "reply-all|Thursday works.|Some((0, 8))|Some(\"warmer\")|true|Some(\"p0\")"
+        "reply-all|Thursday works.|Some((0, 8))|Some(\"warmer\")|true|Some(\"gpt-6-luna\")|Some(\"p0\")"
     );
     assert_eq!(json["proposal"]["yours_changed"], serde_json::json!([1]));
     assert!(json["proposal"]["provenance"].is_object());
@@ -768,7 +770,10 @@ async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
         .await
         .unwrap();
     assert_eq!(json["proposal"]["action"], "write");
-    assert_eq!(json["proposal"]["text"], "stored||None|None|false|None");
+    assert_eq!(
+        json["proposal"]["text"],
+        "stored||None|None|false|None|None"
+    );
 
     // A body the daemon would not understand is refused here.
     let bad = client

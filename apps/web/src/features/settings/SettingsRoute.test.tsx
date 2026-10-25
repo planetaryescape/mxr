@@ -118,12 +118,18 @@ describe("LlmSettingsSection", () => {
     fireEvent.change(screen.getByLabelText(/^base url$/i), {
       target: { value: "https://api.openai.com/v1" },
     });
-    fireEvent.change(screen.getByLabelText(/^model$/i), { target: { value: "gpt-5-mini" } });
+    fireEvent.change(screen.getByLabelText(/^model$/i), {
+      target: { value: "gpt-5-mini" },
+    });
     fireEvent.change(screen.getByLabelText(/api key environment variable/i), {
       target: { value: "OPENAI_API_KEY" },
     });
-    fireEvent.change(screen.getByLabelText(/context window/i), { target: { value: "16384" } });
-    fireEvent.change(screen.getByLabelText(/request timeout/i), { target: { value: "45" } });
+    fireEvent.change(screen.getByLabelText(/context window/i), {
+      target: { value: "16384" },
+    });
+    fireEvent.change(screen.getByLabelText(/request timeout/i), {
+      target: { value: "45" },
+    });
     fireEvent.click(screen.getByRole("switch", { name: /allow relationship data/i }));
     fireEvent.click(screen.getByRole("button", { name: /save llm config/i }));
 
@@ -138,7 +144,8 @@ describe("LlmSettingsSection", () => {
           context_window: 16384,
           request_timeout_secs: 45,
           allow_cloud_relationship_data: true,
-          overrides: {},
+          models: [],
+          overrides: expect.any(Object),
         },
       });
     });
@@ -150,10 +157,10 @@ describe("LlmSettingsSection", () => {
 
     expect(await screen.findByText(/feature overrides/i)).toBeVisible();
 
-    fireEvent.change(screen.getByLabelText(/draft assist model/i), {
+    fireEvent.change(screen.getByLabelText(/^summaries model$/i), {
       target: { value: "qwen2.5:7b-instruct" },
     });
-    fireEvent.change(screen.getByLabelText(/draft assist base url/i), {
+    fireEvent.change(screen.getByLabelText(/^summaries base url$/i), {
       target: { value: "http://localhost:1234/v1" },
     });
     fireEvent.click(screen.getByRole("button", { name: /save llm config/i }));
@@ -163,7 +170,7 @@ describe("LlmSettingsSection", () => {
         method: "POST",
         body: expect.objectContaining({
           overrides: expect.objectContaining({
-            draft_assist: expect.objectContaining({
+            summarize: expect.objectContaining({
               model: "qwen2.5:7b-instruct",
               base_url: "http://localhost:1234/v1",
             }),
@@ -208,6 +215,7 @@ describe("LlmSettingsSection", () => {
 
 describe("ComposeSettingsSection", () => {
   beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn<() => void>();
     accountsApi.fetchAccounts.mockResolvedValue({
       accounts: [
         {
@@ -232,6 +240,39 @@ describe("ComposeSettingsSection", () => {
     });
     accountsApi.setDefaultAccount.mockResolvedValue({ ok: true });
     api.fetch.mockImplementation((path, opts) => {
+      if (path === "/api/v1/platform/llm/config") {
+        return Promise.resolve({
+          config: {
+            enabled: true,
+            model: "base-model",
+            compose_model: null,
+            models: [],
+            base_url: "http://localhost:11434/v1",
+            api_key_env: "",
+            context_window: 8192,
+            request_timeout_secs: 120,
+            allow_cloud_relationship_data: false,
+            overrides: {},
+          },
+        });
+      }
+      if (path === "/api/v1/mail/compose/models") {
+        return Promise.resolve({
+          models: {
+            current: "base-model",
+            choices: [
+              {
+                id: "local-model",
+                label: "Local writer",
+                cloud: false,
+                available: true,
+                sees: "this conversation and your past mail",
+                unavailable_reason: null,
+              },
+            ],
+          },
+        });
+      }
       if (path === "/api/v1/mail/signatures" && !opts) {
         return Promise.resolve({
           signatures: [
@@ -249,7 +290,9 @@ describe("ComposeSettingsSection", () => {
         return Promise.resolve({ defaults: [] });
       }
       if (path === "/api/v1/mail/signatures" && opts) {
-        return Promise.resolve({ signature: { id: "sig-2", name: "formal", body: "Regards" } });
+        return Promise.resolve({
+          signature: { id: "sig-2", name: "formal", body: "Regards" },
+        });
       }
       if (path === "/api/v1/mail/signatures/default") {
         return Promise.resolve({ ok: true });
@@ -260,6 +303,23 @@ describe("ComposeSettingsSection", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  test("selects a compose default from the daemon catalogue when config uses the built-in list", async () => {
+    renderWithQueryClient(<ComposeSettingsSection />);
+    const picker = await screen.findByRole("combobox", { name: "Draft with" });
+    await waitFor(() => expect(picker).toHaveTextContent("base-model"));
+    fireEvent.keyDown(picker, { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "Local writer" }));
+    await waitFor(() =>
+      expect(api.fetch).toHaveBeenCalledWith("/api/v1/platform/llm/config", {
+        method: "POST",
+        body: expect.objectContaining({
+          compose_model: "local-model",
+          model: "base-model",
+        }),
+      }),
+    );
   });
 
   test("sets the default compose account and global signature defaults", async () => {

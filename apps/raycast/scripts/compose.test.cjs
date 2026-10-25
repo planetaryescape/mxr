@@ -104,6 +104,7 @@ test("assistReply preserves reply-all, original text, action, displayed proposal
       action: "polish",
       revise: "shown-proposal",
       instruction: "Keep the first sentence.",
+      model: "gpt-6-luna",
     });
     assert.deepEqual(request.body, {
       draft: { kind: "reply", message_id: "message-2", all: true },
@@ -111,6 +112,7 @@ test("assistReply preserves reply-all, original text, action, displayed proposal
       action: "polish",
       revise: "shown-proposal",
       instruction: "Keep the first sentence.",
+      model: "gpt-6-luna",
     });
     assert.equal(request.headers.get("x-mxr-workspace"), JSON.stringify(workspace));
   } finally {

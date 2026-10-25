@@ -15,6 +15,7 @@ import {
   type ReplyDraft,
   type ReplyKind,
   assistReply,
+  composeModelChoices,
   cancelScheduled,
   checkSafety,
   discardReply,
@@ -24,7 +25,7 @@ import {
   startReply,
   writeBody,
 } from "../bridge/compose";
-import type { ComposeAssistProposal, SafetyReport } from "../bridge/types";
+import type { ComposeAssistProposal, ComposeModelChoice, SafetyReport } from "../bridge/types";
 import {
   joinTextRegion,
   splitTextRegion,
@@ -57,6 +58,8 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
   const [draft, setDraft] = useState<ReplyDraft>();
   const [body, setBody] = useState("");
   const [error, setError] = useState<string>();
+  const [modelChoices, setModelChoices] = useState<ComposeModelChoice[]>([]);
+  const selectedModel = useRef<string | undefined>(undefined);
   const current = useRef<ReplyDraft>(undefined);
   const formGeneration = useRef(0);
   // What the form shows now; a submission compares it with what it checked.
@@ -69,6 +72,20 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
   const keepDraft = useRef(false);
   const proposalOpen = useRef(false);
   const assistRequests = useRef(new OwnedRequestGate());
+
+  useEffect(() => {
+    let current = true;
+    void composeModelChoices()
+      .then((choices) => {
+        if (current) setModelChoices(choices);
+      })
+      .catch(() => {
+        if (current) setModelChoices([]);
+      });
+    return () => {
+      current = false;
+    };
+  }, []);
 
   const editBody = (text: string) => {
     latestBody.current = text;
@@ -84,6 +101,7 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
 
   useEffect(() => {
     const form = ++formGeneration.current;
+    selectedModel.current = undefined;
     closed.current = false;
     startReply(messageId, kind)
       .then((opened) => {
@@ -234,7 +252,7 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
     });
   }
 
-  async function draftForMe() {
+  async function draftForMe(model?: string) {
     const owner = current.current;
     if (
       !owner ||
@@ -245,6 +263,7 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
     )
       return;
     const baseline = latestBody.current;
+    selectedModel.current = model;
     const region = splitTextRegion(baseline);
     const request = assistRequests.current.begin();
     if (request === undefined) return;
@@ -255,7 +274,7 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
         style: Toast.Style.Animated,
         title: "Preparing a writing proof…",
       });
-      const proposal = await assistReply(owner, messageId, kind, region.text);
+      const proposal = await assistReply(owner, messageId, kind, region.text, { model });
       if (!assistRequests.current.isCurrent(request) || closed.current) {
         await toast.hide();
         return;
@@ -280,6 +299,11 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
         await toast.hide();
         return;
       }
+      selectedModel.current =
+        model ??
+        (modelChoices.some((choice) => choice.id === proposal.provenance.model)
+          ? proposal.provenance.model
+          : undefined);
       await toast.hide();
       proposalOpen.current = true;
       push(
@@ -317,11 +341,20 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
           onRevisionPop={() => {
             assistRequests.current.cancel();
           }}
-          onRetry={(shown) => requestAgain(owner, baseline, region, workspaceKey, shown.action)}
+          onRetry={(shown) =>
+            requestAgain(owner, baseline, region, workspaceKey, shown.action, {
+              model: selectedModel.current,
+            })
+          }
+          modelChoices={modelChoices}
+          onRetryModel={(shown, model) =>
+            requestAgain(owner, baseline, region, workspaceKey, shown.action, { model })
+          }
           onRevise={(shown, instruction) =>
             requestAgain(owner, baseline, region, workspaceKey, shown.action, {
               revise: shown.proposal_id,
               instruction,
+              model: selectedModel.current,
             })
           }
         />,
@@ -349,14 +382,17 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
     region: ReturnType<typeof splitTextRegion>,
     workspaceKey: string,
     action: ComposeAssistProposal["action"],
-    options: { revise: string; instruction: string } | undefined = undefined,
+    options: { revise?: string; instruction?: string; model?: string } | undefined = undefined,
   ): Promise<ComposeAssistProposal | undefined> {
     if (submissions.current.isRunning || closed.current) return undefined;
     const request = assistRequests.current.begin();
     if (request === undefined) return undefined;
     try {
+      const requestedModel =
+        options && Object.hasOwn(options, "model") ? options.model : selectedModel.current;
       const proposal = await assistReply(owner, messageId, kind, region.text, {
         action,
+        model: requestedModel,
         ...(options ?? {}),
       });
       if (!assistRequests.current.isCurrent(request) || closed.current) {
@@ -380,6 +416,11 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
         });
         return undefined;
       }
+      selectedModel.current =
+        requestedModel ??
+        (modelChoices.some((choice) => choice.id === proposal.provenance.model)
+          ? proposal.provenance.model
+          : undefined);
       return proposal;
     } finally {
       assistRequests.current.finish(request);
@@ -442,7 +483,25 @@ export function ReplyForm({ messageId, kind = "reply", to, onSent }: Props) {
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Send Reply" icon={Icon.Envelope} onSubmit={submit} />
-          <Action title="Draft for Me" icon={Icon.Pencil} onAction={draftForMe} />
+          <ActionPanel.Submenu title="Draft for Me" icon={Icon.Pencil}>
+            <Action title="Use Default Model" onAction={() => draftForMe()} />
+            {modelChoices.map((choice) => {
+              return (
+                <Action
+                  key={choice.id}
+                  title={`${choice.label}${choice.cloud ? " · cloud" : " · this Mac"} · ${choice.sees}`}
+                  onAction={() =>
+                    choice.available
+                      ? draftForMe(choice.id)
+                      : void showToast({
+                          style: Toast.Style.Failure,
+                          title: choice.unavailable_reason ?? "Model unavailable",
+                        })
+                  }
+                />
+              );
+            })}
+          </ActionPanel.Submenu>
           {webBase && draft && (
             <Action
               title="Open in mxr"

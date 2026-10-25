@@ -19,15 +19,28 @@ vi.mock("./api", async (importOriginal) => ({
 }));
 
 const choices: AssistantModels["choices"] = [
-  { id: "gemma4:latest", label: "Gemma 4", cloud: false, available: true },
+  {
+    id: "gemma4:latest",
+    label: "Gemma 4",
+    cloud: false,
+    available: true,
+    sees: "this conversation and your past mail",
+  },
   {
     id: "gpt-6-luna",
     label: "GPT-6 Luna",
     cloud: true,
     available: false,
+    sees: "this conversation only",
     unavailable_reason: "Add an OpenAI key: mxr llm key set openai",
   },
-  { id: "claude-haiku-5-5", label: "Claude Haiku 5.5", cloud: true, available: true },
+  {
+    id: "claude-haiku-5-5",
+    label: "Claude Haiku 5.5",
+    cloud: true,
+    available: true,
+    sees: "this conversation and your past mail",
+  },
 ];
 
 function wrap(

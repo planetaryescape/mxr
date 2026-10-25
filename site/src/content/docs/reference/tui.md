@@ -242,7 +242,9 @@ Two cross-view interactions:
 - Writing proof: additions are highlighted and removals are struck through;
   set `NO_COLOR` to show `[-removed-]{+added+}` marks. Gap ranges use the
   warning style, and the warning says sending remains blocked. `Esc` keeps the
-  original draft. `[y]` accepts the selected proposal, `[e]` accepts and opens
+  original draft. Model selection opens the daemon's compose catalogue before
+  the first proof and from `[m]` in the proof; unavailable entries show why
+  they cannot run. `[y]` accepts the selected proposal, `[e]` accepts and opens
   `$EDITOR`, `[n]` enters a revision note, and `←`/`→` select proof versions.
   Arrow keys or `j`/`k` scroll; PageUp/PageDown and Home/End move farther.
   Accepting a proof with gaps lets you fill them in the editor; send safety

@@ -646,6 +646,8 @@ mod tests {
                         enabled: true,
                         base_url: "http://localhost:11434/v1".into(),
                         model: "qwen2.5:3b-instruct".into(),
+                        compose_model: None,
+                        models: Some(vec![]),
                         api_key_env: String::new(),
                         context_window: 8192,
                         request_timeout_secs: 120,
@@ -1136,6 +1138,8 @@ mod tests {
                         enabled: false,
                         base_url: "http://localhost:11434/v1".into(),
                         model: "qwen2.5:3b-instruct".into(),
+                        compose_model: None,
+                        models: Some(vec![]),
                         api_key_env: String::new(),
                         context_window: 8192,
                         request_timeout_secs: 120,
@@ -2491,6 +2495,7 @@ mod tests {
             action: None,
             instruction: None,
             adjust: AssistAdjustData::default(),
+            model: None,
             revise: None,
         })
         .unwrap();
@@ -2527,6 +2532,30 @@ mod tests {
         };
         assert!(selection.is_none() && action.is_none() && instruction.is_none());
         assert_eq!(adjust, AssistAdjustData::default());
+    }
+
+    #[test]
+    fn compose_assist_model_is_optional_and_per_request() {
+        let mut wire = serde_json::to_value(Request::ComposeAssist {
+            draft: DraftTargetData::Reply {
+                message_id: MessageId::new(),
+                all: false,
+            },
+            text: String::new(),
+            selection: None,
+            action: None,
+            instruction: None,
+            adjust: AssistAdjustData::default(),
+            model: Some("gpt-6-luna".into()),
+            revise: None,
+        })
+        .unwrap();
+        assert_eq!(wire["model"], "gpt-6-luna");
+        wire.as_object_mut().unwrap().remove("model");
+        let Request::ComposeAssist { model, .. } = serde_json::from_value(wire).unwrap() else {
+            panic!("expected ComposeAssist");
+        };
+        assert_eq!(model, None);
     }
 
     /// `revise` joined the request after it shipped. A request without it decodes
@@ -2600,5 +2629,13 @@ mod tests {
         })
         .unwrap();
         assert_eq!(applied["kind"], "ComposeApplied");
+    }
+    #[test]
+    fn model_choices_from_an_older_daemon_have_unknown_context() {
+        let choice: ModelChoiceData = serde_json::from_value(serde_json::json!({
+            "id": "local-model", "label": "Local model", "cloud": false, "available": true
+        }))
+        .expect("older model choice decodes");
+        assert_eq!(choice.sees, "unknown");
     }
 }

@@ -4,11 +4,12 @@ expression: stdout
 ---
 Set a config value
 
-Usage: mxr config set <KEY> <VALUE>
+Usage: mxr config set [OPTIONS] <KEY> <VALUE>
 
 Arguments:
   <KEY>    Dotted key path (e.g. general.sync_interval, appearance.theme)
   <VALUE>  Value to set
 
 Options:
-  -h, --help  Print help
+      --dry-run  Show the change without writing config.toml
+  -h, --help     Print help

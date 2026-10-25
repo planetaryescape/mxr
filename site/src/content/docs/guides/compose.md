@@ -152,12 +152,23 @@ In the send review, `r` asks the shared writing-help service to work from the
 current body. The TUI saves that exact body before requesting help and shows
 the returned changes as a proof. Added text is highlighted; removed text is
 struck through, or shown as `[-removed-]{+added+}` when `NO_COLOR` is set.
-`y` accepts the selected proposal, `e` accepts it and reopens `$EDITOR`, `n`
+Before the first proof, the TUI lists models from the daemon's compose
+catalogue. `m` opens that list to retry the same draft text with another
+available model. `y`
+accepts the selected proposal, `e` accepts it and reopens `$EDITOR`, `n`
 enters a revision note, and `Esc` keeps the original draft. `←` and `→` move
 through the proof history. Arrow keys or `j`/`k` scroll; PageUp/PageDown and
 Home/End move farther. A proof can include gaps: the warning style marks those
 ranges, and send safety blocks sending until you fill them in the editor.
 Acceptance applies through the daemon and reruns send safety.
+
+The web help line and Raycast's **Draft for Me** submenu let you choose a
+model for one draft. In the web proof, **Try again with a model** reruns its
+original text, action and selection. That choice does not change the default
+for later drafts. Set the default in Settings → Compose or with
+`mxr config set llm.compose.model <id>`.
+Use `mxr compose models --format json` to inspect compose availability and
+`mxr config set llm.compose.model <id> --dry-run` to preview the default.
 
 ## Draft format
 

@@ -83,6 +83,11 @@ fn judge(config: &LlmConfig, keys: &dyn ApiKeySource, id: &str) -> AssistantMode
         id: id.to_string(),
         label: label(id),
         cloud,
+        sees: if !cloud || config.allow_cloud_relationship_data {
+            "this conversation and your past mail".to_string()
+        } else {
+            "this conversation only".to_string()
+        },
         available: unavailable_reason.is_none(),
         unavailable_reason,
     }
@@ -111,6 +116,73 @@ fn models_for(config: &LlmConfig, keys: &dyn ApiKeySource) -> AssistantModelsDat
 /// and the environment on each call, so a key added a moment ago counts.
 pub(crate) fn models(state: &AppState) -> AssistantModelsData {
     models_for(&state.config_snapshot().llm, &LlmKeys::at_default_path())
+}
+
+/// Choices judged for the compose writer: the base LLM route and its
+/// credentials, with cloud history sharing reported separately. Writing a
+/// reply only needs the current conversation, so the history opt-in does not
+/// make a cloud model unavailable.
+pub(crate) fn compose_models(state: &AppState) -> AssistantModelsData {
+    let config = state.config_snapshot().llm;
+    let keys = LlmKeys::at_default_path();
+    let current = config
+        .compose
+        .as_ref()
+        .and_then(|compose| compose.model.clone())
+        .or_else(|| Some(config.model.clone()));
+    let choices = config
+        .assistant_model_ids()
+        .iter()
+        .map(|id| judge_compose(&config, &keys, id))
+        .collect();
+    AssistantModelsData { current, choices }
+}
+
+fn judge_compose(
+    config: &LlmConfig,
+    keys: &dyn ApiKeySource,
+    id: &str,
+) -> AssistantModelChoiceData {
+    let effective = config.effective_override(&LlmOverrideConfig {
+        model: Some(id.to_string()),
+        ..LlmOverrideConfig::default()
+    });
+    let routes = llm_model_routes(&effective);
+    let cloud = routes.is_some() || !mxr_llm::is_loopback_endpoint(&effective.base_url);
+    let unavailable_reason = if mxr_config::is_demo_instance() {
+        Some("The demo profile runs a built-in script, not a model.".to_string())
+    } else if !effective.enabled {
+        Some("AI features are off. Turn them on: mxr config set llm.enabled true".to_string())
+    } else {
+        routes
+            .as_deref()
+            .and_then(|routes| {
+                let first = routes.first()?;
+                routes
+                    .iter()
+                    .all(|route| keys.api_key(route.provider).is_none())
+                    .then_some(first.provider)
+            })
+            .map(|missing| {
+                format!(
+                    "Add an {} key: mxr llm key set {}",
+                    missing.label(),
+                    missing.key()
+                )
+            })
+    };
+    AssistantModelChoiceData {
+        id: id.to_string(),
+        label: label(id),
+        cloud,
+        sees: if cloud && !config.allow_cloud_relationship_data {
+            "this conversation only".to_string()
+        } else {
+            "this conversation and your past mail".to_string()
+        },
+        available: unavailable_reason.is_none(),
+        unavailable_reason,
+    }
 }
 
 /// The refusal for `model` against `models`, or `None` when it can be set.
@@ -253,23 +325,21 @@ mod tests {
     #[test]
     fn an_empty_or_blank_list_means_the_defaults_and_repeats_collapse() {
         let mut config = config("gemma4");
-        config.assistant_models = vec![];
+        config.models = vec![];
         assert_eq!(config.assistant_model_ids().len(), 5);
-        config.assistant_models = vec!["  ".into(), "gemma4:latest".into(), "gemma4:latest".into()];
+        config.models = vec!["  ".into(), "gemma4:latest".into(), "gemma4:latest".into()];
         assert_eq!(config.assistant_model_ids(), ["gemma4:latest"]);
     }
 
     #[test]
     fn the_default_list_is_not_written_back_to_config() {
         let toml = toml::to_string(&LlmConfig::default()).unwrap();
-        assert!(!toml.contains("assistant_models"), "{toml}");
+        assert!(!toml.contains("models"), "{toml}");
         let custom = LlmConfig {
-            assistant_models: vec!["gemma4:latest".into()],
+            models: vec!["gemma4:latest".into()],
             ..LlmConfig::default()
         };
-        assert!(toml::to_string(&custom)
-            .unwrap()
-            .contains("assistant_models"));
+        assert!(toml::to_string(&custom).unwrap().contains("models"));
     }
 
     #[test]
@@ -321,6 +391,31 @@ mod tests {
     }
 
     #[test]
+    fn compose_catalogue_uses_compose_route_and_allows_conversation_only_cloud() {
+        let mut config = config("gemma4:latest");
+        config.allow_cloud_relationship_data = false;
+        config.overrides.assistant = Some(LlmOverrideConfig {
+            enabled: Some(false),
+            base_url: Some("http://127.0.0.1:11434/v1".into()),
+            ..LlmOverrideConfig::default()
+        });
+        let choices = config.assistant_model_ids();
+        let assistant = models_for(&config, &keys(&[RouteProvider::OpenAI]));
+        let compose = choices
+            .iter()
+            .map(|id| judge_compose(&config, &keys(&[RouteProvider::OpenAI]), id))
+            .collect::<Vec<_>>();
+        assert!(!choice(&assistant, "gpt-6-luna").available);
+        let gpt = compose
+            .iter()
+            .find(|choice| choice.id == "gpt-6-luna")
+            .unwrap();
+        assert!(gpt.available);
+        assert!(gpt.cloud);
+        assert_eq!(gpt.sees, "this conversation only");
+    }
+
+    #[test]
     fn with_the_cloud_gate_off_hosted_models_name_the_setting_to_turn_on() {
         let mut config = config("gemma4");
         config.allow_cloud_relationship_data = false;
@@ -354,7 +449,7 @@ mod tests {
     #[test]
     fn an_id_naming_an_unknown_vendor_is_listed_not_fatal() {
         let mut config = config("gemma4");
-        config.assistant_models = vec!["mystery-model-9".into(), "openai/gpt-4o".into()];
+        config.models = vec!["mystery-model-9".into(), "openai/gpt-4o".into()];
         let models = models_for(&config, &keys(&[]));
         let mystery = choice(&models, "mystery-model-9");
         assert_eq!(mystery.label, "mystery-model-9");

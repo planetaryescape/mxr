@@ -50,10 +50,25 @@ pub struct ComposeAssistReview {
     pub pending: PendingSend,
     /// Proposals for this unchanged draft baseline, oldest first.
     pub proposals: Vec<mxr_protocol::ComposeProposalData>,
+    pub proposal_models: Vec<Option<String>>,
     pub current_index: usize,
     pub note_input: Option<String>,
     pub proof_scroll_offset: u16,
     pub request_pending: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComposeModelPickerPurpose {
+    InitialDraft,
+    RetryProof,
+}
+
+#[derive(Debug, Clone)]
+pub struct ComposeModelPicker {
+    pub choices: mxr_protocol::AssistantModelsData,
+    pub selected_index: usize,
+    pub pending: Box<PendingSend>,
+    pub purpose: ComposeModelPickerPurpose,
 }
 
 impl ComposeAssistReview {
@@ -68,8 +83,13 @@ impl ComposeAssistReview {
         }
     }
 
-    pub fn push_proposal(&mut self, proposal: mxr_protocol::ComposeProposalData) {
+    pub fn push_proposal(
+        &mut self,
+        proposal: mxr_protocol::ComposeProposalData,
+        model: Option<String>,
+    ) {
         self.proposals.push(proposal);
+        self.proposal_models.push(model);
         self.current_index = self.proposals.len().saturating_sub(1);
         self.note_input = None;
         self.proof_scroll_offset = 0;
@@ -176,6 +196,7 @@ pub struct ComposeState {
     pub assist_review: Option<ComposeAssistReview>,
     pub assist_request_id: u64,
     pub assist_after_editor: bool,
+    pub model_picker: Option<ComposeModelPicker>,
     pub pending_send_at_input: Option<String>,
     pub pending_remind_at_input: Option<String>,
     /// The send-at / remind prompt's previewed time and selected reading.

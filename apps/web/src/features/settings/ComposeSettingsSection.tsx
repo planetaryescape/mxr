@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { ConfirmDelete, Field, SelectSetting } from "./settingsParts";
 import { apiFetch } from "@/api/client";
+import type { components } from "@/api/generated";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { fetchAccounts, setDefaultAccount } from "@/features/accounts/api";
 import { useUiPrefs, type ComposeEditor, type UndoSendSeconds } from "@/state/uiPrefsStore";
 import { SectionHeading } from "@/components/SectionHeading";
+import type { LlmConfig } from "./LlmSettingsSection";
 
 interface Signature {
   id: string;
@@ -53,6 +55,36 @@ export function ComposeSettingsSection() {
     queryFn: fetchSignatureDefaults,
     staleTime: 60_000,
   });
+  const llmConfig = useQuery({
+    queryKey: ["llm-config"],
+    queryFn: () => apiFetch<{ config: LlmConfig }>("/api/v1/platform/llm/config"),
+  });
+  const composeModels = useQuery({
+    queryKey: ["compose-models"],
+    queryFn: () =>
+      apiFetch<{ models: components["schemas"]["AssistantModelsData"] }>(
+        "/api/v1/mail/compose/models",
+      ),
+  });
+  const saveComposeModel = useMutation({
+    mutationFn: (model: string) => {
+      const config = llmConfig.data?.config;
+      if (!config) throw new Error("Language model settings are not loaded");
+      return apiFetch("/api/v1/platform/llm/config", {
+        method: "POST",
+        body: { ...config, compose_model: model },
+      });
+    },
+    onSuccess: () => {
+      toast.success("Drafting model saved");
+      void qc.invalidateQueries({ queryKey: ["llm-config"] });
+      void qc.invalidateQueries({ queryKey: ["compose-models"] });
+    },
+    onError: (error) =>
+      toast.error("Drafting model could not be saved", {
+        description: error.message,
+      }),
+  });
   const [signatureName, setSignatureName] = useState("");
   const [signatureBody, setSignatureBody] = useState("");
   const makeDefault = useMutation({
@@ -62,7 +94,9 @@ export function ComposeSettingsSection() {
       void qc.invalidateQueries({ queryKey: ["accounts"] });
     },
     onError: (error) =>
-      toast.error("Default account update failed", { description: error.message }),
+      toast.error("Default account update failed", {
+        description: error.message,
+      }),
   });
   const save = useMutation({
     mutationFn: () => saveSignature(signatureName.trim(), signatureBody),
@@ -101,6 +135,21 @@ export function ComposeSettingsSection() {
     <div className="space-y-6">
       <div className="space-y-4">
         <section>
+          <SelectSetting
+            label="Draft with"
+            description="Default model for each new draft. You can choose another model for an individual draft."
+            value={llmConfig.data?.config?.compose_model || "__default"}
+            options={[
+              {
+                value: "__default",
+                label: `Use language model default (${llmConfig.data?.config?.model ?? "not set"})`,
+              },
+              ...(composeModels.data?.models?.choices ?? [])
+                .filter((choice) => choice.available)
+                .map((choice) => ({ value: choice.id, label: choice.label })),
+            ]}
+            onChange={(model) => saveComposeModel.mutate(model === "__default" ? "" : model)}
+          />
           <SelectSetting<ComposeEditor>
             label="Editor"
             description="CodeMirror with vim keys, or a rich-text editor."

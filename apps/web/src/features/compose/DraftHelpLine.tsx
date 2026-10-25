@@ -12,6 +12,9 @@ import { Input } from "@/components/ui/input";
 import { isComposingKey } from "@/lib/keys/composition";
 import { cn } from "@/lib/utils";
 import type { ComposeAssistAdjust } from "./assist/types";
+import type { components } from "@/api/generated";
+
+type ModelChoice = components["schemas"]["ModelChoiceData"];
 
 const CHIPS: { key: keyof ComposeAssistAdjust; label: string }[] = [
   { key: "shorter", label: "Shorter" },
@@ -35,6 +38,10 @@ interface DraftHelpLineProps {
   /** Changes each time the line should take focus (⌘J, opening from a reader). */
   focusNonce: number;
   disabled: boolean;
+  model?: string;
+  defaultModel: string;
+  modelChoices: ModelChoice[];
+  onModelChange: (model: string | undefined) => void;
 }
 
 export function DraftHelpLine({
@@ -51,6 +58,10 @@ export function DraftHelpLine({
   generating,
   focusNonce,
   disabled,
+  model,
+  defaultModel,
+  modelChoices,
+  onModelChange,
 }: DraftHelpLineProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -99,6 +110,34 @@ export function DraftHelpLine({
           }}
           className="h-8 min-w-[220px] flex-1 bg-input text-xs"
         />
+        <label className="sr-only" htmlFor="compose-draft-model">
+          Drafting model
+        </label>
+        <select
+          id="compose-draft-model"
+          aria-label="Drafting model"
+          value={model ?? "__default"}
+          disabled={disabled}
+          onChange={(event) =>
+            onModelChange(event.target.value === "__default" ? undefined : event.target.value)
+          }
+          className="h-8 max-w-48 border border-border bg-background px-2 text-xs text-muted-foreground"
+          title="For this draft only. The default is in Settings → Compose."
+        >
+          <option value="__default">
+            {defaultModel ? `${defaultModel} · default` : "Default model"}
+          </option>
+          {modelChoices.map((choice) => {
+            return (
+              <option key={choice.id} value={choice.id} disabled={!choice.available}>
+                {choice.label}
+                {choice.cloud ? " · cloud" : " · this Mac"} · {choice.sees}
+                {choice.id === defaultModel ? " · default" : ""}
+                {choice.available ? "" : ` · ${choice.unavailable_reason ?? "unavailable"}`}
+              </option>
+            );
+          })}
+        </select>
         <div className="flex flex-wrap items-center gap-1.5">
           {CHIPS.map((chip) => {
             const pressed = adjust[chip.key];

@@ -820,6 +820,15 @@ impl App {
                 review.proof_scroll_offset = scroll;
             }
         }
+        if let Some(picker) = self.compose.model_picker.as_ref() {
+            ui::compose_assist_proof::draw_model_picker(
+                frame,
+                area,
+                &picker.choices,
+                picker.selected_index,
+                theme,
+            );
+        }
 
         // Bulk confirmation overlay
         ui::bulk_confirm_modal::draw(

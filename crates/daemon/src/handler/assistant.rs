@@ -3,8 +3,8 @@
 
 use super::{HandlerError, HandlerResult};
 use crate::assistant::{
-    abandon_pending, conversation_view, models, parse_pending, set_model, start_turn, step_rows,
-    summary_view, TurnStart,
+    abandon_pending, compose_models, conversation_view, models, parse_pending, set_model,
+    start_turn, step_rows, summary_view, TurnStart,
 };
 use crate::state::AppState;
 use mxr_assistant::{Answer, Decision};
@@ -31,6 +31,9 @@ pub(super) async fn handle(state: &Arc<AppState>, req: &Request) -> HandlerResul
         }),
         Request::GetAssistantModels => Ok(ResponseData::AssistantModels {
             models: models(state),
+        }),
+        Request::GetComposeModels => Ok(ResponseData::ComposeModels {
+            models: compose_models(state),
         }),
         Request::SetAssistantModel { model, dry_run } => set_model(state, model, *dry_run).await,
         Request::AssistantSend {

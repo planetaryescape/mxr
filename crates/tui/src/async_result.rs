@@ -328,8 +328,14 @@ pub(crate) enum AsyncResult {
     },
     ComposeAssistLoaded {
         pending: Box<app::PendingSend>,
+        model: Option<String>,
         request_id: u64,
         result: Result<mxr_protocol::ComposeProposalData, MxrError>,
+    },
+    ComposeModelsLoaded {
+        pending: Box<app::PendingSend>,
+        purpose: app::ComposeModelPickerPurpose,
+        result: Result<mxr_protocol::AssistantModelsData, MxrError>,
     },
     ComposeAssistAccepted {
         pending: Box<app::PendingSend>,

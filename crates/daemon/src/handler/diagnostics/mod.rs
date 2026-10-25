@@ -1066,10 +1066,16 @@ pub(crate) async fn update_llm_config(state: &AppState, config: LlmConfigData) -
 }
 
 fn llm_config_data(config: mxr_config::LlmConfig) -> LlmConfigData {
+    let models = config.assistant_model_ids();
     LlmConfigData {
         enabled: config.enabled,
         base_url: config.base_url,
         model: config.model,
+        compose_model: config
+            .compose
+            .as_ref()
+            .and_then(|compose| compose.model.clone()),
+        models: Some(models),
         api_key_env: config.api_key_env,
         context_window: config.context_window,
         request_timeout_secs: config.request_timeout_secs,
@@ -1133,10 +1139,35 @@ fn normalize_llm_config(
         return Err("llm.request_timeout_secs must be greater than 0".to_string());
     }
 
+    let mut catalogue = current.clone();
+    if let Some(models) = config.models {
+        catalogue.models = models;
+    }
+    let models = catalogue.assistant_model_ids();
+    let compose = match config.compose_model {
+        Some(model) if !model.trim().is_empty() => Some(mxr_config::LlmComposeConfig {
+            model: Some(model.trim().to_string()),
+        }),
+        Some(_) => None,
+        None => current.compose.clone(),
+    };
+    if let Some(model) = compose
+        .as_ref()
+        .and_then(|compose| compose.model.as_deref())
+    {
+        if !models.iter().any(|choice| choice == model) {
+            return Err(format!(
+                "llm.compose.model `{model}` must be in llm.models: {}",
+                models.join(", ")
+            ));
+        }
+    }
+
     Ok(mxr_config::LlmConfig {
         enabled: config.enabled,
         base_url,
         model,
+        compose,
         api_key_env: config.api_key_env.trim().to_string(),
         context_window: config.context_window,
         request_timeout_secs: config.request_timeout_secs,
@@ -1146,7 +1177,7 @@ fn normalize_llm_config(
         allow_cloud_relationship_data: config.allow_cloud_relationship_data,
         // Config-file only, like the background timeout.
         gist_concurrency: current.gist_concurrency,
-        assistant_models: current.assistant_models.clone(),
+        models,
         overrides: match config.overrides {
             Some(overrides) => normalize_llm_overrides(overrides)?,
             None => current.overrides.clone(),
@@ -2547,5 +2578,80 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+}
+
+#[cfg(test)]
+mod llm_config_tests {
+    use super::*;
+
+    #[test]
+    fn older_llm_config_updates_preserve_the_compose_default() {
+        let current = mxr_config::LlmConfig {
+            compose: Some(mxr_config::LlmComposeConfig {
+                model: Some("gpt-6-luna".into()),
+            }),
+            ..mxr_config::LlmConfig::default()
+        };
+        let older_client: LlmConfigData = serde_json::from_value(serde_json::json!({
+            "enabled": false,
+            "base_url": "http://localhost:11434/v1",
+            "model": "qwen2.5:3b-instruct",
+            "api_key_env": "",
+            "context_window": 8192,
+            "request_timeout_secs": 120
+        }))
+        .unwrap();
+
+        let saved = normalize_llm_config(older_client, &current).unwrap();
+        assert_eq!(
+            saved.compose.and_then(|compose| compose.model).as_deref(),
+            Some("gpt-6-luna")
+        );
+    }
+
+    #[test]
+    fn compose_catalogue_omission_preserves_custom_but_empty_restores_defaults() {
+        let current = mxr_config::LlmConfig {
+            models: vec!["custom-writer".into()],
+            ..mxr_config::LlmConfig::default()
+        };
+        let mut omitted = llm_config_data(current.clone());
+        omitted.models = None;
+        let preserved = normalize_llm_config(omitted, &current).unwrap();
+        assert_eq!(preserved.assistant_model_ids(), ["custom-writer"]);
+
+        let mut empty = llm_config_data(current.clone());
+        empty.models = Some(Vec::new());
+        let reset = normalize_llm_config(empty, &current).unwrap();
+        assert_eq!(
+            reset.assistant_model_ids(),
+            mxr_config::LlmConfig::default().assistant_model_ids()
+        );
+    }
+
+    #[test]
+    fn an_empty_compose_model_clears_the_default() {
+        let current = mxr_config::LlmConfig {
+            compose: Some(mxr_config::LlmComposeConfig {
+                model: Some("gpt-6-luna".into()),
+            }),
+            ..mxr_config::LlmConfig::default()
+        };
+        let update = LlmConfigData {
+            enabled: current.enabled,
+            base_url: current.base_url.clone(),
+            model: current.model.clone(),
+            compose_model: Some(String::new()),
+            models: None,
+            api_key_env: current.api_key_env.clone(),
+            context_window: current.context_window,
+            request_timeout_secs: current.request_timeout_secs,
+            allow_cloud_relationship_data: current.allow_cloud_relationship_data,
+            overrides: None,
+        };
+
+        let saved = normalize_llm_config(update, &current).unwrap();
+        assert_eq!(saved.compose.and_then(|compose| compose.model), None);
     }
 }

@@ -217,6 +217,7 @@ mod tests {
             "ComposeProofAccept",
             "ComposeProofAcceptEdit",
             "ComposeProofRevise",
+            "ComposeProofModel",
             "ComposeProofKeep",
             "ComposeProofPrevious",
             "ComposeProofNext",

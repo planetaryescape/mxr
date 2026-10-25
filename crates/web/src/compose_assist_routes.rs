@@ -9,7 +9,8 @@
 use super::routes_v6::dispatch;
 use super::*;
 use mxr_protocol::{
-    AssistActionData, AssistAdjustData, ComposeProposalData, DraftTargetData, TextRangeData,
+    AssistActionData, AssistAdjustData, AssistantModelsData, ComposeProposalData, DraftTargetData,
+    TextRangeData,
 };
 use std::str::FromStr;
 
@@ -32,6 +33,9 @@ pub(crate) struct ComposeAssistBody {
     instruction: Option<String>,
     #[serde(default)]
     adjust: AssistAdjustData,
+    /// Optional configured model for this draft only.
+    #[serde(default)]
+    model: Option<String>,
     /// The id of the proposal on screen, when revising it: the model is shown
     /// that proposal and the instruction is applied to it. `text` stays the
     /// user's own text.
@@ -44,6 +48,12 @@ pub(crate) struct ComposeAssistBody {
 pub(crate) struct ComposeAssistResponse {
     /// Never touches the draft; accept it by applying `text` or `compose/apply`.
     proposal: ComposeProposalData,
+}
+
+/// The models available to the compose writer under its own policy.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub(crate) struct ComposeModelsResponse {
+    models: AssistantModelsData,
 }
 
 /// Body of `POST /api/v1/mail/compose/apply`.
@@ -78,12 +88,31 @@ async fn assist(
             action: body.action,
             instruction: body.instruction,
             adjust: body.adjust,
+            model: body.model,
             revise: body.revise,
         },
     )
     .await?;
     match response {
         ResponseData::ComposeProposal { proposal } => Ok(Json(ComposeAssistResponse { proposal })),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn models(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<ComposeModelsResponse>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::GetComposeModels,
+    )
+    .await?;
+    match response {
+        ResponseData::ComposeModels { models } => Ok(Json(ComposeModelsResponse { models })),
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }
@@ -120,6 +149,7 @@ async fn apply(
 
 pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
     router
+        .route("/compose/models", get(models))
         .route("/compose/assist", post(assist))
         .route("/compose/apply", post(apply))
 }

@@ -51,6 +51,9 @@ Options:
       --instruction <TEXT>
           What you want said or changed, in your words
 
+      --model <MODEL_ID>
+          Use one configured model for this draft only
+
       --revise <PROPOSAL_ID>
           Revise an earlier proposal: the instruction is applied to it. Your own text stays what `--text` (or the stored draft) says
 

@@ -5,9 +5,18 @@
  * accepting is undone in one step until the text changes again.
  */
 
-import { useMutation } from "@tanstack/react-query";
-import { useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 import { toast } from "sonner";
+import { apiFetch } from "@/api/client";
+import type { components } from "@/api/generated";
 
 import {
   addedSpans,
@@ -50,12 +59,14 @@ export interface AssistVersion {
   sentText: string;
   action: ComposeAssistAction;
   instruction: string;
+  /** Model to keep when this proof is retried or revised. */
+  model?: string;
   /** Original selection in UTF-8 bytes, so a revision uses the same region. */
   selection?: { start: number; end: number };
 }
 
 interface RevisionBaseline {
-  proposalId: string;
+  proposalId?: string;
   sentText: string;
   selection?: AssistVersion["selection"];
 }
@@ -174,6 +185,19 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
   // had it, and once it is gone the next keystroke would go nowhere.
   const [editorFocusNonce, setEditorFocusNonce] = useState(0);
   const answersMessage = Boolean(intent.messageId);
+  const [model, setModel] = useState<string | undefined>();
+  const models = useQuery({
+    queryKey: ["compose-models"],
+    queryFn: () =>
+      apiFetch<{ models: components["schemas"]["AssistantModelsData"] }>(
+        "/api/v1/mail/compose/models",
+      ),
+  });
+  const defaultModel = models.data?.models?.current ?? "";
+
+  useEffect(() => {
+    setModel(undefined);
+  }, [intent.key]);
 
   // The text region is split once per render; handlers split the live draft
   // when they run, so a keystroke between renders is never missed.
@@ -198,6 +222,7 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
       action: ComposeAssistAction;
       instruction: string;
       revision?: RevisionBaseline;
+      model?: string;
     }) => {
       const current = draftRef.current;
       if (!current) throw new Error("No draft is open");
@@ -216,6 +241,7 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
         action: input.action,
         adjust,
       };
+      if (input.model) request.model = input.model;
       const selected = input.revision?.selection;
       if (selected) request.selection = selected;
       else if (!input.revision && range) {
@@ -226,7 +252,7 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
       }
       const note = input.instruction.trim();
       if (note) request.instruction = note;
-      if (input.revision) request.revise = input.revision.proposalId;
+      if (input.revision?.proposalId) request.revise = input.revision.proposalId;
       if (!current.binding) throw new Error("Draft has no workspace owner; reopen it explicitly");
       const response = await requestComposeAssist(request, current.binding);
       return {
@@ -235,15 +261,31 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
         action: input.action,
         instruction: input.instruction,
         selection: request.selection ?? undefined,
+        model: input.model,
       };
     },
-    onSuccess: ({ response, sentText, action, instruction: asked, selection: selected }) => {
+    onSuccess: ({
+      response,
+      sentText,
+      action,
+      instruction: asked,
+      selection: selected,
+      model: chosen,
+    }) => {
+      const answeredModel = response.proposal.provenance?.model;
+      const selectedModel =
+        chosen ??
+        (answeredModel && models.data?.models?.choices.some((choice) => choice.id === answeredModel)
+          ? answeredModel
+          : undefined);
+      setModel(selectedModel);
       const next: AssistVersion = {
         proposal: response.proposal,
         sentText,
         action,
         instruction: asked,
         selection: selected,
+        model: selectedModel,
       };
       setProof((current) => ({
         versions: [...current.versions, next],
@@ -254,13 +296,18 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     onError: (error) => toast.error("Draft failed", { description: errorMessage(error) }),
   });
 
-  function run(action: ComposeAssistAction, note: string, revision?: RevisionBaseline) {
+  function run(
+    action: ComposeAssistAction,
+    note: string,
+    revision?: RevisionBaseline,
+    modelSelection?: { model: string | undefined },
+  ) {
     // A ref, not `ask.isPending`: two presses before the next render both see
     // "idle" in the closure, and only the ref is set synchronously.
     if (inFlight.current) return;
     inFlight.current = true;
     ask.mutate(
-      { action, instruction: note, revision },
+      { action, instruction: note, revision, model: modelSelection ? modelSelection.model : model },
       { onSettled: () => (inFlight.current = false) },
     );
   }
@@ -293,17 +340,39 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     if (!version) return;
     const trimmed = note?.trim() ?? "";
     if (trimmed) {
-      run(version.action, trimmed, {
-        proposalId: version.proposal.proposal_id,
-        sentText: version.sentText,
-        selection: version.selection,
-      });
+      run(
+        version.action,
+        trimmed,
+        {
+          proposalId: version.proposal.proposal_id,
+          sentText: version.sentText,
+          selection: version.selection,
+        },
+        { model: version.model },
+      );
       return;
     }
     const current = draftRef.current;
     const stale = version.sentText !== (current ? splitTextRegion(current.bodyMarkdown).text : "");
     if (stale) run(helpAction(helpStateNow()), version.instruction);
-    else run(version.action, version.instruction);
+    else run(version.action, version.instruction, undefined, { model: version.model });
+  }
+
+  function againWithModel(selectedModel: string | undefined) {
+    if (!version) return;
+    setModel(selectedModel);
+    const current = draftRef.current;
+    const stale = version.sentText !== (current ? splitTextRegion(current.bodyMarkdown).text : "");
+    if (stale) {
+      run(helpAction(helpStateNow()), version.instruction, undefined, { model: selectedModel });
+      return;
+    }
+    run(
+      version.action,
+      version.instruction,
+      { sentText: version.sentText, selection: version.selection },
+      { model: selectedModel },
+    );
   }
 
   function accept() {
@@ -388,7 +457,12 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
     submit,
     polish,
     again,
+    againWithModel,
     generating: ask.isPending,
+    model,
+    setModel,
+    defaultModel,
+    modelChoices: models.data?.models?.choices ?? [],
     version,
     versionCount: versions.length,
     versionIndex,

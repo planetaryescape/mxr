@@ -652,13 +652,19 @@ mod tests {
         let config = load_config_from_str(
             "[llm]\nassistant_models = [\"local-one\"]\n[llm.compose]\nmodel = \"local-one\"\n",
         )
-        .unwrap();
+        .expect("legacy catalogue config loads");
         assert_eq!(config.llm.models, ["local-one"]);
         assert_eq!(
-            config.llm.compose.as_ref().unwrap().model.as_deref(),
+            config
+                .llm
+                .compose
+                .as_ref()
+                .expect("compose config is retained")
+                .model
+                .as_deref(),
             Some("local-one")
         );
-        let saved = toml::to_string(&config).unwrap();
+        let saved = toml::to_string(&config).expect("config serializes");
         assert!(saved.contains("models = [\"local-one\"]"));
         assert!(!saved.contains("assistant_models"));
     }

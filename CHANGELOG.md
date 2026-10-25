@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.162](https://github.com/planetaryescape/mxr/compare/v0.6.161...v0.6.162) (2026-10-25)
+
+
+### Features
+
+* make Messages conversations audience-aware ([#698](https://github.com/planetaryescape/mxr/issues/698)) ([2c18587](https://github.com/planetaryescape/mxr/commit/2c185877802e8bd37c954be3cf14c85b66ddc3d0))
+
+
+### Bug Fixes
+
+* preserve draft revision after accepting writing help ([0dc65d0](https://github.com/planetaryescape/mxr/commit/0dc65d096c40f17c6b502c2ff835a9dbdc757814))
+
 ## [0.6.161](https://github.com/planetaryescape/mxr/compare/v0.6.160...v0.6.161) (2026-10-25)
 
 

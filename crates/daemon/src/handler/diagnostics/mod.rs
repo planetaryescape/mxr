@@ -1075,7 +1075,7 @@ fn llm_config_data(config: mxr_config::LlmConfig) -> LlmConfigData {
             .compose
             .as_ref()
             .and_then(|compose| compose.model.clone()),
-        models,
+        models: Some(models),
         api_key_env: config.api_key_env,
         context_window: config.context_window,
         request_timeout_secs: config.request_timeout_secs,
@@ -1140,8 +1140,8 @@ fn normalize_llm_config(
     }
 
     let mut catalogue = current.clone();
-    if !config.models.is_empty() {
-        catalogue.models = config.models;
+    if let Some(models) = config.models {
+        catalogue.models = models;
     }
     let models = catalogue.assistant_model_ids();
     let compose = match config.compose_model {
@@ -2611,6 +2611,26 @@ mod llm_config_tests {
     }
 
     #[test]
+    fn compose_catalogue_omission_preserves_custom_but_empty_restores_defaults() {
+        let current = mxr_config::LlmConfig {
+            models: vec!["custom-writer".into()],
+            ..mxr_config::LlmConfig::default()
+        };
+        let mut omitted = llm_config_data(current.clone());
+        omitted.models = None;
+        let preserved = normalize_llm_config(omitted, &current).unwrap();
+        assert_eq!(preserved.assistant_model_ids(), ["custom-writer"]);
+
+        let mut empty = llm_config_data(current.clone());
+        empty.models = Some(Vec::new());
+        let reset = normalize_llm_config(empty, &current).unwrap();
+        assert_eq!(
+            reset.assistant_model_ids(),
+            mxr_config::LlmConfig::default().assistant_model_ids()
+        );
+    }
+
+    #[test]
     fn an_empty_compose_model_clears_the_default() {
         let current = mxr_config::LlmConfig {
             compose: Some(mxr_config::LlmComposeConfig {
@@ -2623,7 +2643,7 @@ mod llm_config_tests {
             base_url: current.base_url.clone(),
             model: current.model.clone(),
             compose_model: Some(String::new()),
-            models: Vec::new(),
+            models: None,
             api_key_env: current.api_key_env.clone(),
             context_window: current.context_window,
             request_timeout_secs: current.request_timeout_secs,

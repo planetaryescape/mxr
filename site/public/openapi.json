@@ -17681,7 +17681,10 @@
             "type": "string"
           },
           "models": {
-            "type": "array",
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "type": "string"
             }
@@ -19657,7 +19660,6 @@
           "id",
           "label",
           "cloud",
-          "sees",
           "available"
         ],
         "properties": {

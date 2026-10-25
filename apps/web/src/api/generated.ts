@@ -7925,7 +7925,7 @@ export interface components {
             context_window: number;
             enabled: boolean;
             model: string;
-            models?: string[];
+            models?: string[] | null;
             overrides?: components["schemas"]["LlmOverridesData"] | null;
             /** Format: int64 */
             request_timeout_secs: number;
@@ -8638,7 +8638,7 @@ export interface components {
              * @description The context sent with this choice: the current conversation alone, or
              *     the conversation and the user's past mail.
              */
-            sees: string;
+            sees?: string;
             /**
              * @description Why it can't be picked, with the command that fixes it when there is
              *     one. Set exactly when `available` is false.

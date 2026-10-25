@@ -288,7 +288,7 @@ pub struct LlmConfigData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compose_model: Option<String>,
     #[serde(default)]
-    pub models: Vec<String>,
+    pub models: Option<Vec<String>>,
     pub api_key_env: String,
     pub context_window: u32,
     pub request_timeout_secs: u64,

@@ -369,7 +369,7 @@ pub(super) struct LlmConfigRequest {
     #[serde(default)]
     pub(super) compose_model: Option<String>,
     #[serde(default)]
-    pub(super) models: Vec<String>,
+    pub(super) models: Option<Vec<String>>,
     pub(super) api_key_env: String,
     pub(super) context_window: u32,
     pub(super) request_timeout_secs: u64,

@@ -361,6 +361,12 @@ export function useDraftAssist({ intent, draftRef, setDraft, setDirty }: DraftAs
   function againWithModel(selectedModel: string | undefined) {
     if (!version) return;
     setModel(selectedModel);
+    const current = draftRef.current;
+    const stale = version.sentText !== (current ? splitTextRegion(current.bodyMarkdown).text : "");
+    if (stale) {
+      run(helpAction(helpStateNow()), version.instruction, undefined, { model: selectedModel });
+      return;
+    }
     run(
       version.action,
       version.instruction,

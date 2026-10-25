@@ -140,7 +140,11 @@ export function ComposeProof({
                     key={choice.id}
                     title={`${choice.label}${choice.cloud ? " · cloud" : " · this Mac"} · ${choice.sees}`}
                     onAction={async () => {
-                      if (loading || !choice.available) return;
+                      if (loading) return;
+                      if (!choice.available) {
+                        await showToast({ style: Toast.Style.Failure, title: "Model unavailable", message: choice.unavailable_reason ?? "Choose another model." });
+                        return;
+                      }
                       setLoading(true);
                       try {
                         const next = await onRetryModel(proposal, choice.id);

@@ -4889,6 +4889,11 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                         }
                         AsyncResult::ComposeModelsLoaded { pending, purpose, result } => {
+                            if !app.modals.platform.visible
+                                || app.modals.platform.title != "Choose a writing model"
+                            {
+                                continue;
+                            }
                             app.modals.platform.close();
                             let still_owned = match purpose {
                                 app::ComposeModelPickerPurpose::InitialDraft => app

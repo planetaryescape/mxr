@@ -647,7 +647,7 @@ mod tests {
                         base_url: "http://localhost:11434/v1".into(),
                         model: "qwen2.5:3b-instruct".into(),
                         compose_model: None,
-                        models: vec![],
+                        models: Some(vec![]),
                         api_key_env: String::new(),
                         context_window: 8192,
                         request_timeout_secs: 120,
@@ -1139,7 +1139,7 @@ mod tests {
                         base_url: "http://localhost:11434/v1".into(),
                         model: "qwen2.5:3b-instruct".into(),
                         compose_model: None,
-                        models: vec![],
+                        models: Some(vec![]),
                         api_key_env: String::new(),
                         context_window: 8192,
                         request_timeout_secs: 120,
@@ -2629,5 +2629,13 @@ mod tests {
         })
         .unwrap();
         assert_eq!(applied["kind"], "ComposeApplied");
+    }
+    #[test]
+    fn model_choices_from_an_older_daemon_have_unknown_context() {
+        let choice: ModelChoiceData = serde_json::from_value(serde_json::json!({
+            "id": "local-model", "label": "Local model", "cloud": false, "available": true
+        }))
+        .expect("older model choice decodes");
+        assert_eq!(choice.sees, "unknown");
     }
 }

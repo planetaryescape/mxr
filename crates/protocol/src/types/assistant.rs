@@ -404,6 +404,7 @@ pub struct ModelChoiceData {
     pub cloud: bool,
     /// The context sent with this choice: the current conversation alone, or
     /// the conversation and the user's past mail.
+    #[serde(default = "unknown_model_context")]
     pub sees: String,
     /// Whether it can be picked now.
     pub available: bool,
@@ -637,4 +638,8 @@ mod tests {
             "Making room: summarising earlier messages"
         );
     }
+}
+
+fn unknown_model_context() -> String {
+    "unknown".to_string()
 }

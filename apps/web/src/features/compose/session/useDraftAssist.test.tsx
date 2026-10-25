@@ -148,6 +148,17 @@ describe("useDraftAssist", () => {
     });
   });
 
+  test("retrying with another model after editing uses the live text", async () => {
+    apiFetch.mockResolvedValue(proposal("Thursday works.", [{ kind: "kept", text: "Thursday works." }]));
+    const { result } = renderHook(() => useHarness(draftWith("Thursday works.")), { wrapper });
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
+    act(() => result.current.setDraft(draftWith("Friday works.\n\n-- \nBK")));
+    act(() => result.current.assist.againWithModel("gpt-6-luna"));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
+    expect(apiFetch.mock.calls[1]?.[1]?.body).toMatchObject({ model: "gpt-6-luna", text: "Friday works.", action: "finish" });
+  });
+
   test("the request carries the text without the signature and UTF-8 selection offsets", async () => {
     apiFetch.mockResolvedValue(proposal("café au lait", [{ kind: "kept", text: "café au lait" }]));
     const { result } = renderHook(() => useHarness(draftWith("café au lait\n\n-- \nBK")), {

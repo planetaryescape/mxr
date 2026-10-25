@@ -33,7 +33,7 @@ type Rule =
  * Paths under `src`. "page shortcut not yet moved" is debt, not a rule: each
  * such entry says why it hasn't moved yet, and no new one joins it.
  */
-const ALLOWED: Record<string, { rule: Rule; why: string }> = {
+const ALLOWED = {
   // Text fields and editors: keys there are typing.
   "features/archive/ArchiveRoute.tsx": {
     rule: "text field or editor",
@@ -157,6 +157,14 @@ const ALLOWED: Record<string, { rule: Rule; why: string }> = {
     rule: "overlay with its own letters",
     why: "u and a pick the printed unsubscribe options",
   },
+  "features/messages/ConversationPeople.tsx": {
+    rule: "overlay with its own letters",
+    why: "Escape closes the scoped people disclosure and restores trigger focus",
+  },
+  "features/messages/TopicSwitcher.tsx": {
+    rule: "overlay with its own letters",
+    why: "Escape closes the topic disclosure and restores trigger focus",
+  },
   "features/places/SenderKindDialog.tsx": {
     rule: "overlay with its own letters",
     why: "the sender-kind picker's letters",
@@ -226,7 +234,7 @@ const ALLOWED: Record<string, { rule: Rule; why: string }> = {
     rule: "page shortcut not yet moved",
     why: "Esc closes the conversation when no scope took it; each mode's Esc differs (K2's q/Esc layering)",
   },
-};
+} satisfies Record<string, { rule: Rule; why: string }>;
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

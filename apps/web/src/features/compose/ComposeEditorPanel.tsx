@@ -2,6 +2,7 @@ import { FilePlus2, Loader2, Paperclip, Trash2, X } from "lucide-react";
 import {
   lazy,
   Suspense,
+  useId,
   useEffect,
   useRef,
   useState,
@@ -65,6 +66,8 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
   // until asked for, and the editor's status row shrinks to a word.
   const quiet = controller.intent.quiet === true;
   const [headersOpen, setHeadersOpen] = useState(false);
+  const headersId = useId();
+  const editRecipientsButton = useRef<HTMLButtonElement>(null);
   // Only the Markdown editor reports a selection. A selection left from it must
   // not steer the help after switching to the rich editor, which sends the whole text.
   const setSelection = controller.setSelection;
@@ -101,7 +104,15 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
     void controller.addFiles(event.dataTransfer.files);
   }
 
-  const folded = quiet && !headersOpen && draft.frontmatter.to.trim() !== "";
+  const folded = quiet && !headersOpen;
+  const selectedAccount = controller.runtimeAccounts.find(
+    (account) => account.account_id === draft.accountId,
+  );
+  const recipients = [
+    ["To", draft.frontmatter.to.trim() || "No recipient"],
+    ...(draft.frontmatter.cc.trim() ? ([["Cc", draft.frontmatter.cc.trim()]] as const) : []),
+    ...(draft.frontmatter.bcc.trim() ? ([["Bcc", draft.frontmatter.bcc.trim()]] as const) : []),
+  ] as const;
 
   return (
     <div
@@ -109,23 +120,53 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
       onKeyDown={controller.handleComposeKeyDown}
     >
       {folded ? (
-        <div className="shrink-0 border-b border-border" data-testid="compose-summary">
-          <div className="mx-auto flex w-full max-w-[860px] items-center gap-2 px-5 py-1.5 text-xs">
-            <span className="text-muted-foreground">To</span>
-            <span className="min-w-0 truncate text-foreground">{draft.frontmatter.to}</span>
-            <span aria-hidden className="text-muted-foreground">
-              ·
-            </span>
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">
-              {draft.frontmatter.subject || "(no subject)"}
-            </span>
+        <div
+          className="shrink-0 border-b border-border"
+          data-testid="compose-summary"
+          role="group"
+          aria-label="Reply audience and sender"
+        >
+          <div className="mx-auto flex w-full max-w-[860px] items-start gap-3 px-4 py-2 text-xs">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="flex flex-wrap gap-x-3 gap-y-1">
+                {recipients.map(([label, value]) => (
+                  <span key={label}>
+                    <span className="text-muted-foreground">{label}: </span>
+                    <span className="break-words text-foreground">{value}</span>
+                  </span>
+                ))}
+              </p>
+              <p className="break-words text-muted-foreground">
+                From:{" "}
+                <span className="text-foreground">
+                  {draft.frontmatter.from.trim() || "Not set"}
+                </span>
+                <span aria-hidden> · </span>
+                Account:{" "}
+                <span className="text-foreground">
+                  {(selectedAccount?.name ?? draft.accountId) || "Unavailable"}
+                </span>
+              </p>
+            </div>
             <Button
+              ref={editRecipientsButton}
               variant="ghost"
               size="xs"
-              onClick={() => setHeadersOpen(true)}
-              aria-label="Edit From, To and Subject"
+              className="shrink-0"
+              onClick={() => {
+                setHeadersOpen(true);
+                controller.setShowCc(Boolean(draft.frontmatter.cc.trim()));
+                controller.setShowBcc(Boolean(draft.frontmatter.bcc.trim()));
+                requestAnimationFrame(() => controller.toInputRef.current?.focus());
+              }}
+              aria-label={
+                draft.frontmatter.to.trim()
+                  ? "Edit recipients and sender"
+                  : "Add or edit recipients and sender"
+              }
+              aria-expanded={headersOpen}
             >
-              Edit
+              {draft.frontmatter.to.trim() ? "Edit" : "Add recipient"}
             </Button>
           </div>
         </div>
@@ -152,7 +193,24 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
           />
 
           <div className="shrink-0 border-b border-border">
-            <div className="mx-auto w-full max-w-[860px] px-4 py-1.5">
+            <div id={headersId} className="mx-auto w-full max-w-[860px] px-4 py-1.5">
+              {quiet ? (
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => {
+                      setHeadersOpen(false);
+                      requestAnimationFrame(() => editRecipientsButton.current?.focus());
+                    }}
+                    aria-label="Done editing recipients"
+                    aria-controls={headersId}
+                    aria-expanded={headersOpen}
+                  >
+                    Done
+                  </Button>
+                </div>
+              ) : null}
               {controller.collaboratorSuggestions.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1 text-2xs text-muted-foreground">
                   <span>Maybe cc:</span>

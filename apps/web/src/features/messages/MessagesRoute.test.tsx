@@ -8,7 +8,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { MessagesRoute, type MessagesSearch } from "./MessagesRoute";
@@ -76,12 +76,34 @@ vi.mock("./MessagesList", () => ({
   ),
 }));
 vi.mock("./PersonPane", () => ({
-  PersonPane: ({ page, onDone }: { page: PersonPage; onDone: () => void }) => (
-    <div>
-      <span data-testid="shown-topic">{page.conversation?.thread_id}</span>
-      <button onClick={onDone}>Done</button>
-    </div>
-  ),
+  PersonPane: ({
+    page,
+    onBack,
+    onDone,
+  }: {
+    page: PersonPage;
+    onBack: () => void;
+    onDone: () => void;
+  }) => {
+    const [topicsOpen, setTopicsOpen] = useState(false);
+    return (
+      <div data-testid="person-page">
+        <span data-testid="shown-topic">{page.conversation?.thread_id}</span>
+        <button aria-label="Back to the people" onClick={onBack}>
+          Back
+        </button>
+        <button data-testid="topics-trigger" onClick={() => setTopicsOpen(true)}>
+          Contract renewal
+        </button>
+        {topicsOpen ? (
+          <button data-testid="topic" aria-current="true">
+            Contract renewal
+          </button>
+        ) : null}
+        <button onClick={onDone}>Done</button>
+      </div>
+    );
+  },
 }));
 
 function topic(id: string, state: MessagesTopic["state"] = "your_turn"): MessagesTopic {
@@ -644,6 +666,32 @@ test("g f below the split reveals the people list before focusing the filter lin
       screen.getByRole("radio", { name: "Your turn", hidden: false }),
     ),
   );
+});
+
+test("p focuses the current topic when open, or its trigger when the topic list is closed", async () => {
+  layout.wide = false;
+  const a = row("person:a", [topic("a-live")]);
+  client.setQueryData(listKey, listOf(a));
+  cachePage(a, "a-live", "a-live");
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
+
+  fireEvent.click(screen.getByRole("button", { name: "Back to the people" }));
+  await waitFor(() => expect(screen.queryByTestId("shown-topic")).toBeNull());
+
+  act(() => expect(runCommand("messages", "personPage")).toBe(true));
+  const trigger = await screen.findByTestId("topics-trigger");
+  expect(screen.queryByTestId("topic")).toBeNull();
+  await waitFor(() => expect(trigger).toHaveFocus());
+
+  fireEvent.click(trigger);
+  const current = screen.getByTestId("topic");
+  act(() => expect(runCommand("messages", "personPage")).toBe(true));
+  await waitFor(() => expect(current).toHaveFocus());
 });
 
 test("an empty filtered view does not count as finishing Messages while Your turn is open", async () => {

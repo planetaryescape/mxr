@@ -593,33 +593,39 @@ present it as the full message.
 | Messages  | YOUR TURN                    | Samir Patel            close · usually 47m   |
 |           | Samir Patel           16h *  | You've written 48 times since 2023.          |
 |           |   "Can you take a look and   |----------------------------------------------|
-|           |    reply with the next..."   | TOPICS  Contract renewal     your turn · 16h |
-|           | Jon Bell               8h *  |         Launch checklist     waiting · 1d    |
-|           |   "Does the pricing copy..." |         with Ruth: Pricing            3d    |
-|           | Samir, Ruth            2d *  |----------------------------------------------|
-|           |   Contract renewal           | Samir · Yesterday 18:02                      |
-|           | PINNED  Maya · Ari           | Can you take a look and reply with           |
-|           | RECENT                       | [the next concrete step?]   <- the ask       |
-|           | Iris Chen        Yesterday   | Read all 6 paragraphs  runbook.pdf           |
-|           |   You: "Thanks, on it."      |                     trimmed: quote, sig      |
-|           | QUIET (12)              >    |               You · 18:40  Thanks, looking.  |
-|           |                              | Reply to Samir · Contract renewal   [ ] all  |
+|           |    reply with the next..."   | Contract renewal · Direct · 1 of 3          |
+|           | Jon Bell               8h *  | PEOPLE                                         |
+|           |   "Does the pricing copy..." |                                               |
+|           | Samir, Ruth            2d *  | Samir · Yesterday 18:02                      |
+|           |   Contract renewal           | I asked my manager and they'll cover the     |
+|           | PINNED  Maya · Ari           | ticket. Can you confirm by Friday so I can   |
+|           | RECENT                       | book?                     <- the ask         |
+|           | Iris Chen        Yesterday   | You · 18:40  Thanks, looking.                |
+|           |   You: "Thanks, on it."      | Reply to Samir · Contract renewal             |
+|           | QUIET (12)              >    | [To: samir@… · Cc: 1] [From: …]              |
+|           |                              |                                               |
 +-----------+------------------------------+----------------------------------------------+
   Mod+Enter send, next   . got it   e done here   t to do   b reply later   c new topic
 ```
 
-In the web topic list, quiet topics show recency without repeating the quiet
-state. Quiet remains a separate person band.
+In the web app, the selected topic stays in a compact conversation control;
+opening it shows all topics, with direct and group conversations distinguished
+and quiet topics showing recency without repeating the quiet state. `{` and
+`}` step through topics. Quiet remains a separate person band.
 
-**View and actions.** Length decides shape, not the medium: three lines or
-fewer render compactly like chat, longer ones as a letter block with "Read
-all N paragraphs". No bubbles around letters, because Spike's are the
-format most often called unprofessional for formal mail. Removed text is
-marked ("trimmed: quote, sig") with the original on `o`. The composer is
-always there, addressed. Got it (`.`) sends a short acknowledgement in
-your voice after a visible countdown, instead of reactions, which degrade
-into extra email on other clients. Archive, label and move are not on the
-surface.
+**View and actions.** The latest message opens in full at its start; older messages remain
+in chronological context and long letters can be folded. A `People` disclosure
+expands through the reading area and scrolls internally for long lists. It shows
+the distinct addresses recorded across the selected thread; `Message info` gives the recorded sender and recipients for one message. Length decides
+shape, not the medium: three lines or fewer render compactly like chat, longer
+ones as a letter block with "Read all N paragraphs". Removed text is marked
+("trimmed: quote, sig") with the original on `o`. Reply and Reply all are
+explicit mode choices. The active draft shows its exact To, Cc, Bcc, From and
+account; editing opens the compose fields. An inline reply stays bound to its
+source topic, names that subject while docked, and returns when you come back.
+Got it (`.`) shows the exact To and From
+from its preview plan before the countdown sends. Archive, label and move are
+not on the surface.
 
 **Rhythm, end state, in and out.** On arrival from close people, two or
 three short visits a day. Empty Your turn says "Nobody is waiting on you"
@@ -1013,7 +1019,8 @@ Modes get their own scope in both clients, as `place` has today, and
 | `s` | Pin a person (star) | | yes | | | | | Star |
 | `c` | Compose; in Messages a new topic with this person | yes | yes | | | | | Compose |
 | `>` | Quote the selection into the reply | | yes | | | | | More senders (place) |
-| `[` / `]` | Previous / next group: topic, year | | yes | | | | yes | Collapse / expand (sidebar) |
+| `{` / `}` | Previous / next topic | | yes | | | | | — |
+| `[` / `]` | Previous / next year | | | | | | yes | Collapse / expand (sidebar) |
 | `Mod+Enter` | Send, then the next person whose turn it is | | yes | | | | | Focus send |
 | `g F` | Step through the Now band | | yes | yes | | | | Focus & reply |
 | `/`, `g f`, `x`, `u`, `?` | Search (Archive's ask box), filter (facets), select, undo, help | yes | yes | yes | yes | yes | yes | same |
@@ -1138,7 +1145,7 @@ test checks it). A hint shared by two modes has one id and one seen state.
 | `updates.source` | Updates | The first source line | "e lets go of this source only; the rest of the digest stays." |
 | `todo.runway` | To do | The first runway bar | "The bar fills from when this showed up to when it's due; Enter does what the button says." |
 | `todo.catchup` | To do | The catch-up line (TUI: the first row, under it) | "These came in before mxr sorted your mail. C goes through them: keep or let go of each." |
-| `messages.topics` | Messages | A person's topic list, when it has more than one topic | "Every conversation with this person, yours to answer first; ] and [ step through them." |
+| `messages.topics` | Messages | A person's topic list, when it has more than one topic | "Every conversation with this person, yours to answer first; { and } step through them." |
 | `messages.got_it` | Messages | Got it, the first time it has focus or the pointer (TUI: a row whose turn is yours) | "Got it (.) sends a short note that you've seen it and takes them off Your turn." |
 | `archive.record` | Archive | The first record row | "Each row is one order, trip or bill, not an email; o opens the email it came from." |
 | `archive.answer` | Archive | The first answer to a question | "y copies what this answer found; Enter opens the document." |

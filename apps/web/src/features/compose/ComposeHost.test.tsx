@@ -3,7 +3,7 @@ import { observeWorkspace, resetWorkspaceOwnerForTest } from "@/lib/workspaceOwn
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { BridgeRequestError } from "@/api/client";
@@ -53,6 +53,7 @@ const api = vi.hoisted(() => ({
 const rawApi = vi.hoisted(() => ({
   fetch: vi.fn<(path: string, init?: unknown) => Promise<unknown>>(),
 }));
+const accountAddresses = vi.hoisted(() => ({ addresses: [{ email: "" }] }));
 
 const toasts = vi.hoisted(() => {
   const base = vi.fn<(message: string, options?: unknown) => string>(() => "toast-id");
@@ -83,7 +84,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   apiFetch: rawApi.fetch,
 }));
 vi.mock("@/features/accounts/api", () => ({
-  fetchAccountAddresses: () => Promise.resolve({ addresses: [] }),
+  fetchAccountAddresses: () => Promise.resolve({ addresses: accountAddresses.addresses }),
 }));
 vi.mock("./api", () => api);
 vi.mock("@/features/time/api", async (importOriginal) => {
@@ -98,10 +99,22 @@ vi.mock("sonner", () => ({ toast: toasts }));
 // The mocked editor exposes the editor's own send hotkey (CodeMirror's
 // Mod-Enter), which calls onSend directly and bypasses the surface's
 // `busy` gate. Only the send pipeline itself can stop a second send there.
-function MockEditor({ value, onSend }: { value: string; onSend: () => void }) {
+function MockEditor({
+  value,
+  onChange,
+  onSend,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSend: () => void;
+}) {
   return (
     <div>
-      <textarea aria-label="Message body" value={value} readOnly />
+      <textarea
+        aria-label="Message body"
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
+      />
       <button type="button" onClick={onSend}>
         Editor send hotkey
       </button>
@@ -171,6 +184,7 @@ function openNewMessage() {
 }
 
 beforeEach(() => {
+  accountAddresses.addresses = [];
   resetWorkspaceOwnerForTest();
   observeWorkspace(originalBinding());
   rawApi.fetch.mockResolvedValue({ snippets: [] });
@@ -443,6 +457,312 @@ describe("ComposeHost never loses typing on the way out", () => {
 
     await waitFor(() => expect(savedSubjects()).toEqual(["Half-written"]));
   });
+});
+
+test("a Messages reply stays in its thread slot and summarizes the live draft audience", async () => {
+  accountAddresses.addresses = [{ email: "alias@example.com" }];
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: vi.fn<() => void>(),
+  });
+  api.startComposeSession.mockResolvedValue(
+    session({
+      frontmatter: {
+        to: "reply-to@example.com",
+        cc: "copy@example.com",
+        bcc: "hidden@example.com",
+        subject: "Reply subject",
+        from: "alias@example.com",
+        attach: [],
+      },
+      kind: "reply",
+    }),
+  );
+  renderHost(
+    <>
+      <div id="inline-composer-slot" data-testid="generic-slot" />
+      <div id="inline-composer-slot-thread-1" data-testid="thread-slot" />
+      <ComposeHost />
+    </>,
+  );
+  act(() =>
+    useComposeUi.getState().openCompose(
+      {
+        key: "compose:reply:m1",
+        title: "Reply",
+        kind: "reply",
+        messageId: "m1",
+        contextThreadId: "thread-1",
+        contextTitle: "Contract renewal",
+        quiet: true,
+      },
+      "inline",
+    ),
+  );
+
+  const threadSlot = screen.getByTestId("thread-slot");
+  const summary = await within(threadSlot).findByTestId("compose-summary");
+  expect(summary).toHaveTextContent("reply-to@example.com");
+  expect(summary).toHaveTextContent("copy@example.com");
+  expect(summary).toHaveTextContent("hidden@example.com");
+  expect(summary).toHaveTextContent("alias@example.com");
+  expect(summary).toHaveTextContent("Work");
+  expect(screen.getByRole("heading", { name: "Reply · Contract renewal" })).toBeInTheDocument();
+  expect(within(screen.getByTestId("generic-slot")).queryByTestId("compose-summary")).toBeNull();
+
+  fireEvent.click(within(summary).getByRole("button", { name: "Edit recipients and sender" }));
+  expect(
+    within(threadSlot).getByRole("button", { name: "Done editing recipients" }),
+  ).toHaveAttribute("aria-expanded", "true");
+  expect(
+    await within(threadSlot).findByRole("button", { name: "Remove reply-to@example.com" }),
+  ).toBeInTheDocument();
+  await waitFor(() =>
+    expect(within(threadSlot).getByRole("combobox", { name: "To" })).toHaveFocus(),
+  );
+  expect(
+    within(threadSlot).getByRole("button", { name: "Remove copy@example.com" }),
+  ).toBeInTheDocument();
+  expect(
+    within(threadSlot).getByRole("button", { name: "Remove hidden@example.com" }),
+  ).toBeInTheDocument();
+  expect(within(threadSlot).getByText("alias@example.com")).toBeInTheDocument();
+  fireEvent.click(within(threadSlot).getByRole("button", { name: "Done editing recipients" }));
+  const foldedAgain = await within(threadSlot).findByTestId("compose-summary");
+  expect(foldedAgain).toHaveTextContent("copy@example.com");
+  expect(foldedAgain).toHaveTextContent("hidden@example.com");
+  expect(
+    within(foldedAgain).getByRole("button", { name: "Edit recipients and sender" }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await waitFor(() =>
+    expect(
+      within(foldedAgain).getByRole("button", { name: "Edit recipients and sender" }),
+    ).toHaveFocus(),
+  );
+  expect(within(threadSlot).queryByLabelText("To")).toBeNull();
+});
+
+test("popout and fullscreen reply dialogs include the source subject in their accessible name", async () => {
+  api.startComposeSession.mockResolvedValue(
+    session({
+      frontmatter: {
+        to: "samir@example.com",
+        cc: "",
+        bcc: "",
+        subject: "Reply subject",
+        from: "me@example.com",
+        attach: [],
+      },
+      kind: "reply",
+    }),
+  );
+  renderHost(
+    <>
+      <div id="inline-composer-slot-thread-1" data-testid="thread-slot" />
+      <ComposeHost />
+    </>,
+  );
+  act(() =>
+    useComposeUi.getState().openCompose(
+      {
+        key: "compose:reply:m1",
+        title: "Reply",
+        kind: "reply",
+        messageId: "m1",
+        contextThreadId: "thread-1",
+        contextTitle: "Contract renewal",
+        quiet: true,
+      },
+      "inline",
+    ),
+  );
+  await within(screen.getByTestId("thread-slot")).findByTestId("compose-summary");
+
+  fireEvent.click(screen.getByRole("button", { name: "Popout" }));
+  expect(await screen.findByRole("dialog", { name: "Reply · Contract renewal" })).toBeVisible();
+
+  fireEvent.click(screen.getByRole("button", { name: "Fullscreen (⇧⌘F)" }));
+  expect(await screen.findByRole("dialog", { name: "Reply · Contract renewal" })).toBeVisible();
+});
+
+test("a docked reply names its source and restores edited recipients and body after another topic opens", async () => {
+  const stored = new Map<string, ComposeSessionResponse>();
+  const makeReply = (messageId: string) =>
+    session({
+      draftPath: `/tmp/${messageId}.md`,
+      draftId: messageId,
+      frontmatter: {
+        to: `${messageId}@example.com`,
+        cc: "",
+        bcc: "",
+        subject: `Reply to ${messageId}`,
+        from: "me@example.com",
+        attach: [],
+      },
+      bodyMarkdown: "Original body",
+      kind: "reply",
+    });
+  api.startComposeSession.mockImplementation(async (_kind, messageId = "m1") => {
+    return stored.get(`/tmp/${messageId}.md`) ?? makeReply(messageId);
+  });
+  api.updateComposeSession.mockImplementation(async (input) => {
+    // SAFETY: this mock receives only the update payload passed by useComposeAutosave.
+    const request = input as {
+      draftPath: string;
+      draftId?: string;
+      expectedRevision?: number | null;
+      frontmatter: ComposeSessionResponse["session"]["frontmatter"];
+      body: string;
+    };
+    const messageId = request.draftPath.split("/").at(-1)!.replace(/\.md$/, "");
+    const saved = session({
+      draftPath: request.draftPath,
+      draftId: messageId,
+      revision: (request.expectedRevision ?? 0) + 1,
+      frontmatter: request.frontmatter,
+      bodyMarkdown: request.body,
+      kind: "reply",
+    });
+    stored.set(request.draftPath, saved);
+    return saved;
+  });
+
+  function ChangingTopicSlots() {
+    const [showFirst, setShowFirst] = useState(true);
+    return (
+      <>
+        <button type="button" onClick={() => setShowFirst(false)}>
+          Switch topic
+        </button>
+        <button type="button" onClick={() => setShowFirst(true)}>
+          Return to original topic
+        </button>
+        {showFirst ? <div id="inline-composer-slot-thread-1" data-testid="thread-1-slot" /> : null}
+        <div id="inline-composer-slot-thread-2" data-testid="thread-2-slot" />
+        <ComposeHost />
+      </>
+    );
+  }
+
+  renderHost(<ChangingTopicSlots />);
+  const firstIntent = {
+    key: "compose:reply:m1",
+    title: "Reply",
+    kind: "reply" as const,
+    messageId: "m1",
+    contextThreadId: "thread-1",
+    contextTitle: "Contract renewal",
+    quiet: true,
+  };
+  act(() => useComposeUi.getState().openCompose(firstIntent, "inline"));
+  await screen.findByTestId("compose-summary");
+  fireEvent.click(screen.getByRole("button", { name: "Edit recipients and sender" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove m1@example.com" }));
+  const to = screen.getByRole("combobox", { name: "To" });
+  fireEvent.change(to, { target: { value: "reply-to@example.net" } });
+  fireEvent.keyDown(to, { key: "Enter" });
+  fireEvent.click(screen.getByRole("button", { name: "Cc" }));
+  const cc = screen.getByRole("combobox", { name: "Cc" });
+  fireEvent.change(cc, { target: { value: "copy@example.net" } });
+  fireEvent.keyDown(cc, { key: "Enter" });
+  fireEvent.change(screen.getByRole("textbox", { name: "Message body" }), {
+    target: { value: "Edited body kept for the original topic" },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Switch topic" }));
+  expect(
+    await screen.findByRole("dialog", { name: "Reply · Contract renewal" }),
+  ).toBeInTheDocument();
+  act(() =>
+    useComposeUi.getState().openCompose(
+      {
+        key: "compose:reply:m2",
+        title: "Reply",
+        kind: "reply",
+        messageId: "m2",
+        contextThreadId: "thread-2",
+        contextTitle: "Launch checklist",
+        quiet: true,
+      },
+      "inline",
+    ),
+  );
+  await waitFor(() => {
+    expect(api.updateComposeSession.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        draftPath: "/tmp/m1.md",
+        frontmatter: expect.objectContaining({
+          to: "reply-to@example.net",
+          cc: "copy@example.net",
+        }),
+        body: "Edited body kept for the original topic",
+      }),
+    );
+  });
+
+  act(() => useComposeUi.getState().openCompose(firstIntent, "inline"));
+  expect(
+    await screen.findByRole("dialog", { name: "Reply · Contract renewal" }),
+  ).toBeInTheDocument();
+  expect(await screen.findByRole("textbox", { name: "Message body" })).toHaveValue(
+    "Edited body kept for the original topic",
+  );
+  expect(screen.getByTestId("compose-summary")).toHaveTextContent("reply-to@example.net");
+  expect(screen.getByTestId("compose-summary")).toHaveTextContent("copy@example.net");
+  expect(useComposeUi.getState().intent).toMatchObject({
+    messageId: "m1",
+    contextThreadId: "thread-1",
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Return to original topic" }));
+  const restoredInline = await within(screen.getByTestId("thread-1-slot")).findByTestId(
+    "compose-summary",
+  );
+  expect(restoredInline).toHaveTextContent("reply-to@example.net");
+  expect(restoredInline).toHaveTextContent("copy@example.net");
+});
+
+test("a reply with no To recipient shows an add action without empty Cc and Bcc rows", async () => {
+  api.startComposeSession.mockResolvedValue(
+    session({
+      frontmatter: {
+        to: "",
+        cc: "",
+        bcc: "",
+        subject: "Reply subject",
+        from: "alias@example.com",
+        attach: [],
+      },
+      kind: "reply",
+    }),
+  );
+  renderHost(
+    <>
+      <div id="inline-composer-slot-thread-1" data-testid="thread-slot" />
+      <ComposeHost />
+    </>,
+  );
+  act(() =>
+    useComposeUi.getState().openCompose(
+      {
+        key: "compose:reply:no-to",
+        title: "Reply",
+        kind: "reply",
+        messageId: "no-to",
+        contextThreadId: "thread-1",
+        contextTitle: "Contract renewal",
+        quiet: true,
+      },
+      "inline",
+    ),
+  );
+  const summary = await screen.findByTestId("compose-summary");
+  expect(summary).toHaveTextContent("No recipient");
+  expect(summary).not.toHaveTextContent("Cc:");
+  expect(summary).not.toHaveTextContent("Bcc:");
+  fireEvent.click(
+    within(summary).getByRole("button", { name: "Add or edit recipients and sender" }),
+  );
+  expect(await screen.findByRole("combobox", { name: "To" })).toBeInTheDocument();
 });
 
 describe("ComposeHost validation", () => {

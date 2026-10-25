@@ -34,6 +34,9 @@ export function ComposeHost() {
 }
 
 function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
+  const surfaceTitle = intent.contextTitle
+    ? `${intent.title} · ${intent.contextTitle}`
+    : intent.title;
   const surface = useComposeUi((s) => s.surface);
   const setSurface = useComposeUi((s) => s.setSurface);
   const closeCompose = useComposeUi((s) => s.closeCompose);
@@ -86,7 +89,10 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     // Typing in the editor mutates the DOM too: only a new slot re-renders.
     let current: HTMLElement | null | undefined;
     const resolve = () => {
-      const next = document.getElementById("inline-composer-slot");
+      const slotId = intent.contextThreadId
+        ? `inline-composer-slot-${intent.contextThreadId}`
+        : "inline-composer-slot";
+      const next = document.getElementById(slotId);
       if (next !== current) {
         current = next;
         setSlot(next);
@@ -96,7 +102,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     const observer = new MutationObserver(resolve);
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [surface]);
+  }, [intent.contextThreadId, surface]);
 
   // Bring the inline composer into view once it has content: the slot is
   // hidden while empty, so scrolling to it any earlier does nothing.
@@ -112,14 +118,14 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   const htmlDraft = htmlDraftRefusal(controller.sessionError);
   const body = controller.sessionLoading ? (
     <div role="status" className="type-body flex h-40 items-center justify-center text-text-2">
-      Opening {intent.title.toLowerCase()}…
+      Opening {surfaceTitle.toLowerCase()}…
     </div>
   ) : htmlDraft ? (
     <HtmlDraftNotice refusal={htmlDraft} />
   ) : controller.sessionError ? (
     <div className="flex flex-col items-start gap-3 p-5">
       <PageError
-        title={`Couldn't open ${intent.title.toLowerCase()}`}
+        title={`Couldn't open ${surfaceTitle.toLowerCase()}`}
         error={controller.sessionError}
         onRetry={controller.retrySession}
       />
@@ -160,7 +166,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
       }}
     >
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-rule px-5">
-        <h2 className="type-title min-w-0 truncate text-text-1">{intent.title}</h2>
+        <h2 className="type-title min-w-0 truncate text-text-1">{surfaceTitle}</h2>
         <span className="-mr-2 flex items-center gap-1">
           <SurfaceButton
             label="Inline"
@@ -206,7 +212,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     return (
       <div
         role="dialog"
-        aria-label={intent.title}
+        aria-label={surfaceTitle}
         className={
           dockedBar
             ? "fixed inset-x-4 bottom-4 z-40 flex flex-col"
@@ -236,7 +242,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
           )}
         />
         <DialogPrimitive.Content
-          aria-label={intent.title}
+          aria-label={surfaceTitle}
           aria-describedby={undefined}
           // The editor focuses itself (useComposeAutofocus); the trap only has to hold it.
           onOpenAutoFocus={(event) => event.preventDefault()}
@@ -277,7 +283,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
         >
           <DialogPrimitive.Title asChild>
             {/* The visible heading is in the chrome; this names the dialog without a second heading. */}
-            <span className="sr-only">{intent.title}</span>
+            <span className="sr-only">{surfaceTitle}</span>
           </DialogPrimitive.Title>
           {chrome}
         </DialogPrimitive.Content>

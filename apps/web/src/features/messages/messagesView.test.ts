@@ -134,7 +134,7 @@ describe("labels", () => {
     expect(topicStateLabel(topic("t", { state: "done" }), NOW)).toBe("done here · 1d");
   });
 
-  test("[ and ] step through topics without wrapping", () => {
+  test("{ and } step through topics without wrapping", () => {
     const topics = [topic("a"), topic("b"), topic("c")];
     expect(stepTopic(topics, "b", 1)?.thread_id).toBe("c");
     expect(stepTopic(topics, "c", 1)?.thread_id).toBe("c");

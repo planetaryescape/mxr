@@ -147,7 +147,7 @@ Opening a person shows how you know them ("You've written 48 times since
 2023. Last: Tuesday.") and opens the selected topic as a conversation. The
 compact conversation control names the selected subject and shows whether it
 is direct or a group; open it to switch topics. Group topics name their other
-participants, and the `[` and `]` keys step through topics.
+participants, and the `{` and `}` keys step through topics.
 
 In the web app, choose a person's name to inspect and copy their linked email
 addresses. Choose a message's sender name to see the original From address;

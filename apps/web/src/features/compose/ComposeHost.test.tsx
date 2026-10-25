@@ -542,6 +542,49 @@ test("a Messages reply stays in its thread slot and summarizes the live draft au
   expect(within(threadSlot).queryByLabelText("To")).toBeNull();
 });
 
+test("popout and fullscreen reply dialogs include the source subject in their accessible name", async () => {
+  api.startComposeSession.mockResolvedValue(
+    session({
+      frontmatter: {
+        to: "samir@example.com",
+        cc: "",
+        bcc: "",
+        subject: "Reply subject",
+        from: "me@example.com",
+        attach: [],
+      },
+      kind: "reply",
+    }),
+  );
+  renderHost(
+    <>
+      <div id="inline-composer-slot-thread-1" data-testid="thread-slot" />
+      <ComposeHost />
+    </>,
+  );
+  act(() =>
+    useComposeUi.getState().openCompose(
+      {
+        key: "compose:reply:m1",
+        title: "Reply",
+        kind: "reply",
+        messageId: "m1",
+        contextThreadId: "thread-1",
+        contextTitle: "Contract renewal",
+        quiet: true,
+      },
+      "inline",
+    ),
+  );
+  await within(screen.getByTestId("thread-slot")).findByTestId("compose-summary");
+
+  fireEvent.click(screen.getByRole("button", { name: "Popout" }));
+  expect(await screen.findByRole("dialog", { name: "Reply · Contract renewal" })).toBeVisible();
+
+  fireEvent.click(screen.getByRole("button", { name: "Fullscreen (⇧⌘F)" }));
+  expect(await screen.findByRole("dialog", { name: "Reply · Contract renewal" })).toBeVisible();
+});
+
 test("a docked reply names its source and restores edited recipients and body after another topic opens", async () => {
   const stored = new Map<string, ComposeSessionResponse>();
   const makeReply = (messageId: string) =>

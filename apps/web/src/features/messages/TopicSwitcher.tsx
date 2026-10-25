@@ -64,7 +64,7 @@ export function TopicSwitcher({
                 />
               </button>
             </CollapsibleTrigger>
-            <KeyChip className="hidden shrink-0 sm:inline-flex">[ ]</KeyChip>
+            <KeyChip className="hidden shrink-0 sm:inline-flex">{"{ }"}</KeyChip>
           </div>
           <CollapsibleContent>
             <ul

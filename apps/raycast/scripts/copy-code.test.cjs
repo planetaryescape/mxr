@@ -117,3 +117,19 @@ test("no syncable accounts does not search historical codes", async () => {
   assert.deepEqual(copies, []);
   assert.match(hud.at(-1), /No enabled mail accounts/);
 });
+
+test("an older daemon keeps its 404 status and shows update guidance without copying", async () => {
+  const { getFreshCodes } = require("../src/bridge/mail.ts");
+  const { BridgeError } = require("../src/bridge/client.ts");
+  bridge((url) => {
+    assert.equal(url.pathname, "/api/v1/mail/sync/all");
+    return Response.json({ error: "Route not found" }, { status: 404 });
+  });
+  await assert.rejects(
+    getFreshCodes(),
+    (error) => error instanceof BridgeError && error.status === 404,
+  );
+  await copyLatestCode();
+  assert.deepEqual(copies, []);
+  assert.match(hud.at(-1), /Update mxr to the latest version/);
+});

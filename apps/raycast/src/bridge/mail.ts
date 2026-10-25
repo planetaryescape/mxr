@@ -1,4 +1,4 @@
-import { request } from "./client";
+import { BridgeError, request } from "./client";
 import type { Reply, Schemas } from "./types";
 
 // The mailbox, search and thread routes answer with the bridge's own row
@@ -162,8 +162,9 @@ export async function getFreshCodes(): Promise<OneTimeCode[]> {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
   } catch (error) {
-    throw new Error(
+    throw new BridgeError(
       `Could not refresh mail: ${error instanceof Error ? error.message : String(error)}`,
+      error instanceof BridgeError ? error.status : undefined,
     );
   }
   return getCodes();

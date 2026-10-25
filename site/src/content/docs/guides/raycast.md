@@ -95,8 +95,7 @@ not keep it.
 mxr finds codes by rules, the same way as `mxr code`; see
 [Updates](/guides/updates/#copy-a-one-time-code) for what counts. An
 Updates line with a code shows it and offers Copy Code first, and reading
-a sign-in email offers Copy Code while the code still works. Copying
-codes needs mxr 0.6.138 or later.
+a sign-in email offers Copy Code while the code still works. Keep mxr up to date so this command can refresh mail before reading codes.
 
 ## Search and filter by account
 

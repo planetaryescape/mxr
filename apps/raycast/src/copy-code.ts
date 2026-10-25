@@ -28,7 +28,7 @@ export default async function CopyLatestCode() {
   } catch (failure) {
     await showHUD(
       failure instanceof BridgeError && failure.status === 404
-        ? "Update mxr to 0.6.138 or later to copy codes"
+        ? "Update mxr to the latest version to refresh mail and copy codes"
         : message(failure),
     );
   }

@@ -459,6 +459,7 @@ pub(crate) enum AnalyticsResultPayload {
 
 pub(crate) struct ComposeReadyData {
     pub(crate) account_id: mxr_core::AccountId,
+    pub(crate) draft_revision: Option<i64>,
     pub(crate) intent: mxr_core::DraftIntent,
     pub(crate) draft_path: std::path::PathBuf,
     pub(crate) cursor_line: usize,

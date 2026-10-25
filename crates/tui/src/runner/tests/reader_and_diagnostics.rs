@@ -1251,6 +1251,7 @@ fn refine_pending_draft_saves_current_body_then_queues_compose_assist() {
     let mut app = App::new();
     let account_id = AccountId::new();
     app.compose.pending_send_confirm = Some(PendingSend {
+        draft_revision: None,
         account_id: account_id.clone(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: "sender@example.com".into(),
@@ -1321,6 +1322,7 @@ fn refine_pending_draft_saves_current_body_then_queues_compose_assist() {
 fn proof_revision_keeps_the_original_body_and_names_the_displayed_proposal() {
     let mut app = App::new();
     let pending = PendingSend {
+        draft_revision: None,
         account_id: AccountId::new(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: "sender@example.com".into(),
@@ -1391,6 +1393,7 @@ fn proof_revision_keeps_the_original_body_and_names_the_displayed_proposal() {
 fn proof_accept_calls_apply_then_reloads_the_draft_for_safety_review() {
     let mut app = App::new();
     let pending = PendingSend {
+        draft_revision: None,
         account_id: AccountId::new(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: "sender@example.com".into(),
@@ -1445,6 +1448,7 @@ fn proof_accept_calls_apply_then_reloads_the_draft_for_safety_review() {
 fn proof_with_gaps_can_be_accepted_and_send_safety_is_rechecked() {
     let mut app = App::new();
     let pending = PendingSend {
+        draft_revision: None,
         account_id: AccountId::new(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: "sender@example.com".into(),
@@ -1701,6 +1705,7 @@ fn proof_scroll_keys_reach_long_text_and_reset_on_version_change() {
 
 fn test_pending_send(path: &str) -> PendingSend {
     PendingSend {
+        draft_revision: None,
         account_id: AccountId::new(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: "sender@example.com".into(),

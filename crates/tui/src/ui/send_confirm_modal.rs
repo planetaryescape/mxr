@@ -227,6 +227,7 @@ mod tests {
 
     fn pending(mode: PendingSendMode) -> PendingSend {
         PendingSend {
+            draft_revision: None,
             account_id: mxr_core::AccountId::new(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: "a@example.com".into(),

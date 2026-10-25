@@ -135,9 +135,11 @@ impl App {
             self.push_toast(Toast::error("Reviewed send belongs to another account"));
             return;
         }
-        let revision = retained
-            .as_ref()
-            .map_or(1, |(_, identity)| identity.expected_revision);
+        let revision = pending.draft_revision.unwrap_or_else(|| {
+            retained
+                .as_ref()
+                .map_or(1, |(_, identity)| identity.expected_revision)
+        });
         let draft = mxr_core::Draft {
             revision: Some(revision),
             id: pending.draft_id(),

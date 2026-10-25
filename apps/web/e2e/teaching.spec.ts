@@ -137,7 +137,7 @@ test("never more than one hint, and dismissing one doesn't bring up the next", a
       if ((await updates.getByTestId("now-row").getAttribute("data-focused")) === "true") break;
       await page.keyboard.press("j");
     }
-    await expect(updates.getByTestId("hint")).toContainText("A lets go of this digest only");
+    await expect(updates.getByTestId("hint")).toContainText("E lets go of this digest only");
     await expect(hints(page)).toHaveCount(1);
   }
 });

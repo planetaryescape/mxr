@@ -57,14 +57,7 @@ export function MailRowItem({
             title="Reply"
             icon={Icon.Reply}
             shortcut={keyFor("mail.reply")}
-            target={
-              <ReplyForm
-                messageId={row.id}
-                threadId={row.thread_id}
-                to={row.sender}
-                onSent={onChange}
-              />
-            }
+            target={<ReplyForm messageId={row.id} to={row.sender} onSent={onChange} />}
           />
           {webBase && (
             <Action.OpenInBrowser

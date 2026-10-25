@@ -326,6 +326,23 @@ pub(crate) enum AsyncResult {
         title: String,
         result: Result<String, MxrError>,
     },
+    ComposeAssistLoaded {
+        pending: Box<app::PendingSend>,
+        request_id: u64,
+        result: Result<mxr_protocol::ComposeProposalData, MxrError>,
+    },
+    ComposeAssistAccepted {
+        pending: Box<app::PendingSend>,
+        request_id: u64,
+        reopen_editor: bool,
+        result: Result<
+            (
+                mxr_core::Draft,
+                Result<mxr_core::DraftSafetyReport, MxrError>,
+            ),
+            MxrError,
+        >,
+    },
     /// Result of one of the four analytics list requests. The
     /// dispatcher keys the response to the active view at the time
     /// the request was sent — late responses for a switched-away

@@ -7,6 +7,7 @@
 )]
 
 pub mod attachments;
+pub mod body_regions;
 pub mod draft_codec;
 pub mod editor;
 pub mod email;

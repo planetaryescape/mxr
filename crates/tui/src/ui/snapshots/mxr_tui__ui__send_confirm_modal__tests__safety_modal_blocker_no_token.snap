@@ -18,7 +18,7 @@ expression: rendered
 "        │Safety: BLOCKED                                                                                       │        "
 "        │  [BLOCK] no recipients                                                                               │        "
 "        │                                                                                                      │        "
-"        │[e/Esc] edit again   [O] override + send   [#] discard draft                                          │        "
+"        │[e/Esc] edit again   [#] discard draft                                                                │        "
 "        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯        "
 "                                                                                                                        "
 "                                                                                                                        "

@@ -7,6 +7,7 @@ mod attachment_helpers;
 mod body_helpers;
 pub(crate) mod bulk_preview;
 mod compose_actions;
+mod compose_assist;
 mod compose_helpers;
 mod diagnostics_actions;
 mod draw;

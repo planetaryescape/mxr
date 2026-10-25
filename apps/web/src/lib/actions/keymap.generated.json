@@ -8168,6 +8168,236 @@
           "to_key": "#"
         }
       ]
+    },
+    {
+      "id": "compose.proof.accept",
+      "label": "Accept writing proof",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofAccept",
+          "keys": [
+            "y"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose.proof.accept-edit",
+      "label": "Accept proof and edit",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofAcceptEdit",
+          "keys": [
+            "e"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose.proof.revise",
+      "label": "Revise writing proof",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofRevise",
+          "keys": [
+            "n"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose.proof.keep",
+      "label": "Keep my draft",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofKeep",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose.proof.previous",
+      "label": "Previous writing proof",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofPrevious",
+          "keys": [
+            "ArrowLeft"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose.proof.next",
+      "label": "Next writing proof",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofNext",
+          "keys": [
+            "ArrowRight"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose.proof.scroll-up",
+      "label": "Scroll writing proof up",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofScrollUp",
+          "keys": [
+            "ArrowUp",
+            "k"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose.proof.scroll-down",
+      "label": "Scroll writing proof down",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofScrollDown",
+          "keys": [
+            "ArrowDown",
+            "j"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose.proof.page-up",
+      "label": "Page up in writing proof",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofPageUp",
+          "keys": [
+            "PageUp"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose.proof.page-down",
+      "label": "Page down in writing proof",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofPageDown",
+          "keys": [
+            "PageDown"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose.proof.top",
+      "label": "Top of writing proof",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofScrollTop",
+          "keys": [
+            "Home"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose.proof.bottom",
+      "label": "Bottom of writing proof",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofScrollBottom",
+          "keys": [
+            "End"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
     }
   ],
   "strip": [

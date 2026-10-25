@@ -17,6 +17,38 @@ fn the_shipped_definition_is_sound() {
 }
 
 #[test]
+fn compose_proof_keys_are_registered_only_for_the_proof_overlay() {
+    let contexts = defaults().tui_keymap();
+    let proof = contexts
+        .get("compose-assist-proof")
+        .expect("proof overlay has its own TUI key context");
+    for (key, action) in [
+        ("y", "ComposeProofAccept"),
+        ("e", "ComposeProofAcceptEdit"),
+        ("n", "ComposeProofRevise"),
+        ("Escape", "ComposeProofKeep"),
+        ("ArrowLeft", "ComposeProofPrevious"),
+        ("ArrowRight", "ComposeProofNext"),
+        ("ArrowUp", "ComposeProofScrollUp"),
+        ("ArrowDown", "ComposeProofScrollDown"),
+        ("PageUp", "ComposeProofPageUp"),
+        ("PageDown", "ComposeProofPageDown"),
+        ("Home", "ComposeProofScrollTop"),
+        ("End", "ComposeProofScrollBottom"),
+    ] {
+        assert_eq!(proof.get(key).map(String::as_str), Some(action), "{key}");
+    }
+    for context in TUI_CONTEXTS {
+        assert!(
+            !contexts.get(context).is_some_and(|bindings| bindings
+                .values()
+                .any(|name| name.starts_with("ComposeProof"))),
+            "proof overlay actions leaked into mail context {context}"
+        );
+    }
+}
+
+#[test]
 fn the_tui_keys_are_what_its_dispatcher_does() {
     // Written by the TUI's dispatcher probe (crates/tui/src/runner/tests/keymap.rs).
     let probed: BTreeMap<String, BTreeMap<String, String>> = serde_json::from_str(

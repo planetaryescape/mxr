@@ -2,6 +2,8 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "include": ["src/**/*", "raycast-env.d.ts"],
   "compilerOptions": {
+    "baseUrl": "../web/src",
+    "paths": { "@/api/generated": ["api/generated.ts"] },
     "lib": ["ES2023"],
     "module": "commonjs",
     "target": "ES2023",

@@ -5,6 +5,7 @@ import {
   splitMessageText,
 } from "../../../web/src/features/thread/textSegments";
 import type { MessageBody } from "../bridge/mail";
+import { escapeLine } from "./markdown";
 
 // Mail bodies as Raycast markdown. Plain text goes through the web reader's
 // own split, so what folds (long quotes, signatures) folds the same way in
@@ -25,19 +26,6 @@ turndown.addRule("no-remote-images", {
     return alt ? `[${alt}]` : "";
   },
 });
-
-/** Characters that would turn email text into markdown it never meant. */
-const SPECIAL = /([\\`*_[\]<>#|~])/g;
-
-function escapeLine(line: string): string {
-  // A line of dashes or equals signs would make the line above a heading.
-  if (/^\s*([-=])\1{2,}\s*$/.test(line)) return `\\${line.trim()}`;
-  // A leading "1." or "-" would start a list.
-  return line
-    .replace(SPECIAL, "\\$1")
-    .replace(/^(\s*)(\d+)\.(\s)/, "$1$2\\.$3")
-    .replace(/^(\s*)([-+])(\s)/, "$1\\$2$3");
-}
 
 /**
  * Sender-controlled header text (subject, names, file names) on one line,

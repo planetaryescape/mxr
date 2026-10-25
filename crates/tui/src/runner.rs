@@ -4877,6 +4877,7 @@ pub async fn run() -> anyhow::Result<()> {
                                     };
                                     let mut pending_send = *pending;
                                     pending_send.body = body;
+                                    pending_send.draft_revision = draft.revision;
                                     pending_send.mode = app::PendingSendMode::SendOrSave;
                                     match safety {
                                         Ok(report) => {
@@ -4901,6 +4902,17 @@ pub async fn run() -> anyhow::Result<()> {
                                     if let Err(error) = std::fs::write(&pending_send.draft_path, content) {
                                         app.compose.pending_send_confirm = Some(pending_send);
                                         app.report_error("Accepted draft file could not be updated", error.to_string());
+                                        continue;
+                                    }
+                                    #[cfg(not(test))]
+                                    if let Err(error) = crate::send_recovery_state::retain_reviewed_compose(
+                                        &draft.account_id,
+                                        &draft.id,
+                                        &mxr_core::SendIdentity::for_draft(&draft),
+                                        &pending_send.draft_path,
+                                    ) {
+                                        app.compose.pending_send_confirm = Some(pending_send);
+                                        app.report_error("Accepted draft could not be tracked", error.to_string());
                                         continue;
                                     }
                                     if reopen_editor {

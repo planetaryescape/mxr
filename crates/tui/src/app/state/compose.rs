@@ -9,6 +9,8 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct PendingSend {
     pub account_id: AccountId,
+    /// Canonical draft revision this editor session was based on.
+    pub draft_revision: Option<i64>,
     pub fm: mxr_compose::frontmatter::ComposeFrontmatter,
     pub body: String,
     pub draft_path: std::path::PathBuf,

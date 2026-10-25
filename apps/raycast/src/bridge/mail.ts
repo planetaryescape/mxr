@@ -130,6 +130,45 @@ export async function getCodes(account?: string, limit = 5): Promise<OneTimeCode
   return (await request<Reply<"OneTimeCodes">>(`/api/v1/mail/codes?${query}`)).codes;
 }
 
+/** Wait for the sync pass before looking for a code that may have just arrived. */
+export async function getFreshCodes(): Promise<OneTimeCode[]> {
+  try {
+    const { results } = await request<{ results: Schemas["SyncAccountResult"][] }>(
+      "/api/v1/mail/sync/all",
+      { method: "POST" },
+    );
+    if (results.length === 0) throw new Error("No enabled mail accounts are available to sync.");
+    const failed = results.find((result) => result.result === "failed");
+    if (failed)
+      throw new Error(`${failed.account_name}: ${failed.error ?? "sync could not start"}`);
+    let pending = results;
+    const deadline = Date.now() + 30_000;
+    while (pending.length > 0) {
+      const statuses = await Promise.all(
+        pending.map(async (account) => {
+          const { sync } = await request<Reply<"SyncStatus">>(
+            `/api/v1/mail/sync/status?account_id=${encodeURIComponent(account.account_id)}`,
+          );
+          if (!sync.sync_in_progress && sync.last_error) {
+            throw new Error(`${account.account_name}: ${sync.last_error}`);
+          }
+          return { account, running: sync.sync_in_progress };
+        }),
+      );
+      pending = statuses.filter((status) => status.running).map((status) => status.account);
+      if (pending.length === 0) break;
+      if (Date.now() >= deadline)
+        throw new Error("Mail is still syncing. Try Copy Latest Code again.");
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  } catch (error) {
+    throw new Error(
+      `Could not refresh mail: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return getCodes();
+}
+
 /** "Google (accounts.google.com)": a borrowed brand shows beside its host. */
 export function codeSender(code: OneTimeCode): string {
   return code.sender_host && code.sender_host.toLowerCase() !== code.sender_name.toLowerCase()

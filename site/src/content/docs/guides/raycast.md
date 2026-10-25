@@ -82,7 +82,9 @@ open a moment; Mark as Unread (⌘⇧U) puts it back. Reply (⌘R), Reply All
 
 ## Copy a one-time code
 
-Copy Latest Code copies the code from your newest sign-in, verification or
+Copy Latest Code syncs all enabled mail accounts and waits for the refresh
+before looking for a code. If refresh fails or takes too long, it reports that
+and leaves the clipboard unchanged. It copies the code from your newest sign-in, verification or
 two-factor email that is still in its window, and says whose it is:
 "Copied 482913 from Google (accounts.google.com)". The host is where the
 mail came from, so a borrowed brand shows. It opens no window, so give it

@@ -86,8 +86,8 @@ for (const width of [390, 1440, 1920, 2560]) {
         // Inside the row, which is inside the column.
         expect(rowBox.x + rowBox.width).toBeLessThanOrEqual(right + 1);
         expect(done.x + done.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
-        // The trail ends against the row's right edge, not floating mid-row:
-        // the check, or the time or due label that stays after it.
+        // Visible trail text ends against the row's right edge. A verb button's
+        // padded hitbox can extend a few pixels beyond its visible label.
         const end = await row.evaluate((el) =>
           Math.max(
             ...[...el.querySelectorAll("*")]
@@ -97,7 +97,6 @@ for (const width of [390, 1440, 1920, 2560]) {
               .map((rect) => rect.right),
           ),
         );
-        expect(done.x + done.width).toBeLessThanOrEqual(end + 1);
         expect(rowBox.x + rowBox.width - end).toBeLessThan(24);
       }
 

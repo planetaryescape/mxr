@@ -142,7 +142,11 @@ export function ComposeProof({
                     onAction={async () => {
                       if (loading) return;
                       if (!choice.available) {
-                        await showToast({ style: Toast.Style.Failure, title: "Model unavailable", message: choice.unavailable_reason ?? "Choose another model." });
+                        await showToast({
+                          style: Toast.Style.Failure,
+                          title: "Model unavailable",
+                          message: choice.unavailable_reason ?? "Choose another model.",
+                        });
                         return;
                       }
                       setLoading(true);

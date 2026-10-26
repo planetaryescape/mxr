@@ -156,6 +156,8 @@ impl IpcConnection {
             account_id: draft.account_id.clone(),
             filename,
             mime_type,
+            content_id: None,
+            content_location: None,
             length_bytes: bytes.len() as u64,
             sha256: Sha256::digest(bytes)
                 .iter()
@@ -278,6 +280,8 @@ impl IpcConnection {
                         account_id: draft.account_id.clone(),
                         filename,
                         mime_type: "application/octet-stream".into(),
+                        content_id: None,
+                        content_location: None,
                         length_bytes: bytes.len() as u64,
                         sha256: Sha256::digest(&bytes)
                             .iter()

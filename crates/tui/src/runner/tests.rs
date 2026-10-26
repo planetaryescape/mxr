@@ -182,6 +182,7 @@ fn outcome_guidance_uses_retained_native_query_when_no_owner_is_in_response() {
             local_message_id: None,
             provider_message_id: None,
             rfc2822_message_id: None,
+            recovery: None,
         }),
     });
     assert!(text.contains("Provider accepted this send. Do not resend."));
@@ -191,4 +192,32 @@ fn outcome_guidance_uses_retained_native_query_when_no_owner_is_in_response() {
         !text.contains("mxr send-outcome"),
         "CLI recovery requires an original owner absent from this response"
     );
+}
+
+#[test]
+fn waiting_outcome_reports_automatic_retry_without_claiming_acceptance() {
+    let text = super::format_platform_response(&mxr_protocol::ResponseData::SendOutcome {
+        outcome: Some(mxr_core::DraftSendOutcome {
+            identity: mxr_core::SendIdentity {
+                operation_id: "synthetic:2".into(),
+                expected_revision: 2,
+            },
+            account_id: AccountId::new(),
+            draft_id: DraftId::new(),
+            state: mxr_core::SendOutcomeState::Waiting,
+            local_message_id: None,
+            provider_message_id: None,
+            rfc2822_message_id: Some("<synthetic@example.test>".into()),
+            recovery: Some(mxr_core::SendRecoveryStatus {
+                phase: mxr_core::SendSubmissionPhase::Cooldown,
+                attempts: 1,
+                retry_at: Some("2026-10-26T12:15:00Z".parse().unwrap()),
+                reason: None,
+            }),
+        }),
+    });
+    assert!(text.contains("Waiting for the mail provider"), "{text}");
+    assert!(text.contains("2026-10-26"), "{text}");
+    assert!(!text.contains("Provider accepted"), "{text}");
+    assert!(!text.contains("Acceptance uncertain"), "{text}");
 }

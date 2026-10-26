@@ -1287,6 +1287,76 @@ async fn openapi_spec_snapshot() {
     insta::assert_json_snapshot!("openapi_spec_summary", summary);
 }
 
+#[tokio::test]
+async fn forward_session_preview_and_updates_keep_original_html_and_managed_files() {
+    let temp = TempDir::new().unwrap();
+    let path = temp.path().join("forward.md");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let original = "---------- Forwarded message ----------\nFrom: original@example.com\n\nOriginal **literal**";
+    let source = mxr_core::ForwardSource {
+        draft_id: draft_id.clone(), account_id: account_id.clone(), message_id: MessageId::new(),
+        content: DraftContent::html("<html><body><table class='original'><tr><td>Original **literal**</td></tr></table></body></html>", Some(original.into())),
+        attachments: vec![mxr_core::DraftAttachment {
+            id: mxr_core::DraftAttachmentId::new(), draft_id: draft_id.clone(), account_id: account_id.clone(), filename: "report.pdf".into(), mime_type: "application/pdf".into(), content_id: None, content_location: None,
+            length_bytes: 0, sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".into(),
+        }],
+    };
+    let fm = ComposeFrontmatter {
+        to: "synthetic@example.com".into(),
+        from: "fake@example.com".into(),
+        subject: "Fwd: Report".into(),
+        intent: mxr_core::DraftIntent::Forward,
+        attach: mxr_compose::forward::resource_references(&source),
+        forward_source: Some(source),
+        ..Default::default()
+    };
+    let raw = render_compose_file(&fm, &format!("Please review.\n\n{original}"), None).unwrap();
+    let session = compose_session_from_snapshot(&path, &raw, None).unwrap();
+    assert_eq!(
+        session["frontmatter"]["attach"].as_array().unwrap().len(),
+        1
+    );
+    let preview = session["previewHtml"].as_str().unwrap();
+    assert!(preview.contains("<table class='original'>"));
+    assert!(preview.find("Please review.").unwrap() < preview.find("<table").unwrap());
+    let draft = compose_draft_from_snapshot(
+        path.to_str().unwrap(),
+        &account_id.to_string(),
+        None,
+        ComposeDraftValidation::Incomplete,
+        &raw,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(draft.id, draft_id);
+    assert!(draft.attachments.is_empty());
+    assert_eq!(draft.managed_attachments.as_ref().unwrap().len(), 1);
+    let DraftContent::Html { html, .. } = &draft.content else {
+        panic!("forward HTML");
+    };
+    assert_eq!(html, preview);
+    let updated_raw =
+        render_compose_file(&fm, &format!("New introduction.\n\n{original}"), None).unwrap();
+    let updated = compose_draft_from_snapshot(
+        path.to_str().unwrap(),
+        &account_id.to_string(),
+        Some(draft_id.clone()),
+        ComposeDraftValidation::Incomplete,
+        &updated_raw,
+        Some(draft.clone()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(updated.id, draft_id);
+    assert_eq!(updated.managed_attachments, draft.managed_attachments);
+    assert!(updated
+        .content
+        .analysis_text()
+        .starts_with("New introduction."));
+}
+
 #[test]
 fn openapi_response_objects_have_the_required_description() {
     use utoipa::OpenApi;
@@ -2918,6 +2988,8 @@ async fn compose_attachment_upload_returns_managed_resource_and_revision() {
         account_id: account_id.clone(),
         filename: "notes.txt".into(),
         mime_type: "text/plain".into(),
+        content_id: None,
+        content_location: None,
         length_bytes: 16,
         sha256: "a".repeat(64),
     };

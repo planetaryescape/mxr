@@ -36,6 +36,13 @@ pub(crate) async fn prepare_reviewed_compose(
             data: ResponseData::SendOutcome {
                 outcome: Some(outcome),
             },
+        } if outcome.state == SendOutcomeState::Waiting => {
+            return Err(MxrError::Ipc("Approved send is waiting for the provider and will retry automatically. Check its retained outcome before changing this compose file or scheduling another send.".into()));
+        }
+        Response::Ok {
+            data: ResponseData::SendOutcome {
+                outcome: Some(outcome),
+            },
         } if matches!(
             outcome.state,
             SendOutcomeState::Unknown | SendOutcomeState::Accepted

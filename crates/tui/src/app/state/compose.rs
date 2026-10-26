@@ -99,6 +99,9 @@ impl ComposeAssistReview {
 
 impl PendingSend {
     pub(crate) fn draft_id(&self) -> mxr_core::DraftId {
+        if let Some(source) = &self.fm.forward_source {
+            return source.draft_id.clone();
+        }
         mxr_core::DraftId::from_provider_id("compose-file", &self.draft_path.to_string_lossy())
     }
 
@@ -189,6 +192,7 @@ pub struct ComposeState {
     pub last_send_query: Option<String>,
     pub pending_send_mutations: HashMap<crate::app::MutationId, (PendingSend, bool)>,
     pub last_send_identity: Option<(AccountId, mxr_core::SendIdentity)>,
+    pub send_recovery_preview: Option<(AccountId, String, String)>,
     pub pending_draft_cleanup: Vec<std::path::PathBuf>,
     pub active_draft_cleanup: std::collections::HashSet<std::path::PathBuf>,
     pub pending_compose: Option<ComposeAction>,

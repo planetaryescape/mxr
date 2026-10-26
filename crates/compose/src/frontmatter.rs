@@ -37,6 +37,9 @@ pub struct ComposeFrontmatter {
     pub attach: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
+    /// Prepared original content and daemon-owned resources for a forward.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forward_source: Option<mxr_core::ForwardSource>,
 }
 
 const FRONTMATTER_DELIMITER: &str = "---";
@@ -63,7 +66,10 @@ pub fn parse_compose_file(content: &str) -> Result<(ComposeFrontmatter, String),
         .map_err(|e| ComposeError::InvalidFrontmatter(e.to_string()))?;
 
     // Strip context block
-    let body = if let Some(ctx_pos) = rest.find(CONTEXT_MARKER) {
+    let body = if let Some(ctx_pos) = rest
+        .find(CONTEXT_MARKER)
+        .filter(|_| frontmatter.intent != DraftIntent::Forward)
+    {
         rest[..ctx_pos].to_string()
     } else {
         rest.to_string()
@@ -164,6 +170,7 @@ mod tests {
             thread_id: None,
             attach: Vec::new(),
             signature: None,
+            forward_source: None,
         };
         let rendered = render_compose_file(&fm, "Hello!", None).unwrap();
         let (parsed_fm, parsed_body) = parse_compose_file(&rendered).unwrap();
@@ -186,6 +193,7 @@ mod tests {
             thread_id: None,
             attach: Vec::new(),
             signature: None,
+            forward_source: None,
         };
         let context = "From: alice@example.com\nDate: 2026-03-15\n\nOriginal message.";
         let rendered = render_compose_file(&fm, "My reply.", Some(context)).unwrap();
@@ -223,6 +231,7 @@ mod tests {
                 thread_id: None,
                 attach: Vec::new(),
                 signature: None,
+                forward_source: None,
             };
 
             let rendered = render_compose_file(&fm, &body, None)?;

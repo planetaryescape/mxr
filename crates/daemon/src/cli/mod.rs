@@ -1719,6 +1719,14 @@ pub enum Command {
     },
     /// Inspect a send operation after disconnect, including after draft cleanup.
     SendOutcome {
+        /// Preview or resume a legacy false-unknown using matched daemon log evidence.
+        #[arg(long)]
+        recover_known_not_submitted: bool,
+        #[arg(long, requires = "recover_known_not_submitted")]
+        dry_run: bool,
+        /// Evidence fingerprint returned by the recovery preview.
+        #[arg(long, requires = "recover_known_not_submitted")]
+        expected_evidence_sha256: Option<String>,
         /// Original workspace JSON retained with the send review.
         #[arg(long)]
         expected_workspace: Option<String>,

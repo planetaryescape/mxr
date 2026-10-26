@@ -2867,6 +2867,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/send-outcomes/{operation_id}/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["mail_recover_send_outcome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/send-time": {
         parameters: {
             query?: never;
@@ -6425,6 +6441,7 @@ export interface components {
             attach?: string[];
             bcc?: string;
             cc?: string;
+            forward_source?: components["schemas"]["ForwardSource"] | null;
             from: string;
             "in-reply-to"?: string | null;
             intent?: components["schemas"]["DraftIntent"];
@@ -7370,6 +7387,10 @@ export interface components {
         /** @description Immutable daemon-owned bytes belonging to one saved draft. */
         DraftAttachment: {
             account_id: components["schemas"]["AccountId"];
+            /** @description Original Content-ID of a related forwarded MIME part. */
+            content_id?: string | null;
+            /** @description Original MIME location for related parts whose HTML uses a relative URL. */
+            content_location?: string | null;
             draft_id: components["schemas"]["DraftId"];
             filename: string;
             id: components["schemas"]["DraftAttachmentId"];
@@ -7636,6 +7657,7 @@ export interface components {
             identity: components["schemas"]["SendIdentity"];
             local_message_id?: components["schemas"]["MessageId"] | null;
             provider_message_id?: string | null;
+            recovery?: components["schemas"]["SendRecoveryStatus"] | null;
             rfc2822_message_id?: string | null;
             state: components["schemas"]["SendOutcomeState"];
         };
@@ -7814,7 +7836,19 @@ export interface components {
             account_id: components["schemas"]["AccountId"];
             forwarded_content: string;
             from: string;
+            source?: components["schemas"]["ForwardSource"] | null;
             subject: string;
+        };
+        /**
+         * @description Immutable original content prepared by the daemon for a forward. The editor
+         *     edits only the introduction; original HTML and attachment bytes stay intact.
+         */
+        ForwardSource: {
+            account_id: components["schemas"]["AccountId"];
+            attachments: components["schemas"]["DraftAttachment"][];
+            content: components["schemas"]["DraftContentSchema"];
+            draft_id: components["schemas"]["DraftId"];
+            message_id: components["schemas"]["MessageId"];
         };
         /** @description Returned by `Request::GetFreshness`. */
         FreshnessData: {
@@ -10438,6 +10472,10 @@ export interface components {
             kind: string;
             record_ids: string[];
         };
+        RecoverSendBody: {
+            dry_run: boolean;
+            expected_evidence_sha256?: string | null;
+        };
         RecoveredComposeSession: {
             /** @description Confirmed recovery paths in submitted attachment order. */
             attachment_paths: string[];
@@ -11933,6 +11971,14 @@ export interface components {
                   account_id: components["schemas"]["AccountId"];
                   /** @enum {string} */
                   cmd: "GetSendOutcome";
+                  operation_id: string;
+              }
+            | {
+                  account_id: components["schemas"]["AccountId"];
+                  /** @enum {string} */
+                  cmd: "RecoverSendOutcome";
+                  dry_run: boolean;
+                  expected_evidence_sha256?: string | null;
                   operation_id: string;
               }
             | {
@@ -13704,6 +13750,14 @@ export interface components {
                   outcome?: components["schemas"]["DraftSendOutcome"] | null;
               }
             | {
+                  evidence_sha256?: string | null;
+                  /** @enum {string} */
+                  kind: "SendRecoveryPreview";
+                  outcome: components["schemas"]["DraftSendOutcome"];
+                  reason: string;
+                  recoverable: boolean;
+              }
+            | {
                   candidates: components["schemas"]["DraftCommitmentCandidateData"][];
                   /** @enum {string} */
                   kind: "DraftCommitments";
@@ -14638,7 +14692,28 @@ export interface components {
             operation_id: string;
         };
         /** @enum {string} */
-        SendOutcomeState: "unknown" | "accepted" | "not_accepted";
+        SendOutcomeState: "unknown" | "accepted" | "not_accepted" | "waiting";
+        SendRecoveryStatus: {
+            /** Format: int32 */
+            attempts: number;
+            phase: components["schemas"]["SendSubmissionPhase"];
+            /** @description Stable diagnostic code; never message bodies, addresses or credentials. */
+            reason?: string | null;
+            /** Format: date-time */
+            retry_at?: string | null;
+        };
+        /**
+         * @description The last boundary for which the adapter has positive evidence.
+         * @enum {string}
+         */
+        SendSubmissionPhase:
+            | "preparation"
+            | "cooldown"
+            | "authentication"
+            | "thread_resolution"
+            | "dispatch"
+            | "provider_response"
+            | "accepted";
         /** @enum {string} */
         SendTimeConfidenceData: "low" | "medium" | "high";
         SendTimeRecommendationData: {
@@ -22277,6 +22352,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    mail_recover_send_outcome: {
+        parameters: {
+            query: {
+                account_id: string;
+            };
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoverSendBody"];
+            };
+        };
+        responses: {
+            /** @description Evidence-bound recovery preview or resumed original operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
         };
     };

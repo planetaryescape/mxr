@@ -230,6 +230,8 @@ impl App {
             | Action::CheckArchiveOperation(_)
             | Action::SubmitArchiveOperation(_)
             | Action::CheckLastSendOutcome
+            | Action::PreviewLastSendRecovery
+            | Action::ResumePreviewedSend
             | Action::ReopenLastSendDraft
             | Action::OpenDiagnosticsScreen
             | Action::OpenAccountsScreen

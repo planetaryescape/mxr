@@ -281,6 +281,7 @@ mod tests {
                 thread_id: None,
                 attach: vec![],
                 signature: None,
+                forward_source: None,
             },
             body: "Body".into(),
             draft_path,

@@ -4505,6 +4505,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "parking_lot",
+ "percent-encoding",
  "predicates",
  "pretty_assertions",
  "proptest",

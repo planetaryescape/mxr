@@ -21,6 +21,8 @@ pub enum Action {
     OpenRulesScreen,
     OpenDiagnosticsScreen,
     CheckLastSendOutcome,
+    PreviewLastSendRecovery,
+    ResumePreviewedSend,
     PreviewArchiveSelection,
     CheckArchiveOperation(String),
     SubmitArchiveOperation(String),

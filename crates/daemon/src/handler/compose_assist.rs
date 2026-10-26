@@ -416,11 +416,10 @@ async fn gather(state: &AppState, target: &DraftTargetData) -> Result<Gathered, 
                     in_conversation(state, &parent.id, Some(to)).await?
                 }
                 (Some(parent), _) => in_conversation(state, &parent.id, None).await?,
-                // A stored forward keeps no record of the message it forwards (the
-                // forwarded text lives in the compose file's context block, and
-                // the draft has no reply headers), so it is written as a new
-                // message to its recipient. A client that knows the source asks
-                // with the `forward` target instead.
+                // A stored forward retains the original content and files, but
+                // not its source message id or reply headers. A client that
+                // knows the source asks with the `forward` target to resolve
+                // the conversation and relationship context.
                 (None, _) => {
                     let to = recipient.ok_or_else(no_recipient)?;
                     new_message(draft.account_id.clone(), &to, &draft.subject)

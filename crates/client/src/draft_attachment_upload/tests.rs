@@ -45,6 +45,8 @@ fn declaration(filename: &str, bytes: &[u8]) -> DraftAttachment {
         account_id: mxr_core::AccountId::new(),
         filename: filename.into(),
         mime_type: "application/octet-stream".into(),
+        content_id: None,
+        content_location: None,
         length_bytes: bytes.len() as u64,
         sha256: base16ct::lower::encode_string(&Sha256::digest(bytes)),
     }
@@ -386,6 +388,8 @@ async fn portable_upload_raw_variants_refuse_old_daemon_on_same_connection() {
         account_id: owner.account_id.clone(),
         filename: "a.txt".into(),
         mime_type: "text/plain".into(),
+        content_id: None,
+        content_location: None,
         length_bytes: 0,
         sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".into(),
     };

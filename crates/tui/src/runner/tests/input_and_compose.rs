@@ -300,6 +300,7 @@ fn pressing_s_with_blocked_verdict_is_a_noop() {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "hi".into(),
         draft_path: std::path::PathBuf::from("/tmp/draft.md"),
@@ -359,6 +360,7 @@ fn app_with_send_confirm(verdict_blocked: bool) -> App {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "hi".into(),
         draft_path: std::path::PathBuf::from("/tmp/draft.md"),
@@ -754,6 +756,7 @@ fn ctrl_a_adds_top_suggestion_to_cc() {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "hi".into(),
         draft_path: std::path::PathBuf::from("/tmp/draft.md"),
@@ -2226,6 +2229,7 @@ fn last_send_outcome_uses_a_durable_modal_without_mutation_status() {
         local_message_id: None,
         provider_message_id: None,
         rfc2822_message_id: None,
+        recovery: None,
     };
     let body = super::super::format_platform_response(&mxr_protocol::ResponseData::SendOutcome {
         outcome: Some(outcome),
@@ -2298,6 +2302,7 @@ async fn canonical_compose_ipc(
                         local_message_id: None,
                         provider_message_id: None,
                         rfc2822_message_id: None,
+                        recovery: None,
                     }),
                 },
                 Request::GetDraft { .. } => mxr_protocol::ResponseData::Draft {
@@ -2420,11 +2425,46 @@ async fn compose_schedule_key_dispatch_uses_conditional_canonical_revision() {
     server.await.unwrap();
 }
 
+#[test]
+fn compose_schedule_rejected_forward_preserves_review_and_selected_time() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("forward.md");
+    let mut app = App::new();
+    let mut pending = recovery_pending(file.clone());
+    pending.fm.forward_source = Some(mxr_core::ForwardSource {
+        draft_id: mxr_core::DraftId::new(),
+        account_id: AccountId::new(),
+        message_id: mxr_core::MessageId::new(),
+        content: mxr_core::DraftContent::html("<p>Original</p>", Some("Original".into())),
+        attachments: vec![],
+    });
+    app.compose.pending_send_confirm = Some(pending);
+    app.compose.pending_send_at_input = Some("in 2h".into());
+    app.compose
+        .pending_time
+        .update("in 2h", &app.modals.snooze_config);
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        app.compose
+            .pending_send_confirm
+            .as_ref()
+            .unwrap()
+            .draft_path,
+        file
+    );
+    assert_eq!(app.compose.pending_send_at_input.as_deref(), Some("in 2h"));
+    assert!(app.take_pending_platform_dispatch().is_empty());
+    assert!(app.take_pending_draft_cleanup().is_empty());
+}
+
 #[tokio::test]
 async fn alternate_compose_actions_block_unknown_or_accepted_before_persistence() {
     for state in [
         mxr_core::SendOutcomeState::Unknown,
         mxr_core::SendOutcomeState::Accepted,
+        mxr_core::SendOutcomeState::Waiting,
     ] {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("review.md");
@@ -2466,6 +2506,7 @@ async fn alternate_compose_actions_block_unknown_or_accepted_before_persistence(
                             local_message_id: None,
                             provider_message_id: None,
                             rfc2822_message_id: None,
+                            recovery: None,
                         }),
                     },
                 }))

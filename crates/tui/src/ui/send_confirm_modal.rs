@@ -241,6 +241,7 @@ mod tests {
                 thread_id: None,
                 attach: vec![],
                 signature: None,
+                forward_source: None,
             },
             body: "hi".into(),
             draft_path: std::path::PathBuf::from("/tmp/draft.md"),

@@ -700,6 +700,7 @@ fn rules_form_maps_link_filters_to_link_density() {
 }
 
 mod account_scope;
+mod approved_send_recovery;
 mod archive_recovery;
 mod arrivals;
 mod arrivals_report;
@@ -727,6 +728,7 @@ mod desk;
 mod desk_done;
 mod draft_attachment_resources;
 mod draft_revisions;
+mod forwarding;
 mod freshness;
 mod html_drafts;
 mod legacy_transport;

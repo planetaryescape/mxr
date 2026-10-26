@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn schema_100_round_trip_preserves_correction_undo_and_projection_retry() {
+async fn schema_101_round_trip_preserves_correction_undo_and_projection_retry() {
     let source = tempfile::tempdir().unwrap();
     let stage = tempfile::tempdir().unwrap();
     let store = Store::fresh_backup(&source.path().join("mxr.db"))
@@ -49,7 +49,7 @@ async fn schema_100_round_trip_preserves_correction_undo_and_projection_retry() 
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 100);
+    assert_eq!(manifest.schema_version, 101);
     inspect(stage.path()).await.unwrap();
     retire_restored(&stage.path().join("mxr.db")).await.unwrap();
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
@@ -86,8 +86,8 @@ async fn schema_100_round_trip_preserves_correction_undo_and_projection_retry() 
 }
 
 #[tokio::test]
-async fn exact_schema_97_98_and_99_backups_upgrade_without_rewriting_closed_history() {
-    for version in [97, 98, 99] {
+async fn exact_schema_97_through_100_backups_upgrade_without_rewriting_closed_history() {
+    for version in [97, 98, 99, 100] {
         let source = tempfile::tempdir().unwrap();
         let stage = tempfile::tempdir().unwrap();
         let store = Store::fresh_backup(&source.path().join("mxr.db"))
@@ -107,10 +107,16 @@ async fn exact_schema_97_98_and_99_backups_upgrade_without_rewriting_closed_hist
         )
         .await
         .unwrap();
-        sqlx::raw_sql(if version < 99 { "DROP TABLE assessment_authority; DROP TABLE asks_projection_outbox; DROP TABLE asks_legacy_links;" } else { "DROP TABLE assessment_authority;" })
+        sqlx::raw_sql(PRE_APPROVED_SENDS_SCHEMA)
             .execute(&mut db)
             .await
             .unwrap();
+        if version < 100 {
+            sqlx::raw_sql(if version < 99 { "DROP TABLE assessment_authority; DROP TABLE asks_projection_outbox; DROP TABLE asks_legacy_links;" } else { "DROP TABLE assessment_authority;" })
+            .execute(&mut db)
+            .await
+            .unwrap();
+        }
         if version == 97 {
             sqlx::query("DROP TABLE todo_corrections")
                 .execute(&mut db)
@@ -148,7 +154,7 @@ async fn exact_schema_97_98_and_99_backups_upgrade_without_rewriting_closed_hist
             .fetch_all(restored.reader())
             .await
             .unwrap();
-            assert_eq!(versions, [98, 99, 100]);
+            assert_eq!(versions, [98, 99, 100, 101]);
             restored.reader().close().await;
             restored.writer().close().await;
         }

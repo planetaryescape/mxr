@@ -1118,6 +1118,18 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
             }
         }
         "mxr_send_outcome" => v("Checking", "Checked", "check", "whether a send went out"),
+        "mxr_recover_send_outcome" => {
+            if dry {
+                v("Checking", "Checked", "check", "send recovery evidence")
+            } else {
+                v(
+                    "Resuming",
+                    "Resumed",
+                    "resume",
+                    "the original approved send",
+                )
+            }
+        }
 
         // Recovery
         "mxr_recovery_status" => v("Checking", "Checked", "check", "profile recovery"),
@@ -1445,6 +1457,26 @@ mod tests {
             walked += 1;
         }
         assert!(walked >= 20, "walked only {walked} tools");
+    }
+
+    #[test]
+    fn send_recovery_titles_never_claim_that_the_message_was_sent() {
+        let tool = "mxr_recover_send_outcome";
+        assert_eq!(
+            titles(tool, &json!({"dry_run": true}), State::Done).done,
+            "Checked send recovery evidence"
+        );
+        for outcome in ["waiting", "unknown", "accepted"] {
+            let result = json!({"outcome": {"state": outcome}}).to_string();
+            let title = step_title(
+                tool,
+                &json!({"dry_run": false}),
+                State::Done,
+                Context::default(),
+                Some(&result),
+            );
+            assert_eq!(title.done, "Ran: resume the original approved send");
+        }
     }
 
     #[test]

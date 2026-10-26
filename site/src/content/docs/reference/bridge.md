@@ -484,6 +484,7 @@ the events stream and refetch the conversation.
 | `POST` | `/mail/drafts/{draft_id}/reset-orphan` | Legacy orphan check; cannot prove rejection or clear a retained send outcome |
 | `POST` | `/mail/drafts/{draft_id}/send-stored?expected_revision=REVISION&operation_id=OPERATION_ID` | Send a stored draft with its reviewed revision and operation ID |
 | `GET` | `/mail/send-outcomes/{operation_id}?account_id=ACCOUNT_ID` | Query a retained send outcome |
+| `POST` | `/mail/send-outcomes/{operation_id}/recover?account_id=ACCOUNT_ID` | Preview legacy cooldown evidence with `{dry_run:true}`; confirm the same evidence using `{dry_run:false,expected_evidence_sha256:"..."}` |
 | `DELETE` | `/mail/drafts/{draft_id}/stored` | Delete stored draft and its linked provider draft |
 
 The stored-send query parameters `expected_revision` and `operation_id` are
@@ -493,6 +494,14 @@ draft alias `draft:DRAFT_ID` when the schedule operation ID is not known. The
 legacy orphan endpoint does not reset or erase accepted or unknown outcome
 evidence; a draft still marked Sending is refused because elapsed time cannot
 prove non-acceptance.
+
+Outcomes include `waiting`, `accepted`, `not_accepted` and `unknown`. Optional
+`recovery` contains `phase`, `attempts`, `retry_at` and `reason`. A waiting send
+retries automatically with its retained identity; an unknown send is only
+reconciled against positive provider evidence. The recovery POST requires the
+original workspace binding and never treats a missing Sent search result as
+permission to resend. See [crash-safe drafts](/guides/crash-safe-drafts/) for
+the preview/confirmation flow and its limits.
 
 ### Signatures
 

@@ -38,6 +38,9 @@ The outcome query reports whether acceptance is known:
 
 - **Accepted** means the provider accepted the message. Do not send it again,
   even if local Sent indexing has not finished.
+- **Waiting** means mxr has proof that submission did not happen and retains
+  your approved message for automatic retry. `recovery.retry_at` is the earliest
+  retry time; the daemon checks every minute. No second Send press is needed.
 - **NotAccepted** is positive evidence that this operation was not accepted.
   Review the current draft again before starting a new operation with a fresh ID.
 - **Unknown** means acceptance may have happened. Do not resend, schedule, or
@@ -53,6 +56,86 @@ account, including after draft cleanup and daemon restart. Reusing the same
 operation ID with `mxr send-outcome` retrieves its result. Reusing a reviewed
 identity when no outcome exists preserves the same operation; a different ID
 does not make an uncertain send safe to repeat.
+
+## Wait through a provider cooldown
+
+For saved-draft sends, Gmail's local cooldown, temporary token preparation
+failures and explicit rate-limit refusals retain the same operation ID and
+generated Message-ID. The approval includes the resolved sender, workspace,
+revision, recipients, body and private, hashed copies of attachment bytes.
+It survives daemon restart. Ordinary saved drafts are never enrolled by a
+background scan.
+
+Frozen approval copies have a 25 MiB per-file limit. Provider limits may be
+lower, including limits on the whole message.
+
+Portable backups keep canonical drafts and retained send outcomes, but exclude
+runnable approvals, their frozen snapshots and operational attempt history.
+Restored drafts stay held for explicit review; restoring a backup never resumes
+the send queue.
+
+Retries respect the provider's wait, exponential backoff and jitter, with at
+most 12 attempts. Editing the draft, changing its workspace or sender, or
+losing/corrupting a frozen attachment cancels the old approval. Review the
+current draft before any new send. Query the retained result for its phase,
+attempt count, deadline and reason:
+
+```bash
+mxr send-outcome OPERATION_ID --account ACCOUNT_ID \
+  --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' --format json
+```
+
+A timeout after possible submission remains `unknown`: mxr checks Gmail for a
+Sent message with the exact Message-ID and sender, but never resubmits it.
+An empty search does not prove rejection. A known acceptance can repair local
+Sent indexing without sending again. SMTP/Outlook transport errors remain
+uncertain when their submission phase cannot be established.
+
+The web app shows retained operations under **Drafts → Send outcomes**. In the
+TUI, use **Check last send outcome** in the command palette. Waiting is not
+provider acceptance, and acceptance is not proof of recipient delivery.
+
+Post-send reminders and archive-after-send are not part of the retained
+approval. If a send waits, check acceptance before applying those actions
+explicitly.
+
+## Recover an older false-unknown cooldown record
+
+First check whether you sent the message through another client. **Do not
+resume the mxr operation if the follow-up was completed elsewhere.**
+
+For a legacy Gmail operation, preview recovery using its original workspace and
+operation ID:
+
+```bash
+mxr send-outcome OPERATION_ID --account ACCOUNT_ID \
+  --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' \
+  --recover-known-not-submitted --dry-run --format json
+```
+
+Recovery requires a matching, timestamped structured daemon log proving that
+the old local Gmail gate refused the call before dispatch, an unchanged
+reviewed draft, the retained sender and Message-ID, and durable attachment
+hashes. Arbitrary path-based legacy attachments cannot be recovered this way.
+Missing logs, ambiguous transport evidence or an empty Sent search cannot
+authorize a resend. The preview does not queue or send mail.
+
+Only if `recoverable` is true and you still want that original approved send,
+confirm the exact fingerprint returned by the preview:
+
+```bash
+mxr send-outcome OPERATION_ID --account ACCOUNT_ID \
+  --expected-workspace '<OWNER_JSON_FROM_ORIGINAL_PREVIEW>' \
+  --recover-known-not-submitted \
+  --expected-evidence-sha256 EVIDENCE_SHA256_FROM_PREVIEW --format json
+```
+
+This retains the same identity as `waiting`; it does not erase uncertainty or
+create a duplicate draft. The evidence fingerprint is kept with the local
+approval. The TUI offers **Preview last send recovery**, then **Resume previewed
+approved send**. The web Send outcomes row offers the same two steps. MCP
+exposes `mxr_recover_send_outcome` with `dry_run` and
+`expected_evidence_sha256`.
 
 ## Find an interrupted send
 

@@ -83,7 +83,7 @@ use utoipa::{
         analytics_refresh_contacts, analytics_rebuild,
         mail_message_body, mail_message_html_images, mail_message_inline_image, mail_message_raw_headers,
         mail_message_set_flags, mail_export_search, mail_drafts_orphaned_list,
-        mail_drafts_save_local, mail_drafts_reset_orphan, mail_drafts_send_stored, mail_send_outcome,
+        mail_drafts_save_local, mail_drafts_reset_orphan, mail_drafts_send_stored, mail_send_outcome, mail_recover_send_outcome,
         mail_drafts_delete_stored, mail_signatures_list, mail_signatures_upsert,
         mail_signature_defaults_list, mail_signature_default_set,
         mail_signature_default_clear, mail_signature_resolve, mail_signatures_delete,
@@ -1988,6 +1988,10 @@ endpoint!(post mail_drafts_reset_orphan "/api/v1/mail/drafts/{draft_id}/reset-or
 #[utoipa::path(get, path = "/api/v1/mail/send-outcomes/{operation_id}", params(("operation_id" = String, Path), ("account_id" = String, Query, description = "Owning account ID")), responses((status = 200, description = "Durable send outcome", body = ResponseData), (status = 401, description = "Missing bridge token")))]
 #[allow(dead_code)]
 fn mail_send_outcome() {}
+
+#[utoipa::path(post, path = "/api/v1/mail/send-outcomes/{operation_id}/recover", params(("operation_id" = String, Path), ("account_id" = String, Query)), request_body = crate::routes_v6::RecoverSendBody, responses((status = 200, description = "Evidence-bound recovery preview or resumed original operation", body = ResponseData)))]
+#[allow(dead_code)]
+fn mail_recover_send_outcome() {}
 #[utoipa::path(post, path = "/api/v1/mail/drafts/{draft_id}/send-stored", params(("draft_id" = String, Path), ("operation_id" = String, Query, description = "Retained reviewed send operation"), ("expected_revision" = i64, Query, description = "Reviewed draft revision"), ("managed_attachments_reviewed" = Option<bool>, Query, description = "True only after reviewing current managed attachment metadata; defaults false")), responses((status = 200, description = "Send receipt or outcome", body = ResponseData), (status = 401, description = "Missing bridge token")))]
 #[allow(dead_code)]
 fn mail_drafts_send_stored() {}

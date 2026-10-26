@@ -2482,7 +2482,7 @@ pub(super) async fn reset_orphaned_draft(
 ///
 /// The draft is never modified. A rejected document comes back to the caller
 /// with the reasons; mxr does not sanitise it into something sendable.
-fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler::HandlerError> {
+pub(super) fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler::HandlerError> {
     // Inline assets are checked whatever the body kind. `inline_assets` is
     // documented as always empty on a markdown draft, but nothing stops an IPC
     // client from setting it, the store persists it either way, and the
@@ -2491,8 +2491,19 @@ fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler::HandlerEr
     // the HTML branch.
     let mut seen = std::collections::HashSet::new();
     for asset in &draft.inline_assets {
-        mxr_outbound::attachments::validate_cid(&asset.cid)
-            .map_err(|error| crate::handler::HandlerError::Message(error.to_string()))?;
+        if let Some(metadata) = draft
+            .managed_attachments
+            .iter()
+            .flatten()
+            .find(|part| part.content_id.as_deref() == Some(asset.cid.as_str()))
+        {
+            // Forwarded Content-IDs are RFC addr-specs and commonly include @.
+            // Their stricter resource validator rejects header injection.
+            super::draft_attachments::preview(metadata)?;
+        } else {
+            mxr_outbound::attachments::validate_cid(&asset.cid)
+                .map_err(|error| crate::handler::HandlerError::Message(error.to_string()))?;
+        }
         if !seen.insert(asset.cid.as_str()) {
             return Err(crate::handler::HandlerError::Message(
                 mxr_outbound::attachments::InlineAssetError::DuplicateCid(asset.cid.clone())
@@ -3145,16 +3156,18 @@ pub(super) async fn prepare_forward(
         .await?
         .ok_or_else(|| "Message not found".to_string())?;
 
-    let body = state.sync_engine.get_body(message_id).await.ok();
-    let forwarded_content = match body.as_ref() {
-        Some(body) => (*get_or_render_reply_context(state, message_id, body)).clone(),
-        None => String::new(),
-    };
+    let body = state
+        .sync_engine
+        .get_body(message_id)
+        .await
+        .map_err(|error| format!("Cannot forward: failed to retrieve original message: {error}"))?;
+    let source = super::forward::prepare_source(state, &envelope, &body).await?;
+    let forwarded_content = source.content.analysis_text().to_string();
 
     // Default the forward's From to the owned address the message was
     // delivered to (same rule as reply), falling back to the primary.
     let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await?;
-    let from = reply_from_default(&owned, &primary_email, &envelope, body.as_ref());
+    let from = reply_from_default(&owned, &primary_email, &envelope, Some(&body));
 
     Ok(ResponseData::ForwardContext {
         context: ForwardContext {
@@ -3162,6 +3175,7 @@ pub(super) async fn prepare_forward(
             subject: envelope.subject.clone(),
             from,
             forwarded_content,
+            source: Some(source),
         },
     })
 }
@@ -3413,10 +3427,17 @@ pub(super) fn send_command_hash(draft: &Draft) -> Result<String, HandlerError> {
 
 fn outcome_response(outcome: mxr_core::DraftSendOutcome) -> HandlerResult {
     match outcome.state {
-        mxr_core::SendOutcomeState::Unknown => Err(HandlerError::SendOutcome(Box::new(outcome))),
-        mxr_core::SendOutcomeState::NotAccepted => {
-            Err(HandlerError::SendOutcome(Box::new(outcome)))
-        }
+        mxr_core::SendOutcomeState::Waiting => Ok(ResponseData::SendOutcome {
+            outcome: Some(outcome),
+        }),
+        mxr_core::SendOutcomeState::Unknown => Err(HandlerError::SendOutcome {
+            outcome: Box::new(outcome),
+            diagnostic: None,
+        }),
+        mxr_core::SendOutcomeState::NotAccepted => Err(HandlerError::SendOutcome {
+            outcome: Box::new(outcome),
+            diagnostic: None,
+        }),
         mxr_core::SendOutcomeState::Accepted => {
             if let (Some(local_message_id), Some(rfc2822_message_id)) = (
                 outcome.local_message_id.clone(),
@@ -3462,6 +3483,7 @@ pub(super) async fn get_send_outcome(
                             local_message_id: None,
                             provider_message_id: None,
                             rfc2822_message_id: None,
+                            recovery: None,
                         })
                     }
                     _ => None,
@@ -3480,7 +3502,28 @@ pub(super) async fn get_send_outcome(
     {
         return Err("Send outcome not found for this account".into());
     }
-    Ok(ResponseData::SendOutcome { outcome })
+    if let Some(outcome) = outcome {
+        if !state.is_restore_pending()
+            && matches!(
+                outcome.state,
+                mxr_core::SendOutcomeState::Unknown | mxr_core::SendOutcomeState::Accepted
+            )
+        {
+            let _guard = state.acquire_draft_operation(&outcome.draft_id).await;
+            if let Some((current, _)) = state
+                .store
+                .get_send_outcome(&outcome.identity.operation_id)
+                .await?
+            {
+                return super::send_recovery::reconcile_locked(state, current, chrono::Utc::now())
+                    .await;
+            }
+        }
+        return Ok(ResponseData::SendOutcome {
+            outcome: Some(outcome),
+        });
+    }
+    Ok(ResponseData::SendOutcome { outcome: None })
 }
 
 pub(super) async fn send_draft(
@@ -3622,6 +3665,14 @@ pub(super) async fn schedule_send(
     let draft = checked_draft(state, draft_id, Some(revision)).await?;
     if state.store.get_draft_status(draft_id).await? != Some(DraftStatus::Draft) {
         return Err("Draft cannot be scheduled while a send is uncertain or completed".into());
+    }
+    if state
+        .store
+        .get_draft_send_outcome(draft_id)
+        .await?
+        .is_some_and(|outcome| outcome.state != mxr_core::SendOutcomeState::NotAccepted)
+    {
+        return Err("A retained send already owns this draft; inspect its outcome instead of scheduling another operation".into());
     }
     // The flusher looks the provider up only when it fires; refuse now
     // rather than accept a send that is bound to fail later.
@@ -3833,76 +3884,97 @@ async fn send_stored_draft_locked(
         }
     };
 
-    let advanced = state
+    let approval = super::send_recovery::prepare(
+        state,
+        identity,
+        &draft,
+        &from,
+        stored_revision,
+        command_hash,
+    )
+    .await?;
+    let advanced = match state
         .store
-        .claim_draft_send(
-            identity,
-            draft_id,
-            &draft.account_id,
-            stored_revision,
-            &command_hash,
-        )
-        .await?;
+        .claim_approved_send(identity, &approval, &rfc2822_message_id)
+        .await
+    {
+        Ok(advanced) => advanced,
+        Err(error) => {
+            super::send_recovery::discard_files(state, identity, &approval).await;
+            return Err(error.into());
+        }
+    };
     if !advanced {
+        super::send_recovery::discard_files(state, identity, &approval).await;
         return Err("Draft send is blocked or the reviewed revision changed; inspect its send outcome before retrying".into());
     }
+    draft = approval.draft;
     let receipt = match sender
         .send_classified(&draft, &from, &rfc2822_message_id)
         .await
     {
         Ok(receipt) => receipt,
-        Err(mxr_core::SendFailure::NotAccepted(error)) => {
-            state.store.reject_draft_send(identity).await?;
-            if !portable {
-                return Err(format!(
-                    "Provider did not accept send operation {}: {error}",
-                    identity.operation_id
-                )
-                .into());
-            }
-            tracing::warn!(operation_id = %identity.operation_id, "provider rejected send: {error}");
-            let (outcome, _) = state
-                .store
-                .get_send_outcome(&identity.operation_id)
-                .await?
-                .ok_or("Send outcome missing")?;
-            return Err(HandlerError::SendOutcome(Box::new(outcome)));
-        }
-        Err(mxr_core::SendFailure::Unknown(error)) => {
-            tracing::warn!(operation_id = %identity.operation_id, "provider acceptance is uncertain: {error}");
-            if !portable {
-                return Err(format!("Send outcome uncertain; do not resend. Query operation {} for account {}. Provider error: {error}", identity.operation_id, draft.account_id).into());
-            }
-            let (outcome, _) = state
-                .store
-                .get_send_outcome(&identity.operation_id)
-                .await?
-                .ok_or("Send outcome missing")?;
-            return Err(HandlerError::SendOutcome(Box::new(outcome)));
+        Err(failure) => {
+            return super::send_recovery::failure(
+                state,
+                identity,
+                failure,
+                portable,
+                chrono::Utc::now(),
+            )
+            .await
         }
     };
-    state.store.accept_draft_send(identity, &receipt).await.map_err(|error| format!("Send outcome uncertain: accepted by provider but receipt persistence failed; query operation {}: {error}", identity.operation_id))?;
-    clear_reply_later_for_reply_parent(state, &draft).await;
-    let local_message_id = match ingest_sent_message(state, &draft, &from, &receipt).await {
-        Ok(id) => id,
-        Err(error) => {
-            tracing::warn!(%error, "accepted send could not be ingested locally");
-            let (outcome, _) = state
-                .store
-                .get_send_outcome(&identity.operation_id)
-                .await?
-                .ok_or("Accepted outcome missing")?;
-            return Ok(ResponseData::SendOutcome {
-                outcome: Some(outcome),
-            });
-        }
-    };
-    if let Err(error) = state
+    finish_accepted_send(state, &draft, &from, identity, &receipt, false).await
+}
+
+pub(super) async fn finish_accepted_send(
+    state: &AppState,
+    draft: &Draft,
+    from: &Address,
+    identity: &mxr_core::SendIdentity,
+    receipt: &mxr_core::SendReceipt,
+    local_repair: bool,
+) -> HandlerResult {
+    let draft_id = &draft.id;
+    state.store.accept_draft_send(identity, receipt).await.map_err(|error| format!("Send outcome uncertain: accepted by provider but receipt persistence failed; query operation {}: {error}", identity.operation_id))?;
+    if !local_repair {
+        super::send_recovery::notify_current(state, identity).await;
+    }
+    clear_reply_later_for_reply_parent(state, draft).await;
+    let local_message_id =
+        match ingest_sent_message(state, draft, from, receipt, !local_repair).await {
+            Ok(id) => id,
+            Err(error) => {
+                tracing::warn!(%error, "accepted send could not be ingested locally");
+                let (outcome, _) = state
+                    .store
+                    .get_send_outcome(&identity.operation_id)
+                    .await?
+                    .ok_or("Accepted outcome missing")?;
+                return Ok(ResponseData::SendOutcome {
+                    outcome: Some(outcome),
+                });
+            }
+        };
+    let linked = match state
         .store
         .link_send_local_message(identity, &local_message_id)
         .await
     {
-        tracing::warn!(%error, "accepted send local message link failed");
+        Ok(()) => true,
+        Err(error) => {
+            tracing::warn!(%error, "accepted send local message link failed");
+            false
+        }
+    };
+    if linked {
+        if local_repair {
+            super::send_recovery::notify_current(state, identity).await;
+        }
+        if let Ok(Some(approval)) = state.store.get_send_approval(&identity.operation_id).await {
+            super::send_recovery::discard_files(state, identity, &approval).await;
+        }
     }
     if let Some(inline_reply) = draft.inline_calendar_reply.as_ref() {
         if let Err(error) = state
@@ -3918,7 +3990,7 @@ async fn send_stored_draft_locked(
         }
     }
     if let Err(e) =
-        super::commitments_extract::promote_after_send(state, &draft, &local_message_id).await
+        super::commitments_extract::promote_after_send(state, draft, &local_message_id).await
     {
         tracing::warn!(error = %e, "commitments promotion failed after send_stored_draft");
     }
@@ -3951,8 +4023,8 @@ async fn send_stored_draft_locked(
     );
     Ok(ResponseData::SendReceipt {
         local_message_id,
-        provider_message_id: receipt.provider_message_id,
-        rfc2822_message_id: receipt.rfc2822_message_id,
+        provider_message_id: receipt.provider_message_id.clone(),
+        rfc2822_message_id: receipt.rfc2822_message_id.clone(),
     })
 }
 
@@ -4049,6 +4121,7 @@ async fn ingest_sent_message(
     draft: &Draft,
     from: &Address,
     receipt: &SendReceipt,
+    file_on_server: bool,
 ) -> Result<mxr_core::MessageId, String> {
     // Gmail's send already files Sent and returns a real id. For IMAP/SMTP the
     // SMTP transport does NOT file Sent, so best-effort APPEND a copy to the
@@ -4061,7 +4134,15 @@ async fn ingest_sent_message(
     ) = if let Some(gmail_id) = receipt.provider_message_id.as_deref() {
         ("gmail", gmail_id.to_string(), vec!["SENT".to_string()])
     } else {
-        match append_sent_to_server(state, draft, from, receipt).await {
+        // An acceptance repair is local-only: a first APPEND may already have
+        // succeeded before local ingestion failed. Never repeat provider writes
+        // while inspecting/recovering that accepted operation.
+        let appended = if file_on_server {
+            append_sent_to_server(state, draft, from, receipt).await
+        } else {
+            Ok(None)
+        };
+        match appended {
             Ok(Some(mailbox_uid)) => {
                 // Landed on the server under UIDPLUS. Use the real
                 // "mailbox:uid" id and label with the actual Sent folder
@@ -4132,7 +4213,8 @@ async fn ingest_sent_message(
         date: receipt.sent_at,
         flags: MessageFlags::SENT | MessageFlags::READ,
         snippet: snippet.clone(),
-        has_attachments: !draft.attachments.is_empty(),
+        has_attachments: !draft.attachments.is_empty()
+            || (draft.intent == mxr_core::DraftIntent::Forward && !draft.inline_assets.is_empty()),
         size_bytes: draft.content.byte_len() as u64,
         unsubscribe: UnsubscribeMethod::None,
         link_count: 0,
@@ -4158,7 +4240,11 @@ async fn ingest_sent_message(
         message_id: stored_id.clone(),
         text_plain: Some(sent_text),
         text_html: sent_html,
-        attachments: Vec::new(),
+        attachments: if draft.intent == mxr_core::DraftIntent::Forward {
+            super::forward::sent_attachments(state, draft, &stored_id).await?
+        } else {
+            Vec::new()
+        },
         fetched_at: receipt.sent_at,
         metadata: MessageMetadata::default(),
     };
@@ -4733,7 +4819,10 @@ async fn unsubscribe_envelope(state: &AppState, envelope: &Envelope) -> HandlerR
                 .await
             {
                 Ok(_) => {}
-                Err(mxr_core::SendFailure::NotAccepted(_)) => {
+                Err(
+                    mxr_core::SendFailure::NotAccepted(_)
+                    | mxr_core::SendFailure::NotSubmitted { .. },
+                ) => {
                     return Err(not_confirmed(
                         state,
                         envelope,
@@ -5656,6 +5745,7 @@ mod sent_append_tests {
     struct AppendSentProvider {
         account_id: AccountId,
         append_result: Option<String>,
+        append_calls: std::sync::atomic::AtomicUsize,
     }
 
     #[async_trait::async_trait]
@@ -5717,6 +5807,8 @@ mod sent_append_tests {
             _rfc822: &[u8],
             _internal_date: chrono::DateTime<chrono::Utc>,
         ) -> Result<Option<String>, MxrError> {
+            self.append_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(self.append_result.clone())
         }
     }
@@ -5761,6 +5853,7 @@ mod sent_append_tests {
         let provider = Arc::new(AppendSentProvider {
             account_id: account_id.clone(),
             append_result,
+            append_calls: Default::default(),
         });
         AppState::in_memory_with_sync_provider(account, provider, None)
             .await
@@ -5782,7 +5875,7 @@ mod sent_append_tests {
             rfc2822_message_id: "<append-ok@example.com>".to_string(),
         };
 
-        let message_id = ingest_sent_message(&state, &draft, &from_addr(), &receipt)
+        let message_id = ingest_sent_message(&state, &draft, &from_addr(), &receipt, true)
             .await
             .expect("ingest must succeed");
 
@@ -5800,6 +5893,43 @@ mod sent_append_tests {
             .expect("stored envelope");
         assert_eq!(envelope.provider_id, "Sent:42");
         assert_eq!(envelope.label_provider_ids, vec!["Sent".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn acceptance_repair_does_not_repeat_an_imap_sent_append() {
+        let account_id = AccountId::new();
+        let provider = Arc::new(AppendSentProvider {
+            account_id: account_id.clone(),
+            append_result: Some("Sent:42".into()),
+            append_calls: Default::default(),
+        });
+        let state = AppState::in_memory_with_sync_provider(
+            crate::test_fixtures::test_account_with_id(account_id.clone()),
+            provider.clone(),
+            None,
+        )
+        .await
+        .unwrap();
+        let draft = sent_draft(&account_id);
+        let receipt = SendReceipt {
+            provider_message_id: None,
+            sent_at: Utc::now(),
+            rfc2822_message_id: "<repair@example.test>".into(),
+        };
+        let id = ingest_sent_message(&state, &draft, &from_addr(), &receipt, false)
+            .await
+            .unwrap();
+        assert_eq!(
+            provider
+                .append_calls
+                .load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+        assert_eq!(
+            id,
+            MessageId::from_scoped_provider_id(&account_id, "smtp-local", "<repair@example.test>")
+        );
+        assert!(state.store.get_body(&id).await.unwrap().is_some());
     }
 
     /// Same hazard as a synced page: the Sent copy's `(account_id,
@@ -5833,7 +5963,7 @@ mod sent_append_tests {
             rfc2822_message_id: "<append-existing@example.com>".to_string(),
         };
 
-        let message_id = ingest_sent_message(&state, &draft, &from_addr(), &receipt)
+        let message_id = ingest_sent_message(&state, &draft, &from_addr(), &receipt, true)
             .await
             .expect("ingest must reuse the stored row, not fail on its foreign keys");
 
@@ -5868,7 +5998,7 @@ mod sent_append_tests {
             rfc2822_message_id: "<append-none@example.com>".to_string(),
         };
 
-        let message_id = ingest_sent_message(&state, &draft, &from_addr(), &receipt)
+        let message_id = ingest_sent_message(&state, &draft, &from_addr(), &receipt, true)
             .await
             .expect("fallback ingest must not error");
 

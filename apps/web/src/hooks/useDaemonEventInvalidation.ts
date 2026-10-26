@@ -17,6 +17,26 @@ export function useDaemonEventInvalidation(): void {
   useDaemonEvents(
     useCallback(
       (event) => {
+        if ("operation" in event && event.operation === "send_recovery") {
+          void qc.invalidateQueries({ queryKey: ["send-outcome"] });
+          void qc.invalidateQueries({ queryKey: ["drafts"] });
+          const id = `send-recovery:${event.operation_id}`;
+          if (event.type === "OperationCompleted") {
+            toast.success("Mail provider accepted the approved send", { id });
+            void invalidateMailQueries(qc);
+          } else if (event.type === "OperationFailed") {
+            toast.error("Send needs attention", {
+              id,
+              description:
+                typeof event.error === "string"
+                  ? event.error
+                  : "Check Send outcomes in Drafts. Do not resend an uncertain operation.",
+            });
+          } else if (event.type === "OperationProgress" && typeof event.message === "string") {
+            toast.info("Waiting for the mail provider", { id, description: event.message });
+          }
+          return;
+        }
         // Event names are the daemon's DaemonEvent variants
         // (crates/protocol/src/types.rs); mail views all refresh through
         // the same invalidation the mutation layer uses.

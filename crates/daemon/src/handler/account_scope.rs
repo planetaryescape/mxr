@@ -433,6 +433,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ExtractDraftCommitments { draft }
         | Request::SuggestCollaborators { draft, .. } => Targets(vec![T::DraftBody(draft)]),
         Request::GetSendOutcome { account_id, .. } => Targets(vec![T::Account(account_id)]),
+        Request::RecoverSendOutcome { account_id, .. } => Targets(vec![T::Account(account_id)]),
         Request::ComposeAssist { draft, .. } => match draft {
             mxr_protocol::DraftTargetData::Stored { draft_id } => Targets(vec![T::Draft(draft_id)]),
             mxr_protocol::DraftTargetData::Reply { message_id, .. }

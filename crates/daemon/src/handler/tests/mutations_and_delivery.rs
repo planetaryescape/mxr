@@ -1337,6 +1337,14 @@ async fn dispatch_prepare_forward() {
                 !context.forwarded_content.is_empty(),
                 "forwarded_content should be non-empty"
             );
+            assert!(
+                context.forwarded_content.contains("From:")
+                    && context.forwarded_content.contains("Date:")
+                    && context.forwarded_content.contains("Subject:")
+                    && context.forwarded_content.contains("To:"),
+                "forward must include original header context, got {:?}",
+                context.forwarded_content
+            );
         }
         other => panic!("Expected ForwardContext, got {other:?}"),
     }
@@ -2232,9 +2240,19 @@ async fn dispatch_send_draft_preserves_keychain_repair_error() {
     };
     let resp = handle_request(&state, &msg).await;
     match resp.payload {
-        IpcPayload::Response(Response::Error { message, .. }) => {
-            assert!(message.contains("consulting-smtp"));
-            assert!(message.contains("mxr accounts repair"));
+        IpcPayload::Response(Response::Error {
+            message,
+            code,
+            retryable,
+            details,
+            ..
+        }) => {
+            assert!(message.contains("consulting-smtp"), "{message}");
+            assert!(message.contains("mxr accounts repair"), "{message}");
+            assert!(message.contains("do not resend"), "{message}");
+            assert_eq!(code, "send_outcome_unknown");
+            assert!(!retryable);
+            assert_eq!(details.unwrap()["outcome"]["state"], "unknown");
         }
         other => panic!("Expected send error, got {other:?}"),
     }

@@ -432,6 +432,13 @@ export function useComposeSend({
       if (!sendReference.binding)
         throw new Error("Send owner is missing; retain this outcome for explicit recovery");
       assertWorkspaceBinding(sendReference.binding);
+      if (response.state === "waiting") {
+        toast.info("Waiting for the mail provider", {
+          description: `Your approved message is retained and will retry automatically${response.retry_at ? ` at ${response.retry_at}` : ""}. Check Send outcomes in Drafts; do not resend.`,
+        });
+        void queryClient.invalidateQueries({ queryKey: ["send-outcome"] });
+        return;
+      }
       markSessionFinished();
       forgetActiveDraft(intent.key, sendReference.binding);
       emitSendEvent({

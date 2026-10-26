@@ -5776,6 +5776,52 @@
         }
       }
     },
+    "/api/v1/mail/send-outcomes/{operation_id}/recover": {
+      "post": {
+        "tags": [],
+        "operationId": "mail_recover_send_outcome",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverSendBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Evidence-bound recovery preview or resumed original operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/mail/send-time": {
       "get": {
         "tags": [],
@@ -13301,6 +13347,17 @@
           "cc": {
             "type": "string"
           },
+          "forward_source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ForwardSource",
+                "description": "Prepared original content and daemon-owned resources for a forward."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "from": {
             "type": "string"
           },
@@ -16109,6 +16166,20 @@
           "account_id": {
             "$ref": "#/components/schemas/AccountId"
           },
+          "content_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Original Content-ID of a related forwarded MIME part."
+          },
+          "content_location": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Original MIME location for related parts whose HTML uses a relative URL."
+          },
           "draft_id": {
             "$ref": "#/components/schemas/DraftId"
           },
@@ -16832,6 +16903,16 @@
               "null"
             ]
           },
+          "recovery": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SendRecoveryStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "rfc2822_message_id": {
             "type": [
               "string",
@@ -17391,8 +17472,49 @@
           "from": {
             "type": "string"
           },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ForwardSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "subject": {
             "type": "string"
+          }
+        }
+      },
+      "ForwardSource": {
+        "type": "object",
+        "description": "Immutable original content prepared by the daemon for a forward. The editor\nedits only the introduction; original HTML and attachment bytes stay intact.",
+        "required": [
+          "draft_id",
+          "account_id",
+          "message_id",
+          "content",
+          "attachments"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftAttachment"
+            }
+          },
+          "content": {
+            "$ref": "#/components/schemas/DraftContentSchema"
+          },
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
           }
         }
       },
@@ -24625,6 +24747,23 @@
           }
         }
       },
+      "RecoverSendBody": {
+        "type": "object",
+        "required": [
+          "dry_run"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "expected_evidence_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "RecoveredComposeSession": {
         "type": "object",
         "required": [
@@ -30289,6 +30428,39 @@
                 "type": "string",
                 "enum": [
                   "GetSendOutcome"
+                ]
+              },
+              "operation_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Resume a historical false-unknown only from matched local gate evidence.",
+            "required": [
+              "account_id",
+              "operation_id",
+              "dry_run",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RecoverSendOutcome"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "expected_evidence_sha256": {
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "operation_id": {
@@ -36987,6 +37159,38 @@
           },
           {
             "type": "object",
+            "required": [
+              "outcome",
+              "recoverable",
+              "reason",
+              "kind"
+            ],
+            "properties": {
+              "evidence_sha256": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SendRecoveryPreview"
+                ]
+              },
+              "outcome": {
+                "$ref": "#/components/schemas/DraftSendOutcome"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "recoverable": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Returned by `Request::ExtractDraftCommitments`.",
             "required": [
               "candidates",
@@ -40386,7 +40590,52 @@
         "enum": [
           "unknown",
           "accepted",
-          "not_accepted"
+          "not_accepted",
+          "waiting"
+        ]
+      },
+      "SendRecoveryStatus": {
+        "type": "object",
+        "required": [
+          "phase",
+          "attempts"
+        ],
+        "properties": {
+          "attempts": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "phase": {
+            "$ref": "#/components/schemas/SendSubmissionPhase"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable diagnostic code; never message bodies, addresses or credentials."
+          },
+          "retry_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "SendSubmissionPhase": {
+        "type": "string",
+        "description": "The last boundary for which the adapter has positive evidence.",
+        "enum": [
+          "preparation",
+          "cooldown",
+          "authentication",
+          "thread_resolution",
+          "dispatch",
+          "provider_response",
+          "accepted"
         ]
       },
       "SendTimeConfidenceData": {

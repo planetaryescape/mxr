@@ -440,9 +440,24 @@ async fn linked_product_fields_are_measured_from_the_row_without_repairing_them(
     let (state, _) = scenario_state().await;
     eval(&state, None).await;
     // The production read must not be credited with the fixture workers' writes.
-    state
-        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
-        .await;
+    {
+        // Keep the one-connection in-memory database alive while shutdown
+        // drains or aborts workers that may be acquiring it.
+        let _database_lifetime = state.store.writer().acquire().await.expect("database");
+        state
+            .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
+            .await;
+    }
+    let todos_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'todos')",
+    )
+    .fetch_one(state.store.writer())
+    .await
+    .expect("check in-memory schema after worker shutdown");
+    assert!(
+        todos_exists,
+        "worker shutdown preserves the in-memory database"
+    );
     let changed = sqlx::query("UPDATE todos SET amount_minor = amount_minor + 100, due_at = due_at + 172800 WHERE user_edited = 0 AND source_message_id IN (SELECT id FROM messages WHERE provider_id = 'demo-msg-9')")
         .execute(state.store.writer()).await.expect("change only projected fields").rows_affected();
     assert_eq!(changed, 1);

@@ -7,6 +7,7 @@ Contributor- and agent-facing docs. User-facing docs live in [`site/src/content/
 | Blueprint | [blueprint/README.md](./blueprint/README.md) | What to build: requirements, design, decisions. |
 | Email modes | [blueprint/22-email-modes.md](./blueprint/22-email-modes.md) | The product model: email as five apps (Messages, To do, Updates, Reading, Archive), Now, handoff, model tiers, and the phases that build it. |
 | Research | [research/](./research/) | Evidence behind the modes ([email-modes/](./research/email-modes/)) and the model-fit review ([model-fit.md](./research/model-fit.md)). |
+| Local view performance | [mail-view-performance-2026-10-26.md](./research/mail-view-performance-2026-10-26.md) | Real-mailbox latency findings and a read-only benchmark. |
 | Docs inventory | [site-modes-inventory.md](./site-modes-inventory.md) | Every site page and repo doc sorted by when the modes change it. |
 | Calendar email | [calendar-email/README.md](./calendar-email/README.md) | Current code-truth, synthesis notes, and historical implementation plan for email calendar invites. |
 | Implementation journey | [implementation-journey.md](./implementation-journey.md) | Historical phased delivery, superseded plans, bridge/semantic context, future reauth + distro packaging. |

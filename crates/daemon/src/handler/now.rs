@@ -44,8 +44,8 @@ impl NowSnapshot {
         self.turn.split.total() + count(self.due_now.len())
     }
 
-    /// People whose turn it is with you, never who you wait on: Now's
-    /// headline and People total, and the rail's Messages count.
+    /// People needing attention, including due explicit follow-ups but
+    /// never ordinary waiting: Now's People and the rail's Messages count.
     pub(super) fn your_turn_total(&self) -> u32 {
         self.turn.split.total()
     }

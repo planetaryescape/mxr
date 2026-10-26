@@ -38,6 +38,7 @@ pub async fn run(
             let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
             let filter = MessagesFilterData {
                 turn: turn.map(|turn| match turn {
+                    MessagesTurnArg::All => MessagesTurnData::All,
                     MessagesTurnArg::Mine => MessagesTurnData::Mine,
                     MessagesTurnArg::Theirs => MessagesTurnData::Theirs,
                 }),
@@ -314,7 +315,7 @@ fn list_table(messages: &MessagesData, marks: &AccountMarks) -> String {
     if let Some(label) = messages_copy::filter_label(messages.filter) {
         let _ = writeln!(
             out,
-            "Filtered: {} · {} of {} rows",
+            "View: {} · {} shown · {} need attention",
             terminal_text(&label),
             messages.matched,
             messages.row_count

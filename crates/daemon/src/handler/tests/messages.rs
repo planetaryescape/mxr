@@ -18,13 +18,21 @@ const RUTH: &str = "ruth@keystone.example";
 const MAYA: &str = "maya@orbit.example";
 const JON: &str = "jon@northstar.example";
 
+fn history_filter() -> MessagesFilterData {
+    MessagesFilterData {
+        turn: Some(MessagesTurnData::All),
+        ..Default::default()
+    }
+}
+
+/// The expanded view used to exercise grouping and history presentation.
 async fn list(fx: &Fixture) -> MessagesData {
     match request(
         fx,
         Request::ListMessages {
             account_id: None,
             turn: None,
-            filter: Default::default(),
+            filter: history_filter(),
             limit: 50,
         },
     )
@@ -115,6 +123,200 @@ fn rows(messages: &MessagesData) -> Vec<&mxr_protocol::MessagesRowData> {
         .chain(&messages.recent)
         .chain(&messages.quiet)
         .collect()
+}
+
+#[tokio::test]
+async fn default_is_attention_only_and_all_conversations_keeps_history() {
+    let fx = Fixture::new().await;
+    let actionable = ThreadId::new();
+    let history = ThreadId::new();
+    let sent_only = ThreadId::new();
+    let fyi = ThreadId::new();
+    let older = ThreadId::new();
+    fx.message(&older, RUTH, ME, Duration::days(900), None)
+        .await;
+    let ask = fx
+        .attention_message(&actionable, SAMIR, ME, Duration::hours(1), None)
+        .await;
+    let old = fx
+        .message(&history, SAMIR, ME, Duration::days(2), None)
+        .await;
+    fx.message(
+        &history,
+        ME,
+        SAMIR,
+        Duration::days(1),
+        old.message_id_header.as_deref(),
+    )
+    .await;
+    fx.state
+        .store
+        .set_message_labels(&old.id, &[], mxr_core::EventSource::User)
+        .await
+        .unwrap();
+    fx.message(&sent_only, ME, JON, Duration::days(1), None)
+        .await;
+    let notice = fx.message(&fyi, RUTH, ME, Duration::hours(2), None).await;
+    body(
+        &fx,
+        &notice.id,
+        Some("Thanks for the update. No action needed."),
+        None,
+    )
+    .await;
+
+    let attention = filtered(&fx, None, Default::default()).await;
+    assert_eq!(attention.your_turn.len(), 1);
+    assert_eq!(
+        attention.your_turn[0].topics.len(),
+        1,
+        "history must not leak into an actionable person's row"
+    );
+    assert_eq!(attention.your_turn[0].topics[0].thread_id, actionable);
+    assert!(
+        attention.recent.is_empty() && attention.quiet.is_empty() && attention.pinned.is_empty()
+    );
+    assert!(attention.lapsed.is_empty());
+    assert_eq!(attention.row_count, 1);
+    assert_eq!(attention.thread_count, 1);
+    assert_eq!(attention.matched, 1);
+
+    let all = filtered(
+        &fx,
+        None,
+        MessagesFilterData {
+            turn: Some(MessagesTurnData::All),
+            ..Default::default()
+        },
+    )
+    .await;
+    let ids: Vec<_> = rows(&all)
+        .into_iter()
+        .flat_map(|r| &r.topics)
+        .map(|t| t.thread_id.clone())
+        .collect();
+    for thread in [&actionable, &history, &sent_only, &fyi, &older] {
+        assert!(ids.contains(thread), "All conversations lost {thread}");
+    }
+    assert_eq!(
+        all.row_count, attention.row_count,
+        "history must not inflate attention counts"
+    );
+    assert_eq!(all.thread_count, attention.thread_count);
+    assert_eq!(all.matched, 3);
+    assert_eq!(person(&fx, SAMIR, Some(&history)).await.topics.len(), 2);
+
+    let ResponseData::MutationResult { result } = request(
+        &fx,
+        Request::mutation(mxr_protocol::MutationCommand::Archive {
+            message_ids: vec![ask.id],
+        }),
+    )
+    .await
+    else {
+        panic!("expected archive result")
+    };
+    assert_eq!(result.succeeded, 1);
+    let clear = filtered(&fx, None, Default::default()).await;
+    assert!(shown_ids(&clear).is_empty());
+    assert_eq!(clear.row_count, 0);
+    assert_eq!(
+        clear.empty_state.as_deref(),
+        Some(mxr_protocol::messages_copy::CLEAR)
+    );
+    assert!(clear.lapsed.is_empty());
+
+    let thanks = fx
+        .message(&history, SAMIR, ME, Duration::zero(), None)
+        .await;
+    body(&fx, &thanks.id, Some("Thanks, that is everything."), None).await;
+    assert!(
+        shown_ids(&filtered(&fx, None, Default::default()).await).is_empty(),
+        "an FYI does not resurrect resolved attention"
+    );
+    let fresh = fx
+        .attention_message(&history, SAMIR, ME, Duration::zero(), None)
+        .await;
+    fx.state
+        .store
+        .set_read(&fresh.id, true, mxr_core::EventSource::User)
+        .await
+        .unwrap();
+    let back = filtered(&fx, None, Default::default()).await;
+    assert_eq!(
+        back.your_turn[0].topics[0].thread_id, history,
+        "a new request brings it back even after reading"
+    );
+}
+
+#[tokio::test]
+async fn idle_pins_do_not_fill_an_empty_attention_queue() {
+    let fx = Fixture::new().await;
+    waiting_on(&fx, SAMIR, false, Duration::hours(1)).await;
+    pin(&fx, SAMIR).await;
+    let attention = filtered(&fx, None, Default::default()).await;
+    assert!(shown_ids(&attention).is_empty());
+    assert!(attention.lapsed.is_empty());
+    assert_eq!(attention.row_count, 0);
+    assert_eq!(pinned_ids(&list(&fx).await), person_ids(&[SAMIR]));
+}
+
+#[tokio::test]
+async fn due_follow_up_on_archived_mail_is_attention_in_messages_now_and_rail() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let received = fx
+        .message(&thread, SAMIR, ME, Duration::days(2), None)
+        .await;
+    let sent = fx
+        .message(
+            &thread,
+            ME,
+            SAMIR,
+            Duration::days(1),
+            received.message_id_header.as_deref(),
+        )
+        .await;
+    fx.state
+        .store
+        .set_message_labels(&received.id, &[], mxr_core::EventSource::User)
+        .await
+        .unwrap();
+    assert!(shown_ids(&filtered(&fx, None, Default::default()).await).is_empty());
+    fx.state
+        .store
+        .set_auto_reminder(
+            &sent.id,
+            &fx.account,
+            Utc::now() - Duration::minutes(1),
+            sent.date,
+        )
+        .await
+        .unwrap();
+    let attention = filtered(&fx, None, Default::default()).await;
+    assert_eq!(attention.your_turn.len(), 1);
+    assert_eq!(attention.your_turn[0].topics[0].thread_id, thread);
+    assert!(attention.your_turn[0]
+        .why
+        .contains("no reply by the time you set"));
+    assert_eq!(attention.row_count, 1);
+    let ResponseData::Now { now } = request(&fx, Request::GetNow { account_id: None }).await else {
+        panic!("expected Now")
+    };
+    assert_eq!(now.people.total, 1);
+    assert_eq!(now.people.rows[0].row.thread_id, thread);
+    let ResponseData::Rail { rail } = request(&fx, Request::GetRail { account_id: None }).await
+    else {
+        panic!("expected rail")
+    };
+    assert_eq!(
+        rail.entries
+            .iter()
+            .find(|entry| entry.id == "messages")
+            .unwrap()
+            .count,
+        Some(1)
+    );
 }
 
 #[tokio::test]
@@ -295,8 +497,15 @@ async fn your_turn_goes_quiet_after_a_week_without_a_cadence() {
     .await;
     let messages = list(&fx).await;
     assert!(messages.your_turn.is_empty());
+    assert!(
+        messages.empty_state.is_none(),
+        "history is still visible in All"
+    );
     assert_eq!(
-        messages.empty_state.as_deref(),
+        filtered(&fx, None, Default::default())
+            .await
+            .empty_state
+            .as_deref(),
         Some(mxr_protocol::messages_copy::CLEAR)
     );
     let leo = messages
@@ -1444,11 +1653,14 @@ async fn each_filter_alone_and_combined_keeps_its_rows_and_not_the_counts() {
         turn: None,
     };
 
-    let all = filtered(&fx, None, MessagesFilterData::default()).await;
+    let all = filtered(&fx, None, history_filter()).await;
     assert_eq!(shown_ids(&all), everyone);
-    assert_eq!(all.row_count, 3);
-    assert_eq!(all.matched, 3, "no filter matches what row_count counts");
-    assert_eq!(all.filter, MessagesFilterData::default());
+    assert_eq!(all.row_count, 2, "only attention is counted in the header");
+    assert_eq!(
+        all.matched, 3,
+        "history includes the person waiting on them"
+    );
+    assert_eq!(all.filter, history_filter());
 
     // Each filter below is read after the plain list, so a cache hit on
     // the plain key would show up as unfiltered rows here.
@@ -1604,6 +1816,11 @@ fn each_filter_is_its_own_mode_cache_entry() {
     let plain = view(Default::default(), None);
     assert_ne!(
         plain,
+        view(history_filter(), None),
+        "history must not share attention's cache entry"
+    );
+    assert_ne!(
+        plain,
         view(
             MessagesFilterData {
                 unread: true,
@@ -1700,20 +1917,20 @@ async fn a_pinned_unread_person_past_the_cap_shows_under_unread() {
     }
     ids.sort();
 
-    let all = filtered(&fx, None, MessagesFilterData::default()).await;
+    let all = filtered(&fx, None, history_filter()).await;
     assert_eq!(
         pinned_ids(&all),
         ids[..9].to_vec(),
         "unfiltered Pinned keeps nine"
     );
-    assert_eq!(all.row_count, 9);
+    assert_eq!(all.row_count, 0, "idle pins do not create attention");
 
     let unread = filtered(
         &fx,
         None,
         MessagesFilterData {
             unread: true,
-            ..Default::default()
+            ..history_filter()
         },
     )
     .await;
@@ -1729,7 +1946,7 @@ async fn a_pinned_unread_person_past_the_cap_shows_under_unread() {
         unread.empty_state.is_none(),
         "a matching row is not an empty view"
     );
-    assert_eq!(unread.row_count, 9, "header counts ignore the filter");
+    assert_eq!(unread.row_count, 0, "header counts ignore history");
 }
 
 #[tokio::test]
@@ -1760,14 +1977,14 @@ async fn one_correspondent_in_two_accounts_is_two_rows_and_matched_counts_both()
     there.message_id_header = Some(format!("<{}@other>", there.id));
     fx.store_envelope(&there, MessageDirection::Outbound).await;
 
-    let all = filtered(&fx, None, MessagesFilterData::default()).await;
+    let all = filtered(&fx, None, history_filter()).await;
     let maya_rows = all
         .recent
         .iter()
         .filter(|row| row.id == format!("person:{maya}"))
         .count();
     assert_eq!(maya_rows, 2, "one row per account");
-    assert_eq!(all.row_count, 2);
+    assert_eq!(all.row_count, 0, "sent-only history is not attention");
     assert_eq!(
         all.matched, 2,
         "no filter matches every row, once per account"

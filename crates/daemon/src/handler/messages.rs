@@ -13,8 +13,8 @@
 use super::conversation_shape::Shape;
 use super::desk::{compose_desk, self_matcher, Senders};
 use super::desk_lanes::{
-    apply_pace, clean_subject, current_messages, is_outbound, last_stored, thread_lanes,
-    AccountInputs, DESK_WINDOW_DAYS,
+    apply_pace, clean_subject, current_messages, is_outbound, last_stored, needs_attention,
+    thread_lanes, AccountInputs, DESK_WINDOW_DAYS,
 };
 use super::desk_timers::DeskTimers;
 use super::messages_text::{cached_ask, new_texts, wrapped_lines, MessageText, TextRequest};
@@ -31,7 +31,7 @@ use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     messages_copy, ClosenessData, ComposerData, ConversationAttachmentData, ConversationData,
     ConversationMessageData, DeskLaneKind, DeskRowData, MergeSuggestionData, MessageLayoutData,
-    MessagesBandData, MessagesData, MessagesFilterData, MessagesLapsedData, MessagesPreviewData,
+    MessagesBandData, MessagesData, MessagesFilterData, MessagesPreviewData,
     MessagesPreviewKindData, MessagesRowData, MessagesRowKindData, MessagesTopicData,
     MessagesTurnData, PersonMergeData, PersonPageData, PersonRefData, ResponseData, TopicStateData,
     TrimmedData,
@@ -39,8 +39,8 @@ use mxr_protocol::{
 use mxr_store::{DeskMessage, PersonFacts, PersonMerge};
 use std::collections::{HashMap, HashSet};
 
-/// How far back a person page looks for conversations.
-const PERSON_HISTORY_DAYS: i64 = 730;
+/// How far back a manual-merge preview counts conversations.
+const MERGE_HISTORY_DAYS: i64 = 730;
 /// Most conversations a person page lists.
 const PERSON_TOPICS_MAX: u32 = 40;
 /// Most messages a conversation shows; earlier ones are counted.
@@ -49,8 +49,6 @@ const CONVERSATION_MAX: usize = 20;
 const COMPACT_MAX_LINES: usize = 3;
 /// Earlier messages a preview looks back through when the latest is only a quote.
 const PREVIEW_LOOKBACK: usize = 8;
-/// Up to this many lapsed people follow the clear line.
-const LAPSED_MAX: usize = 3;
 
 /// One account's conversations, placed.
 pub(super) struct Gathered {
@@ -87,11 +85,15 @@ struct DeskTurn {
 
 /// Which threads to gather: the recent window, or a fixed set.
 enum Scope<'a> {
+    /// Only the composed desk's actionable threads, including due returns.
+    Attention(HashMap<ThreadId, DeskTurn>),
     /// The recent window, plus every thread the composed desk says is
     /// someone's turn (`turns`, this account's You owe and New from people
     /// rows after the desk's precedence). Your turn is the desk's, so the
     /// window decides only what else shows in Recent and Quiet.
     Window(HashMap<ThreadId, DeskTurn>),
+    /// Explicit All conversations: the entire locally synced history.
+    History(HashMap<ThreadId, DeskTurn>),
     Threads(&'a [ThreadId]),
 }
 
@@ -124,12 +126,23 @@ async fn gather(
         store.desk_reply_later(account_id).await?,
         store.desk_reminders(account_id, window_start).await?,
     );
+    let full_history = matches!(&scope, Scope::History(_));
     let (mut messages, desk_turns) = match scope {
-        Scope::Window(turns) => {
+        Scope::Attention(turns) => {
+            let threads: Vec<_> = turns.keys().cloned().collect();
+            (
+                store.desk_messages_in_threads(account_id, &threads).await?,
+                Some(turns),
+            )
+        }
+        Scope::Window(turns) | Scope::History(turns) => {
             let days = i64::from(state.config_snapshot().messages.recent_days.max(1));
-            let mut messages = store
-                .desk_thread_messages(account_id, now - Duration::days(days))
-                .await?;
+            let since = if full_history {
+                DateTime::UNIX_EPOCH
+            } else {
+                now - Duration::days(days)
+            };
+            let mut messages = store.desk_thread_messages(account_id, since).await?;
             // A conversation a time you set brought back, or one the desk
             // says is your turn, may be older than the window.
             let loaded: HashSet<&ThreadId> = messages.iter().map(|m| &m.thread_id).collect();
@@ -200,9 +213,7 @@ async fn gather(
             None => thread_lanes(&inputs)
                 .rows
                 .into_iter()
-                .filter(|draft| {
-                    matches!(draft.row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
-                })
+                .filter(|draft| needs_attention(&draft.row))
                 .map(|draft| (draft.row.thread_id.clone(), (draft.row, None)))
                 .collect(),
         };
@@ -436,9 +447,23 @@ fn place_topic(
 }
 
 /// Rows of one account, keyed and built, with each Your turn row's ratio.
-fn account_rows(gathered: &Gathered, now: DateTime<Utc>) -> Vec<(MessagesRowData, Option<f64>)> {
+fn account_rows(
+    gathered: &Gathered,
+    now: DateTime<Utc>,
+    view: Option<MessagesTurnData>,
+) -> Vec<(MessagesRowData, Option<f64>)> {
     let mut grouped: HashMap<RowKey, Vec<Topic>> = HashMap::new();
     for topic in &gathered.topics {
+        // Select topics before building rows and previews. Filtering only
+        // people would leak unrelated history into an actionable person's row.
+        let keep = match view {
+            None | Some(MessagesTurnData::Mine) => topic.turn.is_some(),
+            Some(MessagesTurnData::Theirs) => topic.data.state == TopicStateData::Waiting,
+            Some(MessagesTurnData::All) => true,
+        };
+        if !keep {
+            continue;
+        }
         grouped
             .entry(topic.key.clone())
             .or_default()
@@ -452,7 +477,10 @@ fn account_rows(gathered: &Gathered, now: DateTime<Utc>) -> Vec<(MessagesRowData
             (build_row(key, topics, &ctx), ratio)
         })
         .collect();
-    // A pinned person with nothing in the window still has a face.
+    // Idle pinned people are history too, never filler in the attention queue.
+    if view != Some(MessagesTurnData::All) {
+        return rows;
+    }
     let present: HashSet<String> = rows
         .iter()
         .filter_map(|(row, _)| row.person.as_ref().map(|p| p.id.clone()))
@@ -525,9 +553,12 @@ pub(super) async fn messages_at(
     // From the same desk, so it holds when the Waiting on view clears
     // Your turn below.
     let your_turn_split = desk.turn_units().split;
+    let row_count = your_turn_split.total();
+    let thread_count = u32::try_from(desk.rows.iter().filter(|row| needs_attention(row)).count())
+        .unwrap_or(u32::MAX);
     let mut turns: HashMap<AccountId, HashMap<ThreadId, DeskTurn>> = HashMap::new();
     for row in desk.rows {
-        if matches!(row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew) {
+        if needs_attention(&row) {
             let key = desk.turn_keys.key(&row);
             turns
                 .entry(row.account_id.clone())
@@ -538,16 +569,19 @@ pub(super) async fn messages_at(
     let mut gathered = Vec::new();
     for account in &accounts {
         let own = turns.remove(account).unwrap_or_default();
-        gathered.push(gather(state, account, Scope::Window(own), now).await?);
+        let scope = match filter.turn {
+            None | Some(MessagesTurnData::Mine) => Scope::Attention(own),
+            Some(MessagesTurnData::All) => Scope::History(own),
+            Some(MessagesTurnData::Theirs) => Scope::Window(own),
+        };
+        gathered.push(gather(state, account, scope, now).await?);
     }
     let mut your_turn = Vec::new();
     let mut pinned = Vec::new();
     let mut recent = Vec::new();
     let mut quiet = Vec::new();
-    let mut thread_count = 0u32;
     for g in &gathered {
-        thread_count += u32::try_from(g.topics.len()).unwrap_or(u32::MAX);
-        for (row, ratio) in account_rows(g, now) {
+        for (row, ratio) in account_rows(g, now, filter.turn) {
             if row.pinned && row.band != MessagesBandData::Pinned {
                 let mut face = row.clone();
                 face.band = MessagesBandData::Pinned;
@@ -568,36 +602,6 @@ pub(super) async fn messages_at(
     rank_by_recency(&mut pinned);
     rank_by_recency(&mut recent);
     rank_by_recency(&mut quiet);
-    // The header counts keep Pinned's cap. The filter sees every pinned
-    // person, and the cap applies to what it keeps.
-    let row_count = u32::try_from(your_turn.len() + recent.len() + quiet.len()).unwrap_or(u32::MAX)
-        + u32::try_from(
-            pinned
-                .iter()
-                .take(PINNED_CAP)
-                .filter(|r| !r.your_turn)
-                .count(),
-        )
-        .unwrap_or(0);
-    match filter.turn {
-        Some(MessagesTurnData::Mine) => {
-            recent.clear();
-            quiet.clear();
-            pinned.retain(|row| row.your_turn);
-        }
-        Some(MessagesTurnData::Theirs) => {
-            your_turn.clear();
-            let waiting = |row: &MessagesRowData| {
-                row.topics
-                    .iter()
-                    .any(|t| t.state == TopicStateData::Waiting)
-            };
-            pinned.retain(waiting);
-            recent.retain(waiting);
-            quiet.retain(waiting);
-        }
-        None => {}
-    }
     // Toggles narrow every band, so the counts a list is limited by are
     // the filtered ones.
     let keep = |row: &MessagesRowData| {
@@ -621,29 +625,13 @@ pub(super) async fn messages_at(
     }
 
     let waiting_view = filter.turn == Some(MessagesTurnData::Theirs);
-    // A toggle that empties the view is not the clear state: the lapsed
-    // people and Your turn's clear line would both be wrong under it.
-    let lapsed = if your_turn.is_empty() && !waiting_view && !filter.narrows() {
-        lapsed(state, &accounts, now).await?
-    } else {
-        Vec::new()
-    };
-    // Judged on the view being shown: Waiting on is empty when no row
-    // waits on them, whatever Your turn holds.
-    let view_empty = if filter.narrows() {
-        matched == 0
-    } else if waiting_view {
-        pinned.is_empty() && recent_total == 0 && quiet_total == 0
-    } else {
-        your_turn.is_empty()
-    };
-    let empty_state = view_empty.then(|| {
-        if row_count == 0 {
-            messages_copy::NEVER_HAD_ANY.to_string()
-        } else if filter.narrows() {
+    let empty_state = (matched == 0).then(|| {
+        if filter.narrows() {
             messages_copy::filtered_empty(filter, your_turn_split.total())
         } else if waiting_view {
             messages_copy::WAITING_CLEAR.to_string()
+        } else if filter.turn == Some(MessagesTurnData::All) {
+            messages_copy::NEVER_HAD_ANY.to_string()
         } else {
             messages_copy::CLEAR.to_string()
         }
@@ -662,7 +650,11 @@ pub(super) async fn messages_at(
     );
     Ok(MessagesData {
         generated_at: now,
-        header: messages_copy::HEADER.to_string(),
+        header: if filter.turn == Some(MessagesTurnData::All) {
+            messages_copy::HISTORY_HEADER.to_string()
+        } else {
+            messages_copy::HEADER.to_string()
+        },
         your_turn,
         your_turn_split,
         pinned,
@@ -675,7 +667,7 @@ pub(super) async fn messages_at(
         row_count,
         thread_count,
         empty_state,
-        lapsed,
+        lapsed: Vec::new(),
         merge_suggestion_count,
     })
 }
@@ -802,55 +794,6 @@ async fn earlier_with_text(
     }))
 }
 
-/// People whose usual pace lapsed, as facts: "Ari usually writes every
-/// week. Last: 19 days ago."
-async fn lapsed(
-    state: &AppState,
-    accounts: &[AccountId],
-    now: DateTime<Utc>,
-) -> Result<Vec<MessagesLapsedData>, HandlerError> {
-    let mut out = Vec::new();
-    for account in accounts {
-        let people = People::new(&state.store.person_links(account).await?);
-        for drift in state.store.list_cadence_drift(account).await? {
-            let Some(last) = drift.last_contact_at else {
-                continue;
-            };
-            let primary = people.primary(&drift.email);
-            let first = mxr_protocol::first_name(drift.display_name.as_deref(), &primary);
-            let days = (now - last).num_days().max(0);
-            out.push((
-                drift.drift_days,
-                MessagesLapsedData {
-                    account_id: account.clone(),
-                    person: PersonRefData {
-                        id: primary.clone(),
-                        name: drift.display_name.clone(),
-                        addresses: people.addresses(&primary),
-                    },
-                    line: format!(
-                        "{first} usually writes {}. Last: {days} days ago.",
-                        cadence_words(drift.expected_days)
-                    ),
-                },
-            ));
-        }
-    }
-    out.sort_by(|a, b| b.0.total_cmp(&a.0));
-    Ok(out.into_iter().take(LAPSED_MAX).map(|(_, l)| l).collect())
-}
-
-fn cadence_words(days: f64) -> String {
-    let days = days.round().max(1.0) as i64;
-    match days {
-        1 => "every day".to_string(),
-        6..=8 => "every week".to_string(),
-        13..=15 => "every two weeks".to_string(),
-        28..=31 => "every month".to_string(),
-        _ => format!("every {days} days"),
-    }
-}
-
 /// A person argument: `person:<email>`, `group:<thread>`, or an address.
 enum PersonArg {
     Person(String),
@@ -939,7 +882,7 @@ async fn person_page(
         .person_thread_ids(
             account_id,
             &addresses,
-            now - Duration::days(PERSON_HISTORY_DAYS),
+            DateTime::UNIX_EPOCH,
             PERSON_TOPICS_MAX,
         )
         .await?;
@@ -1356,7 +1299,7 @@ async fn merge_outcome(
         .person_thread_ids(
             account_id,
             &addresses,
-            now - Duration::days(PERSON_HISTORY_DAYS),
+            now - Duration::days(MERGE_HISTORY_DAYS),
             u32::MAX,
         )
         .await?;

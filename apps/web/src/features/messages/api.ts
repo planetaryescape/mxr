@@ -69,16 +69,18 @@ export function useMessagesQuery(filter: MessagesFilter = NO_FILTER) {
       ...MESSAGES_KEY,
       "list",
       scope,
-      filter.turn ?? "all",
+      filter.turn ?? "attention",
       ...(filter.unread ? ["unread"] : []),
       ...(filter.pastPace ? ["pace"] : []),
     ],
     queryFn: () => fetchMessages(account, filter),
-    // A filter change within one account keeps the list on screen until its
-    // answer lands, so the filter line under the cursor doesn't unmount. Another
-    // account's rows never stand in: that switch shows the skeleton as before.
+    // Toggle changes keep the current list while its answer lands. Another
+    // account or view never stands in, especially history for attention.
     placeholderData: (previous, previousQuery) =>
-      previousQuery?.queryKey[LIST_ACCOUNT_AT] === scope ? previous : undefined,
+      previousQuery?.queryKey[LIST_ACCOUNT_AT] === scope &&
+      previousQuery.queryKey[LIST_ACCOUNT_AT + 1] === (filter.turn ?? "attention")
+        ? previous
+        : undefined,
     staleTime: 15_000,
     refetchInterval: 60_000,
   });

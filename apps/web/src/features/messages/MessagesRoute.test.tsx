@@ -67,7 +67,7 @@ vi.mock("@/features/mail-actions/verbFeedback", () => ({
 vi.mock("./MessagesList", () => ({
   MessagesList: ({ data }: { data: MessagesData }) => (
     <ul>
-      {data.your_turn.map((listed) => (
+      {[...data.your_turn, ...data.recent, ...data.quiet].map((listed) => (
         <li key={listed.id} data-testid="listed-row">
           {listed.id}
         </li>
@@ -190,7 +190,7 @@ function validateMessagesSearch(search: Record<string, unknown>): MessagesSearch
   return {
     person: optionalString(search.person),
     topic: optionalString(search.topic),
-    turn: optionalEnum(search.turn, ["mine", "theirs"] as const),
+    turn: optionalEnum(search.turn, ["all", "mine", "theirs"] as const),
     unread: optionalFlag(search.unread),
     pace: optionalFlag(search.pace),
   };
@@ -535,7 +535,7 @@ test("the filter toggles write the URL, ask the bridge with them, and Clear filt
     ),
   );
   expect(screen.getByRole("button", { name: "Unread" }).getAttribute("aria-pressed")).toBe("true");
-  expect(await screen.findByText("Showing 1 of 1")).toBeTruthy();
+  expect(await screen.findByText("1 shown · 1 need attention")).toBeTruthy();
 
   fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
   await waitFor(() => expect(router.state.location.search).not.toHaveProperty("unread"));
@@ -579,7 +579,7 @@ test("a filter change keeps the list but hides the count and empty line until it
     throw new Error(`Unexpected synthetic request: ${path}`);
   });
   await mountMessages("/messages?turn=mine");
-  expect(await screen.findByText("Showing 1 of 1")).toBeTruthy();
+  expect(await screen.findByText("1 shown · 1 need attention")).toBeTruthy();
 
   fireEvent.click(await screen.findByRole("button", { name: "Unread" }));
   await waitFor(() =>
@@ -589,7 +589,7 @@ test("a filter change keeps the list but hides the count and empty line until it
   );
   // The previous filter's rows stay, but no count or empty line describes them.
   expect(screen.getByTestId("listed-row").textContent).toBe("person:a");
-  expect(screen.queryByText(/Showing/)).toBeNull();
+  expect(screen.queryByText(/shown ·/)).toBeNull();
 
   await act(async () => {
     pending.resolve({
@@ -604,7 +604,7 @@ test("a filter change keeps the list but hides the count and empty line until it
     });
   });
   expect(await screen.findByText(/No unread messages from people\./)).toBeTruthy();
-  expect(screen.getByText("Showing 0 of 1")).toBeTruthy();
+  expect(screen.getByText("0 shown · 1 need attention")).toBeTruthy();
 });
 
 test("switching account never shows the previous account's rows", async () => {
@@ -641,6 +641,37 @@ test("switching account never shows the previous account's rows", async () => {
   } finally {
     act(() => useUiPrefs.setState({ accountScope: previousScope }));
   }
+});
+
+test("returning from All conversations never uses history as the attention placeholder", async () => {
+  const historical = row("person:historical", [topic("archived", "done")]);
+  const history = listWith({
+    your_turn: [],
+    recent: [historical],
+    row_count: 0,
+    matched: 1,
+    filter: { turn: "all", unread: false, past_pace: false },
+  });
+  const pending = deferred<FixtureReply>();
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people")) {
+      return url.searchParams.get("turn") === "all" ? { messages: history } : pending.promise;
+    }
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  const router = await mountMessages("/messages?turn=all");
+  expect(await screen.findByText("person:historical")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("radio", { name: "Needs attention" }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty("turn"));
+  expect(screen.queryByTestId("listed-row")).not.toBeInTheDocument();
+  await act(async () => {
+    pending.resolve({
+      messages: listWith({ empty_state: "Nobody is waiting on you.", matched: 0 }),
+    });
+  });
+  expect(await screen.findByText("Nobody is waiting on you.")).toBeInTheDocument();
+  expect(screen.queryByText("person:historical")).not.toBeInTheDocument();
 });
 
 test("g f below the split reveals the people list before focusing the filter line", async () => {

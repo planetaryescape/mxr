@@ -133,13 +133,21 @@ export function MessagesRoute({
   );
 }
 
-function MessagesHeader({ search, guide }: { search: MessagesSearch; guide?: ModeGuide }) {
+function MessagesHeader({
+  search,
+  guide,
+  header,
+}: {
+  search: MessagesSearch;
+  guide?: ModeGuide;
+  header?: string;
+}) {
   const waiting = search.turn === "theirs";
   return (
     <PageFrame
       title={waiting ? "Waiting on" : "Messages"}
       // Waiting on is its own page: Messages' header line describes the other turn.
-      purpose={waiting ? "People you're waiting to hear from." : guide?.header}
+      purpose={waiting ? "People you're waiting to hear from." : (header ?? guide?.header)}
     />
   );
 }
@@ -742,7 +750,7 @@ function MessagesBody({
   if (empty && allRows.length === 0 && !isFiltered(filter)) {
     return (
       <>
-        <MessagesHeader search={search} guide={guide} />
+        <MessagesHeader search={search} guide={guide} header={data.header} />
         {filterBar}
         <div data-testid="messages-empty" className="min-h-0 flex-1 overflow-y-auto">
           {emptyState}
@@ -760,7 +768,7 @@ function MessagesBody({
           className="flex min-h-0 flex-col"
           elementRef={listRef}
         >
-          <MessagesHeader search={search} guide={guide} />
+          <MessagesHeader search={search} guide={guide} header={data.header} />
           {filterBar}
           <div ref={setScroller} className="min-h-0 flex-1 overflow-y-auto pb-6">
             {empty && emptyState ? (

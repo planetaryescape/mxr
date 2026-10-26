@@ -2828,12 +2828,14 @@ const NOW_LONG_ABOUT: &str = "The few things that need you now, from every mode.
 
 Four sections in a fixed order, at most three items each: People (whose turn it is, from Messages), Due soon (To do's Now band, by act-by), one Updates card, and one thing to read after 17:00. Each section says how many more are in its mode. `mxr desk` still lists every lane in full.";
 
-const MESSAGES_LONG_ABOUT: &str = "People you talk with, one row each. Reply or mark done.
+const MESSAGES_LONG_ABOUT: &str = "Conversations that need your attention, one row per person. Reply or mark done.
 
-Four bands: Your turn (their latest message to you is unanswered; closest people first, then whoever has waited longest past your usual pace), Pinned, Recent and Quiet. Each row is a person, merged across their addresses, with your conversations inside as topics; a group thread is its own row. A thread you were only copied on goes to Updates. The preview is what they asked, from the conversation's gist when one is cached, else what they wrote last.";
+By default, only actionable topics appear: unanswered directed requests and due reminders you explicitly set. Recent, unread, pinned, archived and sent-only mail do not qualify just because they exist. Use `mxr messages list --turn all` for All conversations, including history in Recent and Quiet; `messages person EMAIL` also retains that person's history. Each row is a person, merged across their addresses; a group thread is its own row. The preview is what they asked, from the conversation's gist when one is cached, else their latest new text.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum MessagesTurnArg {
+    /// All conversations, including archived and sent-only history.
+    All,
     /// Your turn.
     Mine,
     /// Waiting on them.
@@ -2842,9 +2844,9 @@ pub enum MessagesTurnArg {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum MessagesAction {
-    /// The bands (the default).
+    /// Conversations needing attention (the default), or an explicit history view.
     List {
-        /// Only rows where it is this side's turn.
+        /// Explicit view: all conversations, your turn, or waiting on them.
         #[arg(long, value_enum)]
         turn: Option<MessagesTurnArg>,
         /// Only rows with a message from them you haven't read.

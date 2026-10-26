@@ -1,16 +1,17 @@
 ---
 title: Messages
-description: People you talk with, one row each, with your conversations inside as topics. Reply, say got it, or mark done here.
+description: Conversations that need your attention. Reply, say got it, or mark done; open All conversations for history.
 ---
 
-Messages shows people, not emails. Each row is a person you're in
-conversation with, merged across their addresses, and your conversations
-with them sit inside the row as topics. A group conversation, where two or
-more other people took part, is its own row. The quoted line under a name
-is what they asked you.
+Messages shows conversations that need your attention, grouped by person.
+The default includes unanswered directed requests and due reminders you
+explicitly set. Only actionable topics appear in each person's row. A group
+conversation is its own row. The quoted line under a name is what they
+asked you.
 
 ```bash
-mxr messages            # the bands
+mxr messages            # needs attention
+mxr messages list --turn all  # All conversations, including history
 mxr messages list --turn mine
 mxr messages list --unread --past-pace
 mxr messages person samir@launchpad.example
@@ -30,39 +31,58 @@ with `mxr classify report --format json`. A stored Messages home does not undo
 a snooze or a done mark. The stored-assessment details require changes made after
 `v0.6.158`; that release does not include them.
 
-## Four bands, closest people first
+## Needs attention by default
+
+Inbox membership, unread status, recency and pinning do not create a reason
+to act. Replying, acknowledging, marking done or archiving clears resolved
+work from the default list. Sent copies do not keep it there. A later FYI
+or acknowledgement does not create a new turn; a new directed request can.
+Reply later and follow-up reminders bring a conversation back when due,
+including an archived conversation.
+
+When nothing needs you, Messages stays clear. It does not fill the space
+with old conversations or suggestions to reconnect.
+
+Choose **All conversations** to browse history, including archived and
+sent-only conversations. `mxr messages person EMAIL` also retains that
+person's topics. Clearing filters returns to Needs attention. The rail,
+Now and the Messages header count attention, not history.
+
+## Bands in All conversations
 
 | Band | Who is in it | Order |
 |---|---|---|
 | Your turn | A directed request to you is unanswered, or your reply-later timer has returned | Closest first, then whoever has waited longest past your usual pace with them |
-| Pinned | Up to nine people you pinned with `s` | Most recent first, with a dot when it's your turn |
-| Recent | Everyone else you've talked with in the last 30 days | Most recent first; "You: ..." when you wrote last |
+| Pinned | Up to nine people you pinned with `s`; only actionable people in the default view | Most recent first, with a dot when it's your turn |
+| Recent | Other recent conversations, or conversations where you wrote last | Most recent first; "You: ..." when you wrote last |
 | Quiet | Done here, or a turn nobody took | Collapsed; a new message brings them back |
 
 Closeness comes from your own history with them, counted on your machine:
 how often you've written to each other, how recently, and for how long.
-Your turn uses the same rule as Now's People, so the two always agree: Now's
+Needs attention uses the same rule as Now's People, so the two always agree: Now's
 headline, the Messages count in the rail and the Your turn rows are the same
 number, which `your_turn_split` in `mxr messages --format json` divides into
 people you write with and others who wrote to you. The Waiting on view
-(`turn=theirs`) is empty with "Nobody you're waiting to hear from."
+(`turn=theirs`) is an explicit view; merely waiting for someone else is not
+a reason to add them to the default queue.
 
 A turn nobody took goes quiet after three times your usual interval with
 that person, or a week when there's no history, and never stays longer
-than 30 days. Nothing in Messages expires; it only goes quiet.
+than 30 days. Quiet conversations remain available in All conversations
+and on person pages.
 
 ## Filter the list
 
-The list can show only some rows. A turn choice (All, Your turn, Waiting on
-them) sits beside two toggles: Unread keeps people with a message from them
+Choose Needs attention, All conversations, Your turn or Waiting on them.
+Two toggles narrow the selected view: Unread keeps people with a message from them
 you haven't read, and Past your pace keeps the people whose turn has run
 longer than your usual reply time with them. The toggles and the turn
 choice combine, so Your turn with Unread shows only the unread people you
 owe a reply.
 
-The filter changes which rows show, never the counts. The header, the rail
-and Now still count everyone, and the filter line says how many rows it
-kept ("Showing 2 of 9") with Clear filters beside it while a filter is on.
+The view and toggles change which rows show, never the attention counts.
+The filter line separates the visible rows from attention
+("29 shown · 2 need attention"), with Clear filters beside it.
 An empty filtered list says why: "No unread messages from people." and what
 is still waiting in Your turn.
 
@@ -70,16 +90,16 @@ is still waiting in Your turn.
 |---|---|
 | Web app | The filter line above the list. `g f` moves focus to it |
 | TUI | `Ctrl-f` opens a picker; `Enter` picks or toggles, `Esc` closes. The status bar names the filters on |
-| Raycast | `⌘F` opens a Filter menu. The choice is remembered for that command |
-| CLI | `mxr messages list --turn mine --unread --past-pace`; `--format json` echoes the filter and reports `matched` |
+| Raycast | `⌘F` opens a Filter menu. Reopening the command starts with Needs attention |
+| CLI | `mxr messages list --turn all` opens history; `--unread` and `--past-pace` narrow the view; `--format json` echoes the filter and reports `matched` |
 
 In the CLI, `--turn mine` and `--turn theirs` pick Your turn and Waiting on
-them. The table says what it kept:
+them. `--turn all` includes history. The table says what it kept:
 
 ```text
 $ mxr messages list --unread --past-pace
-People you talk with, one row each. Reply or mark done.
-Filtered: Unread · Past your pace · 1 of 782 rows
+Conversations that need your attention. Reply or mark done.
+View: Unread · Past your pace · 1 shown · 9 need attention
 
 YOUR TURN
   DP   Samir Patel                 16h  close · usually 47m
@@ -111,7 +131,7 @@ recipient, including inline "Hi, could you confirm ...". A greeting naming
 someone mxr cannot match to an owned recipient remains uncertain: it does
 not silently register that name as yours.
 
-Possible personal mail stays accessible in Recent or Quiet without claiming
+Possible personal mail stays accessible in All conversations' Recent or Quiet without claiming
 someone is waiting for you. Automatic Your turn requires a directed request:
 currently English requests such as "Could you confirm ..." in cached plain
 text, with you in To. A group

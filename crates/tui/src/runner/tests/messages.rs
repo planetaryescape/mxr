@@ -703,8 +703,8 @@ fn ctrl_f_picks_unread_and_the_list_request_carries_it() {
         "Ctrl-f opens the picker"
     );
 
-    // Rows: All, Your turn, Waiting on them, Unread, Past your pace.
-    for _ in 0..3 {
+    // Rows: Needs attention, All, Your turn, Waiting on them, Unread, Past your pace.
+    for _ in 0..4 {
         press(&mut app, KeyCode::Char('j'));
     }
     press(&mut app, KeyCode::Enter);
@@ -735,6 +735,7 @@ fn ctrl_f_picks_unread_and_the_list_request_carries_it() {
 fn the_picker_sets_the_turn_and_pace_without_leaving_messages() {
     let mut app = messages_app(true);
     press_ctrl(&mut app, 'f');
+    press(&mut app, KeyCode::Char('j'));
     press(&mut app, KeyCode::Char('j'));
     press(&mut app, KeyCode::Enter);
     assert_eq!(
@@ -791,8 +792,8 @@ fn clear_filters_resets_the_turn_and_both_toggles_at_once() {
     let mut app = messages_app(true);
     press_ctrl(&mut app, 'f');
     press(&mut app, KeyCode::Char('j'));
-    press(&mut app, KeyCode::Enter); // Your turn
-    for _ in 0..2 {
+    press(&mut app, KeyCode::Enter); // All conversations
+    for _ in 0..3 {
         press(&mut app, KeyCode::Char('j'));
     }
     press(&mut app, KeyCode::Enter); // Unread
@@ -818,4 +819,36 @@ fn clear_filters_resets_the_turn_and_both_toggles_at_once() {
     );
     press(&mut app, KeyCode::Esc);
     assert!(app.modals.messages_filter.is_none());
+}
+
+#[test]
+fn reopening_messages_resets_history_and_ignores_its_late_reply() {
+    let mut app = messages_app(true);
+    press_ctrl(&mut app, 'f');
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(
+        app.mailbox.messages_page.filter.turn,
+        Some(mxr_protocol::MessagesTurnData::All)
+    );
+    let mut history = populated();
+    history.filter = app.mailbox.messages_page.filter;
+    app.set_messages(history.clone(), None);
+    assert!(app.mailbox.messages_page.messages.is_some());
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('g'));
+    press(&mut app, KeyCode::Char('m'));
+    assert_eq!(
+        app.mailbox.messages_page.filter,
+        mxr_protocol::MessagesFilterData::default()
+    );
+    assert!(
+        app.mailbox.messages_page.messages.is_none(),
+        "history must not flash while attention loads"
+    );
+    app.set_messages(history, None);
+    assert!(
+        app.mailbox.messages_page.messages.is_none(),
+        "a stale history response cannot replace attention"
+    );
 }

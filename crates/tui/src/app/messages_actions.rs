@@ -61,6 +61,14 @@ impl App {
         self.enter_mode_view(MailboxView::People);
         let page = &mut self.mailbox.messages_page;
         page.focus = MessagesFocus::List;
+        if page.filter != mxr_protocol::MessagesFilterData::default() {
+            page.messages = None;
+            page.page = None;
+            page.page_for = None;
+            page.pending_person = None;
+            page.person_target = None;
+        }
+        page.filter = mxr_protocol::MessagesFilterData::default();
         page.pending_refresh = true;
         self.mailbox.pending_rail_refresh = true;
     }
@@ -126,6 +134,9 @@ impl App {
         guide: Option<mxr_protocol::ModeGuideData>,
     ) {
         let page = &mut self.mailbox.messages_page;
+        if messages.filter != page.filter {
+            return;
+        }
         // The selection is a person, not a position: a refetch that reorders
         // the bands keeps it on them, and one that drops them moves it to
         // their neighbour.
@@ -654,18 +665,26 @@ impl App {
         self.modals.messages_filter = Some(MessagesFilterPicker { cursor });
     }
 
-    /// Rows 0 to 2 pick the turn (All, Your turn, Waiting on them); 3 and 4
-    /// flip Unread and Past your pace; 5 clears the whole filter.
+    /// Rows 0 to 3 pick the view; 4 and 5 flip the toggles; 6 resets to attention.
     fn apply_messages_filter_choice(&mut self, cursor: usize) {
         let page = &mut self.mailbox.messages_page;
+        let previous_view = page.filter.turn;
         match cursor {
             0 => page.filter.turn = None,
-            1 => page.filter.turn = Some(mxr_protocol::MessagesTurnData::Mine),
-            2 => page.filter.turn = Some(mxr_protocol::MessagesTurnData::Theirs),
-            3 => page.filter.unread = !page.filter.unread,
-            4 => page.filter.past_pace = !page.filter.past_pace,
-            5 => page.filter = mxr_protocol::MessagesFilterData::default(),
+            1 => page.filter.turn = Some(mxr_protocol::MessagesTurnData::All),
+            2 => page.filter.turn = Some(mxr_protocol::MessagesTurnData::Mine),
+            3 => page.filter.turn = Some(mxr_protocol::MessagesTurnData::Theirs),
+            4 => page.filter.unread = !page.filter.unread,
+            5 => page.filter.past_pace = !page.filter.past_pace,
+            6 => page.filter = mxr_protocol::MessagesFilterData::default(),
             _ => return,
+        }
+        if previous_view != page.filter.turn {
+            page.messages = None;
+            page.page = None;
+            page.page_for = None;
+            page.pending_person = None;
+            page.person_target = None;
         }
         page.pending_refresh = true;
     }

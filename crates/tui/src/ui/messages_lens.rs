@@ -4,7 +4,7 @@
 //!
 //! Renders `ListMessages` and `GetPerson` as served: the bands, order,
 //! previews, new text and "trimmed" markers come from the daemon, and the
-//! header and empty states from Messages' guide; hints show in the status
+//! header and empty states from the selected view; hints show in the status
 //! line (`app/hints.rs`). A
 //! narrow terminal shows one pane at a time, the focused one. Pure render;
 //! wiring lives in `app/messages_actions.rs`.
@@ -561,10 +561,10 @@ fn draw_list(
 ) {
     let header = view
         .page
-        .guide
+        .messages
         .as_ref()
-        .map(|guide| guide.header.as_str())
-        .or_else(|| view.page.messages.as_ref().map(|m| m.header.as_str()))
+        .map(|messages| messages.header.as_str())
+        .or_else(|| view.page.guide.as_ref().map(|guide| guide.header.as_str()))
         .unwrap_or(mxr_protocol::messages_copy::HEADER);
     let block = Block::bordered()
         .title(format!(" Messages \u{2500} {} ", one_line(header)))

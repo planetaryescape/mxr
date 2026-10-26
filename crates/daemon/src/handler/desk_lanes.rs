@@ -42,6 +42,13 @@ pub(super) fn is_outbound(message: &DeskMessage, is_self: &dyn Fn(&str) -> bool)
         || (message.direction != "inbound" && is_self(&message.from.email))
 }
 
+/// Work for the user now, not ordinary waiting or conversation history.
+/// A due explicit follow-up is attention even though they still owe the reply.
+pub(super) fn needs_attention(row: &DeskRowData) -> bool {
+    matches!(row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
+        || (row.lane == DeskLaneKind::Waiting && row.back_at.is_some())
+}
+
 /// A thread's messages up to a day ahead of `now`, in date order: who wrote
 /// last is judged on these, so a bad future Date header cannot pose as the
 /// newest message. Messages are in date order, so the rest are a suffix.
@@ -409,7 +416,7 @@ pub(super) fn thread_lanes(inputs: &AccountInputs<'_>) -> ThreadLanes {
             },
             latest,
         ) {
-            if matches!(row.row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew) {
+            if needs_attention(&row.row) {
                 lanes.turn_people.insert(
                     row.row.thread_id.clone(),
                     inputs.shape(thread).people().to_vec(),

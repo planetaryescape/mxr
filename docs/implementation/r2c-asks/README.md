@@ -1,11 +1,17 @@
-# R2c has stored projections and still needs acceptance
+# R2c ships stored asks and durable corrections
 
-The published policy12 baseline has an accepted classifier assessment. This
-candidate uses policy16 for financial speaker attribution, retaining policy15
-payment identity and grouped saved decisions. Its fresh full measurement and final whole-PR acceptance remain pending. Native
-storage, lifecycle and client checks are recorded in the implementation handoff.
-The accepted contract remains [blueprint 37](../../blueprint/37-what-it-asks.md).
-Do not merge this candidate as completed R2c.
+[v0.6.163](https://github.com/planetaryescape/mxr/releases/tag/v0.6.163) ships
+policy `asks-r2c-16` and To do replay version 3. R2c landed in
+[PR 702](https://github.com/planetaryescape/mxr/pull/702) as `fc3e514f`.
+The [To do guide](https://mxr.sh/guides/todo/) owns the user workflow;
+[blueprint 37](../../blueprint/37-what-it-asks.md) records the contract.
+
+Native, client, browser and full-set CI checks passed before merge. The published
+macOS binary passed an isolated fake-mail upgrade and all four correction
+preview, commit and Undo paths, retaining task IDs and existing correction
+history. The [release workflow](https://github.com/planetaryescape/mxr/actions/runs/40258582394)
+records artifact publication and installation checks. Earlier round notes below
+retain their original verification limits as implementation history.
 
 ## Inspect the stored answer and correct a task
 
@@ -172,7 +178,7 @@ OpenAPI and generated TypeScript come from the canonical exporters. Schema
 and CLI help snapshots require their corresponding test generators and
 review before integration.
 
-## Run the focused gates before accepting the candidate
+## Run the focused gates before changing stored asks
 
 ```sh
 agent-work run -- env CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 NEXTEST_TEST_THREADS=4 RAYON_NUM_THREADS=4 scripts/cargo-test -p mxr-todo --tests asks::
@@ -188,8 +194,11 @@ checks; the evaluator with unchanged floors; and `cargo build -p mxr`.
 Use only synthetic mail for the public CLI and client journeys.
 
 The evaluator reads persisted asks and reports zone, thread-position and
-abstention slices. It does not repair state or call a model. Its metrics,
-quote/actor/state coverage and held-out corpus acceptance remain unverified.
+abstention slices. It does not repair state or call a model. The unchanged
+full-set checks passed on the exact
+[release candidate](https://github.com/planetaryescape/mxr/actions/runs/40257121696).
+The grading artifact records its coverage and results; focused native tests
+alone do not establish full-corpus acceptance.
 The week of counts-only real-mail dogfood remains pending and is outside
 local development/smoke authorization.
 
@@ -224,7 +233,7 @@ is not evidence of a promise to attend. Existing PARTSTAT completion remains.
 The evaluator reads envelopes, current home and asks facets, and record
 membership in one SQL statement. Label schema 3 adds exact quote, actor and
 state expectations when a scenario supplies them. Existing labels and floors
-remain; the extended corpus and its measurements still need acceptance.
+remain and passed in the release candidate's full-set CI run.
 
 
 ## Round4 repairs measured stored-ask regressions

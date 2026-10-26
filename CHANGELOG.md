@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.164](https://github.com/planetaryescape/mxr/compare/v0.6.163...v0.6.164) (2026-10-26)
+
+
+### Bug Fixes
+
+* make Messages an attention-only queue ([#715](https://github.com/planetaryescape/mxr/issues/715)) ([814b053](https://github.com/planetaryescape/mxr/commit/814b053b120d48034e61c82e14bedf4f6c638d0f))
+
+
+### Documentation
+
+* record R2c release acceptance ([3e4dd28](https://github.com/planetaryescape/mxr/commit/3e4dd283aee803e25e8a7a1d354c5b91ea7decb1))
+
 ## [0.6.163](https://github.com/planetaryescape/mxr/compare/v0.6.162...v0.6.163) (2026-10-26)
 
 

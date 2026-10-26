@@ -12,6 +12,7 @@
 
 mod history;
 pub(crate) use history::warm as warm_history;
+pub(crate) use history::HistoryCache;
 
 use super::conversation_shape::Shape;
 use super::desk::{compose_desk, self_matcher, Senders};
@@ -799,74 +800,85 @@ async fn fill_previews(
     gathered: &[Gathered],
     rows: &mut [MessagesRowData],
 ) -> Result<(), HandlerError> {
-    for row in rows.iter_mut() {
-        let Some(topic) = row.topics.first() else {
-            continue;
-        };
-        let Some(g) = gathered.iter().find(|g| g.account_id == row.account_id) else {
-            continue;
-        };
-        let Some(thread) = g.threads.get(&topic.thread_id) else {
-            continue;
-        };
-        if topic.state == TopicStateData::YourTurn {
-            if let Some(ask) = cached_ask(state, &topic.thread_id).await? {
-                row.preview = Some(MessagesPreviewData {
-                    kind: MessagesPreviewKindData::Ask,
-                    text: preview_text(&ask.quote),
-                    message_id: Some(ask.message_id),
-                    model: Some(ask.model),
-                });
-                continue;
-            }
+    use futures::TryStreamExt;
+    // Each preview has independent body/gist reads. Bound their overlap to
+    // four without reordering rows or loading unselected conversation text.
+    futures::stream::iter(rows.iter_mut().map(Ok::<_, HandlerError>))
+        .try_for_each_concurrent(4, |row| fill_preview(state, gathered, row))
+        .await
+}
+
+async fn fill_preview(
+    state: &AppState,
+    gathered: &[Gathered],
+    row: &mut MessagesRowData,
+) -> Result<(), HandlerError> {
+    let Some(topic) = row.topics.first() else {
+        return Ok(());
+    };
+    let Some(g) = gathered.iter().find(|g| g.account_id == row.account_id) else {
+        return Ok(());
+    };
+    let Some(thread) = g.threads.get(&topic.thread_id) else {
+        return Ok(());
+    };
+    if topic.state == TopicStateData::YourTurn {
+        if let Some(ask) = cached_ask(state, &topic.thread_id).await? {
+            row.preview = Some(MessagesPreviewData {
+                kind: MessagesPreviewKindData::Ask,
+                text: preview_text(&ask.quote),
+                message_id: Some(ask.message_id),
+                model: Some(ask.model),
+            });
+            return Ok(());
         }
-        let target = if topic.state == TopicStateData::YourTurn {
-            topic.reply_to_message_id.clone()
-        } else {
-            match last_stored(thread, |m| !m.trashed) {
-                Some(latest) => latest.id.clone(),
-                None => continue,
-            }
-        };
-        let mut texts = preview_texts(
-            state,
-            thread,
-            &TextRequest {
-                wanted: std::slice::from_ref(&target),
-                outbound: &g.outbound,
-            },
-        )
-        .await?;
-        let Some(text) = texts.remove(&target) else {
-            continue;
-        };
-        // A message that is only a quote says nothing of its own, and the
-        // placeholder is not a preview: read the latest earlier message
-        // that does, or show none and let the client fall back to the
-        // subject.
-        let (target, text) = if text.only_quoted {
-            match earlier_with_text(state, thread, g, &target).await? {
-                Some(found) => found,
-                None => continue,
-            }
-        } else {
-            (target, text)
-        };
-        let (kind, text) = if g.outbound.contains(&target) {
-            (
-                MessagesPreviewKindData::You,
-                format!("You: {}", preview_text(&text.text)),
-            )
-        } else {
-            (MessagesPreviewKindData::Latest, preview_text(&text.text))
-        };
-        row.preview = Some(MessagesPreviewData {
-            kind,
-            text,
-            message_id: Some(target),
-            model: None,
-        });
     }
+    let target = if topic.state == TopicStateData::YourTurn {
+        topic.reply_to_message_id.clone()
+    } else {
+        match last_stored(thread, |m| !m.trashed) {
+            Some(latest) => latest.id.clone(),
+            None => return Ok(()),
+        }
+    };
+    let mut texts = preview_texts(
+        state,
+        thread,
+        &TextRequest {
+            wanted: std::slice::from_ref(&target),
+            outbound: &g.outbound,
+        },
+    )
+    .await?;
+    let Some(text) = texts.remove(&target) else {
+        return Ok(());
+    };
+    // A message that is only a quote says nothing of its own, and the
+    // placeholder is not a preview: read the latest earlier message
+    // that does, or show none and let the client fall back to the
+    // subject.
+    let (target, text) = if text.only_quoted {
+        match earlier_with_text(state, thread, g, &target).await? {
+            Some(found) => found,
+            None => return Ok(()),
+        }
+    } else {
+        (target, text)
+    };
+    let (kind, text) = if g.outbound.contains(&target) {
+        (
+            MessagesPreviewKindData::You,
+            format!("You: {}", preview_text(&text.text)),
+        )
+    } else {
+        (MessagesPreviewKindData::Latest, preview_text(&text.text))
+    };
+    row.preview = Some(MessagesPreviewData {
+        kind,
+        text,
+        message_id: Some(target),
+        model: None,
+    });
     Ok(())
 }
 

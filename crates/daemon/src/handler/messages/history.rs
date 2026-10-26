@@ -4,6 +4,24 @@ use super::*;
 use mxr_store::{ConversationSummaryWrite, DeskDismissal};
 use serde::{Deserialize, Serialize};
 
+#[derive(Default)]
+pub(crate) struct HistoryCache(parking_lot::Mutex<HashMap<AccountId, CachedHistory>>);
+
+#[cfg(test)]
+impl HistoryCache {
+    pub(crate) fn clear(&self) {
+        self.0.lock().clear();
+    }
+}
+
+struct CachedHistory {
+    token: mxr_store::ConversationHistoryToken,
+    context: String,
+    valid_from: i64,
+    valid_until: i64,
+    summaries: Vec<Summary>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct Latest {
     pub id: MessageId,
@@ -134,9 +152,61 @@ pub(super) async fn load(
     now: DateTime<Utc>,
 ) -> Result<Vec<Summary>, HandlerError> {
     let context = context(state, account).await?;
+    let token = state.store.conversation_history_token(account, now).await?;
+    {
+        let mut cache = state.history_cache.0.lock();
+        if let Some(cached) = cache.get(account) {
+            if Some(&cached.token) == token.as_ref()
+                && cached.context == context
+                && cached.valid_from <= now.timestamp()
+                && cached.valid_until > now.timestamp()
+            {
+                return Ok(cached.summaries.clone());
+            }
+        }
+        cache.remove(account);
+    }
+    let summaries = load_stored(state, account, &context, now).await?;
+    // A source change during the read must not make a mixed-generation build
+    // reusable. Turns, people links, Done, ranking and previews are never cached here.
+    if let Some(token) = token {
+        if state
+            .store
+            .conversation_history_token(account, now)
+            .await?
+            .as_ref()
+            == Some(&token)
+        {
+            let valid_until = summaries
+                .iter()
+                .map(|s| s.valid_until)
+                .chain(token.next_eligible_at)
+                .min()
+                .unwrap_or(i64::MAX);
+            state.history_cache.0.lock().insert(
+                account.clone(),
+                CachedHistory {
+                    token,
+                    context,
+                    valid_from: now.timestamp(),
+                    valid_until,
+                    summaries: summaries.clone(),
+                },
+            );
+        }
+    }
+    Ok(summaries)
+}
+
+async fn load_stored(
+    state: &AppState,
+    account: &AccountId,
+    context: &str,
+    now: DateTime<Utc>,
+) -> Result<Vec<Summary>, HandlerError> {
     let candidates = state
         .store
-        .conversation_summaries::<Summary>(account, &context, now)
+        .conversation_summaries::<Summary>(account, context, now)
         .await?;
     let mut summaries = Vec::with_capacity(candidates.len());
     let mut missing = HashMap::new();
@@ -207,7 +277,7 @@ pub(super) async fn load(
     };
     state
         .store
-        .save_conversation_summaries(account, &context, &writes)
+        .save_conversation_summaries(account, context, &writes)
         .await?;
     Ok(summaries)
 }

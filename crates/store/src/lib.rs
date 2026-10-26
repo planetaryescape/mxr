@@ -59,7 +59,7 @@ mod contacts_refresh_handle;
 mod context_briefings;
 mod conversation_summaries;
 pub use conversation_summaries::{
-    ConversationRevision, ConversationSummary, ConversationSummaryWrite,
+    ConversationHistoryToken, ConversationRevision, ConversationSummary, ConversationSummaryWrite,
 };
 mod decision_log;
 mod deliveries;

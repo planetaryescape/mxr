@@ -17,6 +17,16 @@ pub struct ConversationSummary<T> {
     pub json: Option<T>,
 }
 
+/// All source clocks for an account's decoded history facts. View revisions
+/// only increase while a thread exists; removing a thread also moves `input`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConversationHistoryToken {
+    input: i64,
+    facet: i64,
+    view: i64,
+    pub next_eligible_at: Option<i64>,
+}
+
 /// A synopsis to persist only if its observed inputs have not changed.
 #[derive(serde::Serialize)]
 pub struct ConversationSummaryWrite {
@@ -27,6 +37,28 @@ pub struct ConversationSummaryWrite {
 }
 
 impl Store {
+    pub async fn conversation_history_token(
+        &self,
+        account: &AccountId,
+        now: DateTime<Utc>,
+    ) -> Result<Option<ConversationHistoryToken>, sqlx::Error> {
+        let row: Option<(i64, i64, i64, Option<i64>)> = sqlx::query_as(
+            "SELECT i.revision, f.revision,
+             COALESCE((SELECT sum(revision) FROM conversation_view_inputs WHERE account_id = ?1), 0),
+             (SELECT min(date) - 86400 FROM messages WHERE account_id = ?1 AND date > ?2)
+             FROM accounts a CROSS JOIN assessment_inputs i CROSS JOIN conversation_facet_clock f
+             WHERE a.id = ?1 AND i.id = 1 AND f.id = 1"
+        ).bind(account.as_str()).bind(now.timestamp() + 86_400).fetch_optional(self.reader()).await?;
+        Ok(row.map(
+            |(input, facet, view, next_eligible_at)| ConversationHistoryToken {
+                input,
+                facet,
+                view,
+                next_eligible_at,
+            },
+        ))
+    }
+
     async fn conversation_candidates(
         &self,
         account: &AccountId,
@@ -163,6 +195,89 @@ mod tests {
     use super::*;
     use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
     use mxr_core::{MessageDirection, MessageFlags};
+
+    #[tokio::test]
+    async fn decoded_history_token_tracks_flags_same_generation_facets_and_source_removal() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let mail = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        store
+            .upsert_envelope_with_direction(&mail, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        let now = Utc::now();
+        let before = store
+            .conversation_history_token(&account.id, now)
+            .await
+            .unwrap()
+            .unwrap();
+        sqlx::query("UPDATE messages SET flags = flags | ? WHERE id = ?")
+            .bind(i64::from(MessageFlags::READ.bits()))
+            .bind(mail.id.as_str())
+            .execute(store.writer())
+            .await
+            .unwrap();
+        let read = store
+            .conversation_history_token(&account.id, now)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(
+            before, read,
+            "read edits change the view clock, not the assessment input clock"
+        );
+        sqlx::query("INSERT INTO mail_assessments SELECT ?1, ?2, ?3, 'fixture', effective_revision, '{\"home\":\"messages\"}' FROM assessment_effective_thread_inputs WHERE account_id = ?2 AND thread_id = ?4")
+            .bind(mail.id.as_str()).bind(account.id.as_str())
+            .bind(mxr_core::assessment::CLASSIFIER_POLICY_VERSION).bind(mail.thread_id.as_str())
+            .execute(store.writer()).await.unwrap();
+        let facet = store
+            .conversation_history_token(&account.id, now)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(read, facet);
+        sqlx::query(
+            "UPDATE mail_assessments SET assessment_json = assessment_json WHERE message_id = ?",
+        )
+        .bind(mail.id.as_str())
+        .execute(store.writer())
+        .await
+        .unwrap();
+        let same_generation = store
+            .conversation_history_token(&account.id, now)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(
+            facet, same_generation,
+            "a same-generation facet write retires decoded facts"
+        );
+        sqlx::query("DELETE FROM messages WHERE id = ?")
+            .bind(mail.id.as_str())
+            .execute(store.writer())
+            .await
+            .unwrap();
+        assert_ne!(
+            Some(same_generation),
+            store
+                .conversation_history_token(&account.id, now)
+                .await
+                .unwrap()
+        );
+        sqlx::query("DELETE FROM accounts WHERE id = ?")
+            .bind(account.id.as_str())
+            .execute(store.writer())
+            .await
+            .unwrap();
+        assert!(store
+            .conversation_history_token(&account.id, now)
+            .await
+            .unwrap()
+            .is_none());
+    }
 
     #[tokio::test]
     async fn deleting_one_source_clears_the_whole_synopsis_and_rejects_its_late_writer() {

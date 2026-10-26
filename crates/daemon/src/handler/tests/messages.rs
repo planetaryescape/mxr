@@ -170,6 +170,7 @@ async fn persisted_thread_facts_match_rebuilding_and_read_edits_retire_them() {
         .execute(fx.state.store.writer())
         .await
         .unwrap();
+    fx.state.history_cache.clear();
     let rebuilt = history_at(&fx, now).await;
     assert_eq!(
         serde_json::to_value(changed).unwrap(),

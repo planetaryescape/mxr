@@ -28,6 +28,7 @@ use super::todo_view::{now_order, to_data};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, Utc};
+use futures::{StreamExt, TryStreamExt};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     mode_guide, rail_copy, DeskRowData, ModeKindData, RailData, RailEntryData, RailLinkData,
@@ -734,26 +735,37 @@ pub(super) async fn quiet_count(
     accounts: &[AccountId],
     now: DateTime<Utc>,
 ) -> Result<u32, HandlerError> {
+    let counts: Vec<_> = futures::stream::iter(accounts.to_vec())
+        .map(|account| quiet_account(state, account, now))
+        .buffered(3)
+        .try_collect()
+        .await?;
+    Ok(counts.into_iter().sum())
+}
+
+async fn quiet_account(
+    state: &AppState,
+    account: AccountId,
+    now: DateTime<Utc>,
+) -> Result<u32, HandlerError> {
     let mut quiet = 0u32;
-    for account in accounts {
-        let candidates = state.store.place_candidates(account).await?;
-        let kinds = super::places::AccountKinds::load(state, account, &candidates).await?;
-        let mut seen: HashSet<&ThreadId> = HashSet::new();
-        let mut threads: Vec<ThreadId> = Vec::new();
-        for message in &candidates {
-            if message.snoozed || kinds.is_outbound(message) || !kinds.has_assessment(message) {
-                continue;
-            }
-            if kinds.classification(message).kind == mail_kind::SenderKind::Person
-                && seen.insert(&message.thread_id)
-            {
-                threads.push(message.thread_id.clone());
-            }
+    let candidates = state.store.place_candidates(&account).await?;
+    let kinds = super::places::AccountKinds::load(state, &account, &candidates).await?;
+    let mut seen: HashSet<&ThreadId> = HashSet::new();
+    let mut threads: Vec<ThreadId> = Vec::new();
+    for message in &candidates {
+        if message.snoozed || kinds.is_outbound(message) || !kinds.has_assessment(message) {
+            continue;
         }
-        for chunk in threads.chunks(MEMBERSHIP_MAX_THREADS) {
-            let placed = place_threads_with_evidence(state, account, chunk, now, false).await?;
-            quiet += u32::try_from(placed.iter().filter(|p| p.quiet).count()).unwrap_or(u32::MAX);
+        if kinds.classification(message).kind == mail_kind::SenderKind::Person
+            && seen.insert(&message.thread_id)
+        {
+            threads.push(message.thread_id.clone());
         }
+    }
+    for chunk in threads.chunks(MEMBERSHIP_MAX_THREADS) {
+        let placed = place_threads_with_evidence(state, &account, chunk, now, false).await?;
+        quiet += u32::try_from(placed.iter().filter(|p| p.quiet).count()).unwrap_or(u32::MAX);
     }
     Ok(quiet)
 }

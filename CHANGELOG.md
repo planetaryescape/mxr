@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.165](https://github.com/planetaryescape/mxr/compare/v0.6.164...v0.6.165) (2026-10-26)
+
+
+### Features
+
+* check compose style against the writer’s habits ([3f111fb](https://github.com/planetaryescape/mxr/commit/3f111fb79440068663286de804909e918467ab48))
+
+
+### Bug Fixes
+
+* preserve forwarded content and retain approved sends through cooldowns ([#717](https://github.com/planetaryescape/mxr/issues/717)) ([0d132b3](https://github.com/planetaryescape/mxr/commit/0d132b378e874016b09df0b7203c21a62f29497a))
+
+
+### Documentation
+
+* align stored asks guides with shipped behavior ([#719](https://github.com/planetaryescape/mxr/issues/719)) ([bd11232](https://github.com/planetaryescape/mxr/commit/bd11232427941c634da57a0c22d3d866f3634af1))
+
 ## [0.6.164](https://github.com/planetaryescape/mxr/compare/v0.6.163...v0.6.164) (2026-10-26)
 
 

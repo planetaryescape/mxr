@@ -240,7 +240,7 @@ async fn mail_view_summaries_keep_answers_but_leave_source_zones_on_detail_reads
         .save_asks_batch(&account.id, &revisions, std::slice::from_ref(&full))
         .await
         .unwrap());
-    // Recreate the projection exactly as an upgrade from schema 100 does.
+    // Recreate the projection exactly as an upgrade from schema 101 does.
     sqlx::raw_sql("DROP TRIGGER ask_view_summary_insert; DROP TRIGGER ask_view_summary_update; DROP VIEW ask_view_summary_projection; DROP TABLE ask_view_summaries;")
         .execute(store.writer()).await.unwrap();
     sqlx::raw_sql(include_str!("../../migrations/102_ask_view_summaries.sql"))

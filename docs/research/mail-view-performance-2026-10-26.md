@@ -35,7 +35,7 @@ A browser filter change took 5,533 ms, almost entirely time to first byte. The d
 
 A recent-window facet query returned 3,425 records and approximately 92 MB of JSON. Asks explanations retain source zones and their evidence; the list needed their verdicts. Decoding those explanations on each view multiplied the cost of otherwise bounded local reads.
 
-`AskSummary` in the store now holds the view's verdicts, ownership and context. Schema 101 maintains `ask_view_summaries` in the same transaction as the authoritative assessments. Revisions, policy and timezone checks still apply. Detail and membership reads retain their evidence; the list does not truncate the authoritative explanation. Backup reconstruction derives the summaries from the copied assessments.
+`AskSummary` in the store now holds the view's verdicts, ownership and context. Schema 102 maintains `ask_view_summaries` in the same transaction as the authoritative assessments. Revisions, policy and timezone checks still apply. Detail and membership reads retain their evidence; the list does not truncate the authoritative explanation. Backup reconstruction derives the summaries from the copied assessments.
 
 This is a one-time projection backfill on upgrade. A separate SQLite probe over the real mailbox took about 55 seconds to create 111,352 summaries under concurrent local build load. That is migration work, not a normal navigation cost; measure it separately from steady-state requests.
 

@@ -653,7 +653,7 @@ is sent — correct for Ollama and LM Studio.
 
 `request_timeout_secs` bounds a request you started. `background_request_timeout_secs`
 (default 45) bounds the daemon's own background work, such as relationship
-summaries and commitment extraction, so a dead endpoint can't hold a background
+summaries, so a dead endpoint can't hold a background
 worker for the full foreground wait.
 
 `models` lists the model ids the assistant and compose pickers offer. The old

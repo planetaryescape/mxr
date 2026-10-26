@@ -719,16 +719,49 @@ test("returning from All conversations never uses history as the attention place
   });
   const router = await mountMessages("/messages?turn=all");
   expect(await screen.findByText("person:historical")).toBeInTheDocument();
+  const filter = screen.getByRole("radio", { name: "Needs attention" });
   fireEvent.click(screen.getByRole("radio", { name: "Needs attention" }));
   await waitFor(() => expect(router.state.location.search).not.toHaveProperty("turn"));
   expect(screen.queryByTestId("listed-row")).not.toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "Needs attention" })).toBe(filter);
   await act(async () => {
     pending.resolve({
       messages: listWith({ empty_state: "Nobody is waiting on you.", matched: 0 }),
     });
   });
   expect(await screen.findByText("Nobody is waiting on you.")).toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "Needs attention" })).toBe(filter);
   expect(screen.queryByText("person:historical")).not.toBeInTheDocument();
+});
+
+test("switching views preserves the open reader and filter nodes while the next list loads", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  client.setQueryData(listKey, listOf(a));
+  cachePage(a, "a-live", "a-live");
+  const pending = deferred<FixtureReply>();
+  http.send.mockImplementation(async (path) => {
+    if (path.includes("turn=all")) return pending.promise;
+    if (path.includes("/people")) return { messages: listOf(a) };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  const router = await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
+  const reader = await screen.findByTestId("shown-topic");
+  const filter = screen.getByRole("radio", { name: "All conversations" });
+  fireEvent.click(filter);
+  await waitFor(() => expect(router.state.location.search.turn).toBe("all"));
+  expect(screen.getByTestId("shown-topic")).toBe(reader);
+  expect(screen.getByRole("radio", { name: "All conversations" })).toBe(filter);
+  await act(async () => {
+    pending.resolve({
+      messages: listWith({
+        filter: { turn: "all", unread: false, past_pace: false },
+        your_turn: [],
+        recent: [],
+      }),
+    });
+  });
+  expect(screen.getByTestId("shown-topic")).toBe(reader);
+  expect(router.state.location.search.person).toBe("person:a");
 });
 
 test("g f below the split reveals the people list before focusing the filter line", async () => {

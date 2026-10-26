@@ -77,25 +77,29 @@ export function MessagesFilterBar({
         on={filter.pastPace}
         onChange={(pastPace) => onChange({ ...filter, pastPace })}
       />
-      {filtered ? (
-        <p className="type-body ml-auto flex items-center gap-2 text-text-2">
-          {counts ? (
-            <>
-              <span>
-                {counts.matched} shown · {counts.total} need attention
-              </span>
-              <span aria-hidden="true">·</span>
-            </>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => onChange(NO_FILTER)}
-            className="text-text-1 underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-signal"
-          >
-            Clear filters
-          </button>
-        </p>
-      ) : null}
+      <p className="type-body flex min-h-7 min-w-0 basis-full items-center justify-end gap-2 text-text-2">
+        {filtered ? (
+          <>
+            {counts ? (
+              <>
+                <span className="min-w-0 truncate">
+                  {counts.matched} shown · {counts.total} need attention
+                </span>
+                <span aria-hidden="true" className="shrink-0">
+                  ·
+                </span>
+              </>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => onChange(NO_FILTER)}
+              className="shrink-0 text-text-1 underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-signal"
+            >
+              Clear filters
+            </button>
+          </>
+        ) : null}
+      </p>
     </div>
   );
 }

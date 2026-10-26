@@ -1,16 +1,17 @@
-//! Who is waiting on you, counted once for every surface.
+//! Who needs your attention, counted once for every surface.
 //!
-//! The desk's You owe and New from people lanes say whose turn it is, per
+//! The desk's You owe, New from people and due explicit follow-ups say whose turn it is, per
 //! conversation. Messages lists them as rows: a person once however many
 //! conversations they have with you, a group thread once. Now's headline,
 //! its People total, the rail's Messages badge, Messages' Your turn header,
 //! the Owed page and Focus all count those same rows, so this module turns
 //! desk rows into them with the keys `place_topic` gives Messages' rows.
 //!
-//! The split is by lane, never by a second rule: a unit with a You owe
-//! conversation is someone you write with; every other unit is someone who
+//! The split is by lane, never by a second rule: a unit with a You owe or
+//! due follow-up conversation is someone you write with; every other unit is someone who
 //! wrote to you (first time or repeat).
 
+use super::desk_lanes::needs_attention;
 use super::messages_view::{People, RowKey};
 use mxr_core::id::{AccountId, ThreadId};
 use mxr_protocol::{DeskLaneKind, DeskRowData, PeopleSplitData};
@@ -79,20 +80,25 @@ pub(super) struct TurnUnits {
 }
 
 impl TurnUnits {
-    /// `owed` and `people_new` are lane rows in their lane order. A unit
-    /// shows at its first row, so You owe wins over New from people.
+    /// Lane rows in their lane order; ordinary waiting never qualifies.
+    /// A unit shows once, at its first attention row.
     pub(super) fn from_lanes(
         keys: &TurnKeys,
         owed: &[DeskRowData],
         people_new: &[DeskRowData],
+        waiting: &[DeskRowData],
     ) -> Self {
         let mut seen = HashSet::new();
         let mut units = Self::default();
-        for row in owed.iter().chain(people_new) {
+        for row in owed
+            .iter()
+            .chain(people_new)
+            .chain(waiting.iter().filter(|row| needs_attention(row)))
+        {
             if !seen.insert(keys.unit(row)) {
                 continue;
             }
-            if row.lane == DeskLaneKind::Owed {
+            if matches!(row.lane, DeskLaneKind::Owed | DeskLaneKind::Waiting) {
                 units.split.write_with += 1;
             } else {
                 units.split.others += 1;

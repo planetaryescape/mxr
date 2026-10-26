@@ -52,6 +52,50 @@ studies found email doing: Whittaker and Sidner (CHI 1996) named task
 management, personal archiving and asynchronous communication as the jobs
 one list does badly (now-and-handoff.md, first section).
 
+### Messages is an attention queue, not a mailbox history view
+
+BK, 26 October 2026: Messages must contain only conversations that need the
+user's attention in some way. Reducing overwhelm is a purpose of the five
+modes, not an optional filter the user must discover. This supersedes the
+older default of Your turn, Pinned, Recent and Quiet together below.
+
+- **Default: needs attention.** Every visible topic needs a concrete reason
+  to act now: for example, an unanswered directed request or a due return
+  the user explicitly asked for, such as Reply later or a follow-up reminder.
+  Attention is not limited to owing a reply, but any other reason must be
+  explicit. Show only qualifying topics within a person's row, not their
+  entire history. Waiting for someone else is not itself work for the user.
+- **Inbox is not attention.** Being in the inbox, recent, unread, pinned,
+  from a person or classified into the Messages home is not sufficient.
+  Pinning changes the order of qualifying people; it does not add idle rows.
+- **Dealt with means out.** Replying, acknowledging, marking done or
+  archiving removes the resolved attention item. Neither sent copies nor
+  an IMAP move that replaces a local message may bring it back. A later
+  message brings it back only if it creates a new need for attention; an
+  FYI or acknowledgement does not. An explicit due return can bring an
+  otherwise archived conversation back.
+- **History is opt-in.** An explicit **All conversations** filter may show
+  Recent, Quiet, Waiting on them, archived and sent-only conversations.
+  Person pages and search retain that history without filling the default
+  list. Resetting filters and opening Messages normally returns to Needs
+  attention, never All conversations.
+- **Clear means clear.** With no actionable conversations, show the clear
+  state. Do not fill the space with quiet people, old exchanges, pinned
+  faces or suggestions to reconnect. Counts describe attention, not the
+  amount of stored mail. CLI, TUI, web, desktop, Raycast and MCP share the
+  daemon's selection; clients must not implement different defaults.
+
+Acceptance includes replied-and-archived IMAP conversations leaving the
+default list even when only Sent copies remain locally; an inbox FYI not
+appearing merely because it is unread; no history topics leaking into an
+actionable person's row; All conversations and person pages retaining
+history; and a due explicit return appearing once without resurrecting
+unrelated history. The daemon selects topics before building person rows;
+omitted `MessagesFilterData.turn` selects attention, while explicit `all`
+includes history. `row_count` and `thread_count` count attention regardless
+of the selected view; `matched` describes the selected view. A due explicit
+follow-up shares the attention rule with Now and the rail.
+
 ## One email lives in several modes, each showing its own aspect
 
 The landlord writes "please sign and send it back by 15 Oct. Are you
@@ -562,7 +606,10 @@ warning; Cowan's four-chunk working memory; now-and-handoff.md §A.)
 response, so web, TUI and `mxr now --format json` agree; the cap lives in
 the daemon, and People shares one owed rule with Messages.
 
-## Messages shows people, with their conversations as topics inside
+## Messages shows people who need attention, with actionable topics inside
+
+The attention-only contract above governs the default. The four-band
+mockup below describes the expanded history view, not the default list.
 
 **Unit.** One row per person; each one-to-one thread is a topic inside
 them. A group thread (two or more other humans who took part) is its own
@@ -611,7 +658,8 @@ present it as the full message.
 In the web app, the selected topic stays in a compact conversation control;
 opening it shows all topics, with direct and group conversations distinguished
 and quiet topics showing recency without repeating the quiet state. `{` and
-`}` step through topics. Quiet remains a separate person band.
+`}` step through topics. Quiet is available in the expanded history view,
+not as filler below the default attention queue.
 
 **View and actions.** The latest message opens in full at its start; older messages remain
 in chronological context and long letters can be folded. A `People` disclosure
@@ -627,14 +675,13 @@ Got it (`.`) shows the exact To and From
 from its preview plan before the countdown sends. Archive, label and move are
 not on the surface.
 
-**Rhythm, end state, in and out.** On arrival from close people, two or
-three short visits a day. Empty Your turn says "Nobody is waiting on you"
-and lists up to three people whose usual cadence lapsed, as a fact, never a
-nudge (Gmail's Nudges are mostly written about as something to switch
-off). Enters by a Person base mode, a message you send, or a correction.
-Leaves Your turn on reply or Got it, leaves Messages on done here until
-they write again, and `t` leaves a "to-do: sign the form, due Fri" chip on
-the topic.
+**Rhythm, end state, in and out.** Two or three short visits a day. The
+default lists only current attention needs, not every Person-home email
+or message you send. Reply, Got it, done here and archive remove a resolved
+item; later mail must create new attention to bring it back. A due explicit
+return also qualifies. An empty queue says "Nobody is waiting on you" and
+does not add cadence-lapse suggestions. `t` hands the task to To do; it is
+not a reason to keep a resolved conversation in Messages.
 
 **Not a list of emails.** The row is a person, ordered by band, then turn,
 then time; the preview is their ask; the subject is a topic label; the
@@ -646,14 +693,17 @@ BK, 22 October 2026: "in messages, I want to be able to filter to see only
 unread messages only and any other useful filters. This applies to all
 clients including raycast, web, tui, desktop etc." (D162)
 
-Messages has one filter today, the turn (`ListMessages.turn`, applied in
-`crates/daemon/src/handler/messages.rs:551-569`), and Raycast and the TUI
-send none. The filter set comes from what every row already carries
-(`MessagesRowData`), so no filter needs a new query:
+The following filter contract includes BK's 26 October attention-only
+amendment. Absence of a filter means Needs attention; All conversations is
+an explicit expansion, not the fallback when clients omit a parameter.
+`MessagesFilterData.turn` exposes that distinction consistently across
+clients:
 
 | Filter | Shows rows where | Kind |
 |---|---|---|
-| All, Your turn, Waiting on them | the turn, as today | one choice |
+| Needs attention | actionable topics only; the default | one choice |
+| All conversations | conversation history, including archived and sent-only topics | explicit opt-in |
+| Your turn, Waiting on them | the chosen side's turn | one choice |
 | Unread | a message from them in the Inbox is unread (`unread`) | toggle |
 | Past your pace | your turn has run past how fast you usually reply to them (`overdue`) | toggle |
 | Account | the row's account (`account_id`), as today | one choice |
@@ -670,30 +720,35 @@ unread appears anywhere, because D095 removed unread counts on purpose.
 The filter answers "what haven't I looked at" without turning unread back
 into a to-do flag.
 
-**One contract.** `ListMessages` gains `filter: MessagesFilterData { turn,
-unread, past_pace }`, with the top-level `turn` still accepted. The mode
-cache key (`ModeView::Messages` in `mode_cache.rs`) includes the whole
-filter. The response echoes the filter and adds `matched`, the rows left
-after it. `row_count` and `your_turn_split` stay unfiltered, so Now, the
-rail and the Messages header keep one count (D132). A filtered view with
-no rows has its own sentence ("No unread messages from people.", "Nobody
-is past your usual pace.") and a Clear filters action, never Your turn's
-clear line.
+**One contract.** `ListMessages` already accepts `MessagesFilterData { turn,
+unread, past_pace }` and the legacy top-level `turn`. Add the explicit
+attention/history distinction to that daemon contract and its mode-cache
+key; do not infer All from an omitted value. The response must identify
+the selected view. Now, the rail and the Messages header count attention;
+expanding history must not inflate those counts. A history result can
+report its own total separately. Toggles narrow the selected view. An
+empty narrowed view explains what was filtered and offers Clear filters,
+which restores Needs attention. The unfiltered attention queue keeps its
+clear state when there is nothing to do.
 
 **Every client draws the same filters:**
 
 - **Web and desktop.** The Messages header holds the shared square
-  segmented control for the turn (All, Your turn, Waiting on them), then
-  Unread and Past your pace as two toggles. The URL keeps them
-  (`?turn=&unread=1&pace=1`). `g f` moves focus to the filter bar.
+  segmented control (Needs attention, All conversations, Your turn, Waiting
+  on them), then Unread and Past your pace as two toggles. The URL must
+  distinguish the explicit history choice from the default. `g f` moves
+  focus to the filter bar.
 - **TUI.** `Ctrl-f`, the TUI's filter key everywhere (the web uses `g f`
   because `Ctrl+f` is the browser's Find), opens the same facets as a picker. The active filters
   show in the status line ("Unread · Your turn").
 - **Raycast.** The search bar's dropdown stays the account (`⌘P`). A
   "Filter" submenu (`⌘F`) in the action panel holds the turn and the two
-  toggles with check marks, remembered per command. The section title
+  toggles with check marks. Reopening the command resets to Needs attention. The section title
   names the active filters ("Messages · Unread").
-- **CLI.** `mxr messages list [--turn mine|theirs] [--unread] [--past-pace] --json`.
+- **CLI.** `mxr messages` defaults to Needs attention. `mxr messages list
+  --turn all` explicitly opens All conversations. `--turn mine|theirs`,
+  `--unread`, `--past-pace` and `--format json` remain available. MCP exposes
+  the same choice and default.
 
 ## To do shows instructions on a runway, not emails with flags
 

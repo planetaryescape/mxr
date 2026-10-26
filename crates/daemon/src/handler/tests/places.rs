@@ -355,7 +355,10 @@ async fn correcting_a_sender_moves_its_mail_and_future_mail_follows() {
         .send(Request::ListMessages {
             account_id: None,
             turn: None,
-            filter: Default::default(),
+            filter: mxr_protocol::MessagesFilterData {
+                turn: Some(mxr_protocol::MessagesTurnData::All),
+                ..Default::default()
+            },
             limit: 50,
         })
         .await

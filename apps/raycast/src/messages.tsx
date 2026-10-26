@@ -1,5 +1,5 @@
 import { Action, ActionPanel, Color, Icon, List } from "@raycast/api";
-import { useCachedPromise, useCachedState } from "@raycast/utils";
+import { useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 import { getMessages, markDone, type MessagesFilter } from "./bridge/modes";
 import type { MessagesRow } from "./bridge/types";
@@ -15,7 +15,8 @@ import { useWebBase, web } from "./components/web";
 import { keyFor } from "./components/keys";
 
 const TURN_CHOICES: [MessagesFilter["turn"], string][] = [
-  [undefined, "All"],
+  [undefined, "Needs Attention"],
+  ["all", "All Conversations"],
   ["mine", "Your Turn"],
   ["theirs", "Waiting on Them"],
 ];
@@ -23,7 +24,7 @@ const TURN_CHOICES: [MessagesFilter["turn"], string][] = [
 /** "Your Turn · Unread": the words for the filters that are on, or nothing. */
 function filterLabel(filter: MessagesFilter): string | undefined {
   const parts = [
-    filter.turn === "mine" ? "Your turn" : filter.turn === "theirs" ? "Waiting on them" : "",
+    TURN_CHOICES.find(([turn]) => turn === filter.turn && turn !== undefined)?.[1] ?? "",
     filter.unread ? "Unread" : "",
     filter.pace ? "Past your pace" : "",
   ].filter(Boolean);
@@ -32,10 +33,10 @@ function filterLabel(filter: MessagesFilter): string | undefined {
 
 export default function Messages() {
   const [account, setAccount] = useState<string>();
-  // Remembered per command, so reopening Messages keeps the filter it was left with.
-  const [filter, setFilter] = useCachedState<MessagesFilter>("messages-filter", {});
+  // Reopening Messages starts with attention, never a remembered history view.
+  const [filter, setFilter] = useState<MessagesFilter>({});
   const { data, isLoading, revalidate } = useCachedPromise(getMessages, [account, filter], {
-    keepPreviousData: true,
+    keepPreviousData: false,
   });
   const label = filterLabel(filter);
   const narrowedEmpty =
@@ -82,7 +83,7 @@ export default function Messages() {
   // reachable then, since it is the only action left on the screen.
   const hiddenByText =
     data !== undefined &&
-    data.row_count > 0 &&
+    (data.matched ?? data.row_count) > 0 &&
     !narrowedEmpty &&
     [data.your_turn, data.pinned, data.recent, data.quiet].every(
       (rows) => shown(rows).length === 0,

@@ -21,8 +21,10 @@ interface MessagesAnswer {
   messages: { your_turn: Row[]; pinned: Row[]; recent: Row[]; quiet: Row[] };
 }
 
-async function messages(page: Page) {
-  return (await bridge<MessagesAnswer>(page, "/api/v1/mail/people?limit=500")).messages;
+async function messages(page: Page, history = true) {
+  return (
+    await bridge<MessagesAnswer>(page, `/api/v1/mail/people?limit=500${history ? "&turn=all" : ""}`)
+  ).messages;
 }
 
 function all(data: MessagesAnswer["messages"]): Row[] {
@@ -57,13 +59,13 @@ test("each person is one row with topics, a group is its own row, a cc is not he
   page.on("request", (request) => {
     if (request.url().includes("/api/v1/mail/people/page")) personPageRequests.push(request.url());
   });
-  await openApp(page, "/messages");
+  await openApp(page, "/messages?turn=all");
   await expect(page.getByRole("heading", { name: "Messages", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Choose a conversation" })).toBeVisible();
   await expect(page.getByTestId("person-page")).toHaveCount(0);
   expect(personPageRequests).toEqual([]);
   await expect(page.getByTestId("mode-header").first()).toHaveText(
-    "People you talk with, one row each. Reply or mark done.",
+    "All conversations, including archived and sent-only history.",
   );
   // One row however many conversations he's in. Other specs may have
   // answered him already, so his band isn't pinned down here.
@@ -287,20 +289,43 @@ test("Got it sends after the countdown and the turn passes", async ({ page }) =>
     .toBe(false);
 });
 
-test("done here moves a person out of Recent until they write again", async ({ page }) => {
+test("done removes attention while All conversations retains the conversation", async ({
+  page,
+}) => {
   await waitForPeople(page);
-  await openApp(page, `/messages?person=${encodeURIComponent(IRIS)}`);
-  await expect(page.getByTestId("person-name")).toHaveText("Iris Chen");
-  const topic = await topicOf(page, IRIS, "Incident note");
-  await openApp(page, `/messages?person=${encodeURIComponent(IRIS)}&topic=${topic}`);
+  const { person, thread } = await freshReplyRequest(page);
+  await openApp(page, `/messages?person=${encodeURIComponent(person)}&topic=${thread}`);
   await expect(page.getByTestId("conversation")).toBeVisible();
+  expect(
+    all(await messages(page, false)).some((candidate) =>
+      candidate.topics.some((topic) => topic.thread_id === thread),
+    ),
+  ).toBe(true);
   await page.keyboard.press("e");
   await expect(page.getByText(/Done in Messages|Archived/).first()).toBeVisible();
   await expect
-    .poll(async () => (await messages(page)).recent.some((candidate) => candidate.id === IRIS), {
-      timeout: 15_000,
-    })
+    .poll(
+      async () =>
+        all(await messages(page, false)).some((candidate) =>
+          candidate.topics.some((topic) => topic.thread_id === thread),
+        ),
+      {
+        timeout: 15_000,
+      },
+    )
     .toBe(false);
+  await page.getByRole("radio", { name: "All conversations", exact: true }).click();
+  await expect(page).toHaveURL(/turn=all/);
+  await page.getByRole("button", { name: /^Quiet \(/ }).click();
+  await expect(row(page, person)).toBeVisible();
+  await row(page, person).click();
+  await expect(page.getByTestId("conversation")).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Needs attention" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await expect(row(page, person)).toHaveCount(0);
 });
 
 test.describe("on a phone", () => {

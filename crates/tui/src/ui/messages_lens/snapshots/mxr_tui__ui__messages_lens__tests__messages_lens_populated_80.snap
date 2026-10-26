@@ -2,7 +2,7 @@
 source: crates/tui/src/ui/messages_lens/tests.rs
 expression: rendered
 ---
-"╭ Messages ─ People you talk with, one row each. Reply or mark done. ──────────╮"
+"╭ Messages ─ All conversations, including archived and sent-only history. ─────╮"
 "│ YOUR TURN                                                                    │"
 "│▌Samir Patel                                                             16h *│"
 "│   “Can you take a look and reply with the next concrete step?”               │"

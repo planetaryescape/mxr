@@ -20,7 +20,8 @@ export function focusFilterBar(): void {
 
 /** One row per segment: its id, its label and the turn it keeps. */
 const TURN_CHOICES = [
-  ["all", "All", null],
+  ["attention", "Needs attention", null],
+  ["all", "All conversations", "all"],
   ["mine", "Your turn", "mine"],
   ["theirs", "Waiting on them", "theirs"],
 ] as const satisfies readonly (readonly [string, string, MessagesTurn | null])[];
@@ -47,7 +48,8 @@ export function MessagesFilterBar({
     >
       <Segmented
         label="Show"
-        value={filter.turn ?? "all"}
+        className="max-w-full flex-wrap"
+        value={filter.turn ?? "attention"}
         options={TURN_CHOICES.map(([id, label]) => [id, label] as const)}
         onChange={(value) => {
           const choice = TURN_CHOICES.find(([id]) => id === value);
@@ -69,7 +71,7 @@ export function MessagesFilterBar({
           {counts ? (
             <>
               <span>
-                Showing {counts.matched} of {counts.total}
+                {counts.matched} shown · {counts.total} need attention
               </span>
               <span aria-hidden="true">·</span>
             </>

@@ -3967,7 +3967,7 @@
     "/api/v1/mail/people": {
       "get": {
         "tags": [],
-        "summary": "Messages: people you talk with in four bands (Your turn, Pinned, Recent, Quiet), each row with its topics and what they asked",
+        "summary": "Messages: conversations needing attention by default; explicit All conversations includes history",
         "operationId": "mail_people",
         "parameters": [
           {
@@ -3982,7 +3982,7 @@
           {
             "name": "turn",
             "in": "query",
-            "description": "`mine` or `theirs`: only rows where it is that side's turn",
+            "description": "Omit for Needs attention; `all` includes conversation history; `mine` or `theirs` selects a side's turn",
             "required": false,
             "schema": {
               "type": "string"
@@ -19158,7 +19158,7 @@
               "string",
               "null"
             ],
-            "description": "Set when Your turn is empty: the clear line or the never-had-any\nline."
+            "description": "Set when the selected view is empty, with view-specific copy."
           },
           "filter": {
             "$ref": "#/components/schemas/MessagesFilterData",
@@ -19170,14 +19170,14 @@
           },
           "header": {
             "type": "string",
-            "description": "`messages_copy::HEADER`."
+            "description": "The selected view's header (attention or conversation history)."
           },
           "lapsed": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MessagesLapsedData"
             },
-            "description": "Up to three people whose usual pace lapsed, under the clear line."
+            "description": "Legacy field, left empty: clear attention is never filled with idle people."
           },
           "matched": {
             "type": "integer",
@@ -19223,13 +19223,13 @@
           "row_count": {
             "type": "integer",
             "format": "int32",
-            "description": "People and groups in Messages, every band, unfiltered.",
+            "description": "People and groups needing attention, before toggles or list limits.",
             "minimum": 0
           },
           "thread_count": {
             "type": "integer",
             "format": "int32",
-            "description": "Conversations behind them.",
+            "description": "Conversations needing attention, before toggles or list limits.",
             "minimum": 0
           },
           "your_turn": {
@@ -19256,7 +19256,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/MessagesTurnData",
-                "description": "Only rows where it is this side's turn; `None` keeps every turn."
+                "description": "The explicit view; `None` selects only topics needing attention."
               },
               {
                 "type": "null"
@@ -19449,7 +19449,7 @@
           },
           "your_turn": {
             "type": "boolean",
-            "description": "Their latest message to you is unanswered on some topic."
+            "description": "A topic needs attention: an unanswered request or due explicit return."
           }
         }
       },
@@ -19522,8 +19522,9 @@
       },
       "MessagesTurnData": {
         "type": "string",
-        "description": "Only rows where it is this side's turn.",
+        "description": "An explicit Messages view. Omission selects Needs attention.",
         "enum": [
+          "all",
           "mine",
           "theirs"
         ]

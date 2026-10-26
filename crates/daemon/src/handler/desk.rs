@@ -81,7 +81,8 @@ impl ComposedDesk {
     pub(super) fn turn_units(&self) -> TurnUnits {
         let owed = desk_lane(&self.rows, DeskLaneKind::Owed, u32::MAX).rows;
         let new = desk_lane(&self.rows, DeskLaneKind::PeopleNew, u32::MAX).rows;
-        TurnUnits::from_lanes(&self.turn_keys, &owed, &new)
+        let waiting = desk_lane(&self.rows, DeskLaneKind::Waiting, u32::MAX).rows;
+        TurnUnits::from_lanes(&self.turn_keys, &owed, &new, &waiting)
     }
 }
 
@@ -200,17 +201,16 @@ pub(super) async fn thread_turn(
         now,
     });
     let in_turn = lanes.rows.iter().any(|draft| {
-        draft.row.thread_id == *thread_id
-            && matches!(draft.row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
+        draft.row.thread_id == *thread_id && super::desk_lanes::needs_attention(&draft.row)
     });
     if !in_turn {
         return Ok(None);
     }
     let desk = compose_desk(state, Some(account_id), now).await?;
-    Ok(desk.rows.into_iter().find(|row| {
-        row.thread_id == *thread_id
-            && matches!(row.lane, DeskLaneKind::Owed | DeskLaneKind::PeopleNew)
-    }))
+    Ok(desk
+        .rows
+        .into_iter()
+        .find(|row| row.thread_id == *thread_id && super::desk_lanes::needs_attention(row)))
 }
 
 /// Whether an address is this account's own (any of its addresses).

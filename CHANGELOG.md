@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.163](https://github.com/planetaryescape/mxr/compare/v0.6.162...v0.6.163) (2026-10-26)
+
+
+### Features
+
+* choose a compose model per draft ([106c05b](https://github.com/planetaryescape/mxr/commit/106c05b361b0f77d2dc483ec54701023d1eb4065))
+* unify stored asks and to-do corrections ([fc3e514](https://github.com/planetaryescape/mxr/commit/fc3e514f4281f0c96efc232d67066e2d62b65baf))
+
+
+### Bug Fixes
+
+* refresh mail before copying the latest code ([ce1d2de](https://github.com/planetaryescape/mxr/commit/ce1d2dee4c65d41e02dda0764e203b37b138dc18))
+
+
+### Documentation
+
+* clarify Messages audience and verification boundaries ([#713](https://github.com/planetaryescape/mxr/issues/713)) ([69d5b83](https://github.com/planetaryescape/mxr/commit/69d5b833e7a62a90422d74a45108684e7d7a3311))
+
 ## [0.6.162](https://github.com/planetaryescape/mxr/compare/v0.6.161...v0.6.162) (2026-10-25)
 
 

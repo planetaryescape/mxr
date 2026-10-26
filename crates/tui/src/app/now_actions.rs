@@ -389,6 +389,12 @@ impl App {
                 _ => None,
             };
         }
+        // A question's one-key answer must not steal the suffix of a global
+        // navigation chord (g m opens Messages; it does not move this mail).
+        if self.input.is_pending() {
+            let defined = self.defined_key("now", key);
+            return self.run_defined_key(defined);
+        }
         let plain = key.modifiers == KeyModifiers::NONE;
         let asks = matches!(
             self.selected_now_row(),

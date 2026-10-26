@@ -327,6 +327,39 @@ fn the_move_toast_is_the_daemons_copy_and_its_question() {
 }
 
 #[test]
+fn navigation_chords_on_a_not_sure_question_never_answer_it() {
+    for (suffix, action) in [
+        ('m', Action::OpenMessages),
+        ('u', Action::OpenUpdates),
+        ('x', Action::OpenTodo),
+        ('e', Action::OpenArchiveMode),
+    ] {
+        let mut app = now_with_questions();
+        app.mailbox.selected_index = 1;
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
+            None
+        );
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Char(suffix), KeyModifiers::NONE)),
+            Some(action)
+        );
+        assert!(queued(&app).is_empty(), "g {suffix} must not move mail");
+        assert_eq!(
+            app.mailbox
+                .now_page
+                .arrivals
+                .as_ref()
+                .unwrap()
+                .not_sure
+                .len(),
+            2,
+            "navigation must leave the questions unanswered"
+        );
+    }
+}
+
+#[test]
 fn a_not_sure_question_takes_one_key_then_asks_about_the_sender_once() {
     let mut app = now_with_questions();
     // The line, its two questions, then Now's own rows.

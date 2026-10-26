@@ -9,14 +9,22 @@ use std::collections::HashMap;
 const ASKS_FOR_MESSAGES: &str = "SELECT a.assessment_json FROM (SELECT DISTINCT value FROM json_each(?3)) requested CROSS JOIN mail_assessments a ON a.message_id = requested.value JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id
             WHERE a.account_id = ?1 AND a.policy_version = ?2 AND a.input_revision = i.effective_revision ORDER BY a.message_id";
 
-const FACETS_FOR_MESSAGES: &str = "SELECT a.policy_version,
-            CASE WHEN a.policy_version = ?3 THEN (
-                SELECT s.summary_json FROM ask_view_summaries s
-                WHERE s.message_id = a.message_id AND s.policy_version = a.policy_version
-                    AND s.input_revision = a.input_revision)
-            ELSE a.assessment_json END AS assessment_json
-            FROM (SELECT DISTINCT value FROM json_each(?4)) requested CROSS JOIN mail_assessments a ON a.message_id = requested.value JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id
-            WHERE a.account_id = ?1 AND a.policy_version IN (?2, ?3) AND a.input_revision = i.effective_revision";
+// Compute a thread's effective generation once, not once per message/facet.
+// Read asks directly from the compact projection: a CASE over the authoritative
+// table still visits its large source pages before choosing the summary.
+const FACETS_FOR_MESSAGES: &str = "WITH wanted AS MATERIALIZED (
+            SELECT m.id, m.thread_id FROM (SELECT DISTINCT value FROM json_each(?4)) requested
+            CROSS JOIN messages m ON m.id = requested.value WHERE m.account_id = ?1
+        ), revisions AS MATERIALIZED (
+            SELECT i.thread_id, i.effective_revision FROM (SELECT DISTINCT thread_id FROM wanted) threads
+            CROSS JOIN assessment_effective_thread_inputs i ON i.account_id = ?1 AND i.thread_id = threads.thread_id
+        )
+        SELECT a.policy_version, a.assessment_json
+        FROM wanted CROSS JOIN mail_assessments a ON a.message_id = wanted.id AND a.policy_version = ?2 AND a.account_id = ?1
+        JOIN revisions i ON i.thread_id = wanted.thread_id AND i.effective_revision = a.input_revision
+        UNION ALL SELECT s.policy_version, s.summary_json
+        FROM wanted CROSS JOIN ask_view_summaries s ON s.message_id = wanted.id AND s.policy_version = ?3
+        JOIN revisions i ON i.thread_id = wanted.thread_id AND i.effective_revision = s.input_revision";
 
 /// Mail views need answers, not the authored/quoted source zones and audit
 /// evidence retained by a full asks assessment. Keep those on detail reads.

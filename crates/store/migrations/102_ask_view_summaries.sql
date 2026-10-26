@@ -10,6 +10,11 @@ CREATE INDEX IF NOT EXISTS idx_mail_assessments_revision
 ON mail_assessments(message_id, policy_version, account_id, input_revision)
 WHERE policy_version NOT LIKE 'asks-%';
 
+-- History checks every inbound id for a missing/stale home. The owed index
+-- lacks id, turning this into one table-page read per inbound message.
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_inputs
+ON messages(account_id, direction, thread_id, id, date);
+
 CREATE TABLE IF NOT EXISTS ask_view_summaries (
     message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
     policy_version TEXT NOT NULL,

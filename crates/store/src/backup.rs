@@ -293,7 +293,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     validate(&mut db).await?;
     let expected = Store::in_memory().await?;
     if manifest.schema_version < 102 {
-        sqlx::raw_sql("DROP INDEX idx_mail_assessments_home; DROP INDEX idx_mail_assessments_revision; DROP TRIGGER ask_view_summary_insert; DROP TRIGGER ask_view_summary_update; DROP VIEW ask_view_summary_projection; DROP TABLE ask_view_summaries;")
+        sqlx::raw_sql("DROP INDEX idx_messages_conversation_inputs; DROP INDEX idx_mail_assessments_home; DROP INDEX idx_mail_assessments_revision; DROP TRIGGER ask_view_summary_insert; DROP TRIGGER ask_view_summary_update; DROP VIEW ask_view_summary_projection; DROP TABLE ask_view_summaries;")
             .execute(expected.writer()).await?;
     }
     if manifest.schema_version < 101 {

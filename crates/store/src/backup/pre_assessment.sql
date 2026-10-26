@@ -2,6 +2,7 @@ DROP TRIGGER IF EXISTS approved_send_draft_edited;
 DROP TABLE IF EXISTS approved_send_attempts;
 DROP TABLE IF EXISTS approved_sends;
 DROP TRIGGER IF EXISTS ask_view_summary_insert;
+DROP INDEX IF EXISTS idx_messages_conversation_inputs;
 DROP TRIGGER IF EXISTS ask_view_summary_update;
 DROP VIEW IF EXISTS ask_view_summary_projection;
 DROP TABLE IF EXISTS ask_view_summaries;

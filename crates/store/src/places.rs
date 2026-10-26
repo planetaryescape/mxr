@@ -147,6 +147,7 @@ impl super::Store {
     /// Recent mail from these senders anywhere but Trash and Spam, at most
     /// `per_sender` each, newest first: the history Updates compares a
     /// source's new mail with, inbox or not.
+    /// Reads envelope state only; Updates loads missing fact bodies separately.
     pub async fn recent_from_senders(
         &self,
         account_id: &AccountId,
@@ -164,7 +165,7 @@ impl super::Store {
                 .map(|email| email.to_ascii_lowercase())
                 .collect::<Vec<_>>(),
         )?;
-        let columns = place_columns(true);
+        let columns = place_columns(false);
         let sql = format!(
             r#"WITH ranked AS MATERIALIZED (
                 SELECT m.id, ROW_NUMBER() OVER (
@@ -503,7 +504,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn sender_history_limits_each_sender_before_loading_full_evidence() {
+    async fn sender_history_limits_each_sender_without_loading_body_evidence() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();
         store.insert_account(&account).await.unwrap();
@@ -561,17 +562,19 @@ pub(crate) mod tests {
             "the limit is per sender and excludes hidden mail before ranking"
         );
         for message in history {
+            assert!(message.evidence.text.is_none());
+            let mut detail = store.place_message(&message.id).await.unwrap().unwrap();
             assert!(
                 matches!(
-                    message.evidence.text.as_deref(),
+                    detail.evidence.text.as_deref(),
                     Some("Authored body 1" | "Authored body 2")
                 ),
-                "ranked history must still contain the selected authored body"
+                "a detail read must retain the selected authored body"
             );
-            let detail = store.place_message(&message.id).await.unwrap().unwrap();
+            detail.evidence = message.evidence.clone();
             assert_eq!(
                 message, detail,
-                "selected history must retain the complete detail evidence"
+                "history keeps every envelope/state field, omitting only evidence"
             );
         }
     }

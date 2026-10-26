@@ -147,6 +147,18 @@ async fn requested_ids_keep_batch_set_semantics_and_account_policy_boundaries() 
     assert_eq!(found.len(), 2);
     assert_eq!(found[&first.id], answer(&account.id, &first));
     assert_eq!(found[&second.id], answer(&account.id, &second));
+    let (homes, summaries) = store
+        .assessment_facets_for_messages(&account.id, &requested)
+        .await
+        .unwrap();
+    assert!(homes.is_empty());
+    assert_eq!(summaries.len(), 2);
+    for message in [&first, &second] {
+        assert_eq!(
+            summaries[&message.id].input_fingerprint,
+            answer(&account.id, message).input_fingerprint
+        );
+    }
     assert!(store
         .asks_for_messages(&account.id, &[])
         .await
@@ -165,4 +177,10 @@ async fn requested_ids_keep_batch_set_semantics_and_account_policy_boundaries() 
         .unwrap();
     assert_eq!(found.len(), 1);
     assert!(found.contains_key(&second.id));
+    let (_, summaries) = store
+        .assessment_facets_for_messages(&account.id, &requested)
+        .await
+        .unwrap();
+    assert_eq!(summaries.len(), 1);
+    assert!(summaries.contains_key(&second.id));
 }

@@ -107,7 +107,7 @@ async fn exact_schema_97_through_101_backups_upgrade_without_rewriting_closed_hi
         )
         .await
         .unwrap();
-        sqlx::raw_sql("DROP INDEX idx_mail_assessments_home; DROP INDEX idx_mail_assessments_revision; DROP TRIGGER ask_view_summary_insert; DROP TRIGGER ask_view_summary_update; DROP VIEW ask_view_summary_projection; DROP TABLE ask_view_summaries;")
+        sqlx::raw_sql("DROP INDEX idx_messages_conversation_inputs; DROP INDEX idx_mail_assessments_home; DROP INDEX idx_mail_assessments_revision; DROP TRIGGER ask_view_summary_insert; DROP TRIGGER ask_view_summary_update; DROP VIEW ask_view_summary_projection; DROP TABLE ask_view_summaries;")
             .execute(&mut db)
             .await
             .unwrap();

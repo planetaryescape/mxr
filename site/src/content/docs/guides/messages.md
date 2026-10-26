@@ -74,6 +74,9 @@ and on person pages.
 ## Filter the list
 
 Choose Needs attention, All conversations, Your turn or Waiting on them.
+Press `f` to cycle through those four views, wrapping back to Needs attention.
+The web filter bar shows the key beside **Cycle views**, which also works as a
+button. Cycling keeps the Unread and Past your pace toggles as they are.
 Two toggles narrow the selected view: Unread keeps people with a message from them
 you haven't read, and Past your pace keeps the people whose turn has run
 longer than your usual reply time with them. The toggles and the turn
@@ -268,6 +271,7 @@ emoji reaction. Because it sends mail on one key, mxr guards it:
 | `p` | The person's page |
 | `o` | The message as sent |
 | `g f` (web) or `Ctrl-f` (TUI) | Filter the list |
+| `f` | Cycle views: Needs attention, All conversations, Your turn, Waiting on them |
 | `u` | Undo |
 | `?` | What this mode is for, and its keys |
 

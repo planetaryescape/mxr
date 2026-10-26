@@ -48,7 +48,14 @@ import {
   type PersonPage,
 } from "./api";
 import { focusFilterBar, MessagesFilterBar } from "./MessagesFilterBar";
-import { filterOf, isFiltered, searchOf, type FilterSearch, type MessagesFilter } from "./filters";
+import {
+  cycleMessagesFilter,
+  filterOf,
+  isFiltered,
+  searchOf,
+  type FilterSearch,
+  type MessagesFilter,
+} from "./filters";
 import { MessagesList } from "./MessagesList";
 import {
   afterDone,
@@ -95,7 +102,38 @@ export function MessagesRoute({
   /** From /messages/$threadId: open the row holding this conversation. */
   threadId?: string;
 }) {
+  const navigate = useNavigate();
   const messages = useMessagesQuery(filterOf(search));
+  // The view shortcut belongs to the route, not its result. It remains live
+  // while a different view is loading, or the queue is empty or unavailable.
+  useShortcutScope("messages-filters");
+  useScopeController("messages-filters", {
+    cycleFilter: () => {
+      const person =
+        search.person ??
+        (threadId && messages.data ? rowForThread(messages.data, threadId)?.id : undefined);
+      const nextSearch = (previous: MessagesSearch): MessagesSearch => ({
+        person: previous.person ?? person,
+        topic: previous.topic ?? threadId,
+        ...searchOf(cycleMessagesFilter(filterOf(previous))),
+      });
+      // Keep an unresolved thread link until its person can be found.
+      if (threadId && !person) {
+        void navigate({
+          to: "/messages/$threadId",
+          params: { threadId },
+          search: nextSearch,
+          replace: true,
+        });
+        return;
+      }
+      void navigate({
+        to: "/messages",
+        search: nextSearch,
+        replace: true,
+      });
+    },
+  });
   const guide = useModeGuide("messages");
   const phase = useDelayedPending(messages.isLoading);
   return (

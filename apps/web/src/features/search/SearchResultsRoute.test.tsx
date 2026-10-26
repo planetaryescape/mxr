@@ -71,11 +71,13 @@ vi.mock("@/features/mailbox/ListWithReader", () => ({
     empty: ReactNode;
     hasMore?: boolean;
     onLoadMore?: () => void;
+    onFilterKey?: () => void;
   }) => (
     <div>
       <h1>{props.title}</h1>
       <p>{props.meta}</p>
       {props.toolbar}
+      <button onClick={props.onFilterKey}>Run filter shortcut</button>
       {props.groups.length === 0 ? (
         props.empty
       ) : (
@@ -188,6 +190,15 @@ describe("SearchResultsRoute", () => {
     expect(screen.getByText("Subject 1")).toBeVisible();
     expect(screen.getByText("Subject 2")).toBeVisible();
     expect(screen.getByText("2 conversations")).toBeVisible();
+  });
+
+  test("the filter shortcut focuses a control, and Escape returns to the filter button", async () => {
+    renderWithQueryClient(<SearchResultsRoute />);
+    fireEvent.click(screen.getByRole("button", { name: "Run filter shortcut" }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Show" })).toHaveFocus());
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Show" }), { key: "Escape" });
+    expect(screen.queryByRole("combobox", { name: "Show" })).toBeNull();
+    expect(screen.getByRole("button", { name: /Filters/ })).toHaveFocus();
   });
 
   test("the query is the page's title, and the filters wait behind one button", async () => {

@@ -12,6 +12,7 @@ import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { MessagesRoute, type MessagesSearch } from "./MessagesRoute";
+import { messagesActions } from "./actions";
 import type { Conversation, MessagesData, MessagesRow, MessagesTopic, PersonPage } from "./api";
 import { setActiveQueryClient } from "@/lib/queryClient";
 import { useModeDone, type ModeDoneOutcome } from "@/features/modes/modeDone";
@@ -20,6 +21,10 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 import { runCommand } from "@/lib/keys/controllers";
 import { optionalEnum, optionalFlag, optionalString } from "@/lib/searchParams";
 import { focusActivePane } from "@/lib/keys/focusPane";
+import { ActionRegistry } from "@/lib/actions/registry";
+import { fromDefinition } from "@/lib/actions/definition";
+import { snapshotActionContext } from "@/lib/actions/context";
+import { installKeyDispatcher } from "@/lib/keys/dispatcher";
 
 type FixtureReply =
   | { page: PersonPage }
@@ -542,6 +547,58 @@ test("the filter toggles write the URL, ask the bridge with them, and Clear filt
   expect(router.state.location.search).not.toHaveProperty("pace");
   expect(router.state.location.search).not.toHaveProperty("turn");
   expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+});
+
+test("f cycles views through the dispatcher even before results arrive, but never while typing", async () => {
+  const pending = deferred<FixtureReply>();
+  http.send.mockImplementation(() => pending.promise);
+  const registry = new ActionRegistry();
+  registry.defineMany(messagesActions.map(fromDefinition));
+  const dispose = installKeyDispatcher(window, { registry, context: snapshotActionContext });
+  try {
+    const router = await mountMessages("/messages?unread=true&pace=true");
+    for (const turn of ["all", "mine", "theirs", undefined]) {
+      fireEvent.keyDown(document.body, { key: "f", code: "KeyF" });
+      // oxlint-disable-next-line no-await-in-loop -- each key advances from the preceding view
+      await waitFor(() => expect(router.state.location.search.turn).toBe(turn));
+      expect(router.state.location.search).toMatchObject({ unread: true, pace: true });
+    }
+    const input = document.createElement("textarea");
+    document.body.append(input);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "f", code: "KeyF" });
+    });
+    input.remove();
+    expect(router.state.location.search.turn).toBeUndefined();
+
+    await act(async () => pending.resolve({ messages: listOf() }));
+    expect(await screen.findByRole("button", { name: "Cycle views" })).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "f", code: "KeyF" });
+    await waitFor(() => expect(router.state.location.search.turn).toBe("all"));
+  } finally {
+    dispose();
+  }
+});
+
+test("cycling views keeps a deep-linked conversation and toggles open", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  cachePage(a, "a-live", "a-live");
+  http.send.mockImplementation(async () => ({ messages: listOf(a) }));
+  const router = await mountMessages("/messages/a-live?unread=true&pace=true");
+  await screen.findByTestId("shown-topic");
+  act(() => {
+    runCommand("messages-filters", "cycleFilter");
+  });
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({
+      turn: "all",
+      person: a.id,
+      topic: "a-live",
+      unread: true,
+      pace: true,
+    }),
+  );
+  expect(await screen.findByTestId("shown-topic")).toHaveTextContent("a-live");
 });
 
 test("an empty filtered view shows the daemon's sentence and Clear filters, not Your turn's clear line", async () => {

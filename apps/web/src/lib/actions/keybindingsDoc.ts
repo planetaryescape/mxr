@@ -31,6 +31,12 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
   { title: "Mail list", intro: "", match: (action) => inScope(action, "list") },
   { title: "Reader", intro: "", match: (action) => inScope(action, "reader") },
   { title: "Sidebar", intro: "", match: (action) => inScope(action, "sidebar") },
+  {
+    title: "Page controls",
+    intro:
+      "On tool and settings pages, focus tabs and filters with `g f`; arrow keys then change the choice.",
+    match: (action) => inScope(action, "page"),
+  },
   { title: "Screener", intro: "", match: (action) => inScope(action, "screener") },
   {
     title: "Focus & reply",
@@ -46,7 +52,7 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
   {
     title: "Messages",
     intro: "On a lit new sender, `1` to `4` answer its question.",
-    match: (action) => inScope(action, "messages"),
+    match: (action) => inScope(action, "messages") || inScope(action, "messages-filters"),
   },
   { title: "To do", intro: "", match: (action) => inScope(action, "todo") },
   {

@@ -6,10 +6,17 @@
  */
 
 import { Segmented } from "@/components/Segmented";
+import { KeyChip } from "@/components/KeyChip";
+import { definedShortcut } from "@/lib/actions/definition";
 import { cn } from "@/lib/utils";
 
-import type { MessagesTurn } from "./api";
-import { isFiltered, NO_FILTER, type MessagesFilter } from "./filters";
+import {
+  cycleMessagesFilter,
+  isFiltered,
+  MESSAGES_VIEWS,
+  NO_FILTER,
+  type MessagesFilter,
+} from "./filters";
 
 const FILTER_BAR = '[data-testid="messages-filters"]';
 
@@ -17,14 +24,6 @@ const FILTER_BAR = '[data-testid="messages-filters"]';
 export function focusFilterBar(): void {
   document.querySelector<HTMLElement>(`${FILTER_BAR} [role="radio"][tabindex="0"]`)?.focus();
 }
-
-/** One row per segment: its id, its label and the turn it keeps. */
-const TURN_CHOICES = [
-  ["attention", "Needs attention", null],
-  ["all", "All conversations", "all"],
-  ["mine", "Your turn", "mine"],
-  ["theirs", "Waiting on them", "theirs"],
-] as const satisfies readonly (readonly [string, string, MessagesTurn | null])[];
 
 export function MessagesFilterBar({
   filter,
@@ -41,6 +40,7 @@ export function MessagesFilterBar({
   onChange: (next: MessagesFilter) => void;
 }) {
   const filtered = isFiltered(filter);
+  const cycleKey = definedShortcut("messages.cycle-filter");
   return (
     <div
       data-testid="messages-filters"
@@ -50,12 +50,23 @@ export function MessagesFilterBar({
         label="Show"
         className="max-w-full flex-wrap"
         value={filter.turn ?? "attention"}
-        options={TURN_CHOICES.map(([id, label]) => [id, label] as const)}
+        options={MESSAGES_VIEWS.map(([id, label]) => [id, label] as const)}
         onChange={(value) => {
-          const choice = TURN_CHOICES.find(([id]) => id === value);
+          const choice = MESSAGES_VIEWS.find(([id]) => id === value);
           if (choice) onChange({ ...filter, turn: choice[2] });
         }}
       />
+      <button
+        type="button"
+        aria-label="Cycle views"
+        aria-keyshortcuts={cycleKey}
+        title={`Cycle views (${cycleKey})`}
+        onClick={() => onChange(cycleMessagesFilter(filter))}
+        className="type-body inline-flex h-7 items-center gap-1.5 px-1 text-text-2 outline-none hover:text-text-1 focus-visible:ring-2 focus-visible:ring-signal"
+      >
+        <KeyChip>{cycleKey}</KeyChip>
+        Cycle views
+      </button>
       <Toggle
         label="Unread"
         on={filter.unread}

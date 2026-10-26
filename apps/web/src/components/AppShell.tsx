@@ -11,6 +11,7 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import { RecoveryNotice } from "@/features/recovery/RecoveryNotice";
 import { Sidebar } from "@/components/Sidebar";
 import { StatusBar } from "@/components/StatusBar";
+import { ShortcutGuide } from "@/components/ShortcutGuide";
 import { Topbar } from "@/components/Topbar";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { fetchAccounts } from "@/features/accounts/api";
@@ -263,6 +264,7 @@ export function AppShell() {
                     <StatusBar />
                   </footer>
                   <MobileTabs />
+                  <ShortcutGuide />
                   {mountMore ? <MoreSheet /> : null}
                   <Suspense fallback={null}>
                     {mountPalette ? <CommandPaletteMount /> : null}

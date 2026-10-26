@@ -6970,6 +6970,49 @@
       ]
     },
     {
+      "id": "page.controls",
+      "label": "Focus page tabs and filters",
+      "short_label": "Tabs and filters",
+      "group": "View",
+      "scopes": [
+        "page"
+      ],
+      "keys": [
+        "g f"
+      ],
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "messages.cycle-filter",
+      "label": "Cycle Messages views",
+      "short_label": "Cycle views",
+      "group": "View",
+      "scopes": [
+        "messages-filters"
+      ],
+      "keys": [
+        "f"
+      ],
+      "note": "Needs attention, All conversations, Your turn, Waiting on them; keeps Unread and Past your pace",
+      "clients": [
+        "web",
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "MessagesCycleFilter",
+          "keys": [
+            "f"
+          ],
+          "contexts": [
+            "messages"
+          ]
+        }
+      ]
+    },
+    {
       "id": "messages.filter",
       "label": "Filter the people list: turn, unread, past your pace",
       "short_label": "Filter",
@@ -8468,6 +8511,7 @@
         "messages.reply",
         "messages.got-it",
         "messages.done",
+        "messages.cycle-filter",
         "messages.to-do",
         "messages.pin"
       ]
@@ -8475,6 +8519,7 @@
     {
       "id": "messages.empty",
       "actions": [
+        "messages.cycle-filter",
         "messages.open"
       ]
     },

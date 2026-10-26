@@ -344,6 +344,7 @@
     "b": "FlagReplyLater",
     "c": "MessagesNewTopic",
     "e": "MessagesDone",
+    "f": "MessagesCycleFilter",
     "g 0": "OpenSavedSearchByIndex(0)",
     "g 1": "OpenSavedSearchByIndex(1)",
     "g 2": "OpenSavedSearchByIndex(2)",

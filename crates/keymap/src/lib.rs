@@ -51,7 +51,7 @@ pub const SCREEN_CONTEXTS: [&str; 9] = [
 ];
 
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).
-pub const WEB_SCOPES: [&str; 17] = [
+pub const WEB_SCOPES: [&str; 19] = [
     "global",
     "sidebar",
     "list",
@@ -63,6 +63,8 @@ pub const WEB_SCOPES: [&str; 17] = [
     "expired",
     "now",
     "messages",
+    "messages-filters",
+    "page",
     "updates",
     "archive",
     "reading",

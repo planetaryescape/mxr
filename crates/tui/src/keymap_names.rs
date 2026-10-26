@@ -44,6 +44,7 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
         "MessagesBack" => Action::MessagesBack,
         "MessagesDone" => Action::MessagesDone,
         "MessagesFilter" => Action::MessagesFilter,
+        "MessagesCycleFilter" => Action::MessagesCycleFilter,
         "MessagesNewTopic" => Action::MessagesNewTopic,
         "MessagesNextTopic" => Action::MessagesNextTopic,
         "MessagesOpen" => Action::MessagesOpen,

@@ -4,7 +4,7 @@
  */
 
 import { Bookmark, BookmarkPlus, ListFilter, Search, X } from "lucide-react";
-import type { RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ import { CompactSelect } from "./SearchControls";
 import { facetOperator, facetValue, quoteIfNeeded, shortFacet } from "./searchFacets";
 import type { Scope, SearchUpdate, Verdict } from "./searchRouteParams";
 import { SyntaxHelp } from "./SyntaxHelp";
+import { KeyChip } from "@/components/KeyChip";
 
 export function SearchToolbar({
   q,
@@ -35,6 +36,7 @@ export function SearchToolbar({
   facetGroups,
   update,
   filtersOpen,
+  filterFocusRequest,
   onFiltersToggle,
   onSaveClick,
   onManageClick,
@@ -54,11 +56,18 @@ export function SearchToolbar({
   update: (next: SearchUpdate) => void;
   /** The scope, sort, account and narrow-by controls are shown. */
   filtersOpen: boolean;
+  filterFocusRequest: number;
   onFiltersToggle: () => void;
   onSaveClick: () => void;
   onManageClick: () => void;
 }) {
   const setActivePane = useMailboxPane((s) => s.setActivePane);
+  const filtersRef = useRef<HTMLDivElement>(null);
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (filtersOpen && filterFocusRequest > 0)
+      filtersRef.current?.querySelector<HTMLElement>('[role="combobox"]')?.focus();
+  }, [filtersOpen, filterFocusRequest]);
   const tokens = parseSearchTokens(q);
   // What the filters have been moved off, so a closed panel still says it is narrowing.
   const narrowed = [
@@ -156,6 +165,8 @@ export function SearchToolbar({
           variant="ghost"
           size="sm"
           aria-expanded={filtersOpen}
+          aria-label={`Filters${narrowed > 0 ? ` · ${narrowed}` : ""}`}
+          ref={filterButtonRef}
           aria-keyshortcuts="g f"
           title="Filters (g f)"
           onClick={onFiltersToggle}
@@ -163,10 +174,21 @@ export function SearchToolbar({
         >
           <ListFilter aria-hidden className="size-4" strokeWidth={1.75} />
           Filters{narrowed > 0 ? ` · ${narrowed}` : ""}
+          <KeyChip>g f</KeyChip>
         </Button>
       </div>
       {filtersOpen ? (
-        <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="search-filters">
+        <div
+          ref={filtersRef}
+          className="mt-2 flex flex-wrap items-center gap-2"
+          data-testid="search-filters"
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || event.defaultPrevented) return;
+            event.preventDefault();
+            onFiltersToggle();
+            filterButtonRef.current?.focus();
+          }}
+        >
           <CompactSelect
             label="Show"
             value={scope}

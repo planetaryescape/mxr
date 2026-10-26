@@ -39,7 +39,7 @@ pub const PATTERNS: [Pattern; 26] = [
     p(6,"Forced triads",PatternGroup::B,"Use the exact number of points the message needs.",Detector::Deterministic,false,true),
     p(7,"Repeated sentence openings",PatternGroup::B,"Vary sentence openings when the repetition is unintentional.",Detector::PromptOnly,true,true),
     p(8,"Dashes as the universal connector",PatternGroup::B,"Use dashes only where they match the writer's normal rate; otherwise use a period or comma.",Detector::Deterministic,true,true),
-    p(9,"Stacked qualifiers",PatternGroup::B,"Keep one necessary qualifier and remove the rest.",Detector::Deterministic,false,true),
+    p(9,"Stacked qualifiers",PatternGroup::B,"Keep one necessary qualifier and remove the rest.",Detector::Deterministic,true,true),
     p(10,"Hyphenated pairs everywhere",PatternGroup::B,"Keep compound modifiers hyphenated before nouns and open after them.",Detector::PromptOnly,true,true),
     p(11,"Passive voice and missing subjects",PatternGroup::B,"Name the actor and use an active verb when it makes the action clearer.",Detector::PromptOnly,true,true),
     p(12,"Overused AI words",PatternGroup::C,"Use ordinary, specific words in place of inflated or formal wording.",Detector::Deterministic,false,true),

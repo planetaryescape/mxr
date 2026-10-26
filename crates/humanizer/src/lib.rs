@@ -34,8 +34,7 @@ pub enum HumanizerCategory {
     ChallengesProspects,
 }
 
-/// Compatibility map from the original 24 categories into humanizer 3.1.
-/// mxr-only categories have no pattern number.
+/// Compatibility map from legacy categories to direct humanizer 3.1 equivalents.
 pub fn pattern_for_category(category: HumanizerCategory) -> Option<u8> {
     Some(match category {
         HumanizerCategory::NegativeParallelism => 1,
@@ -52,11 +51,11 @@ pub fn pattern_for_category(category: HumanizerCategory) -> Option<u8> {
         HumanizerCategory::ExcessiveBoldface | HumanizerCategory::InlineHeaderColonList => 19,
         HumanizerCategory::EmojiHeading | HumanizerCategory::TitleCaseHeading => 20,
         HumanizerCategory::CurlyQuotes => 21,
-        HumanizerCategory::SycophanticOpener
-        | HumanizerCategory::CollaborativeArtifact
-        | HumanizerCategory::FillerPhrase => 22,
+        HumanizerCategory::SycophanticOpener | HumanizerCategory::CollaborativeArtifact => 22,
         HumanizerCategory::KnowledgeCutoffDisclaimer => 23,
-        HumanizerCategory::Profanity | HumanizerCategory::FalseRange => return None,
+        HumanizerCategory::FillerPhrase
+        | HumanizerCategory::Profanity
+        | HumanizerCategory::FalseRange => return None,
     })
 }
 
@@ -317,29 +316,9 @@ fn score_internal(text: &str, _opts: &HumanizerOpts, suppress_weak_alone: bool) 
     collect_boldface_hit(text, &mut hits);
     collect_rule_of_three_hits(text, &mut hits);
 
-    // Formatting tells marked weak-alone by the source skill only count when
-    // a separate tell appears in the same paragraph.
-    let all_hits = hits.clone();
-    hits.retain(|hit| {
-        if !suppress_weak_alone {
-            return true;
-        }
-        if !matches!(
-            hit.category,
-            HumanizerCategory::EmDashOveruse
-                | HumanizerCategory::CurlyQuotes
-                | HumanizerCategory::ExcessiveBoldface
-                | HumanizerCategory::InlineHeaderColonList
-                | HumanizerCategory::EmojiHeading
-                | HumanizerCategory::TitleCaseHeading
-        ) {
-            return true;
-        }
-        let paragraph = paragraph_range(text, hit.span.start);
-        all_hits.iter().any(|other| {
-            other.category != hit.category && paragraph_range(text, other.span.start) == paragraph
-        })
-    });
+    if suppress_weak_alone {
+        suppress_weak_alone_hits(text, &mut hits);
+    }
 
     hits.sort_by_key(|hit| hit.span.start);
     let penalty: u32 = hits.iter().map(|hit| category_weight(hit.category)).sum();
@@ -387,7 +366,7 @@ impl PatternRates {
 
 /// Score only the detections that exceed the writer's normalized rate.
 pub fn score_with_rates(text: &str, opts: &HumanizerOpts, rates: &PatternRates) -> HumanizerReport {
-    let mut report = score(text, opts);
+    let mut report = score_internal(text, opts, false);
     let words = text.split_whitespace().count() as u64;
     let mut observed = std::collections::BTreeMap::<u8, u64>::new();
     report.hits.retain(|hit| {
@@ -401,6 +380,7 @@ pub fn score_with_rates(text: &str, opts: &HumanizerOpts, rates: &PatternRates) 
         let historical = rates.counts.get(&pattern).copied().unwrap_or(0);
         rates.words == 0 || count.saturating_mul(rates.words) > historical.saturating_mul(words)
     });
+    suppress_weak_alone_hits(text, &mut report.hits);
     let penalty: u32 = report
         .hits
         .iter()
@@ -409,6 +389,22 @@ pub fn score_with_rates(text: &str, opts: &HumanizerOpts, rates: &PatternRates) 
     report.score = 100_u32.saturating_sub(penalty).min(100) as u8;
     report.summary = summarize_hits(&report.hits);
     report
+}
+
+fn suppress_weak_alone_hits(text: &str, hits: &mut Vec<HumanizerHit>) {
+    let candidates = hits.clone();
+    hits.retain(|hit| {
+        let is_weak_alone = pattern_for_category(hit.category)
+            .and_then(|number| PATTERNS.iter().find(|pattern| pattern.number == number))
+            .is_some_and(|pattern| pattern.weak_alone);
+        if !is_weak_alone {
+            return true;
+        }
+        let paragraph = paragraph_range(text, hit.span.start);
+        candidates.iter().any(|other| {
+            other.category != hit.category && paragraph_range(text, other.span.start) == paragraph
+        })
+    });
 }
 
 fn paragraph_range(text: &str, offset: usize) -> (usize, usize) {
@@ -656,6 +652,14 @@ mod tests {
         );
         assert_eq!(pattern_for_category(HumanizerCategory::FalseRange), None);
         assert_eq!(pattern_for_category(HumanizerCategory::Profanity), None);
+        assert_eq!(pattern_for_category(HumanizerCategory::FillerPhrase), None);
+        assert!(score(
+            "In order to finish, I need one more day.",
+            &HumanizerOpts::default()
+        )
+        .hits
+        .iter()
+        .any(|hit| hit.category == HumanizerCategory::FillerPhrase));
     }
 
     #[test]
@@ -708,7 +712,9 @@ mod tests {
             .hits
             .iter()
             .any(|hit| hit.category == HumanizerCategory::EmDashOveruse));
-        let excess = format!("{draft} Nine — ten. Eleven — twelve. Thirteen — fourteen.");
+        let excess = format!(
+            "{draft} Nine — ten. Eleven — twelve. Thirteen — fourteen. Fifteen — sixteen. Seventeen — eighteen. Great question."
+        );
         assert!(
             score_with_rates(&excess, &HumanizerOpts::default(), &writer)
                 .hits
@@ -760,6 +766,73 @@ mod tests {
                 .iter()
                 .any(|hit| hit.category == HumanizerCategory::EmDashOveruse)
         );
+    }
+
+    #[test]
+    fn filler_phrase_history_does_not_allow_a_sycophantic_opener() {
+        let filler_history = "In order to review this, I need one more day. ".repeat(200);
+        let rates = PatternRates::from_samples([filler_history.as_str()]);
+        let report = score_with_rates(
+            "Great question. I can send the figures tomorrow.",
+            &HumanizerOpts::default(),
+            &rates,
+        );
+        assert!(report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::SycophanticOpener));
+    }
+
+    #[test]
+    fn stacked_qualifiers_are_weak_alone_and_need_a_separate_tell() {
+        let alone = score(
+            "This could potentially possibly work.",
+            &HumanizerOpts::default(),
+        );
+        assert!(!alone
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::HedgingStack));
+
+        let paired = score(
+            "This could potentially possibly work. Additionally, I'll check.",
+            &HumanizerOpts::default(),
+        );
+        assert!(paired
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::HedgingStack));
+    }
+
+    #[test]
+    fn rate_filtered_support_does_not_keep_a_weak_alone_mark() {
+        let text = "He said “ok”. Additionally, I'll check tomorrow.";
+        let history = "Additionally, I'll check tomorrow. ".repeat(200);
+        let rates = PatternRates::from_samples([history.as_str()]);
+        let report = score_with_rates(text, &HumanizerOpts::default(), &rates);
+        assert!(!report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::CurlyQuotes));
+
+        let two_remaining_tells = "He said “ok”. Great question.";
+        let report = score_with_rates(two_remaining_tells, &HumanizerOpts::default(), &rates);
+        assert!(report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::CurlyQuotes));
+        assert!(report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::SycophanticOpener));
+
+        let unrelated_paragraph = "He said “ok”.\n\nAdditionally, I'll check tomorrow.";
+        let no_history = PatternRates::default();
+        let report = score_with_rates(unrelated_paragraph, &HumanizerOpts::default(), &no_history);
+        assert!(!report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::CurlyQuotes));
     }
 
     #[test]

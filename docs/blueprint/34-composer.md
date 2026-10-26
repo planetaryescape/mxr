@@ -360,7 +360,8 @@ The catalogue is used three ways:
    marks beside the pass/fail fact and kept-text checks. Style is reported,
    not a pass/fail threshold.
 
-The existing 24 categories map into the 26:
+The legacy API retains 24 categories. Categories with direct catalogue
+equivalents contribute to pattern rates through this map:
 
 | Today | 3.1 pattern |
 |---|---|
@@ -378,8 +379,9 @@ The existing 24 categories map into the 26:
 | `ExcessiveBoldface`, `InlineHeaderColonList` | §19 Bold as decoration |
 | `EmojiHeading`, `TitleCaseHeading` | §20 Decorative headings |
 | `CurlyQuotes` | §21 Curly quotation marks |
-| `SycophanticOpener`, `CollaborativeArtifact`, `FillerPhrase` | §22 Chatbot residue |
+| `SycophanticOpener`, `CollaborativeArtifact` | §22 Chatbot residue |
 | `KnowledgeCutoffDisclaimer` | §23 Knowledge-limit disclaimers |
+| `FillerPhrase` | remains detectable by the legacy scorer, but has no catalogue rate mapping |
 | `FalseRange`, `Profanity` | kept as mxr's own, outside the 26 |
 | — | new: §4 staged run-up, §5 arguing with no one, §7 repeated openings, §10 hyphenated pairs, §11 missing subjects, §14 vague association, §17 borrowed authority, §24, §25 writing about the document, §26 re-explaining |
 

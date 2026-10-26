@@ -483,12 +483,9 @@ impl super::Store {
         }
         let wanted = serde_json::to_string(emails).map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
         let rows: Vec<(String,)> = sqlx::query_as(
-            r#"SELECT DISTINCT lower(json_extract(a.value, '$.email'))
-               FROM messages m,
-                    json_each(json_array(json(m.to_addrs), json(m.cc_addrs), json(m.bcc_addrs))) lists,
-                    json_each(lists.value) a
-               WHERE m.account_id = ?1 AND m.direction = 'outbound'
-                 AND lower(json_extract(a.value, '$.email')) IN (SELECT value FROM json_each(?2))"#,
+            r#"SELECT DISTINCT r.email
+               FROM json_each(?2) wanted
+               CROSS JOIN outbound_recipients r ON r.account_id = ?1 AND r.email = wanted.value"#,
         )
         .bind(account_id.as_str())
         .bind(wanted)
@@ -699,6 +696,165 @@ mod tests {
     use crate::Store;
     use chrono::Duration;
     use mxr_core::types::MessageDirection;
+
+    #[tokio::test]
+    async fn written_to_follows_all_recipient_lists_and_keeps_other_supporting_messages() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        let other = test_account();
+        store.insert_account(&account).await.unwrap();
+        store.insert_account(&other).await.unwrap();
+        let addr = |email: &str| Address {
+            name: None,
+            email: email.into(),
+        };
+        let mut sent = envelope(&account.id, &ThreadId::new(), "me@example.test", Utc::now());
+        sent.to = vec![addr("To@Example.Test"), addr("same@example.test")];
+        sent.cc = vec![addr("Cc@Example.Test"), addr("SAME@example.test")];
+        sent.bcc = vec![addr("Bcc@Example.Test")];
+        store
+            .upsert_envelope_with_direction(&sent, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        let wanted = [
+            "to@example.test",
+            "cc@example.test",
+            "bcc@example.test",
+            "same@example.test",
+            "never@example.test",
+        ]
+        .map(str::to_string);
+        assert!(store
+            .addresses_written_to(&account.id, &wanted)
+            .await
+            .unwrap()
+            .is_empty());
+        store
+            .upsert_envelope_with_direction(&sent, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        let expected = wanted[..4].iter().cloned().collect();
+        assert_eq!(
+            store
+                .addresses_written_to(&account.id, &wanted)
+                .await
+                .unwrap(),
+            expected
+        );
+        assert!(store
+            .addresses_written_to(&other.id, &wanted)
+            .await
+            .unwrap()
+            .is_empty());
+
+        let mut second = sent.clone();
+        second.id = MessageId::new();
+        second.provider_id = "second-sent".into();
+        store
+            .upsert_envelope_with_direction(&second, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        sent.to.clear();
+        sent.cc.clear();
+        sent.bcc.clear();
+        store
+            .upsert_envelope_with_direction(&sent, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .addresses_written_to(&account.id, &wanted)
+                .await
+                .unwrap(),
+            expected
+        );
+        sqlx::query("DELETE FROM messages WHERE id=?1")
+            .bind(second.id.as_str())
+            .execute(store.writer())
+            .await
+            .unwrap();
+        assert!(store
+            .addresses_written_to(&account.id, &wanted)
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn written_to_moves_with_the_account_and_disappears_when_direction_changes() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        let other = test_account();
+        store.insert_account(&account).await.unwrap();
+        store.insert_account(&other).await.unwrap();
+        let mut sent = envelope(&account.id, &ThreadId::new(), "me@example.test", Utc::now());
+        sent.to = vec![Address {
+            name: None,
+            email: "maya@example.test".into(),
+        }];
+        store
+            .upsert_envelope_with_direction(&sent, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        let wanted = ["maya@example.test".into()];
+        sqlx::query("UPDATE messages SET account_id=?1 WHERE id=?2")
+            .bind(other.id.as_str())
+            .bind(sent.id.as_str())
+            .execute(store.writer())
+            .await
+            .unwrap();
+        assert!(store
+            .addresses_written_to(&account.id, &wanted)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            store
+                .addresses_written_to(&other.id, &wanted)
+                .await
+                .unwrap(),
+            wanted.iter().cloned().collect()
+        );
+        sqlx::query("UPDATE messages SET direction='unknown' WHERE id=?1")
+            .bind(sent.id.as_str())
+            .execute(store.writer())
+            .await
+            .unwrap();
+        assert!(store
+            .addresses_written_to(&other.id, &wanted)
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn navigation_upgrade_backfills_previously_sent_recipients() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        sqlx::raw_sql("DROP TRIGGER outbound_recipients_insert; DROP TRIGGER outbound_recipients_update; DROP VIEW outbound_recipient_projection; DROP TABLE outbound_recipients; DROP INDEX idx_messages_sender_history;").execute(store.writer()).await.unwrap();
+        let mut sent = envelope(&account.id, &ThreadId::new(), "me@example.test", Utc::now());
+        sent.to = vec![Address {
+            name: None,
+            email: "Earlier@Example.Test".into(),
+        }];
+        store
+            .upsert_envelope_with_direction(&sent, MessageDirection::Outbound)
+            .await
+            .unwrap();
+        sqlx::raw_sql(include_str!("../migrations/103_navigation_lookups.sql"))
+            .execute(store.writer())
+            .await
+            .unwrap();
+        let wanted = ["earlier@example.test".into()];
+        assert_eq!(
+            store
+                .addresses_written_to(&account.id, &wanted)
+                .await
+                .unwrap(),
+            wanted.iter().cloned().collect()
+        );
+    }
 
     fn envelope(
         account: &AccountId,

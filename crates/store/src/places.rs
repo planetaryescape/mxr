@@ -165,26 +165,7 @@ impl super::Store {
                 .map(|email| email.to_ascii_lowercase())
                 .collect::<Vec<_>>(),
         )?;
-        let columns = place_columns(false);
-        let sql = format!(
-            r#"WITH ranked AS MATERIALIZED (
-                SELECT m.id, ROW_NUMBER() OVER (
-                    PARTITION BY lower(m.from_email) ORDER BY m.date DESC, m.id DESC
-                ) AS sender_rank
-                FROM messages m
-                WHERE m.account_id = ?1 AND m.date >= ?3
-                  AND lower(m.from_email) IN (SELECT value FROM json_each(?4))
-                  AND {NOT_TRASHED}
-            )
-                SELECT {columns},
-                    EXISTS (
-                        SELECT 1 FROM message_labels iml JOIN labels il ON il.id = iml.label_id
-                        WHERE iml.message_id = m.id AND il.provider_id = 'INBOX'
-                    ) AS in_inbox
-                FROM ranked
-                CROSS JOIN messages m ON m.id = ranked.id
-                WHERE ranked.sender_rank <= ?5"#
-        );
+        let sql = recent_from_senders_sql();
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account_id.as_str())
             .bind(hidden_flags())
@@ -256,6 +237,27 @@ pub(crate) fn live_mail_sql(alias: &str) -> String {
 
 fn hidden_flags() -> i64 {
     i64::from((MessageFlags::TRASH | MessageFlags::SPAM).bits())
+}
+
+fn recent_from_senders_sql() -> String {
+    let columns = place_columns(false);
+    format!(
+        r#"WITH selected AS MATERIALIZED (
+            SELECT m.id FROM (SELECT DISTINCT value FROM json_each(?4)) wanted
+            CROSS JOIN messages m ON m.id IN (
+                SELECT m.id FROM messages m
+                WHERE m.account_id = ?1 AND lower(m.from_email) = wanted.value AND m.date >= ?3
+                    AND {NOT_TRASHED}
+                ORDER BY m.date DESC, m.id DESC LIMIT ?5
+            )
+        )
+        SELECT {columns}, EXISTS (
+            SELECT 1 FROM message_labels iml JOIN labels il ON il.id = iml.label_id
+            WHERE iml.message_id = m.id AND il.provider_id = 'INBOX'
+        ) AS in_inbox
+        FROM selected CROSS JOIN messages m ON m.id = selected.id
+        ORDER BY m.date DESC, m.id DESC"#
+    )
 }
 
 /// Columns and per-message state shared by both reads. `?2` is the hidden
@@ -424,6 +426,23 @@ pub(crate) mod tests {
         assert_thread_lookups_use_the_thread(&one);
     }
 
+    #[tokio::test]
+    async fn sender_history_looks_up_each_sender_before_loading_the_page() {
+        let store = Store::in_memory().await.unwrap();
+        let steps = plan(&store, &recent_from_senders_sql()).await;
+        assert!(
+            steps
+                .iter()
+                .any(|s| s.contains("idx_messages_sender_history")
+                    && s.contains("account_id=? AND <expr>=? AND date>?")),
+            "sender/account/date lookup: {steps:#?}"
+        );
+        assert!(
+            !steps.iter().any(|s| s.starts_with("SCAN m")),
+            "no mailbox scan: {steps:#?}"
+        );
+    }
+
     /// The evidence columns look up each row's thread several times. Searching
     /// by account alone walks the whole mailbox per row: on a 110k-message
     /// store that was ~0.3s a message and starved the reader pool.
@@ -507,7 +526,9 @@ pub(crate) mod tests {
     async fn sender_history_limits_each_sender_without_loading_body_evidence() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();
+        let other = test_account();
         store.insert_account(&account).await.unwrap();
+        store.insert_account(&other).await.unwrap();
         let now = Utc::now();
         let mut expected = Vec::new();
         for sender in ["news@example.test", "other@example.test"] {
@@ -545,10 +566,23 @@ pub(crate) mod tests {
                 }
             }
         }
+        let mut foreign = TestEnvelopeBuilder::new()
+            .account_id(other.id.clone())
+            .build();
+        foreign.from.email = "news@example.test".into();
+        foreign.date = now;
+        store
+            .upsert_envelope_with_direction(&foreign, MessageDirection::Inbound)
+            .await
+            .unwrap();
         let history = store
             .recent_from_senders(
                 &account.id,
-                &["News@Example.Test".into(), "other@example.test".into()],
+                &[
+                    "News@Example.Test".into(),
+                    "NEWS@example.test".into(),
+                    "other@example.test".into(),
+                ],
                 now - chrono::Duration::days(1),
                 2,
             )

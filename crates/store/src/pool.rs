@@ -1263,6 +1263,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 100, name: "assessment_authority", kind: MigrationKind::Sql(include_str!("../migrations/100_assessment_authority.sql")) },
     Migration { version: 101, name: "approved_sends", kind: MigrationKind::Sql(include_str!("../migrations/101_approved_sends.sql")) },
     Migration { version: 102, name: "ask_view_summaries", kind: MigrationKind::Sql(include_str!("../migrations/102_ask_view_summaries.sql")) },
+    Migration { version: 103, name: "navigation_lookups", kind: MigrationKind::Sql(include_str!("../migrations/103_navigation_lookups.sql")) },
 ];
 
 /// Each account's colour slot and stored tag (blueprint 33). Both are set when
@@ -2114,7 +2115,7 @@ mod tests {
             .unwrap();
             assert_eq!(
                 versions.iter().map(|v| v.0).collect::<Vec<_>>(),
-                (83..=102).collect::<Vec<_>>(),
+                (83..=103).collect::<Vec<_>>(),
                 "from {from}"
             );
             assert!(test_table_exists(store.writer(), "reading_marginalia").await);

@@ -1,3 +1,8 @@
+DROP TRIGGER IF EXISTS outbound_recipients_insert;
+DROP TRIGGER IF EXISTS outbound_recipients_update;
+DROP VIEW IF EXISTS outbound_recipient_projection;
+DROP TABLE IF EXISTS outbound_recipients;
+DROP INDEX IF EXISTS idx_messages_sender_history;
 DROP TRIGGER IF EXISTS approved_send_draft_edited;
 DROP TABLE IF EXISTS approved_send_attempts;
 DROP TABLE IF EXISTS approved_sends;

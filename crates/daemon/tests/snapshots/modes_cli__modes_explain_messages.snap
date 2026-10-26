@@ -43,6 +43,10 @@ expression: "serde_json::to_string_pretty(&guide).unwrap()"
     ],
     "keys": [
       {
+        "key": "f",
+        "verb": "cycle views"
+      },
+      {
         "key": "Enter",
         "verb": "open the person"
       },

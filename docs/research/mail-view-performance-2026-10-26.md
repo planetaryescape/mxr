@@ -85,7 +85,7 @@ After these layout changes, a deliberately slow filter response preserved the sa
 
 The TUI's shared IPC worker forwarded events only after its in-flight request completed. It now forwards events while awaiting that reply and discards abandoned queued safe reads without discarding mutations. A gated fake daemon test requires an event to reach the UI before the reply is released.
 
-A native terminal check also found that a selected Not-sure question consumed `m`, `u`, `x` or `e` as a classification answer even when it was the suffix of a `g` navigation chord. Pending navigation now resolves before those one-key answers. The regression requires the navigation action, no queued mail mutation, and both questions still unanswered; existing direct-answer tests retain the single-key behavior. The terminal fixture uses a separate client config with a disabled, provider-free account solely to bypass onboarding. Earlier onboarding-blocked checks are not interaction proof.
+Investigating the native terminal check also exposed a key-dispatch bug: a selected Not-sure question consumed `m`, `u`, `x` or `e` as a classification answer even when it was the suffix of a `g` navigation chord. Pending navigation now resolves before those one-key answers. The regression requires the navigation action, no queued mail mutation, and both questions still unanswered; existing direct-answer tests retain the single-key behavior. The terminal fixture uses a separate client config with a disabled, provider-free account solely to bypass onboarding. Earlier onboarding-blocked checks are not interaction proof.
 
 The same check exposed startup work outside Messages: the TUI synchronously loads 5,000 envelopes before its first frame. The daemon reloaded each envelope's account labels and label memberships, although the store's envelope query already included provider label IDs. Traced envelope requests took 1.9–7.3 seconds under local load. The page, ID-list and thread handlers now use the already hydrated envelopes without those per-row queries. Existing thread-label coverage and expanded account-page, label-page and ID-list coverage check that label badges survive the removal.
 
@@ -93,24 +93,30 @@ The same check exposed startup work outside Messages: the TUI synchronously load
 
 Compare optimized binaries on the same snapshot, with equivalent background activity. Do not compare debug timings with release timings as a speedup claim. Check cold view construction and repeated navigation separately, then verify the installed release against the normal mailbox. Keep mail mutations and sending out of performance testing.
 
-### Intermediate optimized measurements (not release acceptance)
+### Latest optimized measurements (not release acceptance)
 
-The latest completed optimized sweep, before the timer-first/body-read refinement, produced these first/repeated request pairs on the same snapshot:
+The schema-102 optimized artifact, including timer-first reads, compact history refinements and duplicate-label removal, produced these first/repeated requests on the same snapshot. This artifact precedes the gate-driven Tantivy upgrade described below. No heavy commands owned by this audit ran during the sweep. Tracing was disabled. The first request builds each view; later requests use validated caches where available.
 
-| Request | First view build | Repeat |
+| Request | First view build | Repeats |
 |---|---:|---:|
-| Attention | 360 ms | 18 ms |
-| All conversations | 2,325 ms | 31 ms |
-| Your turn | 18 ms | 18 ms |
-| Waiting on them | 494 ms | 20 ms |
-| Unread | 17 ms | 18 ms |
-| Now | 668 ms | 21 ms |
-| Rail | 783 ms | 19 ms |
-| Updates | 345 ms | 21 ms |
-| Reading | 194 ms | 22 ms |
-| Archive | 124 ms | 116 ms |
-| Search | 33 ms | 28 ms |
+| Attention | 230 ms | 19–22 ms |
+| All conversations | 1,807 ms | 30–32 ms |
+| Your turn | 18 ms | 19 ms |
+| Waiting on them | 341 ms | 19 ms |
+| Unread | 19 ms | 18–19 ms |
+| Now | 529 ms | 20–21 ms |
+| Rail | 666 ms | 20 ms |
+| Updates | 307 ms | 23–24 ms |
+| Reading | 209 ms | 23–24 ms |
+| Archive | 135 ms | 124–126 ms |
+| Search | 31 ms | 27–28 ms |
 
-Your turn and Unread reused the earlier attention snapshot; they are not independent cold builds. These results still fail the 250 ms budget, so they do not establish that the performance work is complete. The final optimized artifact and installed release still need measuring after all refinements.
+Your turn and Unread reused the earlier attention snapshot; they are not independent cold builds. Attention now passes the 250 ms budget, but History, Waiting on them, Now, Rail and Updates do not. The performance work remains incomplete; installed-release verification is still pending. The isolated schema upgrade and startup maintenance completed in 16 seconds and 36 seconds respectively, measured separately from navigation.
+
+The native TUI check passed with the same optimized binary: first frame in 800 ms, `g m` navigation in 8 ms and Help after filter keys in 5 ms. Its terminal emulator answers capability queries; earlier runs that did not answer them lost keystrokes and spent four seconds timing out, so they are not interaction or startup-performance proof. This smoke test checks real rendering and input; the gated IPC test separately establishes that events arrive before a deliberately slow reply is released.
 
 Increasing SQLx's row buffer did not improve the historical envelope read. Aggregating the same rows into one JSON result also failed to reduce its cost. A 32 MiB SQLite page cache improved that microbenchmark only modestly, so none of these tuning changes is included.
+
+### Dependency gate
+
+The final local gate initially passed formatting, scoped Clippy and architecture checks, but new advisories published on 26 October blocked `cargo deny`: RUSTSEC-2026-0391, RUSTSEC-2026-0398 and RUSTSEC-2026-0403 affected Tantivy's existing `zstd 0.13.3` / `zstd-safe 7.2.4` dependencies. Updating Tantivy to 0.27 selects the patched `zstd 0.14.3` / `zstd-safe 8.2.0` line without exceptions. Both Tantivy releases support index formats 4 through 7. All 46 `mxr-search` tests and the complete scoped Rust gate pass after the upgrade, including advisories, bans, licenses and sources. Final optimized timings and installed-release verification remain pending.

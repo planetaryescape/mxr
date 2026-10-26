@@ -109,6 +109,36 @@ async fn approved_send_recovery_unrepresentable_deadline_preserves_non_submissio
 }
 
 #[tokio::test]
+async fn approved_send_recovery_remote_uncertainty_omits_local_provider_diagnostics() {
+    let sender = Arc::new(RecoveringSender {
+        ambiguous: true,
+        ..Default::default()
+    });
+    let (state, _, draft) = fixture_with_sender(Some(sender)).await;
+    let identity = SendIdentity::for_draft(&draft);
+    let response =
+        super::super::mutations::send_stored_draft_remote(&state, &draft.id, Some(&identity), None)
+            .await
+            .unwrap_err()
+            .into_response();
+    let Response::Error {
+        message,
+        code,
+        retryable,
+        details,
+        ..
+    } = response
+    else {
+        panic!("expected a protected uncertain outcome")
+    };
+    assert!(!message.contains("controlled lost response"));
+    assert!(message.contains("do not resend"));
+    assert_eq!(code, "send_outcome_unknown");
+    assert!(!retryable);
+    assert_eq!(details.unwrap()["outcome"]["state"], "unknown");
+}
+
+#[tokio::test]
 async fn approved_send_recovery_stops_after_bounded_attempts_and_never_sends_an_unapproved_draft() {
     let sender = Arc::new(RecoveringSender {
         always_wait: true,

@@ -3430,10 +3430,14 @@ fn outcome_response(outcome: mxr_core::DraftSendOutcome) -> HandlerResult {
         mxr_core::SendOutcomeState::Waiting => Ok(ResponseData::SendOutcome {
             outcome: Some(outcome),
         }),
-        mxr_core::SendOutcomeState::Unknown => Err(HandlerError::SendOutcome(Box::new(outcome))),
-        mxr_core::SendOutcomeState::NotAccepted => {
-            Err(HandlerError::SendOutcome(Box::new(outcome)))
-        }
+        mxr_core::SendOutcomeState::Unknown => Err(HandlerError::SendOutcome {
+            outcome: Box::new(outcome),
+            diagnostic: None,
+        }),
+        mxr_core::SendOutcomeState::NotAccepted => Err(HandlerError::SendOutcome {
+            outcome: Box::new(outcome),
+            diagnostic: None,
+        }),
         mxr_core::SendOutcomeState::Accepted => {
             if let (Some(local_message_id), Some(rfc2822_message_id)) = (
                 outcome.local_message_id.clone(),

@@ -261,13 +261,29 @@ fn private_directory(path: &Path) -> Result<(), HandlerError> {
     }
     #[cfg(unix)]
     {
-        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+        // Work through a no-follow directory handle so a replaced path cannot
+        // make permission repair chmod a symlink target.
+        let directory = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
+            .open(path)
+            .map_err(|e| e.to_string())?;
+        let metadata = directory.metadata().map_err(|e| e.to_string())?;
         let own_uid = tempfile::tempfile()
             .and_then(|file| file.metadata())
             .map_err(|e| e.to_string())?
             .uid();
-        if metadata.uid() != own_uid || metadata.permissions().mode() & 0o077 != 0 {
-            return Err("Approved-send cache has unsafe ownership or permissions".into());
+        if metadata.uid() != own_uid {
+            return Err("Approved-send cache has unsafe ownership".into());
+        }
+        if metadata.permissions().mode() & 0o077 != 0 {
+            // Older restore paths created owned resource directories using the
+            // process umask. Tighten those before publishing frozen send bytes.
+            directory
+                .set_permissions(std::fs::Permissions::from_mode(0o700))
+                .and_then(|()| directory.sync_all())
+                .map_err(|e| e.to_string())?;
         }
     }
     if let Some(parent) = path.parent() {
@@ -576,7 +592,10 @@ pub(super) async fn failure(
                 .await?
                 .ok_or("Send outcome missing")?;
             notify(state, &outcome);
-            return Err(HandlerError::SendOutcome(Box::new(outcome)));
+            return Err(HandlerError::SendOutcome {
+                outcome: Box::new(outcome),
+                diagnostic: (!portable).then(|| error.to_string()),
+            });
         }
     };
     let attempts = state
@@ -639,7 +658,10 @@ pub(super) async fn failure(
         .ok_or("Send outcome missing")?;
     notify(state, &outcome);
     if portable {
-        Err(HandlerError::SendOutcome(Box::new(outcome)))
+        Err(HandlerError::SendOutcome {
+            outcome: Box::new(outcome),
+            diagnostic: None,
+        })
     } else {
         Err(format!(
             "Provider did not accept send operation {} ({reason}): {error}",
@@ -881,10 +903,45 @@ async fn process_operation(
             // Unknown and definitive refusal are expected outcomes, not queue
             // errors. Persistence errors still surface and retain the hold.
             match failure(state, &outcome.identity, error, true, now).await {
-                Ok(_) | Err(HandlerError::SendOutcome(_)) => (),
+                Ok(_) | Err(HandlerError::SendOutcome { .. }) => (),
                 Err(error) => return Err(error),
             }
         }
     }
     Ok(1)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    #[test]
+    fn approved_send_cache_tightens_owned_legacy_directory_permissions() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("restored-resources");
+        std::fs::create_dir(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        private_directory(&path).unwrap();
+
+        assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o700);
+    }
+
+    #[test]
+    fn approved_send_cache_rejects_symlinks_without_changing_target_permissions() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("outside-cache");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let link = temp.path().join("cache-link");
+        symlink(&target, &link).unwrap();
+
+        assert!(private_directory(&link).is_err());
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(
+            target.metadata().unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+    }
 }

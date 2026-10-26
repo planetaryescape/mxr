@@ -2281,6 +2281,27 @@ impl MxrMcpServer {
         )
         .await
     }
+
+    #[tool(
+        name = "mxr_recover_send_outcome",
+        description = "Preview historical Gmail cooldown evidence, or resume the SAME approved operation with its preview evidence fingerprint. Never override genuine uncertainty; preview first."
+    )]
+    pub async fn recover_send_outcome(
+        &self,
+        Parameters(input): Parameters<RecoverSendOutcomeInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let owner = retained_owner(input.expected_workspace, &Value::Null)?;
+        self.daemon_json_owned(
+            Request::RecoverSendOutcome {
+                account_id: parse_id(&input.account_id)?,
+                operation_id: input.operation_id,
+                dry_run: input.dry_run,
+                expected_evidence_sha256: input.expected_evidence_sha256,
+            },
+            owner,
+        )
+        .await
+    }
 }
 
 pub async fn serve_stdio() -> anyhow::Result<()> {
@@ -2864,6 +2885,15 @@ pub struct SendOutcomeInput {
     pub expected_workspace: Option<serde_json::Value>,
     pub account_id: String,
     pub operation_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RecoverSendOutcomeInput {
+    pub account_id: String,
+    pub operation_id: String,
+    pub expected_workspace: Option<serde_json::Value>,
+    pub dry_run: bool,
+    pub expected_evidence_sha256: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

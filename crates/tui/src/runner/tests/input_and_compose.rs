@@ -2229,6 +2229,7 @@ fn last_send_outcome_uses_a_durable_modal_without_mutation_status() {
         local_message_id: None,
         provider_message_id: None,
         rfc2822_message_id: None,
+        recovery: None,
     };
     let body = super::super::format_platform_response(&mxr_protocol::ResponseData::SendOutcome {
         outcome: Some(outcome),
@@ -2301,6 +2302,7 @@ async fn canonical_compose_ipc(
                         local_message_id: None,
                         provider_message_id: None,
                         rfc2822_message_id: None,
+                        recovery: None,
                     }),
                 },
                 Request::GetDraft { .. } => mxr_protocol::ResponseData::Draft {
@@ -2428,6 +2430,7 @@ async fn alternate_compose_actions_block_unknown_or_accepted_before_persistence(
     for state in [
         mxr_core::SendOutcomeState::Unknown,
         mxr_core::SendOutcomeState::Accepted,
+        mxr_core::SendOutcomeState::Waiting,
     ] {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("review.md");
@@ -2469,6 +2472,7 @@ async fn alternate_compose_actions_block_unknown_or_accepted_before_persistence(
                             local_message_id: None,
                             provider_message_id: None,
                             rfc2822_message_id: None,
+                            recovery: None,
                         }),
                     },
                 }))

@@ -753,8 +753,9 @@ impl GmailAuth {
         auth
     }
 
-    #[cfg(test)]
-    pub(crate) fn for_test_token(token: impl Into<String>) -> Self {
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn for_test_token(token: impl Into<String>) -> Self {
         let token = token.into();
         let token_fn = Box::new(move || {
             let token = token.clone();

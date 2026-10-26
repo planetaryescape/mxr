@@ -99,6 +99,49 @@ impl Drop for ParseObserverGuard {
 const GMAIL_PARSE_FANOUT_THRESHOLD: usize = 64;
 const GMAIL_PARSE_FANOUT_MAX_CONCURRENCY: usize = 8;
 
+fn not_submitted(phase: mxr_core::SendSubmissionPhase, error: GmailError) -> mxr_core::SendFailure {
+    let retry_after_secs = match &error {
+        GmailError::RateLimited {
+            retry_after_secs, ..
+        } => Some(*retry_after_secs),
+        GmailError::AuthTemporary
+        | GmailError::Http(_)
+        | GmailError::Api {
+            status: 500..=599, ..
+        } => Some(60),
+        _ => None,
+    };
+    mxr_core::SendFailure::NotSubmitted {
+        phase,
+        retry_after_secs,
+        error: MxrError::from(error),
+    }
+}
+
+fn classify_send_error(error: GmailError) -> mxr_core::SendFailure {
+    use mxr_core::SendSubmissionPhase;
+    match error {
+        GmailError::NotSubmitted { phase, source } => not_submitted(phase, *source),
+        error @ GmailError::RateLimited { .. } => {
+            not_submitted(SendSubmissionPhase::ProviderResponse, error)
+        }
+        error @ (GmailError::AuthExpired
+        | GmailError::NotFound(_)
+        | GmailError::Api {
+            status: 400 | 401 | 403 | 404 | 413 | 422,
+            ..
+        }) => not_submitted(SendSubmissionPhase::ProviderResponse, error),
+        GmailError::Http(error) if error.is_builder() => mxr_core::SendFailure::NotSubmitted {
+            phase: SendSubmissionPhase::Preparation,
+            retry_after_secs: None,
+            error: MxrError::Provider(error.to_string()),
+        },
+        // Once HTTP dispatch may have begun, a timeout, 5xx or unreadable
+        // response is ambiguous. Never authorize a retry from its error text.
+        other => mxr_core::SendFailure::Unknown(MxrError::from(other)),
+    }
+}
+
 pub struct GmailProvider {
     account_id: AccountId,
     client: Box<dyn GmailApi>,
@@ -107,6 +150,32 @@ pub struct GmailProvider {
 }
 
 impl GmailProvider {
+    async fn send_reply_thread_id(
+        &self,
+        draft: &Draft,
+    ) -> Result<Option<String>, mxr_core::SendFailure> {
+        let Some(headers) = draft.reply_headers.as_ref() else {
+            return Ok(None);
+        };
+        if let Some(thread) = headers.thread_id.as_deref().filter(|id| !id.is_empty()) {
+            return Ok(Some(thread.to_string()));
+        }
+        let parent = send::normalize_message_id(&headers.in_reply_to);
+        if parent.is_empty() {
+            return Ok(None);
+        }
+        self.client
+            .list_messages(Some(&format!("rfc822msgid:{parent}")), None, 1)
+            .await
+            .map(|response| {
+                response
+                    .messages
+                    .and_then(|messages| messages.into_iter().next())
+                    .map(|message| message.thread_id)
+            })
+            .map_err(|error| not_submitted(mxr_core::SendSubmissionPhase::ThreadResolution, error))
+    }
+
     pub fn new(account_id: AccountId, client: GmailClient) -> Self {
         Self {
             client: Box::new(client.with_account(&account_id)),
@@ -867,7 +936,8 @@ impl GmailProvider {
     /// (they mostly are for sends). The compose path does not know the raw
     /// Gmail thread id, so when the draft carries none the parent is looked up
     /// by its RFC 5322 Message-ID. A miss or a lookup failure degrades to an
-    /// unthreaded draft: threading must never block a push or a send.
+    /// unthreaded server draft. Actual sends use `send_reply_thread_id`, which
+    /// retains a temporary lookup failure rather than dropping threading.
     async fn reply_thread_id(&self, draft: &Draft) -> Option<String> {
         let headers = draft.reply_headers.as_ref()?;
         // `thread-id: ""` in hand-edited frontmatter reaches here as `Some("")`.
@@ -907,6 +977,23 @@ impl MailSendProvider for GmailProvider {
         "gmail"
     }
 
+    fn legacy_cooldown_retry_after_secs(&self, diagnostic: &str) -> Option<u64> {
+        // This prefix was authored exclusively by GmailClient's local held
+        // gate before authentication and HTTP dispatch, not by an API 429.
+        if !diagnostic.starts_with(
+            "provider acceptance is uncertain: Rate limited by Gmail asked mxr to wait until ",
+        ) || !diagnostic.contains(" UTC; Gmail ")
+        {
+            return None;
+        }
+        diagnostic
+            .rsplit_once(" — retry after ")?
+            .1
+            .strip_suffix('s')?
+            .parse()
+            .ok()
+    }
+
     fn supports_server_drafts(&self) -> bool {
         true
     }
@@ -926,10 +1013,7 @@ impl MailSendProvider for GmailProvider {
     ) -> std::result::Result<SendReceipt, MxrError> {
         self.send_classified(draft, from, rfc2822_message_id)
             .await
-            .map_err(|failure| match failure {
-                mxr_core::SendFailure::NotAccepted(error)
-                | mxr_core::SendFailure::Unknown(error) => error,
-            })
+            .map_err(mxr_core::SendFailure::into_error)
     }
 
     async fn send_classified(
@@ -940,15 +1024,22 @@ impl MailSendProvider for GmailProvider {
     ) -> std::result::Result<SendReceipt, mxr_core::SendFailure> {
         let rfc2822 = send::build_rfc2822_async_with_id(draft, from, rfc2822_message_id)
             .await
-            .map_err(|e| mxr_core::SendFailure::NotAccepted(MxrError::Provider(e.to_string())))?;
+            .map_err(|e| mxr_core::SendFailure::NotSubmitted {
+                phase: mxr_core::SendSubmissionPhase::Preparation,
+                retry_after_secs: None,
+                error: MxrError::Provider(e.to_string()),
+            })?;
         let encoded = send::encode_for_gmail(&rfc2822);
-        let thread_id = self.reply_thread_id(draft).await;
+        // A temporary parent lookup failure must not silently send a reply on
+        // the wrong conversation. Native thread ids already on the draft need
+        // no lookup and survive a deferred attempt unchanged.
+        let thread_id = self.send_reply_thread_id(draft).await?;
 
         let result = self
             .client
             .send_message(&encoded, thread_id.as_deref())
             .await
-            .map_err(|e| mxr_core::SendFailure::Unknown(MxrError::from(e)))?;
+            .map_err(classify_send_error)?;
 
         let message_id = result["id"].as_str().map(std::string::ToString::to_string);
 
@@ -957,6 +1048,69 @@ impl MailSendProvider for GmailProvider {
             sent_at: chrono::Utc::now(),
             rfc2822_message_id: rfc2822_message_id.to_string(),
         })
+    }
+
+    async fn reconcile_send(
+        &self,
+        rfc2822_message_id: &str,
+        from: &Address,
+    ) -> mxr_core::provider::Result<Option<SendReceipt>> {
+        let expected = send::normalize_message_id(rfc2822_message_id);
+        if expected.is_empty() || expected.chars().any(char::is_whitespace) {
+            return Ok(None);
+        }
+        let found = self
+            .client
+            .list_messages(Some(&format!("in:sent rfc822msgid:{expected}")), None, 10)
+            .await
+            .map_err(MxrError::from)?;
+        for reference in found.messages.unwrap_or_default() {
+            let message = self
+                .client
+                .get_message(&reference.id, MessageFormat::Metadata)
+                .await
+                .map_err(MxrError::from)?;
+            if !message
+                .label_ids
+                .as_ref()
+                .is_some_and(|labels| labels.iter().any(|label| label == "SENT"))
+            {
+                continue;
+            }
+            let headers = message
+                .payload
+                .as_ref()
+                .and_then(|payload| payload.headers.as_ref());
+            let header = |name: &str| {
+                headers
+                    .and_then(|headers| {
+                        headers
+                            .iter()
+                            .find(|header| header.name.eq_ignore_ascii_case(name))
+                    })
+                    .map(|header| header.value.as_str())
+            };
+            if !header("Message-ID").is_some_and(|id| send::normalize_message_id(id) == expected)
+                || !header("From").is_some_and(|value| {
+                    mxr_mail_parse::parse_address_list(value)
+                        .iter()
+                        .any(|address| address.email.eq_ignore_ascii_case(&from.email))
+                })
+            {
+                continue;
+            }
+            return Ok(Some(SendReceipt {
+                provider_message_id: Some(message.id),
+                rfc2822_message_id: rfc2822_message_id.to_string(),
+                sent_at: message
+                    .internal_date
+                    .and_then(|value| value.parse::<i64>().ok())
+                    .and_then(chrono::DateTime::from_timestamp_millis)
+                    .unwrap_or_else(chrono::Utc::now),
+            }));
+        }
+        // Gmail indexing may lag. Absence can never prove non-acceptance.
+        Ok(None)
     }
 
     async fn send_calendar_reply(
@@ -1073,6 +1227,207 @@ mod tests {
                 .unwrap()
                 .push(thread_id.map(str::to_string));
         }
+    }
+
+    #[test]
+    fn send_recovery_classification_keeps_pre_dispatch_and_uncertain_responses_distinct() {
+        use mxr_core::{SendFailure, SendSubmissionPhase};
+        assert!(matches!(
+            not_submitted(
+                SendSubmissionPhase::ThreadResolution,
+                GmailError::Api {
+                    status: 503,
+                    body: "temporary read failure".into()
+                }
+            ),
+            SendFailure::NotSubmitted {
+                phase: SendSubmissionPhase::ThreadResolution,
+                retry_after_secs: Some(60),
+                ..
+            }
+        ));
+        assert!(matches!(
+            classify_send_error(GmailError::NotSubmitted {
+                phase: SendSubmissionPhase::Cooldown,
+                source: Box::new(GmailError::RateLimited {
+                    retry_after_secs: 900,
+                    detail: None
+                }),
+            }),
+            SendFailure::NotSubmitted {
+                phase: SendSubmissionPhase::Cooldown,
+                retry_after_secs: Some(900),
+                ..
+            }
+        ));
+        assert!(matches!(
+            classify_send_error(GmailError::NotSubmitted {
+                phase: SendSubmissionPhase::Authentication,
+                source: Box::new(GmailError::AuthTemporary),
+            }),
+            SendFailure::NotSubmitted {
+                phase: SendSubmissionPhase::Authentication,
+                retry_after_secs: Some(60),
+                ..
+            }
+        ));
+        for status in [400, 401, 403, 413, 422] {
+            assert!(matches!(
+                classify_send_error(GmailError::Api {
+                    status,
+                    body: "definite refusal".into()
+                }),
+                SendFailure::NotSubmitted {
+                    phase: SendSubmissionPhase::ProviderResponse,
+                    retry_after_secs: None,
+                    ..
+                }
+            ));
+        }
+        for status in [500, 502, 503, 504] {
+            assert!(matches!(
+                classify_send_error(GmailError::Api {
+                    status,
+                    body: "acceptance ambiguous".into()
+                }),
+                SendFailure::Unknown(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn send_recovery_legacy_proof_requires_the_distinctive_local_gate_diagnostic() {
+        let client = GmailClient::new(crate::auth::GmailAuth::for_test_token("synthetic-token"));
+        let provider = GmailProvider::new(AccountId::new(), client);
+        assert_eq!(provider.legacy_cooldown_retry_after_secs("provider acceptance is uncertain: Rate limited by Gmail asked mxr to wait until 12:15:00 UTC; Gmail labels.list (rateLimitExceeded) — retry after 900s"), Some(900));
+        for diagnostic in [
+            "provider acceptance is uncertain: Rate limited — retry after 900s",
+            "provider acceptance is uncertain: Gmail API error (HTTP 503)",
+            "provider acceptance is uncertain: timeout after possible dispatch",
+            "provider acceptance is uncertain: Rate limited by Gmail asked mxr to wait until later",
+        ] {
+            assert_eq!(provider.legacy_cooldown_retry_after_secs(diagnostic), None);
+        }
+    }
+
+    #[tokio::test]
+    async fn send_recovery_reconciliation_requires_sent_label_message_id_and_sender() {
+        use wiremock::{
+            matchers::{method, path, query_param},
+            Mock, MockServer, ResponseTemplate,
+        };
+        for change in [
+            "match",
+            "missing",
+            "wrong_label",
+            "wrong_message_id",
+            "wrong_sender",
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/messages"))
+                .and(query_param(
+                    "q",
+                    "in:sent rfc822msgid:approved@example.test",
+                ))
+                .respond_with(
+                    ResponseTemplate::new(200).set_body_json(if change == "missing" {
+                        json!({"messages":[]})
+                    } else {
+                        json!({"messages":[{"id":"sent-proof","threadId":"original"}]})
+                    }),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            if change != "missing" {
+                Mock::given(method("GET")).and(path("/messages/sent-proof"))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                        "id":"sent-proof", "threadId":"original", "internalDate":"1793016000000",
+                        "labelIds": if change == "wrong_label" { vec!["INBOX"] } else { vec!["SENT"] },
+                        "payload":{"headers":[
+                            {"name":"Message-ID","value":if change == "wrong_message_id" { "<other@example.test>" } else { "<approved@example.test>" }},
+                            {"name":"From","value": if change == "wrong_sender" { "Other <other@example.test>" } else { "Synthetic <me@example.test>" }}
+                        ]}
+                    }))).expect(1).mount(&server).await;
+            }
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(500))
+                .expect(0)
+                .mount(&server)
+                .await;
+            let client =
+                GmailClient::new(crate::auth::GmailAuth::for_test_token("synthetic-token"))
+                    .with_base_url(server.uri());
+            let provider = GmailProvider::new(AccountId::new(), client);
+            let receipt = provider
+                .reconcile_send(
+                    "<approved@example.test>",
+                    &Address {
+                        name: None,
+                        email: "me@example.test".into(),
+                    },
+                )
+                .await
+                .unwrap();
+            assert_eq!(receipt.is_some(), change == "match", "{change}");
+            if let Some(receipt) = receipt {
+                assert_eq!(receipt.provider_message_id.as_deref(), Some("sent-proof"));
+                assert_eq!(receipt.rfc2822_message_id, "<approved@example.test>");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn send_recovery_parent_lookup_cooldown_cannot_dispatch_an_unthreaded_reply() {
+        use wiremock::{
+            matchers::{method, path},
+            Mock, MockServer, ResponseTemplate,
+        };
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/messages"))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("retry-after", "900")
+                    .set_body_json(
+                        json!({"error":{"code":429,"message":"User-rate limit exceeded"}}),
+                    ),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/messages/send"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id":"must-not-send"})))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let client = GmailClient::new(crate::auth::GmailAuth::for_test_token("synthetic-token"))
+            .with_base_url(server.uri());
+        let provider = GmailProvider::new(AccountId::new(), client);
+        let failure = provider
+            .send_classified(
+                &reply_draft("<parent@example.test>", None),
+                &Address {
+                    name: None,
+                    email: "me@example.test".into(),
+                },
+                "<approved@example.test>",
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                failure,
+                mxr_core::SendFailure::NotSubmitted {
+                    phase: mxr_core::SendSubmissionPhase::ThreadResolution,
+                    retry_after_secs: Some(900),
+                    ..
+                }
+            ),
+            "{failure:?}"
+        );
     }
 
     #[async_trait]

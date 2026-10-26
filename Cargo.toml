@@ -518,6 +518,7 @@ nix = { version = "0.30", features = ["signal", "process"] }
 inquire = "0.9.4"
 
 [dev-dependencies]
+mxr-provider-gmail = { workspace = true, features = ["test-util"] }
 assert_cmd = { workspace = true }
 criterion = "0.5"
 insta = { workspace = true }

@@ -144,7 +144,8 @@ export async function fetchContactsAutocomplete(
 
 export interface ComposeSendResponse {
   operation_id?: string;
-  state?: "accepted";
+  state?: "accepted" | "waiting";
+  retry_at?: string | null;
   ok: boolean;
   draft_id?: string;
   /** Local id of the message just sent (the daemon's send receipt). Needed

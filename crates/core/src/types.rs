@@ -2811,6 +2811,31 @@ pub enum SendOutcomeState {
     Unknown,
     Accepted,
     NotAccepted,
+    Waiting,
+}
+
+/// The last boundary for which the adapter has positive evidence.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SendSubmissionPhase {
+    Preparation,
+    Cooldown,
+    Authentication,
+    ThreadResolution,
+    Dispatch,
+    ProviderResponse,
+    Accepted,
+}
+
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendRecoveryStatus {
+    pub phase: SendSubmissionPhase,
+    pub retry_at: Option<DateTime<Utc>>,
+    pub attempts: u32,
+    /// Stable diagnostic code; never message bodies, addresses or credentials.
+    pub reason: Option<String>,
 }
 /// Durable evidence independent of a live draft or a local Sent message.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -2823,4 +2848,6 @@ pub struct DraftSendOutcome {
     pub local_message_id: Option<MessageId>,
     pub provider_message_id: Option<String>,
     pub rfc2822_message_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<SendRecoveryStatus>,
 }

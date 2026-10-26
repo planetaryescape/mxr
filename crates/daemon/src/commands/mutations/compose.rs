@@ -186,15 +186,17 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
             &identity,
             &client.capture_workspace().await?,
         );
-        let receipt = expect_send_receipt(
-            client
-                .request(Request::SendDraft {
-                    send_identity: Some(identity),
-                    draft: draft.clone(),
-                    override_safety_token: None,
-                })
-                .await?,
-        )?;
+        let response = client
+            .request(Request::SendDraft {
+                send_identity: Some(identity),
+                draft: draft.clone(),
+                override_safety_token: None,
+            })
+            .await?;
+        if print_waiting_response(&response, options.format.clone())? {
+            return Ok(());
+        }
+        let receipt = expect_send_receipt(response)?;
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
@@ -720,15 +722,17 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
             &identity,
             &client.capture_workspace().await?,
         );
-        let receipt = expect_send_receipt(
-            client
-                .request(Request::SendDraft {
-                    send_identity: Some(identity),
-                    draft: outgoing.clone(),
-                    override_safety_token: None,
-                })
-                .await?,
-        )?;
+        let response = client
+            .request(Request::SendDraft {
+                send_identity: Some(identity),
+                draft: outgoing.clone(),
+                override_safety_token: None,
+            })
+            .await?;
+        if print_waiting_response(&response, format.clone())? {
+            return Ok(());
+        }
+        let receipt = expect_send_receipt(response)?;
         set_auto_reminder_after_send(client, receipt.as_ref(), remind_at).await?;
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
@@ -1291,6 +1295,40 @@ pub async fn send_outcome(
     Ok(())
 }
 
+pub async fn recover_send_outcome(
+    operation_id: String,
+    account: String,
+    format: Option<OutputFormat>,
+    expected_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
+    dry_run: bool,
+    expected_evidence_sha256: Option<String>,
+) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    let owner = expected_workspace.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Recovery requires the original --expected-workspace; never infer a new owner"
+        )
+    })?;
+    client.expect_workspace(owner).await?;
+    let account_id = resolve_optional_account(&mut client, Some(&account))
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Account is required"))?;
+    let response = client
+        .request(Request::RecoverSendOutcome {
+            account_id,
+            operation_id,
+            dry_run,
+            expected_evidence_sha256,
+        })
+        .await?;
+    match response {
+        Response::Ok { data } => {
+            crate::output::print_json(&data, format.unwrap_or(OutputFormat::Json))
+        }
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+    }
+}
+
 pub struct SavedSendReview {
     pub expected_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
     pub expected_revision: Option<i64>,
@@ -1354,6 +1392,10 @@ pub async fn send_draft(
                 anyhow::bail!("Send identity conflicts with the retained reviewed command");
             }
             match outcome.state {
+                mxr_core::SendOutcomeState::Waiting => {
+                    print_waiting_outcome(&outcome, format)?;
+                    return Ok(());
+                }
                 mxr_core::SendOutcomeState::Accepted => {
                     return crate::output::print_json(
                         &serde_json::json!({"operation_id": identity.operation_id, "draft_id": draft_id, "state": "accepted", "local_message_id": outcome.local_message_id}),
@@ -1384,6 +1426,9 @@ pub async fn send_draft(
             override_safety_token,
         })
         .await?;
+    if print_waiting_response(&response, format.clone())? {
+        return Ok(());
+    }
     let receipt = expect_send_receipt(response)?;
     set_auto_reminder_after_send(&mut client, receipt.as_ref(), remind_at).await?;
     report_promises_after_send(&mut client, receipt.as_ref(), format.clone()).await;
@@ -2290,6 +2335,48 @@ fn expect_send_receipt(resp: Response) -> anyhow::Result<Option<SendReceiptInfo>
         } => Some(None),
         _ => None,
     })
+}
+
+fn print_waiting_outcome(
+    outcome: &mxr_core::DraftSendOutcome,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let retry_at = outcome.recovery.as_ref().and_then(|status| status.retry_at);
+    match resolve_format(format.clone()) {
+        OutputFormat::Json | OutputFormat::Jsonl => crate::output::print_json(
+            &serde_json::json!({
+                "operation_id": outcome.identity.operation_id, "draft_id": outcome.draft_id,
+                "state": "waiting", "retry_at": retry_at, "outcome": outcome,
+            }),
+            format.unwrap_or(OutputFormat::Json),
+        ),
+        _ => {
+            println!(
+                "Waiting for the mail provider; retrying automatically at {}. Operation: {}",
+                retry_at.map_or_else(|| "the provider deadline".into(), |at| at.to_rfc3339()),
+                outcome.identity.operation_id
+            );
+            Ok(())
+        }
+    }
+}
+
+fn print_waiting_response(
+    response: &Response,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<bool> {
+    if let Response::Ok {
+        data: ResponseData::SendOutcome {
+            outcome: Some(outcome),
+        },
+    } = response
+    {
+        if outcome.state == mxr_core::SendOutcomeState::Waiting {
+            print_waiting_outcome(outcome, format)?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 struct SendReceiptInfo {

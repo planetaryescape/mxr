@@ -2216,6 +2216,9 @@ pub async fn process_due_scheduled_sends(
             match crate::handler::send_stored_draft_reviewed_locked(state, &draft_id, &identity)
                 .await
             {
+                Ok(mxr_protocol::ResponseData::SendOutcome {
+                    outcome: Some(outcome),
+                }) if outcome.state == mxr_core::SendOutcomeState::Waiting => "waiting",
                 Ok(_) => {
                     tracing::debug!(draft_id = %draft_id, "scheduled-send: sent");
                     "sent"
@@ -2275,6 +2278,11 @@ pub async fn scheduled_sends_loop(state: Arc<AppState>, mut shutdown_rx: watch::
             Ok(0) => {}
             Ok(n) => tracing::debug!(fired = n, "scheduled-sends loop fired"),
             Err(e) => tracing::warn!("Scheduled-sends loop error: {e}"),
+        }
+        if let Err(error) =
+            crate::handler::send_recovery::process_due(&state, chrono::Utc::now()).await
+        {
+            tracing::warn!(%error, "Approved-send recovery loop failed");
         }
     }
 }

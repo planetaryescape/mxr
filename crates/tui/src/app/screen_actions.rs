@@ -210,6 +210,43 @@ impl App {
                     self.push_toast(Toast::info("No send identity retained in this session"));
                 }
             }
+            Action::PreviewLastSendRecovery => {
+                self.compose.send_recovery_preview = None;
+                if let Some((account_id, identity)) = self.compose.last_send_identity.clone() {
+                    self.queue_platform_request(
+                        mxr_protocol::Request::RecoverSendOutcome {
+                            account_id,
+                            operation_id: identity.operation_id,
+                            dry_run: true,
+                            expected_evidence_sha256: None,
+                        },
+                        "Send recovery preview",
+                        "Checking retained local cooldown evidence; no mail will be sent...",
+                    );
+                } else {
+                    self.push_toast(Toast::info("No send identity retained in this session"));
+                }
+            }
+            Action::ResumePreviewedSend => {
+                if let Some((account_id, operation_id, evidence)) =
+                    self.compose.send_recovery_preview.take()
+                {
+                    self.queue_platform_request(
+                        mxr_protocol::Request::RecoverSendOutcome {
+                            account_id,
+                            operation_id,
+                            dry_run: false,
+                            expected_evidence_sha256: Some(evidence),
+                        },
+                        "Resume original approved send",
+                        "Resuming the previewed operation without creating a new send identity...",
+                    );
+                } else {
+                    self.push_toast(Toast::info(
+                        "Preview last send recovery before confirming it",
+                    ));
+                }
+            }
             Action::OpenDiagnosticsScreen => {
                 self.close_transient_modals();
                 self.maybe_preserve_new_account_form_draft();

@@ -1660,6 +1660,14 @@ pub enum Request {
         account_id: AccountId,
         operation_id: String,
     },
+    /// Resume a historical false-unknown only from matched local gate evidence.
+    RecoverSendOutcome {
+        account_id: AccountId,
+        operation_id: String,
+        dry_run: bool,
+        #[serde(default)]
+        expected_evidence_sha256: Option<String>,
+    },
     SaveDraft {
         draft: Draft,
     },
@@ -2900,6 +2908,7 @@ impl Request {
                 | Self::DeleteDraft { .. }
                 | Self::GetDraft { .. }
                 | Self::GetSendOutcome { .. }
+                | Self::RecoverSendOutcome { .. }
                 | Self::SuggestCollaborators { .. }
                 | Self::ExtractDraftCommitments { .. }
                 | Self::CheckDraftSafety { .. }
@@ -3051,6 +3060,7 @@ impl Request {
             | Self::PrepareForward { .. }
             | Self::SendDraft { .. }
             | Self::GetSendOutcome { .. }
+            | Self::RecoverSendOutcome { .. }
             | Self::SaveDraft { .. }
             | Self::SendStoredDraft { .. }
             | Self::CheckDraftSafety { .. }
@@ -4127,6 +4137,12 @@ pub enum ResponseData {
     SendOutcome {
         outcome: Option<mxr_core::DraftSendOutcome>,
     },
+    SendRecoveryPreview {
+        outcome: mxr_core::DraftSendOutcome,
+        recoverable: bool,
+        reason: String,
+        evidence_sha256: Option<String>,
+    },
     /// Returned by `Request::ExtractDraftCommitments`.
     DraftCommitments {
         candidates: Vec<DraftCommitmentCandidateData>,
@@ -4748,6 +4764,7 @@ impl ResponseData {
             | Self::Job { .. }
             | Self::UnsubscribePurgeResult { .. }
             | Self::SendOutcome { .. }
+            | Self::SendRecoveryPreview { .. }
             | Self::SendReceipt { .. }
             | Self::ResolvedSendFrom { .. }
             | Self::DraftSafetyReportResponse { .. }

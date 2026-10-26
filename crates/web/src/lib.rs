@@ -1063,6 +1063,15 @@ async fn send_compose_session(
                 "bridge compose send completed"
             );
             match response {
+                ResponseData::SendOutcome {
+                    outcome: Some(outcome),
+                } if outcome.state == mxr_core::SendOutcomeState::Waiting => {
+                    return Ok(Json(json!({
+                        "ok": true, "operation_id": operation_id, "state": "waiting",
+                        "draft_id": draft_id, "outcome": outcome,
+                        "retry_at": outcome.recovery.as_ref().and_then(|status| status.retry_at),
+                    })));
+                }
                 ResponseData::SendReceipt {
                     local_message_id, ..
                 } => Some(local_message_id),

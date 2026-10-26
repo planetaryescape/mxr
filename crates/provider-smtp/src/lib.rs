@@ -122,10 +122,7 @@ impl MailSendProvider for SmtpSendProvider {
     ) -> std::result::Result<SendReceipt, MxrError> {
         self.send_classified(draft, from, rfc2822_message_id)
             .await
-            .map_err(|failure| match failure {
-                mxr_core::SendFailure::NotAccepted(error)
-                | mxr_core::SendFailure::Unknown(error) => error,
-            })
+            .map_err(mxr_core::SendFailure::into_error)
     }
 
     async fn send_classified(

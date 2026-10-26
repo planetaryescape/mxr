@@ -1313,6 +1313,7 @@ fn selecting_a_compose_model_keeps_the_saved_body_as_the_proof_baseline() {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "Could you review the plan?\n\n-- \nBK".into(),
         draft_path: std::path::PathBuf::from("/tmp/mxr-model-picker.md"),

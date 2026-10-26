@@ -429,6 +429,16 @@ pub fn map_request(
             Some(draft_id.as_str().clone()),
             None,
         ),
+        Request::RecoverSendOutcome {
+            operation_id,
+            dry_run,
+            ..
+        } => (
+            "mail.send",
+            Some("send_operation"),
+            Some(operation_id.clone()),
+            Some(serde_json::json!({ "recovery": true, "dry_run": dry_run })),
+        ),
         Request::RespondInvite {
             message_id,
             action,

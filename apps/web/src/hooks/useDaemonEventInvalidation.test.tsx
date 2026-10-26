@@ -19,7 +19,11 @@ vi.mock("@/hooks/useDaemonEvents", () => ({
   },
 }));
 
-const toastMock = vi.hoisted(() => ({ error: vi.fn<(message: string) => void>() }));
+const toastMock = vi.hoisted(() => ({
+  error: vi.fn<typeof import("sonner").toast.error>(),
+  info: vi.fn<typeof import("sonner").toast.info>(),
+  success: vi.fn<typeof import("sonner").toast.success>(),
+}));
 vi.mock("sonner", () => ({ toast: toastMock }));
 
 function Harness(): null {
@@ -70,6 +74,44 @@ describe("useDaemonEventInvalidation", () => {
   });
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  test("approved-send events distinguish waiting, acceptance and action required", () => {
+    const { emit, invalidatedKeys } = setup();
+    const identity = {
+      operation_id: "synthetic:2",
+      operation: "send_recovery",
+      account_id: "synthetic",
+    };
+    emit({
+      ...identity,
+      type: "OperationProgress",
+      current: 1,
+      total: 12,
+      message: "Automatic retry at 12:15 UTC",
+    });
+    expect(toastMock.info).toHaveBeenCalledWith(
+      "Waiting for the mail provider",
+      expect.objectContaining({ description: "Automatic retry at 12:15 UTC" }),
+    );
+    expect(toastMock.success).not.toHaveBeenCalled();
+    emit({ ...identity, type: "OperationCompleted", message: "Provider accepted" });
+    expect(toastMock.success).toHaveBeenCalledWith(
+      "Mail provider accepted the approved send",
+      expect.objectContaining({ id: "send-recovery:synthetic:2" }),
+    );
+    expect(invalidatedKeys()).toContain(JSON.stringify(["send-outcome"]));
+    expect(invalidatedKeys()).toContain(JSON.stringify(["mailbox"]));
+    emit({
+      ...identity,
+      type: "OperationFailed",
+      error: "Approval invalidated; review changed draft",
+      retryable: false,
+    });
+    expect(toastMock.error).toHaveBeenCalledWith(
+      "Send needs attention",
+      expect.objectContaining({ description: "Approval invalidated; review changed draft" }),
+    );
   });
 
   test("SyncError stops the spinner and refreshes without a toast per retry", () => {

@@ -7,6 +7,13 @@ promise or implementation change is implied.
 
 ## Distinguish proven pre-submission failures where the adapter can
 
+Implemented for saved-draft Gmail sends: typed pre-dispatch phases, durable
+approved snapshots, bounded automatic retries and positive-evidence
+reconciliation. Legacy false-unknown recovery is preview/evidence-bound. See
+`site/src/content/docs/guides/crash-safe-drafts.md`. The observations below
+describe the earlier implementation; the SMTP/Outlook uncertainty warning
+still applies.
+
 The Gmail provider maps every error returned by `GmailClient::send_message` to
 `Unknown` (`crates/provider-gmail/src/provider.rs`). That client awaits
 `auth_header()` before calling HTTP `.send()` (`crates/provider-gmail/src/client.rs`),

@@ -549,6 +549,12 @@ An `unknown` result is not evidence that sending failed. Do not reset or
 resend it; query the retained operation first. A `not_accepted` result
 allows a fresh review and an explicit new operation.
 
+A `waiting` result retains the approved send for automatic retry after a
+proven pre-submission refusal, including Gmail's local cooldown. The retry
+deadline and attempt count appear under `recovery`; no second Send press is
+needed. Editing the deferred draft invalidates that approval. Waiting never
+means the provider accepted the message.
+
 ```bash
 mxr drafts recover
 mxr send-outcome OPERATION_ID --account ACCOUNT_ID \

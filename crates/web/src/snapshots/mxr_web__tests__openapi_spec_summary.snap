@@ -190,6 +190,7 @@ expression: summary
     "ComposeSessionSendRequest",
     "ComposeSessionStartRequest",
     "ComposeSessionUpdateRequest",
+    "ComposeStyleMarkData",
     "ComposerData",
     "ContactAsymmetryRow",
     "ContactDecayRow",

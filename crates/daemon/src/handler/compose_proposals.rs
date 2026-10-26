@@ -118,6 +118,9 @@ mod tests {
                 },
                 yours_changed: Vec::new(),
                 composer_version: String::new(),
+                style_marks: Vec::new(),
+                style_score: 100,
+                style_version: String::new(),
             },
         }
     }

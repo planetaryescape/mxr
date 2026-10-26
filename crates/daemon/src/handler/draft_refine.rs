@@ -6,7 +6,7 @@ use super::draft_provenance::DraftPolicy;
 use super::draft_voice::{self, Counterparty};
 use super::{draft_context, draft_output, relationship_profile, HandlerResult};
 use crate::state::AppState;
-use mxr_humanizer::writing_constraints;
+use mxr_humanizer::email_writing_constraints;
 use mxr_llm::{
     guarded_system_prompt, wrap_untrusted_mail, ChatMessage, CompletionRequest, LlmError,
     LlmFeature,
@@ -119,7 +119,7 @@ pub(super) async fn draft_refine(
         prompt.push_str("\n\n");
     }
     prompt.push_str("[ALSO AVOID]\n");
-    prompt.push_str(writing_constraints());
+    prompt.push_str(&email_writing_constraints());
     prompt.push_str("\n\n[CHANGE]\n");
     let mut any = false;
     if knobs.shorter {

@@ -399,6 +399,9 @@ mod tests {
             },
             yours_changed: vec![1],
             composer_version: "c1".into(),
+            style_marks: Vec::new(),
+            style_score: 100,
+            style_version: String::new(),
         }
     }
 

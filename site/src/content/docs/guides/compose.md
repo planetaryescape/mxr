@@ -162,6 +162,14 @@ Home/End move farther. A proof can include gaps: the warning style marks those
 ranges, and send safety blocks sending until you fill them in the editor.
 Acceptance applies through the daemon and reruns send safety.
 
+Compose proofs also show a local style score and underline detected style
+spans. Open **Style** in the web proof for pattern names and context; Raycast
+and the TUI list the detected names beside their context. These marks are
+advisory: the proposal changes nothing until you accept it. When automatic
+fixing is enabled and the style check finds a pattern above your recent sent
+mail rate, mxr may ask the same model to repair only the marked sentence. It
+keeps the first proof if repair fails or changes its safety checks.
+
 The web help line and Raycast's **Draft for Me** submenu let you choose a
 model for one draft. In the web proof, **Try again with a model** reruns its
 original text, action and selection. That choice does not change the default

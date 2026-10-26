@@ -18,7 +18,7 @@
 //! are answering); only this module's own wording and the user's
 //! instruction stay outside.
 
-use mxr_humanizer::writing_constraints;
+use mxr_humanizer::email_style_instructions;
 use mxr_llm::{wrap_untrusted_mail, UNTRUSTED_MAIL_BEGIN, UNTRUSTED_MAIL_END};
 use mxr_protocol::{AssistActionData, AssistAdjustData, DraftSourceData, VoiceRegisterData};
 use std::ops::Range;
@@ -198,7 +198,10 @@ pub fn build(input: &PromptInput<'_>) -> Prompt {
                 .join("\n")
         )
     };
-    let constraints = format!("[ALSO AVOID]\n{}\n\n", writing_constraints());
+    let constraints = format!(
+        "[EMAIL STYLE — FOLLOW THE WRITER'S EXAMPLES FIRST]\n{}\n\n",
+        email_style_instructions()
+    );
     let task = format!("[TASK]\n{}", task_block(input));
     // The user's own text is never cut, so it is a fixed part too.
     let typed_block = format!("{}{}", typed_block(&input.help), revise_block(&input.help));

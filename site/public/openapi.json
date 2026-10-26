@@ -13412,6 +13412,21 @@
             "$ref": "#/components/schemas/DraftProvenanceData",
             "description": "Always filled: the model that answered, where it ran and what it read."
           },
+          "style_marks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComposeStyleMarkData"
+            },
+            "description": "Additive fields: older peers can ignore or omit them."
+          },
+          "style_score": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "style_version": {
+            "type": "string"
+          },
           "text": {
             "type": "string"
           },
@@ -13819,6 +13834,40 @@
           },
           "to": {
             "type": "string"
+          }
+        }
+      },
+      "ComposeStyleMarkData": {
+        "type": "object",
+        "description": "A deterministic style tell in proposal text. Ranges are UTF-8 byte offsets.",
+        "required": [
+          "pattern",
+          "name",
+          "start",
+          "end",
+          "context"
+        ],
+        "properties": {
+          "context": {
+            "type": "string"
+          },
+          "end": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "start": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },

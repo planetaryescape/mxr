@@ -2,39 +2,39 @@
 source: crates/daemon/src/handler/tests/compose_eval.rs
 expression: grade_report()
 ---
-case                         output                         kept   answers  gaps   invented  length  leftovers  style
-friday-typed                 good                           pass   pass     pass   pass      pass    pass       100  
-friday-typed                 bad: dropped typed sentence    FAIL   pass     pass   pass      FAIL    pass       100  
-friday-empty                 good                           pass   pass     pass   pass      pass    pass       100  
-friday-empty                 bad: preamble                  pass   pass     pass   pass      pass    FAIL       100  
-price-typed                  good                           pass   pass     pass   pass      pass    pass       97   
-price-open                   good                           pass   pass     pass   pass      pass    pass       100  
-price-open                   bad: invented price            pass   pass     FAIL   FAIL      pass    pass       97   
-date-typed                   good                           pass   pass     pass   pass      pass    pass       97   
-date-open                    good                           pass   pass     pass   pass      pass    pass       100  
-deck-typed                   good                           pass   pass     pass   pass      pass    pass       100  
-intro-typed                  good                           pass   pass     pass   pass      pass    pass       97   
-intro-typed                  bad: subject line              pass   pass     pass   pass      pass    FAIL       97   
-german-typed                 good                           pass   pass     pass   pass      pass    pass       100  
-warmer-selection             good                           pass   pass     pass   pass      pass    pass       100  
-warmer-empty                 good                           pass   pass     pass   pass      pass    pass       100  
-shorter-selection            good                           pass   pass     pass   pass      pass    pass       97   
-invoice-typed-price          good                           pass   pass     pass   pass      pass    pass       97   
-invoice-typed-no-price       good                           pass   pass     pass   pass      pass    pass       97   
-invoice-typed-no-price       bad: invented price            pass   pass     pass   FAIL      pass    pass       97   
-invoice-typed-no-price       bad: reversed typed sentence   FAIL   pass     pass   pass      pass    pass       97   
-lunch-initial-voice          good                           pass   pass     pass   pass      pass    pass       100  
-lunch-first-name-voice       good                           pass   pass     pass   pass      pass    pass       100  
-clause-long-thread           good                           pass   pass     pass   pass      pass    pass       100  
-clause-long-thread           bad: recap of thread           FAIL   pass     pass   pass      pass    FAIL       100  
-ack-typed                    good                           pass   pass     pass   pass      pass    pass       97   
-ack-typed                    bad: duplicate signature       pass   pass     pass   pass      pass    FAIL       97   
-seats-open                   good                           pass   pass     pass   pass      pass    pass       100  
-call-empty                   good                           pass   pass     pass   pass      pass    pass       100  
-call-empty                   bad: now for no                pass   FAIL     pass   pass      pass    pass       100  
-rate-from-instruction        good                           pass   pass     pass   pass      pass    pass       97   
-rate-from-instruction        bad: invented price            pass   FAIL     pass   FAIL      pass    pass       97   
-rate-open                    good                           pass   pass     pass   pass      pass    pass       100  
+case                         output                         kept   answers  gaps   invented  length  leftovers  style score: marks
+friday-typed                 good                           pass   pass     pass   pass      pass    pass       100
+friday-typed                 bad: dropped typed sentence    FAIL   pass     pass   pass      FAIL    pass       100
+friday-empty                 good                           pass   pass     pass   pass      pass    pass       100
+friday-empty                 bad: preamble                  pass   pass     pass   pass      pass    FAIL       100
+price-typed                  good                           pass   pass     pass   pass      pass    pass       97: Forced triads
+price-open                   good                           pass   pass     pass   pass      pass    pass       100
+price-open                   bad: invented price            pass   pass     FAIL   FAIL      pass    pass       97: Forced triads
+date-typed                   good                           pass   pass     pass   pass      pass    pass       97: Forced triads
+date-open                    good                           pass   pass     pass   pass      pass    pass       100
+deck-typed                   good                           pass   pass     pass   pass      pass    pass       100
+intro-typed                  good                           pass   pass     pass   pass      pass    pass       97: Forced triads
+intro-typed                  bad: subject line              pass   pass     pass   pass      pass    FAIL       97: Forced triads
+german-typed                 good                           pass   pass     pass   pass      pass    pass       100
+warmer-selection             good                           pass   pass     pass   pass      pass    pass       100
+warmer-empty                 good                           pass   pass     pass   pass      pass    pass       100
+shorter-selection            good                           pass   pass     pass   pass      pass    pass       97: Forced triads
+invoice-typed-price          good                           pass   pass     pass   pass      pass    pass       97: Forced triads
+invoice-typed-no-price       good                           pass   pass     pass   pass      pass    pass       97: Forced triads
+invoice-typed-no-price       bad: invented price            pass   pass     pass   FAIL      pass    pass       97: Forced triads
+invoice-typed-no-price       bad: reversed typed sentence   FAIL   pass     pass   pass      pass    pass       97: Forced triads
+lunch-initial-voice          good                           pass   pass     pass   pass      pass    pass       100
+lunch-first-name-voice       good                           pass   pass     pass   pass      pass    pass       100
+clause-long-thread           good                           pass   pass     pass   pass      pass    pass       100
+clause-long-thread           bad: recap of thread           FAIL   pass     pass   pass      pass    FAIL       100
+ack-typed                    good                           pass   pass     pass   pass      pass    pass       97: Forced triads
+ack-typed                    bad: duplicate signature       pass   pass     pass   pass      pass    FAIL       97: Forced triads
+seats-open                   good                           pass   pass     pass   pass      pass    pass       100
+call-empty                   good                           pass   pass     pass   pass      pass    pass       100
+call-empty                   bad: now for no                pass   FAIL     pass   pass      pass    pass       100
+rate-from-instruction        good                           pass   pass     pass   pass      pass    pass       97: Forced triads
+rate-from-instruction        bad: invented price            pass   FAIL     pass   FAIL      pass    pass       97: Forced triads
+rate-open                    good                           pass   pass     pass   pass      pass    pass       100
 
 kept       3 of 32 outputs fail
 answers    2 of 32 outputs fail

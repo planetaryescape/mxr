@@ -12,17 +12,19 @@ const runs: ProofRun[] = [
 
 function renderProof(
   overrides: {
+    runs?: ProofRun[];
     onAccept?: () => void;
     onAgain?: () => void;
     onRetryModel?: (model: string | undefined) => void;
     modelChoices?: components["schemas"]["ModelChoiceData"][];
+    styleMarks?: { name: string; context: string; start: number; end: number }[];
   } = {},
 ) {
   const onAccept = vi.fn<() => void>();
   const onAgain = vi.fn<() => void>();
   render(
     <DraftProof
-      runs={runs}
+      runs={overrides.runs ?? runs}
       gapCount={1}
       provenance={null}
       versionIndex={0}
@@ -37,12 +39,46 @@ function renderProof(
       defaultModel="gemma4:latest"
       generating={false}
       onRevise={vi.fn<() => void>()}
+      styleMarks={overrides.styleMarks}
+      styleScore={overrides.styleMarks ? 92 : undefined}
     />,
   );
   return { onAccept, onAgain };
 }
 
 describe("DraftProof keys", () => {
+  test("shows style marks on their text with the pattern and context on hover", () => {
+    renderProof({
+      styleMarks: [
+        { name: "Not X but Y", context: "This is not speed but cost.", start: 0, end: 8 },
+      ],
+    });
+    expect(screen.getByText("Thursday", { exact: false }).closest("span")).toHaveAttribute(
+      "title",
+      "Not X but Y: This is not speed but cost.",
+    );
+    expect(screen.getByText(/Style 92\/100 · 1 mark/)).toBeInTheDocument();
+  });
+  test("keeps UTF-8 marks aligned after removed text and combines overlaps", () => {
+    renderProof({
+      runs: [
+        { kind: "removed", text: "old", gap: null },
+        { kind: "kept", text: "Café ", gap: null },
+        { kind: "added", text: "résumé", gap: null },
+      ],
+      styleMarks: [
+        { name: "First", context: "Café", start: 0, end: 6 },
+        { name: "Second", context: "Café résumé", start: 3, end: 10 },
+      ],
+    });
+    expect(screen.getByRole("region", { name: "Draft proof" }).textContent).toContain(
+      "Café résumé",
+    );
+    const overlap = Array.from(document.querySelectorAll<HTMLElement>("[title]")).find(
+      (element) => element.title.includes("First:") && element.title.includes("Second:"),
+    );
+    expect(overlap?.textContent).toBe("é ");
+  });
   test("choosing a model retries the shown proof with that model", () => {
     const onRetryModel = vi.fn<(model: string | undefined) => void>();
     renderProof({

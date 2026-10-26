@@ -17,6 +17,7 @@ ON messages(account_id, direction, thread_id, id, date);
 
 CREATE TABLE IF NOT EXISTS ask_view_summaries (
     message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     policy_version TEXT NOT NULL,
     input_revision INTEGER NOT NULL,
     summary_json TEXT NOT NULL,
@@ -27,7 +28,7 @@ CREATE TABLE IF NOT EXISTS ask_view_summaries (
 );
 
 CREATE VIEW IF NOT EXISTS ask_view_summary_projection AS
-SELECT message_id, policy_version, input_revision,
+SELECT message_id, account_id, policy_version, input_revision,
     json_object(
         'message_id', message_id,
         'input_fingerprint', input_fingerprint,
@@ -49,11 +50,11 @@ BEGIN
     SELECT * FROM ask_view_summary_projection
     WHERE message_id = NEW.message_id AND policy_version = NEW.policy_version
     ON CONFLICT(message_id, policy_version) DO UPDATE SET
-        input_revision = excluded.input_revision, summary_json = excluded.summary_json;
+        account_id = excluded.account_id, input_revision = excluded.input_revision, summary_json = excluded.summary_json;
 END;
 
 CREATE TRIGGER IF NOT EXISTS ask_view_summary_update
-AFTER UPDATE OF assessment_json, input_revision, input_fingerprint, policy_version ON mail_assessments
+AFTER UPDATE OF account_id, assessment_json, input_revision, input_fingerprint, policy_version ON mail_assessments
 WHEN NEW.policy_version LIKE 'asks-%' OR OLD.policy_version LIKE 'asks-%'
 BEGIN
     DELETE FROM ask_view_summaries
@@ -63,5 +64,5 @@ BEGIN
     SELECT * FROM ask_view_summary_projection
     WHERE message_id = NEW.message_id AND policy_version = NEW.policy_version
     ON CONFLICT(message_id, policy_version) DO UPDATE SET
-        input_revision = excluded.input_revision, summary_json = excluded.summary_json;
+        account_id = excluded.account_id, input_revision = excluded.input_revision, summary_json = excluded.summary_json;
 END;

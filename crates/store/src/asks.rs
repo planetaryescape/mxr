@@ -23,7 +23,7 @@ const FACETS_FOR_MESSAGES: &str = "WITH wanted AS MATERIALIZED (
         FROM wanted CROSS JOIN mail_assessments a ON a.message_id = wanted.id AND a.policy_version = ?2 AND a.account_id = ?1
         JOIN revisions i ON i.thread_id = wanted.thread_id AND i.effective_revision = a.input_revision
         UNION ALL SELECT s.policy_version, s.summary_json
-        FROM wanted CROSS JOIN ask_view_summaries s ON s.message_id = wanted.id AND s.policy_version = ?3
+        FROM wanted CROSS JOIN ask_view_summaries s ON s.message_id = wanted.id AND s.policy_version = ?3 AND s.account_id = ?1
         JOIN revisions i ON i.thread_id = wanted.thread_id AND i.effective_revision = s.input_revision";
 
 /// Mail views need answers, not the authored/quoted source zones and audit

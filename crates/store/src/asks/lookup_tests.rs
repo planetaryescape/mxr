@@ -96,6 +96,43 @@ async fn singleton_lookup_work_is_bounded_by_requested_ids_not_account_size() {
 }
 
 #[tokio::test]
+async fn facet_summaries_keep_the_assessments_account_boundary() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    let other = test_account();
+    for own in [&account, &other] {
+        store.insert_account(own).await.unwrap();
+    }
+    let message = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    store.upsert_envelope(&message).await.unwrap();
+    let revisions = store
+        .assessment_thread_revisions(&account.id, std::slice::from_ref(&message.thread_id))
+        .await
+        .unwrap();
+    store
+        .save_asks_batch(&account.id, &revisions, &[answer(&account.id, &message)])
+        .await
+        .unwrap();
+    // Even with the same message and generation, a differently owned facet
+    // cannot be used. Exercise the projection's account-update trigger too.
+    for (owner, expected) in [(&other.id, 0), (&account.id, 1)] {
+        sqlx::query("UPDATE mail_assessments SET account_id = ? WHERE message_id = ?")
+            .bind(owner.as_str())
+            .bind(message.id.as_str())
+            .execute(store.writer())
+            .await
+            .unwrap();
+        let (_, summaries) = store
+            .assessment_facets_for_messages(&account.id, std::slice::from_ref(&message.id))
+            .await
+            .unwrap();
+        assert_eq!(summaries.len(), expected);
+    }
+}
+
+#[tokio::test]
 async fn requested_ids_keep_batch_set_semantics_and_account_policy_boundaries() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();

@@ -2425,6 +2425,40 @@ async fn compose_schedule_key_dispatch_uses_conditional_canonical_revision() {
     server.await.unwrap();
 }
 
+#[test]
+fn compose_schedule_rejected_forward_preserves_review_and_selected_time() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("forward.md");
+    let mut app = App::new();
+    let mut pending = recovery_pending(file.clone());
+    pending.fm.forward_source = Some(mxr_core::ForwardSource {
+        draft_id: mxr_core::DraftId::new(),
+        account_id: AccountId::new(),
+        message_id: mxr_core::MessageId::new(),
+        content: mxr_core::DraftContent::html("<p>Original</p>", Some("Original".into())),
+        attachments: vec![],
+    });
+    app.compose.pending_send_confirm = Some(pending);
+    app.compose.pending_send_at_input = Some("in 2h".into());
+    app.compose
+        .pending_time
+        .update("in 2h", &app.modals.snooze_config);
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        app.compose
+            .pending_send_confirm
+            .as_ref()
+            .unwrap()
+            .draft_path,
+        file
+    );
+    assert_eq!(app.compose.pending_send_at_input.as_deref(), Some("in 2h"));
+    assert!(app.take_pending_platform_dispatch().is_empty());
+    assert!(app.take_pending_draft_cleanup().is_empty());
+}
+
 #[tokio::test]
 async fn alternate_compose_actions_block_unknown_or_accepted_before_persistence() {
     for state in [

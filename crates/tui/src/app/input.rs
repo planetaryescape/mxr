@@ -847,6 +847,8 @@ impl App {
                             let draft = match draft_from_pending(&pending, draft_id.clone(), now) {
                                 Ok(draft) => draft,
                                 Err(error) => {
+                                    self.compose.pending_send_confirm = Some(pending);
+                                    self.compose.pending_send_at_input = Some(input);
                                     self.push_toast(Toast::error(error.to_string()));
                                     return None;
                                 }

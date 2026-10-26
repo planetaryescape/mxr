@@ -3893,10 +3893,17 @@ async fn send_stored_draft_locked(
         command_hash,
     )
     .await?;
-    let advanced = state
+    let advanced = match state
         .store
         .claim_approved_send(identity, &approval, &rfc2822_message_id)
-        .await?;
+        .await
+    {
+        Ok(advanced) => advanced,
+        Err(error) => {
+            super::send_recovery::discard_files(state, identity, &approval).await;
+            return Err(error.into());
+        }
+    };
     if !advanced {
         super::send_recovery::discard_files(state, identity, &approval).await;
         return Err("Draft send is blocked or the reviewed revision changed; inspect its send outcome before retrying".into());

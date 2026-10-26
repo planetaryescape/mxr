@@ -204,7 +204,7 @@ pub(super) async fn recover_legacy(
     let revision = draft.revision.ok_or("Draft revision missing")?;
     let mut approval = prepare(state, &outcome.identity, &resolved, &from, revision, hash).await?;
     approval.legacy_evidence_sha256 = Some(evidence.clone());
-    if !state
+    let recovered = match state
         .store
         .recover_legacy_send(
             &outcome.identity,
@@ -212,8 +212,15 @@ pub(super) async fn recover_legacy(
             &message_id,
             original_deadline.max(Utc::now() + chrono::Duration::seconds(60)),
         )
-        .await?
+        .await
     {
+        Ok(recovered) => recovered,
+        Err(error) => {
+            discard_files(state, &outcome.identity, &approval).await;
+            return Err(error.into());
+        }
+    };
+    if !recovered {
         discard_files(state, &outcome.identity, &approval).await;
         return Err("Recovery evidence or reviewed draft changed; run the preview again".into());
     }
@@ -298,15 +305,25 @@ async fn read_approved_file(path: &Path) -> Result<Vec<u8>, HandlerError> {
     use tokio::io::AsyncReadExt;
     let file = tokio::fs::File::open(path)
         .await
-        .map_err(|_| "Cannot read approved attachment bytes")?;
-    if !file.metadata().await.map_err(|e| e.to_string())?.is_file() {
+        .map_err(|error| match error.kind() {
+            std::io::ErrorKind::NotFound => {
+                HandlerError::from("Cannot read approved attachment bytes")
+            }
+            _ => HandlerError::Core(mxr_core::MxrError::Io(error)),
+        })?;
+    if !file
+        .metadata()
+        .await
+        .map_err(mxr_core::MxrError::Io)?
+        .is_file()
+    {
         return Err("Approved attachment must be a regular file".into());
     }
     let mut bytes = Vec::new();
     file.take(mxr_protocol::MAX_DRAFT_ATTACHMENT_BYTES + 1)
         .read_to_end(&mut bytes)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(mxr_core::MxrError::Io)?;
     if bytes.len() as u64 > mxr_protocol::MAX_DRAFT_ATTACHMENT_BYTES {
         return Err("Approved-send attachments have a 25 MiB per-file limit".into());
     }
@@ -852,8 +869,15 @@ async fn process_operation(
     let Some(approval) = state.store.get_send_approval(operation_id).await? else {
         return Ok(0);
     };
-    let invalid = if validate_approval(state, &approval).await.is_err() {
-        Some("approval_invalidated")
+    let invalid = match validate_approval(state, &approval).await {
+        Ok(()) => None,
+        Err(error @ (HandlerError::Store(_) | HandlerError::Core(mxr_core::MxrError::Io(_)))) => {
+            return Err(error);
+        }
+        Err(_) => Some("approval_invalidated"),
+    };
+    let invalid = if invalid.is_some() {
+        invalid
     } else if state
         .send_provider_for_account(&approval.draft.account_id)
         .is_err()

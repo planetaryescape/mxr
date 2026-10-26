@@ -80,6 +80,124 @@ impl mxr_core::MailSendProvider for RecoveringSender {
 }
 
 #[tokio::test]
+async fn approved_send_recovery_failed_claim_discards_only_unretained_snapshot() {
+    let sender = Arc::new(RecoveringSender::default());
+    let (state, _, mut draft) = fixture_with_sender(Some(sender.clone())).await;
+    let temp = tempfile::tempdir().unwrap();
+    let file = temp.path().join("private.pdf");
+    std::fs::write(&file, b"private approved bytes").unwrap();
+    draft.attachments.push(file.clone());
+    state.store.update_draft(&draft).await.unwrap();
+    let draft = state.store.get_draft(&draft.id).await.unwrap().unwrap();
+    let identity = SendIdentity::for_draft(&draft);
+    sqlx::query("CREATE TRIGGER fail_approval BEFORE INSERT ON approved_sends BEGIN SELECT RAISE(ABORT,'synthetic claim failure'); END")
+        .execute(state.store.writer()).await.unwrap();
+
+    assert!(matches!(
+        call(&state, send(&draft, identity.clone())).await,
+        Response::Error { .. }
+    ));
+
+    assert!(state
+        .store
+        .get_send_approval(&identity.operation_id)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(
+        std::fs::read_dir(state.store.draft_attachment_dir().join("approved-sends"))
+            .unwrap()
+            .next()
+            .is_none()
+    );
+    assert_eq!(std::fs::read(file).unwrap(), b"private approved bytes");
+    assert_eq!(sender.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        state.store.get_draft_status(&draft.id).await.unwrap(),
+        Some(mxr_core::DraftStatus::Draft)
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn approved_send_recovery_transient_file_and_store_failures_preserve_approval() {
+    use std::os::unix::fs::PermissionsExt;
+    for failure in ["file", "store"] {
+        let sender = Arc::new(RecoveringSender::default());
+        let (state, _, mut draft) = fixture_with_sender(Some(sender.clone())).await;
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("private.pdf");
+        std::fs::write(&file, b"approved bytes").unwrap();
+        draft.attachments.push(file);
+        state.store.update_draft(&draft).await.unwrap();
+        let draft = state.store.get_draft(&draft.id).await.unwrap().unwrap();
+        let identity = SendIdentity::for_draft(&draft);
+        call(&state, send(&draft, identity.clone())).await;
+        let waiting = outcome(&state, &draft, &identity).await;
+        let retry_at = waiting.recovery.unwrap().retry_at.unwrap();
+        let approval = state
+            .store
+            .get_send_approval(&identity.operation_id)
+            .await
+            .unwrap()
+            .unwrap();
+        if failure == "file" {
+            std::fs::set_permissions(
+                &approval.files[0].path,
+                std::fs::Permissions::from_mode(0o000),
+            )
+            .unwrap();
+        } else {
+            sqlx::query(
+                "ALTER TABLE archive_workspace RENAME TO temporarily_unavailable_workspace",
+            )
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+        }
+
+        super::super::send_recovery::process_due(&state, retry_at)
+            .await
+            .unwrap();
+
+        let held = state
+            .store
+            .get_send_outcome(&identity.operation_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .0;
+        assert_eq!(held.state, SendOutcomeState::Waiting, "{failure}");
+        let recovery = held.recovery.unwrap();
+        assert_eq!(recovery.attempts, 1);
+        assert!(recovery.retry_at.unwrap() > retry_at);
+        assert_eq!(sender.calls.load(Ordering::SeqCst), 1);
+        if failure == "file" {
+            std::fs::set_permissions(
+                &approval.files[0].path,
+                std::fs::Permissions::from_mode(0o400),
+            )
+            .unwrap();
+        } else {
+            sqlx::query(
+                "ALTER TABLE temporarily_unavailable_workspace RENAME TO archive_workspace",
+            )
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+        }
+        super::super::send_recovery::process_due(&state, recovery.retry_at.unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome(&state, &draft, &identity).await.state,
+            SendOutcomeState::Accepted
+        );
+        assert_eq!(sender.submissions.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[tokio::test]
 async fn approved_send_recovery_unrepresentable_deadline_preserves_non_submission_and_phase() {
     let sender = Arc::new(RecoveringSender {
         retry_hint: Some(u64::MAX),
@@ -381,6 +499,57 @@ fn legacy_log(identity: &SendIdentity) -> serde_json::Value {
         "fields": { "operation_id":identity.operation_id,
             "message":"provider acceptance is uncertain: Rate limited by Gmail asked mxr to wait until 12:15:00 UTC; Gmail labels.list (rateLimitExceeded: User-rate limit exceeded; 4 requests in the last hour) — retry after 900s" }
     })
+}
+
+#[tokio::test]
+async fn approved_send_recovery_failed_legacy_claim_discards_unretained_snapshot() {
+    let (state, draft, identity, sender, temp) = legacy_fixture().await;
+    std::fs::write(
+        temp.path().join("logs/mxr.log"),
+        format!("{}\n", legacy_log(&identity)),
+    )
+    .unwrap();
+    let request = |dry_run, proof| Request::RecoverSendOutcome {
+        account_id: draft.account_id.clone(),
+        operation_id: identity.operation_id.clone(),
+        dry_run,
+        expected_evidence_sha256: proof,
+    };
+    let Response::Ok {
+        data:
+            ResponseData::SendRecoveryPreview {
+                evidence_sha256: Some(proof),
+                ..
+            },
+    } = call(&state, request(true, None)).await
+    else {
+        panic!("expected recovery preview");
+    };
+    sqlx::query("CREATE TRIGGER fail_approval BEFORE INSERT ON approved_sends BEGIN SELECT RAISE(ABORT,'synthetic claim failure'); END")
+        .execute(state.store.writer()).await.unwrap();
+
+    assert!(matches!(
+        call(&state, request(false, Some(proof))).await,
+        Response::Error { .. }
+    ));
+
+    assert!(state
+        .store
+        .get_send_approval(&identity.operation_id)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(
+        std::fs::read_dir(state.store.draft_attachment_dir().join("approved-sends"))
+            .unwrap()
+            .next()
+            .is_none()
+    );
+    assert_eq!(
+        outcome(&state, &draft, &identity).await.state,
+        SendOutcomeState::Unknown
+    );
+    assert_eq!(sender.submissions.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

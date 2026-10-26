@@ -6,7 +6,7 @@ import { escapeLine } from "./markdown";
 export function proposalMarkdown(proposal: ComposeAssistProposal): string {
   const runs = proofRuns(proposal.changes, proposal.gaps);
   if (runsText(runs) !== proposal.text) {
-    return escapeText(proposal.text);
+    return escapeProofText(proposal.text);
   }
 
   return coalesceRuns(runs)
@@ -34,7 +34,7 @@ function coalesceRuns(runs: ReturnType<typeof proofRuns>): ReturnType<typeof pro
 }
 
 function formatRun(kind: "kept" | "added" | "removed", text: string): string {
-  const escaped = escapeText(text);
+  const escaped = escapeProofText(text);
   if (kind === "kept") return escaped;
   const marker = kind === "added" ? "**" : "~~";
   // CommonMark emphasis cannot contain paragraph breaks. Keep leading and
@@ -51,7 +51,7 @@ function formatRun(kind: "kept" | "added" | "removed", text: string): string {
     .join("");
 }
 
-function escapeText(text: string): string {
+export function escapeProofText(text: string): string {
   return text.split("\n").map(escapeLine).join("\n");
 }
 

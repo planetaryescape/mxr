@@ -361,6 +361,8 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
               defaultModel={controller.defaultModel}
               generating={controller.generating}
               onRevise={controller.openHelp}
+              styleMarks={controller.version.proposal.style_marks}
+              styleScore={controller.version.proposal.style_score}
             />
           </div>
         ) : null}

@@ -159,6 +159,16 @@ fn draw_with_color_mode(
         Style::default().fg(theme.text_muted),
     )));
     lines.push(Line::from(Span::styled(
+        format!("Style {}/100", proposal.style_score),
+        Style::default().fg(theme.text_muted),
+    )));
+    for mark in &proposal.style_marks {
+        lines.push(Line::from(Span::styled(
+            format!("{}: {}", mark.name, mark.context),
+            Style::default().fg(theme.warning),
+        )));
+    }
+    lines.push(Line::from(Span::styled(
         format!(
             "{} another model · {} revise · {} keep · {} previous · {} next · {}/{} scroll · {}/{} page · {}/{} top/end",
             key("ComposeProofModel"),
@@ -401,6 +411,9 @@ mod tests {
             },
             yours_changed: vec![],
             composer_version: "1".into(),
+            style_marks: Vec::new(),
+            style_score: 100,
+            style_version: String::new(),
         }
     }
 

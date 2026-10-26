@@ -1,5 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+mod catalogue;
+pub use catalogue::{
+    email_style_instructions, Detector, Pattern, PatternGroup, HUMANIZER_VERSION, PATTERNS,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HumanizerCategory {
@@ -27,6 +32,31 @@ pub enum HumanizerCategory {
     Profanity,
     FalseRange,
     ChallengesProspects,
+}
+
+/// Compatibility map from legacy categories to direct humanizer 3.1 equivalents.
+pub fn pattern_for_category(category: HumanizerCategory) -> Option<u8> {
+    Some(match category {
+        HumanizerCategory::NegativeParallelism => 1,
+        HumanizerCategory::GenericPositiveConclusion => 2,
+        HumanizerCategory::FigurativeLandscape | HumanizerCategory::FigurativeKey => 3,
+        HumanizerCategory::RuleOfThree => 6,
+        HumanizerCategory::EmDashOveruse => 8,
+        HumanizerCategory::HedgingStack => 9,
+        HumanizerCategory::AiVocabulary => 12,
+        HumanizerCategory::HighlightVerb | HumanizerCategory::ChallengesProspects => 13,
+        HumanizerCategory::IngTailClause => 15,
+        HumanizerCategory::PromotionalLanguage => 16,
+        HumanizerCategory::CopulaAvoidance => 18,
+        HumanizerCategory::ExcessiveBoldface | HumanizerCategory::InlineHeaderColonList => 19,
+        HumanizerCategory::EmojiHeading | HumanizerCategory::TitleCaseHeading => 20,
+        HumanizerCategory::CurlyQuotes => 21,
+        HumanizerCategory::SycophanticOpener | HumanizerCategory::CollaborativeArtifact => 22,
+        HumanizerCategory::KnowledgeCutoffDisclaimer => 23,
+        HumanizerCategory::FillerPhrase
+        | HumanizerCategory::Profanity
+        | HumanizerCategory::FalseRange => return None,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,7 +101,11 @@ impl Default for HumanizerOpts {
     }
 }
 
-pub fn score(text: &str, _opts: &HumanizerOpts) -> HumanizerReport {
+pub fn score(text: &str, opts: &HumanizerOpts) -> HumanizerReport {
+    score_internal(text, opts, true)
+}
+
+fn score_internal(text: &str, _opts: &HumanizerOpts, suppress_weak_alone: bool) -> HumanizerReport {
     let mut hits = Vec::new();
     collect_dictionary_hits(
         text,
@@ -282,6 +316,10 @@ pub fn score(text: &str, _opts: &HumanizerOpts) -> HumanizerReport {
     collect_boldface_hit(text, &mut hits);
     collect_rule_of_three_hits(text, &mut hits);
 
+    if suppress_weak_alone {
+        suppress_weak_alone_hits(text, &mut hits);
+    }
+
     hits.sort_by_key(|hit| hit.span.start);
     let penalty: u32 = hits.iter().map(|hit| category_weight(hit.category)).sum();
     let score = 100_u32.saturating_sub(penalty).min(100) as u8;
@@ -292,8 +330,103 @@ pub fn score(text: &str, _opts: &HumanizerOpts) -> HumanizerReport {
     }
 }
 
+/// Normalized rates from the writer's own recent sent mail. The values are
+/// detections per thousand words, so a long sample does not dominate by size.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PatternRates {
+    counts: std::collections::BTreeMap<u8, u64>,
+    words: u64,
+}
+
+impl PatternRates {
+    pub fn from_samples<'a>(samples: impl IntoIterator<Item = &'a str>) -> Self {
+        let mut counts = std::collections::BTreeMap::<u8, u64>::new();
+        let mut words = 0_u64;
+        for text in samples {
+            words += text.split_whitespace().count() as u64;
+            // Learn raw habits even when weak-alone detections are suppressed
+            // during draft scoring.
+            for hit in score_internal(text, &HumanizerOpts::default(), false).hits {
+                if let Some(pattern) = pattern_for_category(hit.category) {
+                    *counts.entry(pattern).or_default() += 1;
+                }
+            }
+        }
+        Self { counts, words }
+    }
+
+    pub fn rate(&self, pattern: u8) -> f32 {
+        if self.words == 0 {
+            0.0
+        } else {
+            self.counts.get(&pattern).copied().unwrap_or(0) as f32 * 1000.0 / self.words as f32
+        }
+    }
+}
+
+/// Score only the detections that exceed the writer's normalized rate.
+pub fn score_with_rates(text: &str, opts: &HumanizerOpts, rates: &PatternRates) -> HumanizerReport {
+    let mut report = score_internal(text, opts, false);
+    let words = text.split_whitespace().count() as u64;
+    let mut observed = std::collections::BTreeMap::<u8, u64>::new();
+    report.hits.retain(|hit| {
+        let Some(pattern) = pattern_for_category(hit.category) else {
+            return true;
+        };
+        let count = observed.entry(pattern).or_default();
+        *count += 1;
+        // Compare cross-products against the unrounded historical rate. This
+        // avoids granting a whole occurrence to a short draft for a tiny rate.
+        let historical = rates.counts.get(&pattern).copied().unwrap_or(0);
+        rates.words == 0 || count.saturating_mul(rates.words) > historical.saturating_mul(words)
+    });
+    suppress_weak_alone_hits(text, &mut report.hits);
+    let penalty: u32 = report
+        .hits
+        .iter()
+        .map(|hit| category_weight(hit.category))
+        .sum();
+    report.score = 100_u32.saturating_sub(penalty).min(100) as u8;
+    report.summary = summarize_hits(&report.hits);
+    report
+}
+
+fn suppress_weak_alone_hits(text: &str, hits: &mut Vec<HumanizerHit>) {
+    let candidates = hits.clone();
+    hits.retain(|hit| {
+        let is_weak_alone = pattern_for_category(hit.category)
+            .and_then(|number| PATTERNS.iter().find(|pattern| pattern.number == number))
+            .is_some_and(|pattern| pattern.weak_alone);
+        if !is_weak_alone {
+            return true;
+        }
+        let paragraph = paragraph_range(text, hit.span.start);
+        candidates.iter().any(|other| {
+            other.category != hit.category && paragraph_range(text, other.span.start) == paragraph
+        })
+    });
+}
+
+fn paragraph_range(text: &str, offset: usize) -> (usize, usize) {
+    let before = text[..offset].rfind("\n\n").map_or(0, |start| start + 2);
+    let after = text[offset..]
+        .find("\n\n")
+        .map_or(text.len(), |end| offset + end);
+    (before, after)
+}
+
 pub fn writing_constraints() -> &'static str {
+    // Compatibility for legacy callers. Shared compose paths use the
+    // catalogue-derived email_writing_constraints below.
     "Avoid AI-writing patterns: no delve/tapestry/testament/underscore/moreover/additionally; no em dashes; no not-just-but framing; no comma + -ing tail clauses; no serves as/stands as/boasts; no filler phrases; no sycophantic openers; no knowledge-cutoff disclaimers; no curly quotes, emoji headings, or generic positive conclusions. Vary sentence rhythm. Use I when natural. Don't sound like a press release."
+}
+
+/// Catalogue-derived constraints for the shared compose-assist path.
+pub fn email_writing_constraints() -> String {
+    format!(
+        "Use the writer's own voice and preserve supported facts. Apply these email style rules:\n{}",
+        email_style_instructions()
+    )
 }
 
 fn collect_dictionary_hits(
@@ -479,6 +612,57 @@ mod tests {
     use super::*;
 
     #[test]
+    fn catalogue_names_and_numbers_match_the_vendored_skill() {
+        let skill = include_str!("../fixtures/humanizer-3.1.0-bk.1.md");
+        let names: Vec<(u8, &str)> = skill
+            .lines()
+            .filter_map(|line| {
+                let rest = line.strip_prefix("### ")?;
+                let (number, name) = rest.split_once('.')?;
+                Some((number.parse().ok()?, name.trim()))
+            })
+            .collect();
+        assert_eq!(names.len(), 26);
+        for (pattern, (number, name)) in PATTERNS.iter().zip(names) {
+            assert_eq!(pattern.number, number);
+            assert_eq!(pattern.name, name);
+        }
+        assert_eq!(HUMANIZER_VERSION, "3.1.0+mxr.1");
+        assert!(!PATTERNS[19].applies_to_email);
+        assert!(!PATTERNS[23].applies_to_email);
+    }
+
+    #[test]
+    fn email_prompt_uses_catalogue_instructions_and_omits_non_email_patterns() {
+        let prompt = email_style_instructions();
+        assert!(prompt.contains("§1 Say the point directly"));
+        assert!(!prompt.contains("§20 "));
+        assert!(!prompt.contains("§24 "));
+    }
+
+    #[test]
+    fn legacy_categories_map_to_catalogue_patterns_and_mxr_categories_stay_separate() {
+        assert_eq!(
+            pattern_for_category(HumanizerCategory::NegativeParallelism),
+            Some(1)
+        );
+        assert_eq!(
+            pattern_for_category(HumanizerCategory::IngTailClause),
+            Some(15)
+        );
+        assert_eq!(pattern_for_category(HumanizerCategory::FalseRange), None);
+        assert_eq!(pattern_for_category(HumanizerCategory::Profanity), None);
+        assert_eq!(pattern_for_category(HumanizerCategory::FillerPhrase), None);
+        assert!(score(
+            "In order to finish, I need one more day.",
+            &HumanizerOpts::default()
+        )
+        .hits
+        .iter()
+        .any(|hit| hit.category == HumanizerCategory::FillerPhrase));
+    }
+
+    #[test]
     fn ai_smell_text_scores_low_and_reports_hits() {
         let report = score(
             "Great question. Additionally, this serves as a testament — not just showcasing our commitment to innovation, but fostering a vibrant tapestry of ideas.",
@@ -507,6 +691,182 @@ mod tests {
         );
         assert!(report.score >= 90);
         assert!(report.hits.is_empty());
+    }
+
+    #[test]
+    fn no_history_has_zero_allowance_and_writer_dash_rate_is_normalized() {
+        let draft = "One — two. Three — four. Five. Six. Seven. Eight. Moreover, this is clear.";
+        let no_history = PatternRates::from_samples(std::iter::empty());
+        assert_eq!(
+            score_with_rates(draft, &HumanizerOpts::default(), &no_history)
+                .hits
+                .len(),
+            score(draft, &HumanizerOpts::default()).hits.len()
+        );
+
+        let sample =
+            "One — two. Three — four. Five. Six. Seven. Eight. Moreover, this is clear.".repeat(20);
+        let writer = PatternRates::from_samples([sample.as_str()]);
+        let allowed = score_with_rates(draft, &HumanizerOpts::default(), &writer);
+        assert!(!allowed
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::EmDashOveruse));
+        let excess = format!(
+            "{draft} Nine — ten. Eleven — twelve. Thirteen — fourteen. Fifteen — sixteen. Seventeen — eighteen. Great question."
+        );
+        assert!(
+            score_with_rates(&excess, &HumanizerOpts::default(), &writer)
+                .hits
+                .iter()
+                .any(|hit| hit.category == HumanizerCategory::EmDashOveruse)
+        );
+    }
+
+    #[test]
+    fn rates_compare_normalized_counts_without_rounding_or_weak_hit_loss() {
+        let ten_words = "One — two three four five six seven eight nine ten.";
+        let equal = PatternRates::from_samples([ten_words]);
+        assert!(
+            !score_with_rates(ten_words, &HumanizerOpts::default(), &equal)
+                .hits
+                .iter()
+                .any(|hit| hit.category == HumanizerCategory::EmDashOveruse)
+        );
+
+        let long_history = format!("One — two. {}", "word ".repeat(990));
+        let tiny_rate = PatternRates::from_samples([long_history.as_str()]);
+        let short_draft =
+            "One — two three four five six seven eight nine. Moreover, this is specific.";
+        assert!(
+            score_with_rates(short_draft, &HumanizerOpts::default(), &tiny_rate)
+                .hits
+                .iter()
+                .any(|hit| hit.category == HumanizerCategory::EmDashOveruse)
+        );
+
+        let habitual_weak_alone = "A — B C D E. ".repeat(200);
+        let habit = PatternRates::from_samples([habitual_weak_alone.as_str()]);
+        let accompanied = "A — B. Additionally, another point.";
+        assert!(score(accompanied, &HumanizerOpts::default())
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::EmDashOveruse));
+        assert!(
+            !score_with_rates(accompanied, &HumanizerOpts::default(), &habit)
+                .hits
+                .iter()
+                .any(|hit| hit.category == HumanizerCategory::EmDashOveruse)
+        );
+
+        let above_rate = "A — B. C — D. E — F. G — H. I — J. Moreover.";
+        assert!(
+            score_with_rates(above_rate, &HumanizerOpts::default(), &habit)
+                .hits
+                .iter()
+                .any(|hit| hit.category == HumanizerCategory::EmDashOveruse)
+        );
+    }
+
+    #[test]
+    fn filler_phrase_history_does_not_allow_a_sycophantic_opener() {
+        let filler_history = "In order to review this, I need one more day. ".repeat(200);
+        let rates = PatternRates::from_samples([filler_history.as_str()]);
+        let report = score_with_rates(
+            "Great question. I can send the figures tomorrow.",
+            &HumanizerOpts::default(),
+            &rates,
+        );
+        assert!(report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::SycophanticOpener));
+    }
+
+    #[test]
+    fn stacked_qualifiers_are_weak_alone_and_need_a_separate_tell() {
+        let alone = score(
+            "This could potentially possibly work.",
+            &HumanizerOpts::default(),
+        );
+        assert!(!alone
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::HedgingStack));
+
+        let paired = score(
+            "This could potentially possibly work. Additionally, I'll check.",
+            &HumanizerOpts::default(),
+        );
+        assert!(paired
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::HedgingStack));
+    }
+
+    #[test]
+    fn rate_filtered_support_does_not_keep_a_weak_alone_mark() {
+        let text = "He said “ok”. Additionally, I'll check tomorrow.";
+        let history = "Additionally, I'll check tomorrow. ".repeat(200);
+        let rates = PatternRates::from_samples([history.as_str()]);
+        let report = score_with_rates(text, &HumanizerOpts::default(), &rates);
+        assert!(!report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::CurlyQuotes));
+
+        let two_remaining_tells = "He said “ok”. Great question.";
+        let report = score_with_rates(two_remaining_tells, &HumanizerOpts::default(), &rates);
+        assert!(report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::CurlyQuotes));
+        assert!(report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::SycophanticOpener));
+
+        let unrelated_paragraph = "He said “ok”.\n\nAdditionally, I'll check tomorrow.";
+        let no_history = PatternRates::default();
+        let report = score_with_rates(unrelated_paragraph, &HumanizerOpts::default(), &no_history);
+        assert!(!report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::CurlyQuotes));
+    }
+
+    #[test]
+    fn weak_heading_tell_needs_a_second_tell_in_the_same_paragraph() {
+        let alone = score(
+            "🚀 Summary:\nThe meeting is at noon.",
+            &HumanizerOpts::default(),
+        );
+        assert!(!alone
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::EmojiHeading));
+        let paired = score(
+            "🚀 Summary:\ndelve into the details.",
+            &HumanizerOpts::default(),
+        );
+        assert!(paired
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::EmojiHeading));
+    }
+
+    #[test]
+    fn weak_formatting_tell_counts_only_beside_a_separate_tell_in_its_paragraph() {
+        let alone = score("He said “ok”.", &HumanizerOpts::default());
+        assert!(!alone
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::CurlyQuotes));
+        let with_tell = score("He said “ok”. Great question.", &HumanizerOpts::default());
+        assert!(with_tell
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::CurlyQuotes));
     }
 
     #[test]

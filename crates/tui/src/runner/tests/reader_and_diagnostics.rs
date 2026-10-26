@@ -1798,6 +1798,9 @@ fn test_compose_proposal() -> mxr_protocol::ComposeProposalData {
         },
         yours_changed: vec![],
         composer_version: "c1".into(),
+        style_marks: Vec::new(),
+        style_score: 100,
+        style_version: String::new(),
     }
 }
 

@@ -93,6 +93,17 @@ pub struct GapData {
     pub end: u32,
 }
 
+/// A deterministic style tell in proposal text. Ranges are UTF-8 byte offsets.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ComposeStyleMarkData {
+    pub pattern: u8,
+    pub name: String,
+    pub start: u32,
+    pub end: u32,
+    pub context: String,
+}
+
 /// What the writing help proposes. Nothing changes the draft until the user
 /// accepts it with `ApplyComposeProposal`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -116,4 +127,37 @@ pub struct ComposeProposalData {
     pub yours_changed: Vec<u32>,
     /// Version of the rules that checked this proposal.
     pub composer_version: String,
+    /// Additive fields: older peers can ignore or omit them.
+    #[serde(default)]
+    pub style_marks: Vec<ComposeStyleMarkData>,
+    #[serde(default = "default_style_score")]
+    pub style_score: u8,
+    #[serde(default)]
+    pub style_version: String,
+}
+
+fn default_style_score() -> u8 {
+    100
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_proposal_json_decodes_without_style_fields() {
+        let json = serde_json::json!({
+            "proposal_id": "p", "action": "write", "base": "b", "text": "Hi.",
+            "changes": [], "gaps": [], "provenance": {
+                "model": "m", "locality": "local", "history_used": false,
+                "voice_examples": [], "conversation": [], "rewrite": null
+            },
+            "yours_changed": [], "composer_version": "c1"
+        });
+        let proposal: ComposeProposalData =
+            serde_json::from_value(json).expect("legacy proposal decodes");
+        assert!(proposal.style_marks.is_empty());
+        assert_eq!(proposal.style_score, 100);
+        assert!(proposal.style_version.is_empty());
+    }
 }

@@ -160,7 +160,7 @@ empty Bcc list says it was not recorded in this copy, which cannot confirm that
 nobody was hidden. If the message details cannot be loaded, the app reports that
 or offers a retry. Long address lists scroll within the dialog. Escape closes
 the address panel or message info and returns focus to its trigger.
-Choose `People` below the conversation subject to inspect and copy addresses
+Choose `People` below the topic selector to inspect and copy addresses
 that appear as senders or recorded To, Cc or available Bcc recipients in this
 thread. It expands across the reading area and scrolls internally for a long
 list. This is historical context: message audiences can differ. `Message info`

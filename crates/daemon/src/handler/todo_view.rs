@@ -63,14 +63,19 @@ where
         verb: record.verb.clone(),
         title: record.title.clone(),
         counterparty: record.counterparty.clone(),
-        person_label: (kind == TodoKind::Promise)
-            .then(|| {
-                record
-                    .counterparty
-                    .as_ref()
-                    .map(|person| format!("you promised {person}"))
-            })
-            .flatten(),
+        person_label: fields
+            .get("requester")
+            .and_then(|p| p.evidence.clone())
+            .or_else(|| {
+                (kind == TodoKind::Promise)
+                    .then(|| {
+                        record
+                            .counterparty
+                            .as_ref()
+                            .map(|person| format!("you promised {person}"))
+                    })
+                    .flatten()
+            }),
         amount: record
             .amount_minor
             .zip(record.currency.as_ref())
@@ -133,6 +138,9 @@ where
 }
 
 fn why_line(record: &TodoRecord) -> String {
+    if record.has_stored_asks() {
+        return record.reason.clone();
+    }
     format!(
         "Here because: {}.",
         record.reason.trim().trim_end_matches('.')

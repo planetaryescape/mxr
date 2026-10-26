@@ -82,3 +82,12 @@ Compose opens the editor you already use. mxr handles parsing, reply headers, ma
 
 - Root summary: [ARCHITECTURE.md](https://github.com/planetaryescape/mxr/blob/main/ARCHITECTURE.md)
 - Full blueprint: [docs/blueprint/README.md](https://github.com/planetaryescape/mxr/blob/main/docs/blueprint/README.md)
+
+## Stored asks share one answer across clients
+
+The deterministic asks facet covers received and sent mail. It stores
+who acts, what they were asked to do, document state and authored source
+spans. To do, reply turns, waits and relationship commitments project that
+answer. Home placement remains an inbound-only facet; both facets commit
+under the same thread-generation check. Missing or stale asks stay pending.
+No model decides this facet.

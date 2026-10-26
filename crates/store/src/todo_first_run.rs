@@ -49,6 +49,8 @@ pub struct PromiseForTodo {
     pub contact_name: Option<String>,
     pub what: String,
     pub by_when: Option<DateTime<Utc>>,
+    pub recorded_by_when: Option<DateTime<Utc>>,
+    pub by_when_source: Option<crate::ByWhenSource>,
     /// open | resolved | expired
     pub status: String,
 }
@@ -221,23 +223,52 @@ impl super::Store {
         &self,
         account_id: &AccountId,
     ) -> Result<Vec<PromiseForTodo>, sqlx::Error> {
+        self.promises_for_todos(account_id, None).await
+    }
+
+    pub async fn promise_for_todo(
+        &self,
+        account_id: &AccountId,
+        commitment_id: &str,
+    ) -> Result<Option<PromiseForTodo>, sqlx::Error> {
+        Ok(self
+            .promises_for_todos(account_id, Some(commitment_id))
+            .await?
+            .into_iter()
+            .next())
+    }
+
+    async fn promises_for_todos(
+        &self,
+        account_id: &AccountId,
+        commitment_id: Option<&str>,
+    ) -> Result<Vec<PromiseForTodo>, sqlx::Error> {
+        let commitment_filter = if commitment_id.is_some() {
+            "AND c.id = ?2"
+        } else {
+            ""
+        };
         // A date a model wrote before due words existed is not a due date:
         // the promise is mirrored undated rather than nagging on it.
         let sql = format!(
             "SELECT c.id, c.account_id, c.thread_id, c.evidence_msg_id, c.email, c.what,
                     CASE WHEN c.{ACTIONABLE_BY_WHEN_SQL} THEN c.by_when END AS by_when,
-                    c.status, m.date AS evidence_date,
+                    c.by_when AS recorded_by_when, c.by_when_source, c.status, COALESCE(m.date, c.extracted_at) AS evidence_date,
                     (SELECT ct.display_name FROM contacts ct
                      WHERE ct.account_id = c.account_id AND ct.email = c.email) AS contact_name
              FROM contact_commitments c
-             JOIN messages m ON m.id = c.evidence_msg_id
+             LEFT JOIN messages m ON m.id = c.evidence_msg_id
              WHERE c.account_id = ? AND c.direction = 'yours'
-               AND m.direction = 'outbound'"
+               AND (m.id IS NULL OR (m.account_id = c.account_id AND m.direction = 'outbound'))
+               AND (c.id GLOB c.evidence_msg_id || '::????????-????-????-????-????????????'
+                    OR c.id GLOB c.evidence_msg_id || '::promise::?*'
+                    OR c.by_when_source = 'user') {commitment_filter}"
         );
-        let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
-            .bind(account_id.as_str())
-            .fetch_all(self.reader())
-            .await?;
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql)).bind(account_id.as_str());
+        if let Some(id) = commitment_id {
+            query = query.bind(id);
+        }
+        let rows = query.fetch_all(self.reader()).await?;
         rows.iter()
             .map(|row| {
                 Ok(PromiseForTodo {
@@ -250,6 +281,11 @@ impl super::Store {
                     contact_name: row.try_get("contact_name")?,
                     what: row.try_get("what")?,
                     by_when: decode_optional_timestamp(row.try_get("by_when")?)?,
+                    recorded_by_when: decode_optional_timestamp(row.try_get("recorded_by_when")?)?,
+                    by_when_source: row
+                        .try_get::<Option<String>, _>("by_when_source")?
+                        .as_deref()
+                        .and_then(crate::ByWhenSource::parse),
                     status: row.try_get("status")?,
                 })
             })

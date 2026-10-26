@@ -185,6 +185,7 @@ pub(super) async fn thread_turn(
     let lanes = thread_lanes(&AccountInputs {
         pending_threads: &senders.pending_threads(&messages, &is_self),
         assessments: &senders.assessments,
+        asks: &senders.asks,
         account_id,
         messages: &messages,
         contacts: &senders.contacts,
@@ -260,6 +261,7 @@ pub(super) async fn attach_histories<'a>(
 /// shared classifier: contacts and screener decisions, keyed by lowercased
 /// email.
 pub(super) struct Senders {
+    pub asks: HashMap<MessageId, mxr_core::asks::AskAssessment>,
     pub assessments: HashMap<MessageId, mxr_core::assessment::MailAssessment>,
     pub contacts: HashMap<String, DeskContact>,
     pub written_to: HashSet<String>,
@@ -277,7 +279,12 @@ impl Senders {
         messages: &[DeskMessage],
     ) -> Result<Self, super::HandlerError> {
         let mut senders = Self::load_raw(state, account_id, messages).await?;
-        senders.assessments = super::assessments::materialize(state, account_id, messages).await?;
+        super::assessments::materialize(state, account_id, messages).await?;
+        let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
+        (senders.assessments, senders.asks) = state
+            .store
+            .assessment_facets_for_messages(account_id, &ids)
+            .await?;
         Ok(senders)
     }
 
@@ -333,6 +340,7 @@ impl Senders {
             .filter_map(|(id, mode)| Some((id, mail_kind::kind_for_stored_mode(&mode)?)))
             .collect();
         Ok(Self {
+            asks: HashMap::new(),
             assessments: HashMap::new(),
             written_to: state
                 .store
@@ -352,7 +360,10 @@ impl Senders {
     ) -> HashSet<ThreadId> {
         messages
             .iter()
-            .filter(|m| !is_outbound(m, is_self) && !self.assessments.contains_key(&m.id))
+            .filter(|m| {
+                !self.asks.contains_key(&m.id)
+                    || (!is_outbound(m, is_self) && !self.assessments.contains_key(&m.id))
+            })
             .map(|m| m.thread_id.clone())
             .collect()
     }
@@ -438,6 +449,7 @@ async fn account_desk(
     let mut lanes = thread_lanes(&AccountInputs {
         pending_threads: &senders.pending_threads(&messages, &is_self),
         assessments: &senders.assessments,
+        asks: &senders.asks,
         account_id,
         messages: &messages,
         contacts: &senders.contacts,

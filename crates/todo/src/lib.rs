@@ -1,14 +1,9 @@
 //! To do: email shown as the thing you have to do, with a date.
 //!
-//! Rules only, no model: a message becomes a to-do when deterministic
-//! detectors find an action with an object (pay a bill, fix a failed
-//! payment, renew, verify, sign, RSVP), schema.org says so (`Invoice`,
-//! `Order` with payment due, a pending `Reservation`), or it is a promise
-//! you made (`contact_commitments`).
+//! Automatic tasks project the persisted deterministic asks facet. Owner
+//! requests and promises share the same facts, tags and exact source quote;
+//! the scanner does not run another detector or mirror model commitments.
 //!
-//! * [`detect`] reads one message and returns what to do, from whom, how
-//!   much, by when, the one link to do it with, and where each field came
-//!   from.
 //! * [`timing`] holds the lead-time table (when to act and when the row
 //!   shows up) and the relevancy windows (when it stops mattering).
 //! * [`action_link`] picks the link and checks the one-click gate: DMARC
@@ -17,7 +12,7 @@
 //! * [`complete`] spots a later message that looks like the confirmation.
 //!   It only offers "looks done"; nothing closes a to-do on a guess.
 //! * [`pass`] runs it over mail: the post-sync scan, the newest-first first
-//!   run with its windows and one bounded catch-up, the promise mirror and
+//!   run with its windows and one bounded catch-up, and
 //!   the sweep that expires and claims rows.
 //!
 //! The crate is provider-agnostic and does no network I/O.
@@ -27,7 +22,9 @@
     expect(clippy::panic, reason = "unit tests panic on an unexpected variant")
 )]
 
+pub mod accepted_promises;
 pub mod action_link;
+pub mod asks;
 pub mod complete;
 pub mod dates;
 pub mod detect;
@@ -41,10 +38,10 @@ pub mod timing;
 
 use serde::{Deserialize, Serialize};
 
-/// Bumped when detection changes enough that old mail should be classified
-/// again. A new version starts a new first run, which never clears a claim,
+/// Bumped when detection or derived projection changes require replaying old mail.
+/// A new version starts a new first run, which never clears a claim,
 /// an expiry or a user decision.
-pub const RULES_VERSION: i64 = 1;
+pub const RULES_VERSION: i64 = 3;
 
 /// The kind of action, which picks the lead time and the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -21,6 +21,9 @@ use mxr_store::{
 use mxr_todo::pass;
 use std::collections::HashMap;
 
+mod bank_transfer;
+mod html_evidence;
+mod provenance_cases;
 mod resolution_budget;
 
 const CAMDEN_AUTH: &str =
@@ -127,19 +130,31 @@ async fn put(fx: &Fixture, mail: Mail<'_>) -> MessageId {
 }
 
 async fn scan(fx: &Fixture, ids: &[MessageId], now: DateTime<Utc>) -> pass::PassSummary {
+    super::projection_diagnostics::trace(&fx.state, &fx.account, "before asks reconciliation")
+        .await;
+    let mut summary =
+        super::super::assessments::reconcile_messages_at(&fx.state, &fx.account, ids, now)
+            .await
+            .unwrap();
+    super::projection_diagnostics::trace(&fx.state, &fx.account, "after asks reconciliation").await;
     let cfg = todos::pass_config(&fx.state, now);
-    pass::scan_messages(&fx.state.store, &cfg, ids)
-        .await
-        .unwrap()
+    summary.add(
+        &pass::scan_messages(&fx.state.store, &cfg, ids)
+            .await
+            .unwrap(),
+    );
+    summary
 }
 
 /// Runs the background tick until the first run is complete.
 async fn finish_first_run(fx: &Fixture, now: DateTime<Utc>) {
     let mut fingerprints = HashMap::new();
+    super::projection_diagnostics::trace(&fx.state, &fx.account, "before first run").await;
     while todos::tick(&fx.state, now, &mut fingerprints)
         .await
         .unwrap()
     {}
+    super::projection_diagnostics::trace(&fx.state, &fx.account, "after first run").await;
 }
 
 async fn runway(fx: &Fixture, now: DateTime<Utc>) -> TodoRunwayData {
@@ -580,7 +595,28 @@ fn invoice_html(due: DateTime<Utc>, link: &str) -> String {
 }
 
 /// Camden's earlier statement, then its bill due in five days.
+async fn settle_background(fx: &Fixture) {
+    let mut after = None;
+    while let Some(next) =
+        crate::handler::assessments::reconcile_dirty_page(&fx.state, &fx.account, after.as_deref())
+            .await
+            .unwrap()
+    {
+        after = Some(next);
+    }
+}
+
+async fn configure_receiver(fx: &Fixture) {
+    let mut config = fx.state.config_snapshot();
+    config
+        .todo
+        .trusted_authentication_services
+        .insert(fx.account.as_str(), vec!["mx.google.com".into()]);
+    fx.state.set_config_for_test(config).await;
+}
+
 async fn camden_bill(fx: &Fixture, now: DateTime<Utc>) -> MessageId {
+    configure_receiver(fx).await;
     // Three statements over 80 days: an established relationship.
     for days in [120, 80, 40] {
         let mut statement = Mail::new(
@@ -696,6 +732,7 @@ async fn a_bill_due_in_five_days_shows_up_three_days_early_once_and_opens_its_em
 #[tokio::test]
 async fn a_lookalike_domain_gets_open_email_to_pay_and_its_raw_domain() {
     let fx = Fixture::new().await;
+    configure_receiver(&fx).await;
     let now = Utc::now();
     finish_first_run(&fx, now).await;
     let mut bill = Mail::new(
@@ -738,6 +775,22 @@ async fn a_receipt_needs_bill_object_evidence_and_never_closes_the_row() {
     generic_receipt.auth = Some(CAMDEN_AUTH);
     let generic_id = put(&fx, generic_receipt).await;
     todos::scan_messages(&fx.state, std::slice::from_ref(&generic_id)).await;
+    super::projection_diagnostics::trace(
+        &fx.state,
+        &fx.account,
+        "receipt before background settlement",
+    )
+    .await;
+    assert_eq!(
+        fx.state
+            .store
+            .count_todos_in_state(None, mxr_store::TodoState::Open)
+            .await
+            .unwrap(),
+        1,
+        "the raw bill is retained while its sender generation is pending"
+    );
+    settle_background(&fx).await;
     let after_generic = runway(&fx, now + Duration::hours(2)).await;
     let rows = coming_up(&after_generic);
     assert_eq!(rows.len(), 1, "a receipt is not a new to-do");
@@ -753,6 +806,7 @@ async fn a_receipt_needs_bill_object_evidence_and_never_closes_the_row() {
     cancelled_payment.auth = Some(CAMDEN_AUTH);
     let cancelled_id = put(&fx, cancelled_payment).await;
     todos::scan_messages(&fx.state, std::slice::from_ref(&cancelled_id)).await;
+    settle_background(&fx).await;
     let after_cancelled = runway(&fx, now + Duration::hours(3)).await;
     let rows = coming_up(&after_cancelled);
     assert_eq!(rows.len(), 1, "a cancelled debit does not resolve the bill");
@@ -767,6 +821,7 @@ async fn a_receipt_needs_bill_object_evidence_and_never_closes_the_row() {
     identified_receipt.auth = Some(CAMDEN_AUTH);
     let id = put(&fx, identified_receipt).await;
     todos::scan_messages(&fx.state, std::slice::from_ref(&id)).await;
+    settle_background(&fx).await;
 
     let after_identified = runway(&fx, now + Duration::hours(4)).await;
     let rows = coming_up(&after_identified);
@@ -874,8 +929,23 @@ async fn an_invite_for_an_event_that_already_ended_never_appears() {
         ),
     )
     .await;
-    let summary = scan(&fx, &[id], now).await;
+    let summary = scan(&fx, std::slice::from_ref(&id), now).await;
     assert_eq!(summary.expired_at_birth.get("rsvp"), Some(&1));
+    let repeated = scan(&fx, std::slice::from_ref(&id), now).await;
+    assert_eq!(
+        repeated.expired_at_birth.get("rsvp"),
+        None,
+        "the second projection never recounts the expired row"
+    );
+    assert_eq!(repeated.created, 0);
+    let persisted = fx
+        .state
+        .store
+        .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Expired, 100)
+        .await
+        .unwrap();
+    assert_eq!(persisted.len(), 1);
+    assert!(persisted[0].expired_at_birth);
     let today = runway(&fx, now).await;
     assert!(today.now.is_empty() && today.coming_up.is_empty() && today.whenever.is_empty());
     assert_eq!(
@@ -1250,7 +1320,7 @@ async fn promises_you_made_join_through_the_catch_up_and_tick_off_with_their_com
     assert_eq!(titles(&catchup.todos), vec!["Send the signed form"]);
     assert_eq!(
         catchup.todos[0].person_label.as_deref(),
-        Some("you promised priya@work.com")
+        Some("you promised Priya Shah")
     );
     let id = catchup.todos[0].id.clone();
     request(
@@ -1267,6 +1337,10 @@ async fn promises_you_made_join_through_the_catch_up_and_tick_off_with_their_com
     let today = runway(&fx, now).await;
     assert_eq!(titles(&today.whenever), vec!["Send the signed form"]);
     let record = fx.state.store.get_todo(&id).await.unwrap().unwrap();
+    let canonical_commitment = record
+        .commitment_id
+        .clone()
+        .expect("stored asks owner promise");
     let later = fx
         .message(
             &thread,
@@ -1335,7 +1409,7 @@ async fn promises_you_made_join_through_the_catch_up_and_tick_off_with_their_com
         let commitment = fx
             .state
             .store
-            .get_contact_commitment("c-form")
+            .get_contact_commitment(&canonical_commitment)
             .await
             .unwrap()
             .unwrap();
@@ -1507,11 +1581,11 @@ async fn promise_rows_built_from_inbound_mail_are_dismissed_unless_touched() {
     // What an earlier version left behind: the same rows, but their
     // evidence is mail someone else sent. The user moved one of them.
     for id in &evidence {
-        sqlx::query("UPDATE messages SET direction = 'inbound' WHERE id = ?")
-            .bind(id.as_str())
-            .execute(fx.state.store.writer())
-            .await
-            .unwrap();
+        let mut incoming = fx.state.store.get_envelope(id).await.unwrap().unwrap();
+        incoming.from.email = "someone-else@example.com".into();
+        incoming.flags.remove(MessageFlags::SENT);
+        fx.store_envelope(&incoming, MessageDirection::Inbound)
+            .await;
     }
     let touched = rows
         .iter()
@@ -1523,6 +1597,10 @@ async fn promise_rows_built_from_inbound_mail_are_dismissed_unless_touched() {
         .await
         .unwrap();
 
+    // Normal background reconciliation settles the changed source before the tick.
+    crate::handler::assessments::reconcile_messages(&fx.state, &fx.account, &evidence)
+        .await
+        .unwrap();
     // A restart mirrors promises afresh.
     finish_first_run(&fx, now + Duration::minutes(5)).await;
 
@@ -1568,6 +1646,12 @@ async fn a_promise_names_the_person_without_a_glued_on_id() {
         &id,
     )
     .await;
+    let mut source = fx.state.store.get_envelope(&id).await.unwrap().unwrap();
+    source.to = vec![Address {
+        email: "licensing@acme.example".into(),
+        name: Some("Acme Licensing2026-09-27887d708f6e134fe8bd5c9e0584954c5b".into()),
+    }];
+    fx.store_envelope(&source, MessageDirection::Outbound).await;
     finish_first_run(&fx, now).await;
     let rows = promise_rows(&fx).await;
     assert_eq!(rows.len(), 1);

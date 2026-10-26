@@ -44,6 +44,13 @@ async fn mail(
         MessageDirection::Inbound
     };
     fx.store_envelope(&envelope, direction).await;
+    cached_content(
+        fx,
+        &envelope,
+        "",
+        Some("Could you reply with your availability?"),
+    )
+    .await;
     envelope
 }
 
@@ -147,22 +154,22 @@ async fn current_arrival_projection_crosses_page_boundaries_without_rewriting_le
 
 #[tokio::test]
 async fn bare_greeting_attention_agrees_across_shared_surfaces_without_guessing_names() {
-    for (text, recipient, expected) in [
-        ("Hi,\n\nCould you send the deck by Friday?", "owned", true),
-        ("Hi, could you confirm the meeting time?", "owned", true),
-        ("Hello,\nCould you review the plan?", "owned", true),
-        ("Hey, could you reply today?", "owned", true),
-        ("Good morning,\nCould you confirm?", "owned", true),
-        ("Hope you're well,\nCould you send the deck?", "owned", true),
-        ("Alice,\nCould you send the deck?", "owned", false),
-        ("Hi Alice, could you confirm?", "owned", false),
-        ("Hi Brian,\nCould you confirm?", "owned", false),
-        ("Hi, could you confirm? No need to reply.", "owned", false),
-        ("Hi,\nCould you confirm?", "copied", false),
-        ("Hi, could you confirm?", "group", false),
-        ("Hi, could you confirm?", "alias", false),
-        ("Hi,\nUser, could you confirm?", "group", true),
-        ("Hi,\nFYI, this was handled.\n\nFrom: Alice <alice@example.com>\nSent: Monday\nTo: User <user@example.com>\nSubject: Old ask\n\nCould you confirm?", "owned", false),
+    for (text, recipient, expected, action) in [
+        ("Hi,\n\nCould you send the deck by Friday?", "owned", true, true),
+        ("Hi, could you confirm the meeting time?", "owned", true, false),
+        ("Hello,\nCould you review the plan?", "owned", true, true),
+        ("Hey, could you reply today?", "owned", true, false),
+        ("Good morning,\nCould you confirm?", "owned", true, false),
+        ("Hope you're well,\nCould you send the deck?", "owned", true, true),
+        ("Alice,\nCould you send the deck?", "owned", false, false),
+        ("Hi Alice, could you confirm?", "owned", false, false),
+        ("Hi Brian,\nCould you confirm?", "owned", false, false),
+        ("Hi, could you confirm? No need to reply.", "owned", false, false),
+        ("Hi,\nCould you confirm?", "copied", false, false),
+        ("Hi, could you confirm?", "group", false, false),
+        ("Hi, could you confirm?", "alias", false, false),
+        ("Hi,\nUser, could you confirm?", "group", true, false),
+        ("Hi,\nFYI, this was handled.\n\nFrom: Alice <alice@example.com>\nSent: Monday\nTo: User <user@example.com>\nSubject: Old ask\n\nCould you confirm?", "owned", false, false),
     ] {
         let fx = Fixture::new().await;
         let mut message = inbound(&fx, "maya@team.example", false).await;
@@ -172,14 +179,25 @@ async fn bare_greeting_attention_agrees_across_shared_surfaces_without_guessing_
             "alias" => message.to = vec![Address { name: None, email: "unknown-alias@example.com".into() }],
             _ => {},
         }
+        for address in &mut message.to {
+            if address.email == ME { address.name = Some("User".into()); }
+        }
         fx.store_envelope(&message, MessageDirection::Inbound).await;
         cached_content(&fx, &message, "", Some(text)).await;
         let ResponseData::Desk { owed, people_new, .. } = fx.desk(100).await else { panic!("desk"); };
-        assert_eq!(owed.rows.iter().chain(&people_new.rows).any(|row| row.thread_id == message.thread_id), expected, "{recipient}: {text}");
+        assert_eq!(owed.rows.iter().chain(&people_new.rows).any(|row| row.thread_id == message.thread_id), expected && !action, "{recipient}: {text}");
         let ResponseData::Messages { messages } = request(&fx, Request::ListMessages { account_id: None, turn: None, filter: Default::default(), limit: 100 }).await else { panic!("Messages"); };
-        assert_eq!(messages.your_turn.iter().flat_map(|row| &row.topics).any(|topic| topic.thread_id == message.thread_id), expected, "{recipient}: {text}");
+        assert_eq!(messages.your_turn.iter().flat_map(|row| &row.topics).any(|topic| topic.thread_id == message.thread_id), expected && !action, "{recipient}: {text}");
         let now = crate::handler::now::now_at(&fx.state, None, Utc::now(), &Utc).await.unwrap();
-        assert_eq!(now.people.total, u32::from(expected), "{recipient}: {text}");
+        assert_eq!(now.people.total, u32::from(expected && !action), "{recipient}: {text}");
+        let answers = fx.state.store.asks_for_messages(&fx.account, std::slice::from_ref(&message.id)).await.unwrap();
+        let answer = &answers[&message.id];
+        assert_eq!(answer.units.iter().any(|u| u.answer == mxr_core::asks::AskAnswer::AsksYou), action, "{recipient}: {text}");
+        for unit in answer.units.iter().filter(|u| u.answer == mxr_core::asks::AskAnswer::AsksYou) {
+            assert!(text.contains(answer.quote(unit).unwrap()), "exact authored action quote");
+        }
+        let tasks = fx.state.store.list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100).await.unwrap();
+        assert_eq!(tasks.iter().filter(|row| row.source_message_id.as_ref() == Some(&message.id)).count(), usize::from(action));
         let arrivals = line(&fx).await;
         if expected {
             assert!(list(&fx, &arrivals, ArrivalBucketData::Messages).await.contains(&message.id));
@@ -367,6 +385,12 @@ async fn message_purpose_and_attention_agree_without_rewriting_history() {
     let mut decision = inbound(&fx, "maya@team.example", false).await;
     decision.subject = "Weekly project report".into();
     decision.to = report.to.clone();
+    decision
+        .to
+        .iter_mut()
+        .find(|address| address.email == ME)
+        .unwrap()
+        .name = Some("User".into());
     fx.store_envelope(&decision, MessageDirection::Inbound)
         .await;
     cached_content(
@@ -2682,4 +2706,31 @@ async fn idle_assessment_projection_completes_while_a_writer_is_held() {
     .expect("settled mode membership must not wait for the SQLite writer");
     assert_eq!(actual, expected);
     tx.rollback().await.unwrap();
+}
+
+#[tokio::test]
+async fn moving_an_existing_action_to_do_does_not_create_an_undo_that_dismisses_it() {
+    let fx = Fixture::new().await;
+    let mail = inbound(&fx, "reviewer@example.com", false).await;
+    cached_content(&fx, &mail, "", Some("Could you review the launch plan?")).await;
+    line(&fx).await;
+    let rows = fx
+        .state
+        .store
+        .list_todos_in_state(Some(&fx.account), mxr_store::TodoState::Open, 100)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    let before = rows[0].clone();
+    for _ in 0..2 {
+        let outcome = move_to(&fx, &mail.id, ModeKindData::Todo, false).await;
+        assert_eq!(outcome.copy, "Already in To do.");
+        assert!(outcome.correction_id.is_none() && outcome.aspect_id.is_none());
+    }
+    let filed = move_to(&fx, &mail.id, ModeKindData::Archive, false).await;
+    undo(&fx, filed.correction_id.unwrap()).await;
+    assert_eq!(
+        fx.state.store.get_todo(&before.id).await.unwrap(),
+        Some(before)
+    );
 }

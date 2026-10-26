@@ -325,6 +325,8 @@ pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/todos", get(runway).post(create))
         .route("/todos/catchup", get(get_catchup).post(set_catchup))
         .route("/todos/state", post(set_state))
+        .route("/todos/{todo_id}/correct", post(correct_todo))
+        .route("/todos/{todo_id}/correction/undo", post(undo_correction))
         .route("/todos/{todo_id}/resolution", post(resolve_suggestion))
         .route("/todos/in/{state}", get(list_in_state))
         .route("/todos/{todo_id}", get(get_todo))
@@ -399,6 +401,65 @@ async fn microsoft_sync(
             Request::SyncMicrosoftTodos {
                 todo_id: body.todo_id,
                 account_id: body.account_id,
+                dry_run: body.dry_run,
+            },
+        )
+        .await?,
+    )
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct TodoCorrectionBody {
+    #[serde(default)]
+    time_zone: Option<String>,
+    reason: mxr_protocol::TodoCorrectionData,
+    #[serde(default)]
+    edits: Vec<TodoEditData>,
+    #[serde(default)]
+    dry_run: bool,
+}
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct TodoCorrectionUndoBody {
+    correction_id: String,
+    #[serde(default)]
+    dry_run: bool,
+}
+async fn correct_todo(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(todo_id): AxumPath<String>,
+    Json(body): Json<TodoCorrectionBody>,
+) -> Result<Json<Value>, BridgeError> {
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            None,
+            Request::CorrectTodo {
+                time_zone: body.time_zone,
+                todo_id,
+                reason: body.reason,
+                edits: body.edits,
+                dry_run: body.dry_run,
+            },
+        )
+        .await?,
+    )
+}
+async fn undo_correction(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(todo_id): AxumPath<String>,
+    Json(body): Json<TodoCorrectionUndoBody>,
+) -> Result<Json<Value>, BridgeError> {
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            None,
+            Request::UndoTodoCorrection {
+                todo_id,
+                correction_id: body.correction_id,
                 dry_run: body.dry_run,
             },
         )

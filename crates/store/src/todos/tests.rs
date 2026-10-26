@@ -284,6 +284,8 @@ async fn the_catch_up_keeps_the_cap_across_accounts_by_act_by_then_newest() {
         let mut row = fx.record(&format!("t{n}"), &source, at(n));
         row.dedup_key = format!("k{n}");
         row.catchup = Some(TodoCatchup::Pending);
+        // This test ranks the current first run, not pending legacy upgrades.
+        row.rules_version = 2;
         row.act_by_at = (n == 0).then(|| at(300));
         if n % 2 == 1 {
             row.account_id = other.id.clone();
@@ -502,4 +504,218 @@ async fn newer_evidence_never_clears_the_date_you_chose() {
     let row = fx.store.get_todo("t1").await.unwrap().unwrap();
     assert_eq!(row.scheduled_for, Some(at(400)));
     assert_eq!(row.amount_minor, Some(15000), "the facts still update");
+}
+
+#[tokio::test]
+async fn correction_restores_every_prior_field_and_rejects_same_second_newer_work() {
+    let fx = Fx::new().await;
+    let source = fx.message("correction", at(0)).await;
+    let before = fx.record("corrected", &source, at(0));
+    fx.store.insert_todo(&before).await.unwrap();
+    let mut edited = before.clone();
+    edited.title = "Pay the right account".into();
+    edited.amount_minor = Some(4500);
+    edited.user_edited = true;
+    edited.state = TodoState::Done;
+    edited.done_at = Some(at(1));
+    edited.field_sources =
+        r#"{"correction":{"source":"user","evidence":"wrong_details:one"}}"#.into();
+    edited.updated_at = at(1);
+    fx.store
+        .correct_todo("one", "wrong_details", &before, &edited, true, at(1))
+        .await
+        .unwrap();
+    assert_eq!(
+        fx.store.get_todo(&before.id).await.unwrap(),
+        Some(before.clone())
+    );
+    fx.store
+        .correct_todo("one", "wrong_details", &before, &edited, false, at(1))
+        .await
+        .unwrap();
+    let restored = fx
+        .store
+        .undo_todo_correction(&before.id, "one", false, at(2))
+        .await
+        .unwrap();
+    assert_eq!(restored, before);
+    fx.store
+        .correct_todo("two", "not_mine", &before, &edited, false, at(1))
+        .await
+        .unwrap();
+    let mut newer = edited.clone();
+    newer.title = "Keep my newer title".into();
+    fx.store.update_todo_by_user(&newer, at(1)).await.unwrap();
+    let error = fx
+        .store
+        .undo_todo_correction(&before.id, "two", false, at(2))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("newer work was kept"));
+    assert_eq!(
+        fx.store.get_todo(&before.id).await.unwrap().unwrap().title,
+        newer.title
+    );
+}
+
+#[tokio::test]
+async fn all_correction_reasons_survive_and_source_quote_cannot_be_edited() {
+    let fx = Fx::new().await;
+    let source = fx.message("reasons", at(0)).await;
+    for reason in ["not_a_todo", "not_mine", "already_done", "wrong_details"] {
+        let before = fx.record(reason, &source, at(0));
+        fx.store
+            .insert_todo(&TodoRecord {
+                dedup_key: reason.into(),
+                ..before.clone()
+            })
+            .await
+            .unwrap();
+        let before = fx.store.get_todo(reason).await.unwrap().unwrap();
+        let mut after = before.clone();
+        after.user_edited = true;
+        fx.store
+            .correct_todo(reason, reason, &before, &after, false, at(1))
+            .await
+            .unwrap();
+        let recorded: String =
+            sqlx::query_scalar("SELECT reason FROM todo_corrections WHERE id = ?")
+                .bind(reason)
+                .fetch_one(fx.store.reader())
+                .await
+                .unwrap();
+        assert_eq!(recorded, reason);
+        let mut wrong = after.clone();
+        wrong.reason = "edited quote".into();
+        assert!(fx
+            .store
+            .correct_todo("bad", reason, &after, &wrong, false, at(2))
+            .await
+            .is_err());
+    }
+}
+
+#[tokio::test]
+async fn ambiguous_legacy_preserves_closed_manual_history_without_freezing_unrelated_tasks() {
+    use mxr_core::asks::*;
+    let fx = Fx::new().await;
+    let first = fx.message("legacy", at(0)).await;
+    let other = fx.message("unrelated", at(1)).await;
+    let make_answer = |id: MessageId| AskAssessment {
+        message_id: id,
+        account_id: fx.account.clone(),
+        policy_version: ASKS_POLICY_VERSION.into(),
+        input_fingerprint: "stable".into(),
+        pending_body: false,
+        context_token: crate::asks_context_token().unwrap(),
+        calendar: None,
+        html: None,
+        facts: AskFacts {
+            zones: vec![],
+            recipient_role: RecipientRole::AloneTo,
+            owner_authored: false,
+            owner_names: vec![],
+            owner_addresses: vec![],
+            predecessor: None,
+            owner_replied_afterwards: false,
+            amounts: vec![],
+            dates: vec![],
+            references: vec![],
+            template_key: "x".into(),
+        },
+        units: vec![],
+    };
+    let ask = make_answer(first.0.clone());
+    let other_ask = make_answer(other.0.clone());
+    let revisions = fx
+        .store
+        .assessment_thread_revisions(&fx.account, &[first.1.clone(), other.1.clone()])
+        .await
+        .unwrap();
+    fx.store
+        .save_asks_batch(&fx.account, &revisions, &[ask.clone(), other_ask.clone()])
+        .await
+        .unwrap();
+    let mut legacy = fx.record("legacy", &first, at(0));
+    legacy.state = TodoState::Done;
+    legacy.done_at = Some(at(1));
+    legacy.user_edited = true;
+    fx.store.insert_todo(&legacy).await.unwrap();
+    let mut unrelated = fx.record("unrelated", &other, at(1));
+    unrelated.origin = "rule".into();
+    unrelated.rules_version = 2;
+    unrelated.dedup_key = "asks|other".into();
+    assert!(matches!(
+        fx.store
+            .upsert_asks_todo(&unrelated, &other_ask)
+            .await
+            .unwrap(),
+        TodoUpsert::Inserted { .. }
+    ));
+    let keys = vec!["asks|candidate-a".into(), "asks|candidate-b".into()];
+    assert!(fx
+        .store
+        .upgrade_asks_todo(&legacy, None, Some(&ask), &keys)
+        .await
+        .unwrap());
+    let after = fx.store.get_todo("legacy").await.unwrap().unwrap();
+    assert_eq!(after.state, TodoState::Done);
+    assert_eq!(after.done_at, legacy.done_at);
+    assert_eq!(after.title, legacy.title);
+    assert_eq!(after.field_sources, legacy.field_sources);
+    assert_eq!(after.dedup_key, legacy.dedup_key);
+    for (n, key) in keys.iter().enumerate() {
+        let mut candidate = fx.record(&format!("candidate-{n}"), &first, at(0));
+        candidate.origin = "rule".into();
+        candidate.rules_version = 2;
+        candidate.dedup_key = key.clone();
+        assert_eq!(
+            fx.store.upsert_asks_todo(&candidate, &ask).await.unwrap(),
+            TodoUpsert::Unchanged
+        );
+    }
+    assert!(fx
+        .store
+        .legacy_asks_todos(&fx.account)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn missing_body_legacy_rows_cannot_starve_ready_sources_beyond_the_page() {
+    let fx = Fx::new().await;
+    for index in 0..101 {
+        let source = fx.message(&format!("source-{index}"), at(0)).await;
+        let mut row = fx.record(&format!("legacy-{index:03}"), &source, at(0));
+        row.dedup_key = format!("legacy-{index}");
+        fx.store.insert_todo(&row).await.unwrap();
+        if index == 100 {
+            fx.store
+                .insert_body(&mxr_core::MessageBody {
+                    message_id: source.0,
+                    text_plain: Some("Please sign the contract.".into()),
+                    text_html: None,
+                    attachments: vec![],
+                    fetched_at: at(0),
+                    metadata: Default::default(),
+                })
+                .await
+                .unwrap();
+        }
+    }
+    let ready = fx.store.legacy_asks_todos(&fx.account).await.unwrap();
+    assert_eq!(ready.len(), 1);
+    assert_eq!(ready[0].id, "legacy-100");
+}
+
+#[tokio::test]
+async fn pending_legacy_catchup_keeps_history_until_source_reconciliation() {
+    let fx = Fx::new().await;
+    let source = fx.message("legacy", at(0)).await;
+    let mut row = fx.record("legacy", &source, at(0));
+    row.catchup = Some(TodoCatchup::Pending);
+    fx.store.upsert_detected_todo(&row).await.unwrap();
+    assert!(fx.store.list_catchup_todos(None).await.unwrap().is_empty());
+    assert_eq!(fx.store.get_todo(&row.id).await.unwrap(), Some(row));
 }

@@ -151,6 +151,7 @@ pub(super) async fn place_threads(
     let lanes = thread_lanes(&AccountInputs {
         pending_threads: &senders.pending_threads(&messages, &is_self),
         assessments: &senders.assessments,
+        asks: &senders.asks,
         account_id,
         messages: &lane_messages,
         contacts: &senders.contacts,
@@ -405,6 +406,27 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         .collect();
     let latest = thread.iter().max_by_key(|m| (m.date, m.seq));
     ThreadModesData {
+        asks_more: thread
+            .iter()
+            .filter(|m| inputs.senders.asks.contains_key(&m.id))
+            .count()
+            > 32,
+        asks: thread
+            .iter()
+            .filter_map(|m| {
+                inputs
+                    .senders
+                    .asks
+                    .get(&m.id)
+                    .map(mxr_core::asks::AskAssessment::summary)
+            })
+            .take(32)
+            .collect(),
+        asks_pending: thread
+            .iter()
+            .filter(|m| !inputs.senders.asks.contains_key(&m.id))
+            .map(|m| m.id.clone())
+            .collect(),
         assessments: thread
             .iter()
             .filter_map(|m| inputs.senders.assessments.get(&m.id).cloned())

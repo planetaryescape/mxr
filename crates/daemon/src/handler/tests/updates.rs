@@ -36,6 +36,18 @@ async fn update(
     at: DateTime<Utc>,
 ) -> Envelope {
     let mut envelope = fx.message(thread, from, ME, Utc::now() - at, None).await;
+    fx.state
+        .store
+        .insert_body(&mxr_core::MessageBody {
+            message_id: envelope.id.clone(),
+            text_plain: Some("Here is your account update.".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: at,
+            metadata: Default::default(),
+        })
+        .await
+        .unwrap();
     envelope.subject = subject.to_string();
     envelope.date = at;
     fx.store_envelope(&envelope, MessageDirection::Inbound)

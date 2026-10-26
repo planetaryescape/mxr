@@ -287,18 +287,76 @@ pub(super) async fn record_promise(
     due_at: DateTime<Utc>,
     dry_run: bool,
 ) -> HandlerResult {
-    let what = plain_text(what, WHAT_MAX_CHARS);
+    let supplied = what.trim();
+    let envelope = sent_envelope(state, message_id).await?;
+    let answer = super::ask_assessments::promise_source(state, &envelope).await?;
+    // Match source text before display cleanup can change its natural identity.
+    let source_safe = supplied.chars().count() <= WHAT_MAX_CHARS
+        && !supplied
+            .chars()
+            .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'));
+    let canonical_match = source_safe
+        && !supplied.is_empty()
+        && answer.as_ref().is_some_and(|answer| {
+            !answer.pending_body
+                && answer.units.iter().any(|unit| {
+                    unit.answer == mxr_core::asks::AskAnswer::YouPromised
+                        && answer
+                            .quote(unit)
+                            .is_some_and(|quote| quote.contains(supplied))
+                })
+        });
+    let source_match = if canonical_match {
+        true
+    } else if source_safe && !supplied.is_empty() {
+        state
+            .store
+            .get_body(message_id)
+            .await?
+            .and_then(|body| body.text_plain)
+            .is_some_and(|text| text.contains(supplied))
+    } else {
+        false
+    };
+    let mut what = if source_match {
+        supplied.to_string()
+    } else {
+        plain_text(supplied, WHAT_MAX_CHARS)
+    };
     if what.is_empty() {
         return Err("Say what you promised, such as \"send the deck\".".into());
     }
-    let envelope = sent_envelope(state, message_id).await?;
-    let Some(recipient) = envelope.to.first().or_else(|| envelope.cc.first()) else {
+    if let Some(answer) = answer.as_ref().filter(|answer| !answer.pending_body) {
+        // The model offers a verbatim fragment; identity belongs to the stored
+        // authored unit, so accepting its date must not create another promise.
+        let quotes: Vec<_> = answer
+            .units
+            .iter()
+            .filter(|unit| unit.answer == mxr_core::asks::AskAnswer::YouPromised)
+            .filter_map(|unit| answer.quote(unit))
+            .filter(|quote| quote.contains(&what))
+            .collect();
+        if !quotes.contains(&what.as_str()) {
+            if let Some(quote) = quotes.first() {
+                if quotes.iter().any(|other| other != quote) {
+                    return Err("Those words match more than one promise. Use the exact promise from the sent email.".into());
+                }
+                what = (*quote).to_string();
+            }
+        }
+    }
+    let owned = state.owned_addresses(&envelope.account_id).await?;
+    let Some(recipient) =
+        mxr_core::first_non_owned_recipient(&envelope.to, &envelope.cc, |email| {
+            owned.contains(email)
+        })
+    else {
         return Err(format!("Message {message_id} has no recipient to keep a promise to").into());
     };
     let mut record = ContactCommitmentRecord {
         id: format!("{message_id}::promise::{}", new_candidate_id()),
         account_id: envelope.account_id.clone(),
-        email: recipient.email.clone(),
+        email: recipient.email.to_lowercase(),
         thread_id: envelope.thread_id.clone(),
         direction: CommitmentDirection::Yours,
         status: CommitmentStatus::Open,
@@ -318,6 +376,21 @@ pub(super) async fn record_promise(
             .record_own_promise(&record)
             .await
             .map_err(|error| error.to_string())?;
+        if state.config_snapshot().todo.enabled {
+            // Reproject the stored answer now: a contact-only edit does not dirty mail evidence.
+            let cfg = super::todos::pass_config(state, Utc::now());
+            mxr_todo::pass::project_stored_ask(&state.store, &cfg, message_id)
+                .await
+                .map_err(|error| error.to_string())?;
+            mxr_todo::accepted_promises::sync_commitment(
+                &state.store,
+                &cfg,
+                &envelope.account_id,
+                &record.id,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        }
     }
     Ok(ResponseData::RecordedPromise {
         commitment: commitment_data(record),

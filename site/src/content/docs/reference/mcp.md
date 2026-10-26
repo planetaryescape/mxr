@@ -26,7 +26,7 @@ The command speaks MCP over stdin/stdout. It retains the selected daemon for eve
 MXR_DAEMON_ADDR='cmd://ssh -T host mxr daemon dial-stdio' mxr mcp serve
 ```
 
-`MXR_DAEMON_ADDR` accepts `unix://`, `cmd://` and authenticated loopback `tcp://` targets. TCP uses `MXR_DAEMON_TOKEN` or the client profile's daemon-token file and authenticates before status. Remote setup must complete within five seconds and report IPC protocol 15; different daemon package versions and build IDs are accepted. Unsupported protocol, authentication and transport failures never fall back to a local daemon. The MCP access profile belongs on the selected daemon host.
+`MXR_DAEMON_ADDR` accepts `unix://`, `cmd://` and authenticated loopback `tcp://` targets. TCP uses `MXR_DAEMON_TOKEN` or the client profile's daemon-token file and authenticates before status. Remote setup must complete within five seconds and report IPC protocol 26; different daemon package versions and build IDs are accepted. Unsupported protocol, authentication and transport failures never fall back to a local daemon. The MCP access profile belongs on the selected daemon host.
 
 Keep the original `expected_workspace` returned by `mxr_workspace` or a draft review through subsequent tools and recovery. A replacement workspace or recovery generation cannot adopt retained private work. Account provisioning through remote selections is unsupported; perform setup on the daemon host.
 
@@ -91,6 +91,8 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_todo_list`: tasks in one state, defaulting to open, with an optional account scope
 - `mxr_todo_get`: one task with its source mail and field provenance
 - `mxr_todo_set_state`: `done`, `dismiss` or `undo` for task IDs; previews unless `confirm=true`
+- `mxr_todo_correct`: preview one of `not_a_todo`, `not_mine`, `already_done` or `wrong_details`; saved details take `edits`, and `confirm=true` applies the correction
+- `mxr_todo_undo_correction`: restore the prior task with its `correction_id`; previews unless `confirm=true`, and refuses to overwrite newer edits
 - `mxr_todo_resolve`: preview, accept, dismiss or undo one later-message offer; `confirm=true` applies the named action
 - `mxr_why`: stored home, deciding claim, evidence and uncertainty for one message
 - `mxr_classify_report`: bounded stored fallback clusters and pending assessment counts

@@ -4,7 +4,6 @@ use mxr_core::id::{LabelId, MessageId, ThreadId};
 use mxr_core::types::{
     Address, Envelope, EventSource, Label, LabelKind, MessageDirection, MessageFlags, Snoozed,
 };
-use mxr_store::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
 
 pub(super) const ME: &str = "user@example.com";
 
@@ -18,6 +17,19 @@ pub(super) struct Fixture {
 }
 
 impl Fixture {
+    pub(super) fn with_persistent_state(state: Arc<AppState>) -> Self {
+        let account = state.default_account_id();
+        let inbox = LabelId::from_scoped_provider_id(&account, "fake", "INBOX");
+        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account.clone()));
+        Self {
+            state,
+            fake,
+            account,
+            inbox,
+            now: chrono::Utc::now(),
+        }
+    }
+
     pub(super) async fn new() -> Self {
         Self::with_config(mxr_config::MxrConfig::default()).await
     }
@@ -140,26 +152,56 @@ impl Fixture {
         store.try_create_reply_pair(envelope).await.unwrap();
     }
 
-    pub(super) async fn promise(&self, thread: &ThreadId, evidence: &MessageId, due_in: Duration) {
+    /// Reply-only received mail or an authored owner request, for attention journeys.
+    pub(super) async fn attention_message(
+        &self,
+        thread: &ThreadId,
+        from: &str,
+        to: &str,
+        age: Duration,
+        in_reply_to: Option<&str>,
+    ) -> Envelope {
+        let envelope = self.message(thread, from, to, age, in_reply_to).await;
         self.state
             .store
-            .upsert_contact_commitment(&ContactCommitmentRecord {
-                id: format!("c-{thread}"),
-                account_id: self.account.clone(),
-                email: "nora@example.com".into(),
-                thread_id: thread.clone(),
-                direction: CommitmentDirection::Yours,
-                status: CommitmentStatus::Open,
-                who_owes: "you".into(),
-                what: "send the security review notes".into(),
-                by_when: Some(chrono::Utc::now() + due_in),
-                by_when_source: Some(mxr_store::ByWhenSource::Words),
-                evidence_msg_id: evidence.clone(),
-                extracted_at: chrono::Utc::now(),
-                resolved_at: None,
+            .insert_body(&mxr_core::MessageBody {
+                message_id: envelope.id.clone(),
+                text_plain: Some("Could you reply with your availability?".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: self.now,
+                metadata: Default::default(),
             })
             .await
             .unwrap();
+        envelope
+    }
+
+    pub(super) async fn promise(
+        &self,
+        thread: &ThreadId,
+        evidence: &MessageId,
+        due_in: Duration,
+    ) -> String {
+        let ResponseData::RecordedPromise {
+            commitment,
+            dry_run,
+        } = request(
+            self,
+            Request::RecordPromise {
+                message_id: evidence.clone(),
+                what: "send the security review notes".into(),
+                due_at: chrono::Utc::now() + due_in,
+                dry_run: false,
+            },
+        )
+        .await
+        else {
+            panic!("recorded promise")
+        };
+        assert!(!dry_run);
+        assert_eq!(&commitment.thread_id, thread);
+        commitment.id
     }
 
     pub(super) async fn desk(&self, lane_limit: u32) -> ResponseData {
@@ -192,9 +234,9 @@ async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
     for days in [40, 45] {
         let old = ThreadId::new();
         let asked = fx
-            .message(&old, "maya@example.com", ME, Duration::days(days), None)
+            .attention_message(&old, "maya@example.com", ME, Duration::days(days), None)
             .await;
-        fx.message(
+        fx.attention_message(
             &old,
             ME,
             "maya@example.com",
@@ -208,10 +250,10 @@ async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
     // not show it twice.
     let owed = ThreadId::new();
     let mine = fx
-        .message(&owed, ME, "maya@example.com", Duration::days(3), None)
+        .attention_message(&owed, ME, "maya@example.com", Duration::days(3), None)
         .await;
     let reply = fx
-        .message(
+        .attention_message(
             &owed,
             "maya@example.com",
             ME,
@@ -219,23 +261,23 @@ async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
             mine.message_id_header.as_deref(),
         )
         .await;
-    fx.promise(&owed, &reply.id, Duration::days(1)).await;
+    fx.promise(&owed, &mine.id, Duration::days(1)).await;
 
     // Waiting: you wrote Jon three days ago and he has not answered.
     let waiting = ThreadId::new();
-    fx.message(&waiting, ME, "jon@example.com", Duration::days(3), None)
+    fx.attention_message(&waiting, ME, "jon@example.com", Duration::days(3), None)
         .await;
 
     // Due beats waiting: you wrote Nora and promised notes in two days.
     let due = ThreadId::new();
     let to_nora = fx
-        .message(&due, ME, "nora@example.com", Duration::days(5), None)
+        .attention_message(&due, ME, "nora@example.com", Duration::days(5), None)
         .await;
-    fx.promise(&due, &to_nora.id, Duration::days(2)).await;
+    let due_id = fx.promise(&due, &to_nora.id, Duration::days(2)).await;
 
     // New from people, newest first.
     let older_new = ThreadId::new();
-    fx.message(
+    fx.attention_message(
         &older_new,
         "theo@example.com",
         ME,
@@ -244,13 +286,13 @@ async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
     )
     .await;
     let newer_new = ThreadId::new();
-    fx.message(&newer_new, "iris@example.com", ME, Duration::hours(2), None)
+    fx.attention_message(&newer_new, "iris@example.com", ME, Duration::hours(2), None)
         .await;
 
     // Snoozed mail is out of sight.
     let snoozed = ThreadId::new();
     let napping = fx
-        .message(&snoozed, "ari@example.com", ME, Duration::hours(1), None)
+        .attention_message(&snoozed, "ari@example.com", ME, Duration::hours(1), None)
         .await;
     fx.state
         .store
@@ -267,7 +309,7 @@ async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
     // A newsletter is reading, not work.
     let newsletter_thread = ThreadId::new();
     let mut newsletter = fx
-        .message(
+        .attention_message(
             &newsletter_thread,
             "weekly@lists.example.com",
             ME,
@@ -305,10 +347,7 @@ async fn get_desk_assigns_lanes_dedupes_and_explains_pace() {
     assert!(row.overdue, "two days against a one hour habit");
 
     assert_eq!(thread_ids(&due_lane), vec![due.clone()]);
-    assert_eq!(
-        due_lane.rows[0].commitment_id.as_deref(),
-        Some(&*format!("c-{due}"))
-    );
+    assert_eq!(due_lane.rows[0].commitment_id.as_deref(), Some(&*due_id));
     assert!(due_lane.rows[0].reason.contains("security review notes"));
     assert!(due_lane.rows[0].age_seconds < 0, "not due yet");
 
@@ -343,10 +382,10 @@ async fn archiving_a_conversation_takes_it_off_the_desk() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let mine = fx
-        .message(&thread, ME, "maya@example.com", Duration::days(1), None)
+        .attention_message(&thread, ME, "maya@example.com", Duration::days(1), None)
         .await;
     let reply = fx
-        .message(
+        .attention_message(
             &thread,
             "maya@example.com",
             ME,
@@ -394,7 +433,7 @@ async fn done_waiting_lasts_until_a_new_message_arrives() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let asked = fx
-        .message(&thread, ME, "jon@example.com", Duration::days(3), None)
+        .attention_message(&thread, ME, "jon@example.com", Duration::days(3), None)
         .await;
     let waiting = |desk: ResponseData| match desk {
         ResponseData::Desk { waiting, .. } => thread_ids(&waiting),
@@ -451,7 +490,7 @@ async fn done_waiting_lasts_until_a_new_message_arrives() {
     .await;
 
     // A follow-up you send later is new: the thread waits again.
-    fx.message(
+    fx.attention_message(
         &thread,
         ME,
         "jon@example.com",
@@ -467,7 +506,7 @@ async fn a_reply_to_a_dismissed_thread_lands_as_owed() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let asked = fx
-        .message(&thread, ME, "jon@example.com", Duration::days(3), None)
+        .attention_message(&thread, ME, "jon@example.com", Duration::days(3), None)
         .await;
     request(
         &fx,
@@ -477,7 +516,7 @@ async fn a_reply_to_a_dismissed_thread_lands_as_owed() {
         },
     )
     .await;
-    fx.message(
+    fx.attention_message(
         &thread,
         "jon@example.com",
         ME,
@@ -499,18 +538,18 @@ async fn a_watched_contacts_thread_obeys_done_waiting_and_covers_the_thread() {
     // watch her at a weekly cadence: she drifts onto Waiting on.
     let thread = ThreadId::new();
     let first = fx
-        .message(&thread, ME, "nora@example.com", Duration::days(45), None)
+        .attention_message(&thread, ME, "nora@example.com", Duration::days(45), None)
         .await;
     // Her answer long ago, archived: a person's row ignores archive.
     let answer = fx
-        .message(&thread, "nora@example.com", ME, Duration::days(44), None)
+        .attention_message(&thread, "nora@example.com", ME, Duration::days(44), None)
         .await;
     fx.state
         .store
         .set_message_labels(&answer.id, &[], EventSource::User)
         .await
         .unwrap();
-    fx.message(
+    fx.attention_message(
         &thread,
         ME,
         "nora@example.com",
@@ -582,12 +621,12 @@ async fn a_promise_covers_its_whole_thread_and_shows_its_star() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let mut starred = fx
-        .message(&thread, "nora@example.com", ME, Duration::days(40), None)
+        .attention_message(&thread, "nora@example.com", ME, Duration::days(40), None)
         .await;
     starred.flags |= MessageFlags::STARRED;
     fx.store_envelope(&starred, MessageDirection::Inbound).await;
     let promise = fx
-        .message(
+        .attention_message(
             &thread,
             ME,
             "nora@example.com",
@@ -612,7 +651,7 @@ async fn a_delayed_message_with_an_old_date_ends_done_waiting() {
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let asked = fx
-        .message(&thread, ME, "jon@example.com", Duration::days(3), None)
+        .attention_message(&thread, ME, "jon@example.com", Duration::days(3), None)
         .await;
     request(
         &fx,
@@ -623,7 +662,7 @@ async fn a_delayed_message_with_an_old_date_ends_done_waiting() {
     )
     .await;
     // Delivered now, dated a week ago: still news to the thread.
-    fx.message(
+    fx.attention_message(
         &thread,
         ME,
         "jon@example.com",

@@ -1,0 +1,340 @@
+{
+  "recorded_at": "2026-10-23T21:08:42.489338+00:00",
+  "canonical_path": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b",
+  "common_git_dir": "/Users/bhekanik/code/planetaryescape/mxr/.git",
+  "head": "cd08cfe5eb72b0959bc623ad15439bbf09cbe2c3",
+  "branch": "t3/asks-r2c-to-do-classifier",
+  "base": "cd08cfe5eb72b0959bc623ad15439bbf09cbe2c3",
+  "merge_base": "cd08cfe5eb72b0959bc623ad15439bbf09cbe2c3",
+  "initial_dirty_state": "",
+  "fetch": "git fetch https://github.com/planetaryescape/mxr.git main:refs/remotes/origin/main",
+  "directories": {
+    "target": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b/target-cli",
+    "target_exists": false,
+    "dependencies": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b/apps/web/node_modules",
+    "dependencies_exist": false,
+    "runtime": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b/.r2c-runtime",
+    "runtime_exists": false,
+    "target_configuration": ".cargo/config.toml and scripts/cargo-test both select target-cli"
+  },
+  "ownership": {
+    "build_processes": [],
+    "runtime_processes": [],
+    "queue_jobs": [],
+    "foreign_processes": "Observed foreign queue jobs 252,255,257 running and 258,260,261 queued; none owned by this candidate. No process stopped.",
+    "sccache": "shared preserved"
+  },
+  "storage": {
+    "total_bytes": 7998551654400,
+    "used_bytes": 5025655619584,
+    "free_bytes": 2972896034816
+  },
+  "limits": {
+    "child_target_gib": 60,
+    "whole_run_gib": 100,
+    "workers": 4,
+    "round_minutes": 45,
+    "build_measure_after_minutes": 3,
+    "local_eval_minutes": 5,
+    "ports": [
+      5573,
+      22777,
+      22778
+    ]
+  },
+  "real_mail": "prohibited; fake-only runtime not started",
+  "measurements": [
+    {
+      "at": "2026-10-23T21:17:14.702895+00:00",
+      "target_kib": 809676,
+      "check": "initial build measured after first compile failure; same target reused",
+      "initial_build": "agent-work task 252, tool session 6377, exit 101: encode_json slice Sized; corrected with reference to slice",
+      "second_build": "agent-work task 252, tool session 34963, waiting for normal memory pressure and at least 25% available memory",
+      "owned_runtime": []
+    },
+    {
+      "at": "2026-10-23T21:21:35.263263+00:00",
+      "target_kib": 809676,
+      "second_build_pid": 1035,
+      "queue_executor_pid": 1046,
+      "queue_task_id": 252,
+      "macos_pressure_level": 2,
+      "memory_pressure_free_percent": 40,
+      "meaning": "agent-work requires pressure level 1 and at least 25% free; no override or foreign process termination"
+    },
+    {
+      "at": "2026-10-23T21:45:13.636682+00:00",
+      "target_kib": 809676,
+      "parent_web_node_modules_kib": 415556,
+      "external_evidence_kib": 48668,
+      "child_web_dependencies": false,
+      "child_site_dependencies": false,
+      "runtime_created": false,
+      "own_active_jobs": [],
+      "own_runtime_processes": [],
+      "memory_pressure_level": 2
+    }
+  ],
+  "checks": [
+    {
+      "command": "CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 RAYON_NUM_THREADS=4 agent-work run -- scripts/cargo-test -p mxr-todo --tests asks::",
+      "session_id": 6377,
+      "queue_id": 252,
+      "result": "exit 101; encode_json(ids) required Sized; fixed encode_json(&ids)"
+    },
+    {
+      "command": "CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 RAYON_NUM_THREADS=4 agent-work run -- scripts/cargo-test -p mxr-todo --tests asks::",
+      "session_id": 34963,
+      "queue_id": 252,
+      "pid": 1035,
+      "executor_pid": 1046,
+      "result": "waiting at memory pressure gate; no override"
+    },
+    {
+      "command": "rustfmt --edition 2021 [changed/new Rust modules]",
+      "result": "exit 0; syntax parsed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "exit 0"
+    },
+    {
+      "command": "agent-work run -- env CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 NEXTEST_TEST_THREADS=4 RAYON_NUM_THREADS=4 scripts/cargo-test -p mxr-todo --tests asks::",
+      "session_id": 38048,
+      "queue_id": 258,
+      "caller_pid": 84363,
+      "executor_pid": 88795,
+      "result": "memory gate never started Cargo; cancelled owned job at 2026-10-23T21:42:24Z; exit 143"
+    },
+    {
+      "command": "agent-work cancel 252",
+      "result": "cancelled own waiting job; exit 0; waiting caller session 34963 exit 143"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "exit 0 after final formatting; session 88667"
+    },
+    {
+      "command": "scripts/check_architecture_boundaries.sh",
+      "result": "exit 0: Architecture boundaries ok"
+    },
+    {
+      "command": "node site/scripts/validate-docs.mjs",
+      "result": "exit 0: [docs-validate] ok (265 OpenAPI paths)"
+    },
+    {
+      "command": "scripts/pre-pr-rust-gate --list",
+      "result": "mxr, mxr-core, mxr-protocol, mxr-store, mxr-todo; full gate not run"
+    }
+  ],
+  "latest_remote": {
+    "fetched_at": "2026-10-23T21:45:13.628086+00:00",
+    "origin_main": "a9b1346f763e7f43a1ece10f50c63b74140f0f12",
+    "pinned_initial_base": "cd08cfe5eb72b0959bc623ad15439bbf09cbe2c3",
+    "remote_changes": "43 docs/site/marketing files; git diff --quiet cd08..origin/main -- crates apps/web Cargo.toml Cargo.lock returned 0",
+    "next": "commit then rebase clean isolated candidate onto fetched origin/main"
+  },
+  "worker_limit_incident": {
+    "observation": "agent-work execute() overwrites CARGO_BUILD_JOBS/RUST_TEST_THREADS/NEXTEST_TEST_THREADS/RAYON_NUM_THREADS with 5 before spawning child",
+    "impact": "first compile received wrapper defaults despite outer env=4; later attempts never reached Cargo",
+    "fix": "all following heavy commands must put env=4 after agent-work run --",
+    "source": "~/.dotfiles/bin/agent-work:76-82"
+  },
+  "round2": {
+    "recorded_at": "2026-10-23T22:24:56.791314+00:00",
+    "canonical_worktree": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b",
+    "branch": "t3/asks-r2c-to-do-classifier",
+    "foundation_head": "231624910cdae602f8efcd4388905d08ae40c097",
+    "fetched_base": "b3c2f3b00aca85c2c7375030e86fb7f2380ba4fc",
+    "target_directory": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b/target-cli",
+    "target_budget_gib": 60,
+    "run_budget_gib": 100,
+    "target_kib": 809676,
+    "worker_tree_kib": 918188,
+    "heavy_commands_started": 0,
+    "queue_jobs": [],
+    "runtime_processes": [],
+    "reserved_ports": [
+      5573,
+      22777,
+      22778
+    ],
+    "memory_pressure_level": 2,
+    "memory_free_percent_last_observed": 38,
+    "reason_no_heavy_run": "Shared wrapper requires pressure level 1 and free >=25%; pressure remained 2. No override or foreign process action."
+  },
+  "round3": {
+    "round": 3,
+    "recorded_at": "2026-10-23T23:09:18.273476+00:00",
+    "canonical_path": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b",
+    "branch": "t3/asks-r2c-to-do-classifier",
+    "head": "e7785da67a4f34646b31a2692ed63ba31c56e8d9",
+    "tree": "d1f324ba498811decfffeaee542cc6dd562ded0a",
+    "base": "b3c2f3b00aca85c2c7375030e86fb7f2380ba4fc",
+    "fresh_main": "544da5355fbaa11a7cf64e0fecbd844ca119623a",
+    "merge_base": "b3c2f3b00aca85c2c7375030e86fb7f2380ba4fc",
+    "status": "",
+    "target": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b/target-cli",
+    "limits": {
+      "target_gib": 60,
+      "run_gib": 100,
+      "workers": 4
+    },
+    "new_workers": 0,
+    "runtime": "fake-only CLI smoke completed; own daemon stopped at closeout; restart environment .r2c-runtime/environment.sh",
+    "real_mail": "prohibited and not used",
+    "tests": {
+      "daemon_asks_1df": "11/11 pass 4.04s; build46.35s session18036",
+      "store_asks_0fa": "11/11 pass7.06s session85217",
+      "store_legacy_303": "6/6 pass2.15s session82658",
+      "web_1df": "3 files31tests pass1.32s session70251",
+      "generators": "canonical OpenAPI + gen:types pass; API267paths; npm typecheck pass",
+      "lint": "web lint pass829files; React Doctor noissues; one existing repo-pattern module-mock warning from anti-slop",
+      "scoped_gate": "PASS a866 session33544 clippy46.71s; fmt/architecture/cargo-deny pass",
+      "cli_build": "PASS a866 session14136 2m33s; macOS linker warning only",
+      "cli_help": "5/5 PASS session83003 build56.75s tests10.85s; reviewed three snapshots; canonical reference generator123pages",
+      "ui_empty": "four files32tests PASS961ms session61764; only-uncertain regression passed; scoped oxlint0; typecheck pass"
+    },
+    "pending": [
+      "stored evaluator floors/full50k/heldout/invariance",
+      "full backup/migration/mixed-version recovery",
+      "full correction/client acceptance and actual UI48matrix",
+      "parent full CI/integration/review/release",
+      "counts-only week dogfood"
+    ],
+    "source_checked": "a866c1ad334809ee5c8767035f5dfd812758315b",
+    "measured_target_kib": 25166972,
+    "measured_runtime_kib": 8084,
+    "node_modules_kib": 393196
+  },
+  "round4": {
+    "recorded_at": "2026-10-23T23:59:51.298339+00:00",
+    "started_at": "2026-10-23T23:20:48Z",
+    "deadline": "2026-10-24T00:05:48Z",
+    "canonical_path": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b",
+    "branch": "t3/asks-r2c-to-do-classifier",
+    "source_checkpoint": "a80b75a95ead7282104cd198fc99a3c11b5a7a51",
+    "source_tree": "23fbaccdf081f788615ee1306377eeb5611891c9",
+    "starting_head": "f3fdeb21f2ccbe9a9da0a621cc7a979ec293ef0a",
+    "fresh_main": "5213b493b7e7be40584b7f0bdf8d6a76158cc458",
+    "merge_base": "544da5355fbaa11a7cf64e0fecbd844ca119623a",
+    "target": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b/target-cli",
+    "target_kib": 26841792,
+    "runtime_kib": 68356,
+    "web_dependencies_kib": 415432,
+    "limits": {
+      "target_gib": 60,
+      "run_gib": 100,
+      "workers": 4
+    },
+    "new_workers": 0,
+    "new_checkouts": 0,
+    "new_targets": 0,
+    "active_job": {
+      "queue_id": 252,
+      "session_id": 77251,
+      "command": "agent-work run -- env CARGO_BUILD_JOBS=4 RUST_TEST_THREADS=4 NEXTEST_TEST_THREADS=4 RAYON_NUM_THREADS=4 scripts/cargo-test -p mxr --lib handler::tests::classify_eval_full::the_full_set_is_graded_on_the_whole_demo -- --ignored --nocapture",
+      "log": "r2c-round4-full50k.log",
+      "started_at": "2026-10-23T23:58:53Z",
+      "build": "18.71s; native test running; result pending"
+    },
+    "parent_owned_runtime": {
+      "daemon_pid": 60822,
+      "bridge_port": 22777,
+      "binary_source": "a866c1ad334809ee5c8767035f5dfd812758315b",
+      "vite_pid": 61080,
+      "web_port": 5573,
+      "released_pid": 29767,
+      "released_port": 21777,
+      "action": "untouched; no replacement/restart"
+    },
+    "checks": {
+      "quick_non_update": "10/10 PASS, build18.54s/tests29.50s, session50479; reviewed snapshot653 + Rust0b",
+      "core_natural_time": "32/32 PASS0.02s",
+      "todo": "109/109 PASS0.17s oncd37; latest110-test suite not rerun",
+      "site_astro": "209pages PASS3.14s; parent dependencies read-only sandbox; output/cache worker-owned",
+      "docs_validate": "PASS267paths",
+      "architecture": "PASS",
+      "rustfmt_touched": "PASS",
+      "full50k": "RUNNING; not passed",
+      "final_scoped_rust_gate": "NOT RUN round4",
+      "final_cli_build": "NOT RUN round4"
+    },
+    "integration": "freshmain5213 not integrated; parent owns integration preserving pushed history",
+    "real_mail": "prohibited/not used; no model calls; synthetic tests only",
+    "temporary_dependencies": "owned site/node_modules and runtime node_modules symlinks unlinked after sitebuild; parent targets untouched",
+    "report": "external evidence/r2c-worker-report.md; prior preserved r2c-worker-round3-report.md"
+  },
+  "round5": {
+    "recorded_at": "2026-10-24T00:45:57.838857+00:00",
+    "started_at": "2026-10-24T00:10:05Z",
+    "deadline": "2026-10-24T00:55:05Z",
+    "canonical_path": "/Users/bhekanik/.t3/worktrees/mxr/t3-f14a215b",
+    "branch": "t3/asks-r2c-to-do-classifier",
+    "starting_head": "5a516bfb8eb1eb15654a24ea7326f97d157f52ba",
+    "source_checkpoint": "abd87f6b3897c6a20a2086b74c553231e1ddb90f",
+    "source_tree": "ab6e03a8efb995b88d5f2ca150b866678bf7a6c9",
+    "production_rust": "622cefa8db9cc8e4cc109489761298bed5363531",
+    "fresh_main": "f9d316de44c4081d2a5f314c54763525d5884d83",
+    "merge_base": "673b3fdc526ee9f0d6340f8349737304f474f19c",
+    "main_change": "one docs issue file27+/12-; parent integration after quiescence",
+    "target": "target-cli",
+    "target_kib_last": 34668628,
+    "runtime_kib_last": 63120,
+    "limits": {
+      "target_gib": 60,
+      "whole_run_gib": 100,
+      "workers": 4
+    },
+    "new_workers": 0,
+    "new_checkouts": 0,
+    "new_targets": 0,
+    "native_query": {
+      "before_1k_steps": 10200,
+      "before_10k_steps": 100099,
+      "after_1k_steps": 114,
+      "after_10k_steps": 114,
+      "store_tests": "10/10PASS10.60s; build3.86s"
+    },
+    "timezone": {
+      "before_500_ms": 385.608167,
+      "after_500_ms": 23.05425,
+      "tests": "4/4PASS0.02s; build3.42s",
+      "store_freshness_backup": "12/12PASS10.60s"
+    },
+    "backup": "2/2PASS2.69s; build5.16s; schema97/98inverse+99durability",
+    "assistant": "60/60PASS2.47s; typecheckPASS; scopedoxlint0(explicitthreads4); anti-slopchanged0",
+    "first_full_run": "query90b source; cancelled owned252 after10m24 nativeexecution; exit143/no metrics",
+    "active_job": {
+      "queue": 251,
+      "session": 87945,
+      "cargo_pid": 53221,
+      "native_pid": 62266,
+      "rust_source": "622cefa8db9cc8e4cc109489761298bed5363531",
+      "log": "r2c-round5-tz-full50k.log",
+      "build": "1m04s",
+      "execution_started_approx": "2026-10-24T00:36:23Z",
+      "execution_budget_until": "2026-10-24T00:46:23Z",
+      "result": "pending atrecording"
+    },
+    "remaining_at_recording": [
+      "currentfullgrading",
+      "scopedmatrixrerunafterfixturefix",
+      "finalscopedRustgate",
+      "cargo build -p mxr",
+      "canonicalOpenAPI/types/helpverification",
+      "parentcurrentbinaryruntime/CI/release",
+      "oneweekcountsdogfood"
+    ],
+    "runtime_ownership": {
+      "parent_daemon": 60822,
+      "parent_bridge": 22777,
+      "parent_vite": 61080,
+      "parent_web": 5573,
+      "released_daemon": 29767,
+      "released_port": 21777,
+      "action": "untouched; no child runtime"
+    },
+    "report": "external r2c-worker-report.md; round4 preserved as r2c-worker-round4-report.md"
+  }
+}

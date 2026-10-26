@@ -5841,6 +5841,17 @@ pub(crate) fn todo_undo(change: &mxr_protocol::TodoChangeData) -> Option<app::Pe
     if change.dry_run || change.changed.is_empty() {
         return None;
     }
+    if let Some(token) = &change.correction_undo {
+        return Some(app::PendingUndo {
+            action: app::UndoAction::TodoCorrection {
+                todo_id: change.changed.first()?.id.clone(),
+                correction_id: token.clone(),
+            },
+            verb_past: "Corrected".into(),
+            count: 1,
+            applied_at: std::time::Instant::now(),
+        });
+    }
     let ids: Vec<String> = change.changed.iter().map(|todo| todo.id.clone()).collect();
     let (action, verb_past) = match change.action.as_str() {
         "done" => (app::UndoAction::Todos(ids), "Ticked off"),

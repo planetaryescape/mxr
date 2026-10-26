@@ -17,6 +17,7 @@
 //!
 //!   An optional `Thread: <fixture-key>` groups messages into one account-scoped
 //!   fake conversation, so a sent history and its current reply share a thread.
+//!   `Date: <RFC3339>` sets its age; absent or invalid dates use arrival time.
 //!
 //! - write `fail` and every sync fails until it is removed. Its first line
 //!   is the error: `rate_limit 120` is a rate limit asking for 120 seconds,
@@ -205,6 +206,7 @@ fn parse_message(account_id: &AccountId, provider_id: &str, text: &str) -> Synce
     };
     let mut to = Vec::new();
     let mut subject = String::new();
+    let mut date = None;
     let mut thread_key = None;
     let mut labels = vec!["INBOX".to_string(), "UNREAD".to_string()];
     for line in head.lines() {
@@ -215,6 +217,11 @@ fn parse_message(account_id: &AccountId, provider_id: &str, text: &str) -> Synce
             "from" => from = parse_address(value),
             "to" => to = value.split(',').map(parse_address).collect(),
             "subject" => subject = value.trim().to_string(),
+            "date" => {
+                date = chrono::DateTime::parse_from_rfc3339(value.trim())
+                    .ok()
+                    .map(|date| date.with_timezone(&chrono::Utc));
+            }
             "thread" => thread_key = Some(format!("spool-thread-{}", value.trim())),
             "labels" => {
                 labels = value
@@ -246,7 +253,7 @@ fn parse_message(account_id: &AccountId, provider_id: &str, text: &str) -> Synce
         cc: Vec::new(),
         bcc: Vec::new(),
         subject,
-        date: chrono::Utc::now(),
+        date: date.unwrap_or_else(chrono::Utc::now),
         flags: if labels.iter().any(|label| label == "UNREAD") {
             mxr_core::types::MessageFlags::empty()
         } else {
@@ -284,6 +291,26 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("mxr-spool-{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn a_fixture_date_preserves_waiting_age_and_defaults_to_arrival() {
+        let account = AccountId::new();
+        let dated = parse_message(
+            &account,
+            "dated",
+            "Date: 2026-10-20T10:00:00+01:00\n\nCould you confirm the meeting time?",
+        );
+        assert_eq!(
+            dated.envelope.date.to_rfc3339(),
+            "2026-10-20T09:00:00+00:00"
+        );
+        let before = chrono::Utc::now();
+        for header in ["", "Date: invalid\n"] {
+            let message = parse_message(&account, "current", &format!("{header}\nBody"));
+            assert!(message.envelope.date >= before);
+            assert!(message.envelope.date <= chrono::Utc::now());
+        }
     }
 
     #[test]

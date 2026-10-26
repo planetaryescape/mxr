@@ -63,6 +63,9 @@ pub struct UndoEntrySnapshot {
 /// What the desk's Done changed beyond messages, as it was before.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeskUndo {
+    /// Exact promise/task states changed together by Desk Done.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub promise_resolutions: Vec<crate::PromiseResolution>,
     #[serde(default)]
     pub dismissals: Vec<crate::DeskDismissalPrior>,
     #[serde(default)]
@@ -109,7 +112,8 @@ pub struct TodoTickPrior {
 
 impl DeskUndo {
     pub fn is_empty(&self) -> bool {
-        self.dismissals.is_empty()
+        self.promise_resolutions.is_empty()
+            && self.dismissals.is_empty()
             && self.commitments.is_empty()
             && self.reply_later.is_empty()
             && self.reply_later_priors.is_empty()

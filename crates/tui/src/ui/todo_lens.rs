@@ -434,6 +434,15 @@ fn runway_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) -
         body.text("Loading To do…", muted);
         return body;
     };
+    if !runway.might_need_you.is_empty() {
+        body.text(
+            format!(
+                "Might need you · {} · m review",
+                runway.might_need_you.len()
+            ),
+            muted,
+        );
+    }
     if !runway.headline.is_empty() {
         body.push(Line::from(Span::styled(
             format!("  {}", one_line(&runway.headline)),
@@ -594,6 +603,49 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &TodoView<'_>, theme: &crate::t
         .filter(|preview| preview.state == "preview")
     {
         draw_microsoft_preview(frame, area, view.page, preview, theme);
+        return;
+    }
+    if view.page.uncertain_open {
+        let items = view
+            .page
+            .runway
+            .as_ref()
+            .map(|r| r.might_need_you.as_slice())
+            .unwrap_or_default();
+        let lines: Vec<Line<'static>> = items
+            .iter()
+            .enumerate()
+            .flat_map(|(index, item)| {
+                let marker = if index == view.page.uncertain_selected {
+                    "> "
+                } else {
+                    "  "
+                };
+                let mut lines = vec![Line::from(format!("{marker}{}", one_line(&item.subject)))];
+                for unit in item
+                    .asks
+                    .units
+                    .iter()
+                    .filter(|u| u.answer == mxr_core::asks::AskAnswer::NotSure)
+                {
+                    lines.push(Line::from(format!(
+                        "    {}",
+                        one_line(
+                            unit.quote
+                                .as_deref()
+                                .unwrap_or("Open the source email to review this request.")
+                        )
+                    )));
+                }
+                lines
+            })
+            .collect();
+        frame.render_widget(
+            Paragraph::new(lines).wrap(Wrap { trim: true }).block(
+                Block::bordered().title(" Might need you · j/k choose · Enter source · Esc close "),
+            ),
+            area,
+        );
         return;
     }
     let is_focused = *view.active_pane == ActivePane::MailList;
@@ -791,6 +843,11 @@ pub fn draw_prompt(
             "When should it show up? The due date stays as it is.",
             "Type a time: mon 9am \u{b7} in 3d \u{b7} fri",
         ),
+        TodoPromptKind::Correct { .. } => (
+            " Correct to-do ",
+            "1 Not a to-do · 2 Not mine · 3 Already done · 4 Wrong details",
+            "Choose 1–4 and Enter; Escape cancels. Wrong details opens the editor.",
+        ),
         TodoPromptKind::Edit { .. } => (
             " Edit ",
             "Correct a field as field=value. The row is yours from then on.",
@@ -932,6 +989,7 @@ pub(crate) mod tests {
 
     pub(crate) fn runway(now: Vec<TodoData>, coming: Vec<TodoData>) -> TodoRunwayData {
         TodoRunwayData {
+            might_need_you: vec![],
             generated_at: Utc::now(),
             header: TODO_GUIDE.header.into(),
             headline: if now.is_empty() {
@@ -1290,6 +1348,7 @@ pub(crate) mod tests {
         assert!(rendered.contains("\u{21b5} keep  e let go  E let go of all"));
 
         catchup_page.catchup_preview = Some(TodoChangeData {
+            correction_undo: None,
             dry_run: true,
             action: "let_go".into(),
             changed: catchup_page.catchup.as_ref().unwrap().todos.clone(),

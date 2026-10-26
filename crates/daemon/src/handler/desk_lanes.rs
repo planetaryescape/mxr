@@ -109,6 +109,7 @@ pub(super) fn thread_starred(thread: &[DeskMessage]) -> bool {
 pub(super) struct AccountInputs<'a> {
     pub pending_threads: &'a HashSet<ThreadId>,
     pub assessments: &'a HashMap<MessageId, mxr_core::assessment::MailAssessment>,
+    pub asks: &'a HashMap<MessageId, mxr_core::asks::AskAssessment>,
     pub account_id: &'a AccountId,
     /// Messages of recently active threads, ordered by thread then date.
     pub messages: &'a [DeskMessage],
@@ -486,6 +487,23 @@ fn thread_row(
             ));
         }
     }
+    let owes_reply = inputs.asks.get(&inbound.id).is_some_and(|answer| {
+        answer
+            .units
+            .iter()
+            .any(|u| u.answer == mxr_core::asks::AskAnswer::AsksYouToReply)
+    });
+    // Their promise can coexist with your response; explicit return times above still win.
+    if !owes_reply
+        && inputs.asks.get(&latest.id).is_some_and(|answer| {
+            answer
+                .units
+                .iter()
+                .any(|u| u.answer == mxr_core::asks::AskAnswer::TheyPromisedYou)
+        })
+    {
+        return waiting_row(inputs, conversation, latest, latest_inbound.is_some());
+    }
     if inbound.trashed || !in_inbox || inputs.sender_kind(inbound) != SenderKind::Person {
         return None;
     }
@@ -496,7 +514,7 @@ fn thread_row(
     }
     // Human response occurrence is not a new obligation. Unknown semantics
     // stays in Messages' Recent/Quiet views, never the attention rail.
-    if !mail_kind::requires_reply(&inputs.signals(inbound)) {
+    if !owes_reply {
         return None;
     }
     let email = inbound.from.email.as_str();
@@ -607,7 +625,11 @@ fn waiting_row(
         return None;
     }
     let timer = inputs.timers.waiting(conversation.all, &answers, now);
-    let recipient = sent.to.iter().find(|a| !(inputs.is_self)(&a.email))?;
+    let recipient = if inputs.is_outbound(sent) {
+        mxr_core::first_non_owned_recipient(&sent.to, &sent.cc, inputs.is_self)?
+    } else {
+        &sent.from
+    };
     let email = recipient.email.as_str();
     let contact = inputs.contact(email);
     // Nobody replied by the time you set: back, however old or archived.
@@ -621,6 +643,17 @@ fn waiting_row(
             "no reply by the time you set",
             back_at,
         ));
+    }
+    if !inputs.asks.get(&sent.id).is_some_and(|answer| {
+        answer.units.iter().any(|u| {
+            matches!(
+                u.answer,
+                mxr_core::asks::AskAnswer::YouAskedThem
+                    | mxr_core::asks::AskAnswer::TheyPromisedYou
+            )
+        })
+    }) {
+        return None;
     }
     // Automatic waiting remains conservative; an explicit timer above is
     // authoritative even for a role/list destination.
@@ -956,7 +989,7 @@ mod tests {
         screener: HashMap<String, ScreenerDisposition>,
     ) -> ThreadLanes {
         let account = AccountId::new();
-        let contacts = contacts
+        let contacts: HashMap<String, DeskContact> = contacts
             .iter()
             .map(|c| (c.email.to_ascii_lowercase(), c.clone()))
             .collect();
@@ -964,9 +997,48 @@ mod tests {
         let timers = DeskTimers::default();
         let is_self = |email: &str| email.eq_ignore_ascii_case(ME);
         let moves = HashMap::new();
+        let asks: HashMap<_, _> = messages
+            .iter()
+            .map(|message| {
+                let reply_capable = mail_kind::human_response(&desk_signals(
+                    message,
+                    contacts.get(&message.from.email.to_ascii_lowercase()),
+                    screener
+                        .get(&message.from.email.to_ascii_lowercase())
+                        .copied(),
+                    None,
+                    &is_self,
+                ));
+                let answer = mxr_todo::asks::assess(
+                    &mxr_todo::asks::AskInput {
+                        message_id: &message.id,
+                        account_id: &account,
+                        subject: &message.subject,
+                        body: message.evidence.text.as_deref(),
+                        from: &message.from,
+                        to: &message.to,
+                        cc: &message.cc,
+                        bcc: &message.bcc,
+                        list_mail: message.list_id.is_some(),
+                        bulk: message.evidence.bulk,
+                        owner_names: &[],
+                        owner_addresses: &[ME.into()],
+                        is_owner: &is_self,
+                        sent: message.date,
+                        predecessor: None,
+                        owner_replied_afterwards: false,
+                        reply_capable,
+                    },
+                    &Utc,
+                    "lane-fixture".into(),
+                );
+                (message.id.clone(), answer)
+            })
+            .collect();
         thread_lanes(&AccountInputs {
             pending_threads: &HashSet::new(),
             assessments: &HashMap::new(),
+            asks: &asks,
             account_id: &account,
             messages,
             contacts: &contacts,

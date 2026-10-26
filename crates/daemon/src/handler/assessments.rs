@@ -25,6 +25,9 @@ type BeforeCommit = std::sync::Arc<
 #[cfg(test)]
 tokio::task_local! {
     pub(super) static BEFORE_COMMIT: BeforeCommit;
+    pub(crate) static BEFORE_AUTHORITY_WRITE: std::sync::Arc<dyn Fn() + Send + Sync>;
+    pub(super) static AFTER_RECONCILE_TICK: std::sync::Arc<dyn Fn() + Send + Sync>;
+    pub(super) static RECONCILER_CONTEXT_TOKEN: std::sync::Arc<dyn Fn() -> Option<String> + Send + Sync>;
 }
 
 pub(super) fn describe(assessment: &MailAssessment) -> mxr_protocol::MailKindData {
@@ -188,13 +191,38 @@ pub(super) async fn materialize_threads<F, Fut>(
     state: &AppState,
     account: &AccountId,
     threads: &[mxr_core::ThreadId],
-    mut before_commit: F,
+    before_commit: F,
 ) -> Result<HashMap<MessageId, MailAssessment>, HandlerError>
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = Result<(), HandlerError>>,
 {
+    Ok(
+        materialize_threads_at(state, account, threads, before_commit, chrono::Utc::now())
+            .await?
+            .0,
+    )
+}
+
+pub(super) async fn materialize_threads_at<F, Fut>(
+    state: &AppState,
+    account: &AccountId,
+    threads: &[mxr_core::ThreadId],
+    mut before_commit: F,
+    projection_now: chrono::DateTime<chrono::Utc>,
+) -> Result<
+    (
+        HashMap<MessageId, MailAssessment>,
+        mxr_todo::pass::PassSummary,
+    ),
+    HandlerError,
+>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<(), HandlerError>>,
+{
     let _config = state.assessment_config_gate.read().await;
+    let mut projected = mxr_todo::pass::PassSummary::default();
     for _ in 0..3 {
         let revision = state
             .store
@@ -209,9 +237,9 @@ where
         let is_self = self_matcher(state, account).await?;
         let shape = super::conversation_shape::shape_config(state);
         let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
-        let stored = state
+        let (stored, _) = state
             .store
-            .assessments_for_messages(account, CLASSIFIER_POLICY_VERSION, &ids)
+            .assessment_facets_for_messages(account, &ids)
             .await?;
         let mut answers = Vec::new();
         for thread in messages.chunk_by(|a, b| a.thread_id == b.thread_id) {
@@ -316,13 +344,20 @@ where
             }
         }
         before_commit().await?;
+        let asks =
+            super::ask_assessments::prepare(state, account, &messages, &senders, &is_self).await?;
         if !state
             .store
-            .save_assessment_batch(account, &revision, &answers)
+            .save_assessment_facets(account, &revision, &answers, &asks)
             .await?
         {
             continue;
         }
+        projected.add(
+            &replay_projections_at(state, account, projection_now)
+                .await?
+                .1,
+        );
         let mut persisted = state
             .store
             .assessments_for_messages(account, CLASSIFIER_POLICY_VERSION, &ids)
@@ -339,12 +374,12 @@ where
                 .assessment_thread_revisions(account, threads)
                 .await?
         {
-            return Ok(persisted);
+            return Ok((persisted, projected));
         }
     }
     // Relevant inputs kept moving. Readers must expose pending, never a
     // newly computed home or a stale stored answer. Dirty work stays queued.
-    Ok(HashMap::new())
+    Ok((HashMap::new(), projected))
 }
 
 /// Synthetic fixtures that bypass sync also cover historical/no-arrivals mail.
@@ -366,6 +401,12 @@ pub(crate) async fn reconcile_account(
         materialize_threads(state, account, &threads, || async { Ok(()) }).await?;
         tokio::task::yield_now().await;
     }
+    // A thread page can contain more than 100 messages. Finish its durable
+    // projection pages through the same bounded seam as the background worker.
+    let mut after = None;
+    while let Some(last) = reconcile_dirty_page(state, account, after.as_deref()).await? {
+        after = Some(last);
+    }
     Ok(())
 }
 
@@ -376,23 +417,42 @@ fn placement_rule(rule: KindRuleData) -> String {
         .unwrap_or_else(|| "person".into())
 }
 
+pub(crate) fn context_key(recipients: usize, timezone_token: Option<&str>) -> String {
+    format!(
+        "{CLASSIFIER_POLICY_VERSION}:{}:{recipients}:{timezone_token:?}",
+        mxr_core::asks::ASKS_POLICY_VERSION
+    )
+}
+
+fn reconciler_context_token() -> Option<String> {
+    #[cfg(test)]
+    if let Ok(resolve) = RECONCILER_CONTEXT_TOKEN.try_with(std::sync::Arc::clone) {
+        return resolve();
+    }
+    mxr_store::asks_context_token().ok()
+}
+
 pub(crate) async fn reconciler_loop(
     state: std::sync::Arc<AppState>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(2));
     let mut previous_shape = None;
+    let mut previous_asks_context = None;
     loop {
         tokio::select! { _ = tick.tick() => {}, changed = shutdown.changed() => {
             if changed.is_err() || *shutdown.borrow_and_update() { break; } continue;
         }}
         let shape = super::conversation_shape::shape_config(&state);
-        if previous_shape != Some(shape) {
-            if let Err(error) = state.store.invalidate_all_assessments().await {
+        let asks_context = reconciler_context_token();
+        if previous_shape != Some(shape) || previous_asks_context != asks_context {
+            let context = context_key(shape.large_thread_recipients, asks_context.as_deref());
+            if let Err(error) = state.store.sync_assessment_context(&context).await {
                 tracing::warn!(%error, "assessment initialization pending");
                 continue;
             }
             previous_shape = Some(shape);
+            previous_asks_context = asks_context;
         }
         let Ok(accounts) = state.store.list_accounts().await else {
             continue;
@@ -419,7 +479,46 @@ pub(crate) async fn reconciler_loop(
                 tracing::warn!(account = %account.id, %error, "arrival placement pending after assessment reconciliation");
             }
         }
+        #[cfg(test)]
+        let _ = AFTER_RECONCILE_TICK.try_with(|observe| observe());
     }
+}
+
+async fn replay_projections_at(
+    state: &AppState,
+    account: &AccountId,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(usize, mxr_todo::pass::PassSummary), HandlerError> {
+    if !state.config_snapshot().todo.enabled {
+        return Ok((0, mxr_todo::pass::PassSummary::default()));
+    }
+    let mut acknowledged = 0;
+    let mut projected = mxr_todo::pass::PassSummary::default();
+    let mut failure = None;
+    for ticket in state.store.pending_asks_projections(account).await? {
+        match mxr_todo::pass::project_stored_ask(
+            &state.store,
+            &super::todos::pass_config(state, now),
+            &ticket.answer.message_id,
+        )
+        .await
+        {
+            Ok(summary) => {
+                if state.store.acknowledge_asks_projection(&ticket).await? {
+                    acknowledged += 1;
+                    projected.add(&summary);
+                }
+            }
+            Err(error) => {
+                tracing::warn!(message = %ticket.answer.message_id, %error, "stored asks projection remains queued");
+                failure.get_or_insert_with(|| HandlerError::from(error.to_string()));
+            }
+        }
+    }
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    Ok((acknowledged, projected))
 }
 
 pub(super) async fn reconcile_dirty_page(
@@ -427,9 +526,14 @@ pub(super) async fn reconcile_dirty_page(
     account: &AccountId,
     after: Option<&str>,
 ) -> Result<Option<String>, HandlerError> {
+    let replayed = replay_projections_at(state, account, chrono::Utc::now())
+        .await?
+        .0;
     let threads = state.store.dirty_assessment_threads(account, after).await?;
     let Some(last) = threads.last().map(mxr_core::ThreadId::as_str) else {
-        return Ok(None);
+        // Yield between bounded projection pages even when no thread is dirty.
+        // Keep the cursor so completing an outbox page never rescans the account.
+        return Ok((replayed == 100).then(|| after.unwrap_or_default().to_string()));
     };
     materialize_threads(state, account, &threads, || async { Ok(()) }).await?;
     Ok(Some(last))
@@ -442,6 +546,17 @@ pub(crate) async fn reconcile_messages(
     account: &AccountId,
     ids: &[MessageId],
 ) -> Result<(), HandlerError> {
+    reconcile_messages_at(state, account, ids, chrono::Utc::now()).await?;
+    Ok(())
+}
+
+pub(crate) async fn reconcile_messages_at(
+    state: &AppState,
+    account: &AccountId,
+    ids: &[MessageId],
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<mxr_todo::pass::PassSummary, HandlerError> {
+    let mut summary = mxr_todo::pass::PassSummary::default();
     let mut threads: Vec<_> = state
         .store
         .list_envelopes_by_ids(ids)
@@ -453,7 +568,11 @@ pub(crate) async fn reconcile_messages(
     threads.sort_by_key(mxr_core::ThreadId::as_str);
     threads.dedup();
     for chunk in threads.chunks(100) {
-        materialize_threads(state, account, chunk, || async { Ok(()) }).await?;
+        summary.add(
+            &materialize_threads_at(state, account, chunk, || async { Ok(()) }, now)
+                .await?
+                .1,
+        );
     }
-    Ok(())
+    Ok(summary)
 }

@@ -362,6 +362,7 @@ fn resolution_requires_preview_and_explicit_accept_and_opens_exact_source() {
         "todo_1".into(),
         "resolution-1".into(),
         TodoChangeData {
+            correction_undo: None,
             dry_run: true,
             action: "resolution_preview".into(),
             changed: vec![app.selected_todo().unwrap().clone()],
@@ -485,6 +486,7 @@ fn resolution_preview_is_discarded_after_selection_moves() {
         "todo_1".into(),
         "resolution-1".into(),
         TodoChangeData {
+            correction_undo: None,
             dry_run: true,
             action: "resolution_preview".into(),
             changed: vec![first_todo],
@@ -638,13 +640,18 @@ fn mutation_failure_replaces_retired_progress_with_the_error() {
 }
 
 #[test]
-fn x_marks_it_not_a_to_do() {
+fn x_chooses_a_durable_correction_before_changing_the_row() {
     let mut app = todo_app(true);
     press_shifted(&mut app, 'X');
+    assert!(queued(&app).is_empty());
+    assert!(app.mailbox.todo_page.prompt.is_some());
+    press(&mut app, KeyCode::Char('2'));
+    press(&mut app, KeyCode::Enter);
     assert!(matches!(
         queued(&app).as_slice(),
-        [Request::SetTodoState {
-            action: TodoStateActionData::Dismiss,
+        [Request::CorrectTodo {
+            reason: mxr_protocol::TodoCorrectionData::NotMine,
+            dry_run: false,
             ..
         }]
     ));
@@ -737,6 +744,21 @@ fn schedule_sends_the_previewed_time() {
 }
 
 #[test]
+fn the_uncertain_picker_does_not_capture_the_messages_key_sequence() {
+    let mut app = todo_app(true);
+    press(&mut app, KeyCode::Char('m'));
+    assert!(app.mailbox.todo_page.uncertain_open);
+    press(&mut app, KeyCode::Esc);
+    assert!(!app.mailbox.todo_page.uncertain_open);
+    press(&mut app, KeyCode::Char('g'));
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE)),
+        Some(Action::OpenMessages)
+    );
+    assert!(!app.mailbox.todo_page.uncertain_open);
+}
+
+#[test]
 fn comma_edits_a_field_and_refuses_a_line_without_equals() {
     let mut app = todo_app(true);
     press(&mut app, KeyCode::Char(','));
@@ -757,7 +779,40 @@ fn comma_edits_a_field_and_refuses_a_line_without_equals() {
     press(&mut app, KeyCode::Enter);
     assert!(matches!(
         queued(&app).as_slice(),
-        [Request::UpdateTodo { edits, .. }] if edits[0].field == "due" && edits[0].value == "fri"
+        [Request::CorrectTodo {
+            todo_id,
+            reason: mxr_protocol::TodoCorrectionData::WrongDetails,
+            edits,
+            dry_run: false,
+            ..
+        }] if todo_id == "todo_1" && edits.len() == 1
+            && edits[0].field == "due" && edits[0].value == "fri"
+    ));
+    assert_eq!(
+        app.mailbox.todo_page.prompt.as_ref().unwrap().input,
+        "due=fri"
+    );
+    let saved = app.pending_mutation_queue[0].clone();
+    let effect = app.with_done_note(saved.id, saved.effect);
+    app.apply_mutation_completion(effect, true);
+    assert!(app.mailbox.todo_page.prompt.is_none());
+    let change = TodoChangeData {
+        correction_undo: Some("correction-1".into()),
+        dry_run: false,
+        action: "correct".into(),
+        changed: vec![todo("todo_1", "Check the agreement")],
+        unchanged: vec![],
+        summary: "Correction saved".into(),
+    };
+    app.pending_mutation_queue.clear();
+    app.set_pending_undo(
+        crate::runner::todo_undo(&change).expect("durable correction offers undo"),
+    );
+    press(&mut app, KeyCode::Char('u'));
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::UndoTodoCorrection { todo_id, correction_id, dry_run: false }]
+            if todo_id == "todo_1" && correction_id == "correction-1"
     ));
 }
 
@@ -829,6 +884,7 @@ fn the_catch_up_keeps_lets_go_and_lets_go_of_exactly_the_preview() {
     assert!(queued(&app).is_empty());
     app.mailbox.todo_page.pending_catchup_preview = false;
     app.show_catchup_preview(TodoChangeData {
+        correction_undo: None,
         dry_run: true,
         action: "let_go".into(),
         changed: vec![rows[1].clone()],
@@ -869,6 +925,7 @@ fn help_leads_with_the_mode_on_to_do() {
 
 fn catchup_change(action: &str, ids: &[&str]) -> TodoChangeData {
     TodoChangeData {
+        correction_undo: None,
         dry_run: false,
         action: action.into(),
         changed: ids.iter().map(|id| todo(id, "Pay water bill")).collect(),
@@ -973,6 +1030,7 @@ fn source_reader_shows_email_and_escape_returns_to_the_resolution_preview() {
         row.id.clone(),
         "resolution-reader".into(),
         TodoChangeData {
+            correction_undo: None,
             dry_run: true,
             action: "resolution_preview".into(),
             changed: vec![row],
@@ -1061,7 +1119,7 @@ fn the_hint_bar_offers_to_dos_verbs_for_a_lit_task() {
             ("e", "Done"),
             ("o", "Email"),
             ("Z", "Schedule"),
-            ("X", "Not a to-do"),
+            ("X", "Correct…"),
             (",", "Edit"),
         ]
     );
@@ -1101,4 +1159,88 @@ fn help_in_to_do_lists_to_dos_own_keys() {
         "help names the mode's key table"
     );
     assert!(text.contains("Schedule"), "and lists To do's Z");
+}
+
+#[test]
+fn review2_correction_failure_retains_input_and_stale_success_keeps_replacement() {
+    let mut app = todo_app(true);
+    press(&mut app, KeyCode::Char(','));
+    app.mailbox.todo_page.prompt.as_mut().unwrap().input = "due=not-a-time".into();
+    press(&mut app, KeyCode::Enter);
+    let queued = app.pending_mutation_queue.remove(0);
+    assert_eq!(
+        app.mailbox
+            .todo_page
+            .prompt
+            .as_ref()
+            .expect("retain until ACK")
+            .input,
+        "due=not-a-time"
+    );
+    app.handle_mutation_failure_result(
+        queued.id,
+        false,
+        &mxr_core::MxrError::Ipc("invalid date".into()),
+    );
+    assert_eq!(
+        app.mailbox.todo_page.prompt.as_ref().unwrap().input,
+        "due=not-a-time"
+    );
+    assert!(app
+        .mailbox
+        .todo_page
+        .prompt
+        .as_ref()
+        .unwrap()
+        .error
+        .as_ref()
+        .unwrap()
+        .contains("invalid date"));
+    app.modals.error = None;
+    press(&mut app, KeyCode::Enter);
+    let retry = app.pending_mutation_queue.remove(0);
+    assert_eq!(
+        format!("{:?}", retry.request),
+        format!("{:?}", queued.request)
+    );
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char(','));
+    app.mailbox.todo_page.prompt.as_mut().unwrap().input = "title=New editor".into();
+    let effect = app.with_done_note(retry.id, retry.effect);
+    app.apply_mutation_completion(effect, true);
+    assert_eq!(
+        app.mailbox.todo_page.prompt.as_ref().unwrap().input,
+        "title=New editor"
+    );
+}
+
+#[test]
+fn correction_stale_failure_keeps_replacement_input_and_pending_owner() {
+    let mut app = todo_app(true);
+    press(&mut app, KeyCode::Char(','));
+    app.mailbox.todo_page.prompt.as_mut().unwrap().input = "title=First".into();
+    press(&mut app, KeyCode::Enter);
+    let first = app.pending_mutation_queue.remove(0);
+    press(&mut app, KeyCode::Enter);
+    assert!(
+        app.pending_mutation_queue.is_empty(),
+        "pending save is not submitted twice"
+    );
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char(','));
+    app.mailbox.todo_page.prompt.as_mut().unwrap().input = "title=Replacement".into();
+    press(&mut app, KeyCode::Enter);
+    let second = app.pending_mutation_queue.remove(0);
+    app.handle_mutation_failure_result(
+        first.id,
+        false,
+        &mxr_core::MxrError::Ipc("first failed".into()),
+    );
+    let prompt = app.mailbox.todo_page.prompt.as_ref().unwrap();
+    assert_eq!(prompt.input, "title=Replacement");
+    assert_eq!(prompt.pending, Some(second.id));
+    assert!(prompt.error.is_none());
+    let effect = app.with_done_note(second.id, second.effect);
+    app.apply_mutation_completion(effect, true);
+    assert!(app.mailbox.todo_page.prompt.is_none());
 }

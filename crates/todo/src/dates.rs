@@ -83,23 +83,37 @@ where
     Tz: TimeZone,
     Tz::Offset: std::fmt::Display,
 {
-    triggers.captures_iter(text).find_map(|caps| {
-        let date = caps.name("date")?;
-        let whole = caps.get(0)?;
-        let words = whole.as_str().trim();
-        // "was due" puts its tense before the trigger the regex matched.
-        let lead_in = crate::text::floor_char_boundary(text, whole.start().saturating_sub(12));
-        let intent = if PAST_INTENT.is_match(&text[lead_in..whole.end()]) {
-            YearIntent::JustGone
-        } else {
-            YearIntent::Next
-        };
-        let (day, checked) = parse_date(date.as_str(), anchor, order, intent)?;
-        Some(FoundDate {
-            at: end_of_day(day, &anchor.timezone()),
-            words: words.to_string(),
-            checked,
-        })
+    triggers
+        .captures_iter(text)
+        .find_map(|caps| resolve_due_match(text, &caps, anchor, order))
+}
+
+/// Resolve one match against its original source so preceding tense is retained.
+pub(crate) fn resolve_due_match<Tz>(
+    text: &str,
+    caps: &regex::Captures<'_>,
+    anchor: &DateTime<Tz>,
+    order: DateOrder,
+) -> Option<FoundDate>
+where
+    Tz: TimeZone,
+    Tz::Offset: std::fmt::Display,
+{
+    let date = caps.name("date")?;
+    let whole = caps.get(0)?;
+    let words = whole.as_str().trim();
+    // "was due" puts its tense before the trigger the regex matched.
+    let lead_in = crate::text::floor_char_boundary(text, whole.start().saturating_sub(12));
+    let intent = if PAST_INTENT.is_match(&text[lead_in..whole.end()]) {
+        YearIntent::JustGone
+    } else {
+        YearIntent::Next
+    };
+    let (day, checked) = parse_date(date.as_str(), anchor, order, intent)?;
+    Some(FoundDate {
+        at: end_of_day(day, &anchor.timezone()),
+        words: words.to_string(),
+        checked,
     })
 }
 
@@ -430,5 +444,26 @@ mod tests {
         assert_eq!(order_for("camden.gov.uk", Some("GBP")), DateOrder::DayFirst);
         assert_eq!(order_for("comcast.com", Some("USD")), DateOrder::MonthFirst);
         assert_eq!(order_for("example.com", None), DateOrder::DayFirst);
+    }
+    #[test]
+    fn captures_retain_original_past_tense_for_the_same_shared_resolver() {
+        let anchor = Utc
+            .with_ymd_and_hms(2026, 10, 23, 12, 0, 0)
+            .single()
+            .expect("anchor");
+        let trigger = trigger_regex("due");
+        let text = "Invoice amount £25 was due on 20 October.";
+        let captures = trigger.captures(text).expect("due candidate");
+        let captured =
+            resolve_due_match(text, &captures, &anchor, DateOrder::DayFirst).expect("past due");
+        assert_eq!(
+            captured,
+            find_due(text, &trigger, &anchor, DateOrder::DayFirst).expect("shared parser")
+        );
+        assert_eq!(captured.at.date_naive().to_string(), "2026-10-20");
+        assert!(
+            !captured.checked,
+            "the inferred year is visible as unchecked"
+        );
     }
 }

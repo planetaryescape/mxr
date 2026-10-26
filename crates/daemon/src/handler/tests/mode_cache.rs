@@ -98,17 +98,26 @@ async fn the_refresher_rebuilds_a_view_after_a_mutation_so_reads_stay_instant() 
     );
 }
 
-/// Unchanged views are not rebuilt in the background as they age; the
-/// first read past `MAX_AGE` builds instead, so an idle daemon does no work.
 #[tokio::test]
-async fn the_refresher_leaves_an_unchanged_view_to_age_out() {
+async fn the_refresher_renews_active_views_before_client_polling_meets_expiry() {
     let fx = Fixture::new().await;
     let first = now_built_at(&fx).await;
-    fx.state.mode_cache.age(std::time::Duration::from_secs(50));
+    fx.state.mode_cache.age(std::time::Duration::from_secs(49));
     fx.state.mode_cache.refresh(&fx.state).await;
-    assert_eq!(cached_now_built_at(&fx), Some(first), "not rebuilt by age");
-    fx.state.mode_cache.age(std::time::Duration::from_secs(11));
-    assert_eq!(cached_now_built_at(&fx), None, "too old to answer");
+    assert_eq!(
+        cached_now_built_at(&fx),
+        Some(first),
+        "do not rebuild every tick"
+    );
+    fx.state.mode_cache.age(std::time::Duration::from_secs(2));
+    fx.state.mode_cache.refresh(&fx.state).await;
+    let renewed = cached_now_built_at(&fx).expect("active view renewed before expiry");
+    assert_ne!(renewed, first);
+    assert_eq!(
+        now_built_at(&fx).await,
+        renewed,
+        "the next poll is a cache hit"
+    );
 }
 
 #[tokio::test]
@@ -187,7 +196,7 @@ async fn client_chosen_keys_keep_at_most_sixteen_views() {
             &fx,
             Request::ListMessages {
                 account_id: None,
-                turn: None,
+                turn: Some(mxr_protocol::MessagesTurnData::All),
                 filter: Default::default(),
                 limit,
             },

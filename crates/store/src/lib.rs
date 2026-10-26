@@ -35,7 +35,7 @@ mod asks_timezone;
 pub use asks_timezone::{AsksOffset, AsksTimezone};
 mod asks_commitments;
 mod asks_todos;
-pub use asks::asks_context_token;
+pub use asks::{asks_context_token, AskSummary};
 mod assessment_authority;
 mod assessments;
 mod assistant;

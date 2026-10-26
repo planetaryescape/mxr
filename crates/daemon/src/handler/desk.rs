@@ -261,7 +261,7 @@ pub(super) async fn attach_histories<'a>(
 /// shared classifier: contacts and screener decisions, keyed by lowercased
 /// email.
 pub(super) struct Senders {
-    pub asks: HashMap<MessageId, mxr_core::asks::AskAssessment>,
+    pub asks: HashMap<MessageId, mxr_store::AskSummary>,
     pub assessments: HashMap<MessageId, mxr_core::assessment::MailAssessment>,
     pub contacts: HashMap<String, DeskContact>,
     pub written_to: HashSet<String>,
@@ -278,13 +278,43 @@ impl Senders {
         account_id: &AccountId,
         messages: &[DeskMessage],
     ) -> Result<Self, super::HandlerError> {
-        let mut senders = Self::load_raw(state, account_id, messages).await?;
-        super::assessments::materialize(state, account_id, messages).await?;
+        let mut senders = Self::load_context(state, account_id, messages, false).await?;
         let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
         (senders.assessments, senders.asks) = state
             .store
             .assessment_facets_for_messages(account_id, &ids)
             .await?;
+        // Facets already validate policy, timezone and the thread's effective
+        // input revision in one snapshot. Re-reading and fingerprinting every
+        // settled thread here turned each filter into a mailbox-sized rebuild.
+        let own = self_matcher(state, account_id).await?;
+        let pending = senders.pending_threads(messages, &own);
+        if !pending.is_empty() {
+            let requested: Vec<_> = messages
+                .iter()
+                .filter(|message| pending.contains(&message.thread_id))
+                .cloned()
+                .collect();
+            super::assessments::materialize(state, account_id, &requested).await?;
+            (senders.assessments, senders.asks) = state
+                .store
+                .assessment_facets_for_messages(account_id, &ids)
+                .await?;
+        }
+        // A validated home already observed whether we wrote to its sender.
+        // Re-scanning every outbound recipient for each tiny list duplicates
+        // that observation. Raw resolver reads still perform the live lookup.
+        for message in messages {
+            if senders
+                .assessments
+                .get(&message.id)
+                .is_some_and(|a| a.facts.written_to)
+            {
+                senders
+                    .written_to
+                    .insert(message.from.email.to_ascii_lowercase());
+            }
+        }
         Ok(senders)
     }
 
@@ -292,6 +322,15 @@ impl Senders {
         state: &AppState,
         account_id: &AccountId,
         messages: &[DeskMessage],
+    ) -> Result<Self, super::HandlerError> {
+        Self::load_context(state, account_id, messages, true).await
+    }
+
+    async fn load_context(
+        state: &AppState,
+        account_id: &AccountId,
+        messages: &[DeskMessage],
+        observe_written_to: bool,
     ) -> Result<Self, super::HandlerError> {
         let mut emails: Vec<String> = messages
             .iter()
@@ -317,6 +356,10 @@ impl Senders {
             messages
                 .iter()
                 .filter(|m| m.direction != "outbound")
+                // Stored homes need no sender-template classification. The
+                // timer's raw human-response check only uses that observation
+                // for bulk mail; the resolver still observes every sender.
+                .filter(|m| observe_written_to || m.evidence.bulk)
                 .map(|m| m.from.email.as_str()),
         )
         .await?;
@@ -342,10 +385,14 @@ impl Senders {
         Ok(Self {
             asks: HashMap::new(),
             assessments: HashMap::new(),
-            written_to: state
-                .store
-                .addresses_written_to(account_id, &emails)
-                .await?,
+            written_to: if observe_written_to {
+                state
+                    .store
+                    .addresses_written_to(account_id, &emails)
+                    .await?
+            } else {
+                HashSet::new()
+            },
             contacts,
             screener,
             moves,
@@ -397,6 +444,16 @@ impl Senders {
         message: &DeskMessage,
         is_self: &dyn Fn(&str) -> bool,
     ) -> bool {
+        if let Some(home) = self.assessments.get(&message.id) {
+            let classification = mail_kind::stored_classification(home);
+            return classification.kind == SenderKind::Person
+                && matches!(
+                    classification.rule,
+                    mxr_protocol::KindRuleData::CustomRule
+                        | mxr_protocol::KindRuleData::Moved
+                        | mxr_protocol::KindRuleData::Decision
+                );
+        }
         mail_kind::kept_in_messages(&self.signals(message, is_self))
     }
 

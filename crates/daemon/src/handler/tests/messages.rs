@@ -1856,6 +1856,70 @@ fn each_filter_is_its_own_mode_cache_entry() {
     );
 }
 
+#[tokio::test]
+async fn attention_filters_reuse_a_complete_fresh_snapshot_without_changing_the_answer() {
+    let fx = Fixture::new().await;
+    seed_filter_rows(&fx).await;
+    pin(&fx, MAYA).await;
+    pin(&fx, SAMIR).await;
+    crate::handler::assessments::reconcile_account(&fx.state, &fx.account)
+        .await
+        .unwrap();
+    let base = filtered(&fx, None, Default::default()).await;
+    for turn in [None, Some(MessagesTurnData::Mine)] {
+        for (unread, past_pace) in [(false, false), (true, false), (false, true), (true, true)] {
+            let filter = MessagesFilterData {
+                turn,
+                unread,
+                past_pace,
+            };
+            let cached = filtered(&fx, None, filter).await;
+            assert_eq!(
+                cached.generated_at, base.generated_at,
+                "a new attention filter must not rebuild the mailbox"
+            );
+            let direct = crate::handler::messages::messages_at(
+                &fx.state,
+                None,
+                filter,
+                50,
+                base.generated_at,
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                serde_json::to_value(cached).unwrap(),
+                serde_json::to_value(direct).unwrap()
+            );
+        }
+    }
+    let fresh_thread = ThreadId::new();
+    mail(
+        &fx,
+        &fresh_thread,
+        ("Ruth", RUTH),
+        &[ME],
+        &[],
+        "New question",
+        Duration::minutes(1),
+    )
+    .await;
+    let changed = filtered(
+        &fx,
+        None,
+        MessagesFilterData {
+            unread: true,
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_ne!(changed.generated_at, base.generated_at);
+    assert!(
+        shown_ids(&changed).contains(&format!("person:{RUTH}")),
+        "a store change must invalidate the source before deriving a filtered answer"
+    );
+}
+
 /// `who` wrote, then you replied, so they wait on you not and the row is
 /// waiting on them. The message they wrote is unread unless `read`.
 async fn waiting_on(fx: &Fixture, who: &str, unread: bool, reply_age: Duration) -> Envelope {

@@ -1,6 +1,10 @@
 DROP TRIGGER IF EXISTS approved_send_draft_edited;
 DROP TABLE IF EXISTS approved_send_attempts;
 DROP TABLE IF EXISTS approved_sends;
+DROP TRIGGER IF EXISTS ask_view_summary_insert;
+DROP TRIGGER IF EXISTS ask_view_summary_update;
+DROP VIEW IF EXISTS ask_view_summary_projection;
+DROP TABLE IF EXISTS ask_view_summaries;
 DROP TABLE IF EXISTS assessment_authority;
 DROP TABLE IF EXISTS asks_projection_outbox;
 DROP TABLE IF EXISTS asks_legacy_links;

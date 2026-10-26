@@ -105,6 +105,16 @@ pub(super) async fn place_threads(
     thread_ids: &[ThreadId],
     now: DateTime<Utc>,
 ) -> Result<Vec<Placement>, HandlerError> {
+    place_threads_with_evidence(state, account_id, thread_ids, now, true).await
+}
+
+async fn place_threads_with_evidence(
+    state: &AppState,
+    account_id: &AccountId,
+    thread_ids: &[ThreadId],
+    now: DateTime<Utc>,
+    include_evidence: bool,
+) -> Result<Vec<Placement>, HandlerError> {
     let store = &state.store;
     let mut messages = store
         .desk_messages_in_threads(account_id, thread_ids)
@@ -112,7 +122,25 @@ pub(super) async fn place_threads(
     if messages.is_empty() {
         return Ok(Vec::new());
     }
-    let senders = Senders::load(state, account_id, &messages).await?;
+    let mut senders = Senders::load(state, account_id, &messages).await?;
+    // Membership exposes bounded evidence quotes as well as verdicts. Keep
+    // full source loading here, on the requested threads, never on the mode
+    // list's whole history. Do not mix evidence from another generation.
+    let mut detailed_asks = HashMap::new();
+    if include_evidence {
+        let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
+        detailed_asks = store.asks_for_messages(account_id, &ids).await?;
+        detailed_asks.retain(|id, answer| {
+            senders
+                .asks
+                .get(id)
+                .is_some_and(|view| view.input_fingerprint == answer.input_fingerprint)
+        });
+        senders.asks.retain(|id, _| detailed_asks.contains_key(id));
+        senders
+            .assessments
+            .retain(|id, _| senders.asks.contains_key(id));
+    }
     let invites: Vec<_> = messages
         .iter()
         .filter(|m| m.is_invite)
@@ -220,6 +248,7 @@ pub(super) async fn place_threads(
             record: records.get(&thread_id),
             marks: &marks,
             senders: &senders,
+            detailed_asks: &detailed_asks,
             written_to: &written_to,
             is_self: &is_self,
             now,
@@ -251,6 +280,7 @@ struct PlaceInputs<'a> {
     record: Option<&'a ArchiveRecord>,
     marks: &'a HashMap<(ThreadId, String), DeskDismissal>,
     senders: &'a Senders,
+    detailed_asks: &'a HashMap<mxr_core::MessageId, mxr_core::asks::AskAssessment>,
     /// Senders you have ever written to, anywhere in the account.
     written_to: &'a HashSet<String>,
     is_self: &'a dyn Fn(&str) -> bool,
@@ -415,8 +445,7 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
             .iter()
             .filter_map(|m| {
                 inputs
-                    .senders
-                    .asks
+                    .detailed_asks
                     .get(&m.id)
                     .map(mxr_core::asks::AskAssessment::summary)
             })
@@ -715,14 +744,14 @@ pub(super) async fn quiet_count(
             if message.snoozed || kinds.is_outbound(message) || !kinds.has_assessment(message) {
                 continue;
             }
-            if mail_kind::classify(&kinds.signals(message)).kind == mail_kind::SenderKind::Person
+            if kinds.classification(message).kind == mail_kind::SenderKind::Person
                 && seen.insert(&message.thread_id)
             {
                 threads.push(message.thread_id.clone());
             }
         }
         for chunk in threads.chunks(MEMBERSHIP_MAX_THREADS) {
-            let placed = place_threads(state, account, chunk, now).await?;
+            let placed = place_threads_with_evidence(state, account, chunk, now, false).await?;
             quiet += u32::try_from(placed.iter().filter(|p| p.quiet).count()).unwrap_or(u32::MAX);
         }
     }

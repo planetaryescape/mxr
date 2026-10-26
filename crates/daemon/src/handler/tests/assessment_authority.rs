@@ -145,6 +145,98 @@ async fn assert_current(state: &AppState, mails: &[Envelope]) {
     }
 }
 
+#[tokio::test]
+async fn settled_sender_views_reuse_facets_and_only_rebuild_changed_threads() {
+    let state = AppState::in_memory_with_fake_config(mxr_config::MxrConfig::default())
+        .await
+        .unwrap()
+        .0;
+    let mail = seed(&state).await;
+    let mut sent = mail.clone();
+    sent.id = mxr_core::MessageId::new();
+    sent.thread_id = mxr_core::ThreadId::new();
+    sent.provider_id = "sender-view-prior-outbound".into();
+    sent.message_id_header = Some("<sender-view-prior-outbound@example.test>".into());
+    sent.in_reply_to = None;
+    sent.from.email = state
+        .store
+        .get_account(&mail.account_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .email;
+    sent.to = vec![mail.from.clone()];
+    state
+        .store
+        .upsert_envelope_with_direction(&sent, MessageDirection::Outbound)
+        .await
+        .unwrap();
+    assessments::reconcile_messages(&state, &mail.account_id, std::slice::from_ref(&mail.id))
+        .await
+        .unwrap();
+    let read = || {
+        state
+            .store
+            .desk_messages_in_threads(&mail.account_id, std::slice::from_ref(&mail.thread_id))
+    };
+    let messages = read().await.unwrap();
+    let never: assessments::BeforeCommit =
+        Arc::new(|| Box::pin(async { panic!("a settled view must not reclassify stored mail") }));
+    assessments::BEFORE_COMMIT
+        .scope(never, async {
+            let senders = crate::handler::desk::Senders::load(&state, &mail.account_id, &messages)
+                .await
+                .unwrap();
+            assert!(senders.assessments.contains_key(&mail.id));
+            assert!(senders.asks.contains_key(&mail.id));
+            assert!(
+                senders.asks[&mail.id]
+                    .answers
+                    .contains(&mxr_core::asks::AskAnswer::AsksYou),
+                "the initial agreement request must require an action before invalidation"
+            );
+            assert!(
+                senders
+                    .written_to
+                    .contains(&mail.from.email.to_ascii_lowercase()),
+                "validated sender observations must preserve prior outbound correspondence"
+            );
+            let candidate = state.store.place_message(&mail.id).await.unwrap().unwrap();
+            let kinds = crate::handler::places::AccountKinds::load(
+                &state,
+                &mail.account_id,
+                std::slice::from_ref(&candidate),
+            )
+            .await
+            .unwrap();
+            assert!(
+                kinds.has_assessment(&candidate),
+                "Now, Reading and Updates must also reuse settled verdicts"
+            );
+        })
+        .await;
+    state
+        .store
+        .insert_body(&MessageBody {
+            message_id: mail.id.clone(),
+            text_plain: Some("No reply needed, all sorted.".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: mail.date,
+            metadata: Default::default(),
+        })
+        .await
+        .unwrap();
+    let messages = read().await.unwrap();
+    let senders = crate::handler::desk::Senders::load(&state, &mail.account_id, &messages)
+        .await
+        .unwrap();
+    assert!(senders.assessments.contains_key(&mail.id));
+    assert!(!senders.asks[&mail.id]
+        .answers
+        .contains(&mxr_core::asks::AskAnswer::AsksYou));
+}
+
 #[test]
 fn unchanged_persistent_startup_and_actual_first_and_later_reconciler_ticks_are_read_only() {
     let dir = tempfile::tempdir().unwrap();

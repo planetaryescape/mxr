@@ -9,6 +9,38 @@ use std::collections::HashMap;
 const ASKS_FOR_MESSAGES: &str = "SELECT a.assessment_json FROM (SELECT DISTINCT value FROM json_each(?3)) requested CROSS JOIN mail_assessments a ON a.message_id = requested.value JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id
             WHERE a.account_id = ?1 AND a.policy_version = ?2 AND a.input_revision = i.effective_revision ORDER BY a.message_id";
 
+const FACETS_FOR_MESSAGES: &str = "SELECT a.policy_version,
+            CASE WHEN a.policy_version = ?3 THEN (
+                SELECT s.summary_json FROM ask_view_summaries s
+                WHERE s.message_id = a.message_id AND s.policy_version = a.policy_version
+                    AND s.input_revision = a.input_revision)
+            ELSE a.assessment_json END AS assessment_json
+            FROM (SELECT DISTINCT value FROM json_each(?4)) requested CROSS JOIN mail_assessments a ON a.message_id = requested.value JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id
+            WHERE a.account_id = ?1 AND a.policy_version IN (?2, ?3) AND a.input_revision = i.effective_revision";
+
+/// Mail views need answers, not the authored/quoted source zones and audit
+/// evidence retained by a full asks assessment. Keep those on detail reads.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct AskSummary {
+    pub message_id: MessageId,
+    pub input_fingerprint: String,
+    pub owner_authored: bool,
+    pub context_token: String,
+    pub answers: Vec<mxr_core::asks::AskAnswer>,
+}
+
+impl From<AskAssessment> for AskSummary {
+    fn from(answer: AskAssessment) -> Self {
+        Self {
+            message_id: answer.message_id,
+            input_fingerprint: answer.input_fingerprint,
+            owner_authored: answer.facts.owner_authored,
+            context_token: answer.context_token,
+            answers: answer.units.into_iter().map(|unit| unit.answer).collect(),
+        }
+    }
+}
+
 type CachedBodies = HashMap<MessageId, (Option<String>, Option<String>, String)>;
 
 impl super::Store {
@@ -86,19 +118,23 @@ impl super::Store {
     ) -> Result<
         (
             HashMap<MessageId, mxr_core::assessment::MailAssessment>,
-            HashMap<MessageId, AskAssessment>,
+            HashMap<MessageId, AskSummary>,
         ),
         sqlx::Error,
     > {
         let context = asks_context_token().map_err(sqlx::Error::Io)?;
-        let rows: Vec<(String, String)> = sqlx::query_as("SELECT a.policy_version, a.assessment_json FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id
-            WHERE a.account_id = ?1 AND a.policy_version IN (?2, ?3) AND a.input_revision = i.effective_revision AND a.message_id IN (SELECT value FROM json_each(?4))")
-            .bind(account.as_str()).bind(mxr_core::assessment::CLASSIFIER_POLICY_VERSION).bind(ASKS_POLICY_VERSION).bind(encode_json(&ids)?).fetch_all(self.reader()).await?;
+        let rows: Vec<(String, String)> = sqlx::query_as(FACETS_FOR_MESSAGES)
+            .bind(account.as_str())
+            .bind(mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+            .bind(ASKS_POLICY_VERSION)
+            .bind(encode_json(&ids)?)
+            .fetch_all(self.reader())
+            .await?;
         let mut homes = HashMap::new();
         let mut asks = HashMap::new();
         for (policy, json) in rows {
             if policy == ASKS_POLICY_VERSION {
-                let answer: AskAssessment = decode_json(&json)?;
+                let answer: AskSummary = decode_json(&json)?;
                 if answer.context_token == context {
                     asks.insert(answer.message_id.clone(), answer);
                 }
@@ -107,7 +143,7 @@ impl super::Store {
                 homes.insert(answer.message_id.clone(), answer);
             }
         }
-        homes.retain(|id, _| asks.get(id).is_some_and(|a| !a.facts.owner_authored));
+        homes.retain(|id, _| asks.get(id).is_some_and(|a| !a.owner_authored));
         Ok((homes, asks))
     }
 

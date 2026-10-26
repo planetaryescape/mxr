@@ -1,6 +1,6 @@
 //! Query work must follow the requested IDs rather than account history.
 use super::tests::answer;
-use super::ASKS_FOR_MESSAGES;
+use super::{ASKS_FOR_MESSAGES, FACETS_FOR_MESSAGES};
 use crate::{
     test_fixtures::{test_account, TestEnvelopeBuilder},
     Store,
@@ -22,27 +22,29 @@ async fn grow(store: &Store, account: &AccountId, count: usize) -> Vec<MessageId
     ids
 }
 
-async fn steps(store: &Store, account: &AccountId, id: &MessageId) -> usize {
+async fn steps(store: &Store, account: &AccountId, id: &MessageId, facets: bool) -> usize {
     let ids = serde_json::to_string(&[id]).unwrap();
     let mut conn = store.reader().acquire().await.unwrap();
     // Only the static production query is prefixed; values remain bound.
-    let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "EXPLAIN QUERY PLAN {ASKS_FOR_MESSAGES}"
-    )))
-    .bind(account.as_str())
-    .bind(ASKS_POLICY_VERSION)
-    .bind(&ids)
-    .fetch_all(&mut *conn)
-    .await
-    .unwrap();
-    eprintln!("native asks lookup plan: {plan:?}");
-    let _: Vec<String> = sqlx::query_scalar(ASKS_FOR_MESSAGES)
-        .bind(account.as_str())
-        .bind(ASKS_POLICY_VERSION)
-        .bind(&ids)
+    let sql = if facets {
+        FACETS_FOR_MESSAGES
+    } else {
+        ASKS_FOR_MESSAGES
+    };
+    let query = |prefix: &str| {
+        let mut query =
+            sqlx::query(sqlx::AssertSqlSafe(format!("{prefix}{sql}"))).bind(account.as_str());
+        if facets {
+            query = query.bind(mxr_core::assessment::CLASSIFIER_POLICY_VERSION);
+        }
+        query.bind(ASKS_POLICY_VERSION).bind(&ids)
+    };
+    let plan = query("EXPLAIN QUERY PLAN ")
         .fetch_all(&mut *conn)
         .await
         .unwrap();
+    assert!(!plan.is_empty());
+    let _ = query("").fetch_all(&mut *conn).await.unwrap();
     let count = Arc::new(AtomicUsize::new(0));
     let increment = count.clone();
     conn.lock_handle()
@@ -53,15 +55,13 @@ async fn steps(store: &Store, account: &AccountId, id: &MessageId) -> usize {
             true
         });
     let started = Instant::now();
-    let rows: Vec<String> = sqlx::query_scalar(ASKS_FOR_MESSAGES)
-        .bind(account.as_str())
-        .bind(ASKS_POLICY_VERSION)
-        .bind(ids)
-        .fetch_all(&mut *conn)
-        .await
-        .unwrap();
+    let rows = query("").fetch_all(&mut *conn).await.unwrap();
     conn.lock_handle().await.unwrap().remove_progress_handler();
-    assert_eq!(rows, ["{}"]);
+    use sqlx::Row;
+    assert_eq!(rows.len(), 1);
+    if !facets {
+        assert_eq!(rows[0].get::<String, _>("assessment_json"), "{}");
+    }
     let count = count.load(Ordering::Relaxed);
     eprintln!(
         "native asks singleton: {count} VM steps in {:?}",
@@ -78,14 +78,20 @@ async fn singleton_lookup_work_is_bounded_by_requested_ids_not_account_size() {
     let started = Instant::now();
     let ids = grow(&store, &account.id, 1_000).await;
     eprintln!("native full-schema seed 1000: {:?}", started.elapsed());
-    let small = steps(&store, &account.id, &ids[0]).await;
+    let small = steps(&store, &account.id, &ids[0], false).await;
+    let small_facets = steps(&store, &account.id, &ids[0], true).await;
     let started = Instant::now();
     grow(&store, &account.id, 9_000).await;
     eprintln!("native full-schema grow 10000: {:?}", started.elapsed());
-    let large = steps(&store, &account.id, &ids[0]).await;
+    let large = steps(&store, &account.id, &ids[0], false).await;
+    let large_facets = steps(&store, &account.id, &ids[0], true).await;
     assert!(
         large <= small * 2,
         "singleton work grew with account size: {small} -> {large}"
+    );
+    assert!(
+        large_facets <= small_facets * 2,
+        "facet work grew with account size: {small_facets} -> {large_facets}"
     );
 }
 

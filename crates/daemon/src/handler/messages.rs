@@ -142,7 +142,11 @@ async fn gather(
             } else {
                 now - Duration::days(days)
             };
-            let mut messages = store.desk_thread_messages(account_id, since).await?;
+            let mut messages = if full_history {
+                store.desk_conversation_messages(account_id, since).await?
+            } else {
+                store.desk_thread_messages(account_id, since).await?
+            };
             // A conversation a time you set brought back, or one the desk
             // says is your turn, may be older than the window.
             let loaded: HashSet<&ThreadId> = messages.iter().map(|m| &m.thread_id).collect();
@@ -165,8 +169,8 @@ async fn gather(
     };
     messages.sort_by(|a, b| {
         a.thread_id
-            .as_str()
-            .cmp(&b.thread_id.as_str())
+            .as_uuid()
+            .cmp(b.thread_id.as_uuid())
             .then(a.date.cmp(&b.date))
             .then(a.seq.cmp(&b.seq))
     });
@@ -680,6 +684,36 @@ fn distinct_rows(bands: &[&Vec<MessagesRowData>]) -> u32 {
         .flat_map(|band| band.iter().map(|row| (&row.account_id, row.id.as_str())))
         .collect();
     u32::try_from(rows.len()).unwrap_or(u32::MAX)
+}
+
+/// Attention has no history pagination: its rows are complete. Narrowing a
+/// fresh attention snapshot therefore needs no new mailbox query. Rebuild
+/// pinned faces after narrowing, so a match beyond the old pin cap survives.
+pub(super) fn narrow_attention(mut data: MessagesData, filter: MessagesFilterData) -> MessagesData {
+    data.your_turn
+        .retain(|row| (!filter.unread || row.unread) && (!filter.past_pace || row.overdue));
+    data.pinned = data
+        .your_turn
+        .iter()
+        .filter(|row| row.pinned)
+        .cloned()
+        .map(|mut row| {
+            row.band = MessagesBandData::Pinned;
+            row
+        })
+        .collect();
+    rank_by_recency(&mut data.pinned);
+    data.pinned.truncate(PINNED_CAP);
+    data.matched = distinct_rows(&[&data.your_turn, &data.pinned]);
+    data.empty_state = (data.matched == 0).then(|| {
+        if filter.narrows() {
+            messages_copy::filtered_empty(filter, data.your_turn_split.total())
+        } else {
+            messages_copy::CLEAR.to_string()
+        }
+    });
+    data.filter = filter;
+    data
 }
 
 /// The line under each shown row: for Your turn, the ask from the

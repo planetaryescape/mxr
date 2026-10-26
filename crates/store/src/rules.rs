@@ -141,6 +141,15 @@ impl super::Store {
         &self,
         account_id: &mxr_core::AccountId,
     ) -> Result<std::collections::HashMap<mxr_core::MessageId, (String, String)>, sqlx::Error> {
+        // With no treatments SQLite can still choose the account's messages
+        // as the join's outer loop. Avoid that mailbox scan without forcing
+        // all accounts' treatments to be scanned when this table is large.
+        let any: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM rule_treatments)")
+            .fetch_one(self.reader())
+            .await?;
+        if !any {
+            return Ok(std::collections::HashMap::new());
+        }
         let rows = sqlx::query(
             "SELECT t.message_id, t.treatment,
             CASE WHEN r.id IS NULL THEN t.rule_name || ' (deleted rule)'

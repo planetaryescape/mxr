@@ -218,6 +218,87 @@ async fn batches_reject_wrong_account_policy_and_unobserved_message_atomically()
 }
 
 #[tokio::test]
+async fn mail_view_summaries_keep_answers_but_leave_source_zones_on_detail_reads() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let mail = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    store.upsert_envelope(&mail).await.unwrap();
+    let revisions = store
+        .assessment_thread_revisions(&account.id, std::slice::from_ref(&mail.thread_id))
+        .await
+        .unwrap();
+    let mut full = answer(&account.id, &mail);
+    full.facts.zones.push(mxr_core::asks::AskZone {
+        kind: mxr_core::asks::ZoneKind::Quoted,
+        author: None,
+        text: "private quoted source".repeat(10_000),
+    });
+    assert!(store
+        .save_asks_batch(&account.id, &revisions, std::slice::from_ref(&full))
+        .await
+        .unwrap());
+    // Recreate the projection exactly as an upgrade from schema 100 does.
+    sqlx::raw_sql("DROP TRIGGER ask_view_summary_insert; DROP TRIGGER ask_view_summary_update; DROP VIEW ask_view_summary_projection; DROP TABLE ask_view_summaries;")
+        .execute(store.writer()).await.unwrap();
+    sqlx::raw_sql(include_str!("../../migrations/102_ask_view_summaries.sql"))
+        .execute(store.writer())
+        .await
+        .unwrap();
+    let (_, summaries) = store
+        .assessment_facets_for_messages(&account.id, std::slice::from_ref(&mail.id))
+        .await
+        .unwrap();
+    let summary = &summaries[&mail.id];
+    assert_eq!(
+        summary.answers,
+        full.units
+            .iter()
+            .map(|unit| unit.answer)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(summary.owner_authored, full.facts.owner_authored);
+    assert_eq!(summary.context_token, full.context_token);
+    let details = store
+        .asks_for_messages(&account.id, std::slice::from_ref(&mail.id))
+        .await
+        .unwrap();
+    assert_eq!(
+        details[&mail.id], full,
+        "list optimization must not truncate authoritative detail evidence"
+    );
+    full.input_fingerprint.push_str("-changed");
+    full.units.clear();
+    assert!(store
+        .save_asks_batch(&account.id, &revisions, &[full])
+        .await
+        .unwrap());
+    let (_, summaries) = store
+        .assessment_facets_for_messages(&account.id, std::slice::from_ref(&mail.id))
+        .await
+        .unwrap();
+    assert!(
+        summaries[&mail.id].answers.is_empty(),
+        "a replacement verdict updates its projection in the same transaction"
+    );
+    sqlx::query("DELETE FROM mail_assessments WHERE message_id=?1")
+        .bind(mail.id.as_str())
+        .execute(store.writer())
+        .await
+        .unwrap();
+    let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM ask_view_summaries")
+        .fetch_one(store.reader())
+        .await
+        .unwrap();
+    assert_eq!(
+        remaining, 0,
+        "deleting authority also deletes the derived cache"
+    );
+}
+
+#[tokio::test]
 async fn timezone_context_mismatch_is_pending_on_both_read_surfaces() {
     let store = Store::in_memory().await.unwrap();
     let account = test_account();

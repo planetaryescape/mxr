@@ -235,7 +235,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=103).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=104).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -292,6 +292,11 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     .await?;
     validate(&mut db).await?;
     let expected = Store::in_memory().await?;
+    if manifest.schema_version < 104 {
+        sqlx::raw_sql(include_str!("backup/pre_conversation_summaries.sql"))
+            .execute(expected.writer())
+            .await?;
+    }
     if manifest.schema_version < 103 {
         sqlx::raw_sql("DROP INDEX idx_messages_sender_history; DROP TRIGGER outbound_recipients_insert; DROP TRIGGER outbound_recipients_update; DROP VIEW outbound_recipient_projection; DROP TABLE outbound_recipients;")
             .execute(expected.writer()).await?;
@@ -555,7 +560,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=103).contains(&version) {
+    if !(80..=104).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -666,7 +671,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:103, workspace_id,recovery_generation,files,
+    Ok(BackupManifest { format_version:1, schema_version:104, workspace_id,recovery_generation,files,
         exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into(),"assistant conversations (chat history that quotes mail; local only)".into(),"runnable send approvals, their frozen snapshots and operational attempt history; retained send outcomes and canonical drafts are preserved".into()] })
 }
 

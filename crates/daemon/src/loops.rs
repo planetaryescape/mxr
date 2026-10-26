@@ -2573,6 +2573,9 @@ pub async fn todo_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bo
         // Read Updates' mail into facts once after start, so the first
         // digest (and Now's card) doesn't pay for a mailbox of them.
         if !updates_warm {
+            if let Err(error) = crate::handler::messages::warm_history(&state).await {
+                tracing::warn!(%error, "could not warm conversation facts");
+            }
             updates_warm = crate::handler::updates::warm(&state).await;
         }
         wait = match crate::handler::todos::tick(&state, chrono::Utc::now(), &mut fingerprints)

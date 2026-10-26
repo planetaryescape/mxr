@@ -57,6 +57,10 @@ mod contact_style;
 mod contacts;
 mod contacts_refresh_handle;
 mod context_briefings;
+mod conversation_summaries;
+pub use conversation_summaries::{
+    ConversationRevision, ConversationSummary, ConversationSummaryWrite,
+};
 mod decision_log;
 mod deliveries;
 mod desk;

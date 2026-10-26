@@ -18,6 +18,174 @@ const RUTH: &str = "ruth@keystone.example";
 const MAYA: &str = "maya@orbit.example";
 const JON: &str = "jon@northstar.example";
 
+async fn history_at(fx: &Fixture, now: chrono::DateTime<Utc>) -> MessagesData {
+    crate::handler::messages::messages_at(&fx.state, None, history_filter(), 50, now)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn persisted_thread_facts_match_rebuilding_and_read_edits_retire_them() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let mut incoming = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Old conversation",
+        Duration::days(400),
+    )
+    .await;
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Re: Old conversation",
+        Duration::days(399),
+    )
+    .await;
+    fx.state.store.refresh_contacts().await.unwrap();
+    let now = Utc::now();
+    // The first pass may materialize missing facets. A second observes their
+    // committed tokens and persists facts; no mode-response cache is involved.
+    history_at(&fx, now).await;
+    let expected = history_at(&fx, now).await;
+    let saved: i64 = sqlx::query_scalar("SELECT count(*) FROM conversation_summaries")
+        .fetch_one(fx.state.store.reader())
+        .await
+        .unwrap();
+    assert!(saved > 0);
+    let cached = history_at(&fx, now).await;
+    assert_eq!(
+        serde_json::to_value(&expected).unwrap(),
+        serde_json::to_value(&cached).unwrap()
+    );
+    let row = rows(&cached)
+        .into_iter()
+        .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+        .unwrap();
+    assert!(row.unread);
+    assert_eq!(row.title, "Samir Patel");
+    assert_eq!(row.topics[0].message_count, 2);
+
+    incoming.flags |= mxr_core::MessageFlags::READ;
+    fx.store_envelope(&incoming, MessageDirection::Inbound)
+        .await;
+    let changed = history_at(&fx, now).await;
+    assert!(
+        !rows(&changed)
+            .into_iter()
+            .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+            .unwrap()
+            .unread
+    );
+    sqlx::query("DELETE FROM conversation_summaries")
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    let rebuilt = history_at(&fx, now).await;
+    assert_eq!(
+        serde_json::to_value(changed).unwrap(),
+        serde_json::to_value(rebuilt).unwrap()
+    );
+}
+
+#[tokio::test]
+async fn persisted_history_rekeys_live_people_links_without_rebuilding_thread_facts() {
+    let fx = Fixture::new().await;
+    for email in [SAMIR, "samir.p@home.example"] {
+        mail(
+            &fx,
+            &ThreadId::new(),
+            ("Me", ME),
+            &[email],
+            &[],
+            "Hello",
+            Duration::days(400),
+        )
+        .await;
+    }
+    let now = Utc::now();
+    history_at(&fx, now).await;
+    history_at(&fx, now).await;
+    let before: Vec<(String, String)> = sqlx::query_as(
+        "SELECT thread_id, summary_json FROM conversation_summaries ORDER BY thread_id",
+    )
+    .fetch_all(fx.state.store.reader())
+    .await
+    .unwrap();
+    request(
+        &fx,
+        Request::MergePeople {
+            account_id: fx.account.clone(),
+            into: SAMIR.into(),
+            addresses: vec!["samir.p@home.example".into()],
+            dry_run: false,
+        },
+    )
+    .await;
+    let merged = history_at(&fx, now).await;
+    let row = rows(&merged)
+        .into_iter()
+        .find(|r| r.person.as_ref().is_some_and(|p| p.id == SAMIR))
+        .unwrap();
+    assert_eq!(row.topics.len(), 2);
+    let after: Vec<(String, String)> = sqlx::query_as(
+        "SELECT thread_id, summary_json FROM conversation_summaries ORDER BY thread_id",
+    )
+    .fetch_all(fx.state.store.reader())
+    .await
+    .unwrap();
+    assert_eq!(
+        before, after,
+        "people links are applied live, not persisted into thread geometry"
+    );
+}
+
+#[tokio::test]
+async fn a_cached_history_synopsis_expires_when_a_future_date_becomes_eligible() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Earlier subject",
+        Duration::days(400),
+    )
+    .await;
+    let future = mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Future subject",
+        Duration::days(-3),
+    )
+    .await;
+    let now = Utc::now();
+    history_at(&fx, now).await;
+    let before = history_at(&fx, now).await;
+    let old = rows(&before)
+        .into_iter()
+        .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+        .unwrap();
+    assert_eq!(old.topics[0].subject, "Earlier subject");
+    let after = history_at(&fx, future.date - Duration::days(1)).await;
+    let new = rows(&after)
+        .into_iter()
+        .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+        .unwrap();
+    assert_eq!(new.topics[0].subject, "Future subject");
+}
+
 fn history_filter() -> MessagesFilterData {
     MessagesFilterData {
         turn: Some(MessagesTurnData::All),

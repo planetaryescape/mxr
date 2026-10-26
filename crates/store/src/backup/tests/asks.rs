@@ -49,7 +49,7 @@ async fn current_schema_round_trip_preserves_correction_undo_and_projection_retr
         stage.path(),
         populate(source.path(), stage.path()).await.unwrap(),
     );
-    assert_eq!(manifest.schema_version, 103);
+    assert_eq!(manifest.schema_version, 104);
     inspect(stage.path()).await.unwrap();
     retire_restored(&stage.path().join("mxr.db")).await.unwrap();
     let restored = Store::new(&stage.path().join("mxr.db")).await.unwrap();
@@ -86,8 +86,8 @@ async fn current_schema_round_trip_preserves_correction_undo_and_projection_retr
 }
 
 #[tokio::test]
-async fn exact_schema_97_through_102_backups_upgrade_without_rewriting_closed_history() {
-    for version in [97, 98, 99, 100, 101, 102] {
+async fn exact_schema_97_through_103_backups_upgrade_without_rewriting_closed_history() {
+    for version in [97, 98, 99, 100, 101, 102, 103] {
         let source = tempfile::tempdir().unwrap();
         let stage = tempfile::tempdir().unwrap();
         let store = Store::fresh_backup(&source.path().join("mxr.db"))
@@ -107,10 +107,14 @@ async fn exact_schema_97_through_102_backups_upgrade_without_rewriting_closed_hi
         )
         .await
         .unwrap();
-        sqlx::raw_sql("DROP INDEX idx_messages_sender_history; DROP TRIGGER outbound_recipients_insert; DROP TRIGGER outbound_recipients_update; DROP VIEW outbound_recipient_projection; DROP TABLE outbound_recipients;")
+        sqlx::raw_sql(include_str!("../pre_conversation_summaries.sql"))
             .execute(&mut db)
             .await
             .unwrap();
+        if version < 103 {
+            sqlx::raw_sql("DROP INDEX idx_messages_sender_history; DROP TRIGGER outbound_recipients_insert; DROP TRIGGER outbound_recipients_update; DROP VIEW outbound_recipient_projection; DROP TABLE outbound_recipients;")
+                .execute(&mut db).await.unwrap();
+        }
         if version < 102 {
             sqlx::raw_sql("DROP INDEX idx_messages_conversation_inputs; DROP INDEX idx_mail_assessments_home; DROP INDEX idx_mail_assessments_revision; DROP TRIGGER ask_view_summary_insert; DROP TRIGGER ask_view_summary_update; DROP VIEW ask_view_summary_projection; DROP TABLE ask_view_summaries;")
                 .execute(&mut db).await.unwrap();
@@ -162,7 +166,7 @@ async fn exact_schema_97_through_102_backups_upgrade_without_rewriting_closed_hi
             .fetch_all(restored.reader())
             .await
             .unwrap();
-            assert_eq!(versions, [98, 99, 100, 101, 102, 103]);
+            assert_eq!(versions, [98, 99, 100, 101, 102, 103, 104]);
             restored.reader().close().await;
             restored.writer().close().await;
         }

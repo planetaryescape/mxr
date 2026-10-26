@@ -67,7 +67,7 @@ mod keymap;
 mod llm_routes;
 mod mail_kind;
 mod mailbox;
-mod messages;
+pub(crate) mod messages;
 mod messages_ack;
 mod messages_text;
 mod messages_view;

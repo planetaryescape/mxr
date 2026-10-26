@@ -10,6 +10,9 @@
 //! - Each message's text is its new text (`mxr_reader::new_text`), so every
 //!   client shows the same words and the same "trimmed" marker.
 
+mod history;
+pub(crate) use history::warm as warm_history;
+
 use super::conversation_shape::Shape;
 use super::desk::{compose_desk, self_matcher, Senders};
 use super::desk_lanes::{
@@ -100,9 +103,12 @@ enum Scope<'a> {
 
 /// History/window reads do not depend on the desk's lane precedence. Prepare
 /// them alongside the desk, then apply its authoritative turns in `gather`.
-struct ConversationInputs {
-    messages: Vec<DeskMessage>,
-    senders: Senders,
+enum ConversationInputs {
+    Window {
+        messages: Vec<DeskMessage>,
+        senders: Box<Senders>,
+    },
+    History(Vec<history::Summary>),
 }
 
 async fn preload_conversations(
@@ -121,19 +127,21 @@ async fn preload_conversations(
     let days = i64::from(state.config_snapshot().messages.recent_days.max(1));
     let mut inputs = Vec::with_capacity(accounts.len());
     for account in accounts {
-        let messages = if history {
-            state
-                .store
-                .desk_conversation_messages(account, DateTime::UNIX_EPOCH)
-                .await?
-        } else {
-            state
-                .store
-                .desk_thread_messages(account, now - Duration::days(days))
-                .await?
-        };
+        if history {
+            inputs.push(Some(ConversationInputs::History(
+                history::load(state, account, now).await?,
+            )));
+            continue;
+        }
+        let messages = state
+            .store
+            .desk_thread_messages(account, now - Duration::days(days))
+            .await?;
         let senders = Senders::load(state, account, &messages).await?;
-        inputs.push(Some(ConversationInputs { messages, senders }));
+        inputs.push(Some(ConversationInputs::Window {
+            messages,
+            senders: Box::new(senders),
+        }));
     }
     Ok(inputs)
 }
@@ -167,6 +175,7 @@ async fn gather(
         store.desk_reply_later(account_id).await?,
         store.desk_reminders(account_id, window_start).await?,
     );
+    let mut summaries = Vec::new();
     let (mut messages, desk_turns, prepared_senders) = match scope {
         Scope::Attention(turns) => {
             let threads: Vec<_> = turns.keys().cloned().collect();
@@ -177,13 +186,20 @@ async fn gather(
             )
         }
         Scope::Conversations { turns, inputs } => {
-            let ConversationInputs {
-                mut messages,
-                senders,
-            } = *inputs;
+            let (mut messages, senders) = match *inputs {
+                ConversationInputs::Window { messages, senders } => (messages, Some(*senders)),
+                ConversationInputs::History(history) => {
+                    summaries = history;
+                    (Vec::new(), None)
+                }
+            };
             // A conversation a time you set brought back, or one the desk
             // says is your turn, may be older than the window.
-            let loaded: HashSet<&ThreadId> = messages.iter().map(|m| &m.thread_id).collect();
+            let loaded: HashSet<&ThreadId> = messages
+                .iter()
+                .map(|m| &m.thread_id)
+                .chain(summaries.iter().map(|s| &s.thread_id))
+                .collect();
             let mut back: Vec<ThreadId> = timers
                 .maybe_back(now)
                 .chain(turns.keys())
@@ -195,7 +211,7 @@ async fn gather(
             back.sort_by_key(ThreadId::as_str);
             // Additional returned/owed threads need their own facets and
             // contacts. Reuse the prepared context only when it is complete.
-            let prepared_senders = back.is_empty().then_some(senders);
+            let prepared_senders = if back.is_empty() { senders } else { None };
             messages.extend(store.desk_messages_in_threads(account_id, &back).await?);
             (messages, Some(turns), prepared_senders)
         }
@@ -270,34 +286,29 @@ async fn gather(
             if inputs.pending_threads.contains(&thread[0].thread_id) {
                 continue;
             }
-            let thread_id = thread[0].thread_id.clone();
             for message in thread {
                 if is_outbound(message, &is_self) {
                     outbound.insert(message.id.clone());
-                    for recipient in message.to.iter().chain(&message.cc) {
-                        note_name(
-                            &mut names,
-                            &people,
-                            &recipient.email,
-                            recipient.name.as_deref(),
-                            message.date,
-                        );
-                    }
-                } else {
-                    note_name(
-                        &mut names,
-                        &people,
-                        &message.from.email,
-                        message.from.name.as_deref(),
-                        message.date,
-                    );
                 }
             }
-            let shape = inputs.shape(thread);
+            summaries.push(history::Summary::from_thread(
+                thread,
+                inputs.shape(thread),
+                &is_self,
+                now,
+            ));
+            threads.insert(thread[0].thread_id.clone(), thread.to_vec());
+        }
+        summaries.sort_by(|a, b| a.thread_id.as_uuid().cmp(b.thread_id.as_uuid()));
+        for summary in &summaries {
+            let thread_id = summary.thread_id.clone();
+            for (email, name, at) in &summary.names {
+                note_name(&mut names, &people, email, Some(name), *at);
+            }
             // Someone's turn is always a row, whatever the thread's shape
             // (a reply-later thread you were only copied on).
-            if (!shape.in_messages() && !turns.contains_key(&thread_id))
-                || thread.iter().all(|m| m.trashed)
+            if (!summary.shape.in_messages() && !turns.contains_key(&thread_id))
+                || summary.latest.is_none()
             {
                 continue;
             }
@@ -305,21 +316,16 @@ async fn gather(
                 Some((row, key)) => (Some(row), key),
                 None => (None, None),
             };
-            if let Some(topic) = place_topic(
+            if let Some(topic) = summary.topic(
                 account_id,
-                thread,
-                &shape,
                 &people,
                 turn,
                 desk_key,
                 dismissed
                     .get(&thread_id)
-                    .is_some_and(|mark| mark.covers(thread)),
-                &is_self,
-                now,
+                    .is_some_and(|mark| summary.covered_by(mark)),
             ) {
                 topics.push(topic);
-                threads.insert(thread_id, thread.to_vec());
             }
         }
         (topics, threads, names, outbound)
@@ -403,24 +409,16 @@ fn note_name(
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "one constructor keeps a topic's facts together"
-)]
-fn place_topic(
+fn summary_topic(
+    summary: &history::Summary,
     account_id: &AccountId,
-    thread: &[DeskMessage],
-    shape: &Shape,
     people: &People,
     turn: Option<DeskRowData>,
-    // The key the composed desk counted this turn under, when it did.
     desk_key: Option<RowKey>,
     done: bool,
-    is_self: &dyn Fn(&str) -> bool,
-    now: DateTime<Utc>,
 ) -> Option<Topic> {
-    let current = current_messages(thread, now);
-    let latest = last_stored(current, |m| !m.trashed)?;
+    let latest = summary.latest.as_ref()?;
+    let shape = &summary.shape;
     let mut others: Vec<String> = Vec::new();
     for person in shape.people() {
         let primary = people.primary(person);
@@ -437,7 +435,7 @@ fn place_topic(
             key
         }
         (_, 1, _) => RowKey::Person(others[0].clone()),
-        (Shape::Group(_), _, _) => RowKey::Group(thread[0].thread_id.clone()),
+        (Shape::Group(_), _, _) => RowKey::Group(summary.thread_id.clone()),
         // The turn row names who it is with; `turn_units` counts it the same.
         (_, 0, Some(row)) => {
             let primary = people.primary(&row.counterparty_email);
@@ -446,7 +444,7 @@ fn place_topic(
         }
         _ => return None,
     };
-    let you_last = is_outbound(latest, is_self);
+    let you_last = latest.outbound;
     let state = if turn.is_some() {
         TopicStateData::YourTurn
     } else if done {
@@ -456,8 +454,7 @@ fn place_topic(
     } else {
         TopicStateData::Quiet
     };
-    let reply_to =
-        last_stored(current, |m| !m.trashed && !is_outbound(m, is_self)).unwrap_or(latest);
+    let reply_to = summary.reply_to.as_ref().unwrap_or(latest);
     let subject = clean_subject(&latest.subject);
     let shape_data = match key {
         RowKey::Person(_) => mxr_protocol::ThreadShapeData::OneToOne,
@@ -465,14 +462,10 @@ fn place_topic(
     };
     Some(Topic {
         key,
-        unread: thread.iter().any(|m| {
-            !is_outbound(m, is_self)
-                && m.in_inbox
-                && !m.flags.contains(mxr_core::MessageFlags::READ)
-        }),
+        unread: summary.unread,
         data: MessagesTopicData {
             account_id: account_id.clone(),
-            thread_id: thread[0].thread_id.clone(),
+            thread_id: summary.thread_id.clone(),
             subject: if subject.trim().is_empty() {
                 "(no subject)".to_string()
             } else {
@@ -481,9 +474,9 @@ fn place_topic(
             shape: shape_data,
             state,
             last_at: latest.date,
-            message_count: u32::try_from(thread.len()).unwrap_or(u32::MAX),
+            message_count: u32::try_from(summary.message_ids.len()).unwrap_or(u32::MAX),
             with: Vec::new(),
-            message_ids: thread.iter().map(|m| m.id.clone()).collect(),
+            message_ids: summary.message_ids.clone(),
             reply_to_message_id: reply_to.id.clone(),
         },
         people: others,
@@ -671,6 +664,7 @@ pub(super) async fn messages_at(
     quiet.truncate(limit as usize);
 
     for band in [&mut your_turn, &mut pinned, &mut recent, &mut quiet] {
+        load_preview_threads(state, &mut gathered, band).await?;
         fill_previews(state, &gathered, band).await?;
     }
 
@@ -765,6 +759,39 @@ pub(super) fn narrow_attention(mut data: MessagesData, filter: MessagesFilterDat
 /// The line under each shown row: for Your turn, the ask from the
 /// conversation's gist when one is cached, else what they wrote last; for
 /// the rest, the latest message, as "You: ..." when you wrote it.
+async fn load_preview_threads(
+    state: &AppState,
+    gathered: &mut [Gathered],
+    rows: &[MessagesRowData],
+) -> Result<(), HandlerError> {
+    for g in gathered.iter_mut() {
+        let wanted: Vec<_> = rows
+            .iter()
+            .filter(|r| r.account_id == g.account_id)
+            .filter_map(|r| r.topics.first())
+            .map(|t| &t.thread_id)
+            .filter(|id| !g.threads.contains_key(*id))
+            .cloned()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        if !wanted.is_empty() {
+            let own = self_matcher(state, &g.account_id).await?;
+            for m in state
+                .store
+                .desk_messages_in_threads(&g.account_id, &wanted)
+                .await?
+            {
+                if is_outbound(&m, &own) {
+                    g.outbound.insert(m.id.clone());
+                }
+                g.threads.entry(m.thread_id.clone()).or_default().push(m);
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn fill_previews(
     state: &AppState,
     gathered: &[Gathered],

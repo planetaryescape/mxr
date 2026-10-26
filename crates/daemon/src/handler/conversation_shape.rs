@@ -43,7 +43,7 @@ pub(crate) fn shape_config(state: &crate::state::AppState) -> ShapeConfig {
     ShapeConfig::from_config(&state.config_snapshot().messages)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum Shape {
     /// The other person's address, lowercased.
     OneToOne(String),

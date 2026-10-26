@@ -1,3 +1,17 @@
+DROP TRIGGER IF EXISTS conversation_flags_update;
+DROP TRIGGER IF EXISTS conversation_facet_insert;
+DROP TRIGGER IF EXISTS conversation_facet_update;
+DROP TRIGGER IF EXISTS conversation_facet_delete;
+DROP TRIGGER IF EXISTS conversation_label_insert;
+DROP TRIGGER IF EXISTS conversation_label_update;
+DROP TRIGGER IF EXISTS conversation_label_delete;
+DROP TRIGGER IF EXISTS conversation_label_role_update;
+DROP TRIGGER IF EXISTS conversation_label_role_delete;
+DROP TRIGGER IF EXISTS conversation_message_delete;
+DROP TABLE IF EXISTS conversation_summaries;
+DROP TABLE IF EXISTS conversation_view_inputs;
+DROP TABLE IF EXISTS conversation_candidate_sets;
+DROP TABLE IF EXISTS conversation_facet_clock;
 DROP TRIGGER IF EXISTS outbound_recipients_insert;
 DROP TRIGGER IF EXISTS outbound_recipients_update;
 DROP VIEW IF EXISTS outbound_recipient_projection;

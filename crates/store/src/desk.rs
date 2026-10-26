@@ -16,6 +16,29 @@ use sqlx::Row;
 use std::collections::HashMap;
 use std::time::Instant;
 
+pub(crate) const CONVERSATION_THREADS: &str = "SELECT thread_id FROM messages
+             WHERE account_id = ?1 AND direction != 'inbound' AND date >= ?3 AND date <= ?4
+             UNION SELECT m.thread_id FROM mail_assessments home
+             CROSS JOIN messages m ON m.id = home.message_id AND m.account_id = home.account_id
+             WHERE home.account_id = ?1 AND home.policy_version = ?5
+                 AND home.policy_version NOT LIKE 'asks-%'
+                 AND json_extract(home.assessment_json, '$.home') = 'messages'
+                 AND m.date >= ?3 AND m.date <= ?4
+             UNION SELECT m.thread_id FROM messages m INDEXED BY idx_messages_conversation_inputs
+              LEFT JOIN mail_assessments home ON home.message_id = m.id
+                  AND home.policy_version = ?5 AND home.account_id = m.account_id
+                  AND home.policy_version NOT LIKE 'asks-%'
+             LEFT JOIN assessment_thread_inputs inputs
+                 ON inputs.account_id = m.account_id AND inputs.thread_id = m.thread_id
+              WHERE m.account_id = ?1 AND m.direction = 'inbound' AND m.date >= ?3 AND m.date <= ?4
+                 AND (home.message_id IS NULL OR home.input_revision != inputs.revision)
+             UNION SELECT m.thread_id FROM assessment_sender_inputs sender
+             CROSS JOIN messages m ON m.account_id = sender.account_id AND lower(m.from_email) = +sender.email
+             JOIN assessment_thread_inputs inputs ON inputs.account_id = m.account_id AND inputs.thread_id = m.thread_id
+             WHERE sender.account_id = ?1 AND sender.revision > inputs.revision
+                 AND EXISTS (SELECT 1 FROM messages recent WHERE recent.account_id = m.account_id
+                     AND recent.thread_id = m.thread_id AND recent.date >= ?3 AND recent.date <= ?4)";
+
 /// One message of a thread that was active inside the desk window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeskMessage {
@@ -207,32 +230,16 @@ impl super::Store {
         self.desk_messages_where(
             account_id,
             Evidence::None,
-            "SELECT thread_id FROM messages
-             WHERE account_id = ?1 AND direction != 'inbound' AND date >= ?3 AND date <= ?4
-             UNION SELECT m.thread_id FROM mail_assessments home
-             CROSS JOIN messages m ON m.id = home.message_id AND m.account_id = home.account_id
-             WHERE home.account_id = ?1 AND home.policy_version = ?5
-                 AND home.policy_version NOT LIKE 'asks-%'
-                 AND json_extract(home.assessment_json, '$.home') = 'messages'
-                 AND m.date >= ?3 AND m.date <= ?4
-             UNION SELECT m.thread_id FROM messages m
-              LEFT JOIN mail_assessments home ON home.message_id = m.id
-                  AND home.policy_version = ?5 AND home.account_id = m.account_id
-                  AND home.policy_version NOT LIKE 'asks-%'
-             LEFT JOIN assessment_thread_inputs inputs
-                 ON inputs.account_id = m.account_id AND inputs.thread_id = m.thread_id
-              WHERE m.account_id = ?1 AND m.direction = 'inbound' AND m.date >= ?3 AND m.date <= ?4
-                 AND (home.message_id IS NULL OR home.input_revision != inputs.revision)
-             UNION SELECT m.thread_id FROM assessment_sender_inputs sender
-             CROSS JOIN messages m ON m.account_id = sender.account_id AND lower(m.from_email) = +sender.email
-             JOIN assessment_thread_inputs inputs ON inputs.account_id = m.account_id AND inputs.thread_id = m.thread_id
-             WHERE sender.account_id = ?1 AND sender.revision > inputs.revision
-                 AND EXISTS (SELECT 1 FROM messages recent WHERE recent.account_id = m.account_id
-                     AND recent.thread_id = m.thread_id AND recent.date >= ?3 AND recent.date <= ?4)",
-            |query| query.bind(since.timestamp()).bind(Utc::now().timestamp() + 86_400)
-                .bind(mxr_core::assessment::CLASSIFIER_POLICY_VERSION),
+            CONVERSATION_THREADS,
+            |query| {
+                query
+                    .bind(since.timestamp())
+                    .bind(Utc::now().timestamp() + 86_400)
+                    .bind(mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
+            },
             "desk.conversation_messages",
-        ).await
+        )
+        .await
     }
 
     /// Every message of the given threads, in the same shape: for rows that
@@ -242,6 +249,39 @@ impl super::Store {
         account_id: &AccountId,
         thread_ids: &[ThreadId],
     ) -> Result<Vec<DeskMessage>, sqlx::Error> {
+        self.desk_selected_threads(
+            account_id,
+            thread_ids,
+            Evidence::Full,
+            "desk.messages_in_threads",
+        )
+        .await
+    }
+
+    /// The same whole threads without body evidence: settled history only
+    /// needs geometry and message metadata. Pending facets still materialize
+    /// from authoritative sources before the daemon can persist a synopsis.
+    pub async fn desk_history_in_threads(
+        &self,
+        account_id: &AccountId,
+        thread_ids: &[ThreadId],
+    ) -> Result<Vec<DeskMessage>, sqlx::Error> {
+        self.desk_selected_threads(
+            account_id,
+            thread_ids,
+            Evidence::None,
+            "desk.history_inputs",
+        )
+        .await
+    }
+
+    async fn desk_selected_threads(
+        &self,
+        account_id: &AccountId,
+        thread_ids: &[ThreadId],
+        evidence: Evidence,
+        operation: &'static str,
+    ) -> Result<Vec<DeskMessage>, sqlx::Error> {
         if thread_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -250,10 +290,10 @@ impl super::Store {
                 .map_err(|e| sqlx::Error::Encode(Box::new(e)))?;
         self.desk_messages_where(
             account_id,
-            Evidence::Full,
+            evidence,
             "SELECT value AS thread_id FROM json_each(?3)",
             |query| query.bind(wanted),
-            "desk.messages_in_threads",
+            operation,
         )
         .await
     }

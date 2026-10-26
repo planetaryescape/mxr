@@ -27,7 +27,7 @@ export async function getNow(account?: string): Promise<NowData> {
 
 /** What Messages keeps: a turn and the two toggles, as the daemon names them. */
 export interface MessagesFilter {
-  turn?: "mine" | "theirs";
+  turn?: "all" | "mine" | "theirs";
   unread?: boolean;
   pace?: boolean;
 }

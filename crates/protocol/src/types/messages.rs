@@ -11,15 +11,16 @@ use serde::{Deserialize, Serialize};
 
 /// The words Messages teaches itself with (D118, the #284 copy).
 pub mod messages_copy {
-    pub const HEADER: &str = "People you talk with, one row each. Reply or mark done.";
+    pub const HEADER: &str = "Conversations that need your attention. Reply or mark done.";
+    pub const HISTORY_HEADER: &str = "All conversations, including archived and sent-only history.";
     pub const NEVER_HAD_ANY: &str = "When someone writes to you and you've written to them, they show up here, one row per person, with what they asked you.";
-    /// Followed by up to three people whose usual pace lapsed, as facts.
+    /// No idle conversations or reconnect suggestions are added below it.
     pub const CLEAR: &str = "Nobody is waiting on you.";
     /// The empty line of the Waiting on view (`turn=theirs`).
     pub const WAITING_CLEAR: &str = "Nobody you're waiting to hear from.";
     /// The full explanation `?` leads with. Nothing shows it unasked.
-    pub const ABOUT: &str = "Each row is a person, not an email, with your conversations inside as topics. The quoted line is what they asked; the row leaves Your turn when you reply or press got it (.).";
-    pub const LANDS_HERE: &str = "People you write to and who write to you, one row each; a group thread is its own row, and a thread you were only copied on goes to Updates.";
+    pub const ABOUT: &str = "Messages shows only conversations that need your attention: unanswered directed requests and due reminders you set, grouped by person or conversation. Replying, Got it or Done clears resolved attention; All conversations opens history.";
+    pub const LANDS_HERE: &str = "Unanswered directed requests and due explicit reminders, grouped by person or conversation. Recent, unread and pinned mail is not attention by itself. All conversations includes history.";
     pub const FIRST_RUN_LINE: &str = "People you talk with";
     /// How many seconds Got it waits, showing its text, before it sends.
     pub const ACK_COUNTDOWN_SECONDS: u32 = 5;
@@ -70,6 +71,7 @@ pub mod messages_copy {
 
     fn turn_name(turn: super::MessagesTurnData) -> &'static str {
         match turn {
+            super::MessagesTurnData::All => "All conversations",
             super::MessagesTurnData::Mine => "Your turn",
             super::MessagesTurnData::Theirs => "Waiting on them",
         }
@@ -271,7 +273,7 @@ pub struct MessagesRowData {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub members: Vec<PersonRefData>,
     pub closeness: ClosenessData,
-    /// Their latest message to you is unanswered on some topic.
+    /// A topic needs attention: an unanswered request or due explicit return.
     pub your_turn: bool,
     /// The latest activity on any topic.
     pub last_at: chrono::DateTime<chrono::Utc>,
@@ -313,7 +315,7 @@ pub struct MessagesLapsedData {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MessagesData {
     pub generated_at: chrono::DateTime<chrono::Utc>,
-    /// `messages_copy::HEADER`.
+    /// The selected view's header (attention or conversation history).
     pub header: String,
     pub your_turn: Vec<MessagesRowData>,
     /// Your turn's people, split as Now and the rail count them. With
@@ -333,26 +335,27 @@ pub struct MessagesData {
     /// limit. Equals `row_count` when no filter is on.
     #[serde(default)]
     pub matched: u32,
-    /// People and groups in Messages, every band, unfiltered.
+    /// People and groups needing attention, before toggles or list limits.
     pub row_count: u32,
-    /// Conversations behind them.
+    /// Conversations needing attention, before toggles or list limits.
     pub thread_count: u32,
-    /// Set when Your turn is empty: the clear line or the never-had-any
-    /// line.
+    /// Set when the selected view is empty, with view-specific copy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub empty_state: Option<String>,
-    /// Up to three people whose usual pace lapsed, under the clear line.
+    /// Legacy field, left empty: clear attention is never filled with idle people.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lapsed: Vec<MessagesLapsedData>,
     /// Merges mxr could suggest, for the hint on a person page.
     pub merge_suggestion_count: u32,
 }
 
-/// Only rows where it is this side's turn.
+/// An explicit Messages view. Omission selects Needs attention.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum MessagesTurnData {
+    /// Conversation history, including archived and sent-only threads.
+    All,
     /// Your turn.
     Mine,
     /// Waiting on them.
@@ -364,7 +367,7 @@ pub enum MessagesTurnData {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MessagesFilterData {
-    /// Only rows where it is this side's turn; `None` keeps every turn.
+    /// The explicit view; `None` selects only topics needing attention.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn: Option<MessagesTurnData>,
     /// Only rows with a message from them you haven't read.
@@ -661,6 +664,10 @@ mod filter_tests {
     #[test]
     fn the_label_names_each_filter_that_is_on() {
         assert_eq!(filter_label(MessagesFilterData::default()), None);
+        assert_eq!(
+            filter_label(filter(Some(MessagesTurnData::All), false, false)).as_deref(),
+            Some("All conversations")
+        );
         assert_eq!(
             filter_label(filter(Some(MessagesTurnData::Mine), true, false)).as_deref(),
             Some("Your turn · Unread")

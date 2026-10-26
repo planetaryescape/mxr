@@ -2092,7 +2092,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Messages: people you talk with in four bands (Your turn, Pinned, Recent, Quiet), each row with its topics and what they asked */
+        /** Messages: conversations needing attention by default; explicit All conversations includes history */
         get: operations["mail_people"];
         put?: never;
         post?: never;
@@ -8421,18 +8421,15 @@ export interface components {
         MessagesBandData: "your_turn" | "pinned" | "recent" | "quiet";
         /** @description Returned by `Request::ListMessages`. */
         MessagesData: {
-            /**
-             * @description Set when Your turn is empty: the clear line or the never-had-any
-             *     line.
-             */
+            /** @description Set when the selected view is empty, with view-specific copy. */
             empty_state?: string | null;
             /** @description The filter the rows were kept by, echoed back. */
             filter?: components["schemas"]["MessagesFilterData"];
             /** Format: date-time */
             generated_at: string;
-            /** @description `messages_copy::HEADER`. */
+            /** @description The selected view's header (attention or conversation history). */
             header: string;
-            /** @description Up to three people whose usual pace lapsed, under the clear line. */
+            /** @description Legacy field, left empty: clear attention is never filled with idle people. */
             lapsed?: components["schemas"]["MessagesLapsedData"][];
             /**
              * Format: int32
@@ -8457,12 +8454,12 @@ export interface components {
             recent_total: number;
             /**
              * Format: int32
-             * @description People and groups in Messages, every band, unfiltered.
+             * @description People and groups needing attention, before toggles or list limits.
              */
             row_count: number;
             /**
              * Format: int32
-             * @description Conversations behind them.
+             * @description Conversations needing attention, before toggles or list limits.
              */
             thread_count: number;
             your_turn: components["schemas"]["MessagesRowData"][];
@@ -8545,7 +8542,7 @@ export interface components {
              *     often (rule)."
              */
             why: string;
-            /** @description Their latest message to you is unanswered on some topic. */
+            /** @description A topic needs attention: an unanswered request or due explicit return. */
             your_turn: boolean;
         };
         /** @enum {string} */
@@ -8573,10 +8570,10 @@ export interface components {
             with?: string[];
         };
         /**
-         * @description Only rows where it is this side's turn.
+         * @description An explicit Messages view. Omission selects Needs attention.
          * @enum {string}
          */
-        MessagesTurnData: "mine" | "theirs";
+        MessagesTurnData: "all" | "mine" | "theirs";
         MicrosoftTodoFieldsData: {
             completed: boolean;
             /** Format: date */
@@ -20632,7 +20629,7 @@ export interface operations {
             query?: {
                 /** @description Account id; omitted covers every account */
                 account?: string;
-                /** @description `mine` or `theirs`: only rows where it is that side's turn */
+                /** @description Omit for Needs attention; `all` includes conversation history; `mine` or `theirs` selects a side's turn */
                 turn?: string;
                 /** @description `true`: only rows with unread mail from them. Counts in the response are unchanged */
                 unread?: boolean;

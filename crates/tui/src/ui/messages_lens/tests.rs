@@ -3,9 +3,8 @@ use chrono::{Duration, TimeZone};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::Address;
 use mxr_protocol::{
-    ClosenessData, ComposerData, MessagesData, MessagesLapsedData, MessagesPreviewData,
-    MessagesRowKindData, MessagesTopicData, PersonRefData, ThreadShapeData, TrimmedData,
-    MESSAGES_GUIDE,
+    ClosenessData, ComposerData, MessagesData, MessagesPreviewData, MessagesRowKindData,
+    MessagesTopicData, PersonRefData, ThreadShapeData, TrimmedData, MESSAGES_GUIDE,
 };
 use mxr_test_support::render_to_string;
 
@@ -145,12 +144,15 @@ pub(crate) fn populated() -> MessagesData {
 pub(crate) fn clear() -> MessagesData {
     let mut data = populated();
     data.your_turn.clear();
+    data.pinned.clear();
+    data.recent.clear();
+    data.quiet.clear();
+    data.recent_total = 0;
+    data.quiet_total = 0;
+    data.matched = 0;
+    data.row_count = 0;
+    data.thread_count = 0;
     data.empty_state = Some(mxr_protocol::messages_copy::CLEAR.into());
-    data.lapsed = vec![MessagesLapsedData {
-        account_id: AccountId::from_provider_id("fake", "alex"),
-        person: person("ari@example.com", "Ari Stone"),
-        line: "Ari usually writes every week. Last: 19 days ago.".into(),
-    }];
     data
 }
 
@@ -261,9 +263,20 @@ fn render_at(page: &MessagesPageState, width: u16, selected_index: usize) -> Str
 
 #[test]
 fn people_are_rows_in_bands_beside_the_person_page() {
-    let page = page(populated(), true);
+    let mut data = populated();
+    data.header = mxr_protocol::messages_copy::HISTORY_HEADER.into();
+    data.filter.turn = Some(mxr_protocol::MessagesTurnData::All);
+    data.row_count = 2;
+    data.thread_count = 2;
+    let filter = data.filter;
+    let mut page = page(data, true);
+    page.filter = filter;
     for width in [60u16, 80, 120] {
         let rendered = render_at(&page, width, 0);
+        assert!(
+            rendered.contains("All conversations"),
+            "{width}\n{rendered}"
+        );
         let your_turn = rendered.find("YOUR TURN").expect("Your turn band");
         let pinned = rendered.find("PINNED").expect("Pinned band");
         let recent = rendered.find("RECENT").expect("Recent band");
@@ -382,7 +395,7 @@ fn the_person_page_has_the_whole_screen_when_narrow_and_focused() {
 }
 
 #[test]
-fn a_clear_list_says_nobody_is_waiting_with_lapsed_people_as_facts() {
+fn a_clear_list_says_nobody_is_waiting_without_history_or_lapsed_people() {
     let page = page(clear(), true);
     for width in [60u16, 80, 120] {
         let rendered = render_at(&page, width, 0);
@@ -390,10 +403,10 @@ fn a_clear_list_says_nobody_is_waiting_with_lapsed_people_as_facts() {
             rendered.contains("Nobody is waiting on you."),
             "{width}\n{rendered}"
         );
-        assert!(
-            rendered.contains("Ari usually writes every week"),
-            "{width}"
-        );
+        assert!(!rendered.contains("usually writes every week"), "{width}");
+        assert!(!rendered.contains("PINNED"), "{width}");
+        assert!(!rendered.contains("RECENT"), "{width}");
+        assert!(!rendered.contains("QUIET"), "{width}");
         assert!(!rendered.contains("YOUR TURN"), "{width}");
         insta::assert_snapshot!(format!("messages_lens_clear_{width}"), rendered);
     }

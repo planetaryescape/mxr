@@ -2093,7 +2093,7 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_messages",
-        description = "Messages: people the user talks with, one row each, in four bands (your_turn, pinned, recent, quiet). Each row is a person merged across their addresses (or a group thread), with its topics (threads), whose turn it is, the user's usual pace, and a preview: the verbatim ask from a cached gist, else the latest new text (quotes and signature removed). turn: 'mine' or 'theirs'. unread: only rows with unread mail from them. past_pace: only rows where your turn has run past the usual pace. Filters narrow the rows; counts stay unfiltered. Read-only."
+        description = "Messages defaults to conversations needing attention: unanswered directed requests and due explicit reminders. Only actionable topics appear in each person's row (or a group thread). Omit turn for Needs attention; turn: 'all' explicitly includes archived and sent-only conversation history, 'mine' is your turn, 'theirs' is waiting on them. unread and past_pace narrow the selected view. Counts describe attention, not stored history. Read-only."
     )]
     pub async fn messages(
         &self,
@@ -2695,7 +2695,7 @@ pub struct CorrectionsInput {
 pub struct MessagesInput {
     #[serde(default)]
     pub account_id: Option<String>,
-    /// Only rows where it is this side's turn: mine or theirs.
+    /// Omit for Needs attention; all includes history, mine/theirs select a side.
     #[serde(default)]
     pub turn: Option<TurnInput>,
     /// Only rows with unread mail from them.
@@ -2712,6 +2712,7 @@ pub struct MessagesInput {
 #[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnInput {
+    All,
     Mine,
     Theirs,
 }
@@ -2734,6 +2735,7 @@ fn messages_request(input: MessagesInput) -> Result<Request, ErrorData> {
 impl From<TurnInput> for mxr_protocol::MessagesTurnData {
     fn from(turn: TurnInput) -> Self {
         match turn {
+            TurnInput::All => Self::All,
             TurnInput::Mine => Self::Mine,
             TurnInput::Theirs => Self::Theirs,
         }
@@ -2931,6 +2933,12 @@ mod tests {
             panic!("expected a ListMessages request");
         };
         assert_eq!(filter, mxr_protocol::MessagesFilterData::default());
+
+        let input: MessagesInput = serde_json::from_value(json!({ "turn": "all" })).unwrap();
+        let Ok(Request::ListMessages { filter, .. }) = messages_request(input) else {
+            panic!("expected a ListMessages request");
+        };
+        assert_eq!(filter.turn, Some(mxr_protocol::MessagesTurnData::All));
     }
 
     #[test]

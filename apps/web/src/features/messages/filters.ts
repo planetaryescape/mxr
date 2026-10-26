@@ -7,7 +7,7 @@
 import type { MessagesTurn } from "./api";
 
 export interface MessagesFilter {
-  /** `null` keeps every turn. */
+  /** `null` selects Needs attention; `all` explicitly includes history. */
   turn: MessagesTurn | null;
   unread: boolean;
   pastPace: boolean;
@@ -38,7 +38,7 @@ export function searchOf(filter: MessagesFilter): FilterSearch {
   return search;
 }
 
-/** A turn, a toggle or both: the list is narrower than the page's default. */
+/** An explicit view or toggle differs from the attention-only default. */
 export function isFiltered(filter: MessagesFilter): boolean {
   return filter.turn !== null || filter.unread || filter.pastPace;
 }

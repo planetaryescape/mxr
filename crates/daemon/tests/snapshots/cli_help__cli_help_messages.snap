@@ -2,14 +2,14 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-People you talk with, one row each. Reply or mark done.
+Conversations that need your attention, one row per person. Reply or mark done.
 
-Four bands: Your turn (their latest message to you is unanswered; closest people first, then whoever has waited longest past your usual pace), Pinned, Recent and Quiet. Each row is a person, merged across their addresses, with your conversations inside as topics; a group thread is its own row. A thread you were only copied on goes to Updates. The preview is what they asked, from the conversation's gist when one is cached, else what they wrote last.
+By default, only actionable topics appear: unanswered directed requests and due reminders you explicitly set. Recent, unread, pinned, archived and sent-only mail do not qualify just because they exist. Use `mxr messages list --turn all` for All conversations, including history in Recent and Quiet; `messages person EMAIL` also retains that person's history. Each row is a person, merged across their addresses; a group thread is its own row. The preview is what they asked, from the conversation's gist when one is cached, else their latest new text.
 
 Usage: mxr messages [OPTIONS] [COMMAND]
 
 Commands:
-  list    The bands (the default)
+  list    Conversations needing attention (the default), or an explicit history view
   person  One person's page: how you know them, every topic, and the selected topic as a conversation of what each message newly says [alias: show]
   ack     Got it: reply with a short acknowledgement in your usual greeting and sign-off for that person. --dry-run prints the exact text
   merge   Make several addresses one person, by hand. mxr only ever suggests a merge (same name, you've written to both); --suggestions lists them

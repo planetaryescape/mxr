@@ -9,8 +9,9 @@ use mxr_protocol::{MessagesFilterData, MessagesTurnData};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-const TURN_ROWS: [(&str, Option<MessagesTurnData>); 3] = [
-    ("All", None),
+const TURN_ROWS: [(&str, Option<MessagesTurnData>); 4] = [
+    ("Needs attention", None),
+    ("All conversations", Some(MessagesTurnData::All)),
     ("Your turn", Some(MessagesTurnData::Mine)),
     ("Waiting on them", Some(MessagesTurnData::Theirs)),
 ];
@@ -43,8 +44,8 @@ pub fn draw(
         .collect();
     lines.push(Line::from(""));
     for (row, (label, on)) in [
-        (3, ("Unread", filter.unread)),
-        (4, ("Past your pace", filter.past_pace)),
+        (4, ("Unread", filter.unread)),
+        (5, ("Past your pace", filter.past_pace)),
     ] {
         let mark = if on { "[x]" } else { "[ ]" };
         lines.push(row_line(
@@ -55,7 +56,7 @@ pub fn draw(
         ));
     }
     lines.push(row_line(
-        5,
+        6,
         picker.cursor,
         "Clear filters".to_string(),
         theme,

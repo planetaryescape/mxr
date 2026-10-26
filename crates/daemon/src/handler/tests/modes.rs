@@ -343,7 +343,10 @@ async fn archived_conversation_history_can_be_done_in_messages_and_undone() {
         Request::ListMessages {
             account_id: None,
             turn: None,
-            filter: Default::default(),
+            filter: mxr_protocol::MessagesFilterData {
+                turn: Some(mxr_protocol::MessagesTurnData::All),
+                ..Default::default()
+            },
             limit: 50,
         },
     )

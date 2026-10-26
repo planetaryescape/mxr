@@ -1087,7 +1087,7 @@ pub struct MessagesFilterPicker {
 
 impl MessagesFilterPicker {
     /// The last row: Clear filters.
-    pub const LAST: usize = 5;
+    pub const LAST: usize = 6;
 }
 
 #[derive(Debug, Clone)]

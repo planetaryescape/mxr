@@ -91,3 +91,27 @@ spans. To do, reply turns, waits and relationship commitments project that
 answer. Home placement remains an inbound-only facet; both facets commit
 under the same thread-generation check. Missing or stale asks stay pending.
 No model decides this facet.
+
+Inspect the stored answer and a task projected from it:
+
+```bash
+mxr modes why MESSAGE_ID --format json
+mxr todo why TODO_ID --format json
+```
+
+An answer is current only for its account, classifier policy, observed input
+generation and context. Owned addresses, actual timezone rules and account
+receiver-trust settings also participate in asks validity. Changing
+those inputs schedules reconciliation. An unchanged daemon restart retains
+settled answers without invalidating the whole mailbox.
+
+Saving an answer also persists its task-projection retry ticket. Acknowledging
+that ticket checks the exact generation and fingerprint, so an older worker
+cannot consume newer work. Evaluation distinguishes unsettled projection from
+a settled answer with a missing task. Current-answer reads do not run a
+replacement judge.
+
+[Task corrections](/guides/todo/#correct-ownership-or-details) retain their reason and
+before/after state separately from the authored source quote. A later accepted
+promise date can refresh date-derived timing while preserving a corrected title
+or kind and a directly edited due date.

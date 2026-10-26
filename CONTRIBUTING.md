@@ -190,9 +190,10 @@ kind of ask from blueprint 37 (`pay`, `fix_payment`, `sign`, `verify`, `reply`,
 `send`, `provide`, `upload`, `book`, `attend`, `renew_or_cancel`, `register`,
 `contact`, `other`), a direction (`asks_you`, or `you_promised` for your sent
 mail), the counterparty, the amount and the due words, plus whether a reply is
-owed. Annotated items also grade the exact source quote, actor and state. The eval matches each email's stored asks units to its expected items by kind and
-direction (the table that maps today's to-do kinds to these is
-`Row::from_asks` in `crates/daemon/src/handler/classify_eval_asks.rs`) and reports:
+owed. Annotated items also grade the exact source quote, actor and state.
+`Row::from_asks` in `crates/daemon/src/handler/classify_eval_asks.rs` builds
+measured items from stored asks and their linked task rows. The eval matches
+these to expected items by kind and direction.
 
 The read-only packet takes assessments and task rows from one SQL snapshot.
 An ask counts as a delivered task only when its current fingerprint and unit
@@ -273,13 +274,13 @@ reuse the stored answer without judging again. Activation selects that version
 and bounded startup/ingest reconciliation; evaluation never repairs it. Old
 version rows remain available for explicit comparisons.
 
-R2c's developing asks facet uses a separate `asks-r2c-16` policy in the
+The shipped asks facet uses a separate `asks-r2c-16` policy in the
 assessment table. Its records include sent mail; home assessments remain
 inbound-only under `r2-1`. Inspect the stored facet and pending message IDs
 in `mxr modes why MESSAGE_ID --format json`. To do, Your turn, Waiting on and relationship commitments read the stored
 answer; item projection retries persist across restart. See the
 [implementation contract](docs/implementation/r2c-asks/README.md) before
-connecting another consumer or interpreting these records as shipped R2c.
+connecting another consumer or changing replay, correction or freshness rules.
 
 `mxr classify report --limit 1000 --format json` counts stored fallbacks by
 home, sender kind, deciding rule and observed address/header/body facts. `mxr classify eval --compare POLICY`

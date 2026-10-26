@@ -287,7 +287,7 @@ serde_bytes = "0.11"
 sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "uuid", "chrono", "migrate"] }
 
 # Search
-tantivy = "0.26"
+tantivy = "0.27"
 
 # TUI
 ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }

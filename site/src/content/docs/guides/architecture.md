@@ -113,5 +113,6 @@ replacement judge.
 
 [Task corrections](/guides/todo/#correct-ownership-or-details) retain their reason and
 before/after state separately from the authored source quote. A later accepted
-promise date can refresh date-derived timing while preserving a corrected title
-or kind and a directly edited due date.
+promise date can update the date and its derived timing while preserving a
+corrected title or kind. If you edited the due date directly on the task, that
+authority blocks the entire promise-date update, including its derived timing.

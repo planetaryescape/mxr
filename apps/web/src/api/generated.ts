@@ -6479,6 +6479,11 @@ export interface components {
             proposal_id: string;
             /** @description Always filled: the model that answered, where it ran and what it read. */
             provenance: components["schemas"]["DraftProvenanceData"];
+            /** @description Additive fields: older peers can ignore or omit them. */
+            style_marks?: components["schemas"]["ComposeStyleMarkData"][];
+            /** Format: int32 */
+            style_score?: number;
+            style_version?: string;
             text: string;
             /**
              * @description Positions, from zero, of the user's sentences that the proposal changed
@@ -6598,6 +6603,17 @@ export interface components {
             retry_recovery?: boolean;
             subject: string;
             to: string;
+        };
+        /** @description A deterministic style tell in proposal text. Ranges are UTF-8 byte offsets. */
+        ComposeStyleMarkData: {
+            context: string;
+            /** Format: int32 */
+            end: number;
+            name: string;
+            /** Format: int32 */
+            pattern: number;
+            /** Format: int32 */
+            start: number;
         };
         /** @description The box at the bottom, already addressed. */
         ComposerData: {

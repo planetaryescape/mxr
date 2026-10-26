@@ -41,6 +41,24 @@ impl VoiceMaterial {
     }
 }
 
+pub(crate) async fn pattern_rates(
+    state: &AppState,
+    account_id: &AccountId,
+    exclude_thread: Option<&ThreadId>,
+    before: Option<DateTime<Utc>>,
+) -> mxr_humanizer::PatternRates {
+    let samples = state
+        .store
+        .my_recent_sent(account_id, exclude_thread, before, 200)
+        .await
+        .unwrap_or_default();
+    let bodies: Vec<String> = samples
+        .iter()
+        .map(|sample| clean_for_voice(&sample.body))
+        .collect();
+    mxr_humanizer::PatternRates::from_samples(bodies.iter().map(String::as_str))
+}
+
 /// The person being written to, as the voice material is chosen for them.
 pub(crate) struct Counterparty {
     pub email: String,

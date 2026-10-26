@@ -17,7 +17,7 @@ override values inherit from the base config. Each feature has its own guide:
 | `mxr compose assist` | [this page](#draft-for-me-builds-on-what-you-typed) | what you typed + the conversation → a proposal that keeps your sentences, fills in what's missing and shows the diff |
 | `mxr draft eval` | [this page](#check-how-close-drafts-get) | replay your recent replies (`--set mine`), or grade drafts on the labelled set (`--set quick`) |
 | `mxr send --check` answer coverage | [Pre-send safety](/guides/pre-send-safety/#answer-coverage) | extract asks from thread, judge whether the draft addresses each |
-| `mxr send --check` commitment candidates | [Forgotten work](/guides/forgotten-work/#commitments-promises-you-made) | extract "I'll send the deck Friday" promises from drafts |
+| `mxr send --check` commitment candidates | [Forgotten work](/guides/forgotten-work/#track-promises-and-requests) | extract "I'll send the deck Friday" promises from drafts |
 | `mxr ask` | [Archive intelligence](/guides/archive-intelligence/) | retrieval-grounded answer over local mail, every claim cited |
 | `mxr decisions rebuild` | [Archive intelligence](/guides/archive-intelligence/#the-decision-log--mxr-decisions) | extract explicit decisions from threads |
 | `mxr briefing thread` / `recipient` | [Briefings and loop-in](/guides/briefings-and-loop-in/) | dormant-thread / long-gap recap from the local thread transcript or relationship baseline |
@@ -248,6 +248,10 @@ subscription.
 | Drafts | When you ask for one | The conversation being drafted. Your other emails and habits only with `llm.allow_cloud_relationship_data = true` |
 | The [assistant](/guides/assistant/) | When you send it a message | Your message, what you have open, and the mail it reads while answering (search results, threads, drafts). Refused for a cloud endpoint unless `llm.allow_cloud_relationship_data = true`, since it reads across your mailbox |
 | Archive's records and answer box | After sync and on demand | Nothing: records are read by rules and schema.org markup on your machine. Only when no record matches does the answer box fall back to `mxr ask`, under that row's rule |
+
+Automatic promises and requests from [stored asks](/guides/forgotten-work/)
+use deterministic local rules. The commitments model feature covers optional
+draft proposals; it does not decide automatic To do or Waiting on rows.
 
 Prompts that carry mail wrap it as untrusted data and tell the model it is
 not an instruction. Check what the running daemon uses:
@@ -482,7 +486,8 @@ facts nobody has given must be left as `[[?: …]]` gaps, no number may appear
 that no input carries, the length must fall in the case's band, and there
 must be no subject line, preamble, repeated sign-off or run of the thread
 copied back. The output counts how many drafts passed each check. Each draft
-also gets a style score, which is reported and not graded.
+also records a style score and catalogue marks for review; style is not a
+pass/fail check.
 
 Both sets save nothing. Each case starts with one LLM call. A draft that hits
 the token limit is retried with more room, so a case can make more than one
@@ -610,6 +615,18 @@ Every generated draft also runs through a deterministic local humanizer
 detector. It flags common AI-writing patterns such as stock vocabulary,
 em-dash overuse, sycophantic openers, filler phrases, and rule-of-three
 formatting. Detection does not require an LLM.
+
+Compose proposals also carry the local score and marks for patterns the
+deterministic checker maps. The web proof shows their context on hover;
+Raycast and the TUI list the names and context. Marks are advisory and do not
+change the draft. Compose compares supported marks with normalized rates
+from up to 200 recent sent messages, computed locally for the request. The
+derived rates are not sent to cloud models; source emails still follow
+`llm.allow_cloud_relationship_data`.
+With `humanizer.auto_fix` enabled, a style excess can trigger one repair call
+to the same pinned model with only the marked generated sentences and their
+catalogue instructions. A malformed, failed or unsafe repair leaves the
+first proposal intact; typed sentences are never sent for repair.
 
 You'll get the best results with models that follow instructions well
 and stay close to the source: Qwen 2.5 instruct, Llama 3 instruct,

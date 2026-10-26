@@ -33,6 +33,7 @@ pub(crate) mod compose_assist;
 mod compose_corpus;
 pub(crate) mod compose_eval;
 pub(crate) mod compose_proposals;
+mod compose_style_repair;
 mod conversation_shape;
 mod decisions_extract;
 pub(crate) mod deferral;

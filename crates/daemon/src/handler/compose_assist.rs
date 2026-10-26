@@ -211,6 +211,10 @@ pub(super) async fn compose_assist(
         None,
     )
     .await;
+    // Style rates are local evidence: use them in the deterministic check,
+    // never in the prompt or provenance sent to a cloud model.
+    let pattern_rates =
+        draft_voice::pattern_rates(state, account_id, gathered.thread_id.as_ref(), None).await;
 
     let typed_words = u32::try_from(request.text.split_whitespace().count()).unwrap_or(u32::MAX);
     let words = plan::target_words(target_words(None, &material), resolved.action, typed_words);
@@ -269,13 +273,34 @@ pub(super) async fn compose_assist(
             .unwrap_or_default(),
     ]
     .join("\n");
-    let checked = check::check_proposal(&ProposalInput {
-        action: resolved.action,
-        typed: request.text,
-        selection: resolved.selection,
-        output: &cleaned,
-        known: &known,
-    });
+    let mut checked = check::check_proposal_with_rates(
+        &ProposalInput {
+            action: resolved.action,
+            typed: request.text,
+            selection: resolved.selection.clone(),
+            output: &cleaned,
+            known: &known,
+        },
+        &pattern_rates,
+    );
+    if config.humanizer.auto_fix && checked.style_score < 100 && checked.yours_changed.is_empty() {
+        if let Some(repaired) = super::compose_style_repair::repair_style_sentences(
+            &policy.llm,
+            super::compose_style_repair::RepairInput {
+                original: &checked,
+                typed: request.text,
+                action: resolved.action,
+                selection: resolved.selection.clone(),
+                known: &known,
+                rates: &pattern_rates,
+                max_tokens: max_tokens.min(512),
+            },
+        )
+        .await
+        {
+            checked = repaired;
+        }
+    }
     // Keep only source-backed figures present in this proposal. A guessed
     // amount inside a gap must not become evidence on the next revision.
     let grounding = [request.text, &known].join("\n");
@@ -321,6 +346,9 @@ pub(super) async fn compose_assist(
         provenance,
         yours_changed: checked.yours_changed,
         composer_version: COMPOSER_VERSION.to_string(),
+        style_marks: checked.style_marks,
+        style_score: checked.style_score,
+        style_version: mxr_humanizer::HUMANIZER_VERSION.to_string(),
     };
     log_assist(state, source, account_id, &proposal, &checked.fixes);
     state.compose_proposals.insert(StoredProposal {

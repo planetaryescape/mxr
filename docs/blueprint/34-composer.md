@@ -265,15 +265,15 @@ fix).
 - **Style.** Run the catalogue's detectors and compare with your own rate
   (below).
 
-**Repair** runs only when the style check finds patterns beyond your own
-rate, or the kept check finds a dropped sentence, and `humanizer.auto_fix`
-is on (default on). It sends the flagged sentences, not the whole draft,
-to the same model with the specific pattern for each ("§1: this sentence
-contrasts with a claim nobody made; state the point"), and asks for those
-sentences back. It is accepted only if the style score improves and gaps,
-facts and your sentences are unchanged. It replaces today's whole-draft
-rewrite: a whole rewrite is where your sentences and the model's gaps get
-lost.
+**Repair** runs at most once when a supported style mark exceeds your own
+rate and `humanizer.auto_fix` is on (default on). It sends only marked,
+generated sentences and their catalogue instructions to the same pinned
+model. Any sentence span that overlaps kept user text is ineligible; when the
+primary proposal changes a typed sentence, the proposal keeps that warning
+for you to review. A repair is accepted only when the style score improves,
+the exact gap placeholders and typed sentences stay the same, and each
+eligible sentence keeps its numbers, dates, amounts and links. A failed,
+malformed or rejected repair leaves the primary proposal and its marks intact.
 
 At most two model calls per proposal, and one is the norm. The live line
 says which stage is running ("Reading the conversation", "Writing with
@@ -349,15 +349,19 @@ The catalogue is used three ways:
 
 1. **In the prompt.** The style block lists the email patterns as positive
    instructions, strongest first, in about 20 lines.
-2. **In the check.** Every proposal is scored, and a pattern counts only
-   above your own rate. The skill's rule is that the writer's sample
-   outranks every pattern, dashes included: if your sent mail uses dashes,
-   the draft may too, at about your rate. `PatternRates` is computed from
-   your last 200 sent emails when the voice is built. With no sent mail,
-   every rate is zero.
-3. **In the eval.** The corpus grades each proposal by its style marks.
+2. **In the check.** Every proposal is scored, and a supported pattern
+   counts only above your own normalized rate. The skill's rule is that the
+   writer's sample outranks every pattern, dashes included. `PatternRates`
+   is computed locally for each request from up to 200 recent sent messages;
+   rates are normalized per thousand words. With no sent mail, every rate is
+   zero. The derived rates stay out of cloud prompts and provenance; any
+   source emails follow the existing cloud-history opt-in.
+3. **In the eval.** Recorded outputs include style scores and catalogue
+   marks beside the pass/fail fact and kept-text checks. Style is reported,
+   not a pass/fail threshold.
 
-The existing 24 categories map into the 26:
+The legacy API retains 24 categories. Categories with direct catalogue
+equivalents contribute to pattern rates through this map:
 
 | Today | 3.1 pattern |
 |---|---|
@@ -375,8 +379,9 @@ The existing 24 categories map into the 26:
 | `ExcessiveBoldface`, `InlineHeaderColonList` | §19 Bold as decoration |
 | `EmojiHeading`, `TitleCaseHeading` | §20 Decorative headings |
 | `CurlyQuotes` | §21 Curly quotation marks |
-| `SycophanticOpener`, `CollaborativeArtifact`, `FillerPhrase` | §22 Chatbot residue |
+| `SycophanticOpener`, `CollaborativeArtifact` | §22 Chatbot residue |
 | `KnowledgeCutoffDisclaimer` | §23 Knowledge-limit disclaimers |
+| `FillerPhrase` | remains detectable by the legacy scorer, but has no catalogue rate mapping |
 | `FalseRange`, `Profanity` | kept as mxr's own, outside the 26 |
 | — | new: §4 staged run-up, §5 arguing with no one, §7 repeated openings, §10 hyphenated pairs, §11 missing subjects, §14 vague association, §17 borrowed authority, §24, §25 writing about the document, §26 re-explaining |
 
@@ -790,7 +795,7 @@ catalogue are built inside the first rung that needs them.
 | C0 | see how good drafts are, case by case, and have every prompt change show as a diff | the compose corpus (40 cases), `mxr draft eval --set quick`, the snapshot gate over today's pipeline | planned |
 | C1 | type a few words, press `⌘J`, and get your draft finished, as a proof you accept, in every client | `ComposeAssist` with `text`, `selection` and `DraftTarget`; `mxr-compose` (shared body regions); `mxr-composer` (plan, check: kept, gaps); `ComposeProposalData` with `changes`; the help line and proof on web; the TUI and Raycast proofs; `mxr compose assist`/`apply`; Unfilled gap; the MCP tool on the new request | planned |
 | C2 | pick which model drafts, with a default in Settings | `[llm.compose] model`, `llm.models`, `ModelChoiceData.sees`, `model` on the request, the picker in all clients, old keys warn | planned |
-| C3 | get drafts that follow humanizer 3.1 and your own habits | the catalogue, `PatternRates`, the style block, the voice-relative check, sentence repair, style marks, the invented-fact check | planned |
+| C3 | get drafts that follow humanizer 3.1 and your own habits | the catalogue, `PatternRates`, the style block, the voice-relative check, sentence repair, style marks, the invented-fact check | partial: catalogue, local `PatternRates`, style marks, bounded sentence repair, and deterministic style/fact regression coverage are wired; the full recorded corpus still reports rather than gates on style |
 | C4 | reply inline under the message, with one recipients line and one Send | the compose screen above on web and desktop; sheet for new messages; `⋯` for the rest | planned |
 | C5 | see which of your emails shaped a draft, and have a voice rebuild change your drafts | the one `Voice`, usual length and register in the prompt, provenance links, `--set mine` without the rewrite model | planned |
 

@@ -5,7 +5,9 @@
 
 use super::split_body;
 use super::text::{invented_spans, sentences};
-use mxr_protocol::{AssistActionData, GapData, TextChangeData, TextChangeKindData};
+use mxr_protocol::{
+    AssistActionData, ComposeStyleMarkData, GapData, TextChangeData, TextChangeKindData,
+};
 use similar::{ChangeTag, DiffTag, TextDiff};
 use std::collections::HashSet;
 use std::ops::Range;
@@ -33,6 +35,11 @@ pub struct Checked {
     pub text: String,
     pub changes: Vec<TextChangeData>,
     pub gaps: Vec<GapData>,
+    pub style_marks: Vec<ComposeStyleMarkData>,
+    pub style_score: u8,
+    /// Equal byte spans between the typed source and checked proposal. Repair
+    /// uses these conservatively to avoid sending any kept user text.
+    pub user_owned_ranges: Vec<Range<usize>>,
     /// Which of the user's sentences were changed or dropped, by position.
     pub yours_changed: Vec<u32>,
     /// What the check had to do to the model's answer, for the activity log.
@@ -50,6 +57,13 @@ pub struct Fixes {
 }
 
 pub fn check_proposal(input: &ProposalInput<'_>) -> Checked {
+    check_proposal_with_rates(input, &mxr_humanizer::PatternRates::default())
+}
+
+pub fn check_proposal_with_rates(
+    input: &ProposalInput<'_>,
+    rates: &mxr_humanizer::PatternRates,
+) -> Checked {
     let mut fixes = Fixes::default();
 
     let regions = split_body(input.output);
@@ -73,6 +87,31 @@ pub fn check_proposal(input: &ProposalInput<'_>) -> Checked {
     text = rewritten;
     fixes.figures_to_gaps = figures;
 
+    let style =
+        mxr_humanizer::score_with_rates(&text, &mxr_humanizer::HumanizerOpts::default(), rates);
+    let style_marks = style
+        .hits
+        .iter()
+        .filter_map(|hit| {
+            let pattern = mxr_humanizer::pattern_for_category(hit.category)?;
+            let spec = mxr_humanizer::PATTERNS.get(usize::from(pattern - 1))?;
+            let (start, end) = (hit.span.start, hit.span.end);
+            // Humanizer hits are byte ranges; widen to the containing line for a useful client hover.
+            let line_start = text[..start].rfind('\n').map_or(0, |index| index + 1);
+            let line_end = text[end..]
+                .find('\n')
+                .map_or(text.len(), |index| end + index);
+            Some(ComposeStyleMarkData {
+                pattern,
+                name: spec.name.to_string(),
+                start: u32::try_from(start).unwrap_or(u32::MAX),
+                end: u32::try_from(end).unwrap_or(u32::MAX),
+                context: text[line_start..line_end].trim().to_string(),
+            })
+        })
+        .collect();
+
+    let user_owned_ranges = equal_output_ranges(input.typed, &text);
     Checked {
         // An edit keeps what is outside its selection byte for byte, blank
         // space included, so the diff starts from the text as typed.
@@ -85,10 +124,33 @@ pub fn check_proposal(input: &ProposalInput<'_>) -> Checked {
             &text,
         ),
         gaps: gap_spans(&text),
+        style_marks,
+        style_score: style.score,
+        user_owned_ranges,
         yours_changed: sentences_changed(input.typed, &text),
         text,
         fixes,
     }
+}
+
+fn equal_output_ranges(from: &str, to: &str) -> Vec<Range<usize>> {
+    let mut output_offset = 0;
+    let mut ranges: Vec<Range<usize>> = Vec::new();
+    for change in TextDiff::from_chars(from, to).iter_all_changes() {
+        let value = change.value();
+        if change.tag() == ChangeTag::Equal && !value.is_empty() {
+            let end = output_offset + value.len();
+            if let Some(last) = ranges.last_mut().filter(|last| last.end == output_offset) {
+                last.end = end;
+            } else {
+                ranges.push(output_offset..end);
+            }
+        }
+        if change.tag() != ChangeTag::Delete {
+            output_offset += value.len();
+        }
+    }
+    ranges
 }
 
 /// The user's sentences (counted as `check` counts them: split at `.`, `!`,
@@ -357,6 +419,26 @@ mod tests {
             .map(|change| change.text.as_str())
             .collect();
         assert_eq!(kept, typed, "kept and removed runs rebuild the typed text");
+    }
+
+    #[test]
+    fn style_marks_name_the_pattern_and_use_utf8_byte_ranges() {
+        let checked = finish("", "Café— additionally, this serves as a testament.", "");
+        assert!(checked.style_score < 100);
+        assert!(checked.style_marks.iter().any(|mark| {
+            mark.name == "Overused AI words"
+                && checked.text.is_char_boundary(mark.start as usize)
+                && checked.text.is_char_boundary(mark.end as usize)
+                && &checked.text[mark.start as usize..mark.end as usize] == "additionally"
+        }));
+        assert!(checked
+            .style_marks
+            .iter()
+            .any(|mark| mark.name == "Dashes as the universal connector"));
+        assert!(checked
+            .style_marks
+            .iter()
+            .all(|mark| mark.context.contains("Café")));
     }
 
     #[test]

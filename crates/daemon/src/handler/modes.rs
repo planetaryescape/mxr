@@ -761,7 +761,10 @@ pub(super) async fn quiet_count(
 pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
     let now = Utc::now();
     let accounts = scoped_cached_accounts(state, account_id).await?;
-    let snapshot = super::now::snapshot(state, account_id, &accounts, now, &Local).await?;
+    let (snapshot, quiet) = tokio::try_join!(
+        super::now::snapshot(state, account_id, &accounts, now, &Local),
+        quiet_count(state, &accounts, now),
+    )?;
     let count = |n: usize| Some(super::now::count(n));
     // Badges count work only: Now's people and due soon. To do earns its
     // own badge only once `mxr modes eval` shows under one false to-do a
@@ -781,7 +784,7 @@ pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -
     }];
     entries.extend([
         RailEntryData {
-            quiet: Some(quiet_count(state, &accounts, now).await?),
+            quiet: Some(quiet),
             ..mode_entry(ModeKindData::Messages, Some(snapshot.your_turn_total()))
         },
         mode_entry(ModeKindData::Todo, count(snapshot.due_now.len())),

@@ -266,14 +266,14 @@ async fn due_follow_up_on_archived_mail_is_attention_in_messages_now_and_rail() 
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let received = fx
-        .message(&thread, SAMIR, ME, Duration::days(2), None)
+        .message(&thread, SAMIR, ME, Duration::days(400), None)
         .await;
     let sent = fx
         .message(
             &thread,
             ME,
             SAMIR,
-            Duration::days(1),
+            Duration::days(399),
             received.message_id_header.as_deref(),
         )
         .await;
@@ -300,6 +300,14 @@ async fn due_follow_up_on_archived_mail_is_attention_in_messages_now_and_rail() 
         .why
         .contains("no reply by the time you set"));
     assert_eq!(attention.row_count, 1);
+    // Window/history preloading must still add the desk's returned threads
+    // outside the recent window, and never relabel a due turn as waiting.
+    let all = filtered(&fx, Some(MessagesTurnData::All), Default::default()).await;
+    assert_eq!(all.your_turn[0].topics[0].thread_id, thread);
+    assert_eq!(all.your_turn[0].topics[0].state, TopicStateData::YourTurn);
+    let waiting = filtered(&fx, Some(MessagesTurnData::Theirs), Default::default()).await;
+    assert!(shown_ids(&waiting).is_empty());
+    assert_eq!(waiting.row_count, 1);
     let ResponseData::Now { now } = request(&fx, Request::GetNow { account_id: None }).await else {
         panic!("expected Now")
     };

@@ -65,12 +65,37 @@ pub(super) async fn snapshot<Tz: TimeZone>(
 where
     Tz::Offset: std::fmt::Display,
 {
-    let desk = compose_desk(state, account_id, now).await?;
+    // These independent reads used to add their latencies together. Keep
+    // the same membership and digest rules, but let SQLite's reader pool
+    // serve the People, To do and inbox branches concurrently.
+    let inbox_and_digest = async {
+        let mut inbox = inbox_modes(state, accounts).await?;
+        let scope = super::updates_digest::Scope {
+            account_id: account_id.cloned(),
+            ..Default::default()
+        };
+        let updates = std::mem::take(&mut inbox.updates);
+        let (digest, _, _) = Box::pin(super::updates::digest_from(
+            state, accounts, updates, &scope, now, tz,
+        ))
+        .await?;
+        Ok::<_, HandlerError>((inbox, digest))
+    };
+    let todo_records = async {
+        Ok::<_, HandlerError>(
+            state
+                .store
+                .list_runway_todos(account_id, start_of_week(now, tz))
+                .await?,
+        )
+    };
+    let (desk, records, (inbox, digest)) = tokio::try_join!(
+        compose_desk(state, account_id, now),
+        todo_records,
+        inbox_and_digest,
+    )?;
     // Hard rule: nothing past its relevancy window enters Now.
-    let records = state
-        .store
-        .list_runway_todos(account_id, start_of_week(now, tz))
-        .await?
+    let records = records
         .into_iter()
         .filter(|record| record.relevant_until.is_none_or(|until| until >= now))
         .collect();
@@ -79,17 +104,6 @@ where
     // Now puts them first, so its cap of three never hides one.
     let mut due_now = bands.now;
     due_now.sort_by_key(|todo| (!todo.overdue, todo.act_by_at.is_none(), todo.act_by_at));
-    let mut inbox = inbox_modes(state, accounts).await?;
-    let scope = super::updates_digest::Scope {
-        account_id: account_id.cloned(),
-        ..Default::default()
-    };
-    // The digest is all Now and the rail read of Updates' mail.
-    let updates = std::mem::take(&mut inbox.updates);
-    let (digest, _, _) = Box::pin(super::updates::digest_from(
-        state, accounts, updates, &scope, now, tz,
-    ))
-    .await?;
     Ok(NowSnapshot {
         turn: desk.turn_units(),
         due_now,
@@ -117,7 +131,11 @@ where
 {
     let started = std::time::Instant::now();
     let accounts = scoped_cached_accounts(state, account_id).await?;
-    let snapshot = snapshot(state, account_id, &accounts, now, tz).await?;
+    let (snapshot, coming_up, first_run) = tokio::try_join!(
+        snapshot(state, account_id, &accounts, now, tz),
+        super::records::coming_up(state, &accounts, now, NOW_SECTION_CAP),
+        super::todos::first_run(state, account_id),
+    )?;
     let asks = sender_questions(state, &snapshot, now).await?;
 
     let people = people_section(&snapshot, &asks, now, tz);
@@ -146,7 +164,6 @@ where
             + usize::from(updates.is_some())
             + usize::from(reading.is_some()),
     );
-    let first_run = super::todos::first_run(state, account_id).await?;
     let next_at = snapshot.next_surface.as_ref().map(|next| next.at);
     let empty_state = (item_count == 0).then(|| {
         if !first_run.complete {
@@ -187,7 +204,7 @@ where
         empty_state,
         next_at,
         first_run,
-        coming_up: super::records::coming_up(state, &accounts, now, NOW_SECTION_CAP).await?,
+        coming_up,
     })
 }
 

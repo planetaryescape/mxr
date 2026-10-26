@@ -87,14 +87,55 @@ struct DeskTurn {
 enum Scope<'a> {
     /// Only the composed desk's actionable threads, including due returns.
     Attention(HashMap<ThreadId, DeskTurn>),
-    /// The recent window, plus every thread the composed desk says is
+    /// The recent window or explicit All history, plus every thread the desk says is
     /// someone's turn (`turns`, this account's You owe and New from people
     /// rows after the desk's precedence). Your turn is the desk's, so the
     /// window decides only what else shows in Recent and Quiet.
-    Window(HashMap<ThreadId, DeskTurn>),
-    /// Explicit All conversations: the entire locally synced history.
-    History(HashMap<ThreadId, DeskTurn>),
+    Conversations {
+        turns: HashMap<ThreadId, DeskTurn>,
+        inputs: Box<ConversationInputs>,
+    },
     Threads(&'a [ThreadId]),
+}
+
+/// History/window reads do not depend on the desk's lane precedence. Prepare
+/// them alongside the desk, then apply its authoritative turns in `gather`.
+struct ConversationInputs {
+    messages: Vec<DeskMessage>,
+    senders: Senders,
+}
+
+async fn preload_conversations(
+    state: &AppState,
+    accounts: &[AccountId],
+    turn: Option<MessagesTurnData>,
+    now: DateTime<Utc>,
+) -> Result<Vec<Option<ConversationInputs>>, HandlerError> {
+    let history = match turn {
+        Some(MessagesTurnData::All) => true,
+        Some(MessagesTurnData::Theirs) => false,
+        None | Some(MessagesTurnData::Mine) => {
+            return Ok(accounts.iter().map(|_| None).collect());
+        }
+    };
+    let days = i64::from(state.config_snapshot().messages.recent_days.max(1));
+    let mut inputs = Vec::with_capacity(accounts.len());
+    for account in accounts {
+        let messages = if history {
+            state
+                .store
+                .desk_conversation_messages(account, DateTime::UNIX_EPOCH)
+                .await?
+        } else {
+            state
+                .store
+                .desk_thread_messages(account, now - Duration::days(days))
+                .await?
+        };
+        let senders = Senders::load(state, account, &messages).await?;
+        inputs.push(Some(ConversationInputs { messages, senders }));
+    }
+    Ok(inputs)
 }
 
 /// Recent and Quiet include conversation history outside the inbox. Done
@@ -126,27 +167,20 @@ async fn gather(
         store.desk_reply_later(account_id).await?,
         store.desk_reminders(account_id, window_start).await?,
     );
-    let full_history = matches!(&scope, Scope::History(_));
-    let (mut messages, desk_turns) = match scope {
+    let (mut messages, desk_turns, prepared_senders) = match scope {
         Scope::Attention(turns) => {
             let threads: Vec<_> = turns.keys().cloned().collect();
             (
                 store.desk_messages_in_threads(account_id, &threads).await?,
                 Some(turns),
+                None,
             )
         }
-        Scope::Window(turns) | Scope::History(turns) => {
-            let days = i64::from(state.config_snapshot().messages.recent_days.max(1));
-            let since = if full_history {
-                DateTime::UNIX_EPOCH
-            } else {
-                now - Duration::days(days)
-            };
-            let mut messages = if full_history {
-                store.desk_conversation_messages(account_id, since).await?
-            } else {
-                store.desk_thread_messages(account_id, since).await?
-            };
+        Scope::Conversations { turns, inputs } => {
+            let ConversationInputs {
+                mut messages,
+                senders,
+            } = *inputs;
             // A conversation a time you set brought back, or one the desk
             // says is your turn, may be older than the window.
             let loaded: HashSet<&ThreadId> = messages.iter().map(|m| &m.thread_id).collect();
@@ -159,11 +193,15 @@ async fn gather(
                 .into_iter()
                 .collect();
             back.sort_by_key(ThreadId::as_str);
+            // Additional returned/owed threads need their own facets and
+            // contacts. Reuse the prepared context only when it is complete.
+            let prepared_senders = back.is_empty().then_some(senders);
             messages.extend(store.desk_messages_in_threads(account_id, &back).await?);
-            (messages, Some(turns))
+            (messages, Some(turns), prepared_senders)
         }
         Scope::Threads(threads) => (
             store.desk_messages_in_threads(account_id, threads).await?,
+            None,
             None,
         ),
     };
@@ -175,7 +213,10 @@ async fn gather(
             .then(a.seq.cmp(&b.seq))
     });
 
-    let senders = Senders::load(state, account_id, &messages).await?;
+    let senders = match prepared_senders {
+        Some(senders) => senders,
+        None => Senders::load(state, account_id, &messages).await?,
+    };
     let is_self = self_matcher(state, account_id).await?;
     let dismissed = messages_dismissals(state, account_id).await?;
     let people = People::new(&store.person_links(account_id).await?);
@@ -553,7 +594,10 @@ pub(super) async fn messages_at(
     // Your turn is the composed desk's: the same accounts' rows after
     // lane precedence, over the desk's own window, as Now and the rail
     // count them (`turn_units`).
-    let desk = compose_desk(state, account_id, now).await?;
+    let (desk, inputs) = tokio::try_join!(
+        compose_desk(state, account_id, now),
+        preload_conversations(state, &accounts, filter.turn, now),
+    )?;
     // From the same desk, so it holds when the Waiting on view clears
     // Your turn below.
     let your_turn_split = desk.turn_units().split;
@@ -571,12 +615,14 @@ pub(super) async fn messages_at(
         }
     }
     let mut gathered = Vec::new();
-    for account in &accounts {
+    for (account, inputs) in accounts.iter().zip(inputs) {
         let own = turns.remove(account).unwrap_or_default();
-        let scope = match filter.turn {
-            None | Some(MessagesTurnData::Mine) => Scope::Attention(own),
-            Some(MessagesTurnData::All) => Scope::History(own),
-            Some(MessagesTurnData::Theirs) => Scope::Window(own),
+        let scope = match inputs {
+            None => Scope::Attention(own),
+            Some(inputs) => Scope::Conversations {
+                turns: own,
+                inputs: Box::new(inputs),
+            },
         };
         gathered.push(gather(state, account, scope, now).await?);
     }

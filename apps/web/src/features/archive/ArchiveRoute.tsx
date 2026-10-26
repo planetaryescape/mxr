@@ -754,11 +754,13 @@ function Ledger({
                     variant="ghost"
                     size="sm"
                     title="Filters (g f)"
+                    aria-label="Filters"
                     aria-keyshortcuts="g f"
                     onClick={() => setFacetsOpen(true)}
                     className="type-body ml-auto h-7 shrink-0 gap-1.5 px-2 font-normal text-text-2 hover:bg-ink-lamp hover:text-text-1"
                   >
                     <SlidersHorizontal aria-hidden className="size-4" strokeWidth={1.75} /> Filters
+                    <KeyChip>g f</KeyChip>
                   </Button>
                 </div>
                 {showingSubscriptions ? (

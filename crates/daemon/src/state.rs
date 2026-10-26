@@ -591,6 +591,8 @@ pub struct AppState {
     wrapped_generation: std::sync::atomic::AtomicU64,
     /// Ready-made Now, rail and mode views; see `handler::mode_cache`.
     pub(crate) mode_cache: crate::handler::mode_cache::ModeCache,
+    /// Decoded thread facts, checked against source clocks on every access.
+    pub(crate) history_cache: crate::handler::messages::HistoryCache,
     /// Set on the first successful sync after daemon start when the
     /// one-shot heavy analytics repair (reply_pairs backfill from
     /// existing messages) has run. Subsequent syncs only run the
@@ -933,6 +935,7 @@ impl AppState {
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             wrapped_generation: std::sync::atomic::AtomicU64::new(0),
             mode_cache: Default::default(),
+            history_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
@@ -2411,6 +2414,7 @@ impl AppState {
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             wrapped_generation: std::sync::atomic::AtomicU64::new(0),
             mode_cache: Default::default(),
+            history_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
@@ -2508,6 +2512,7 @@ impl AppState {
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             wrapped_generation: std::sync::atomic::AtomicU64::new(0),
             mode_cache: Default::default(),
+            history_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
@@ -2631,6 +2636,7 @@ impl AppState {
                 wrapped_cache: ParkingMutex::new(HashMap::new()),
                 wrapped_generation: std::sync::atomic::AtomicU64::new(0),
                 mode_cache: Default::default(),
+                history_cache: Default::default(),
                 reply_context_cache: ParkingMutex::new(HashMap::new()),
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
                 lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),

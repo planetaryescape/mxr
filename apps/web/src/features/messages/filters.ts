@@ -15,6 +15,20 @@ export interface MessagesFilter {
 
 export const NO_FILTER: MessagesFilter = { turn: null, unread: false, pastPace: false };
 
+/** The order shared by the view picker and its cycle shortcut. */
+export const MESSAGES_VIEWS = [
+  ["attention", "Needs attention", null],
+  ["all", "All conversations", "all"],
+  ["mine", "Your turn", "mine"],
+  ["theirs", "Waiting on them", "theirs"],
+] as const satisfies readonly (readonly [string, string, MessagesTurn | null])[];
+
+export function cycleMessagesFilter(filter: MessagesFilter): MessagesFilter {
+  const current = MESSAGES_VIEWS.findIndex(([, , turn]) => turn === filter.turn);
+  const next = MESSAGES_VIEWS[(current + 1) % MESSAGES_VIEWS.length]!;
+  return { ...filter, turn: next[2] };
+}
+
 /** The search params a filter lives in. Off values are absent, not false. */
 export interface FilterSearch {
   turn?: MessagesTurn;

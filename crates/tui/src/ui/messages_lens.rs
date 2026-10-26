@@ -519,7 +519,7 @@ fn person_body(
 
 /// The footer keys, with their verbs, from the guide.
 fn keys_line(page: &MessagesPageState) -> String {
-    let wanted = ["r", ".", "e", "t", "b", "c"];
+    let wanted = ["f", "r", ".", "e", "t", "b", "c"];
     let verb = |key: &str| -> Option<String> {
         match &page.guide {
             Some(guide) => guide

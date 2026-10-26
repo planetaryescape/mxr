@@ -737,10 +737,14 @@ clear state when there is nothing to do.
   segmented control (Needs attention, All conversations, Your turn, Waiting
   on them), then Unread and Past your pace as two toggles. The URL must
   distinguish the explicit history choice from the default. `g f` moves
-  focus to the filter bar.
+  focus to the filter bar. A visible `f` Cycle views button teaches the
+  one-key cycle: Needs attention → All conversations → Your turn → Waiting
+  on them → Needs attention. It preserves both toggles and works while a
+  view is loading or empty.
 - **TUI.** `Ctrl-f`, the TUI's filter key everywhere (the web uses `g f`
   because `Ctrl+f` is the browser's Find), opens the same facets as a picker. The active filters
-  show in the status line ("Unread · Your turn").
+  show in the status line ("Unread · Your turn"). `f` cycles the same four
+  views without opening the picker or changing either toggle.
 - **Raycast.** The search bar's dropdown stays the account (`⌘P`). A
   "Filter" submenu (`⌘F`) in the action panel holds the turn and the two
   toggles with check marks. Reopening the command resets to Needs attention. The section title

@@ -17,12 +17,13 @@ use super::turn_units::{TurnKeys, TurnUnits};
 use super::HandlerResult;
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
+use futures::{StreamExt, TryStreamExt};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::CalendarPartstat;
 use mxr_protocol::{DeskElsewhereData, DeskLaneData, DeskLaneKind, DeskRowData, ResponseData};
 use mxr_store::{
-    CadenceDriftRow, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord,
-    DeliveryListFilter, DeskContact, DeskLatestExchange, DeskMessage, ScreenerDisposition,
+    CadenceDriftRow, CommitmentDirection, ContactCommitmentRecord, DeliveryListFilter, DeskContact,
+    DeskLatestExchange, DeskMessage, ScreenerDisposition,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -109,8 +110,16 @@ pub(super) async fn compose_desk(
     let mut screener_senders = Vec::new();
     let mut elsewhere = DeskElsewhereData::default();
     let mut last_from_people_at: Option<DateTime<Utc>> = None;
-    for account in &accounts {
-        let desk = account_desk(state, account, now).await?;
+    // Bound concurrency and retain account order: the first account with a
+    // screener queue still owns the link, but its peers need not wait for
+    // another account's local reads to finish.
+    let mut desks = futures::stream::iter(accounts.iter().cloned())
+        .map(|account| async move {
+            let desk = account_desk(state, &account, now).await?;
+            Ok::<_, super::HandlerError>((account, desk))
+        })
+        .buffered(3);
+    while let Some((account, desk)) = desks.try_next().await? {
         rows.extend(desk.rows);
         turn_keys.extend(desk.turn_keys);
         screener_senders.extend(
@@ -261,7 +270,7 @@ pub(super) async fn attach_histories<'a>(
 /// shared classifier: contacts and screener decisions, keyed by lowercased
 /// email.
 pub(super) struct Senders {
-    pub asks: HashMap<MessageId, mxr_core::asks::AskAssessment>,
+    pub asks: HashMap<MessageId, mxr_store::AskSummary>,
     pub assessments: HashMap<MessageId, mxr_core::assessment::MailAssessment>,
     pub contacts: HashMap<String, DeskContact>,
     pub written_to: HashSet<String>,
@@ -278,13 +287,43 @@ impl Senders {
         account_id: &AccountId,
         messages: &[DeskMessage],
     ) -> Result<Self, super::HandlerError> {
-        let mut senders = Self::load_raw(state, account_id, messages).await?;
-        super::assessments::materialize(state, account_id, messages).await?;
+        let mut senders = Self::load_context(state, account_id, messages, false).await?;
         let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
         (senders.assessments, senders.asks) = state
             .store
             .assessment_facets_for_messages(account_id, &ids)
             .await?;
+        // Facets already validate policy, timezone and the thread's effective
+        // input revision in one snapshot. Re-reading and fingerprinting every
+        // settled thread here turned each filter into a mailbox-sized rebuild.
+        let own = self_matcher(state, account_id).await?;
+        let pending = senders.pending_threads(messages, &own);
+        if !pending.is_empty() {
+            let requested: Vec<_> = messages
+                .iter()
+                .filter(|message| pending.contains(&message.thread_id))
+                .cloned()
+                .collect();
+            super::assessments::materialize(state, account_id, &requested).await?;
+            (senders.assessments, senders.asks) = state
+                .store
+                .assessment_facets_for_messages(account_id, &ids)
+                .await?;
+        }
+        // A validated home already observed whether we wrote to its sender.
+        // Re-scanning every outbound recipient for each tiny list duplicates
+        // that observation. Raw resolver reads still perform the live lookup.
+        for message in messages {
+            if senders
+                .assessments
+                .get(&message.id)
+                .is_some_and(|a| a.facts.written_to)
+            {
+                senders
+                    .written_to
+                    .insert(message.from.email.to_ascii_lowercase());
+            }
+        }
         Ok(senders)
     }
 
@@ -292,6 +331,15 @@ impl Senders {
         state: &AppState,
         account_id: &AccountId,
         messages: &[DeskMessage],
+    ) -> Result<Self, super::HandlerError> {
+        Self::load_context(state, account_id, messages, true).await
+    }
+
+    async fn load_context(
+        state: &AppState,
+        account_id: &AccountId,
+        messages: &[DeskMessage],
+        observe_written_to: bool,
     ) -> Result<Self, super::HandlerError> {
         let mut emails: Vec<String> = messages
             .iter()
@@ -317,6 +365,10 @@ impl Senders {
             messages
                 .iter()
                 .filter(|m| m.direction != "outbound")
+                // Stored homes need no sender-template classification. The
+                // timer's raw human-response check only uses that observation
+                // for bulk mail; the resolver still observes every sender.
+                .filter(|m| observe_written_to || m.evidence.bulk)
                 .map(|m| m.from.email.as_str()),
         )
         .await?;
@@ -342,10 +394,14 @@ impl Senders {
         Ok(Self {
             asks: HashMap::new(),
             assessments: HashMap::new(),
-            written_to: state
-                .store
-                .addresses_written_to(account_id, &emails)
-                .await?,
+            written_to: if observe_written_to {
+                state
+                    .store
+                    .addresses_written_to(account_id, &emails)
+                    .await?
+            } else {
+                HashSet::new()
+            },
             contacts,
             screener,
             moves,
@@ -397,6 +453,16 @@ impl Senders {
         message: &DeskMessage,
         is_self: &dyn Fn(&str) -> bool,
     ) -> bool {
+        if let Some(home) = self.assessments.get(&message.id) {
+            let classification = mail_kind::stored_classification(home);
+            return classification.kind == SenderKind::Person
+                && matches!(
+                    classification.rule,
+                    mxr_protocol::KindRuleData::CustomRule
+                        | mxr_protocol::KindRuleData::Moved
+                        | mxr_protocol::KindRuleData::Decision
+                );
+        }
         mail_kind::kept_in_messages(&self.signals(message, is_self))
     }
 
@@ -610,7 +676,7 @@ async fn due_commitments(
     let floor = now - Duration::days(DESK_WINDOW_DAYS);
     Ok(state
         .store
-        .list_contact_commitments(account_id, None, Some(CommitmentStatus::Open))
+        .desk_due_commitments(account_id, floor, horizon)
         .await?
         .into_iter()
         .filter_map(|commitment| {

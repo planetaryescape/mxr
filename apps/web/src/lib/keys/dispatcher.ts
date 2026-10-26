@@ -11,7 +11,8 @@ import type { Action, ActionContext, ActionScope } from "@/lib/actions/types";
 import { isMacPlatform, tokenFromEvent, type KeyToken } from "./chord";
 import { isComposingKey } from "./composition";
 
-export const SEQUENCE_TIMEOUT_MS = 1000;
+// Leave time to read the continuation guide; fast typists never wait on it.
+export const SEQUENCE_TIMEOUT_MS = 4000;
 
 /**
  * The only actions a held key repeats: moving and scrolling. Everything
@@ -127,6 +128,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
     const token = tokenFromEvent(event, mac);
     if (!token) return;
     if (ownsKeyboard(event.target) || options.isSuspended?.()) {
+      clear();
       // A global modifier chord (⌘K) is never text input, so it works from
       // a search box or a dialog that is still animating closed. Editing
       // chords stay with the field.
@@ -206,8 +208,17 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
   };
 
   target.addEventListener("keydown", onKeyDown);
+  const onFocusIn = (event: FocusEvent) => {
+    if (ownsKeyboard(event.target)) clear();
+  };
+  target.addEventListener("focusin", onFocusIn);
+  target.addEventListener("pointerdown", clear);
+  target.addEventListener("blur", clear);
   return () => {
     target.removeEventListener("keydown", onKeyDown);
+    target.removeEventListener("focusin", onFocusIn);
+    target.removeEventListener("pointerdown", clear);
+    target.removeEventListener("blur", clear);
     clear();
   };
 }

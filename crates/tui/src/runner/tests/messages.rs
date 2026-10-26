@@ -695,6 +695,50 @@ fn press_ctrl(app: &mut App, c: char) {
 }
 
 #[test]
+fn f_cycles_views_without_waiting_for_results_or_dropping_toggles() {
+    use mxr_protocol::MessagesTurnData::{All, Mine, Theirs};
+    let mut app = messages_app(true);
+    app.mailbox.messages_page.filter.unread = true;
+    app.mailbox.messages_page.filter.past_pace = true;
+    let mut stale = populated();
+    stale.filter = app.mailbox.messages_page.filter;
+    for turn in [Some(All), Some(Mine), Some(Theirs), None] {
+        app.mailbox.messages_page.pending_refresh = false;
+        press(&mut app, KeyCode::Char('f'));
+        let page = &app.mailbox.messages_page;
+        assert_eq!(page.filter.turn, turn);
+        assert!(page.filter.unread && page.filter.past_pace);
+        assert!(page.pending_refresh);
+        assert!(
+            page.messages.is_none(),
+            "no previous view flashes while loading"
+        );
+        assert!(app.modals.messages_filter.is_none(), "no picker needed");
+        if turn.is_some() {
+            app.set_messages(stale.clone(), None);
+            assert!(
+                app.mailbox.messages_page.messages.is_none(),
+                "ignore the old view's reply"
+            );
+        }
+    }
+}
+
+#[test]
+fn cycling_views_cancels_a_got_it_countdown() {
+    let mut app = messages_app(true);
+    press(&mut app, KeyCode::Char('.'));
+    app.mailbox.messages_page.pending_ack_preview = None;
+    let start = std::time::Instant::now();
+    app.show_messages_ack(plan(&app), start);
+    assert!(app.mailbox.messages_page.ack.is_some());
+    press(&mut app, KeyCode::Char('f'));
+    assert!(app.mailbox.messages_page.ack.is_none());
+    app.tick_messages_ack(start + std::time::Duration::from_secs(10));
+    assert!(queued(&app).is_empty(), "cycling never sends a Got it");
+}
+
+#[test]
 fn ctrl_f_picks_unread_and_the_list_request_carries_it() {
     let mut app = messages_app(true);
     press_ctrl(&mut app, 'f');

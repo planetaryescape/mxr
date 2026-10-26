@@ -2,8 +2,9 @@
 //! every inbox message (about a second on a large mailbox), which is too
 //! slow for a launcher. A background pass rebuilds views someone read
 //! recently whenever mail changes, so a read usually finds one ready. It
-//! does not rebuild unchanged views as they age: a read past `MAX_AGE`
-//! builds afresh, so an idle daemon does no work for views nobody reads.
+//! refreshes active views before they age out. Otherwise the clients' 60s
+//! polling interval meets the cache's 60s expiry and every poll is a cold
+//! rebuild. Views nobody reads are dropped instead of refreshed.
 //!
 //! A view is only served when nothing it could show has changed since it
 //! was built:
@@ -34,6 +35,7 @@ use crate::state::AppState;
 /// word by the clock (an Updates cut, a to-do coming back, "due soon")
 /// is never more than this late.
 const MAX_AGE: Duration = Duration::from_secs(60);
+const REFRESH_AHEAD: Duration = Duration::from_secs(10);
 /// How long a build waits for a write in flight to finish before building
 /// anyway. A build that could not wait it out may have missed a commit, so
 /// it answers only the read that asked for it and is never served again.
@@ -64,7 +66,8 @@ pub(crate) enum ModeView {
     Messages {
         account_id: Option<AccountId>,
         /// The whole filter, the legacy top-level turn merged in: each
-        /// filter is its own cache entry.
+        /// filter is its own key. Complete, fresh attention snapshots can
+        /// also answer narrower attention filters without rebuilding.
         filter: MessagesFilterData,
         limit: u32,
     },
@@ -198,6 +201,32 @@ impl ModeCache {
         let feed = state.store.change_feed();
         let lock = {
             let mut entries = self.entries.lock();
+            if let ModeView::Messages {
+                account_id, filter, ..
+            } = &view
+            {
+                if matches!(
+                    filter.turn,
+                    None | Some(mxr_protocol::MessagesTurnData::Mine)
+                ) {
+                    for entry in entries.iter_mut() {
+                        let source = matches!(&entry.view, ModeView::Messages {
+                            account_id: scope, filter: base, ..
+                        } if scope == account_id && !base.narrows()
+                            && matches!(base.turn, None | Some(mxr_protocol::MessagesTurnData::Mine)));
+                        if source {
+                            if let Some(ResponseData::Messages { messages }) =
+                                self.servable(entry, feed.seq())
+                            {
+                                entry.last_read = Instant::now();
+                                return Ok(ResponseData::Messages {
+                                    messages: messages::narrow_attention(messages, *filter),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
             let index = match entries.iter().position(|e| e.view == view) {
                 Some(index) => index,
                 None => {
@@ -350,7 +379,10 @@ impl ModeCache {
                     // `MIN_REBUILD` while a long write keeps the writer.
                     let changed =
                         (!e.settled || e.changes != seq) && e.built.elapsed() >= MIN_REBUILD;
-                    changed || e.mutations != mutations || e.hour != local_hour()
+                    changed
+                        || e.mutations != mutations
+                        || e.hour != local_hour()
+                        || e.built.elapsed() >= MAX_AGE - REFRESH_AHEAD
                 })
                 .map(|e| (e.view.clone(), Arc::clone(&e.building)))
                 .collect()

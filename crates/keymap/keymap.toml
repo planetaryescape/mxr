@@ -3557,6 +3557,30 @@ contexts = ["messages"]
 until = "0.6.180"
 
 [[action]]
+id = "page.controls"
+label = "Focus page tabs and filters"
+short_label = "Tabs and filters"
+group = "View"
+scopes = ["page"]
+clients = ["web"]
+keys = ["g f"]
+
+[[action]]
+id = "messages.cycle-filter"
+label = "Cycle Messages views"
+short_label = "Cycle views"
+group = "View"
+scopes = ["messages-filters"]
+clients = ["web", "tui"]
+keys = ["f"]
+note = "Needs attention, All conversations, Your turn, Waiting on them; keeps Unread and Past your pace"
+
+[[action.tui]]
+name = "MessagesCycleFilter"
+keys = ["f"]
+contexts = ["messages"]
+
+[[action]]
 id = "messages.filter"
 # Raycast: the Filter submenu; the TUI uses Ctrl+f and the web g f.
 raycast_key = "Cmd+f"
@@ -4277,11 +4301,11 @@ actions = ["now.open", "now.done", "now.open-email"]
 
 [[strip]]
 id = "messages"
-actions = ["messages.reply", "messages.got-it", "messages.done", "messages.to-do", "messages.pin"]
+actions = ["messages.reply", "messages.got-it", "messages.done", "messages.cycle-filter", "messages.to-do", "messages.pin"]
 
 [[strip]]
 id = "messages.empty"
-actions = ["messages.open"]
+actions = ["messages.cycle-filter", "messages.open"]
 
 [[strip]]
 id = "todo"

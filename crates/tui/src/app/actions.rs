@@ -209,6 +209,7 @@ impl App {
             | Action::MessagesPersonPage
             | Action::MessagesAsSent
             | Action::MessagesFilter
+            | Action::MessagesCycleFilter
             | Action::MessagesBack => self.apply_messages_action(action),
             Action::OpenUpdates
             | Action::UpdatesOpen

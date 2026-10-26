@@ -6,7 +6,7 @@
 //! message from someone other than the account, so a gist, Inbox and Updates
 //! agree on what a message is.
 
-use super::mail_kind::{self, SenderKind};
+use super::mail_kind::SenderKind;
 use super::places::AccountKinds;
 use super::HandlerError;
 use crate::state::AppState;
@@ -79,10 +79,7 @@ pub(super) async fn thread_kinds(
                 continue;
             };
             if let Some(message) = messages.get(&theirs.id) {
-                out.insert(
-                    (*thread_id).clone(),
-                    mail_kind::classify(&kinds.signals(message)).kind,
-                );
+                out.insert((*thread_id).clone(), kinds.classification(message).kind);
             }
         }
     }

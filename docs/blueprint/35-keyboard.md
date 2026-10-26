@@ -114,6 +114,29 @@ These rules come from the systems that people praise for their keyboards. Each r
 
 ## The grammar has five layers
 
+### Web choice controls and discovery (26 October 2026)
+
+Keyboard discoverability is part of the interaction, not a trip to the manual.
+Pausing after a prefix shows its live continuations from the action registry,
+with scope precedence and unavailable actions respected. Fast chords do not
+wait. The web sequence timeout is four seconds so the guide can be read;
+Escape, pointer interaction, text-field focus and window blur cancel it.
+
+`g f` focuses filters in the mail views, and the selected header tab or first
+filter on tool and settings pages. Show the key beside those controls.
+Search's filter shortcut must move focus into the revealed controls, not
+leave mail-list actions active behind them.
+
+Tab and segmented-choice widgets share wrapping arrow-key navigation and
+Home/End. Only the selected tab or segment is in the Tab order. Header links
+keep native link semantics: arrows move focus; Enter opens the link. Existing
+reader view and Reading issue/article shortcuts are printed beside their choices.
+
+Messages additionally earns `f` for its frequent four-view cycle, with an
+in-place hint and unchanged Unread/Past your pace toggles. This is local to
+Messages; mail-list and email-reader `f` remains Forward. Do not impose a
+cycle key on surfaces where it would replace an established mail verb.
+
 | Layer | What goes there | Examples |
 |---|---|---|
 | Single keys | The frozen Gmail and vim set, plus the mxr verbs in the table below | `j` `k` `e` `r` `t` `X` |

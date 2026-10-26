@@ -52,6 +52,16 @@ impl App {
                 self.modals.messages_filter = Some(MessagesFilterPicker::default());
                 self.guard_messages_ack();
             }
+            Action::MessagesCycleFilter => {
+                self.cancel_messages_ack();
+                let next = match self.mailbox.messages_page.filter.turn {
+                    None => 1,
+                    Some(mxr_protocol::MessagesTurnData::All) => 2,
+                    Some(mxr_protocol::MessagesTurnData::Mine) => 3,
+                    Some(mxr_protocol::MessagesTurnData::Theirs) => 0,
+                };
+                self.apply_messages_filter_choice(next);
+            }
             Action::MessagesBack => self.messages_back(),
             _ => {}
         }

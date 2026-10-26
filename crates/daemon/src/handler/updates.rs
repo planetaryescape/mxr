@@ -713,10 +713,7 @@ pub(super) async fn scan(
             .filter(|m| {
                 !m.is_delivery && !m.is_invite && !kinds.is_outbound(m) && kinds.has_assessment(m)
             })
-            .filter(|m| {
-                super::mail_kind::classify(&kinds.signals(m)).kind.to_data()
-                    == SenderKindData::PaperTrail
-            })
+            .filter(|m| kinds.classification(m).kind.to_data() == SenderKindData::PaperTrail)
             .collect();
         read += facts_for(state, &updates, &Local).await?.len();
     }

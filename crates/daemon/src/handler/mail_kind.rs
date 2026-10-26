@@ -392,14 +392,17 @@ pub(super) struct Classification {
 /// A visibility correction cannot turn an automated message into a human
 /// response (and thereby clear a waiting timer).
 pub(super) fn human_response(signals: &KindSignals<'_>) -> bool {
-    let automatic = classify(&KindSignals {
-        assessment: None,
-        moved: None,
-        decision: None,
-        treatment: None,
-        ..*signals
-    });
     let purpose = purpose_evidence(signals);
+    let automatic = classify_with_purpose(
+        &KindSignals {
+            assessment: None,
+            moved: None,
+            decision: None,
+            treatment: None,
+            ..*signals
+        },
+        || purpose,
+    );
     let correspondence = signals.evidence.is_reply || signals.evidence.thread_correspondence;
     (automatic.kind == SenderKind::Person && (purpose.has_authored_text || correspondence))
         || (purpose.purpose == MessagePurpose::Informational && purpose.human_reply)
@@ -441,6 +444,7 @@ pub(super) fn unknown_purpose(signals: &KindSignals<'_>) -> bool {
     purpose_evidence(signals).purpose == MessagePurpose::Unknown
 }
 
+#[derive(Clone, Copy)]
 struct PurposeEvidence {
     purpose: MessagePurpose,
     human_reply: bool,
@@ -940,17 +944,15 @@ pub(super) fn directed_to_owner(
 }
 
 pub(super) fn classify(signals: &KindSignals<'_>) -> Classification {
+    classify_with_purpose(signals, || purpose_evidence(signals))
+}
+
+fn classify_with_purpose(
+    signals: &KindSignals<'_>,
+    purpose: impl FnOnce() -> PurposeEvidence,
+) -> Classification {
     if let Some(assessment) = signals.assessment {
-        let described = super::assessments::describe(assessment);
-        return Classification {
-            kind: match described.kind {
-                SenderKindData::People => SenderKind::Person,
-                SenderKindData::Reading => SenderKind::List,
-                SenderKindData::PaperTrail => SenderKind::Automated,
-                SenderKindData::ScreenedOut => SenderKind::Denied,
-            },
-            rule: described.rule,
-        };
+        return stored_classification(assessment);
     }
     if signals.decision == Some(ScreenerDisposition::Deny) {
         return Classification {
@@ -995,7 +997,7 @@ pub(super) fn classify(signals: &KindSignals<'_>) -> Classification {
     if signals.is_invite {
         return automated(KindRuleData::Invite);
     }
-    let purpose = purpose_evidence(signals);
+    let purpose = purpose();
     let personal_reply = purpose.human_reply;
     let hint = address_hint(signals.email);
     match hint {
@@ -1047,6 +1049,17 @@ pub(super) fn classify(signals: &KindSignals<'_>) -> Classification {
     Classification {
         kind: SenderKind::Person,
         rule: KindRuleData::Person,
+    }
+}
+
+/// Read an already validated home without constructing raw body signals.
+pub(super) fn stored_classification(
+    assessment: &mxr_core::assessment::MailAssessment,
+) -> Classification {
+    Classification {
+        kind: kind_for_stored_mode(&assessment.home).unwrap_or(SenderKind::Denied),
+        rule: serde_json::from_value(serde_json::Value::String(assessment.deciding.rule.clone()))
+            .unwrap_or(KindRuleData::Person),
     }
 }
 

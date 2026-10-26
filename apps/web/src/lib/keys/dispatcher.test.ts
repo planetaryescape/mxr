@@ -108,6 +108,26 @@ describe("installKeyDispatcher", () => {
     expect(inbox.run).not.toHaveBeenCalled();
   });
 
+  test.each(["pointer", "input", "blur"])(
+    "a %s interaction cancels a pending sequence",
+    (interaction) => {
+      const inbox = runAction("inbox", "g i");
+      registry.define(inbox.action);
+      press({ key: "g" });
+      if (interaction === "pointer") fireEvent.pointerDown(document.body);
+      else if (interaction === "blur") fireEvent(window, new Event("blur"));
+      else {
+        const input = document.createElement("input");
+        document.body.append(input);
+        input.focus();
+        input.remove();
+      }
+      expect(pending.at(-1)).toBeNull();
+      press({ key: "i" });
+      expect(inbox.run).not.toHaveBeenCalled();
+    },
+  );
+
   test("a dead-end sequence cancels the prefix, runs nothing and says so", () => {
     const inbox = runAction("inbox", "g i");
     const unread = runAction("unread", "U");

@@ -68,6 +68,8 @@ impl super::Store {
     }
 
     /// Every inbox message of `account_id` that is not trashed or spam.
+    /// Candidate lists use validated homes, not raw body evidence. Missing
+    /// facets are resolved from whole-thread reads before placing a message.
     pub async fn place_candidates(
         &self,
         account_id: &AccountId,
@@ -99,8 +101,9 @@ impl super::Store {
         limit: u32,
     ) -> Result<Vec<PlaceMessage>, sqlx::Error> {
         let started_at = Instant::now();
+        let columns = place_columns(true);
         let sql = format!(
-            r#"SELECT {PLACE_COLUMNS},
+            r#"SELECT {columns},
                 EXISTS (
                     SELECT 1 FROM message_labels iml JOIN labels il ON il.id = iml.label_id
                     WHERE iml.message_id = m.id AND il.provider_id = 'INBOX'
@@ -144,6 +147,7 @@ impl super::Store {
     /// Recent mail from these senders anywhere but Trash and Spam, at most
     /// `per_sender` each, newest first: the history Updates compares a
     /// source's new mail with, inbox or not.
+    /// Reads envelope state only; Updates loads missing fact bodies separately.
     pub async fn recent_from_senders(
         &self,
         account_id: &AccountId,
@@ -161,22 +165,7 @@ impl super::Store {
                 .map(|email| email.to_ascii_lowercase())
                 .collect::<Vec<_>>(),
         )?;
-        let sql = format!(
-            r#"SELECT * FROM (
-                SELECT {PLACE_COLUMNS},
-                    EXISTS (
-                        SELECT 1 FROM message_labels iml JOIN labels il ON il.id = iml.label_id
-                        WHERE iml.message_id = m.id AND il.provider_id = 'INBOX'
-                    ) AS in_inbox,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY lower(m.from_email) ORDER BY m.date DESC, m.id DESC
-                    ) AS sender_rank
-                FROM messages m
-                WHERE m.account_id = ?1 AND m.date >= ?3
-                  AND lower(m.from_email) IN (SELECT value FROM json_each(?4))
-                  AND {NOT_TRASHED}
-            ) WHERE sender_rank <= ?5"#
-        );
+        let sql = recent_from_senders_sql();
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account_id.as_str())
             .bind(hidden_flags())
@@ -250,6 +239,27 @@ fn hidden_flags() -> i64 {
     i64::from((MessageFlags::TRASH | MessageFlags::SPAM).bits())
 }
 
+fn recent_from_senders_sql() -> String {
+    let columns = place_columns(false);
+    format!(
+        r#"WITH selected AS MATERIALIZED (
+            SELECT m.id FROM (SELECT DISTINCT value FROM json_each(?4)) wanted
+            CROSS JOIN messages m ON m.id IN (
+                SELECT m.id FROM messages m
+                WHERE m.account_id = ?1 AND lower(m.from_email) = wanted.value AND m.date >= ?3
+                    AND {NOT_TRASHED}
+                ORDER BY m.date DESC, m.id DESC LIMIT ?5
+            )
+        )
+        SELECT {columns}, EXISTS (
+            SELECT 1 FROM message_labels iml JOIN labels il ON il.id = iml.label_id
+            WHERE iml.message_id = m.id AND il.provider_id = 'INBOX'
+        ) AS in_inbox
+        FROM selected CROSS JOIN messages m ON m.id = selected.id
+        ORDER BY m.date DESC, m.id DESC"#
+    )
+}
+
 /// Columns and per-message state shared by both reads. `?2` is the hidden
 /// flag mask.
 const PLACE_COLUMNS: &str = r#"
@@ -257,6 +267,12 @@ const PLACE_COLUMNS: &str = r#"
     m.from_email, m.from_name, m.to_addrs, m.cc_addrs, m.subject, m.snippet, m.list_id,
     m.unsubscribe_method,
     m.in_reply_to AS evidence_reply,
+    EXISTS (SELECT 1 FROM delivery_messages dm WHERE dm.message_id = m.id) AS is_delivery,
+    EXISTS (SELECT 1 FROM calendar_invites ci WHERE ci.message_id = m.id) AS is_invite,
+    EXISTS (SELECT 1 FROM message_pins p WHERE p.message_id = m.id) AS pinned,
+    EXISTS (SELECT 1 FROM snoozed s WHERE s.message_id = m.id) AS snoozed"#;
+
+const PLACE_EVIDENCE: &str = r#"
     EXISTS (SELECT 1 FROM messages sent WHERE sent.account_id = m.account_id
         AND sent.thread_id = m.thread_id AND (sent.direction = 'outbound'
             OR (sent.direction != 'inbound' AND EXISTS (SELECT 1 FROM account_addresses own
@@ -274,11 +290,17 @@ const PLACE_COLUMNS: &str = r#"
         (SELECT substr(pb.text_plain, 1, 8192) FROM messages previous JOIN bodies pb ON pb.message_id = previous.id
             WHERE previous.account_id = m.account_id AND previous.thread_id = m.thread_id
             AND (previous.date < m.date OR (previous.date = m.date AND previous.id < m.id))
-            ORDER BY previous.date DESC, previous.id DESC LIMIT 1)) AS evidence_previous_text,
-    EXISTS (SELECT 1 FROM delivery_messages dm WHERE dm.message_id = m.id) AS is_delivery,
-    EXISTS (SELECT 1 FROM calendar_invites ci WHERE ci.message_id = m.id) AS is_invite,
-    EXISTS (SELECT 1 FROM message_pins p WHERE p.message_id = m.id) AS pinned,
-    EXISTS (SELECT 1 FROM snoozed s WHERE s.message_id = m.id) AS snoozed"#;
+            ORDER BY previous.date DESC, previous.id DESC LIMIT 1)) AS evidence_previous_text"#;
+
+fn place_columns(with_evidence: bool) -> String {
+    let evidence = if with_evidence {
+        PLACE_EVIDENCE
+    } else {
+        "0 AS evidence_thread_correspondence, NULL AS evidence_metadata,
+         NULL AS evidence_text, NULL AS evidence_previous_text"
+    };
+    format!("{PLACE_COLUMNS}, {evidence}")
+}
 
 const NOT_TRASHED: &str = r#"(m.flags & ?2) = 0
     AND NOT EXISTS (
@@ -290,8 +312,9 @@ const NOT_TRASHED: &str = r#"(m.flags & ?2) = 0
 /// Starts from the account's INBOX label so the read is proportional to the
 /// inbox, never to the mailbox; CROSS JOIN keeps that order.
 fn place_candidates_sql() -> String {
+    let columns = place_columns(false);
     format!(
-        r#"SELECT {PLACE_COLUMNS}, 1 AS in_inbox
+        r#"SELECT {columns}, 1 AS in_inbox
         FROM labels l
         CROSS JOIN message_labels ml ON ml.label_id = l.id
         CROSS JOIN messages m ON m.id = ml.message_id
@@ -303,8 +326,9 @@ fn place_candidates_sql() -> String {
 
 /// `?1` message id, `?2` hidden flags. A trashed message is not returned.
 fn place_message_sql() -> String {
+    let columns = place_columns(true);
     format!(
-        r#"SELECT {PLACE_COLUMNS},
+        r#"SELECT {columns},
             EXISTS (
                 SELECT 1 FROM message_labels iml JOIN labels il ON il.id = iml.label_id
                 WHERE iml.message_id = m.id AND il.provider_id = 'INBOX'
@@ -395,8 +419,28 @@ pub(crate) mod tests {
         let one = plan(&store, &place_message_sql()).await;
         assert!(!one.iter().any(|s| s.starts_with("SCAN")), "{one:#?}");
 
-        assert_thread_lookups_use_the_thread(&steps);
+        assert!(
+            !place_candidates_sql().contains("FROM bodies"),
+            "list candidates must not read body evidence"
+        );
         assert_thread_lookups_use_the_thread(&one);
+    }
+
+    #[tokio::test]
+    async fn sender_history_looks_up_each_sender_before_loading_the_page() {
+        let store = Store::in_memory().await.unwrap();
+        let steps = plan(&store, &recent_from_senders_sql()).await;
+        assert!(
+            steps
+                .iter()
+                .any(|s| s.contains("idx_messages_sender_history")
+                    && s.contains("account_id=? AND <expr>=? AND date>?")),
+            "sender/account/date lookup: {steps:#?}"
+        );
+        assert!(
+            !steps.iter().any(|s| s.starts_with("SCAN m")),
+            "no mailbox scan: {steps:#?}"
+        );
     }
 
     /// The evidence columns look up each row's thread several times. Searching
@@ -476,5 +520,96 @@ pub(crate) mod tests {
         assert_eq!(store.set_message_pins(&ids[..1], false).await.unwrap(), 1);
         let archived = store.place_message(&ids[2]).await.unwrap().unwrap();
         assert!(!archived.in_inbox);
+    }
+
+    #[tokio::test]
+    async fn sender_history_limits_each_sender_without_loading_body_evidence() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        let other = test_account();
+        store.insert_account(&account).await.unwrap();
+        store.insert_account(&other).await.unwrap();
+        let now = Utc::now();
+        let mut expected = Vec::new();
+        for sender in ["news@example.test", "other@example.test"] {
+            for n in 0..5 {
+                let mut envelope = TestEnvelopeBuilder::new()
+                    .account_id(account.id.clone())
+                    .build();
+                envelope.provider_id = format!("{sender}-{n}");
+                envelope.from.email = if n % 2 == 0 {
+                    sender.to_uppercase()
+                } else {
+                    sender.into()
+                };
+                envelope.date = now - chrono::Duration::minutes(n);
+                if n == 0 {
+                    envelope.flags = MessageFlags::TRASH;
+                }
+                store
+                    .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+                    .await
+                    .unwrap();
+                store
+                    .insert_body(&mxr_core::MessageBody {
+                        message_id: envelope.id.clone(),
+                        text_plain: Some(format!("Authored body {n}")),
+                        text_html: None,
+                        attachments: vec![],
+                        fetched_at: now,
+                        metadata: Default::default(),
+                    })
+                    .await
+                    .unwrap();
+                if (1..=2).contains(&n) {
+                    expected.push(envelope.id);
+                }
+            }
+        }
+        let mut foreign = TestEnvelopeBuilder::new()
+            .account_id(other.id.clone())
+            .build();
+        foreign.from.email = "news@example.test".into();
+        foreign.date = now;
+        store
+            .upsert_envelope_with_direction(&foreign, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        let history = store
+            .recent_from_senders(
+                &account.id,
+                &[
+                    "News@Example.Test".into(),
+                    "NEWS@example.test".into(),
+                    "other@example.test".into(),
+                ],
+                now - chrono::Duration::days(1),
+                2,
+            )
+            .await
+            .unwrap();
+        let mut actual: Vec<_> = history.iter().map(|m| m.id.clone()).collect();
+        expected.sort_by_key(|id| *id.as_uuid());
+        actual.sort_by_key(|id| *id.as_uuid());
+        assert_eq!(
+            actual, expected,
+            "the limit is per sender and excludes hidden mail before ranking"
+        );
+        for message in history {
+            assert!(message.evidence.text.is_none());
+            let mut detail = store.place_message(&message.id).await.unwrap().unwrap();
+            assert!(
+                matches!(
+                    detail.evidence.text.as_deref(),
+                    Some("Authored body 1" | "Authored body 2")
+                ),
+                "a detail read must retain the selected authored body"
+            );
+            detail.evidence = message.evidence.clone();
+            assert_eq!(
+                message, detail,
+                "history keeps every envelope/state field, omitting only evidence"
+            );
+        }
     }
 }

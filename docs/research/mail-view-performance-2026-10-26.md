@@ -57,9 +57,11 @@ History selection now separates stored Messages homes, outbound mail, changed th
 
 The missing/stale-home fallback now checks inbound mail only: the outbound union already includes every other direction. A covering home-revision index avoids fetching authoritative JSON pages to compare a generation. Alternating read-only probes returned the same 30,054 envelopes in 517–541 ms with the original plan and 472–481 ms with the covering plan. This is a bounded improvement, not evidence that the complete history view meets its latency target.
 
+A later query plan exposed another table read per inbound candidate: the existing owed index did not cover message IDs. Schema 102 adds a covering conversation-input index. A rollback-only probe returned identical envelopes and reduced the full envelope query from 2,087 ms to 1,394–1,550 ms under local load. The facet read now separates home JSON from compact asks and materializes effective generations once per requested thread. Alternating probes returned identical 53,489 facets in 410–465 ms before and 321–351 ms after. These probes isolate query changes; neither establishes end-to-end acceptance.
+
 Recent-window reads also skip body evidence for settled mail without timers. Ordinary lanes use their stored asks and homes; the raw human-response classifier now runs only after finding a live reminder, not before checking whether a reminder exists. Pending mail and threads with explicit reply-later/reminder state retain full evidence: a visibility correction must not make an automatic reply count as a human response or stop a real reply from clearing a timer. Raw sender-template history remains available to the resolver and to bulk mail's human-response check, rather than being fetched for every settled list.
 
-Updates' sender-history window previously selected full evidence columns before applying its per-sender rank limit. It now ranks envelope IDs first and loads evidence only for selected messages. Hidden mail is excluded before ranking; selected history retains the same evidence as a detail read. CPU sampling also found repeated UUID-to-string allocation inside the history sort; it now compares UUIDs directly, preserving chronological and storage-order tie breaks.
+Updates' sender-history window previously selected full evidence columns before applying its per-sender rank limit. It now ranks envelope IDs first and omits body evidence altogether: history compares cached update facts, and `facts_for` independently reads bodies when a fact is absent or stale. A traced Now request spent 240 ms reading that unused historical evidence. Hidden mail is excluded before ranking; selected history retains all envelope/state fields, and detail reads retain full evidence. CPU sampling also found repeated UUID-to-string allocation inside the history sort; it now compares UUIDs directly, preserving chronological and storage-order tie breaks.
 
 ### A binding error broke large history views
 
@@ -82,6 +84,10 @@ After these layout changes, a deliberately slow filter response preserved the sa
 ### TUI events waited behind replies
 
 The TUI's shared IPC worker forwarded events only after its in-flight request completed. It now forwards events while awaiting that reply and discards abandoned queued safe reads without discarding mutations. A gated fake daemon test requires an event to reach the UI before the reply is released.
+
+A native terminal check also found that a selected Not-sure question consumed `m`, `u`, `x` or `e` as a classification answer even when it was the suffix of a `g` navigation chord. Pending navigation now resolves before those one-key answers. The regression requires the navigation action, no queued mail mutation, and both questions still unanswered; existing direct-answer tests retain the single-key behavior. The terminal fixture uses a separate client config with a disabled, provider-free account solely to bypass onboarding. Earlier onboarding-blocked checks are not interaction proof.
+
+The same check exposed startup work outside Messages: the TUI synchronously loads 5,000 envelopes before its first frame. The daemon reloaded each envelope's account labels and label memberships, although the store's envelope query already included provider label IDs. Traced envelope requests took 1.9–7.3 seconds under local load. The page, ID-list and thread handlers now use the already hydrated envelopes without those per-row queries. Existing thread-label coverage and expanded account-page, label-page and ID-list coverage check that label badges survive the removal.
 
 ## Verification requirements
 

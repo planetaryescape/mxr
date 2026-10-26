@@ -104,6 +104,8 @@ still takes precedence. Reply headers or positive local thread correspondence
 can establish that a human answered, even when its body is uncached or HTML-only.
 Missing plain text cannot create automatic
 reply debt, but it does not erase your explicit Reply later choice.
+A promise someone makes to you can sit alongside a question you need to answer.
+That question stays in Your turn. Reply later still controls when it returns.
 Bare greetings such as "Hi," and "Good morning," do not name another
 recipient, including inline "Hi, could you confirm ...". A greeting naming
 someone mxr cannot match to an owned recipient remains uncertain: it does

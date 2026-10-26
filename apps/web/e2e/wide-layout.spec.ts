@@ -1,8 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import type { Now, NowReadingPick } from "../src/features/now/api";
+import type { ReadingEdition } from "../src/features/reading/api";
+
 import { mailList, openList, reader } from "./helpers/mail";
-import { openApp } from "./helpers/state";
+import { bridge, openApp } from "./helpers/state";
 
 /*
  * The shared page frame (components/ModeFrame.tsx): every mode page's
@@ -46,6 +49,39 @@ async function openNow(page: Page) {
   await page.waitForLoadState("networkidle");
 }
 
+/** Exercise the evening-only row even when CI runs during the day. */
+async function includeReadingPick(page: Page) {
+  const { edition } = await bridge<{ edition: ReadingEdition }>(page, "/api/v1/mail/reading");
+  const issue = edition.bands.flatMap((band) => band.items).find((item) => item.kind === "issue");
+  if (!issue) throw new Error("The layout fixture needs a real newsletter in Reading");
+  const pick: NowReadingPick = {
+    account_id: issue.account_id,
+    message_id: issue.message_id,
+    thread_id: issue.thread_id,
+    sender_email: issue.sender_email,
+    sender_name: issue.source,
+    subject: issue.title,
+    date: issue.arrived_at,
+    why: issue.why,
+  };
+  await page.route(/\/api\/v1\/mail\/now(?:\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const answer: { now: Now } = await response.json();
+    await route.fulfill({
+      response,
+      json: {
+        ...answer,
+        now: {
+          ...answer.now,
+          reading: answer.now.reading ?? pick,
+          item_count: answer.now.item_count + Number(!answer.now.reading),
+          not_now: null,
+        },
+      },
+    });
+  });
+}
+
 for (const width of [390, 1440, 1920, 2560]) {
   test.describe(`at ${width}px`, () => {
     test.use({ viewport: { width, height: 1000 } });
@@ -65,7 +101,9 @@ for (const width of [390, 1440, 1920, 2560]) {
     test("Now's header, card and rows share one column, actions on its right edge", async ({
       page,
     }) => {
+      await includeReadingPick(page);
       await openNow(page);
+      await expect(page.locator('[data-testid="now-row"][data-kind="reading"]')).toBeVisible();
       const frames = page.getByRole("region", { name: "Now", exact: true }).locator(".mode-frame");
       const header = await box(frames.first());
       const body = await box(frames.nth(1));
@@ -86,17 +124,26 @@ for (const width of [390, 1440, 1920, 2560]) {
         // Inside the row, which is inside the column.
         expect(rowBox.x + rowBox.width).toBeLessThanOrEqual(right + 1);
         expect(done.x + done.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
-        // Visible trail text ends against the row's right edge. A verb button's
-        // padded hitbox can extend a few pixels beyond its visible label.
-        const end = await row.evaluate((el) =>
-          Math.max(
-            ...[...el.querySelectorAll("*")]
-              .filter((leaf) => leaf.childElementCount === 0 && leaf.textContent?.trim())
+        // The trail ends at the row's right edge. A verb's padded hit area
+        // is part of that trail even when no time label follows it (Reading).
+        const end = await row.evaluate((el) => {
+          const trail = el.querySelector('[data-testid="now-open"]')?.nextElementSibling;
+          if (!trail) throw new Error("Now row has no trailing content");
+          return Math.max(
+            ...[...trail.querySelectorAll("*")]
+              .filter(
+                (leaf) =>
+                  leaf.matches("button, a, [role=button]") ||
+                  (leaf.childElementCount === 0 && leaf.textContent?.trim()),
+              )
+              .filter((leaf) => getComputedStyle(leaf).visibility === "visible")
               .map((leaf) => leaf.getBoundingClientRect())
               .filter((rect) => rect.width > 0)
               .map((rect) => rect.right),
-          ),
-        );
+          );
+        });
+        expect(end).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
+        expect(done.x + done.width).toBeLessThanOrEqual(end + 1);
         expect(rowBox.x + rowBox.width - end).toBeLessThan(24);
       }
 

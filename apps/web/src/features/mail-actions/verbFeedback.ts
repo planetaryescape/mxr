@@ -362,8 +362,8 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
   },
   "todo-dismiss": {
     actions: ["todo.dismiss"],
-    optimistic: "The row leaves To do and never comes back for that email.",
-    pastTense: "Not a to-do",
+    optimistic: "Choose a correction; the saved row leaves To do, with Undo to restore it.",
+    pastTense: "Corrected",
     tone: "info",
     sound: null,
     undo: "reverse-request",
@@ -379,7 +379,7 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
   "todo-edit": {
     actions: ["todo.edit"],
     optimistic: "Nothing moves until the change is saved; then the row is yours.",
-    pastTense: "Changed",
+    pastTense: "Corrected",
     tone: "info",
     sound: null,
     undo: "reverse-request",

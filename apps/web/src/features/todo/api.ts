@@ -163,3 +163,10 @@ export function setCatchup(account: string | null, decision: TodoCatchupDecision
     dry_run: dryRun,
   });
 }
+
+export function correctTodo(todoId: string, reason: "not_a_todo" | "not_mine" | "already_done" | "wrong_details", edits: { field: string; value: string }[] = [], dryRun = false) {
+  return change(`/api/v1/mail/todos/${encodeURIComponent(todoId)}/correct`, { reason, edits, time_zone: browserTimeZone(), dry_run: dryRun });
+}
+export function undoTodoCorrection(todoId: string, correctionId: string) {
+  return change(`/api/v1/mail/todos/${encodeURIComponent(todoId)}/correction/undo`, { correction_id: correctionId, dry_run: false });
+}

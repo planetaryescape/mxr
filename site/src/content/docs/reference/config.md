@@ -939,3 +939,22 @@ Help, the command palette and mail-pane hints show the effective bindings for th
 - Runtime account inventory is not identical to config entries.
 - Gmail browser-auth accounts may exist at runtime without being editable config-backed entries.
 - IMAP/SMTP entries are the main editable config-backed account type.
+
+### Receiver authentication for structured To do fields
+
+`todo.trusted_authentication_services` maps exact account IDs to trusted receiver
+`authserv-id` values and defaults to `{}`. Edit it with `mxr config edit` and
+restart the daemon. For example:
+
+```toml
+[todo.trusted_authentication_services]
+"ACCOUNT_ID" = ["mx.example.net"]
+```
+
+This setting asserts that the account’s receiving server strips forged
+`Authentication-Results` headers claiming its configured IDs. Configure it only
+after the server administrator confirms that boundary. Sender names, sender
+domains, raw pass strings and `Received` headers do not establish trust. The
+first matching receiver report must contain an aligned DKIM or SPF pass before
+mxr uses structured bill fields. Other accounts remain unknown. This changes
+field provenance, never the existing Open email payment action.

@@ -6,7 +6,7 @@ description: Catch the commitments you make in sent mail and the replies you owe
 Two things make email feel like dropped balls: promises you typed into a draft and forgot about, and inbound threads that quietly aged past the speed at which you usually reply. mxr surfaces both, using only local data: extracted commitments from sent mail, and an "owed reply" lens that ranks the replies you owe people against how fast you usually answer them.
 
 :::tip[The one-line mental model]
-Commitments come **out** of your sent mail; the owed-reply lens looks at threads where you owe **in**. Both are deterministic ledgers: no LLM is required for the owed lens; the commitments extractor uses an LLM only to confirm a deterministic prefilter match.
+Sent-mail asks use stored deterministic rules for owner promises and requests. Reply-only asks feed Your turn. Optional draft safety proposals are a separate feature; they do not decide automatic To do rows.
 :::
 
 ## Commitments: promises you made

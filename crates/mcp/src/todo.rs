@@ -96,6 +96,29 @@ pub struct TodoResolutionInput {
     pub confirm: Option<bool>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TodoCorrectionInput {
+    pub todo_id: String,
+    /// not_a_todo | not_mine | already_done | wrong_details
+    pub reason: String,
+    #[serde(default)]
+    pub edits: Vec<CorrectionEdit>,
+    #[serde(default)]
+    pub confirm: bool,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CorrectionEdit {
+    pub field: String,
+    pub value: String,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TodoCorrectionUndoInput {
+    pub todo_id: String,
+    pub correction_id: String,
+    #[serde(default)]
+    pub confirm: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

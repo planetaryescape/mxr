@@ -272,6 +272,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
       - name: Grade the full set
+        env:
+          INSTA_UPDATE: new
         run: |
           set -o pipefail
           cargo test -p mxr --lib -- --ignored --exact handler::tests::classify_eval_full::the_full_set_is_graded_on_the_whole_demo --nocapture 2>&1 | tee classify-eval-full.log
@@ -280,7 +282,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: classify-eval-full-log
-          path: classify-eval-full.log
+          path: |
+            classify-eval-full.log
+            crates/daemon/src/handler/tests/snapshots/mxr__handler__tests__classify_eval_full__the_full_set_is_graded_on_the_whole_demo.snap.new
           retention-days: 3
 
   test-quality-audit:

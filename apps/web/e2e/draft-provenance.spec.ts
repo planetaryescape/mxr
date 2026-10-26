@@ -135,6 +135,7 @@ test("a drafted reply says which model wrote it, and each source opens the cited
   await expect.poll(() => draftRequest).not.toBeNull();
   expect(draftRequest).toHaveProperty("draft.kind", "reply");
   expect(draftRequest).toHaveProperty("draft.message_id", newest.id);
+  expect(newest.id).not.toBe(oldest.id);
 
   const provenance = composer(page).getByTestId("draft-provenance");
   await expect(provenance.getByTestId("draft-provenance-line")).toHaveText(

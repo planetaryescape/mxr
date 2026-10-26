@@ -74,7 +74,7 @@ export function fromDay(arrived: Date, now: Date): string {
 export function rowSecondary(todo: Todo, now: Date): string | null {
   if (todo.resolution?.status === "pending") return "A later email may change this";
   if (todo.looks_done) return `Looks done: ${todo.looks_done.reason}`;
-  const who = todo.counterparty ?? null;
+  const who = rowParty(todo);
   const from =
     todo.kind === "promise"
       ? "from you"

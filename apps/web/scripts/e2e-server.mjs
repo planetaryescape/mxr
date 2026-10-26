@@ -78,6 +78,16 @@ function prepareRuntime() {
     `[general]
 default_account = "fake"
 
+[llm]
+enabled = false
+
+[search.semantic]
+enabled = false
+auto_download_models = false
+
+[records]
+pdf_prefetch = false
+
 [bridge]
 enabled = true
 bind = "127.0.0.1"

@@ -405,21 +405,6 @@ pub(super) fn human_response(signals: &KindSignals<'_>) -> bool {
         || (purpose.purpose == MessagePurpose::Informational && purpose.human_reply)
 }
 
-/// Visibility, purpose, occurrence of a response and a new owner obligation
-/// are independent. A user placement cannot turn an automatic CTA into debt.
-pub(super) fn requires_reply(signals: &KindSignals<'_>) -> bool {
-    signals.reply_request
-        && classify(&KindSignals {
-            assessment: None,
-            moved: None,
-            decision: None,
-            treatment: None,
-            ..*signals
-        })
-        .kind
-            == SenderKind::Person
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MessagePurpose {
     Correspondence,
@@ -1325,7 +1310,6 @@ mod tests {
         };
         assert_eq!(classify(&reply).kind, SenderKind::Person);
         assert!(human_response(&reply));
-        assert!(!requires_reply(&reply));
         let generated = mxr_core::mail_evidence::MailEvidence {
             auto_generated: true,
             ..evidence.clone()
@@ -1378,7 +1362,6 @@ mod tests {
         };
         assert_eq!(classify(&discussion).kind, SenderKind::Person);
         assert!(human_response(&discussion));
-        assert!(requires_reply(&discussion));
         for (generated, list, email) in [
             (true, false, "alex@vendor.example"),
             (false, true, "alex@vendor.example"),
@@ -1395,7 +1378,7 @@ mod tests {
                 ..discussion
             };
             assert_ne!(classify(&automatic).kind, SenderKind::Person);
-            assert!(!human_response(&automatic) && !requires_reply(&automatic));
+            assert!(!human_response(&automatic));
         }
         let incomplete = mxr_core::mail_evidence::MailEvidence {
             text: Some("Invoice number: AB12345\nCan we discuss this invoice?".into()),

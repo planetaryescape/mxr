@@ -1411,6 +1411,54 @@ impl MxrMcpServer {
     }
 
     #[tool(
+        name = "mxr_todo_correct",
+        description = "Record not_a_todo, not_mine, already_done, or saved wrong_details edits. Defaults to preview. The returned correction_undo token safely undoes this exact change."
+    )]
+    pub async fn todo_correct(
+        &self,
+        Parameters(input): Parameters<todo::TodoCorrectionInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let reason = match input.reason.as_str() {
+            "not_a_todo" => mxr_protocol::TodoCorrectionData::NotATodo,
+            "not_mine" => mxr_protocol::TodoCorrectionData::NotMine,
+            "already_done" => mxr_protocol::TodoCorrectionData::AlreadyDone,
+            "wrong_details" => mxr_protocol::TodoCorrectionData::WrongDetails,
+            _ => return Err(ErrorData::invalid_params("Unknown correction reason", None)),
+        };
+        self.daemon_json(Request::CorrectTodo {
+            time_zone: None,
+            todo_id: input.todo_id,
+            reason,
+            edits: input
+                .edits
+                .into_iter()
+                .map(|e| mxr_protocol::TodoEditData {
+                    field: e.field,
+                    value: e.value,
+                })
+                .collect(),
+            dry_run: !input.confirm,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_todo_undo_correction",
+        description = "Undo one exact correction token. Defaults to preview; rejects changes made after the correction."
+    )]
+    pub async fn todo_undo_correction(
+        &self,
+        Parameters(input): Parameters<todo::TodoCorrectionUndoInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::UndoTodoCorrection {
+            todo_id: input.todo_id,
+            correction_id: input.correction_id,
+            dry_run: !input.confirm,
+        })
+        .await
+    }
+
+    #[tool(
         name = "mxr_todo_resolve",
         description = "Review an evidenced later email for one to-do. Without confirm=true returns a read-only preview; confirm the named accept, dismiss or undo action to apply it."
     )]

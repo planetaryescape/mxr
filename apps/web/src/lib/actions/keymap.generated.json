@@ -4872,7 +4872,7 @@
       "keys": [
         "Enter"
       ],
-      "note": "Opens a link only when the sender passed the check; otherwise the email",
+      "note": "The TUI opens the source email; the web opens it or a reply for a promise. Links stay in the email.",
       "tui": [
         {
           "name": "TodoPrimary",
@@ -4965,8 +4965,8 @@
     },
     {
       "id": "todo.dismiss",
-      "label": "Not a to-do",
-      "short_label": "Not a to-do",
+      "label": "Correct to-do",
+      "short_label": "Correct…",
       "group": "Triage",
       "scopes": [
         "todo"

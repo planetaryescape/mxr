@@ -17,8 +17,10 @@ fn utc() -> FixedOffset {
 /// You wrote to `who`; they replied, so it's your turn.
 async fn you_write_with(fx: &Fixture, who: &str) -> ThreadId {
     let thread = ThreadId::new();
-    let mine = fx.message(&thread, ME, who, Duration::days(3), None).await;
-    fx.message(
+    let mine = fx
+        .attention_message(&thread, ME, who, Duration::days(3), None)
+        .await;
+    fx.attention_message(
         &thread,
         who,
         ME,
@@ -32,7 +34,7 @@ async fn you_write_with(fx: &Fixture, who: &str) -> ThreadId {
 /// Mail from a stranger you never wrote to, `age` ago.
 async fn wrote_to_you(fx: &Fixture, who: &str, age: Duration) -> ThreadId {
     let thread = ThreadId::new();
-    fx.message(&thread, who, ME, age, None).await;
+    fx.attention_message(&thread, who, ME, age, None).await;
     thread
 }
 
@@ -58,10 +60,10 @@ async fn seed() -> Seeded {
     // A group thread: you wrote in it, Ruth answered. One unit.
     let group = ThreadId::new();
     let started = fx
-        .message(&group, ME, "ruth@example.com", Duration::days(2), None)
+        .attention_message(&group, ME, "ruth@example.com", Duration::days(2), None)
         .await;
     let mut ruth = fx
-        .message(
+        .attention_message(
             &group,
             "ruth@example.com",
             ME,
@@ -85,16 +87,16 @@ async fn seed() -> Seeded {
     wrote_to_you(&fx, "repeat2@example.com", Duration::days(16)).await;
 
     let waiting = ThreadId::new();
-    fx.message(&waiting, ME, "waits@example.com", Duration::days(3), None)
+    fx.attention_message(&waiting, ME, "waits@example.com", Duration::days(3), None)
         .await;
 
     // They replied 20 days ago, you wrote to them 25 days ago: past the
     // turn's decay, so nobody's turn any more.
     let old_owed = ThreadId::new();
     let mine = fx
-        .message(&old_owed, ME, "old@example.com", Duration::days(25), None)
+        .attention_message(&old_owed, ME, "old@example.com", Duration::days(25), None)
         .await;
-    fx.message(
+    fx.attention_message(
         &old_owed,
         "old@example.com",
         ME,
@@ -436,7 +438,7 @@ async fn the_owed_page_says_how_many_others_wait_when_it_is_empty() {
 async fn watched_alice_group(fx: &Fixture) -> ThreadId {
     let thread = ThreadId::new();
     let mut alice = fx
-        .message(&thread, "alice@example.com", ME, Duration::days(2), None)
+        .attention_message(&thread, "alice@example.com", ME, Duration::days(2), None)
         .await;
     alice.to = vec![
         mxr_core::types::Address {
@@ -450,7 +452,7 @@ async fn watched_alice_group(fx: &Fixture) -> ThreadId {
     ];
     fx.store_envelope(&alice, MessageDirection::Inbound).await;
     let mut bob = fx
-        .message(&thread, "bob@example.com", ME, Duration::days(1), None)
+        .attention_message(&thread, "bob@example.com", ME, Duration::days(1), None)
         .await;
     bob.cc = vec![mxr_core::types::Address {
         name: None,
@@ -534,7 +536,7 @@ async fn the_screener_page_keeps_an_eligible_sender_behind_five_hundred_newer_on
     for index in 0..500 {
         let thread = ThreadId::new();
         let archived = fx
-            .message(
+            .attention_message(
                 &thread,
                 &format!("archived{index}@example.com"),
                 ME,
@@ -657,7 +659,7 @@ async fn the_screener_page_counts_unknown_direction_mail_as_inbound_like_the_bad
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let envelope = fx
-        .message(&thread, "old@example.com", ME, Duration::hours(24), None)
+        .attention_message(&thread, "old@example.com", ME, Duration::hours(24), None)
         .await;
     // An older database before repair: the message is stored without a
     // direction.

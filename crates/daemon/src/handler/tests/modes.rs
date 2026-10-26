@@ -32,6 +32,21 @@ async fn mail(
         MessageDirection::Inbound
     };
     fx.store_envelope(&envelope, direction).await;
+    if direction == MessageDirection::Inbound {
+        // Mode handoff tests add their tasks explicitly; the email asks only for a reply.
+        fx.state
+            .store
+            .insert_body(&mxr_core::MessageBody {
+                message_id: envelope.id.clone(),
+                text_plain: Some("Could you reply with your availability?".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: envelope.date,
+                metadata: Default::default(),
+            })
+            .await
+            .unwrap();
+    }
     envelope
 }
 

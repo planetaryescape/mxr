@@ -1,0 +1,21 @@
+# Reply debt follows the speech act and the responsible person
+
+Run the native reply checks with `INSTA_UPDATE=no MXR_ACTIVITY=off scripts/cargo-test -p mxr --lib handler::tests::reply_semantics -- --nocapture`.
+
+An incoming “I will respond tomorrow.” is the correspondent's commitment. “Could you respond tomorrow?” asks the owner for a response. Both retain their original quote and span. The unit judge recognizes a first-person response commitment at the clause opening, so an embedded future in “Could you confirm when I will respond?” remains the owner's question. The developing policy is `asks-r2c-16`; published policies10 through15 are retained as history and read pending until reconciliation.
+
+The native test reads current stored assessments through `classify_eval_packet`, grades their reply answers through the existing `AskGrader`, and separately checks public mode summaries and the composed desk. It constructs its own expectations without resolving a scenario generator. Primary and owned-alias replies suppress earlier owner debt; Cc and another person's salutation do not assign that person's request to the owner. Automatically generated feedback requests create no reply debt while an independent signing obligation remains a To do.
+
+Semantic reply evaluation remains per message. Archiving removes a delivered turn while retaining the semantic answer. Inbox membership, snooze, dismissal, stored home, thread direction, pending coverage and desk precedence continue to control delivery; no evaluator filter or scorer changes are part of the speaker repair.
+
+A speaker's offer to respond also creates no owner debt. An experience question immediately followed by an optative feedback invitation in the same paragraph is retained as one verbatim offer unit. A direct response request, a bare experience question, or a separate request in another paragraph keeps its own reply answer. These rules change unit semantics rather than filtering the evaluator or altering a stored home.
+
+The bounded public-source check uses only the visible terse people follow-up and rail-tickets notice literals. Both have no owner debt. The rail notice has neither automatic nor bulk headers and remains reply-capable under the existing source classifier; its optional invitation now resolves to an offer before projection. Its existing home classification is not changed by this repair. No held-out wording is read or selected.
+
+The 12 native checks also prove that a replaced body is pending before reconciliation, a current replacement gets a different fingerprint, and corrected home or snooze can hide a delivered turn while semantic reply debt stays true. Packets assert policy, context, stored/effective revision equality, completed body and drained outbox. The test state disables language models, semantic search, model downloads and activity.
+
+Response wording does not by itself make a question. Native pairs cover adverbs, future auxiliaries, capability offers, inability and refusal statements, third-person promises, coordinated speaker actions and conditional commitments. The response predicate retains its pronoun subject; an incoming sender statement and an owner-authored statement therefore retain different actors. Coordination uses the existing promise/offer attachment, without splitting a review-and-reply request into a task. Questions and recipient-directed complements retain their request evidence. Unsupported forms are not claimed as covered by these checks.
+
+The startup proof writes a real previous-policy marker and assessment to an isolated file-backed profile, closes and reopens it, observes current policy16 after the first normal reconciler tick, and retains the previous answer in history. A subsequent unchanged restart and tick leave the stored snapshot and write count unchanged. It exercises previous policy9 and published policies10 through15.
+
+A nominal request for a response keeps its recipient actor: “I need a reply tomorrow.” is a request, while “I received a reply yesterday.” and “I need a chance to reply tomorrow.” describe the speaker. Native packets check the stored act and actor as well as semantic debt and delivered turn for this boundary.

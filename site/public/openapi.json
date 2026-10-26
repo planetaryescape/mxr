@@ -6555,6 +6555,84 @@
         }
       }
     },
+    "/api/v1/mail/todos/{todo_id}/correct": {
+      "post": {
+        "tags": [],
+        "summary": "Correct ownership, task status or details with safe undo",
+        "operationId": "mail_todo_correct",
+        "parameters": [
+          {
+            "name": "todo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoCorrectionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `TodoChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mail/todos/{todo_id}/correction/undo": {
+      "post": {
+        "tags": [],
+        "summary": "Undo a correction unless the row has changed",
+        "operationId": "mail_todo_undo_correction",
+        "parameters": [
+          {
+            "name": "todo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoCorrectionUndoBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `TodoChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/mail/todos/{todo_id}/edit": {
       "post": {
         "tags": [],
@@ -8805,6 +8883,37 @@
           }
         }
       },
+      "Act": {
+        "type": "string",
+        "enum": [
+          "request",
+          "commitment",
+          "obligation",
+          "offer",
+          "question",
+          "information",
+          "pleasantry"
+        ]
+      },
+      "ActionKind": {
+        "type": "string",
+        "enum": [
+          "pay",
+          "fix_payment",
+          "sign",
+          "verify",
+          "reply",
+          "send",
+          "provide",
+          "upload",
+          "book",
+          "attend",
+          "renew_or_cancel",
+          "register",
+          "contact",
+          "other"
+        ]
+      },
       "ActivityCursor": {
         "type": "object",
         "required": [
@@ -8992,6 +9101,16 @@
           "ephemeral",
           "standard",
           "important"
+        ]
+      },
+      "Actor": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "correspondent",
+          "third_party",
+          "everyone",
+          "nobody"
         ]
       },
       "Address": {
@@ -9700,6 +9819,278 @@
           "until": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "AskAmount": {
+        "type": "object",
+        "required": [
+          "zone",
+          "span",
+          "minor",
+          "currency"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "minor": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "span": {
+            "$ref": "#/components/schemas/AskSpan"
+          },
+          "zone": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AskAnswer": {
+        "type": "string",
+        "enum": [
+          "asks_you",
+          "asks_you_to_reply",
+          "you_promised",
+          "you_asked_them",
+          "they_promised_you",
+          "nothing",
+          "not_sure"
+        ]
+      },
+      "AskDate": {
+        "type": "object",
+        "required": [
+          "zone",
+          "span",
+          "at",
+          "checked"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "checked": {
+            "type": "boolean"
+          },
+          "span": {
+            "$ref": "#/components/schemas/AskSpan"
+          },
+          "zone": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AskReference": {
+        "type": "object",
+        "required": [
+          "zone",
+          "span",
+          "kind",
+          "value"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "span": {
+            "$ref": "#/components/schemas/AskSpan"
+          },
+          "value": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AskSpan": {
+        "type": "object",
+        "description": "UTF-8 byte offsets into the unmodified zone text; end is exclusive.",
+        "required": [
+          "start",
+          "end"
+        ],
+        "properties": {
+          "end": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AskState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "done",
+          "failed",
+          "cancelled",
+          "conditional",
+          "hypothetical"
+        ]
+      },
+      "AskSummary": {
+        "type": "object",
+        "description": "Bounded mode projection of the persisted answer. Full zones stay in the\nlocal assessment; the message, zone and byte span identify the evidence.",
+        "required": [
+          "message_id",
+          "policy_version",
+          "input_fingerprint",
+          "pending_body",
+          "units",
+          "more_units"
+        ],
+        "properties": {
+          "input_fingerprint": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "more_units": {
+            "type": "boolean"
+          },
+          "pending_body": {
+            "type": "boolean"
+          },
+          "policy_version": {
+            "type": "string"
+          },
+          "units": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AskUnitSummary"
+            }
+          }
+        }
+      },
+      "AskTags": {
+        "type": "object",
+        "required": [
+          "act",
+          "actor",
+          "state",
+          "action"
+        ],
+        "properties": {
+          "act": {
+            "$ref": "#/components/schemas/Act"
+          },
+          "action": {
+            "$ref": "#/components/schemas/ActionKind"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "amount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "due": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "reference": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "state": {
+            "$ref": "#/components/schemas/AskState"
+          }
+        }
+      },
+      "AskUnitSummary": {
+        "type": "object",
+        "required": [
+          "unit",
+          "zone",
+          "span",
+          "answer"
+        ],
+        "properties": {
+          "amount": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AskAmount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "answer": {
+            "$ref": "#/components/schemas/AskAnswer"
+          },
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "due": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AskDate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exact source text, or absent when too long for a mode response."
+          },
+          "reference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AskReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "span": {
+            "$ref": "#/components/schemas/AskSpan"
+          },
+          "tags": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AskTags"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unit": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "zone": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
@@ -31329,6 +31720,69 @@
           },
           {
             "type": "object",
+            "description": "Four distinct user corrections. Wrong details requires edits and does\nnot change the row until saved. Quotes are immutable source evidence.",
+            "required": [
+              "todo_id",
+              "reason",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "CorrectTodo"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "edits": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TodoEditData"
+                }
+              },
+              "reason": {
+                "$ref": "#/components/schemas/TodoCorrectionData"
+              },
+              "time_zone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "todo_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "todo_id",
+              "correction_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UndoTodoCorrection"
+                ]
+              },
+              "correction_id": {
+                "type": "string"
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "todo_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Preview or accept one evidence-backed later-mail resolution.",
             "required": [
               "todo_id",
@@ -41416,6 +41870,24 @@
           "account_id": {
             "$ref": "#/components/schemas/AccountId"
           },
+          "asks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AskSummary"
+            },
+            "description": "The independently versioned asks facet includes sent mail as well as received mail."
+          },
+          "asks_more": {
+            "type": "boolean",
+            "description": "Additional stored asks can be inspected through their source messages."
+          },
+          "asks_pending": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageId"
+            },
+            "description": "Missing or invalidated asks are pending; readers never invent a replacement."
+          },
           "assessments": {
             "type": "array",
             "items": {
@@ -41996,6 +42468,13 @@
             },
             "description": "The rows as they are (or would be) after the change."
           },
+          "correction_undo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque token for one-step correction undo; never inferred by a client."
+          },
           "dry_run": {
             "type": "boolean"
           },
@@ -42009,6 +42488,55 @@
               "type": "string"
             },
             "description": "Ids that matched but were not in a state this change applies to."
+          }
+        }
+      },
+      "TodoCorrectionBody": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "edits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoEditData"
+            }
+          },
+          "reason": {
+            "$ref": "#/components/schemas/TodoCorrectionData"
+          },
+          "time_zone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TodoCorrectionData": {
+        "type": "string",
+        "enum": [
+          "not_a_todo",
+          "not_mine",
+          "already_done",
+          "wrong_details"
+        ]
+      },
+      "TodoCorrectionUndoBody": {
+        "type": "object",
+        "required": [
+          "correction_id"
+        ],
+        "properties": {
+          "correction_id": {
+            "type": "string"
+          },
+          "dry_run": {
+            "type": "boolean"
           }
         }
       },
@@ -42641,6 +43169,13 @@
             },
             "description": "Dated, showing up after 30 days."
           },
+          "might_need_you": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoUncertainData"
+            },
+            "description": "Eligible ask uncertainty only; collapsed by clients and never a Now task."
+          },
           "next_surface": {
             "oneOf": [
               {
@@ -42730,6 +43265,25 @@
           "dismissed",
           "expired"
         ]
+      },
+      "TodoUncertainData": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "subject",
+          "asks"
+        ],
+        "properties": {
+          "asks": {
+            "$ref": "#/components/schemas/AskSummary"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
       },
       "TodoWeekData": {
         "type": "object",

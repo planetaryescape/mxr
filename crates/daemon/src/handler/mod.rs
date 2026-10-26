@@ -15,6 +15,8 @@ mod admin;
 mod archive_ask;
 mod archive_recovery;
 pub(crate) mod arrivals;
+mod ask_assessments;
+mod asks_upgrade;
 pub(crate) mod assessments;
 mod assistant;
 mod auth_sessions;
@@ -1689,6 +1691,28 @@ async fn dispatch(
             action,
             dry_run,
         } => todos::set_state(state, todo_ids, *action, *dry_run).await,
+        Request::CorrectTodo {
+            todo_id,
+            reason,
+            time_zone,
+            edits,
+            dry_run,
+        } => {
+            todos::correct(
+                state,
+                todo_id,
+                *reason,
+                edits,
+                time_zone.as_deref(),
+                *dry_run,
+            )
+            .await
+        }
+        Request::UndoTodoCorrection {
+            todo_id,
+            correction_id,
+            dry_run,
+        } => todos::undo_correction(state, todo_id, correction_id, *dry_run).await,
         Request::ResolveTodoSuggestion {
             todo_id,
             suggestion_id,
@@ -2819,6 +2843,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ResolveCommitment { .. }
         | Request::RecordPromise { .. }
         | Request::SetTodoState { .. }
+        | Request::CorrectTodo { .. }
+        | Request::UndoTodoCorrection { .. }
         | Request::ResolveTodoSuggestion { .. }
         | Request::ScheduleTodo { .. }
         | Request::UpdateTodo { .. }
@@ -3121,6 +3147,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListTodos { .. } => "list_todos",
         Request::GetTodo { .. } => "get_todo",
         Request::SetTodoState { .. } => "set_todo_state",
+        Request::CorrectTodo { .. } => "correct_todo",
+        Request::UndoTodoCorrection { .. } => "undo_todo_correction",
         Request::ResolveTodoSuggestion { .. } => "resolve_todo_suggestion",
         Request::GetNow { .. } => "get_now",
         Request::GetArrivals { .. } => "get_arrivals",

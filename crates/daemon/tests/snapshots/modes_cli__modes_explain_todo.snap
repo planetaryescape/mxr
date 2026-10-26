@@ -50,7 +50,7 @@ expression: "serde_json::to_string_pretty(&guides).unwrap()"
       },
       {
         "key": "X",
-        "verb": "not a to-do"
+        "verb": "correct to-do"
       },
       {
         "key": "o",

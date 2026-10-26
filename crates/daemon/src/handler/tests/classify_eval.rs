@@ -162,6 +162,21 @@ async fn the_quick_set_is_graded_and_every_mismatch_is_listed() {
             .all(|m| !(m.scenario == "no-reply-vendor-question" && m.question == "reply")),
         "{mismatches:?}"
     );
+    if std::env::var_os("MXR_CLASSIFY_TRACE").is_some() {
+        use sqlx::Row;
+        eprintln!("{}", report(&summary, &mismatches));
+        for row in sqlx::query("SELECT m.provider_id, m.subject, a.assessment_json, (SELECT json_group_array(json_object('reason', t.reason, 'state', t.state, 'expired_at_birth', t.expired_at_birth, 'field_sources', json(t.field_sources))) FROM todos t WHERE t.source_message_id = m.id) AS todo_json FROM messages m JOIN mail_assessments a ON a.message_id = m.id WHERE a.policy_version = ?1 ORDER BY m.provider_id")
+            .bind(mxr_core::asks::ASKS_POLICY_VERSION)
+            .fetch_all(state.store.reader()).await.unwrap()
+        {
+            eprintln!("ASK_TRACE {}", serde_json::json!({
+                "provider_id": row.get::<String, _>("provider_id"),
+                "subject": row.get::<String, _>("subject"),
+                    "todos": serde_json::from_str::<serde_json::Value>(&row.get::<String, _>("todo_json")).expect("synthetic projection JSON"),
+                "asks": serde_json::from_str::<serde_json::Value>(&row.get::<String, _>("assessment_json")).unwrap(),
+            }));
+        }
+    }
     classify_eval_floor::check("quick", summary.asks.as_ref().expect("asks"));
     insta::assert_snapshot!(report(&summary, &mismatches));
 }
@@ -174,8 +189,8 @@ async fn the_quick_snapshot_survives_crossing_midnight_utc() {
         .unwrap()
         .and_utc();
     for now in [
-        midnight - chrono::Duration::minutes(1),
-        midnight + chrono::Duration::minutes(1),
+        midnight - chrono::Duration::hours(3),
+        midnight + chrono::Duration::hours(3),
     ] {
         let (state, _) = scenario_state_at(now).await;
         let (summary, mismatches) = eval(&state, None).await;
@@ -285,12 +300,13 @@ async fn a_missing_assessment_is_pending_without_being_repaired_or_graded_as_wro
         .find(|label| !label.outbound)
         .unwrap();
     let removed = sqlx::query(
-        "DELETE FROM mail_assessments WHERE message_id IN
+        "DELETE FROM mail_assessments WHERE policy_version = ?4 AND message_id IN
          (SELECT id FROM messages WHERE account_id = ?1 AND provider_id = ?2 AND from_email = ?3)",
     )
     .bind(account_id.as_str())
     .bind(&victim.provider_id)
     .bind(&victim.from_email)
+    .bind(mxr_core::assessment::CLASSIFIER_POLICY_VERSION)
     .execute(state.store.writer())
     .await
     .unwrap()
@@ -357,4 +373,278 @@ async fn a_to_do_that_was_already_over_when_found_is_not_a_to_do() {
             .all(|m| !(m.scenario == "todo-event-already-over" && m.question == "ask")),
         "a born-expired to-do is not counted as a to-do: {mismatches:?}"
     );
+}
+
+#[tokio::test]
+async fn a_stored_ask_without_its_item_projection_is_not_graded_as_delivered() {
+    let (state, _) = scenario_state().await;
+    let (before, _) = eval(&state, None).await;
+    // The production read must not be credited with the fixture workers' writes.
+    state
+        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
+        .await;
+    let removed = sqlx::query("DELETE FROM todos WHERE source_message_id IN (SELECT id FROM messages WHERE provider_id = 'demo-msg-9')")
+        .execute(state.store.writer()).await.expect("remove only the synthetic projection").rows_affected();
+    assert_eq!(removed, 1);
+    let changes: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(state.store.writer())
+        .await
+        .expect("changes");
+    let ResponseData::ClassifyEval {
+        summary,
+        mismatches,
+    } = classify_eval(&state, None, ClassifyEvalSetData::Quick)
+        .await
+        .expect("read-only evaluation")
+    else {
+        panic!("eval response");
+    };
+    assert_eq!(
+        summary
+            .asks
+            .as_ref()
+            .expect("asks")
+            .kinds
+            .iter()
+            .find(|k| k.kind == "pay" && k.direction == "asks_you")
+            .expect("pay")
+            .counts
+            .found
+            + 1,
+        before
+            .asks
+            .as_ref()
+            .expect("asks")
+            .kinds
+            .iter()
+            .find(|k| k.kind == "pay" && k.direction == "asks_you")
+            .expect("pay")
+            .counts
+            .found
+    );
+    assert!(mismatches
+        .iter()
+        .any(|m| m.provider_id == "demo-msg-9" && m.question == "ask" && m.actual == "no row"));
+    let after: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(state.store.writer())
+        .await
+        .expect("changes");
+    assert_eq!(
+        changes, after,
+        "evaluation must not regenerate the missing task"
+    );
+}
+
+#[tokio::test]
+async fn linked_product_fields_are_measured_from_the_row_without_repairing_them() {
+    let (state, _) = scenario_state().await;
+    eval(&state, None).await;
+    // The production read must not be credited with the fixture workers' writes.
+    state
+        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
+        .await;
+    let changed = sqlx::query("UPDATE todos SET amount_minor = amount_minor + 100, due_at = due_at + 172800 WHERE user_edited = 0 AND source_message_id IN (SELECT id FROM messages WHERE provider_id = 'demo-msg-9')")
+        .execute(state.store.writer()).await.expect("change only projected fields").rows_affected();
+    assert_eq!(changed, 1);
+    let before: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(state.store.writer())
+        .await
+        .expect("changes");
+    let ResponseData::ClassifyEval { mismatches, .. } =
+        classify_eval(&state, None, ClassifyEvalSetData::Quick)
+            .await
+            .expect("stored evaluation")
+    else {
+        panic!("eval response");
+    };
+    for field in ["amount", "due"] {
+        assert!(
+            mismatches
+                .iter()
+                .any(|m| m.provider_id == "demo-msg-9" && m.question == field),
+            "wrong stored {field} must be visible"
+        );
+    }
+    let after: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(state.store.writer())
+        .await
+        .expect("changes");
+    assert_eq!(
+        before, after,
+        "evaluation leaves the erroneous projection unchanged"
+    );
+}
+
+#[tokio::test]
+async fn a_correction_remains_excluded_after_source_fingerprint_changes() {
+    for (reason, owner_reply) in [
+        (mxr_protocol::TodoCorrectionData::WrongDetails, false),
+        (mxr_protocol::TodoCorrectionData::NotMine, true),
+        (mxr_protocol::TodoCorrectionData::AlreadyDone, true),
+    ] {
+        let (state, account) = scenario_state().await;
+        eval(&state, Some(&account)).await;
+        state
+            .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
+            .await;
+        let id: String = sqlx::query_scalar(
+            "SELECT id FROM messages WHERE provider_id = 'demo-msg-9' AND account_id = ?",
+        )
+        .bind(account.as_str())
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap();
+        let id: mxr_core::MessageId = id.parse().unwrap();
+        let before = state
+            .store
+            .classify_eval_packet(std::slice::from_ref(&id))
+            .await
+            .unwrap()
+            .remove(0);
+        let task = state
+            .store
+            .list_todos_in_state(Some(&account), mxr_store::TodoState::Open, 1000)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|t| t.source_message_id.as_ref() == Some(&id))
+            .unwrap();
+        let msg = IpcMessage {
+            expected_workspace: None,
+            id: 2,
+            source: Default::default(),
+            payload: IpcPayload::Request(Request::CorrectTodo {
+                todo_id: task.id.clone(),
+                reason,
+                edits: if reason == mxr_protocol::TodoCorrectionData::WrongDetails {
+                    vec![mxr_protocol::TodoEditData {
+                        field: "title".into(),
+                        value: "My payment plan".into(),
+                    }]
+                } else {
+                    vec![]
+                },
+                time_zone: None,
+                dry_run: false,
+            }),
+        };
+        assert!(matches!(
+            handle_request(&state, &msg).await.payload,
+            IpcPayload::Response(Response::Ok { .. })
+        ));
+        let corrected = state.store.get_todo(&task.id).await.unwrap().unwrap();
+        let mut mail = state.store.get_envelope(&id).await.unwrap().unwrap();
+        if owner_reply {
+            let mut reply = mail.clone();
+            reply.id = mxr_core::MessageId::new();
+            reply.provider_id = "review5-owner-reply".into();
+            reply.message_id_header = Some("<review5-owner-reply@example.com>".into());
+            reply.in_reply_to = mail.message_id_header.clone();
+            reply.from = mxr_core::Address {
+                name: None,
+                email: SELF_EMAIL.into(),
+            };
+            reply.to = vec![mail.from.clone()];
+            reply.cc.clear();
+            reply.date = Utc::now();
+            reply.flags = mxr_core::MessageFlags::SENT;
+            state
+                .store
+                .upsert_envelope_with_direction(&reply, mxr_core::MessageDirection::Outbound)
+                .await
+                .unwrap();
+            state
+                .store
+                .insert_body(&mxr_core::MessageBody {
+                    message_id: reply.id,
+                    text_plain: Some("Thanks for the account copy.".into()),
+                    text_html: None,
+                    attachments: vec![],
+                    fetched_at: Utc::now(),
+                    metadata: Default::default(),
+                })
+                .await
+                .unwrap();
+        } else {
+            mail.subject.push_str(" — account copy");
+            state.store.upsert_envelope(&mail).await.unwrap();
+        }
+        crate::handler::assessments::reconcile_account(&state, &account)
+            .await
+            .unwrap();
+        crate::handler::todos::scan_messages(&state, std::slice::from_ref(&id)).await;
+        let mut fingerprints = std::collections::HashMap::new();
+        while crate::handler::todos::tick(&state, Utc::now(), &mut fingerprints)
+            .await
+            .unwrap()
+        {}
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM asks_projection_outbox WHERE account_id = ?"
+            )
+            .bind(account.as_str())
+            .fetch_one(state.store.reader())
+            .await
+            .unwrap(),
+            0
+        );
+        let after = state
+            .store
+            .classify_eval_packet(std::slice::from_ref(&id))
+            .await
+            .unwrap()
+            .remove(0);
+        assert_ne!(
+            before.asks.unwrap().input_fingerprint,
+            after.asks.as_ref().unwrap().input_fingerprint
+        );
+        assert!(!after.projection_pending);
+        let changes: i64 = sqlx::query_scalar("SELECT total_changes()")
+            .fetch_one(state.store.writer())
+            .await
+            .unwrap();
+        let ResponseData::ClassifyEval {
+            summary,
+            mismatches,
+        } = classify_eval(&state, Some(&account), ClassifyEvalSetData::Quick)
+            .await
+            .unwrap()
+        else {
+            panic!("eval");
+        };
+        eprintln!(
+            "CORRECTION fingerprint={:?} pending={} correction_slices={:?} source_mismatches={:?}",
+            after.asks.as_ref().map(|a| &a.input_fingerprint),
+            after.projection_pending,
+            summary.asks.as_ref().map(|a| a
+                .slices
+                .iter()
+                .filter(|s| s.dimension == "projection")
+                .collect::<Vec<_>>()),
+            mismatches
+                .iter()
+                .filter(|m| m.provider_id == "demo-msg-9")
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            changes,
+            sqlx::query_scalar::<_, i64>("SELECT total_changes()")
+                .fetch_one(state.store.writer())
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            state.store.get_todo(&task.id).await.unwrap(),
+            Some(corrected)
+        );
+        assert!(summary
+            .asks
+            .unwrap()
+            .slices
+            .iter()
+            .any(|s| s.dimension == "projection" && s.value == "user_corrected" && s.emails == 1));
+        assert!(!mismatches
+            .iter()
+            .any(|m| m.provider_id == "demo-msg-9" && m.question == "ask"));
+    }
 }

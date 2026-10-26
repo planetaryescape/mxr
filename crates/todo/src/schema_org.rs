@@ -56,6 +56,8 @@ pub enum SchemaTodo {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SchemaVerdict {
     pub todo: Option<SchemaTodo>,
+    pub source: Option<std::ops::Range<usize>>,
+    pub ambiguous: bool,
     /// The markup says nothing is owed: paid, collected automatically, or
     /// a confirmed booking. Text patterns must not make a to-do of it.
     pub settled: bool,
@@ -81,7 +83,11 @@ pub fn read(html: Option<&str>) -> SchemaVerdict {
         collect_entities(&value, &mut entities);
         for entity in entities {
             match judge(entity) {
-                Judgement::Todo(todo) if verdict.todo.is_none() => verdict.todo = Some(todo),
+                Judgement::Todo(todo) if verdict.todo.is_none() => {
+                    verdict.todo = Some(todo);
+                    verdict.source = Some(raw.range());
+                }
+                Judgement::Todo(_) => verdict.ambiguous = true,
                 Judgement::Settled => verdict.settled = true,
                 _ => {}
             }

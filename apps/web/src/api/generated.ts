@@ -3415,6 +3415,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/todos/{todo_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct ownership, task status or details with safe undo */
+        post: operations["mail_todo_correct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/todos/{todo_id}/correction/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo a correction unless the row has changed */
+        post: operations["mail_todo_undo_correction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/todos/{todo_id}/edit": {
         parameters: {
             query?: never;
@@ -4835,6 +4869,31 @@ export interface components {
             /** @description Exactly one recipient: Got it never replies to all. */
             to: components["schemas"]["Address"][];
         };
+        /** @enum {string} */
+        Act:
+            | "request"
+            | "commitment"
+            | "obligation"
+            | "offer"
+            | "question"
+            | "information"
+            | "pleasantry";
+        /** @enum {string} */
+        ActionKind:
+            | "pay"
+            | "fix_payment"
+            | "sign"
+            | "verify"
+            | "reply"
+            | "send"
+            | "provide"
+            | "upload"
+            | "book"
+            | "attend"
+            | "renew_or_cancel"
+            | "register"
+            | "contact"
+            | "other";
         ActivityCursor: {
             /** Format: int64 */
             id: number;
@@ -4899,6 +4958,9 @@ export interface components {
          * @enum {string}
          */
         ActivityTier: "ephemeral" | "standard" | "important";
+        /** @enum {string} */
+        Actor:
+            "owner" | "correspondent" | "third_party" | "everyone" | "nobody";
         Address: {
             email: string;
             name?: string | null;
@@ -5138,6 +5200,82 @@ export interface components {
             track_record?: string | null;
             /** Format: date-time */
             until: string;
+        };
+        AskAmount: {
+            currency: string;
+            /** Format: int64 */
+            minor: number;
+            span: components["schemas"]["AskSpan"];
+            zone: number;
+        };
+        /** @enum {string} */
+        AskAnswer:
+            | "asks_you"
+            | "asks_you_to_reply"
+            | "you_promised"
+            | "you_asked_them"
+            | "they_promised_you"
+            | "nothing"
+            | "not_sure";
+        AskDate: {
+            /** Format: date-time */
+            at: string;
+            checked: boolean;
+            span: components["schemas"]["AskSpan"];
+            zone: number;
+        };
+        AskReference: {
+            kind: string;
+            span: components["schemas"]["AskSpan"];
+            value: string;
+            zone: number;
+        };
+        /** @description UTF-8 byte offsets into the unmodified zone text; end is exclusive. */
+        AskSpan: {
+            end: number;
+            start: number;
+        };
+        /** @enum {string} */
+        AskState:
+            | "pending"
+            | "done"
+            | "failed"
+            | "cancelled"
+            | "conditional"
+            | "hypothetical";
+        /**
+         * @description Bounded mode projection of the persisted answer. Full zones stay in the
+         *     local assessment; the message, zone and byte span identify the evidence.
+         */
+        AskSummary: {
+            input_fingerprint: string;
+            message_id: components["schemas"]["MessageId"];
+            more_units: boolean;
+            pending_body: boolean;
+            policy_version: string;
+            units: components["schemas"]["AskUnitSummary"][];
+        };
+        AskTags: {
+            act: components["schemas"]["Act"];
+            action: components["schemas"]["ActionKind"];
+            actor: components["schemas"]["Actor"];
+            amount?: number | null;
+            due?: number | null;
+            reference?: number | null;
+            state: components["schemas"]["AskState"];
+        };
+        AskUnitSummary: {
+            amount?: components["schemas"]["AskAmount"] | null;
+            answer: components["schemas"]["AskAnswer"];
+            author?: string | null;
+            due?: components["schemas"]["AskDate"] | null;
+            /** @description Exact source text, or absent when too long for a mode response. */
+            quote?: string | null;
+            reference?: components["schemas"]["AskReference"] | null;
+            span: components["schemas"]["AskSpan"];
+            tags?: components["schemas"]["AskTags"] | null;
+            unit: number;
+            zone: number;
         };
         AssessmentClaim: {
             evidence: string[];
@@ -12181,6 +12319,22 @@ export interface components {
                   todo_ids: string[];
               }
             | {
+                  /** @enum {string} */
+                  cmd: "CorrectTodo";
+                  dry_run?: boolean;
+                  edits?: components["schemas"]["TodoEditData"][];
+                  reason: components["schemas"]["TodoCorrectionData"];
+                  time_zone?: string | null;
+                  todo_id: string;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "UndoTodoCorrection";
+                  correction_id: string;
+                  dry_run?: boolean;
+                  todo_id: string;
+              }
+            | {
                   action: components["schemas"]["TodoResolutionActionData"];
                   /** @enum {string} */
                   cmd: "ResolveTodoSuggestion";
@@ -15023,6 +15177,12 @@ export interface components {
         /** @description Every mode one thread is in, returned by `Request::GetModeMembership`. */
         ThreadModesData: {
             account_id: components["schemas"]["AccountId"];
+            /** @description The independently versioned asks facet includes sent mail as well as received mail. */
+            asks?: components["schemas"]["AskSummary"][];
+            /** @description Additional stored asks can be inspected through their source messages. */
+            asks_more?: boolean;
+            /** @description Missing or invalidated asks are pending; readers never invent a replacement. */
+            asks_pending?: components["schemas"]["MessageId"][];
             /** @description The stored answers behind this thread's memberships; live marks stay separate. */
             assessments?: components["schemas"]["MailAssessment"][];
             /**
@@ -15253,11 +15413,26 @@ export interface components {
             action: string;
             /** @description The rows as they are (or would be) after the change. */
             changed: components["schemas"]["TodoData"][];
+            /** @description Opaque token for one-step correction undo; never inferred by a client. */
+            correction_undo?: string | null;
             dry_run: boolean;
             /** @description One line saying what happened: "Ticked off 2.", "Would let go of 12." */
             summary: string;
             /** @description Ids that matched but were not in a state this change applies to. */
             unchanged?: string[];
+        };
+        TodoCorrectionBody: {
+            dry_run?: boolean;
+            edits?: components["schemas"]["TodoEditData"][];
+            reason: components["schemas"]["TodoCorrectionData"];
+            time_zone?: string | null;
+        };
+        /** @enum {string} */
+        TodoCorrectionData:
+            "not_a_todo" | "not_mine" | "already_done" | "wrong_details";
+        TodoCorrectionUndoBody: {
+            correction_id: string;
+            dry_run?: boolean;
         };
         /** @description Body of `POST /api/v1/mail/todos`. */
         TodoCreateBody: {
@@ -15493,6 +15668,8 @@ export interface components {
             headline: string;
             /** @description Dated, showing up after 30 days. */
             later: components["schemas"]["TodoData"][];
+            /** @description Eligible ask uncertainty only; collapsed by clients and never a Now task. */
+            might_need_you?: components["schemas"]["TodoUncertainData"][];
             next_surface?: components["schemas"]["TodoNextData"] | null;
             /** @description Shown now, by act-by; overdue rows after the ones still in time. */
             now: components["schemas"]["TodoData"][];
@@ -15519,6 +15696,11 @@ export interface components {
         };
         /** @enum {string} */
         TodoStateData: "open" | "done" | "dismissed" | "expired";
+        TodoUncertainData: {
+            asks: components["schemas"]["AskSummary"];
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+        };
         /** @description One week of Coming up. */
         TodoWeekData: {
             /** @description "wk of 12 Oct". */
@@ -23056,6 +23238,58 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    mail_todo_correct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoCorrectionBody"];
+            };
+        };
+        responses: {
+            /** @description The `TodoChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+        };
+    };
+    mail_todo_undo_correction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoCorrectionUndoBody"];
+            };
+        };
+        responses: {
+            /** @description The `TodoChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
         };
     };

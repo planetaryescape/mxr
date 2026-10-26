@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
 import { llmPolicyKey, useLlmStatus } from "@/features/llm/useLlmStatus";
+import { useThreadModes } from "@/features/modes/membership";
 import { fetchThread } from "@/features/mailbox/api";
 import { PageError } from "@/components/PageParts";
 import { useOpenThread } from "@/state/openThreadStore";
@@ -31,12 +32,11 @@ export function ThreadPane({
     queryKey: ["thread", threadId],
     queryFn: () => fetchThread(threadId),
   });
-  // Loaded alongside the thread, and waited for, so the context block is in
-  // place before the first message paints. It's a local read like the
-  // thread; a failed read just leaves the block out. The model status is
-  // never waited for: reading must not depend on it (AppShell fetches it at
-  // start, so the gist slot is usually decided by the time a thread opens).
+  // Wait for both local context reads, so their lines are in place before
+  // the first message paints. A failed read just leaves its line out. The
+  // model status is never waited for: reading must not depend on it.
   const context = useQuery(threadContextQuery(threadId));
+  const modes = useThreadModes(threadId);
   const llm = useLlmStatus();
   const policy = llmPolicyKey(llm.data?.status);
   // Ask for the gist as soon as the thread is known, not after the reader
@@ -46,7 +46,9 @@ export function ThreadPane({
     if (llm.enabled) void queryClient.prefetchQuery(threadGistQuery(threadId, policy));
   }, [llm.enabled, policy, queryClient, threadId]);
   // The thread's error shows at once; only a load waits on the skeleton rule.
-  const phase = useDelayedPending(!query.isError && (query.isLoading || context.isLoading));
+  const phase = useDelayedPending(
+    !query.isError && (query.isLoading || context.isLoading || modes.isLoading),
+  );
   const setOpenThread = useOpenThread((s) => s.setThreadId);
   useEffect(() => {
     setOpenThread(threadId);

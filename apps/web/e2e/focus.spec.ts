@@ -390,8 +390,10 @@ test("a dated promise in a reply is offered with its time and kept as a reminder
   ).json()) as {
     commitments: { id: string; what: string; by_when?: string; evidence_msg_id: string }[];
   };
-  const kept = list.commitments.find((row) => row.evidence_msg_id === sentJson.message_id);
-  expect(kept).toMatchObject({ what: "send the deck", direction: "yours" });
+  const keptRows = list.commitments.filter((row) => row.evidence_msg_id === sentJson.message_id);
+  expect(keptRows).toHaveLength(1);
+  const kept = keptRows[0];
+  expect(kept).toMatchObject({ what: "I'll send the deck by Friday.", direction: "yours" });
   expect(Date.parse(kept!.by_when!)).toBe(Date.parse(due.at));
   await page.request.post(
     `${state.bridgeUrl}/api/v1/mail/commitments/${encodeURIComponent(kept!.id)}/resolve`,

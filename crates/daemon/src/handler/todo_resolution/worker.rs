@@ -69,6 +69,10 @@ pub(in crate::handler) async fn drain(
             state.store.finish_todo_resolution_work(&work).await?;
             continue;
         };
+        if input.task.has_stored_asks() {
+            state.store.finish_todo_resolution_work(&work).await?;
+            continue;
+        }
         if input.fingerprint != work.input_fingerprint {
             state.store.enqueue_todo_resolution(&input, now).await?;
             continue;

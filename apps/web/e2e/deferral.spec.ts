@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { expectCursorOn, mailRows, rowById } from "./helpers/mail";
 import { openApp, readE2EState, restartDaemon } from "./helpers/state";
+import { freshWaitingConversations } from "./helpers/waiting-request";
 
 /**
  * Timed deferral from one key: `b` asks when, the exact time shows before
@@ -98,30 +99,39 @@ test('b then "in 2d" shows the time before it is set, names it in the toast, and
 test('b on Waiting on then "in 3d" brings it back only if nobody replies, and the toast Undo restores it', async ({
   page,
 }) => {
-  const row = (await laneRows(page, "waiting"))[0]!;
-  await openApp(page, "/desk?lane=waiting");
-  await expect(mailRows(page).first()).toBeVisible();
-  await expectCursorOn(page, domId(row));
+  const fixture = await freshWaitingConversations(page);
+  try {
+    const row = (await laneRows(page, "waiting")).find(
+      (candidate) => candidate.thread_id === fixture.rows[0]?.thread_id,
+    );
+    if (!row) throw new Error("The owned waiting request is missing from the desk");
+    await openApp(page, "/desk?lane=waiting");
+    await expect(mailRows(page).first()).toBeVisible();
+    await expectCursorOn(page, domId(row));
 
-  await page.keyboard.press("b");
-  const name = "Bring back if nobody replies";
-  const dialog = page.getByRole("dialog", { name });
-  await expect(dialog).toBeVisible();
-  await page.keyboard.type("in 3d");
-  const shown = await previewedTime(page, name, /· in 3 days$/);
+    await page.keyboard.press("b");
+    const name = "Bring back if nobody replies";
+    const dialog = page.getByRole("dialog", { name });
+    await expect(dialog).toBeVisible();
+    await page.keyboard.type("in 3d");
+    const shown = await previewedTime(page, name, /· in 3 days$/);
 
-  const response = page.waitForResponse("**/api/v1/mail/desk/later");
-  await page.keyboard.press("Enter");
-  const body = (await (await response).json()) as { items: { kind: string }[] };
-  expect(body.items[0]?.kind).toBe("waiting");
-  const toast = lastToast(page, "if nobody replies");
-  await expect(toast).toContainText(`Back ${shown} if nobody replies`);
-  await expect(rowById(page, domId(row))).toHaveCount(0);
+    const response = page.waitForResponse("**/api/v1/mail/desk/later");
+    await page.keyboard.press("Enter");
+    // SAFETY: the fake bridge's deferral response is checked for the waiting outcome below.
+    const body = (await (await response).json()) as { items: { kind: string }[] };
+    expect(body.items[0]?.kind).toBe("waiting");
+    const toast = lastToast(page, "if nobody replies");
+    await expect(toast).toContainText(`Back ${shown} if nobody replies`);
+    await expect(rowById(page, domId(row))).toHaveCount(0);
 
-  const undone = page.waitForResponse("**/api/v1/mail/mutations/undo");
-  await toast.getByRole("button", { name: "Undo" }).click();
-  expect((await undone).ok()).toBe(true);
-  await expect(rowById(page, domId(row))).toBeVisible();
+    const undone = page.waitForResponse("**/api/v1/mail/mutations/undo");
+    await toast.getByRole("button", { name: "Undo" }).click();
+    expect((await undone).ok()).toBe(true);
+    await expect(rowById(page, domId(row))).toBeVisible();
+  } finally {
+    await fixture.finish();
+  }
 });
 
 test("a set time brings the conversation back on its own, after a daemon restart", async ({

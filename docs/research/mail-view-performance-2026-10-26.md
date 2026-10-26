@@ -120,3 +120,31 @@ Increasing SQLx's row buffer did not improve the historical envelope read. Aggre
 ### Dependency gate
 
 The final local gate initially passed formatting, scoped Clippy and architecture checks, but new advisories published on 26 October blocked `cargo deny`: RUSTSEC-2026-0391, RUSTSEC-2026-0398 and RUSTSEC-2026-0403 affected Tantivy's existing `zstd 0.13.3` / `zstd-safe 7.2.4` dependencies. Updating Tantivy to 0.27 selects the patched `zstd 0.14.3` / `zstd-safe 8.2.0` line without exceptions. Both Tantivy releases support index formats 4 through 7. All 46 `mxr-search` tests and the complete scoped Rust gate pass after the upgrade, including advisories, bans, licenses and sources. Final optimized timings and installed-release verification remain pending.
+
+### Navigation lookups under verification
+
+The Now and rail traces also show repeated scans of every outbound message's recipient JSON for small new-sender checks. Schema 103 adds an indexed, transactionally maintained recipient projection, retaining one supporting row per outbound message and address. Editing recipients, changing direction or account, and deleting mail update the projection in the same transaction. A check now starts with its requested addresses instead of parsing the account's sent history. To, Cc, Bcc, case folding, duplicate support, account movement, deletion and migration backfill have regression coverage.
+
+Updates history now takes each sender's bounded page through an account/sender/date index before loading full envelope state, rather than ranking every matching message. It preserves case-insensitive sender matching, duplicate-request set semantics, account boundaries and filtering of hidden mail before the per-sender limit. Now's independent People, To do and inbox/digest branches run concurrently through the existing reader pool. These changes were measured in the following sweep.
+
+The first schema-103 optimized sweep, also including Tantivy 0.27, returned these cold/repeated times with tracing disabled and no other audit-owned build running:
+
+| Request | First view build | Repeats |
+| --- | ---: | ---: |
+| Attention | 239 ms | 19–20 ms |
+| All conversations | 1,645 ms | 29–32 ms |
+| Waiting on them | 410 ms | 20 ms |
+| Now | 312 ms | 19–20 ms |
+| Rail | 381 ms | 19 ms |
+| Updates | 149 ms | 22 ms |
+| Reading | 177 ms | 22–24 ms |
+| Archive | 131 ms | 122–167 ms |
+| Search | 30 ms | 26–28 ms |
+
+Updates now passes the budget. History, Waiting on them, Now and rail still fail it. Startup with the navigation migration took 3,148 ms; maintenance completed by 22,722 ms. The new binary opened the existing search index, and the read-only search benchmark succeeded.
+
+A diagnostic trace then exposed work after Now's old completion log: the coming-up strip ran after the snapshot, adding about 100 ms. The strip and first-run state now start alongside the snapshot, and the existing completion log includes their cost. Rail's independent quiet count also starts alongside its snapshot. Messages prepares its window/history envelopes and sender context alongside the desk, still adding any older timer/attention threads and applying the desk's authoritative turns afterward. These further concurrency changes need their own optimized measurement.
+
+The latest scoped Rust gate passes, as do 83 daemon navigation tests, 12 focused store navigation tests and all 28 backup/restore tests. The returned-thread regression now uses mail 400 days old and checks Attention, All, Waiting, Now and rail. The source changes are committed separately from the measured audit; final optimized and installed-version gates remain open.
+
+An experimental packed-envelope history projection still needed roughly 260–470 ms for the primary account's SQL read, before Rust composition and the desk. It is not included. Replacing full envelopes with a packed copy does not eliminate enough work to satisfy the cold History gate.

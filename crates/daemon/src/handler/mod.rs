@@ -56,6 +56,7 @@ mod draft_refine;
 mod draft_voice;
 mod error;
 mod expert;
+mod forward;
 mod freshness;
 mod gist_kind;
 mod gist_numbers;
@@ -100,6 +101,7 @@ mod runtime;
 mod safety_llm;
 mod safety_timing;
 mod screener;
+pub(crate) mod send_recovery;
 mod sender_view;
 mod signatures;
 mod snippets;
@@ -2233,6 +2235,21 @@ async fn dispatch(
             account_id,
             operation_id,
         } => mutations::get_send_outcome(state, account_id, operation_id).await,
+        Request::RecoverSendOutcome {
+            account_id,
+            operation_id,
+            dry_run,
+            expected_evidence_sha256,
+        } => {
+            send_recovery::recover_legacy(
+                state,
+                account_id,
+                operation_id,
+                *dry_run,
+                expected_evidence_sha256.as_deref(),
+            )
+            .await
+        }
         Request::CheckDraftSafety { draft, context } => {
             mutations::check_draft_safety_request(state, draft, context).await
         }
@@ -2687,6 +2704,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListScheduledSends { .. }
         | Request::ListOrphanedDrafts
         | Request::GetSendOutcome { .. }
+        | Request::RecoverSendOutcome { dry_run: true, .. }
         | Request::GetDraft { .. }
         | Request::ExportThread { .. }
         | Request::ExportSearch { .. }
@@ -2716,6 +2734,7 @@ fn classify_request(req: &Request) -> RequestClass {
         // --- Send: transmits mail to a provider ---
         Request::SendDraft { .. }
         | Request::SendStoredDraft { .. }
+        | Request::RecoverSendOutcome { dry_run: false, .. }
         | Request::ScheduleSend { .. }
         | Request::RespondInvite { dry_run: false, .. }
         | Request::AckMessage { dry_run: false, .. }
@@ -3225,6 +3244,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListCadenceDrift { .. } => "list_cadence_drift",
         Request::DeleteDraft { .. } => "delete_draft",
         Request::GetSendOutcome { .. } => "get_send_outcome",
+        Request::RecoverSendOutcome { .. } => "recover_send_outcome",
         Request::GetDraft { .. } => "get_draft",
         Request::UpdateDraft { .. } => "update_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",

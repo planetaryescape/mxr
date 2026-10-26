@@ -535,6 +535,11 @@ pub(super) async fn ack_at(
         Ok(ResponseData::SendReceipt {
             local_message_id, ..
         }) => local_message_id,
+        Ok(ResponseData::SendOutcome {
+            outcome: Some(outcome),
+        }) if outcome.state == mxr_core::SendOutcomeState::Waiting => {
+            return Err(HandlerError::Message(format!("Got it is approved and waiting for the mail provider; retry is automatic. Query operation {} and do not send another acknowledgement.", outcome.identity.operation_id)));
+        }
         Ok(_) | Err(_) => {
             return Err(HandlerError::Message(format!(
                 "Got it needs an outcome check (draft {}). It won't be sent again. Query mxr send-outcome 'draft:{}' --account {}; do not resend blindly.",

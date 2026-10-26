@@ -1,29 +1,66 @@
 import { selectedWorkspace } from "@/lib/workspaceOwner";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchOrphanedDrafts } from "./api";
-import { fetchSendOutcome, readSendReferences, type SendReference } from "./sendOutcomes";
+import {
+  fetchSendOutcome,
+  readSendReferences,
+  recoverSendOutcome,
+  type SendReference,
+} from "./sendOutcomes";
 
 export const orphanedDraftsQueryKey = ["drafts", "orphaned"] as const;
 
 function OutcomeRow({ reference }: { reference: SendReference }) {
+  const [preview, setPreview] = useState<{ evidence?: string; reason: string } | null>(null);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const outcome = useQuery({
     queryKey: ["send-outcome", reference.binding, reference.accountId, reference.operationId],
     queryFn: () => fetchSendOutcome(reference.accountId, reference.operationId, reference.binding),
+    refetchInterval: (query) =>
+      ["waiting", "unknown"].includes(query.state.data?.outcome?.state ?? "") ? 30_000 : false,
   });
   const state = outcome.data?.outcome?.state;
+  async function recover(evidence?: string) {
+    setRecovering(true);
+    setRecoveryError(null);
+    try {
+      const operationId = outcome.data?.outcome?.identity.operation_id ?? reference.operationId;
+      const result = await recoverSendOutcome({ ...reference, operationId }, evidence);
+      if (evidence) {
+        setPreview(null);
+        await outcome.refetch();
+      } else
+        setPreview({
+          evidence: result.recoverable ? (result.evidence_sha256 ?? undefined) : undefined,
+          reason: result.reason ?? "No definite non-submission evidence",
+        });
+    } catch (error) {
+      setRecoveryError(
+        error instanceof Error
+          ? error.message
+          : "Recovery failed; the original operation remains protected.",
+      );
+    } finally {
+      setRecovering(false);
+    }
+  }
   const description = outcome.isPending
     ? "Checking send outcome…"
     : outcome.isError
       ? "Could not check the send outcome. Check again before deciding whether to send."
-      : state === "accepted"
-        ? "Provider accepted this send."
-        : state === "not_accepted"
-          ? "Provider did not accept this send. Review the draft before a new attempt."
-          : state === "unknown"
-            ? "Acceptance is uncertain. Do not resend."
-            : "No submission was claimed for this operation. Review the saved draft before sending.";
+      : state === "waiting"
+        ? `Waiting for the mail provider; retrying automatically${outcome.data?.outcome?.recovery?.retry_at ? ` at ${outcome.data.outcome.recovery.retry_at}` : ""}. Do not resend.`
+        : state === "accepted"
+          ? "Provider accepted this send."
+          : state === "not_accepted"
+            ? "Provider did not accept this send. Review the draft before a new attempt."
+            : state === "unknown"
+              ? "Acceptance is uncertain. Do not resend."
+              : "No submission was claimed for this operation. Review the saved draft before sending.";
   return (
     <li className="flex items-center gap-3 border-b border-border/60 px-2 py-2.5">
       <div className="min-w-0 flex-1">
@@ -33,6 +70,16 @@ function OutcomeRow({ reference }: { reference: SendReference }) {
           {outcome.data?.outcome?.identity.operation_id ?? reference.operationId}
         </div>
         {outcome.error && <div role="alert">{outcome.error.message}</div>}
+        {state === "not_accepted" && outcome.data?.outcome?.recovery?.reason ? (
+          <div className="text-2xs">
+            Action required: {outcome.data.outcome.recovery.reason.replaceAll("_", " ")}. Review the
+            draft and account before sending again.
+          </div>
+        ) : null}
+        {recoveryError ? <div role="alert">{recoveryError}</div> : null}
+        {preview ? (
+          <div className="text-2xs">Recovery preview: {preview.reason}. No mail sent.</div>
+        ) : null}
       </div>
       <Button
         variant="outline"
@@ -42,6 +89,22 @@ function OutcomeRow({ reference }: { reference: SendReference }) {
       >
         Check outcome
       </Button>
+      {state === "unknown" && !outcome.data?.outcome?.recovery ? (
+        preview?.evidence ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={recovering}
+            onClick={() => void recover(preview.evidence)}
+          >
+            Resume original approved send
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" disabled={recovering} onClick={() => void recover()}>
+            Preview recovery
+          </Button>
+        )
+      ) : null}
     </li>
   );
 }

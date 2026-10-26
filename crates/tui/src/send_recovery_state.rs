@@ -399,7 +399,8 @@ pub(crate) fn owner_for_request(
         | Request::ExtractDraftCommitments { draft }
         | Request::SendDraft { draft, .. }
         | Request::CheckDraftSafety { draft, .. } => Some(draft.id.clone()),
-        Request::GetSendOutcome { operation_id, .. } => operation_id
+        Request::GetSendOutcome { operation_id, .. }
+        | Request::RecoverSendOutcome { operation_id, .. } => operation_id
             .strip_prefix("draft:")
             .unwrap_or(operation_id)
             .split(':')

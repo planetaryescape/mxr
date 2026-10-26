@@ -9,7 +9,7 @@ fn draft_from_pending(
     pending: &PendingSend,
     draft_id: mxr_core::id::DraftId,
     now: chrono::DateTime<chrono::Utc>,
-) -> mxr_core::Draft {
+) -> Result<mxr_core::Draft, mxr_compose::frontmatter::ComposeError> {
     let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
     let reply_headers =
         pending
@@ -21,7 +21,7 @@ fn draft_from_pending(
                 references: pending.fm.references.clone(),
                 thread_id: pending.fm.thread_id.clone(),
             });
-    mxr_core::Draft {
+    let mut draft = mxr_core::Draft {
         revision: pending.draft_revision.or(Some(1)),
         id: draft_id,
         account_id: pending.account_id.clone(),
@@ -46,7 +46,9 @@ fn draft_from_pending(
         inline_calendar_reply: pending.invite_reply.clone(),
         created_at: now,
         updated_at: now,
-    }
+    };
+    mxr_compose::forward::apply(&mut draft, &pending.fm)?;
+    Ok(draft)
 }
 
 impl App {
@@ -842,7 +844,15 @@ impl App {
                                 }
                             };
                             let draft_id = pending.draft_id();
-                            let draft = draft_from_pending(&pending, draft_id.clone(), now);
+                            let draft = match draft_from_pending(&pending, draft_id.clone(), now) {
+                                Ok(draft) => draft,
+                                Err(error) => {
+                                    self.compose.pending_send_confirm = Some(pending);
+                                    self.compose.pending_send_at_input = Some(input);
+                                    self.push_toast(Toast::error(error.to_string()));
+                                    return None;
+                                }
+                            };
                             self.queue_platform_request_after(
                                 vec![Request::SaveDraft { draft }],
                                 Request::ScheduleSend {
@@ -983,7 +993,7 @@ impl App {
                             }
                         });
                         let now = chrono::Utc::now();
-                        let draft = mxr_core::Draft {
+                        let mut draft = mxr_core::Draft {
                             revision: pending.draft_revision.or(Some(1)),
                             id: pending.draft_id(),
                             account_id: pending.account_id.clone(),
@@ -995,8 +1005,8 @@ impl App {
                             to: parse_addrs(&pending.fm.to),
                             cc: parse_addrs(&pending.fm.cc),
                             bcc: parse_addrs(&pending.fm.bcc),
-                            subject: pending.fm.subject,
-                            content: mxr_core::DraftContent::markdown(pending.body),
+                            subject: pending.fm.subject.clone(),
+                            content: mxr_core::DraftContent::markdown(pending.body.clone()),
                             managed_attachments: None,
                             attachments: pending
                                 .fm
@@ -1009,6 +1019,11 @@ impl App {
                             created_at: now,
                             updated_at: now,
                         };
+                        if let Err(error) = mxr_compose::forward::apply(&mut draft, &pending.fm) {
+                            self.compose.pending_send_confirm = Some(retained);
+                            self.push_toast(Toast::error(error.to_string()));
+                            return None;
+                        }
                         let id = self.queue_mutation(
                             Request::SaveDraftToServer { draft },
                             MutationEffect::StatusOnly("Draft saved to server".into()),

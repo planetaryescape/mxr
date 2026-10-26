@@ -1286,12 +1286,29 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             }
         }
         Some(Command::SendOutcome {
+            recover_known_not_submitted,
+            dry_run,
+            expected_evidence_sha256,
             expected_workspace,
             operation_id,
             account,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
+            if recover_known_not_submitted {
+                commands::mutations::recover_send_outcome(
+                    operation_id,
+                    account,
+                    format,
+                    expected_workspace
+                        .map(|value| serde_json::from_str(&value))
+                        .transpose()?,
+                    dry_run,
+                    expected_evidence_sha256,
+                )
+                .await?;
+                return Ok(());
+            }
             commands::mutations::send_outcome(
                 operation_id,
                 account,

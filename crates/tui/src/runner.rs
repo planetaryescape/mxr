@@ -371,6 +371,9 @@ fn format_platform_response(data: &ResponseData) -> String {
             outcome: Some(outcome),
         } => {
             let state = match outcome.state {
+                mxr_core::SendOutcomeState::Waiting => {
+                    "Waiting for the mail provider; approved send retries automatically. Do not resend."
+                }
                 mxr_core::SendOutcomeState::Accepted => {
                     "Provider accepted this send. Do not resend."
                 }
@@ -380,15 +383,21 @@ fn format_platform_response(data: &ResponseData) -> String {
                 }
             };
             format!(
-                "{state}\n\nOperation: {}\nAccount: {}\nReviewed revision: {}\n\nOpen the command palette and choose Check last send outcome to query this retained outcome again.",
+                "{state}\n\nOperation: {}\nAccount: {}\nReviewed revision: {}\nRecovery: {}\n\nOpen the command palette and choose Check last send outcome to query this retained outcome again.",
                 outcome.identity.operation_id,
                 outcome.account_id,
-                outcome.identity.expected_revision
+                outcome.identity.expected_revision,
+                outcome.recovery.as_ref().map(|status| serde_json::to_string(status).unwrap_or_default()).unwrap_or_default()
             )
         }
         ResponseData::SendOutcome { outcome: None } => {
             "No submission outcome recorded for this operation.".into()
         }
+        ResponseData::SendRecoveryPreview { outcome, recoverable, reason, evidence_sha256 } => format!(
+            "Recovery preview for {}\nRecoverable: {recoverable}\nReason: {reason}\nEvidence: {}\n\nNo mail was sent. {}",
+            outcome.identity.operation_id, evidence_sha256.as_deref().unwrap_or("none"),
+            if *recoverable { "Choose Resume previewed approved send in the command palette to retain this same operation for automatic retry." } else { "The unknown operation remains protected. Do not create a duplicate draft or send identity." }
+        ),
         ResponseData::Ack => "Done.".into(),
         other => serde_json::to_string_pretty(other).unwrap_or_else(|_| format!("{other:?}")),
     }
@@ -1694,6 +1703,7 @@ pub async fn run() -> anyhow::Result<()> {
                 }
                 .await;
                 AsyncResult::PlatformModalLoaded {
+                    send_recovery_preview: None,
                     compose: None,
                     title: "Archive preview".into(),
                     result,
@@ -1830,11 +1840,28 @@ pub async fn run() -> anyhow::Result<()> {
                         result: accepted,
                     };
                 }
+                let send_recovery_preview = match &result {
+                    Ok(Response::Ok {
+                        data:
+                            ResponseData::SendRecoveryPreview {
+                                outcome,
+                                recoverable: true,
+                                evidence_sha256: Some(evidence),
+                                ..
+                            },
+                    }) => Some((
+                        outcome.account_id.clone(),
+                        outcome.identity.operation_id.clone(),
+                        evidence.clone(),
+                    )),
+                    _ => None,
+                };
                 let result = result.and_then(|response| match response {
                     Response::Ok { data } => Ok(format_platform_response(&data)),
                     Response::Error { message, .. } => Err(MxrError::Ipc(message)),
                 });
                 AsyncResult::PlatformModalLoaded {
+                    send_recovery_preview,
                     compose,
                     title,
                     result,
@@ -3042,6 +3069,7 @@ pub async fn run() -> anyhow::Result<()> {
                             "Send {}: {}",
                             outcome.identity.operation_id,
                             match outcome.state {
+                                mxr_core::SendOutcomeState::Waiting => "waiting for provider; retry is automatic",
                                 mxr_core::SendOutcomeState::Accepted => "provider accepted",
                                 mxr_core::SendOutcomeState::Unknown =>
                                     "acceptance uncertain; do not resend",
@@ -4840,7 +4868,8 @@ pub async fn run() -> anyhow::Result<()> {
                                 format!("The daemon returned: {e}"),
                             );
                         }
-                        AsyncResult::PlatformModalLoaded { compose, title, mut result } => {
+                        AsyncResult::PlatformModalLoaded { compose, title, mut result, send_recovery_preview } => {
+                            if send_recovery_preview.is_some() { app.compose.send_recovery_preview = send_recovery_preview; }
                             if let Some(pending) = compose {
                                 let pending = *pending;
                                 result = result.map(|body| format!("{body}\n\nQuery scheduled delivery with draft:{} for account {}", pending.draft_id(), pending.account_id));

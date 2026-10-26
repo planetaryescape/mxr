@@ -186,15 +186,17 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
             &identity,
             &client.capture_workspace().await?,
         );
-        let receipt = expect_send_receipt(
-            client
-                .request(Request::SendDraft {
-                    send_identity: Some(identity),
-                    draft: draft.clone(),
-                    override_safety_token: None,
-                })
-                .await?,
-        )?;
+        let response = client
+            .request(Request::SendDraft {
+                send_identity: Some(identity),
+                draft: draft.clone(),
+                override_safety_token: None,
+            })
+            .await?;
+        if print_waiting_response(&response, options.format.clone())? {
+            return Ok(());
+        }
+        let receipt = expect_send_receipt(response)?;
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
         }
@@ -314,8 +316,8 @@ fn compose_result_output(
         "subject": draft.subject,
         "to": draft.to.iter().map(|a| a.email.clone()).collect::<Vec<_>>(),
         "content_kind": draft.content.kind_str(),
-        "inline_count": draft.inline_assets.len(),
-        "attachment_count": (draft.attachments.len() + draft.managed_attachments.as_ref().map_or(0, Vec::len)),
+        "inline_count": draft.inline_assets.len() + draft.managed_attachments.iter().flatten().filter(|part| part.content_id.is_some()).count(),
+        "attachment_count": file_attachment_count(draft),
         "local_message_id": local_message_id,
     });
 
@@ -441,7 +443,6 @@ async fn reply_inner(command: ReplyCommand, reply_all: bool) -> anyhow::Result<(
     )
     .await?;
     let (frontmatter, body_text, draft_file) = build_compose_draft(
-        &mut client,
         kind,
         &effective_from,
         stdin_or_body,
@@ -530,6 +531,11 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
     let kind = mxr_compose::ComposeKind::Forward {
         subject: ctx.subject.clone(),
         original_context: ctx.forwarded_content.clone(),
+        source: Some(ctx.source.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Daemon cannot prepare complete forwards; upgrade and restart the daemon"
+            )
+        })?),
     };
 
     let effective_from = from_override_or(from.as_deref(), &ctx.from);
@@ -544,7 +550,6 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
     )
     .await?;
     let (mut frontmatter, body_text, draft_file) = build_compose_draft(
-        &mut client,
         kind,
         &effective_from,
         stdin_or_body,
@@ -579,7 +584,6 @@ pub async fn forward(command: ForwardCommand) -> anyhow::Result<()> {
 }
 
 async fn build_compose_draft(
-    _client: &mut IpcClient,
     kind: mxr_compose::ComposeKind,
     from_email: &str,
     stdin_or_body: Option<String>,
@@ -592,25 +596,31 @@ async fn build_compose_draft(
     Option<PathBuf>,
 )> {
     if let Some(body) = stdin_or_body {
-        let mut frontmatter =
-            mxr_compose::seed_frontmatter_with_signature(kind, from_email, signature)?;
+        let forwarding = matches!(kind, mxr_compose::ComposeKind::Forward { .. });
+        let (mut frontmatter, seeded_body) = mxr_compose::seed_compose_with_signature(
+            kind,
+            from_email,
+            if forwarding { None } else { signature },
+        )?;
         if !attach.is_empty() {
-            frontmatter.attach = attach;
+            frontmatter.attach.extend(attach);
         }
-        return Ok((frontmatter, apply_signature_to_body(body, signature), None));
+        let body = apply_signature_to_body(body, signature);
+        let body = if forwarding {
+            format!("{body}\n\n{seeded_body}")
+        } else {
+            body
+        };
+        return Ok((frontmatter, body, None));
     }
 
     if dry_run {
-        let mut frontmatter =
-            mxr_compose::seed_frontmatter_with_signature(kind, from_email, signature)?;
+        let (mut frontmatter, body) =
+            mxr_compose::seed_compose_with_signature(kind, from_email, signature)?;
         if !attach.is_empty() {
-            frontmatter.attach = attach;
+            frontmatter.attach.extend(attach);
         }
-        return Ok((
-            frontmatter,
-            apply_signature_to_body(String::new(), signature),
-            None,
-        ));
+        return Ok((frontmatter, body, None));
     }
 
     let (path, cursor_line) =
@@ -659,12 +669,24 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
     // Recipient + thread context is only meaningful at the
     // post-$EDITOR stage where the user has filled in `to:` / `subject:`.
     let snippet_ctx = snippet_context_from_frontmatter(&frontmatter);
-    let body = expand_compose_snippets_with_context(client, body, Some(&snippet_ctx)).await?;
+    let body = if let Some(source) = &frontmatter.forward_source {
+        let intro = mxr_compose::forward::introduction(source, &body)?;
+        let intro =
+            expand_compose_snippets_with_context(client, intro.to_string(), Some(&snippet_ctx))
+                .await?;
+        if intro.is_empty() {
+            source.content.analysis_text().to_string()
+        } else {
+            format!("{intro}\n\n{}", source.content.analysis_text())
+        }
+    } else {
+        expand_compose_snippets_with_context(client, body, Some(&snippet_ctx)).await?
+    };
     let mut outgoing = draft_from_frontmatter(account_id, intent, &frontmatter, body)?;
     validate_compose_draft(&frontmatter, outgoing.content.analysis_text(), sending)?;
 
     if dry_run {
-        if client.is_paired_remote() {
+        if client.is_paired_remote() || outgoing.intent == mxr_core::DraftIntent::Forward {
             return print_remote_draft_preview(client, &outgoing, sending, format).await;
         }
         let effective_from =
@@ -700,15 +722,17 @@ async fn finalize_compose(client: &mut IpcClient, compose: FinalizeCompose) -> a
             &identity,
             &client.capture_workspace().await?,
         );
-        let receipt = expect_send_receipt(
-            client
-                .request(Request::SendDraft {
-                    send_identity: Some(identity),
-                    draft: outgoing.clone(),
-                    override_safety_token: None,
-                })
-                .await?,
-        )?;
+        let response = client
+            .request(Request::SendDraft {
+                send_identity: Some(identity),
+                draft: outgoing.clone(),
+                override_safety_token: None,
+            })
+            .await?;
+        if print_waiting_response(&response, format.clone())? {
+            return Ok(());
+        }
+        let receipt = expect_send_receipt(response)?;
         set_auto_reminder_after_send(client, receipt.as_ref(), remind_at).await?;
         if let Some(path) = draft_file {
             let _ = mxr_compose::delete_draft_file(&path);
@@ -1271,6 +1295,40 @@ pub async fn send_outcome(
     Ok(())
 }
 
+pub async fn recover_send_outcome(
+    operation_id: String,
+    account: String,
+    format: Option<OutputFormat>,
+    expected_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
+    dry_run: bool,
+    expected_evidence_sha256: Option<String>,
+) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    let owner = expected_workspace.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Recovery requires the original --expected-workspace; never infer a new owner"
+        )
+    })?;
+    client.expect_workspace(owner).await?;
+    let account_id = resolve_optional_account(&mut client, Some(&account))
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Account is required"))?;
+    let response = client
+        .request(Request::RecoverSendOutcome {
+            account_id,
+            operation_id,
+            dry_run,
+            expected_evidence_sha256,
+        })
+        .await?;
+    match response {
+        Response::Ok { data } => {
+            crate::output::print_json(&data, format.unwrap_or(OutputFormat::Json))
+        }
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+    }
+}
+
 pub struct SavedSendReview {
     pub expected_workspace: Option<mxr_protocol::ArchiveWorkspaceData>,
     pub expected_revision: Option<i64>,
@@ -1294,7 +1352,7 @@ pub async fn send_draft(
     let account_id = resolve_optional_account(&mut client, account.as_deref()).await?;
     if dry_run {
         let draft = get_draft_for_account(&mut client, &draft_id, account_id.as_ref()).await?;
-        if client.is_paired_remote() {
+        if client.is_paired_remote() || draft.intent == mxr_core::DraftIntent::Forward {
             return print_remote_draft_preview(&mut client, &draft, true, format).await;
         }
         let effective_from =
@@ -1334,6 +1392,10 @@ pub async fn send_draft(
                 anyhow::bail!("Send identity conflicts with the retained reviewed command");
             }
             match outcome.state {
+                mxr_core::SendOutcomeState::Waiting => {
+                    print_waiting_outcome(&outcome, format)?;
+                    return Ok(());
+                }
                 mxr_core::SendOutcomeState::Accepted => {
                     return crate::output::print_json(
                         &serde_json::json!({"operation_id": identity.operation_id, "draft_id": draft_id, "state": "accepted", "local_message_id": outcome.local_message_id}),
@@ -1364,6 +1426,9 @@ pub async fn send_draft(
             override_safety_token,
         })
         .await?;
+    if print_waiting_response(&response, format.clone())? {
+        return Ok(());
+    }
     let receipt = expect_send_receipt(response)?;
     set_auto_reminder_after_send(&mut client, receipt.as_ref(), remind_at).await?;
     report_promises_after_send(&mut client, receipt.as_ref(), format.clone()).await;
@@ -2132,7 +2197,7 @@ fn rewrite_compose_frontmatter(
         frontmatter.bcc = bcc;
     }
     if !attach.is_empty() {
-        frontmatter.attach = attach;
+        frontmatter.attach.extend(attach);
     }
     let updated = mxr_compose::frontmatter::render_compose_file(&frontmatter, &body, None)?;
     std::fs::write(path, updated)?;
@@ -2144,6 +2209,16 @@ fn attachment_strings(paths: &[PathBuf]) -> Vec<String> {
         .iter()
         .map(|path| path.display().to_string())
         .collect()
+}
+
+fn file_attachment_count(draft: &Draft) -> usize {
+    draft.attachments.len()
+        + draft
+            .managed_attachments
+            .iter()
+            .flatten()
+            .filter(|part| part.content_id.is_none())
+            .count()
 }
 
 fn draft_from_frontmatter(
@@ -2161,7 +2236,7 @@ fn draft_from_frontmatter(
             references: frontmatter.references.clone(),
             thread_id: frontmatter.thread_id.clone(),
         });
-    Ok(Draft {
+    let mut draft = Draft {
         revision: Some(1),
         id: DraftId::new(),
         account_id,
@@ -2183,7 +2258,9 @@ fn draft_from_frontmatter(
         inline_calendar_reply: None,
         created_at: now,
         updated_at: now,
-    })
+    };
+    mxr_compose::forward::apply(&mut draft, frontmatter)?;
+    Ok(draft)
 }
 
 fn parse_addresses(raw: &str) -> Vec<Address> {
@@ -2258,6 +2335,48 @@ fn expect_send_receipt(resp: Response) -> anyhow::Result<Option<SendReceiptInfo>
         } => Some(None),
         _ => None,
     })
+}
+
+fn print_waiting_outcome(
+    outcome: &mxr_core::DraftSendOutcome,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let retry_at = outcome.recovery.as_ref().and_then(|status| status.retry_at);
+    match resolve_format(format.clone()) {
+        OutputFormat::Json | OutputFormat::Jsonl => crate::output::print_json(
+            &serde_json::json!({
+                "operation_id": outcome.identity.operation_id, "draft_id": outcome.draft_id,
+                "state": "waiting", "retry_at": retry_at, "outcome": outcome,
+            }),
+            format.unwrap_or(OutputFormat::Json),
+        ),
+        _ => {
+            println!(
+                "Waiting for the mail provider; retrying automatically at {}. Operation: {}",
+                retry_at.map_or_else(|| "the provider deadline".into(), |at| at.to_rfc3339()),
+                outcome.identity.operation_id
+            );
+            Ok(())
+        }
+    }
+}
+
+fn print_waiting_response(
+    response: &Response,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<bool> {
+    if let Response::Ok {
+        data: ResponseData::SendOutcome {
+            outcome: Some(outcome),
+        },
+    } = response
+    {
+        if outcome.state == mxr_core::SendOutcomeState::Waiting {
+            print_waiting_outcome(outcome, format)?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 struct SendReceiptInfo {
@@ -2458,8 +2577,7 @@ fn print_draft_preview(
                 format_addresses(&draft.bcc),
                 draft.subject.clone(),
                 draft.content.byte_len().to_string(),
-                (draft.attachments.len() + draft.managed_attachments.as_ref().map_or(0, Vec::len))
-                    .to_string(),
+                file_attachment_count(draft).to_string(),
             ])?;
             println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
         }
@@ -2486,10 +2604,7 @@ fn print_draft_preview(
             println!("  cc: {}", format_addresses(&draft.cc));
             println!("  bcc: {}", format_addresses(&draft.bcc));
             println!("  subject: {}", draft.subject);
-            println!(
-                "  attachments: {}",
-                (draft.attachments.len() + draft.managed_attachments.as_ref().map_or(0, Vec::len))
-            );
+            println!("  attachments: {}", file_attachment_count(draft));
         }
     }
     Ok(())
@@ -2525,6 +2640,33 @@ mod tests {
     };
     use mxr_core::types::Envelope;
     use mxr_protocol::{AccountEditModeData, AccountSourceData, AccountSummaryData};
+
+    #[tokio::test]
+    async fn forward_non_editor_paths_keep_the_seeded_original_and_prepend_intro() {
+        for intro in [None, Some("Please review".to_string())] {
+            let original = "From: alice@example.com\nDate: Sun, 25 Oct 2026\nSubject: Reports\nTo: me@example.com\n\nOriginal reports.";
+            let (fm, body, path) = build_compose_draft(
+                mxr_compose::ComposeKind::Forward {
+                    subject: "Reports".into(),
+                    original_context: original.into(),
+                    source: None,
+                },
+                "me@example.com",
+                intro.clone(),
+                true,
+                None,
+                vec![],
+            )
+            .await
+            .unwrap();
+            assert!(path.is_none());
+            assert_eq!(fm.intent, mxr_core::DraftIntent::Forward);
+            assert!(body.contains(original), "{body:?}");
+            if let Some(intro) = intro {
+                assert!(body.starts_with(&intro), "{body:?}");
+            }
+        }
+    }
 
     #[test]
     fn compose_from_prefers_explicit_value() {
@@ -2606,6 +2748,7 @@ mod tests {
             thread_id: None,
             attach: Vec::new(),
             signature: None,
+            forward_source: None,
         };
 
         let draft = draft_from_frontmatter(

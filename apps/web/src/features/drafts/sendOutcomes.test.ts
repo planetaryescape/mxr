@@ -44,4 +44,7 @@ test("an explicit unchanged review permits a fresh attempt only after proven non
   expect(() => operationAfterReview("draft:1", { ...prior, state: "accepted" })).toThrow(
     "already accepted",
   );
+  expect(() => operationAfterReview("draft:1", { ...prior, state: "waiting" })).toThrow(
+    "retry automatically",
+  );
 });

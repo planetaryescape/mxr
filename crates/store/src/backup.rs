@@ -220,6 +220,8 @@ pub fn file_metadata(root: &Path, relative: &str) -> BackupResult<BackupFile> {
 /// its sources. Run against a migrated schema, it restores that definition.
 pub(crate) const PRE_ASSESSMENT_SCHEMA: &str = include_str!("backup/pre_assessment.sql");
 
+pub(crate) const PRE_APPROVED_SENDS_SCHEMA: &str = "DROP TRIGGER IF EXISTS approved_send_draft_edited; DROP TABLE IF EXISTS approved_send_attempts; DROP TABLE IF EXISTS approved_sends;";
+
 pub(crate) const LEGACY_ACTIVITY_SCHEMA: &str = concat!(
     "DROP TABLE user_activity;\n",
     include_str!("../migrations/035_user_activity.sql"),
@@ -233,7 +235,7 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     plain_file(&bundle.join("manifest.json"))?;
     let manifest: BackupManifest =
         serde_json::from_slice(&std::fs::read(bundle.join("manifest.json"))?)?;
-    if manifest.format_version != 1 || !(81..=100).contains(&manifest.schema_version) {
+    if manifest.format_version != 1 || !(81..=101).contains(&manifest.schema_version) {
         return Err("Unsupported backup format or schema".into());
     }
     let mut names = BTreeSet::new();
@@ -290,6 +292,11 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     .await?;
     validate(&mut db).await?;
     let expected = Store::in_memory().await?;
+    if manifest.schema_version < 101 {
+        sqlx::raw_sql(PRE_APPROVED_SENDS_SCHEMA)
+            .execute(expected.writer())
+            .await?;
+    }
     if manifest.schema_version < 100 {
         sqlx::query("DROP TABLE IF EXISTS assessment_authority")
             .execute(expected.writer())
@@ -470,6 +477,17 @@ pub async fn inspect(bundle: &Path) -> BackupResult<BackupManifest> {
     )
     .fetch_one(&mut db)
     .await?;
+    if manifest.schema_version >= 101 {
+        for table in ["approved_sends", "approved_send_attempts"] {
+            let count: i64 =
+                sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
+                    .fetch_one(&mut db)
+                    .await?;
+            if count != 0 {
+                return Err("Portable backup contains runnable send approval state".into());
+            }
+        }
+    }
     if identity
         != (
             manifest.workspace_id.clone(),
@@ -529,7 +547,7 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM source.schema_migrations")
         .fetch_one(&mut *connection)
         .await?;
-    if !(80..=100).contains(&version) {
+    if !(80..=101).contains(&version) {
         return Err("Unsupported source schema; upgrade before backup".into());
     }
     for required in [
@@ -640,8 +658,8 @@ pub async fn populate(source: &Path, stage: &Path) -> BackupResult<BackupManifes
     store.writer().close().await;
     files
         .push(file_metadata(stage, "mxr.db").map_err(|e| format!("Sanitized database file: {e}"))?);
-    Ok(BackupManifest { format_version:1, schema_version:100, workspace_id,recovery_generation,files,
-        exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into(),"assistant conversations (chat history that quotes mail; local only)".into()] })
+    Ok(BackupManifest { format_version:1, schema_version:101, workspace_id,recovery_generation,files,
+        exclusions: vec!["activity and activity FTS/shadows/filters; safety override tokens".into(),"remote pairing/registration/host authority, credentials, auth files, logs, models, derived indexes, source WAL/SHM and runtime bookkeeping".into(),"assistant conversations (chat history that quotes mail; local only)".into(),"runnable send approvals, their frozen snapshots and operational attempt history; retained send outcomes and canonical drafts are preserved".into()] })
 }
 
 /// Retire runnable state before any restored Store or daemon can open it.
@@ -665,6 +683,14 @@ pub async fn retire_restored(db_path: &Path) -> BackupResult<()> {
             "DELETE FROM remote_clients; DELETE FROM remote_pairings; DELETE FROM remote_host;"
         };
         sqlx::raw_sql(sql).execute(&mut *tx).await?;
+    }
+    let approved_sends: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='approved_sends')",
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    if approved_sends {
+        sqlx::query("UPDATE approved_sends SET status='failed',retry_at=NULL,reason='workspace_restored',updated_at=unixepoch() WHERE status IN ('waiting','submitting','unknown')").execute(&mut *tx).await?;
     }
     sqlx::query("INSERT INTO restore_recovery VALUES(1,1,0) ON CONFLICT(singleton) DO UPDATE SET pending=1,source_owner_stopped=0").execute(&mut *tx).await?;
     sqlx::query("UPDATE archive_workspace SET recovery_generation=? WHERE singleton=1")

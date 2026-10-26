@@ -135,6 +135,7 @@ pub fn remote_send_allowed(request: &crate::Request) -> bool {
             | crate::Request::SendDraft { .. }
             | crate::Request::SendStoredDraft { .. }
             | crate::Request::GetSendOutcome { .. }
+            | crate::Request::RecoverSendOutcome { .. }
     )
 }
 

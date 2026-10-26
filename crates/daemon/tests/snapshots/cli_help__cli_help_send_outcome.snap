@@ -10,6 +10,12 @@ Arguments:
   <OPERATION_ID>
 
 Options:
+      --recover-known-not-submitted
+          Preview or resume a legacy false-unknown using matched daemon log evidence
+      --dry-run
+
+      --expected-evidence-sha256 <EXPECTED_EVIDENCE_SHA256>
+          Evidence fingerprint returned by the recovery preview
       --expected-workspace <EXPECTED_WORKSPACE>
           Original workspace JSON retained with the send review
       --account <ACCOUNT>

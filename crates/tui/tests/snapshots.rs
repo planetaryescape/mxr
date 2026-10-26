@@ -262,6 +262,7 @@ fn send_confirm_snapshot() {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "Hello".into(),
         draft_path: "/tmp/draft.md".into(),

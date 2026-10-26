@@ -138,6 +138,8 @@ mod tests {
             account_id: draft.account_id.clone(),
             filename: "notes.txt".into(),
             mime_type: "text/plain".into(),
+            content_id: None,
+            content_location: None,
             length_bytes: 3,
             sha256: "a".repeat(64),
         }]);

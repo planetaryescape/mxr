@@ -3,6 +3,11 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum GmailError {
+    #[error("Mail request was not submitted during {phase:?}: {source}")]
+    NotSubmitted {
+        phase: mxr_core::SendSubmissionPhase,
+        source: Box<Self>,
+    },
     #[error("Authentication expired — re-auth required")]
     AuthExpired,
 
@@ -26,6 +31,9 @@ pub enum GmailError {
     #[error("Auth error: {0}")]
     Auth(String),
 
+    #[error("Token refresh temporarily unavailable")]
+    AuthTemporary,
+
     #[error("Parse error: {0}")]
     Parse(String),
 
@@ -36,6 +44,7 @@ pub enum GmailError {
 impl From<GmailError> for MxrError {
     fn from(e: GmailError) -> Self {
         match e {
+            GmailError::NotSubmitted { source, .. } => Self::from(*source),
             GmailError::NotFound(msg) => Self::NotFound(msg),
             GmailError::RateLimited {
                 retry_after_secs,

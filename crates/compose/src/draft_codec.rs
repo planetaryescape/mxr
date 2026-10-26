@@ -95,6 +95,7 @@ pub fn frontmatter_from_draft(draft: &Draft, from: &str) -> ComposeFrontmatter {
             )
             .collect(),
         signature: None,
+        forward_source: None,
     }
 }
 
@@ -125,13 +126,31 @@ pub fn apply_edited_compose_file(
     content: &str,
     updated_at: DateTime<Utc>,
 ) -> Result<Draft, ComposeError> {
+    let (frontmatter, body) = parse_compose_file(content)?;
+    if let Some(source) = &frontmatter.forward_source {
+        if source.draft_id != existing.id || source.account_id != existing.account_id {
+            return Err(ComposeError::InvalidFrontmatter(
+                "Forward session identity changed; reopen the draft".into(),
+            ));
+        }
+        let mut draft = existing.clone();
+        draft.from = parse_from_field(&frontmatter.from)?;
+        draft.to = mxr_mail_parse::parse_address_list(&frontmatter.to);
+        draft.cc = mxr_mail_parse::parse_address_list(&frontmatter.cc);
+        draft.bcc = mxr_mail_parse::parse_address_list(&frontmatter.bcc);
+        draft.subject = frontmatter.subject.clone();
+        draft.attachments = frontmatter.attach.iter().map(PathBuf::from).collect();
+        draft.content = DraftContent::markdown(body);
+        draft.updated_at = updated_at;
+        crate::forward::apply(&mut draft, &frontmatter)?;
+        return Ok(draft);
+    }
     // Guarded on the way back in as well: converting an HTML draft to markdown
     // here would drop the document and orphan its inline assets.
     if existing.content.is_html() {
         return Err(ComposeError::HtmlDraftNotEditable);
     }
 
-    let (frontmatter, body) = parse_compose_file(content)?;
     let reply_headers = frontmatter
         .in_reply_to
         .as_ref()
@@ -235,6 +254,8 @@ mod tests {
             account_id: draft.account_id.clone(),
             filename: "notes.txt".into(),
             mime_type: "text/plain".into(),
+            content_id: None,
+            content_location: None,
             length_bytes: 3,
             sha256: "a".repeat(64),
         };

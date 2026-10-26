@@ -10,6 +10,8 @@ fn metadata(draft: &Draft, bytes: &[u8]) -> DraftAttachment {
         account_id: draft.account_id.clone(),
         filename: "portable.bin".into(),
         mime_type: "application/octet-stream".into(),
+        content_id: None,
+        content_location: None,
         length_bytes: bytes.len() as u64,
         sha256: Sha256::digest(bytes)
             .iter()

@@ -322,6 +322,7 @@ pub(crate) enum AsyncResult {
     /// rather than silently swallowed.
     SemanticOperationResult(Result<(), MxrError>),
     PlatformModalLoaded {
+        send_recovery_preview: Option<(mxr_core::AccountId, String, String)>,
         compose: Option<Box<app::PendingSend>>,
         title: String,
         result: Result<String, MxrError>,

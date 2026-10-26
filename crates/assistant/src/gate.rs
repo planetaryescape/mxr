@@ -100,6 +100,7 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_records_ask", Rule::Read),
     ("mxr_records_export_preview", Rule::Read),
     ("mxr_records_subscriptions", Rule::Read),
+    ("mxr_recover_send_outcome", Rule::DryRun),
     ("mxr_recovery_activate", Rule::Confirm),
     ("mxr_recovery_prepare_draft", Rule::Confirm),
     ("mxr_recovery_status", Rule::Read),
@@ -459,5 +460,42 @@ mod tests {
             classify("mxr_update_draft", &json!({})),
             Gate::Approve { preview: None }
         ));
+    }
+
+    #[test]
+    fn send_recovery_previews_run_but_resuming_always_requires_approval() {
+        let tool = "mxr_recover_send_outcome";
+        let arguments = json!({
+            "account_id": "synthetic-account",
+            "operation_id": "original-operation",
+            "expected_workspace": {"workspace_id": "original", "recovery_generation": "generation"},
+            "expected_evidence_sha256": "reviewed-evidence",
+        });
+        let preview = json!({
+            "account_id": "synthetic-account",
+            "operation_id": "original-operation",
+            "expected_workspace": {"workspace_id": "original", "recovery_generation": "generation"},
+            "expected_evidence_sha256": "reviewed-evidence",
+            "dry_run": true,
+        });
+        assert_eq!(classify(tool, &preview), Gate::Run);
+        assert!(!auto_approvable(tool, &preview));
+        for committing in [
+            arguments.clone(),
+            with(&arguments, "dry_run", json!(false)),
+            with(&arguments, "dry_run", Value::Null),
+            with(&arguments, "dry_run", json!("true")),
+            with(&arguments, "dry_run", json!(1)),
+            with(&arguments, "dry_run", json!([])),
+            with(&arguments, "dry_run", json!({})),
+        ] {
+            assert_eq!(
+                classify(tool, &committing),
+                Gate::Approve {
+                    preview: Some((tool.into(), preview.clone())),
+                }
+            );
+            assert!(!auto_approvable(tool, &committing));
+        }
     }
 }

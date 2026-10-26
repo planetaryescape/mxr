@@ -36,6 +36,7 @@ pub(crate) async fn reviewed_send_identity(
                 ));
             }
             match prior.state {
+                SendOutcomeState::Waiting => Err(MxrError::Ipc("Approved send is waiting for the provider and will retry automatically; do not start another send".into())),
                 SendOutcomeState::Unknown => Err(MxrError::Ipc(
                     "Acceptance uncertain; check the send outcome and do not resend".into(),
                 )),
@@ -201,6 +202,7 @@ mod tests {
         let identity = SendIdentity::for_revision(&draft, 1);
         for state in [
             SendOutcomeState::NotAccepted,
+            SendOutcomeState::Waiting,
             SendOutcomeState::Unknown,
             SendOutcomeState::Accepted,
         ] {
@@ -213,6 +215,7 @@ mod tests {
                 local_message_id: None,
                 provider_message_id: None,
                 rfc2822_message_id: None,
+                recovery: None,
             };
             let server = tokio::spawn(async move {
                 let request = next_owned_request(&mut rx).await;
@@ -236,6 +239,7 @@ mod tests {
                 }
                 SendOutcomeState::Unknown => assert!(result.is_err()),
                 SendOutcomeState::Accepted => assert!(result.is_err()),
+                SendOutcomeState::Waiting => assert!(result.is_err()),
             }
             server.await.unwrap();
         }
@@ -259,6 +263,7 @@ mod tests {
                 local_message_id: None,
                 provider_message_id: None,
                 rfc2822_message_id: None,
+                recovery: None,
             };
             let server = tokio::spawn(async move {
                 let query = next_owned_request(&mut rx).await;
@@ -345,6 +350,7 @@ mod tests {
                 local_message_id: None,
                 provider_message_id: None,
                 rfc2822_message_id: None,
+                recovery: None,
             });
             let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
             let server = tokio::spawn(async move {

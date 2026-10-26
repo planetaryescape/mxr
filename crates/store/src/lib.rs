@@ -24,6 +24,8 @@ macro_rules! todo_untouched_sql {
 
 mod account;
 mod analytics;
+mod approved_sends;
+pub use approved_sends::{ApprovedSendFile, SendApproval};
 mod arrival_ledger;
 mod arrivals;
 mod asks;

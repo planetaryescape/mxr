@@ -2366,6 +2366,35 @@ async fn get_send_outcome(
     passthrough(response)
 }
 
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(crate) struct RecoverSendBody {
+    pub dry_run: bool,
+    pub expected_evidence_sha256: Option<String>,
+}
+
+async fn recover_send_outcome(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(operation_id): Path<String>,
+    Query(query): Query<OutcomeQuery>,
+    Json(body): Json<RecoverSendBody>,
+) -> Result<Json<Value>, BridgeError> {
+    passthrough(
+        dispatch(
+            &state,
+            &headers,
+            query.token.as_deref(),
+            Request::RecoverSendOutcome {
+                account_id: parse_account_id(&query.account_id)?,
+                operation_id,
+                dry_run: body.dry_run,
+                expected_evidence_sha256: body.expected_evidence_sha256,
+            },
+        )
+        .await?,
+    )
+}
+
 async fn send_stored_draft(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3131,6 +3160,10 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/archive-operations/submit", post(archive_submit))
         .route("/archive-operations/query", post(archive_query))
         .route("/send-outcomes/{operation_id}", get(get_send_outcome))
+        .route(
+            "/send-outcomes/{operation_id}/recover",
+            post(recover_send_outcome),
+        )
         .route("/drafts/{draft_id}/stored", delete(delete_draft_stored))
         .route("/signatures", get(list_signatures).post(set_signature))
         .route("/signature-defaults", get(list_signature_defaults))

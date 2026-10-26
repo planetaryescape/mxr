@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.166](https://github.com/planetaryescape/mxr/compare/v0.6.165...v0.6.166) (2026-10-26)
+
+
+### Bug Fixes
+
+* restore responsive mail views and keyboard navigation ([#722](https://github.com/planetaryescape/mxr/issues/722)) ([2d0d4fe](https://github.com/planetaryescape/mxr/commit/2d0d4fe39adda36cd9cd84841ffc132cf8512c7f))
+
 ## [0.6.165](https://github.com/planetaryescape/mxr/compare/v0.6.164...v0.6.165) (2026-10-26)
 
 

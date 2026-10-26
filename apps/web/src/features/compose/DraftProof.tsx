@@ -23,6 +23,7 @@ const RUN_CLASS = {
   added: "text-foreground underline decoration-signal decoration-1 underline-offset-4",
   removed: "text-text-3 line-through decoration-1",
 } satisfies Record<ProofRunKind, string>;
+const utf8Encoder = new TextEncoder();
 
 interface DraftProofProps {
   runs: ProofRun[];
@@ -42,6 +43,8 @@ interface DraftProofProps {
   defaultModel: string;
   generating: boolean;
   onRevise: () => void;
+  styleMarks?: readonly { name: string; context: string; start: number; end: number }[];
+  styleScore?: number;
 }
 
 export function DraftProof({
@@ -60,6 +63,8 @@ export function DraftProof({
   defaultModel,
   generating,
   onRevise,
+  styleMarks = [],
+  styleScore,
 }: DraftProofProps) {
   const containerRef = useRef<HTMLElement>(null);
   const groups = groupRuns(runs);
@@ -119,12 +124,25 @@ export function DraftProof({
           <div className="type-reading whitespace-pre-wrap border-l-2 border-signal pl-4">
             {groups.map((group) =>
               group.gap === null ? (
-                group.items.map((item) => <RunText key={item.key} run={item.run} />)
+                group.items.map((item) => (
+                  <RunText
+                    key={item.key}
+                    run={item.run}
+                    start={item.start}
+                    styleMarks={styleMarks}
+                  />
+                ))
               ) : (
                 // One focusable gap, however many runs the word diff put inside it.
                 <span key={group.key} data-gap tabIndex={0} className="text-cue">
                   {group.items.map((item) => (
-                    <RunText key={item.key} run={item.run} inGap />
+                    <RunText
+                      key={item.key}
+                      run={item.run}
+                      start={item.start}
+                      inGap
+                      styleMarks={styleMarks}
+                    />
                   ))}
                 </span>
               ),
@@ -182,6 +200,19 @@ export function DraftProof({
           </div>
           <div className="type-meta mt-3 space-y-1 text-text-3">
             <DraftProvenanceLine provenance={provenance} />
+            {styleScore !== undefined ? (
+              <details>
+                <summary title="Style details">
+                  Style {styleScore}/100 · {styleMarks.length}{" "}
+                  {styleMarks.length === 1 ? "mark" : "marks"}
+                </summary>
+                {styleMarks.map((mark) => (
+                  <p key={`${mark.start}:${mark.end}`} title={mark.context}>
+                    {mark.name}: {mark.context}
+                  </p>
+                ))}
+              </details>
+            ) : null}
             <p>
               {versionCount > 1 ? `Version ${versionIndex + 1} of ${versionCount} · ← → ` : ""}
               {gapCount > 0
@@ -198,6 +229,7 @@ export function DraftProof({
 interface RunItem {
   key: string;
   run: ProofRun;
+  start: number;
 }
 
 interface RunGroup {
@@ -214,8 +246,8 @@ function groupRuns(runs: readonly ProofRun[]): RunGroup[] {
   const groups: RunGroup[] = [];
   let offset = 0;
   for (const run of runs) {
-    const item: RunItem = { key: `${offset}:${run.kind}`, run };
-    offset += run.text.length;
+    const item: RunItem = { key: `${offset}:${run.kind}`, run, start: offset };
+    if (run.kind !== "removed") offset += utf8Encoder.encode(run.text).length;
     const last = groups.at(-1);
     if (run.gap !== null && last?.gap === run.gap) {
       last.items.push(item);
@@ -230,10 +262,57 @@ function groupRuns(runs: readonly ProofRun[]): RunGroup[] {
   return groups;
 }
 
-function RunText({ run, inGap = false }: { run: ProofRun; inGap?: boolean }) {
+function RunText({
+  run,
+  start,
+  inGap = false,
+  styleMarks = [],
+}: {
+  run: ProofRun;
+  start: number;
+  inGap?: boolean;
+  styleMarks?: readonly { name: string; context: string; start: number; end: number }[];
+}) {
   // Inside a gap the colour is the gap's; the run keeps its own addition or strike.
   const className = inGap ? cn("text-cue", decorationOnly(run.kind)) : RUN_CLASS[run.kind];
-  return <span className={className}>{run.text}</span>;
+  if (run.kind === "removed" || styleMarks.length === 0)
+    return <span className={className}>{run.text}</span>;
+  const chars = [...run.text];
+  const boundaries = [0];
+  let byte = 0;
+  for (const char of chars) {
+    byte += utf8Encoder.encode(char).length;
+    boundaries.push(byte);
+  }
+  const toUnits = (target: number) => boundaries.findIndex((value) => value >= target);
+  const byteLength = byte;
+  const cuts = new Set([0, byteLength]);
+  const marks = styleMarks.filter((mark) => mark.start < start + byteLength && start < mark.end);
+  for (const mark of marks) {
+    cuts.add(Math.max(0, mark.start - start));
+    cuts.add(Math.min(byteLength, mark.end - start));
+  }
+  const sorted = [...cuts].toSorted((a, b) => a - b);
+  return (
+    <span className={className}>
+      {sorted.slice(0, -1).map((from, index) => {
+        const to = sorted[index + 1] ?? byteLength;
+        const content = chars.slice(toUnits(from), toUnits(to)).join("");
+        const active = marks.filter((mark) => mark.start <= start + from && start + to <= mark.end);
+        return active.length ? (
+          <span
+            key={`${from}:${to}`}
+            className="underline decoration-dotted decoration-text-3 underline-offset-4"
+            title={active.map((mark) => `${mark.name}: ${mark.context}`).join("\n")}
+          >
+            {content}
+          </span>
+        ) : (
+          <span key={`${from}:${to}`}>{content}</span>
+        );
+      })}
+    </span>
+  );
 }
 
 function decorationOnly(kind: ProofRunKind): string {

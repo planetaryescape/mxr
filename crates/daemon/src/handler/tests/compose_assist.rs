@@ -10,11 +10,12 @@ use mxr_protocol::{
     AssistActionData, AssistAdjustData, ComposeProposalData, DaemonEvent, DraftTargetData,
     ResponseData, TextChangeKindData, TextRangeData,
 };
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 /// Answers every request with one scripted reply and keeps what it was asked.
 struct Scripted {
-    reply: String,
+    replies: Mutex<VecDeque<String>>,
     base_url: Option<&'static str>,
     requests: Mutex<Vec<CompletionRequest>>,
 }
@@ -22,7 +23,7 @@ struct Scripted {
 impl Scripted {
     fn new(reply: &str) -> Arc<Self> {
         Arc::new(Self {
-            reply: reply.to_string(),
+            replies: Mutex::new(VecDeque::from([reply.to_string()])),
             base_url: None,
             requests: Mutex::default(),
         })
@@ -30,7 +31,7 @@ impl Scripted {
 
     fn cloud(reply: &str) -> Arc<Self> {
         Arc::new(Self {
-            reply: reply.to_string(),
+            replies: Mutex::new(VecDeque::from([reply.to_string()])),
             base_url: Some("https://api.example-cloud.com/v1"),
             requests: Mutex::default(),
         })
@@ -38,6 +39,23 @@ impl Scripted {
 
     fn calls(&self) -> usize {
         self.requests.lock().unwrap().len()
+    }
+
+    fn sequence(replies: &[&str]) -> Arc<Self> {
+        Arc::new(Self {
+            replies: Mutex::new(replies.iter().map(|reply| (*reply).to_string()).collect()),
+            base_url: None,
+            requests: Mutex::default(),
+        })
+    }
+
+    fn prompts(&self) -> Vec<String> {
+        self.requests
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|request| request.messages[1].content.clone())
+            .collect()
     }
 
     fn user_prompt(&self) -> String {
@@ -56,8 +74,16 @@ impl Scripted {
 impl LlmProvider for Scripted {
     async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
         self.requests.lock().unwrap().push(req);
+        let content = {
+            let mut replies = self.replies.lock().unwrap();
+            if replies.len() > 1 {
+                replies.pop_front().unwrap()
+            } else {
+                replies.front().cloned().unwrap_or_default()
+            }
+        };
         Ok(CompletionResponse {
-            content: self.reply.clone(),
+            content,
             model: "scripted".into(),
             finish_reason: Some("stop".into()),
         })
@@ -231,15 +257,173 @@ async fn finishing_keeps_what_was_typed_and_sends_it_inside_the_markers() {
 #[tokio::test]
 async fn nothing_typed_writes_the_message() {
     let state = AppState::in_memory().await.unwrap();
-    state
-        .llm
-        .replace(Scripted::new("Hi Sam,\n\nGlad to.\n\nAlex"));
-    let proposal = assist(&state, &new_message(&state), &Ask::text(""))
-        .await
-        .unwrap();
+    let model = Scripted::new("Hi Sam,\n\nGlad to.\n\nAlex");
+    state.llm.replace(model.clone());
+    let proposal = assist(
+        &state,
+        &new_message(&state),
+        &Ask {
+            instruction: Some(
+                "Invoice is £40 and arrives Monday. Shipment is 3 boxes and arrives Tuesday.",
+            ),
+            ..Ask::text("")
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(proposal.action, AssistActionData::Write);
     assert_eq!(proposal.base, text_hash(""));
     assert!(proposal.yours_changed.is_empty());
+    assert_eq!(model.calls(), 1, "clean text does not trigger repair");
+}
+
+#[tokio::test]
+async fn auto_fix_off_does_not_make_a_repair_call() {
+    let state = AppState::in_memory().await.unwrap();
+    let mut config = state.config_snapshot();
+    config.humanizer.auto_fix = false;
+    state.set_config_for_test(config).await;
+    let model = Scripted::new("Additionally, the review is ready.");
+    state.llm.replace(model.clone());
+
+    let proposal = assist(&state, &new_message(&state), &Ask::text(""))
+        .await
+        .unwrap();
+
+    assert_eq!(model.calls(), 1);
+    assert!(proposal.text.starts_with("Additionally"));
+    assert!(!proposal.style_marks.is_empty());
+}
+
+#[tokio::test]
+async fn malformed_or_fact_changing_repairs_keep_the_primary_proof() {
+    let state = AppState::in_memory().await.unwrap();
+    let malformed = Scripted::sequence(&["Additionally, the fee is £40.", "not-json"]);
+    state.llm.replace(malformed.clone());
+    let original = assist(
+        &state,
+        &new_message(&state),
+        &Ask {
+            instruction: Some("The fee is £40."),
+            ..Ask::text("")
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(malformed.calls(), 2);
+    assert_eq!(original.text, "Additionally, the fee is £40.");
+
+    let fact_change = Scripted::sequence(&[
+        "Additionally, the fee is £40.",
+        r#"{"replacements":[{"id":0,"text":"The fee is £30."}]}"#,
+    ]);
+    state.llm.replace(fact_change.clone());
+    let proposal = assist(
+        &state,
+        &new_message(&state),
+        &Ask {
+            instruction: Some("The fee is £40."),
+            ..Ask::text("")
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(fact_change.calls(), 2);
+    assert_eq!(proposal.text, "Additionally, the fee is £40.");
+}
+
+#[tokio::test]
+async fn repair_cannot_swap_facts_between_flagged_sentences() {
+    let state = AppState::in_memory().await.unwrap();
+    let model = Scripted::sequence(&[
+        "Additionally, the £40 invoice arrives Monday. Moreover, 3 boxes arrive Tuesday.",
+        r#"{"replacements":[{"id":0,"text":"The 3 boxes arrive Tuesday."},{"id":1,"text":"The £40 invoice arrives Monday."}]}"#,
+    ]);
+    state.llm.replace(model.clone());
+
+    let proposal = assist(
+        &state,
+        &new_message(&state),
+        &Ask {
+            instruction: Some(
+                "Invoice is £40 and arrives Monday. Shipment is 3 boxes and arrives Tuesday.",
+            ),
+            ..Ask::text("")
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(model.calls(), 2);
+    assert_eq!(
+        proposal.text,
+        "Additionally, the £40 invoice arrives Monday. Moreover, 3 boxes arrive Tuesday."
+    );
+    assert_eq!(model.prompts().len(), 2);
+}
+
+#[tokio::test]
+async fn repair_skips_a_flagged_sentence_that_contains_user_typed_text() {
+    let state = AppState::in_memory().await.unwrap();
+    let model = Scripted::sequence(&[
+        "Additionally, Thursday works. Thursday works.",
+        r#"{"replacements":[{"id":0,"text":"Thursday is fine."}]}"#,
+    ]);
+    state.llm.replace(model.clone());
+
+    let proposal = assist(
+        &state,
+        &new_message(&state),
+        &Ask::text("Thursday works. Thursday works."),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(model.calls(), 1, "typed text is not sent for repair");
+    assert!(proposal.yours_changed.is_empty());
+    assert_eq!(
+        proposal.text,
+        "Additionally, Thursday works. Thursday works."
+    );
+}
+
+#[tokio::test]
+async fn style_repair_sends_only_flagged_generated_sentences_and_keeps_the_pinned_model() {
+    let state = AppState::in_memory().await.unwrap();
+    let config = state.config_snapshot();
+    state.set_config_for_test(config).await;
+    let model = Scripted::sequence(&[
+        "Thursday works. Additionally, we can send the details today. Another ordinary sentence.",
+        r#"{"replacements":[{"id":1,"text":"We can send the details today."}]}"#,
+    ]);
+    state.llm.replace(model.clone());
+
+    let proposal = assist(&state, &new_message(&state), &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+
+    assert_eq!(model.calls(), 2);
+    assert!(
+        proposal
+            .text
+            .starts_with("Thursday works. We can send the details today."),
+        "{proposal:?}"
+    );
+    assert_eq!(proposal.style_score, 100);
+    let prompts = model.prompts();
+    assert!(prompts[1].contains("Additionally, we can send the details today."));
+    assert!(
+        !prompts[1].contains("Another ordinary sentence."),
+        "repair prompt included an unflagged sentence: {}",
+        prompts[1]
+    );
+    assert!(
+        !prompts[1].contains("Thursday works."),
+        "repair prompt included typed content: {}",
+        prompts[1]
+    );
+    let requests = model.requests.lock().unwrap();
+    assert_eq!(requests[1].max_tokens, Some(512));
 }
 
 #[tokio::test]
@@ -1012,6 +1196,9 @@ async fn revising_a_proposal_that_is_gone_or_not_yours_is_a_clear_error() {
             },
             yours_changed: Vec::new(),
             composer_version: String::new(),
+            style_marks: Vec::new(),
+            style_score: 100,
+            style_version: String::new(),
         },
     };
     state.compose_proposals.insert(other.clone());
@@ -1196,6 +1383,9 @@ async fn a_cloud_model_without_the_opt_in_is_not_given_a_proposal_written_from_h
             },
             yours_changed: Vec::new(),
             composer_version: String::new(),
+            style_marks: Vec::new(),
+            style_score: 100,
+            style_version: String::new(),
         },
     };
     state.compose_proposals.insert(from_history);

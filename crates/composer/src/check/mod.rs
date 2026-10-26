@@ -8,7 +8,7 @@ mod regions;
 mod text;
 
 pub use mxr_compose::body_regions::{split_body, BodyRegions};
-pub use proposal::{check_proposal, Checked, Fixes, ProposalInput};
+pub use proposal::{check_proposal, check_proposal_with_rates, Checked, Fixes, ProposalInput};
 pub use regions::text_hash;
 pub use text::{invented_numbers, replay_invented_numbers};
 
@@ -104,6 +104,8 @@ pub struct Grade {
 pub struct Style {
     pub score: u8,
     pub hits: usize,
+    /// Catalogue names corresponding to the deterministic marks.
+    pub patterns: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,11 +138,22 @@ pub fn grade(requirements: &Requirements<'_>, output: &Output<'_>) -> Report {
         graders::leftovers(requirements, output),
     ];
     let humanized = mxr_humanizer::score(output.text, &mxr_humanizer::HumanizerOpts::default());
+    let patterns = humanized
+        .hits
+        .iter()
+        .filter_map(|hit| {
+            let number = mxr_humanizer::pattern_for_category(hit.category)?;
+            mxr_humanizer::PATTERNS
+                .get(usize::from(number - 1))
+                .map(|pattern| pattern.name.to_string())
+        })
+        .collect();
     Report {
         grades,
         style: Style {
             score: humanized.score,
             hits: humanized.hits.len(),
+            patterns,
         },
     }
 }

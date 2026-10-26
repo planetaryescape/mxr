@@ -12,7 +12,7 @@ import {
 import { useState } from "react";
 import type { ComposeAssistProposal, ComposeModelChoice } from "../bridge/types";
 import { message } from "./previewed";
-import { proposalMarkdown } from "./proofMarkdown";
+import { escapeProofText, proposalMarkdown } from "./proofMarkdown";
 
 interface Props {
   proposal: ComposeAssistProposal;
@@ -89,9 +89,11 @@ export function ComposeProof({
 
   const provenance = proposal.provenance;
   const changed = proposal.yours_changed.map((index) => index + 1);
+  const styleMarks = proposal.style_marks ?? [];
+  const styleScore = proposal.style_score ?? 100;
   return (
     <Detail
-      markdown={proposalMarkdown(proposal)}
+      markdown={`${proposalMarkdown(proposal)}${styleMarks.length ? `\n\n---\n\n${styleMarks.map((mark) => `**${mark.name}**: ${escapeProofText(mark.context)}`).join("\n\n")}` : ""}`}
       isLoading={loading}
       metadata={
         <Detail.Metadata>
@@ -118,6 +120,14 @@ export function ComposeProof({
           <Detail.Metadata.Label
             title="Gaps"
             text={proposal.gaps.length ? proposal.gaps.map((gap) => gap.label).join(", ") : "None"}
+          />
+          <Detail.Metadata.Label
+            title={`Style ${styleScore}/100`}
+            text={
+              styleMarks.length
+                ? styleMarks.map((mark) => mark.name).join(", ")
+                : "No detected patterns"
+            }
           />
         </Detail.Metadata>
       }

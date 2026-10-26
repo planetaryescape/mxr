@@ -1714,8 +1714,27 @@ pub struct DraftAttachment {
     pub account_id: AccountId,
     pub filename: String,
     pub mime_type: String,
+    /// Original Content-ID of a related forwarded MIME part.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_id: Option<String>,
     pub length_bytes: u64,
+    /// Original MIME location for related parts whose HTML uses a relative URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_location: Option<String>,
     pub sha256: String,
+}
+
+/// Immutable original content prepared by the daemon for a forward. The editor
+/// edits only the introduction; original HTML and attachment bytes stay intact.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ForwardSource {
+    pub draft_id: DraftId,
+    pub account_id: AccountId,
+    pub message_id: MessageId,
+    #[cfg_attr(feature = "openapi", schema(value_type = DraftContentSchema))]
+    pub content: DraftContent,
+    pub attachments: Vec<DraftAttachment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

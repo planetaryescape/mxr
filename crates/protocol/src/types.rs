@@ -3331,6 +3331,8 @@ pub struct ForwardContext {
     pub subject: String,
     pub from: String,
     pub forwarded_content: String,
+    #[serde(default)]
+    pub source: Option<mxr_core::ForwardSource>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

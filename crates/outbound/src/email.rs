@@ -9,6 +9,23 @@ use lettre::message::{
 };
 use mxr_core::types::{Address, CalendarReplyMessage, Draft, DraftContent};
 
+#[derive(Clone, Debug)]
+struct ContentLocation(String);
+
+impl header::Header for ContentLocation {
+    fn name() -> header::HeaderName {
+        header::HeaderName::new_from_ascii_str("Content-Location")
+    }
+
+    fn parse(value: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(Self(value.to_string()))
+    }
+
+    fn display(&self) -> header::HeaderValue {
+        header::HeaderValue::new(Self::name(), self.0.clone())
+    }
+}
+
 /// Resolve a draft's body into the `text/plain` and `text/html` halves.
 ///
 /// Markdown drafts render through comrak as before. HTML drafts pass their
@@ -94,6 +111,33 @@ pub fn build_message_with_id_and_parts(
     inline_assets: &[LoadedInlineAsset],
     message_id: &str,
 ) -> Result<Message, EmailBuildError> {
+    // The daemon resolves managed bytes to paths, but a path's extension is
+    // not authoritative for the original MIME type (or a duplicate filename).
+    let forwarded = if draft.intent == mxr_core::DraftIntent::Forward {
+        draft.managed_attachments.as_deref().unwrap_or_default()
+    } else {
+        &[]
+    };
+    let managed: Vec<_> = forwarded
+        .iter()
+        .filter(|part| part.content_id.is_none())
+        .collect();
+    let managed_inline: Vec<_> = forwarded
+        .iter()
+        .filter(|part| part.content_id.is_some())
+        .collect();
+    let managed_start = attachments
+        .len()
+        .checked_sub(managed.len())
+        .ok_or_else(|| {
+            EmailBuildError::Message("Managed forward attachments were not resolved".into())
+        })?;
+    let inline_start = inline_assets
+        .len()
+        .checked_sub(managed_inline.len())
+        .ok_or_else(|| {
+            EmailBuildError::Message("Managed forward inline assets were not resolved".into())
+        })?;
     let from_mailbox = to_mailbox(from)?;
 
     let mut builder = Message::builder()
@@ -208,14 +252,34 @@ pub fn build_message_with_id_and_parts(
         alternative
     } else {
         let mut related = MultiPart::related().multipart(alternative);
-        for asset in inline_assets {
-            let content_type = ContentType::parse(&asset.mime_type).unwrap_or_else(|_| {
+        for (index, asset) in inline_assets.iter().enumerate() {
+            let metadata = index
+                .checked_sub(inline_start)
+                .and_then(|i| managed_inline.get(i));
+            let mime_type =
+                metadata.map_or(asset.mime_type.as_str(), |part| part.mime_type.as_str());
+            let filename = metadata.map_or(asset.filename.as_str(), |part| part.filename.as_str());
+            let content_type = ContentType::parse(mime_type).unwrap_or_else(|_| {
                 ContentType::parse("application/octet-stream")
                     .expect("static octet-stream content type should parse")
             });
-            related = related.singlepart(
-                Attachment::new_inline(asset.cid.clone()).body(asset.bytes.clone(), content_type),
-            );
+            let inline = if metadata.is_some() {
+                Attachment::new_inline_with_name(asset.cid.clone(), filename.to_string())
+            } else {
+                Attachment::new_inline(asset.cid.clone())
+            };
+            let part =
+                if let Some(location) = metadata.and_then(|part| part.content_location.as_ref()) {
+                    SinglePart::builder()
+                        .header(header::ContentDisposition::inline_with_name(filename))
+                        .header(header::ContentId::from(format!("<{}>", asset.cid)))
+                        .header(ContentLocation(location.clone()))
+                        .header(content_type)
+                        .body(asset.bytes.clone())
+                } else {
+                    inline.body(asset.bytes.clone(), content_type)
+                };
+            related = related.singlepart(part);
         }
         related
     };
@@ -224,15 +288,31 @@ pub fn build_message_with_id_and_parts(
         related
     } else {
         let mut mixed = MultiPart::mixed().multipart(related);
-        for attachment in attachments {
-            let content_type = ContentType::parse(&attachment.mime_type).unwrap_or_else(|_| {
+        for (index, attachment) in attachments.iter().enumerate() {
+            let metadata = index
+                .checked_sub(managed_start)
+                .and_then(|i| managed.get(i));
+            let mime_type = metadata.map_or(attachment.mime_type.as_str(), |part| {
+                part.mime_type.as_str()
+            });
+            let filename =
+                metadata.map_or(attachment.filename.as_str(), |part| part.filename.as_str());
+            let content_type = ContentType::parse(mime_type).unwrap_or_else(|_| {
                 ContentType::parse("application/octet-stream")
                     .expect("static octet-stream content type should parse")
             });
-            mixed = mixed.singlepart(
-                Attachment::new(attachment.filename.clone())
-                    .body(attachment.bytes.clone(), content_type),
-            );
+            let part = if let Some(location) =
+                metadata.and_then(|part| part.content_location.as_ref())
+            {
+                SinglePart::builder()
+                    .header(header::ContentDisposition::attachment(filename))
+                    .header(ContentLocation(location.clone()))
+                    .header(content_type)
+                    .body(attachment.bytes.clone())
+            } else {
+                Attachment::new(filename.to_string()).body(attachment.bytes.clone(), content_type)
+            };
+            mixed = mixed.singlepart(part);
         }
         mixed
     };

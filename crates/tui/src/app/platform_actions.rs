@@ -210,7 +210,7 @@ impl App {
                     thread_id: pending.fm.thread_id.clone(),
                 });
         let now = chrono::Utc::now();
-        let draft = mxr_core::Draft {
+        let mut draft = mxr_core::Draft {
             revision: None,
             id: draft_id.clone(),
             account_id: pending.account_id.clone(),
@@ -236,6 +236,10 @@ impl App {
             created_at: now,
             updated_at: now,
         };
+        if let Err(error) = mxr_compose::forward::apply(&mut draft, &pending.fm) {
+            self.push_toast(Toast::error(error.to_string()));
+            return;
+        }
         let text = mxr_compose::body_regions::split_body(&pending.body)
             .text
             .to_string();

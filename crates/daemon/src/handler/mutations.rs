@@ -2491,8 +2491,19 @@ fn validate_draft_content(draft: &Draft) -> Result<(), crate::handler::HandlerEr
     // the HTML branch.
     let mut seen = std::collections::HashSet::new();
     for asset in &draft.inline_assets {
-        mxr_outbound::attachments::validate_cid(&asset.cid)
-            .map_err(|error| crate::handler::HandlerError::Message(error.to_string()))?;
+        if let Some(metadata) = draft
+            .managed_attachments
+            .iter()
+            .flatten()
+            .find(|part| part.content_id.as_deref() == Some(asset.cid.as_str()))
+        {
+            // Forwarded Content-IDs are RFC addr-specs and commonly include @.
+            // Their stricter resource validator rejects header injection.
+            super::draft_attachments::preview(metadata)?;
+        } else {
+            mxr_outbound::attachments::validate_cid(&asset.cid)
+                .map_err(|error| crate::handler::HandlerError::Message(error.to_string()))?;
+        }
         if !seen.insert(asset.cid.as_str()) {
             return Err(crate::handler::HandlerError::Message(
                 mxr_outbound::attachments::InlineAssetError::DuplicateCid(asset.cid.clone())
@@ -3145,16 +3156,18 @@ pub(super) async fn prepare_forward(
         .await?
         .ok_or_else(|| "Message not found".to_string())?;
 
-    let body = state.sync_engine.get_body(message_id).await.ok();
-    let forwarded_content = match body.as_ref() {
-        Some(body) => (*get_or_render_reply_context(state, message_id, body)).clone(),
-        None => String::new(),
-    };
+    let body = state
+        .sync_engine
+        .get_body(message_id)
+        .await
+        .map_err(|error| format!("Cannot forward: failed to retrieve original message: {error}"))?;
+    let source = super::forward::prepare_source(state, &envelope, &body).await?;
+    let forwarded_content = source.content.analysis_text().to_string();
 
     // Default the forward's From to the owned address the message was
     // delivered to (same rule as reply), falling back to the primary.
     let (primary_email, owned) = account_owned_addresses(state, &envelope.account_id).await?;
-    let from = reply_from_default(&owned, &primary_email, &envelope, body.as_ref());
+    let from = reply_from_default(&owned, &primary_email, &envelope, Some(&body));
 
     Ok(ResponseData::ForwardContext {
         context: ForwardContext {
@@ -3162,6 +3175,7 @@ pub(super) async fn prepare_forward(
             subject: envelope.subject.clone(),
             from,
             forwarded_content,
+            source: Some(source),
         },
     })
 }
@@ -4132,7 +4146,8 @@ async fn ingest_sent_message(
         date: receipt.sent_at,
         flags: MessageFlags::SENT | MessageFlags::READ,
         snippet: snippet.clone(),
-        has_attachments: !draft.attachments.is_empty(),
+        has_attachments: !draft.attachments.is_empty()
+            || (draft.intent == mxr_core::DraftIntent::Forward && !draft.inline_assets.is_empty()),
         size_bytes: draft.content.byte_len() as u64,
         unsubscribe: UnsubscribeMethod::None,
         link_count: 0,
@@ -4158,7 +4173,11 @@ async fn ingest_sent_message(
         message_id: stored_id.clone(),
         text_plain: Some(sent_text),
         text_html: sent_html,
-        attachments: Vec::new(),
+        attachments: if draft.intent == mxr_core::DraftIntent::Forward {
+            super::forward::sent_attachments(state, draft, &stored_id).await?
+        } else {
+            Vec::new()
+        },
         fetched_at: receipt.sent_at,
         metadata: MessageMetadata::default(),
     };

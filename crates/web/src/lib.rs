@@ -843,7 +843,11 @@ async fn update_compose_session(
     };
     let (existing_frontmatter, file_body) = parse_compose_content(&content)?;
     let body = request.body.unwrap_or(file_body);
-    let context = extract_compose_context(&content);
+    let context = if existing_frontmatter.forward_source.is_some() {
+        None
+    } else {
+        extract_compose_context(&content)
+    };
     let updated = ComposeFrontmatter {
         to: request.to,
         cc: request.cc,
@@ -856,6 +860,7 @@ async fn update_compose_session(
         thread_id: extract_thread_id(&content)?,
         attach: request.attach,
         signature: existing_frontmatter.signature,
+        forward_source: existing_frontmatter.forward_source,
     };
     let rendered = render_compose_file(&updated, &body, context.as_deref())
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
@@ -1558,7 +1563,11 @@ async fn upload_compose_attachment(
             if !frontmatter.attach.contains(&resource_reference) {
                 frontmatter.attach.push(resource_reference);
             }
-            let context = extract_compose_context(&raw);
+            let context = if frontmatter.forward_source.is_some() {
+                None
+            } else {
+                extract_compose_context(&raw)
+            };
             let rendered = render_compose_file(&frontmatter, &body, context.as_deref())
                 .map_err(|error| BridgeError::Ipc(error.to_string()))?;
             // A token without matching sidecar metadata blocks saves; write it before metadata so a crash cannot silently detach bytes.
@@ -2733,6 +2742,7 @@ async fn create_compose_session(
                 ComposeKind::Forward {
                     subject: context.subject,
                     original_context: context.forwarded_content,
+                    source: Some(context.source.ok_or_else(|| BridgeError::BadRequest("Daemon cannot prepare complete forwards; upgrade and restart the daemon".into()))?),
                 },
                 envelope.account_id,
                 None,
@@ -3052,7 +3062,16 @@ fn compose_session_from_snapshot(
     metadata: Option<&Draft>,
 ) -> Result<serde_json::Value, BridgeError> {
     let (frontmatter, body) = parse_compose_content(raw_content)?;
-    let rendered = render_markdown(&body);
+    let preview_html = if let Some(source) = &frontmatter.forward_source {
+        match mxr_compose::forward::content(source, &body)
+            .map_err(|error| BridgeError::InvalidDraft(error.to_string()))?
+        {
+            DraftContent::Html { html, .. } => html,
+            DraftContent::Markdown { source } => render_markdown(&source).html,
+        }
+    } else {
+        render_markdown(&body).html
+    };
     let issues = validate_draft(&frontmatter, &body)
         .into_iter()
         .map(compose_issue_view)
@@ -3065,7 +3084,7 @@ fn compose_session_from_snapshot(
         "rawContent": raw_content,
         "frontmatter": frontmatter,
         "bodyMarkdown": body,
-        "previewHtml": rendered.html,
+        "previewHtml": preview_html,
         "issues": issues,
     }))
 }
@@ -3220,7 +3239,7 @@ async fn compose_draft_from_snapshot(
         ));
     }
     let now = Utc::now();
-    Ok(Draft {
+    let mut draft = Draft {
         revision: None,
         // A restored session supplies the id so the draft updates in place;
         // a new compose mints one.
@@ -3240,10 +3259,10 @@ async fn compose_draft_from_snapshot(
         to: parse_address_list(&frontmatter.to),
         cc: parse_address_list(&frontmatter.cc),
         bcc: parse_address_list(&frontmatter.bcc),
-        subject: frontmatter.subject,
+        subject: frontmatter.subject.clone(),
         content: DraftContent::markdown(body),
         managed_attachments: None,
-        attachments: frontmatter.attach.into_iter().map(PathBuf::from).collect(),
+        attachments: frontmatter.attach.iter().map(PathBuf::from).collect(),
         inline_assets: Vec::new(),
         // Rebuild the iTIP REPLY payload for an invite-with-comment session so
         // the outbound builder emits the ATTENDEE part and the daemon updates
@@ -3251,7 +3270,10 @@ async fn compose_draft_from_snapshot(
         inline_calendar_reply: read_invite_reply_sidecar(Path::new(draft_path)).await?,
         created_at: now,
         updated_at: now,
-    })
+    };
+    mxr_compose::forward::apply(&mut draft, &frontmatter)
+        .map_err(|error| BridgeError::InvalidDraft(error.to_string()))?;
+    Ok(draft)
 }
 
 /// Outcome of asking the bridge to open a saved draft in the browser composer.

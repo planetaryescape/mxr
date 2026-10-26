@@ -1337,6 +1337,14 @@ async fn dispatch_prepare_forward() {
                 !context.forwarded_content.is_empty(),
                 "forwarded_content should be non-empty"
             );
+            assert!(
+                context.forwarded_content.contains("From:")
+                    && context.forwarded_content.contains("Date:")
+                    && context.forwarded_content.contains("Subject:")
+                    && context.forwarded_content.contains("To:"),
+                "forward must include original header context, got {:?}",
+                context.forwarded_content
+            );
         }
         other => panic!("Expected ForwardContext, got {other:?}"),
     }

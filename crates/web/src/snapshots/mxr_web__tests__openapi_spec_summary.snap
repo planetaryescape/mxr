@@ -267,6 +267,7 @@ expression: summary
     "FeatureHealth",
     "FeatureHealthReport",
     "ForwardContext",
+    "ForwardSource",
     "FreshnessData",
     "GapData",
     "GistModelData",

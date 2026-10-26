@@ -1428,6 +1428,7 @@ mod tests {
             (
                 ResponseData::ForwardContext {
                     context: ForwardContext {
+                        source: None,
                         account_id: AccountId::new(),
                         subject: "Fwd: x".into(),
                         from: "a@example.com".into(),

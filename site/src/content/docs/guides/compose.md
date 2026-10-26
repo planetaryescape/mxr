@@ -39,6 +39,36 @@ unchanged in single quotes to `--expected-workspace` for send and outcome querie
 
 Request explicit host approval with `mxr connect HTTPS_ORIGIN --allow-send`; default registrations stay read-only. Reply text and `$EDITOR` remain on the client. Attachments upload as managed bytes, and previews do not stage resources. Save the draft, preview the returned revision, and keep its account, operation ID and original workspace for sending and recovery. Path-backed legacy drafts are refused remotely. Follow [Read and reply from another computer](/guides/remote-mailbox/) for the complete CLI, TUI and MCP journey.
 
+## Forward the complete message
+
+```bash
+mxr forward MESSAGE_ID --to teammate@example.com --body "FYI" --yes --dry-run --format json
+mxr forward MESSAGE_ID --to teammate@example.com --body "FYI" --draft --format json
+mxr drafts --format json
+```
+
+The introduction appears before the original message and its From, Date, Subject,
+To, and Cc context. In the editor, write above the forwarded message; changing or
+removing the original produces an error rather than a partial forward.
+
+mxr fetches attachment bytes through the account's sync provider, including for
+IMAP accounts that send through SMTP. You do not need to download and reattach
+files. Preparing a forward can fetch and cache bytes even during dry-run, but
+does not save a draft or send mail. Fetch failures and incomplete downloads stop
+the operation.
+
+In JSON, inspect `body_text`, `body_html`, and `managed_attachments`, not only
+`body_markdown` and `attachments`. Forwarded HTML and literal plain text are kept
+as MIME alternatives; embedded images retain their bytes, Content-IDs, and MIME
+Content-Location headers.
+Duplicate attachment names remain separate files. Saved forwards use the same
+content and resources shown in their send preview.
+
+Managed attachments have a 25 MiB per-file limit; your provider may impose a lower
+total message limit. Unsupported attachment declarations fail explicitly rather
+than dropping the file. Saved forwards are HTML drafts, so the existing
+markdown-only `drafts edit` command cannot edit them.
+
 ## Local and linked provider drafts
 
 mxr's local draft store is canonical. The CLI, TUI, web app, and MCP all read

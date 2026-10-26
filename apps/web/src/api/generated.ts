@@ -6425,6 +6425,7 @@ export interface components {
             attach?: string[];
             bcc?: string;
             cc?: string;
+            forward_source?: components["schemas"]["ForwardSource"] | null;
             from: string;
             "in-reply-to"?: string | null;
             intent?: components["schemas"]["DraftIntent"];
@@ -7354,6 +7355,10 @@ export interface components {
         /** @description Immutable daemon-owned bytes belonging to one saved draft. */
         DraftAttachment: {
             account_id: components["schemas"]["AccountId"];
+            /** @description Original Content-ID of a related forwarded MIME part. */
+            content_id?: string | null;
+            /** @description Original MIME location for related parts whose HTML uses a relative URL. */
+            content_location?: string | null;
             draft_id: components["schemas"]["DraftId"];
             filename: string;
             id: components["schemas"]["DraftAttachmentId"];
@@ -7798,7 +7803,19 @@ export interface components {
             account_id: components["schemas"]["AccountId"];
             forwarded_content: string;
             from: string;
+            source?: components["schemas"]["ForwardSource"] | null;
             subject: string;
+        };
+        /**
+         * @description Immutable original content prepared by the daemon for a forward. The editor
+         *     edits only the introduction; original HTML and attachment bytes stay intact.
+         */
+        ForwardSource: {
+            account_id: components["schemas"]["AccountId"];
+            attachments: components["schemas"]["DraftAttachment"][];
+            content: components["schemas"]["DraftContentSchema"];
+            draft_id: components["schemas"]["DraftId"];
+            message_id: components["schemas"]["MessageId"];
         };
         /** @description Returned by `Request::GetFreshness`. */
         FreshnessData: {

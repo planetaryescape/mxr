@@ -727,6 +727,7 @@ mod desk;
 mod desk_done;
 mod draft_attachment_resources;
 mod draft_revisions;
+mod forwarding;
 mod freshness;
 mod html_drafts;
 mod legacy_transport;

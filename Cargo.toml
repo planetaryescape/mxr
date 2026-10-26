@@ -92,6 +92,10 @@ name = "compose_html_cli"
 path = "crates/daemon/tests/compose_html_cli.rs"
 
 [[test]]
+name = "forward_cli"
+path = "crates/daemon/tests/forward_cli.rs"
+
+[[test]]
 name = "scheduled_sends_cli"
 path = "crates/daemon/tests/scheduled_sends_cli.rs"
 
@@ -362,6 +366,7 @@ msg-auth-status = { version = "0.2.0", default-features = false, features = ["st
 encoding_rs = "0.8"
 icalendar = { version = "0.17.10", default-features = true }
 url = "2"
+percent-encoding = "2"
 scraper = "0.27"
 # scraper's tree type, for removing quote markers before HTML becomes text.
 ego-tree = "0.11"
@@ -499,6 +504,7 @@ tracing-subscriber = { workspace = true }
 tui-textarea = { package = "tui-textarea-2", version = "0.10.2" }
 unicode-width = { workspace = true }
 url = { workspace = true }
+percent-encoding = { workspace = true }
 open = { workspace = true }
 uuid = { workspace = true }
 scraper = { workspace = true }

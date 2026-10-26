@@ -20,6 +20,8 @@ async fn fixture(root: &Path) -> (String, DraftId) {
         account_id: account.id.clone(),
         filename: "original.txt".into(),
         mime_type: "text/plain".into(),
+        content_id: None,
+        content_location: None,
         length_bytes: bytes.len() as u64,
         sha256: Sha256::digest(bytes)
             .iter()

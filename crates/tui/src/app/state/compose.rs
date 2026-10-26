@@ -99,6 +99,9 @@ impl ComposeAssistReview {
 
 impl PendingSend {
     pub(crate) fn draft_id(&self) -> mxr_core::DraftId {
+        if let Some(source) = &self.fm.forward_source {
+            return source.draft_id.clone();
+        }
         mxr_core::DraftId::from_provider_id("compose-file", &self.draft_path.to_string_lossy())
     }
 

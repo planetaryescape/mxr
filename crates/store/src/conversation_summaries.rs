@@ -1,5 +1,5 @@
 //! Generation-checked, rebuildable thread facts. The daemon owns their shape.
-use crate::{decode_id, encode_json, Store};
+use crate::{encode_json, Store};
 use chrono::{DateTime, Utc};
 use mxr_core::{AccountId, ThreadId};
 
@@ -12,9 +12,9 @@ pub struct ConversationRevision {
 }
 
 /// A candidate thread's valid synopsis, or the tokens needed to rebuild it.
-pub struct ConversationSummary {
+pub struct ConversationSummary<T> {
     pub revision: ConversationRevision,
-    pub json: Option<String>,
+    pub json: Option<T>,
 }
 
 /// A synopsis to persist only if its observed inputs have not changed.
@@ -86,12 +86,12 @@ impl Store {
         Ok(ids)
     }
 
-    pub async fn conversation_summaries(
+    pub async fn conversation_summaries<T: serde::de::DeserializeOwned>(
         &self,
         account: &AccountId,
         context: &str,
         now: DateTime<Utc>,
-    ) -> Result<Vec<ConversationSummary>, sqlx::Error> {
+    ) -> Result<Vec<ConversationSummary<T>>, sqlx::Error> {
         let started = std::time::Instant::now();
         let candidates = self.conversation_candidates(account, context).await?;
         let sql = "WITH active AS (SELECT value AS thread_id FROM json_each(?3)),
@@ -100,32 +100,34 @@ impl Store {
                  CROSS JOIN assessment_effective_thread_inputs i
                      ON i.account_id = ?1 AND i.thread_id = active.thread_id
              )
-             SELECT i.thread_id, i.effective_revision, COALESCE(v.revision, 0),
+             SELECT json_group_array(json_array(i.thread_id, i.effective_revision, COALESCE(v.revision, 0), json(
              CASE WHEN s.input_revision = i.effective_revision AND s.view_revision = COALESCE(v.revision, 0)
-                 AND s.context = ?2 AND s.valid_from <= ?4 AND s.valid_until > ?4 THEN s.summary_json END
+                 AND s.context = ?2 AND s.valid_from <= ?4 AND s.valid_until > ?4 THEN s.summary_json END)))
              FROM revisions i
              LEFT JOIN conversation_view_inputs v ON v.account_id = ?1 AND v.thread_id = i.thread_id
              LEFT JOIN conversation_summaries s ON s.account_id = ?1 AND s.thread_id = i.thread_id";
-        let rows: Vec<(String, i64, i64, Option<String>)> = sqlx::query_as(sql)
+        // One typed JSON page avoids 20k SQLite-worker row handoffs and
+        // decodes each synopsis once, rather than parsing an escaped JSON string.
+        let page: String = sqlx::query_scalar(sql)
             .bind(account.as_str())
             .bind(context)
             .bind(candidates)
             .bind(now.timestamp())
-            .fetch_all(self.reader())
+            .fetch_one(self.reader())
             .await?;
+        let rows: Vec<(ThreadId, i64, i64, Option<T>)> = crate::decode_json(&page)?;
         crate::trace_query("messages.conversation_summaries", started, rows.len());
-        rows.into_iter()
-            .map(|(thread, input, view, json)| {
-                Ok(ConversationSummary {
-                    revision: ConversationRevision {
-                        thread_id: decode_id(&thread)?,
-                        input,
-                        view,
-                    },
-                    json,
-                })
+        Ok(rows
+            .into_iter()
+            .map(|(thread, input, view, json)| ConversationSummary {
+                revision: ConversationRevision {
+                    thread_id: thread,
+                    input,
+                    view,
+                },
+                json,
             })
-            .collect()
+            .collect())
     }
 
     pub async fn save_conversation_summaries(
@@ -226,7 +228,7 @@ mod tests {
         let now = Utc::now();
         for _ in 0..2 {
             assert!(store
-                .conversation_summaries(&account.id, "test-context", now)
+                .conversation_summaries::<String>(&account.id, "test-context", now)
                 .await
                 .unwrap()
                 .is_empty());
@@ -240,7 +242,7 @@ mod tests {
         sqlx::query("UPDATE mail_assessments SET assessment_json = '{\"home\":\"updates\"}' WHERE message_id = ?")
             .bind(mail.id.as_str()).execute(store.writer()).await.unwrap();
         assert!(store
-            .conversation_summaries(&account.id, "test-context", now)
+            .conversation_summaries::<String>(&account.id, "test-context", now)
             .await
             .unwrap()
             .is_empty());
@@ -331,9 +333,9 @@ mod tests {
         store: &Store,
         account: &AccountId,
         now: DateTime<Utc>,
-    ) -> ConversationSummary {
+    ) -> ConversationSummary<String> {
         let mut rows = store
-            .conversation_summaries(account, "test-context", now)
+            .conversation_summaries::<String>(account, "test-context", now)
             .await
             .unwrap();
         assert_eq!(rows.len(), 1);
@@ -354,7 +356,7 @@ mod tests {
                     revision,
                     valid_from: now.timestamp(),
                     valid_until: now.timestamp() + 100,
-                    json: "synthetic thread facts".into(),
+                    json: encode_json(&"synthetic thread facts").unwrap(),
                 }],
             )
             .await
@@ -382,7 +384,7 @@ mod tests {
             Some("synthetic thread facts")
         );
         assert!(store
-            .conversation_summaries(&account.id, "other-context", now)
+            .conversation_summaries::<String>(&account.id, "other-context", now)
             .await
             .unwrap()[0]
             .json
@@ -400,7 +402,7 @@ mod tests {
                 .is_none()
         );
         assert!(store
-            .conversation_summaries(&AccountId::new(), "test-context", now)
+            .conversation_summaries::<String>(&AccountId::new(), "test-context", now)
             .await
             .unwrap()
             .is_empty());

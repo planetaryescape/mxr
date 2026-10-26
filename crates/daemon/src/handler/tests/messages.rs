@@ -18,6 +18,89 @@ const RUTH: &str = "ruth@keystone.example";
 const MAYA: &str = "maya@orbit.example";
 const JON: &str = "jon@northstar.example";
 
+#[tokio::test]
+async fn text_only_list_previews_keep_complete_non_inline_attachments_on_conversation_detail() {
+    use mxr_core::{AttachmentDisposition, AttachmentId, AttachmentMeta};
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Contract",
+        Duration::days(1),
+    )
+    .await;
+    let incoming = mail(
+        &fx,
+        &thread,
+        ("Samir", SAMIR),
+        &[ME],
+        &[],
+        "Re: Contract",
+        Duration::hours(1),
+    )
+    .await;
+    let file = AttachmentId::new();
+    let attachment = |id, name: &str, disposition| AttachmentMeta {
+        id,
+        message_id: incoming.id.clone(),
+        filename: name.into(),
+        mime_type: "application/pdf".into(),
+        disposition,
+        content_id: None,
+        content_location: None,
+        size_bytes: 512,
+        local_path: None,
+        provider_id: name.into(),
+    };
+    fx.state
+        .store
+        .insert_body(&MessageBody {
+            message_id: incoming.id.clone(),
+            text_plain: Some("Here is the revised contract.".into()),
+            text_html: None,
+            attachments: vec![
+                attachment(
+                    file.clone(),
+                    "contract.pdf",
+                    AttachmentDisposition::Attachment,
+                ),
+                attachment(
+                    AttachmentId::new(),
+                    "signature.png",
+                    AttachmentDisposition::Inline,
+                ),
+            ],
+            fetched_at: Utc::now(),
+            metadata: MessageMetadata::default(),
+        })
+        .await
+        .unwrap();
+    let messages = list(&fx).await;
+    let row = rows(&messages)
+        .into_iter()
+        .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+        .unwrap();
+    assert_eq!(
+        row.preview.as_ref().unwrap().text,
+        "Here is the revised contract."
+    );
+    let page = person(&fx, SAMIR, Some(&thread)).await;
+    let conversation = page.conversation.unwrap();
+    let message = conversation
+        .messages
+        .iter()
+        .find(|m| m.message_id == incoming.id)
+        .unwrap();
+    assert_eq!(message.attachments.len(), 1);
+    assert_eq!(message.attachments[0].attachment_id, file);
+    assert_eq!(message.attachments[0].filename, "contract.pdf");
+    assert_eq!(message.attachments[0].size_bytes, 512);
+}
+
 async fn history_at(fx: &Fixture, now: chrono::DateTime<Utc>) -> MessagesData {
     crate::handler::messages::messages_at(&fx.state, None, history_filter(), 50, now)
         .await

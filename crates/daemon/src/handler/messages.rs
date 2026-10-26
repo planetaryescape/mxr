@@ -20,7 +20,9 @@ use super::desk_lanes::{
     thread_lanes, AccountInputs, DESK_WINDOW_DAYS,
 };
 use super::desk_timers::DeskTimers;
-use super::messages_text::{cached_ask, new_texts, wrapped_lines, MessageText, TextRequest};
+use super::messages_text::{
+    cached_ask, new_texts, preview_texts, wrapped_lines, MessageText, TextRequest,
+};
 use super::messages_view::{
     band, build_row, closeness, day_label, preview_text, rank_by_recency, rank_your_turn,
     turn_ratio, People, RowContext, RowKey, Topic, PINNED_CAP,
@@ -826,7 +828,7 @@ async fn fill_previews(
                 None => continue,
             }
         };
-        let mut texts = new_texts(
+        let mut texts = preview_texts(
             state,
             thread,
             &TextRequest {
@@ -886,7 +888,7 @@ async fn earlier_with_text(
         .take(PREVIEW_LOOKBACK)
         .map(|m| m.id.clone())
         .collect();
-    let mut texts = new_texts(
+    let mut texts = preview_texts(
         state,
         thread,
         &TextRequest {

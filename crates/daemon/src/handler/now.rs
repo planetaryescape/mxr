@@ -65,6 +65,35 @@ pub(super) async fn snapshot<Tz: TimeZone>(
 where
     Tz::Offset: std::fmt::Display,
 {
+    Ok(snapshot_inner(state, account_id, accounts, now, tz, false)
+        .await?
+        .0)
+}
+
+pub(super) async fn rail_snapshot<Tz: TimeZone>(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    accounts: &[AccountId],
+    now: DateTime<Utc>,
+    tz: &Tz,
+) -> Result<(NowSnapshot, u32), HandlerError>
+where
+    Tz::Offset: std::fmt::Display,
+{
+    snapshot_inner(state, account_id, accounts, now, tz, true).await
+}
+
+async fn snapshot_inner<Tz: TimeZone>(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    accounts: &[AccountId],
+    now: DateTime<Utc>,
+    tz: &Tz,
+    include_quiet: bool,
+) -> Result<(NowSnapshot, u32), HandlerError>
+where
+    Tz::Offset: std::fmt::Display,
+{
     // These independent reads used to add their latencies together. Keep
     // the same membership and digest rules, but let SQLite's reader pool
     // serve the People, To do and inbox branches concurrently.
@@ -75,11 +104,19 @@ where
             ..Default::default()
         };
         let updates = std::mem::take(&mut inbox.updates);
-        let (digest, _, _) = Box::pin(super::updates::digest_from(
+        let digest = Box::pin(super::updates::digest_from(
             state, accounts, updates, &scope, now, tz,
-        ))
-        .await?;
-        Ok::<_, HandlerError>((inbox, digest))
+        ));
+        let people = std::mem::take(&mut inbox.people_threads);
+        let quiet = async {
+            if include_quiet {
+                super::modes::quiet_count(state, people, now).await
+            } else {
+                Ok(0)
+            }
+        };
+        let ((digest, _, _), quiet) = tokio::try_join!(digest, quiet)?;
+        Ok::<_, HandlerError>((inbox, digest, quiet))
     };
     let todo_records = async {
         Ok::<_, HandlerError>(
@@ -89,7 +126,7 @@ where
                 .await?,
         )
     };
-    let (desk, records, (inbox, digest)) = tokio::try_join!(
+    let (desk, records, (inbox, digest, quiet)) = tokio::try_join!(
         compose_desk(state, account_id, now),
         todo_records,
         inbox_and_digest,
@@ -104,13 +141,16 @@ where
     // Now puts them first, so its cap of three never hides one.
     let mut due_now = bands.now;
     due_now.sort_by_key(|todo| (!todo.overdue, todo.act_by_at.is_none(), todo.act_by_at));
-    Ok(NowSnapshot {
-        turn: desk.turn_units(),
-        due_now,
-        next_surface: bands.next_surface,
-        inbox,
-        digest,
-    })
+    Ok((
+        NowSnapshot {
+            turn: desk.turn_units(),
+            due_now,
+            next_surface: bands.next_surface,
+            inbox,
+            digest,
+        },
+        quiet,
+    ))
 }
 
 pub(super) async fn get_now(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {

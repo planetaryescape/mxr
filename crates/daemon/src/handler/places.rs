@@ -232,6 +232,11 @@ pub(super) struct Placed {
     pub kind: MailKindData,
 }
 
+pub(super) struct PlacedInbox {
+    pub mail: Vec<Placed>,
+    pub people_threads: HashMap<AccountId, Vec<mxr_core::ThreadId>>,
+}
+
 /// The inbox mail of `accounts` (from `sender_email` only, when given)
 /// that belongs in `place`, minus what that mode was marked done for.
 async fn place_messages(
@@ -266,13 +271,24 @@ pub(super) async fn placed_inbox(
     accounts: &[AccountId],
     sender_email: Option<&str>,
 ) -> Result<Vec<Placed>, HandlerError> {
+    Ok(scan_inbox(state, accounts, sender_email).await?.mail)
+}
+
+/// Share the already-classified inbox with the rail's quiet-thread selector.
+/// Membership still decides whether each complete thread is actually quiet.
+pub(super) async fn scan_inbox(
+    state: &AppState,
+    accounts: &[AccountId],
+    sender_email: Option<&str>,
+) -> Result<PlacedInbox, HandlerError> {
     let mut placed = Vec::new();
+    let mut people_threads = HashMap::new();
     for account_id in accounts {
         let candidates = state.store.place_candidates(account_id).await?;
         let kinds = AccountKinds::load(state, account_id, &candidates).await?;
+        let mut seen_people = HashSet::new();
         for message in candidates {
             if message.snoozed
-                || kinds.released.contains(&message.id)
                 || !same_sender(&message, sender_email)
                 || kinds.is_outbound(&message)
                 || !kinds.has_assessment(&message)
@@ -281,6 +297,15 @@ pub(super) async fn placed_inbox(
             }
             // Classify first; only mail that stays gets its reason written.
             let classification = kinds.classification(&message);
+            if classification.kind.to_data() == SenderKindData::People
+                && seen_people.insert(message.thread_id.clone())
+            {
+                let threads: &mut Vec<_> = people_threads.entry(account_id.clone()).or_default();
+                threads.push(message.thread_id.clone());
+            }
+            if kinds.released.contains(&message.id) {
+                continue;
+            }
             if !matches!(
                 classification.kind.to_data(),
                 SenderKindData::Reading | SenderKindData::PaperTrail
@@ -293,7 +318,10 @@ pub(super) async fn placed_inbox(
             placed.push(Placed { message, kind });
         }
     }
-    Ok(placed)
+    Ok(PlacedInbox {
+        mail: placed,
+        people_threads,
+    })
 }
 
 pub(super) async fn scoped_accounts(

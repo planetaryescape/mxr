@@ -136,13 +136,13 @@ pub(super) async fn load(
     let context = context(state, account).await?;
     let candidates = state
         .store
-        .conversation_summaries(account, &context, now)
+        .conversation_summaries::<Summary>(account, &context, now)
         .await?;
     let mut summaries = Vec::with_capacity(candidates.len());
     let mut missing = HashMap::new();
     for candidate in candidates {
         match candidate.json {
-            Some(json) => summaries.push(serde_json::from_str(&json)?),
+            Some(summary) => summaries.push(summary),
             None => {
                 missing.insert(candidate.revision.thread_id.clone(), candidate.revision);
             }

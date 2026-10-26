@@ -23,7 +23,7 @@ use super::mail_kind::{self, KindSignals};
 use super::mode_rules::{
     mark_covers, membership, merge_marks, messages_membership, quiet_membership, screener_question,
 };
-use super::places::{placed_inbox, scoped_cached_accounts, Placed};
+use super::places::{scoped_cached_accounts, Placed};
 use super::todo_view::{now_order, to_data};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
@@ -603,22 +603,25 @@ pub(super) async fn get_membership(
 pub(super) struct InboxModes {
     pub updates: Vec<Placed>,
     pub reading: Vec<Placed>,
+    pub people_threads: HashMap<AccountId, Vec<ThreadId>>,
 }
 
 pub(super) async fn inbox_modes(
     state: &AppState,
     accounts: &[AccountId],
 ) -> Result<InboxModes, HandlerError> {
+    let inbox = super::places::scan_inbox(state, accounts, None).await?;
     let placed = without_done(
         state,
         accounts,
         &[ModeKindData::Updates, ModeKindData::Reading],
-        placed_inbox(state, accounts, None).await?,
+        inbox.mail,
     )
     .await?;
     let mut out = InboxModes {
         updates: Vec::new(),
         reading: Vec::new(),
+        people_threads: inbox.people_threads,
     };
     for item in placed {
         match item.kind.kind {
@@ -732,11 +735,11 @@ fn mode_entry(mode: ModeKindData, count: Option<u32>) -> RailEntryData {
 /// lane holds and nobody marked done there.
 pub(super) async fn quiet_count(
     state: &AppState,
-    accounts: &[AccountId],
+    people: HashMap<AccountId, Vec<ThreadId>>,
     now: DateTime<Utc>,
 ) -> Result<u32, HandlerError> {
-    let counts: Vec<_> = futures::stream::iter(accounts.to_vec())
-        .map(|account| quiet_account(state, account, now))
+    let counts: Vec<_> = futures::stream::iter(people)
+        .map(|(account, threads)| quiet_account(state, account, threads, now))
         .buffered(3)
         .try_collect()
         .await?;
@@ -746,23 +749,10 @@ pub(super) async fn quiet_count(
 async fn quiet_account(
     state: &AppState,
     account: AccountId,
+    threads: Vec<ThreadId>,
     now: DateTime<Utc>,
 ) -> Result<u32, HandlerError> {
     let mut quiet = 0u32;
-    let candidates = state.store.place_candidates(&account).await?;
-    let kinds = super::places::AccountKinds::load(state, &account, &candidates).await?;
-    let mut seen: HashSet<&ThreadId> = HashSet::new();
-    let mut threads: Vec<ThreadId> = Vec::new();
-    for message in &candidates {
-        if message.snoozed || kinds.is_outbound(message) || !kinds.has_assessment(message) {
-            continue;
-        }
-        if kinds.classification(message).kind == mail_kind::SenderKind::Person
-            && seen.insert(&message.thread_id)
-        {
-            threads.push(message.thread_id.clone());
-        }
-    }
     for chunk in threads.chunks(MEMBERSHIP_MAX_THREADS) {
         let placed = place_threads_with_evidence(state, &account, chunk, now, false).await?;
         quiet += u32::try_from(placed.iter().filter(|p| p.quiet).count()).unwrap_or(u32::MAX);
@@ -773,10 +763,8 @@ async fn quiet_account(
 pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
     let now = Utc::now();
     let accounts = scoped_cached_accounts(state, account_id).await?;
-    let (snapshot, quiet) = tokio::try_join!(
-        super::now::snapshot(state, account_id, &accounts, now, &Local),
-        quiet_count(state, &accounts, now),
-    )?;
+    let (snapshot, quiet) =
+        super::now::rail_snapshot(state, account_id, &accounts, now, &Local).await?;
     let count = |n: usize| Some(super::now::count(n));
     // Badges count work only: Now's people and due soon. To do earns its
     // own badge only once `mxr modes eval` shows under one false to-do a

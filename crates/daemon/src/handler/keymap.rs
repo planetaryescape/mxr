@@ -69,7 +69,7 @@ mod tests {
             "todo" => &["todo", "catchup", "expired"],
             "reading" => &["reading", "reading-reader"],
             "now" => &["now"],
-            "messages" => &["messages"],
+            "messages" => &["messages", "messages-filters"],
             "updates" => &["updates"],
             "archive" => &["archive"],
             _ => &[],

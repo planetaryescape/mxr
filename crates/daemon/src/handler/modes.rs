@@ -23,11 +23,12 @@ use super::mail_kind::{self, KindSignals};
 use super::mode_rules::{
     mark_covers, membership, merge_marks, messages_membership, quiet_membership, screener_question,
 };
-use super::places::{placed_inbox, scoped_cached_accounts, Placed};
+use super::places::{scoped_cached_accounts, Placed};
 use super::todo_view::{now_order, to_data};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, Utc};
+use futures::{StreamExt, TryStreamExt};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     mode_guide, rail_copy, DeskRowData, ModeKindData, RailData, RailEntryData, RailLinkData,
@@ -105,6 +106,16 @@ pub(super) async fn place_threads(
     thread_ids: &[ThreadId],
     now: DateTime<Utc>,
 ) -> Result<Vec<Placement>, HandlerError> {
+    place_threads_with_evidence(state, account_id, thread_ids, now, true).await
+}
+
+async fn place_threads_with_evidence(
+    state: &AppState,
+    account_id: &AccountId,
+    thread_ids: &[ThreadId],
+    now: DateTime<Utc>,
+    include_evidence: bool,
+) -> Result<Vec<Placement>, HandlerError> {
     let store = &state.store;
     let mut messages = store
         .desk_messages_in_threads(account_id, thread_ids)
@@ -112,7 +123,25 @@ pub(super) async fn place_threads(
     if messages.is_empty() {
         return Ok(Vec::new());
     }
-    let senders = Senders::load(state, account_id, &messages).await?;
+    let mut senders = Senders::load(state, account_id, &messages).await?;
+    // Membership exposes bounded evidence quotes as well as verdicts. Keep
+    // full source loading here, on the requested threads, never on the mode
+    // list's whole history. Do not mix evidence from another generation.
+    let mut detailed_asks = HashMap::new();
+    if include_evidence {
+        let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
+        detailed_asks = store.asks_for_messages(account_id, &ids).await?;
+        detailed_asks.retain(|id, answer| {
+            senders
+                .asks
+                .get(id)
+                .is_some_and(|view| view.input_fingerprint == answer.input_fingerprint)
+        });
+        senders.asks.retain(|id, _| detailed_asks.contains_key(id));
+        senders
+            .assessments
+            .retain(|id, _| senders.asks.contains_key(id));
+    }
     let invites: Vec<_> = messages
         .iter()
         .filter(|m| m.is_invite)
@@ -220,6 +249,7 @@ pub(super) async fn place_threads(
             record: records.get(&thread_id),
             marks: &marks,
             senders: &senders,
+            detailed_asks: &detailed_asks,
             written_to: &written_to,
             is_self: &is_self,
             now,
@@ -251,6 +281,7 @@ struct PlaceInputs<'a> {
     record: Option<&'a ArchiveRecord>,
     marks: &'a HashMap<(ThreadId, String), DeskDismissal>,
     senders: &'a Senders,
+    detailed_asks: &'a HashMap<mxr_core::MessageId, mxr_core::asks::AskAssessment>,
     /// Senders you have ever written to, anywhere in the account.
     written_to: &'a HashSet<String>,
     is_self: &'a dyn Fn(&str) -> bool,
@@ -415,8 +446,7 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
             .iter()
             .filter_map(|m| {
                 inputs
-                    .senders
-                    .asks
+                    .detailed_asks
                     .get(&m.id)
                     .map(mxr_core::asks::AskAssessment::summary)
             })
@@ -573,22 +603,25 @@ pub(super) async fn get_membership(
 pub(super) struct InboxModes {
     pub updates: Vec<Placed>,
     pub reading: Vec<Placed>,
+    pub people_threads: HashMap<AccountId, Vec<ThreadId>>,
 }
 
 pub(super) async fn inbox_modes(
     state: &AppState,
     accounts: &[AccountId],
 ) -> Result<InboxModes, HandlerError> {
+    let inbox = super::places::scan_inbox(state, accounts, None).await?;
     let placed = without_done(
         state,
         accounts,
         &[ModeKindData::Updates, ModeKindData::Reading],
-        placed_inbox(state, accounts, None).await?,
+        inbox.mail,
     )
     .await?;
     let mut out = InboxModes {
         updates: Vec::new(),
         reading: Vec::new(),
+        people_threads: inbox.people_threads,
     };
     for item in placed {
         match item.kind.kind {
@@ -702,29 +735,27 @@ fn mode_entry(mode: ModeKindData, count: Option<u32>) -> RailEntryData {
 /// lane holds and nobody marked done there.
 pub(super) async fn quiet_count(
     state: &AppState,
-    accounts: &[AccountId],
+    people: HashMap<AccountId, Vec<ThreadId>>,
+    now: DateTime<Utc>,
+) -> Result<u32, HandlerError> {
+    let counts: Vec<_> = futures::stream::iter(people)
+        .map(|(account, threads)| quiet_account(state, account, threads, now))
+        .buffered(3)
+        .try_collect()
+        .await?;
+    Ok(counts.into_iter().sum())
+}
+
+async fn quiet_account(
+    state: &AppState,
+    account: AccountId,
+    threads: Vec<ThreadId>,
     now: DateTime<Utc>,
 ) -> Result<u32, HandlerError> {
     let mut quiet = 0u32;
-    for account in accounts {
-        let candidates = state.store.place_candidates(account).await?;
-        let kinds = super::places::AccountKinds::load(state, account, &candidates).await?;
-        let mut seen: HashSet<&ThreadId> = HashSet::new();
-        let mut threads: Vec<ThreadId> = Vec::new();
-        for message in &candidates {
-            if message.snoozed || kinds.is_outbound(message) || !kinds.has_assessment(message) {
-                continue;
-            }
-            if mail_kind::classify(&kinds.signals(message)).kind == mail_kind::SenderKind::Person
-                && seen.insert(&message.thread_id)
-            {
-                threads.push(message.thread_id.clone());
-            }
-        }
-        for chunk in threads.chunks(MEMBERSHIP_MAX_THREADS) {
-            let placed = place_threads(state, account, chunk, now).await?;
-            quiet += u32::try_from(placed.iter().filter(|p| p.quiet).count()).unwrap_or(u32::MAX);
-        }
+    for chunk in threads.chunks(MEMBERSHIP_MAX_THREADS) {
+        let placed = place_threads_with_evidence(state, &account, chunk, now, false).await?;
+        quiet += u32::try_from(placed.iter().filter(|p| p.quiet).count()).unwrap_or(u32::MAX);
     }
     Ok(quiet)
 }
@@ -732,7 +763,8 @@ pub(super) async fn quiet_count(
 pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
     let now = Utc::now();
     let accounts = scoped_cached_accounts(state, account_id).await?;
-    let snapshot = super::now::snapshot(state, account_id, &accounts, now, &Local).await?;
+    let (snapshot, quiet) =
+        super::now::rail_snapshot(state, account_id, &accounts, now, &Local).await?;
     let count = |n: usize| Some(super::now::count(n));
     // Badges count work only: Now's people and due soon. To do earns its
     // own badge only once `mxr modes eval` shows under one false to-do a
@@ -752,7 +784,7 @@ pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -
     }];
     entries.extend([
         RailEntryData {
-            quiet: Some(quiet_count(state, &accounts, now).await?),
+            quiet: Some(quiet),
             ..mode_entry(ModeKindData::Messages, Some(snapshot.your_turn_total()))
         },
         mode_entry(ModeKindData::Todo, count(snapshot.due_now.len())),

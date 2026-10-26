@@ -61,7 +61,6 @@ impl AccountKinds {
         candidates: &[PlaceMessage],
     ) -> Result<Self, HandlerError> {
         let store = &state.store;
-        let senders: Vec<String> = candidates.iter().map(|m| m.from_email.clone()).collect();
         let invites: Vec<_> = candidates
             .iter()
             .filter(|m| m.is_invite)
@@ -70,20 +69,53 @@ impl AccountKinds {
         let released =
             super::home_projection::released_specialists(state, account_id, &invites, Utc::now())
                 .await?;
-        let mut threads: Vec<_> = candidates.iter().map(|m| m.thread_id.clone()).collect();
-        threads.sort_by_key(mxr_core::ThreadId::as_str);
-        threads.dedup();
-        let mut messages = Vec::new();
-        for chunk in threads.chunks(super::modes::MEMBERSHIP_MAX_THREADS) {
-            messages.extend(store.desk_messages_in_threads(account_id, chunk).await?);
-        }
-        let assessments = super::assessments::materialize(state, account_id, &messages).await?;
-        let decisions = store
-            .list_screener_decisions(account_id)
-            .await?
-            .into_iter()
-            .map(|d| (d.sender_email.to_ascii_lowercase(), d.disposition))
+        let ids: Vec<_> = candidates.iter().map(|m| m.id.clone()).collect();
+        let (mut assessments, asks) = store
+            .assessment_facets_for_messages(account_id, &ids)
+            .await?;
+        // The stored facets already validate policy, context and generation.
+        // Opening Now, Reading or Updates must not re-read and fingerprint all
+        // settled inbox threads merely to describe their stored homes.
+        let mut pending: Vec<_> = candidates
+            .iter()
+            .filter(|m| {
+                asks.get(&m.id)
+                    .is_none_or(|a| !a.owner_authored && !assessments.contains_key(&m.id))
+            })
+            .map(|m| m.thread_id.clone())
             .collect();
+        pending.sort_by_key(mxr_core::ThreadId::as_str);
+        pending.dedup();
+        if !pending.is_empty() {
+            let mut messages = Vec::new();
+            for chunk in pending.chunks(super::modes::MEMBERSHIP_MAX_THREADS) {
+                messages.extend(store.desk_messages_in_threads(account_id, chunk).await?);
+            }
+            super::assessments::materialize(state, account_id, &messages).await?;
+            assessments = store
+                .assessment_facets_for_messages(account_id, &ids)
+                .await?
+                .0;
+        }
+        // Raw signals are only a fallback for unresolved detail reads (gist).
+        // A validated home needs neither sender histories nor a fresh scan of
+        // every outbound recipient. Normal lists never classify unresolved mail.
+        let senders: Vec<String> = candidates
+            .iter()
+            .filter(|m| !assessments.contains_key(&m.id))
+            .map(|m| m.from_email.clone())
+            .collect();
+        let needs_raw = !senders.is_empty();
+        let decisions = if needs_raw {
+            store
+                .list_screener_decisions(account_id)
+                .await?
+                .into_iter()
+                .map(|d| (d.sender_email.to_ascii_lowercase(), d.disposition))
+                .collect()
+        } else {
+            HashMap::new()
+        };
         let mut lowered: Vec<String> = senders
             .iter()
             .map(|email| email.to_ascii_lowercase())
@@ -105,12 +137,16 @@ impl AccountKinds {
         )
         .await?;
         let written_to = store.addresses_written_to(account_id, &lowered).await?;
-        let moves = store
-            .arrival_moves_in_force(account_id)
-            .await?
-            .into_iter()
-            .filter_map(|(id, mode)| Some((id, mail_kind::kind_for_stored_mode(&mode)?)))
-            .collect();
+        let moves = if needs_raw {
+            store
+                .arrival_moves_in_force(account_id)
+                .await?
+                .into_iter()
+                .filter_map(|(id, mode)| Some((id, mail_kind::kind_for_stored_mode(&mode)?)))
+                .collect()
+        } else {
+            HashMap::new()
+        };
         let owned = state.owned_addresses(account_id).await?;
         Ok(Self {
             assessments,
@@ -119,7 +155,11 @@ impl AccountKinds {
             contacts,
             written_to,
             moves,
-            treatments: state.store.rule_treatments(account_id).await?,
+            treatments: if needs_raw {
+                state.store.rule_treatments(account_id).await?
+            } else {
+                HashMap::new()
+            },
             owned,
         })
     }
@@ -132,6 +172,13 @@ impl AccountKinds {
         self.assessments
             .get(&message.id)
             .map(super::assessments::describe)
+    }
+
+    pub(super) fn classification(&self, message: &PlaceMessage) -> mail_kind::Classification {
+        self.assessments.get(&message.id).map_or_else(
+            || mail_kind::classify(&self.signals(message)),
+            mail_kind::stored_classification,
+        )
     }
 
     pub(super) fn is_self(&self, email: &str) -> bool {
@@ -185,6 +232,11 @@ pub(super) struct Placed {
     pub kind: MailKindData,
 }
 
+pub(super) struct PlacedInbox {
+    pub mail: Vec<Placed>,
+    pub people_threads: HashMap<AccountId, Vec<mxr_core::ThreadId>>,
+}
+
 /// The inbox mail of `accounts` (from `sender_email` only, when given)
 /// that belongs in `place`, minus what that mode was marked done for.
 async fn place_messages(
@@ -219,13 +271,24 @@ pub(super) async fn placed_inbox(
     accounts: &[AccountId],
     sender_email: Option<&str>,
 ) -> Result<Vec<Placed>, HandlerError> {
+    Ok(scan_inbox(state, accounts, sender_email).await?.mail)
+}
+
+/// Share the already-classified inbox with the rail's quiet-thread selector.
+/// Membership still decides whether each complete thread is actually quiet.
+pub(super) async fn scan_inbox(
+    state: &AppState,
+    accounts: &[AccountId],
+    sender_email: Option<&str>,
+) -> Result<PlacedInbox, HandlerError> {
     let mut placed = Vec::new();
+    let mut people_threads = HashMap::new();
     for account_id in accounts {
         let candidates = state.store.place_candidates(account_id).await?;
         let kinds = AccountKinds::load(state, account_id, &candidates).await?;
+        let mut seen_people = HashSet::new();
         for message in candidates {
             if message.snoozed
-                || kinds.released.contains(&message.id)
                 || !same_sender(&message, sender_email)
                 || kinds.is_outbound(&message)
                 || !kinds.has_assessment(&message)
@@ -233,19 +296,32 @@ pub(super) async fn placed_inbox(
                 continue;
             }
             // Classify first; only mail that stays gets its reason written.
-            let signals = kinds.signals(&message);
-            let classification = mail_kind::classify(&signals);
+            let classification = kinds.classification(&message);
+            if classification.kind.to_data() == SenderKindData::People
+                && seen_people.insert(message.thread_id.clone())
+            {
+                let threads: &mut Vec<_> = people_threads.entry(account_id.clone()).or_default();
+                threads.push(message.thread_id.clone());
+            }
+            if kinds.released.contains(&message.id) {
+                continue;
+            }
             if !matches!(
                 classification.kind.to_data(),
                 SenderKindData::Reading | SenderKindData::PaperTrail
             ) {
                 continue;
             }
-            let kind = mail_kind::describe_classified(&signals, classification);
+            let Some(kind) = kinds.description(&message) else {
+                continue;
+            };
             placed.push(Placed { message, kind });
         }
     }
-    Ok(placed)
+    Ok(PlacedInbox {
+        mail: placed,
+        people_threads,
+    })
 }
 
 pub(super) async fn scoped_accounts(

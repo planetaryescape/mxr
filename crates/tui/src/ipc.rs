@@ -117,6 +117,13 @@ fn spawn_ipc_worker_selected(
                 req = rx.recv() => {
                     match req {
                         Some(req) => {
+                            // A filter/person read whose consumer moved on must
+                            // not hold up the current selection. Never discard
+                            // a mutation: cancellation cannot establish whether
+                            // it was applied.
+                            if req.reply.is_closed() && request_supports_retry(&req.request) {
+                                continue;
+                            }
                             // Bound every request. Without this, a daemon that
                             // accepts the connection but never replies (wedged,
                             // killed mid-request, orphaned socket) parks this
@@ -128,6 +135,7 @@ fn spawn_ipc_worker_selected(
                             // a generous bound only ever fires on a dead peer.
                             let is_transfer = req.attachment_transfer.is_some();
                             let transfer = req.attachment_transfer;
+                            let completed = {
                             let operation = async {
                                 if session_workspace.is_none() && req.expected_workspace.is_none() && matches!(req.request, Request::GetArchiveWorkspace) {
                                     return Err(MxrError::Ipc("This native session has no original workspace owner. Preserve retained work and explicitly reopen the client to review the selected workspace.".into()));
@@ -146,12 +154,21 @@ fn spawn_ipc_worker_selected(
                                     client.raw_request_owned(req.request.clone(), req.expected_workspace.as_ref().or(session_workspace.as_ref())).await
                                 }
                             };
-                            let mut result = match tokio::time::timeout(
+                            let operation = tokio::time::timeout(
                                 IPC_REQUEST_TIMEOUT,
                                 operation,
-                            )
-                            .await
-                            {
+                            );
+                            tokio::pin!(operation);
+                            loop {
+                                tokio::select! {
+                                    result = &mut operation => break result,
+                                    Some(event) = event_rx.recv() => {
+                                        let _ = result_tx.send(AsyncResult::DaemonEvent(event));
+                                    }
+                                }
+                            }
+                            };
+                            let mut result = match completed {
                                 Ok(result) => result,
                                 Err(_) => {
                                     // The old connection has a stranded
@@ -395,6 +412,9 @@ pub(crate) fn request_supports_retry(request: &Request) -> bool {
             | Request::PrepareReply { .. }
             | Request::PrepareForward { .. }
             | Request::ListDrafts
+            | Request::ListMessages { .. }
+            | Request::GetPerson { .. }
+            | Request::GetModeGuide { .. }
             | Request::GetStatus
             | Request::Ping
     )

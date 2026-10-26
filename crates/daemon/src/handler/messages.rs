@@ -10,6 +10,10 @@
 //! - Each message's text is its new text (`mxr_reader::new_text`), so every
 //!   client shows the same words and the same "trimmed" marker.
 
+mod history;
+pub(crate) use history::warm as warm_history;
+pub(crate) use history::HistoryCache;
+
 use super::conversation_shape::Shape;
 use super::desk::{compose_desk, self_matcher, Senders};
 use super::desk_lanes::{
@@ -17,7 +21,9 @@ use super::desk_lanes::{
     thread_lanes, AccountInputs, DESK_WINDOW_DAYS,
 };
 use super::desk_timers::DeskTimers;
-use super::messages_text::{cached_ask, new_texts, wrapped_lines, MessageText, TextRequest};
+use super::messages_text::{
+    cached_ask, new_texts, preview_texts, wrapped_lines, MessageText, TextRequest,
+};
 use super::messages_view::{
     band, build_row, closeness, day_label, preview_text, rank_by_recency, rank_your_turn,
     turn_ratio, People, RowContext, RowKey, Topic, PINNED_CAP,
@@ -87,14 +93,60 @@ struct DeskTurn {
 enum Scope<'a> {
     /// Only the composed desk's actionable threads, including due returns.
     Attention(HashMap<ThreadId, DeskTurn>),
-    /// The recent window, plus every thread the composed desk says is
+    /// The recent window or explicit All history, plus every thread the desk says is
     /// someone's turn (`turns`, this account's You owe and New from people
     /// rows after the desk's precedence). Your turn is the desk's, so the
     /// window decides only what else shows in Recent and Quiet.
-    Window(HashMap<ThreadId, DeskTurn>),
-    /// Explicit All conversations: the entire locally synced history.
-    History(HashMap<ThreadId, DeskTurn>),
+    Conversations {
+        turns: HashMap<ThreadId, DeskTurn>,
+        inputs: Box<ConversationInputs>,
+    },
     Threads(&'a [ThreadId]),
+}
+
+/// History/window reads do not depend on the desk's lane precedence. Prepare
+/// them alongside the desk, then apply its authoritative turns in `gather`.
+enum ConversationInputs {
+    Window {
+        messages: Vec<DeskMessage>,
+        senders: Box<Senders>,
+    },
+    History(Vec<history::Summary>),
+}
+
+async fn preload_conversations(
+    state: &AppState,
+    accounts: &[AccountId],
+    turn: Option<MessagesTurnData>,
+    now: DateTime<Utc>,
+) -> Result<Vec<Option<ConversationInputs>>, HandlerError> {
+    let history = match turn {
+        Some(MessagesTurnData::All) => true,
+        Some(MessagesTurnData::Theirs) => false,
+        None | Some(MessagesTurnData::Mine) => {
+            return Ok(accounts.iter().map(|_| None).collect());
+        }
+    };
+    let days = i64::from(state.config_snapshot().messages.recent_days.max(1));
+    let mut inputs = Vec::with_capacity(accounts.len());
+    for account in accounts {
+        if history {
+            inputs.push(Some(ConversationInputs::History(
+                history::load(state, account, now).await?,
+            )));
+            continue;
+        }
+        let messages = state
+            .store
+            .desk_thread_messages(account, now - Duration::days(days))
+            .await?;
+        let senders = Senders::load(state, account, &messages).await?;
+        inputs.push(Some(ConversationInputs::Window {
+            messages,
+            senders: Box::new(senders),
+        }));
+    }
+    Ok(inputs)
 }
 
 /// Recent and Quiet include conversation history outside the inbox. Done
@@ -126,26 +178,31 @@ async fn gather(
         store.desk_reply_later(account_id).await?,
         store.desk_reminders(account_id, window_start).await?,
     );
-    let full_history = matches!(&scope, Scope::History(_));
-    let (mut messages, desk_turns) = match scope {
+    let mut summaries = Vec::new();
+    let (mut messages, desk_turns, prepared_senders) = match scope {
         Scope::Attention(turns) => {
             let threads: Vec<_> = turns.keys().cloned().collect();
             (
                 store.desk_messages_in_threads(account_id, &threads).await?,
                 Some(turns),
+                None,
             )
         }
-        Scope::Window(turns) | Scope::History(turns) => {
-            let days = i64::from(state.config_snapshot().messages.recent_days.max(1));
-            let since = if full_history {
-                DateTime::UNIX_EPOCH
-            } else {
-                now - Duration::days(days)
+        Scope::Conversations { turns, inputs } => {
+            let (mut messages, senders) = match *inputs {
+                ConversationInputs::Window { messages, senders } => (messages, Some(*senders)),
+                ConversationInputs::History(history) => {
+                    summaries = history;
+                    (Vec::new(), None)
+                }
             };
-            let mut messages = store.desk_thread_messages(account_id, since).await?;
             // A conversation a time you set brought back, or one the desk
             // says is your turn, may be older than the window.
-            let loaded: HashSet<&ThreadId> = messages.iter().map(|m| &m.thread_id).collect();
+            let loaded: HashSet<&ThreadId> = messages
+                .iter()
+                .map(|m| &m.thread_id)
+                .chain(summaries.iter().map(|s| &s.thread_id))
+                .collect();
             let mut back: Vec<ThreadId> = timers
                 .maybe_back(now)
                 .chain(turns.keys())
@@ -155,23 +212,30 @@ async fn gather(
                 .into_iter()
                 .collect();
             back.sort_by_key(ThreadId::as_str);
+            // Additional returned/owed threads need their own facets and
+            // contacts. Reuse the prepared context only when it is complete.
+            let prepared_senders = if back.is_empty() { senders } else { None };
             messages.extend(store.desk_messages_in_threads(account_id, &back).await?);
-            (messages, Some(turns))
+            (messages, Some(turns), prepared_senders)
         }
         Scope::Threads(threads) => (
             store.desk_messages_in_threads(account_id, threads).await?,
+            None,
             None,
         ),
     };
     messages.sort_by(|a, b| {
         a.thread_id
-            .as_str()
-            .cmp(&b.thread_id.as_str())
+            .as_uuid()
+            .cmp(b.thread_id.as_uuid())
             .then(a.date.cmp(&b.date))
             .then(a.seq.cmp(&b.seq))
     });
 
-    let senders = Senders::load(state, account_id, &messages).await?;
+    let senders = match prepared_senders {
+        Some(senders) => senders,
+        None => Senders::load(state, account_id, &messages).await?,
+    };
     let is_self = self_matcher(state, account_id).await?;
     let dismissed = messages_dismissals(state, account_id).await?;
     let people = People::new(&store.person_links(account_id).await?);
@@ -225,34 +289,29 @@ async fn gather(
             if inputs.pending_threads.contains(&thread[0].thread_id) {
                 continue;
             }
-            let thread_id = thread[0].thread_id.clone();
             for message in thread {
                 if is_outbound(message, &is_self) {
                     outbound.insert(message.id.clone());
-                    for recipient in message.to.iter().chain(&message.cc) {
-                        note_name(
-                            &mut names,
-                            &people,
-                            &recipient.email,
-                            recipient.name.as_deref(),
-                            message.date,
-                        );
-                    }
-                } else {
-                    note_name(
-                        &mut names,
-                        &people,
-                        &message.from.email,
-                        message.from.name.as_deref(),
-                        message.date,
-                    );
                 }
             }
-            let shape = inputs.shape(thread);
+            summaries.push(history::Summary::from_thread(
+                thread,
+                inputs.shape(thread),
+                &is_self,
+                now,
+            ));
+            threads.insert(thread[0].thread_id.clone(), thread.to_vec());
+        }
+        summaries.sort_by(|a, b| a.thread_id.as_uuid().cmp(b.thread_id.as_uuid()));
+        for summary in &summaries {
+            let thread_id = summary.thread_id.clone();
+            for (email, name, at) in &summary.names {
+                note_name(&mut names, &people, email, Some(name), *at);
+            }
             // Someone's turn is always a row, whatever the thread's shape
             // (a reply-later thread you were only copied on).
-            if (!shape.in_messages() && !turns.contains_key(&thread_id))
-                || thread.iter().all(|m| m.trashed)
+            if (!summary.shape.in_messages() && !turns.contains_key(&thread_id))
+                || summary.latest.is_none()
             {
                 continue;
             }
@@ -260,21 +319,16 @@ async fn gather(
                 Some((row, key)) => (Some(row), key),
                 None => (None, None),
             };
-            if let Some(topic) = place_topic(
+            if let Some(topic) = summary.topic(
                 account_id,
-                thread,
-                &shape,
                 &people,
                 turn,
                 desk_key,
                 dismissed
                     .get(&thread_id)
-                    .is_some_and(|mark| mark.covers(thread)),
-                &is_self,
-                now,
+                    .is_some_and(|mark| summary.covered_by(mark)),
             ) {
                 topics.push(topic);
-                threads.insert(thread_id, thread.to_vec());
             }
         }
         (topics, threads, names, outbound)
@@ -358,24 +412,16 @@ fn note_name(
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "one constructor keeps a topic's facts together"
-)]
-fn place_topic(
+fn summary_topic(
+    summary: &history::Summary,
     account_id: &AccountId,
-    thread: &[DeskMessage],
-    shape: &Shape,
     people: &People,
     turn: Option<DeskRowData>,
-    // The key the composed desk counted this turn under, when it did.
     desk_key: Option<RowKey>,
     done: bool,
-    is_self: &dyn Fn(&str) -> bool,
-    now: DateTime<Utc>,
 ) -> Option<Topic> {
-    let current = current_messages(thread, now);
-    let latest = last_stored(current, |m| !m.trashed)?;
+    let latest = summary.latest.as_ref()?;
+    let shape = &summary.shape;
     let mut others: Vec<String> = Vec::new();
     for person in shape.people() {
         let primary = people.primary(person);
@@ -392,7 +438,7 @@ fn place_topic(
             key
         }
         (_, 1, _) => RowKey::Person(others[0].clone()),
-        (Shape::Group(_), _, _) => RowKey::Group(thread[0].thread_id.clone()),
+        (Shape::Group(_), _, _) => RowKey::Group(summary.thread_id.clone()),
         // The turn row names who it is with; `turn_units` counts it the same.
         (_, 0, Some(row)) => {
             let primary = people.primary(&row.counterparty_email);
@@ -401,7 +447,7 @@ fn place_topic(
         }
         _ => return None,
     };
-    let you_last = is_outbound(latest, is_self);
+    let you_last = latest.outbound;
     let state = if turn.is_some() {
         TopicStateData::YourTurn
     } else if done {
@@ -411,8 +457,7 @@ fn place_topic(
     } else {
         TopicStateData::Quiet
     };
-    let reply_to =
-        last_stored(current, |m| !m.trashed && !is_outbound(m, is_self)).unwrap_or(latest);
+    let reply_to = summary.reply_to.as_ref().unwrap_or(latest);
     let subject = clean_subject(&latest.subject);
     let shape_data = match key {
         RowKey::Person(_) => mxr_protocol::ThreadShapeData::OneToOne,
@@ -420,14 +465,10 @@ fn place_topic(
     };
     Some(Topic {
         key,
-        unread: thread.iter().any(|m| {
-            !is_outbound(m, is_self)
-                && m.in_inbox
-                && !m.flags.contains(mxr_core::MessageFlags::READ)
-        }),
+        unread: summary.unread,
         data: MessagesTopicData {
             account_id: account_id.clone(),
-            thread_id: thread[0].thread_id.clone(),
+            thread_id: summary.thread_id.clone(),
             subject: if subject.trim().is_empty() {
                 "(no subject)".to_string()
             } else {
@@ -436,9 +477,9 @@ fn place_topic(
             shape: shape_data,
             state,
             last_at: latest.date,
-            message_count: u32::try_from(thread.len()).unwrap_or(u32::MAX),
+            message_count: u32::try_from(summary.message_ids.len()).unwrap_or(u32::MAX),
             with: Vec::new(),
-            message_ids: thread.iter().map(|m| m.id.clone()).collect(),
+            message_ids: summary.message_ids.clone(),
             reply_to_message_id: reply_to.id.clone(),
         },
         people: others,
@@ -549,7 +590,10 @@ pub(super) async fn messages_at(
     // Your turn is the composed desk's: the same accounts' rows after
     // lane precedence, over the desk's own window, as Now and the rail
     // count them (`turn_units`).
-    let desk = compose_desk(state, account_id, now).await?;
+    let (desk, inputs) = tokio::try_join!(
+        compose_desk(state, account_id, now),
+        preload_conversations(state, &accounts, filter.turn, now),
+    )?;
     // From the same desk, so it holds when the Waiting on view clears
     // Your turn below.
     let your_turn_split = desk.turn_units().split;
@@ -567,12 +611,14 @@ pub(super) async fn messages_at(
         }
     }
     let mut gathered = Vec::new();
-    for account in &accounts {
+    for (account, inputs) in accounts.iter().zip(inputs) {
         let own = turns.remove(account).unwrap_or_default();
-        let scope = match filter.turn {
-            None | Some(MessagesTurnData::Mine) => Scope::Attention(own),
-            Some(MessagesTurnData::All) => Scope::History(own),
-            Some(MessagesTurnData::Theirs) => Scope::Window(own),
+        let scope = match inputs {
+            None => Scope::Attention(own),
+            Some(inputs) => Scope::Conversations {
+                turns: own,
+                inputs: Box::new(inputs),
+            },
         };
         gathered.push(gather(state, account, scope, now).await?);
     }
@@ -621,6 +667,7 @@ pub(super) async fn messages_at(
     quiet.truncate(limit as usize);
 
     for band in [&mut your_turn, &mut pinned, &mut recent, &mut quiet] {
+        load_preview_threads(state, &mut gathered, band).await?;
         fill_previews(state, &gathered, band).await?;
     }
 
@@ -682,82 +729,156 @@ fn distinct_rows(bands: &[&Vec<MessagesRowData>]) -> u32 {
     u32::try_from(rows.len()).unwrap_or(u32::MAX)
 }
 
+/// Attention has no history pagination: its rows are complete. Narrowing a
+/// fresh attention snapshot therefore needs no new mailbox query. Rebuild
+/// pinned faces after narrowing, so a match beyond the old pin cap survives.
+pub(super) fn narrow_attention(mut data: MessagesData, filter: MessagesFilterData) -> MessagesData {
+    data.your_turn
+        .retain(|row| (!filter.unread || row.unread) && (!filter.past_pace || row.overdue));
+    data.pinned = data
+        .your_turn
+        .iter()
+        .filter(|row| row.pinned)
+        .cloned()
+        .map(|mut row| {
+            row.band = MessagesBandData::Pinned;
+            row
+        })
+        .collect();
+    rank_by_recency(&mut data.pinned);
+    data.pinned.truncate(PINNED_CAP);
+    data.matched = distinct_rows(&[&data.your_turn, &data.pinned]);
+    data.empty_state = (data.matched == 0).then(|| {
+        if filter.narrows() {
+            messages_copy::filtered_empty(filter, data.your_turn_split.total())
+        } else {
+            messages_copy::CLEAR.to_string()
+        }
+    });
+    data.filter = filter;
+    data
+}
+
 /// The line under each shown row: for Your turn, the ask from the
 /// conversation's gist when one is cached, else what they wrote last; for
 /// the rest, the latest message, as "You: ..." when you wrote it.
+async fn load_preview_threads(
+    state: &AppState,
+    gathered: &mut [Gathered],
+    rows: &[MessagesRowData],
+) -> Result<(), HandlerError> {
+    for g in gathered.iter_mut() {
+        let wanted: Vec<_> = rows
+            .iter()
+            .filter(|r| r.account_id == g.account_id)
+            .filter_map(|r| r.topics.first())
+            .map(|t| &t.thread_id)
+            .filter(|id| !g.threads.contains_key(*id))
+            .cloned()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        if !wanted.is_empty() {
+            let own = self_matcher(state, &g.account_id).await?;
+            for m in state
+                .store
+                .desk_messages_in_threads(&g.account_id, &wanted)
+                .await?
+            {
+                if is_outbound(&m, &own) {
+                    g.outbound.insert(m.id.clone());
+                }
+                g.threads.entry(m.thread_id.clone()).or_default().push(m);
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn fill_previews(
     state: &AppState,
     gathered: &[Gathered],
     rows: &mut [MessagesRowData],
 ) -> Result<(), HandlerError> {
-    for row in rows.iter_mut() {
-        let Some(topic) = row.topics.first() else {
-            continue;
-        };
-        let Some(g) = gathered.iter().find(|g| g.account_id == row.account_id) else {
-            continue;
-        };
-        let Some(thread) = g.threads.get(&topic.thread_id) else {
-            continue;
-        };
-        if topic.state == TopicStateData::YourTurn {
-            if let Some(ask) = cached_ask(state, &topic.thread_id).await? {
-                row.preview = Some(MessagesPreviewData {
-                    kind: MessagesPreviewKindData::Ask,
-                    text: preview_text(&ask.quote),
-                    message_id: Some(ask.message_id),
-                    model: Some(ask.model),
-                });
-                continue;
-            }
+    use futures::TryStreamExt;
+    // Each preview has independent body/gist reads. Bound their overlap to
+    // four without reordering rows or loading unselected conversation text.
+    futures::stream::iter(rows.iter_mut().map(Ok::<_, HandlerError>))
+        .try_for_each_concurrent(4, |row| fill_preview(state, gathered, row))
+        .await
+}
+
+async fn fill_preview(
+    state: &AppState,
+    gathered: &[Gathered],
+    row: &mut MessagesRowData,
+) -> Result<(), HandlerError> {
+    let Some(topic) = row.topics.first() else {
+        return Ok(());
+    };
+    let Some(g) = gathered.iter().find(|g| g.account_id == row.account_id) else {
+        return Ok(());
+    };
+    let Some(thread) = g.threads.get(&topic.thread_id) else {
+        return Ok(());
+    };
+    if topic.state == TopicStateData::YourTurn {
+        if let Some(ask) = cached_ask(state, &topic.thread_id).await? {
+            row.preview = Some(MessagesPreviewData {
+                kind: MessagesPreviewKindData::Ask,
+                text: preview_text(&ask.quote),
+                message_id: Some(ask.message_id),
+                model: Some(ask.model),
+            });
+            return Ok(());
         }
-        let target = if topic.state == TopicStateData::YourTurn {
-            topic.reply_to_message_id.clone()
-        } else {
-            match last_stored(thread, |m| !m.trashed) {
-                Some(latest) => latest.id.clone(),
-                None => continue,
-            }
-        };
-        let mut texts = new_texts(
-            state,
-            thread,
-            &TextRequest {
-                wanted: std::slice::from_ref(&target),
-                outbound: &g.outbound,
-            },
-        )
-        .await?;
-        let Some(text) = texts.remove(&target) else {
-            continue;
-        };
-        // A message that is only a quote says nothing of its own, and the
-        // placeholder is not a preview: read the latest earlier message
-        // that does, or show none and let the client fall back to the
-        // subject.
-        let (target, text) = if text.only_quoted {
-            match earlier_with_text(state, thread, g, &target).await? {
-                Some(found) => found,
-                None => continue,
-            }
-        } else {
-            (target, text)
-        };
-        let (kind, text) = if g.outbound.contains(&target) {
-            (
-                MessagesPreviewKindData::You,
-                format!("You: {}", preview_text(&text.text)),
-            )
-        } else {
-            (MessagesPreviewKindData::Latest, preview_text(&text.text))
-        };
-        row.preview = Some(MessagesPreviewData {
-            kind,
-            text,
-            message_id: Some(target),
-            model: None,
-        });
     }
+    let target = if topic.state == TopicStateData::YourTurn {
+        topic.reply_to_message_id.clone()
+    } else {
+        match last_stored(thread, |m| !m.trashed) {
+            Some(latest) => latest.id.clone(),
+            None => return Ok(()),
+        }
+    };
+    let mut texts = preview_texts(
+        state,
+        thread,
+        &TextRequest {
+            wanted: std::slice::from_ref(&target),
+            outbound: &g.outbound,
+        },
+    )
+    .await?;
+    let Some(text) = texts.remove(&target) else {
+        return Ok(());
+    };
+    // A message that is only a quote says nothing of its own, and the
+    // placeholder is not a preview: read the latest earlier message
+    // that does, or show none and let the client fall back to the
+    // subject.
+    let (target, text) = if text.only_quoted {
+        match earlier_with_text(state, thread, g, &target).await? {
+            Some(found) => found,
+            None => return Ok(()),
+        }
+    } else {
+        (target, text)
+    };
+    let (kind, text) = if g.outbound.contains(&target) {
+        (
+            MessagesPreviewKindData::You,
+            format!("You: {}", preview_text(&text.text)),
+        )
+    } else {
+        (MessagesPreviewKindData::Latest, preview_text(&text.text))
+    };
+    row.preview = Some(MessagesPreviewData {
+        kind,
+        text,
+        message_id: Some(target),
+        model: None,
+    });
     Ok(())
 }
 
@@ -779,7 +900,7 @@ async fn earlier_with_text(
         .take(PREVIEW_LOOKBACK)
         .map(|m| m.id.clone())
         .collect();
-    let mut texts = new_texts(
+    let mut texts = preview_texts(
         state,
         thread,
         &TextRequest {

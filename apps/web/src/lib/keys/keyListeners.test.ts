@@ -183,6 +183,14 @@ const ALLOWED = {
     rule: "arrow-key widget",
     why: "a segmented control's arrows move the choice",
   },
+  "components/Page.tsx": {
+    rule: "arrow-key widget",
+    why: "tab groups own arrows, Home and End while a tab has focus",
+  },
+  "components/PageFrame.tsx": {
+    rule: "arrow-key widget",
+    why: "link-based section headers move focus with arrows, Home and End; Enter remains native",
+  },
   "features/analytics/WrappedDashboard.tsx": {
     rule: "arrow-key widget",
     why: "the wrapped dashboard's arrows step the cards",

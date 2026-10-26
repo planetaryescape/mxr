@@ -23,6 +23,7 @@ export const sidebarActions: ActionBehavior[] = [
 ];
 
 export const listActions: ActionBehavior[] = [
+  { id: "page.controls", command: "controls" },
   { id: "list.down", command: "down" },
   { id: "list.up", command: "up" },
   { id: "list.top", command: "top" },

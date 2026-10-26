@@ -15,7 +15,7 @@ use mxr_store::DeskMessage;
 use std::collections::HashMap;
 
 #[cfg(test)]
-type BeforeCommit = std::sync::Arc<
+pub(super) type BeforeCommit = std::sync::Arc<
     dyn Fn()
             -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), HandlerError>> + Send>>
         + Send

@@ -3,6 +3,8 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use sqlx::Row;
 
+type CachedBodyTexts = std::collections::HashMap<MessageId, (Option<String>, Option<String>)>;
+
 pub(crate) fn evidence_from_row(
     row: &sqlx::sqlite::SqliteRow,
 ) -> Result<mxr_core::mail_evidence::MailEvidence, sqlx::Error> {
@@ -23,6 +25,21 @@ pub(crate) fn evidence_from_row(
 }
 
 impl super::Store {
+    /// Body text for a bounded set of trusted message IDs. Previews need no
+    /// attachment metadata or parsed message headers; missing bodies stay absent.
+    pub async fn body_texts(&self, ids: &[MessageId]) -> Result<CachedBodyTexts, sqlx::Error> {
+        if ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT b.message_id, b.text_plain, b.text_html FROM (SELECT DISTINCT value FROM json_each(?1)) wanted
+             CROSS JOIN bodies b ON b.message_id = wanted.value"
+        ).bind(encode_json(&ids)?).fetch_all(self.reader()).await?;
+        rows.into_iter()
+            .map(|(id, plain, html)| Ok((decode_id(&id)?, (plain, html))))
+            .collect()
+    }
+
     /// Update only the downloaded attachment row so a stale message body
     /// cannot replace sibling attachments or calendar metadata.
     pub async fn set_attachment_cache(
@@ -253,6 +270,64 @@ mod tests {
             fetched_at: chrono::Utc::now(),
             metadata: MessageMetadata::default(),
         }
+    }
+
+    #[tokio::test]
+    async fn preview_body_texts_preserve_empty_and_html_bodies_without_loading_attachments() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let mut mails = Vec::new();
+        for _ in 0..3 {
+            let mut mail = TestEnvelopeBuilder::new()
+                .account_id(account.id.clone())
+                .build();
+            mail.provider_id = mail.id.to_string();
+            mail.message_id_header = None;
+            store.upsert_envelope(&mail).await.unwrap();
+            mails.push(mail);
+        }
+        let mut first = body(
+            mails[0].id.clone(),
+            vec![attachment(mails[0].id.clone(), "file")],
+        );
+        first.text_plain = Some(String::new());
+        first.text_html = Some("<p>HTML alternative</p>".into());
+        store.insert_body(&first).await.unwrap();
+        store
+            .insert_body(&body(mails[2].id.clone(), vec![]))
+            .await
+            .unwrap();
+        let texts = store
+            .body_texts(&[
+                mails[0].id.clone(),
+                mails[0].id.clone(),
+                mails[1].id.clone(),
+                mxr_core::MessageId::new(),
+            ])
+            .await
+            .unwrap();
+        assert_eq!(
+            texts.len(),
+            1,
+            "missing, duplicate and unrequested IDs do not add rows"
+        );
+        assert_eq!(
+            texts[&mails[0].id],
+            (Some(String::new()), Some("<p>HTML alternative</p>".into()))
+        );
+        assert_eq!(
+            store
+                .get_body(&mails[0].id)
+                .await
+                .unwrap()
+                .unwrap()
+                .attachments
+                .len(),
+            1,
+            "the detail path still returns complete attachments"
+        );
+        assert!(store.body_texts(&[]).await.unwrap().is_empty());
     }
 
     #[tokio::test]

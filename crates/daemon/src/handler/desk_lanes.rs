@@ -116,7 +116,7 @@ pub(super) fn thread_starred(thread: &[DeskMessage]) -> bool {
 pub(super) struct AccountInputs<'a> {
     pub pending_threads: &'a HashSet<ThreadId>,
     pub assessments: &'a HashMap<MessageId, mxr_core::assessment::MailAssessment>,
-    pub asks: &'a HashMap<MessageId, mxr_core::asks::AskAssessment>,
+    pub asks: &'a HashMap<MessageId, mxr_store::AskSummary>,
     pub account_id: &'a AccountId,
     /// Messages of recently active threads, ordered by thread then date.
     pub messages: &'a [DeskMessage],
@@ -213,6 +213,9 @@ impl AccountInputs<'_> {
     }
 
     pub(super) fn sender_kind(&self, message: &DeskMessage) -> SenderKind {
+        if let Some(home) = self.assessments.get(&message.id) {
+            return mail_kind::stored_classification(home).kind;
+        }
         mail_kind::classify(&self.signals(message)).kind
     }
 
@@ -239,7 +242,12 @@ impl AccountInputs<'_> {
         let person_sender = |m: &DeskMessage| self.sender_kind(m) == SenderKind::Person;
         let human_address = |email: &str| self.human_address(email);
         let kept = |m: &DeskMessage| mail_kind::kept_in_messages(&self.signals(m));
-        conversation_shape(
+        let geometry = if assessed.iter().any(|a| a.home == "messages") {
+            super::conversation_shape::conversation_geometry
+        } else {
+            conversation_shape
+        };
+        geometry(
             thread,
             &ShapeInputs {
                 is_self: self.is_self,
@@ -464,12 +472,13 @@ fn thread_row(
     }
     // An auto-responder or notification after your message answers nothing:
     // a time you set on the wait still hides it or brings it back.
-    if let Some(sent) = latest_outbound.filter(|_| !inputs.answers(latest)) {
+    if let Some(sent) = latest_outbound {
         let answers = |m: &DeskMessage| inputs.answers(m);
         if inputs
             .timers
             .waiting(conversation.all, &answers, now)
             .is_some()
+            && !inputs.answers(latest)
         {
             return waiting_row(inputs, conversation, sent, latest_inbound.is_some());
         }
@@ -496,17 +505,15 @@ fn thread_row(
     }
     let owes_reply = inputs.asks.get(&inbound.id).is_some_and(|answer| {
         answer
-            .units
-            .iter()
-            .any(|u| u.answer == mxr_core::asks::AskAnswer::AsksYouToReply)
+            .answers
+            .contains(&mxr_core::asks::AskAnswer::AsksYouToReply)
     });
     // Their promise can coexist with your response; explicit return times above still win.
     if !owes_reply
         && inputs.asks.get(&latest.id).is_some_and(|answer| {
             answer
-                .units
-                .iter()
-                .any(|u| u.answer == mxr_core::asks::AskAnswer::TheyPromisedYou)
+                .answers
+                .contains(&mxr_core::asks::AskAnswer::TheyPromisedYou)
         })
     {
         return waiting_row(inputs, conversation, latest, latest_inbound.is_some());
@@ -652,9 +659,9 @@ fn waiting_row(
         ));
     }
     if !inputs.asks.get(&sent.id).is_some_and(|answer| {
-        answer.units.iter().any(|u| {
+        answer.answers.iter().any(|answer| {
             matches!(
-                u.answer,
+                answer,
                 mxr_core::asks::AskAnswer::YouAskedThem
                     | mxr_core::asks::AskAnswer::TheyPromisedYou
             )
@@ -1039,7 +1046,7 @@ mod tests {
                     &Utc,
                     "lane-fixture".into(),
                 );
-                (message.id.clone(), answer)
+                (message.id.clone(), mxr_store::AskSummary::from(answer))
             })
             .collect();
         thread_lanes(&AccountInputs {

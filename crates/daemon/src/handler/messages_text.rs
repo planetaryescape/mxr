@@ -49,6 +49,23 @@ pub(super) async fn new_texts(
     thread: &[DeskMessage],
     request: &TextRequest<'_>,
 ) -> Result<HashMap<MessageId, MessageText>, HandlerError> {
+    texts(state, thread, request, true).await
+}
+
+pub(super) async fn preview_texts(
+    state: &AppState,
+    thread: &[DeskMessage],
+    request: &TextRequest<'_>,
+) -> Result<HashMap<MessageId, MessageText>, HandlerError> {
+    texts(state, thread, request, false).await
+}
+
+async fn texts(
+    state: &AppState,
+    thread: &[DeskMessage],
+    request: &TextRequest<'_>,
+    attachments: bool,
+) -> Result<HashMap<MessageId, MessageText>, HandlerError> {
     let shown: Vec<&DeskMessage> = thread.iter().filter(|m| !m.trashed).collect();
     let positions: Vec<usize> = request
         .wanted
@@ -64,22 +81,45 @@ pub(super) async fn new_texts(
         }
     }
     let mut loaded: HashMap<usize, Loaded> = HashMap::new();
+    let mut cached = if attachments {
+        None
+    } else {
+        let ids: Vec<_> = needed
+            .iter()
+            .map(|&index| shown[index].id.clone())
+            .collect();
+        Some(state.store.body_texts(&ids).await?)
+    };
     for index in needed {
         let message = shown[index];
-        let Some(body) = state.store.get_body(&message.id).await? else {
-            continue;
+        let (text_plain, text_html, attachments) = match &mut cached {
+            Some(bodies) => {
+                let Some((plain, html)) = bodies.remove(&message.id) else {
+                    continue;
+                };
+                (plain, html, Vec::new())
+            }
+            None => {
+                let Some(body) = state.store.get_body(&message.id).await? else {
+                    continue;
+                };
+                (
+                    body.text_plain,
+                    body.text_html,
+                    body.attachments
+                        .into_iter()
+                        .filter(|a| a.disposition != AttachmentDisposition::Inline)
+                        .collect(),
+                )
+            }
         };
         loaded.insert(
             index,
             Loaded {
-                plain: plain_text(body.text_plain.as_deref(), body.text_html.as_deref()),
-                text_plain: body.text_plain,
-                text_html: body.text_html,
-                attachments: body
-                    .attachments
-                    .into_iter()
-                    .filter(|a| a.disposition != AttachmentDisposition::Inline)
-                    .collect(),
+                plain: plain_text(text_plain.as_deref(), text_html.as_deref()),
+                text_plain,
+                text_html,
+                attachments,
             },
         );
     }

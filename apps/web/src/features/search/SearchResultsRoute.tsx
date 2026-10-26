@@ -70,6 +70,7 @@ export function SearchResultsRoute() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filterFocusRequest, setFilterFocusRequest] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => setDraft(q), [q]);
@@ -170,6 +171,7 @@ export function SearchResultsRoute() {
       facetGroups={facets.data?.groups}
       update={update}
       filtersOpen={filtersOpen}
+      filterFocusRequest={filterFocusRequest}
       onFiltersToggle={() => setFiltersOpen((open) => !open)}
       onSaveClick={() => setSaveOpen(true)}
       onManageClick={() => setManageOpen(true)}
@@ -189,7 +191,10 @@ export function SearchResultsRoute() {
             ? `${plural(total, UNIT[scope])}${scope === "triage" && typeof llmCalls === "number" ? ` · ${plural(llmCalls, "LLM call")}` : ""}`
             : null
         }
-        onFilterKey={() => setFiltersOpen((open) => !open)}
+        onFilterKey={() => {
+          setFiltersOpen(true);
+          setFilterFocusRequest((count) => count + 1);
+        }}
         toolbar={toolbar}
         groups={groups}
         scopeKey={`search|${q}|${mode}|${scope}|${account ?? "all"}`}

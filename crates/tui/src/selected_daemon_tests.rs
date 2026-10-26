@@ -27,6 +27,92 @@ fn status() -> ResponseData {
 }
 
 #[tokio::test]
+async fn slow_request_forwards_events_before_its_reply_arrives() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let target = mxr_client::SelectedDaemonTarget::new(
+        mxr_client::TransportAddr::Tcp(listener.local_addr().unwrap()),
+        None,
+    );
+    let (release, wait) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut framed = Framed::new(stream, IpcCodec::new());
+        let mut wait = Some(wait);
+        while let Some(Ok(message)) = framed.next().await {
+            let IpcPayload::Request(request) = message.payload else {
+                panic!("request")
+            };
+            let response = match request {
+                Request::GetStatus => Response::Ok { data: status() },
+                Request::GetRemoteReady => Response::error_kinded(
+                    "Remote readiness requires authenticated admission",
+                    mxr_protocol::IpcErrorKind::Auth,
+                ),
+                Request::Ping => {
+                    framed
+                        .send(IpcMessage {
+                            id: 0,
+                            expected_workspace: None,
+                            source: ClientKind::Daemon,
+                            payload: IpcPayload::Event(
+                                mxr_protocol::DaemonEvent::LabelCountsUpdated { counts: vec![] },
+                            ),
+                        })
+                        .await
+                        .unwrap();
+                    wait.take().unwrap().await.unwrap();
+                    Response::Ok {
+                        data: ResponseData::Ack,
+                    }
+                }
+                _ => Response::Ok {
+                    data: ResponseData::ArchiveWorkspace {
+                        workspace: owner("original"),
+                    },
+                },
+            };
+            framed
+                .send(IpcMessage {
+                    id: message.id,
+                    expected_workspace: None,
+                    source: ClientKind::Daemon,
+                    payload: IpcPayload::Response(response),
+                })
+                .await
+                .unwrap();
+        }
+    });
+    let (result_tx, mut results) = tokio::sync::mpsc::unbounded_channel();
+    let worker = spawn_ipc_worker_for_session(
+        DaemonSession {
+            target,
+            owner: Some(owner("original")),
+        },
+        result_tx,
+    );
+    let request = tokio::spawn(async move { ipc_call(&worker, Request::Ping).await });
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while let Some(result) = results.recv().await {
+            if matches!(
+                result,
+                crate::async_result::AsyncResult::DaemonEvent(
+                    mxr_protocol::DaemonEvent::LabelCountsUpdated { .. }
+                )
+            ) {
+                return;
+            }
+        }
+        panic!("worker stopped before forwarding the event");
+    })
+    .await
+    .expect("an event must not wait behind a slow reply");
+    assert!(!request.is_finished());
+    release.send(()).unwrap();
+    request.await.unwrap().unwrap();
+    server.abort();
+}
+
+#[tokio::test]
 async fn legacy_worker_preserves_safety_request_across_reconnect() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("reviewed.bin");

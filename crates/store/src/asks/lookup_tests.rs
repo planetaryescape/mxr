@@ -1,6 +1,6 @@
 //! Query work must follow the requested IDs rather than account history.
 use super::tests::answer;
-use super::ASKS_FOR_MESSAGES;
+use super::{ASKS_FOR_MESSAGES, FACETS_FOR_MESSAGES};
 use crate::{
     test_fixtures::{test_account, TestEnvelopeBuilder},
     Store,
@@ -22,27 +22,29 @@ async fn grow(store: &Store, account: &AccountId, count: usize) -> Vec<MessageId
     ids
 }
 
-async fn steps(store: &Store, account: &AccountId, id: &MessageId) -> usize {
+async fn steps(store: &Store, account: &AccountId, id: &MessageId, facets: bool) -> usize {
     let ids = serde_json::to_string(&[id]).unwrap();
     let mut conn = store.reader().acquire().await.unwrap();
     // Only the static production query is prefixed; values remain bound.
-    let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "EXPLAIN QUERY PLAN {ASKS_FOR_MESSAGES}"
-    )))
-    .bind(account.as_str())
-    .bind(ASKS_POLICY_VERSION)
-    .bind(&ids)
-    .fetch_all(&mut *conn)
-    .await
-    .unwrap();
-    eprintln!("native asks lookup plan: {plan:?}");
-    let _: Vec<String> = sqlx::query_scalar(ASKS_FOR_MESSAGES)
-        .bind(account.as_str())
-        .bind(ASKS_POLICY_VERSION)
-        .bind(&ids)
+    let sql = if facets {
+        FACETS_FOR_MESSAGES
+    } else {
+        ASKS_FOR_MESSAGES
+    };
+    let query = |prefix: &str| {
+        let mut query =
+            sqlx::query(sqlx::AssertSqlSafe(format!("{prefix}{sql}"))).bind(account.as_str());
+        if facets {
+            query = query.bind(mxr_core::assessment::CLASSIFIER_POLICY_VERSION);
+        }
+        query.bind(ASKS_POLICY_VERSION).bind(&ids)
+    };
+    let plan = query("EXPLAIN QUERY PLAN ")
         .fetch_all(&mut *conn)
         .await
         .unwrap();
+    assert!(!plan.is_empty());
+    let _ = query("").fetch_all(&mut *conn).await.unwrap();
     let count = Arc::new(AtomicUsize::new(0));
     let increment = count.clone();
     conn.lock_handle()
@@ -53,15 +55,13 @@ async fn steps(store: &Store, account: &AccountId, id: &MessageId) -> usize {
             true
         });
     let started = Instant::now();
-    let rows: Vec<String> = sqlx::query_scalar(ASKS_FOR_MESSAGES)
-        .bind(account.as_str())
-        .bind(ASKS_POLICY_VERSION)
-        .bind(ids)
-        .fetch_all(&mut *conn)
-        .await
-        .unwrap();
+    let rows = query("").fetch_all(&mut *conn).await.unwrap();
     conn.lock_handle().await.unwrap().remove_progress_handler();
-    assert_eq!(rows, ["{}"]);
+    use sqlx::Row;
+    assert_eq!(rows.len(), 1);
+    if !facets {
+        assert_eq!(rows[0].get::<String, _>("assessment_json"), "{}");
+    }
     let count = count.load(Ordering::Relaxed);
     eprintln!(
         "native asks singleton: {count} VM steps in {:?}",
@@ -78,15 +78,58 @@ async fn singleton_lookup_work_is_bounded_by_requested_ids_not_account_size() {
     let started = Instant::now();
     let ids = grow(&store, &account.id, 1_000).await;
     eprintln!("native full-schema seed 1000: {:?}", started.elapsed());
-    let small = steps(&store, &account.id, &ids[0]).await;
+    let small = steps(&store, &account.id, &ids[0], false).await;
+    let small_facets = steps(&store, &account.id, &ids[0], true).await;
     let started = Instant::now();
     grow(&store, &account.id, 9_000).await;
     eprintln!("native full-schema grow 10000: {:?}", started.elapsed());
-    let large = steps(&store, &account.id, &ids[0]).await;
+    let large = steps(&store, &account.id, &ids[0], false).await;
+    let large_facets = steps(&store, &account.id, &ids[0], true).await;
     assert!(
         large <= small * 2,
         "singleton work grew with account size: {small} -> {large}"
     );
+    assert!(
+        large_facets <= small_facets * 2,
+        "facet work grew with account size: {small_facets} -> {large_facets}"
+    );
+}
+
+#[tokio::test]
+async fn facet_summaries_keep_the_assessments_account_boundary() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    let other = test_account();
+    for own in [&account, &other] {
+        store.insert_account(own).await.unwrap();
+    }
+    let message = TestEnvelopeBuilder::new()
+        .account_id(account.id.clone())
+        .build();
+    store.upsert_envelope(&message).await.unwrap();
+    let revisions = store
+        .assessment_thread_revisions(&account.id, std::slice::from_ref(&message.thread_id))
+        .await
+        .unwrap();
+    store
+        .save_asks_batch(&account.id, &revisions, &[answer(&account.id, &message)])
+        .await
+        .unwrap();
+    // Even with the same message and generation, a differently owned facet
+    // cannot be used. Exercise the projection's account-update trigger too.
+    for (owner, expected) in [(&other.id, 0), (&account.id, 1)] {
+        sqlx::query("UPDATE mail_assessments SET account_id = ? WHERE message_id = ?")
+            .bind(owner.as_str())
+            .bind(message.id.as_str())
+            .execute(store.writer())
+            .await
+            .unwrap();
+        let (_, summaries) = store
+            .assessment_facets_for_messages(&account.id, std::slice::from_ref(&message.id))
+            .await
+            .unwrap();
+        assert_eq!(summaries.len(), expected);
+    }
 }
 
 #[tokio::test]
@@ -141,6 +184,18 @@ async fn requested_ids_keep_batch_set_semantics_and_account_policy_boundaries() 
     assert_eq!(found.len(), 2);
     assert_eq!(found[&first.id], answer(&account.id, &first));
     assert_eq!(found[&second.id], answer(&account.id, &second));
+    let (homes, summaries) = store
+        .assessment_facets_for_messages(&account.id, &requested)
+        .await
+        .unwrap();
+    assert!(homes.is_empty());
+    assert_eq!(summaries.len(), 2);
+    for message in [&first, &second] {
+        assert_eq!(
+            summaries[&message.id].input_fingerprint,
+            answer(&account.id, message).input_fingerprint
+        );
+    }
     assert!(store
         .asks_for_messages(&account.id, &[])
         .await
@@ -159,4 +214,10 @@ async fn requested_ids_keep_batch_set_semantics_and_account_policy_boundaries() 
         .unwrap();
     assert_eq!(found.len(), 1);
     assert!(found.contains_key(&second.id));
+    let (_, summaries) = store
+        .assessment_facets_for_messages(&account.id, &requested)
+        .await
+        .unwrap();
+    assert_eq!(summaries.len(), 1);
+    assert!(summaries.contains_key(&second.id));
 }

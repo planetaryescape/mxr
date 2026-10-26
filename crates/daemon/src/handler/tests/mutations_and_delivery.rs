@@ -1444,7 +1444,7 @@ async fn get_thread_includes_message_label_provider_ids() {
 }
 
 #[tokio::test]
-async fn list_envelopes_includes_message_label_provider_ids() {
+async fn envelope_pages_and_id_lookups_include_message_label_provider_ids() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let id = sync_and_get_first_id(&state).await;
 
@@ -1471,32 +1471,45 @@ async fn list_envelopes_includes_message_label_provider_ids() {
         .await
         .unwrap();
 
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 2,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListEnvelopes {
+    for request in [
+        Request::ListEnvelopes {
             label_id: None,
             account_id: None,
             limit: 200,
             offset: 0,
-        }),
-    };
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Envelopes { envelopes },
-        }) => {
-            let envelope = envelopes
-                .into_iter()
-                .find(|envelope| envelope.id == id)
-                .unwrap();
-            assert!(envelope
-                .label_provider_ids
-                .iter()
-                .any(|provider_id| provider_id == &label.provider_id));
+        },
+        Request::ListEnvelopes {
+            label_id: Some(label.id.clone()),
+            account_id: None,
+            limit: 200,
+            offset: 0,
+        },
+        Request::ListEnvelopesByIds {
+            message_ids: vec![id.clone(), mxr_core::MessageId::new()],
+        },
+    ] {
+        let msg = IpcMessage {
+            expected_workspace: None,
+            id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(request),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Envelopes { envelopes },
+            }) => {
+                let envelope = envelopes
+                    .into_iter()
+                    .find(|envelope| envelope.id == id)
+                    .unwrap();
+                assert!(envelope
+                    .label_provider_ids
+                    .iter()
+                    .any(|provider_id| provider_id == &label.provider_id));
+            }
+            other => panic!("Expected Envelopes response, got {other:?}"),
         }
-        other => panic!("Expected Envelopes response, got {other:?}"),
     }
 }
 

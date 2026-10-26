@@ -41,6 +41,13 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
         MessageDeletionRule::ClearedWithMessages,
     ),
     ("thread_summaries", MessageDeletionRule::ClearedWithMessages),
+    // SQLite's conversation_message_delete trigger clears both projections
+    // inside the same message deletion transaction, including raw SQL deletes.
+    ("conversation_summaries", MessageDeletionRule::ClearedWithMessages),
+    ("conversation_candidate_sets", MessageDeletionRule::ClearedWithMessages),
+    ("conversation_view_inputs", MessageDeletionRule::KeptNoText(
+        "thread view generations reject late synopsis writes; last-message and account deletion clear them",
+    )),
     ("decision_log", MessageDeletionRule::ClearedWithMessages),
     (
         "contact_commitments",

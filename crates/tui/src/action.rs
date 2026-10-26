@@ -106,6 +106,8 @@ pub enum Action {
     MessagesBack,
     /// Ctrl-f in Messages: the filter picker (turn, unread, past your pace).
     MessagesFilter,
+    /// `f` in Messages: cycle the view, preserving its toggles.
+    MessagesCycleFilter,
     /// Open Archive (`g e`): an early version that says what backs it.
     OpenArchiveMode,
     /// Enter on Now: open the row in its own mode.
@@ -673,6 +675,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | AnalyticsRowDrillDown
                 | AnalyticsUnsubscribe
                 | MessagesFilter
+                | MessagesCycleFilter
                 | OpenAnalyticsFilterModal
                 | CloseAnalyticsFilterModal
                 | SubmitAnalyticsFilterModal

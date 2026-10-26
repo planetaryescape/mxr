@@ -2345,6 +2345,13 @@ async fn concurrent_classification_keeps_pending_mail_visible_then_recovers_stor
         .assessments(&fx.account, policy)
         .await
         .unwrap();
+    // Start a real rebuild. Settled projections deliberately do not run the
+    // resolver (and therefore cannot race its publication hook).
+    sqlx::query("UPDATE bodies SET text_plain = text_plain || ' invalidated' WHERE message_id = ?")
+        .bind(mail.id.as_str())
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
     let state = fx.state.clone();
     let id = mail.id.clone();
     let hook = std::sync::Arc::new(move || {

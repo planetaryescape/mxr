@@ -1,4 +1,6 @@
 import { cn } from "@/lib/utils";
+import { KeyChip } from "@/components/KeyChip";
+import { choiceIndex } from "@/lib/keys/choiceNavigation";
 
 /**
  * The one either-or control (docs/blueprint/27 "Buttons and controls"): a
@@ -12,17 +14,21 @@ export function Segmented({
   options,
   onChange,
   className,
+  keys,
 }: {
   label: string;
   value: string;
   options: readonly (readonly [id: string, text: string])[];
   onChange: (value: string) => void;
   className?: string;
+  /** Existing direct shortcuts, shown beside the choices they operate. */
+  keys?: Readonly<Record<string, string>>;
 }) {
   return (
     <div
       role="radiogroup"
       aria-label={label}
+      title="Arrow keys change the choice; Home and End jump to the first and last"
       className={cn("inline-flex border border-rule bg-transparent", className)}
     >
       {options.map(([id, text]) => (
@@ -30,15 +36,18 @@ export function Segmented({
           key={id}
           type="button"
           role="radio"
+          aria-label={text}
+          aria-keyshortcuts={keys?.[id]}
           aria-checked={value === id}
           tabIndex={value === id ? 0 : -1}
           onClick={() => onChange(id)}
           onKeyDown={(event) => {
-            const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-            if (step === 0) return;
-            event.preventDefault();
+            if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
             const at = options.findIndex(([option]) => option === id);
-            const next = options[(at + step + options.length) % options.length];
+            const index = choiceIndex(event.key, at, options.length);
+            if (index === null) return;
+            event.preventDefault();
+            const next = options[index];
             if (!next) return;
             onChange(next[0]);
             const group = event.currentTarget.parentElement;
@@ -52,6 +61,7 @@ export function Segmented({
           )}
         >
           {text}
+          {keys?.[id] ? <KeyChip className="ml-1.5 h-4 px-1">{keys[id]}</KeyChip> : null}
         </button>
       ))}
     </div>

@@ -1,0 +1,14 @@
+DROP TRIGGER conversation_flags_update;
+DROP TRIGGER conversation_facet_insert;
+DROP TRIGGER conversation_facet_update;
+DROP TRIGGER conversation_facet_delete;
+DROP TRIGGER conversation_label_insert;
+DROP TRIGGER conversation_label_update;
+DROP TRIGGER conversation_label_delete;
+DROP TRIGGER conversation_label_role_update;
+DROP TRIGGER conversation_label_role_delete;
+DROP TRIGGER conversation_message_delete;
+DROP TABLE conversation_summaries;
+DROP TABLE conversation_view_inputs;
+DROP TABLE conversation_candidate_sets;
+DROP TABLE conversation_facet_clock;

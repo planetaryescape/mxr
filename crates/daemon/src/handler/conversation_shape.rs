@@ -43,7 +43,7 @@ pub(crate) fn shape_config(state: &crate::state::AppState) -> ShapeConfig {
     ShapeConfig::from_config(&state.config_snapshot().messages)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum Shape {
     /// The other person's address, lowercased.
     OneToOne(String),
@@ -96,6 +96,16 @@ pub(crate) struct ShapeInputs<'a> {
 }
 
 pub(crate) fn conversation_shape(thread: &[DeskMessage], inputs: &ShapeInputs<'_>) -> Shape {
+    shape(thread, inputs, false)
+}
+
+/// Stored homes already decided membership. Only participant geometry is
+/// needed by a list, not another parse of every historical message body.
+pub(crate) fn conversation_geometry(thread: &[DeskMessage], inputs: &ShapeInputs<'_>) -> Shape {
+    shape(thread, inputs, true)
+}
+
+fn shape(thread: &[DeskMessage], inputs: &ShapeInputs<'_>, known_member: bool) -> Shape {
     let is_self = inputs.is_self;
     let mut people: Vec<String> = Vec::new();
     let mut add = |email: &str| {
@@ -133,6 +143,12 @@ pub(crate) fn conversation_shape(thread: &[DeskMessage], inputs: &ShapeInputs<'_
     }
     if people.is_empty() {
         return Shape::NotConversation;
+    }
+    if known_member {
+        return match people.len() {
+            1 => Shape::OneToOne(people.remove(0)),
+            _ => Shape::Group(people),
+        };
     }
     let kept = thread
         .iter()

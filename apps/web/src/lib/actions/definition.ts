@@ -59,6 +59,8 @@ const SCOPES: Record<ActionScope, true> = {
   expired: true,
   now: true,
   messages: true,
+  "messages-filters": true,
+  page: true,
   updates: true,
   archive: true,
   reading: true,

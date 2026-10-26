@@ -40,6 +40,8 @@ const SCOPE_TITLE: Record<Exclude<ActionScope, "global">, string> = {
   expired: "To do: Expired list",
   now: "Now",
   messages: "Messages",
+  "messages-filters": "Messages filters",
+  page: "Page controls",
   archive: "Archive",
   updates: "Updates",
   reading: "Reading",

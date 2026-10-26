@@ -1,10 +1,41 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { filterOf, isFiltered, NO_FILTER, searchOf, type MessagesFilter } from "./filters";
+import {
+  cycleMessagesFilter,
+  filterOf,
+  isFiltered,
+  NO_FILTER,
+  searchOf,
+  type MessagesFilter,
+} from "./filters";
 import { MessagesFilterBar } from "./MessagesFilterBar";
 
 describe("Messages attention and history views", () => {
+  it("cycles every view and wraps without dropping either toggle", () => {
+    let filter: MessagesFilter = { turn: null, unread: true, pastPace: true };
+    for (const turn of ["all", "mine", "theirs", null] as const) {
+      filter = cycleMessagesFilter(filter);
+      expect(filter).toEqual({ turn, unread: true, pastPace: true });
+    }
+  });
+
+  it("shows the cycle key and offers the same action as a button while loading", () => {
+    const onChange = vi.fn<(next: MessagesFilter) => void>();
+    render(
+      <MessagesFilterBar
+        filter={{ turn: "theirs", unread: true, pastPace: true }}
+        counts={null}
+        onChange={onChange}
+      />,
+    );
+    const cycle = screen.getByRole("button", { name: "Cycle views" });
+    expect(cycle).toHaveAttribute("aria-keyshortcuts", "f");
+    expect(cycle).toHaveTextContent("fCycle views");
+    fireEvent.click(cycle);
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({ turn: null, unread: true, pastPace: true });
+  });
+
   it("requires an explicit history choice and clearing restores attention", () => {
     const onChange = vi.fn<(next: MessagesFilter) => void>();
     const { rerender } = render(

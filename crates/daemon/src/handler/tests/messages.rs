@@ -18,6 +18,258 @@ const RUTH: &str = "ruth@keystone.example";
 const MAYA: &str = "maya@orbit.example";
 const JON: &str = "jon@northstar.example";
 
+#[tokio::test]
+async fn text_only_list_previews_keep_complete_non_inline_attachments_on_conversation_detail() {
+    use mxr_core::{AttachmentDisposition, AttachmentId, AttachmentMeta};
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Contract",
+        Duration::days(1),
+    )
+    .await;
+    let incoming = mail(
+        &fx,
+        &thread,
+        ("Samir", SAMIR),
+        &[ME],
+        &[],
+        "Re: Contract",
+        Duration::hours(1),
+    )
+    .await;
+    let file = AttachmentId::new();
+    let attachment = |id, name: &str, disposition| AttachmentMeta {
+        id,
+        message_id: incoming.id.clone(),
+        filename: name.into(),
+        mime_type: "application/pdf".into(),
+        disposition,
+        content_id: None,
+        content_location: None,
+        size_bytes: 512,
+        local_path: None,
+        provider_id: name.into(),
+    };
+    fx.state
+        .store
+        .insert_body(&MessageBody {
+            message_id: incoming.id.clone(),
+            text_plain: Some("Here is the revised contract.".into()),
+            text_html: None,
+            attachments: vec![
+                attachment(
+                    file.clone(),
+                    "contract.pdf",
+                    AttachmentDisposition::Attachment,
+                ),
+                attachment(
+                    AttachmentId::new(),
+                    "signature.png",
+                    AttachmentDisposition::Inline,
+                ),
+            ],
+            fetched_at: Utc::now(),
+            metadata: MessageMetadata::default(),
+        })
+        .await
+        .unwrap();
+    let messages = list(&fx).await;
+    let row = rows(&messages)
+        .into_iter()
+        .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+        .unwrap();
+    assert_eq!(
+        row.preview.as_ref().unwrap().text,
+        "Here is the revised contract."
+    );
+    let page = person(&fx, SAMIR, Some(&thread)).await;
+    let conversation = page.conversation.unwrap();
+    let message = conversation
+        .messages
+        .iter()
+        .find(|m| m.message_id == incoming.id)
+        .unwrap();
+    assert_eq!(message.attachments.len(), 1);
+    assert_eq!(message.attachments[0].attachment_id, file);
+    assert_eq!(message.attachments[0].filename, "contract.pdf");
+    assert_eq!(message.attachments[0].size_bytes, 512);
+}
+
+async fn history_at(fx: &Fixture, now: chrono::DateTime<Utc>) -> MessagesData {
+    crate::handler::messages::messages_at(&fx.state, None, history_filter(), 50, now)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn persisted_thread_facts_match_rebuilding_and_read_edits_retire_them() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let mut incoming = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Old conversation",
+        Duration::days(400),
+    )
+    .await;
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Re: Old conversation",
+        Duration::days(399),
+    )
+    .await;
+    fx.state.store.refresh_contacts().await.unwrap();
+    let now = Utc::now();
+    // The first pass may materialize missing facets. A second observes their
+    // committed tokens and persists facts; no mode-response cache is involved.
+    history_at(&fx, now).await;
+    let expected = history_at(&fx, now).await;
+    let saved: i64 = sqlx::query_scalar("SELECT count(*) FROM conversation_summaries")
+        .fetch_one(fx.state.store.reader())
+        .await
+        .unwrap();
+    assert!(saved > 0);
+    let cached = history_at(&fx, now).await;
+    assert_eq!(
+        serde_json::to_value(&expected).unwrap(),
+        serde_json::to_value(&cached).unwrap()
+    );
+    let row = rows(&cached)
+        .into_iter()
+        .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+        .unwrap();
+    assert!(row.unread);
+    assert_eq!(row.title, "Samir Patel");
+    assert_eq!(row.topics[0].message_count, 2);
+
+    incoming.flags |= mxr_core::MessageFlags::READ;
+    fx.store_envelope(&incoming, MessageDirection::Inbound)
+        .await;
+    let changed = history_at(&fx, now).await;
+    assert!(
+        !rows(&changed)
+            .into_iter()
+            .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+            .unwrap()
+            .unread
+    );
+    sqlx::query("DELETE FROM conversation_summaries")
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    fx.state.history_cache.clear();
+    let rebuilt = history_at(&fx, now).await;
+    assert_eq!(
+        serde_json::to_value(changed).unwrap(),
+        serde_json::to_value(rebuilt).unwrap()
+    );
+}
+
+#[tokio::test]
+async fn persisted_history_rekeys_live_people_links_without_rebuilding_thread_facts() {
+    let fx = Fixture::new().await;
+    for email in [SAMIR, "samir.p@home.example"] {
+        mail(
+            &fx,
+            &ThreadId::new(),
+            ("Me", ME),
+            &[email],
+            &[],
+            "Hello",
+            Duration::days(400),
+        )
+        .await;
+    }
+    let now = Utc::now();
+    history_at(&fx, now).await;
+    history_at(&fx, now).await;
+    let before: Vec<(String, String)> = sqlx::query_as(
+        "SELECT thread_id, summary_json FROM conversation_summaries ORDER BY thread_id",
+    )
+    .fetch_all(fx.state.store.reader())
+    .await
+    .unwrap();
+    request(
+        &fx,
+        Request::MergePeople {
+            account_id: fx.account.clone(),
+            into: SAMIR.into(),
+            addresses: vec!["samir.p@home.example".into()],
+            dry_run: false,
+        },
+    )
+    .await;
+    let merged = history_at(&fx, now).await;
+    let row = rows(&merged)
+        .into_iter()
+        .find(|r| r.person.as_ref().is_some_and(|p| p.id == SAMIR))
+        .unwrap();
+    assert_eq!(row.topics.len(), 2);
+    let after: Vec<(String, String)> = sqlx::query_as(
+        "SELECT thread_id, summary_json FROM conversation_summaries ORDER BY thread_id",
+    )
+    .fetch_all(fx.state.store.reader())
+    .await
+    .unwrap();
+    assert_eq!(
+        before, after,
+        "people links are applied live, not persisted into thread geometry"
+    );
+}
+
+#[tokio::test]
+async fn a_cached_history_synopsis_expires_when_a_future_date_becomes_eligible() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Earlier subject",
+        Duration::days(400),
+    )
+    .await;
+    let future = mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Future subject",
+        Duration::days(-3),
+    )
+    .await;
+    let now = Utc::now();
+    history_at(&fx, now).await;
+    let before = history_at(&fx, now).await;
+    let old = rows(&before)
+        .into_iter()
+        .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+        .unwrap();
+    assert_eq!(old.topics[0].subject, "Earlier subject");
+    let after = history_at(&fx, future.date - Duration::days(1)).await;
+    let new = rows(&after)
+        .into_iter()
+        .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+        .unwrap();
+    assert_eq!(new.topics[0].subject, "Future subject");
+}
+
 fn history_filter() -> MessagesFilterData {
     MessagesFilterData {
         turn: Some(MessagesTurnData::All),
@@ -266,14 +518,14 @@ async fn due_follow_up_on_archived_mail_is_attention_in_messages_now_and_rail() 
     let fx = Fixture::new().await;
     let thread = ThreadId::new();
     let received = fx
-        .message(&thread, SAMIR, ME, Duration::days(2), None)
+        .message(&thread, SAMIR, ME, Duration::days(400), None)
         .await;
     let sent = fx
         .message(
             &thread,
             ME,
             SAMIR,
-            Duration::days(1),
+            Duration::days(399),
             received.message_id_header.as_deref(),
         )
         .await;
@@ -300,6 +552,14 @@ async fn due_follow_up_on_archived_mail_is_attention_in_messages_now_and_rail() 
         .why
         .contains("no reply by the time you set"));
     assert_eq!(attention.row_count, 1);
+    // Window/history preloading must still add the desk's returned threads
+    // outside the recent window, and never relabel a due turn as waiting.
+    let all = filtered(&fx, Some(MessagesTurnData::All), Default::default()).await;
+    assert_eq!(all.your_turn[0].topics[0].thread_id, thread);
+    assert_eq!(all.your_turn[0].topics[0].state, TopicStateData::YourTurn);
+    let waiting = filtered(&fx, Some(MessagesTurnData::Theirs), Default::default()).await;
+    assert!(shown_ids(&waiting).is_empty());
+    assert_eq!(waiting.row_count, 1);
     let ResponseData::Now { now } = request(&fx, Request::GetNow { account_id: None }).await else {
         panic!("expected Now")
     };
@@ -1853,6 +2113,70 @@ fn each_filter_is_its_own_mode_cache_entry() {
         ),
         view(Default::default(), Some(MessagesTurnData::Mine)),
         "the legacy top-level turn and the filter's turn are the same view"
+    );
+}
+
+#[tokio::test]
+async fn attention_filters_reuse_a_complete_fresh_snapshot_without_changing_the_answer() {
+    let fx = Fixture::new().await;
+    seed_filter_rows(&fx).await;
+    pin(&fx, MAYA).await;
+    pin(&fx, SAMIR).await;
+    crate::handler::assessments::reconcile_account(&fx.state, &fx.account)
+        .await
+        .unwrap();
+    let base = filtered(&fx, None, Default::default()).await;
+    for turn in [None, Some(MessagesTurnData::Mine)] {
+        for (unread, past_pace) in [(false, false), (true, false), (false, true), (true, true)] {
+            let filter = MessagesFilterData {
+                turn,
+                unread,
+                past_pace,
+            };
+            let cached = filtered(&fx, None, filter).await;
+            assert_eq!(
+                cached.generated_at, base.generated_at,
+                "a new attention filter must not rebuild the mailbox"
+            );
+            let direct = crate::handler::messages::messages_at(
+                &fx.state,
+                None,
+                filter,
+                50,
+                base.generated_at,
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                serde_json::to_value(cached).unwrap(),
+                serde_json::to_value(direct).unwrap()
+            );
+        }
+    }
+    let fresh_thread = ThreadId::new();
+    mail(
+        &fx,
+        &fresh_thread,
+        ("Ruth", RUTH),
+        &[ME],
+        &[],
+        "New question",
+        Duration::minutes(1),
+    )
+    .await;
+    let changed = filtered(
+        &fx,
+        None,
+        MessagesFilterData {
+            unread: true,
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_ne!(changed.generated_at, base.generated_at);
+    assert!(
+        shown_ids(&changed).contains(&format!("person:{RUTH}")),
+        "a store change must invalidate the source before deriving a filtered answer"
     );
 }
 

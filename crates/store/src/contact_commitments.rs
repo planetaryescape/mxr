@@ -194,6 +194,35 @@ impl super::Store {
         email: Option<&str>,
         status: Option<CommitmentStatus>,
     ) -> Result<Vec<ContactCommitmentRecord>, sqlx::Error> {
+        self.contact_commitments_where(account_id, email, status, None)
+            .await
+    }
+
+    /// Own, open commitments with an actionable date inside the desk's
+    /// inclusive window. Apply this cheap selection before validating active
+    /// evidence, rather than validating and loading every open commitment.
+    pub async fn desk_due_commitments(
+        &self,
+        account_id: &AccountId,
+        floor: DateTime<Utc>,
+        horizon: DateTime<Utc>,
+    ) -> Result<Vec<ContactCommitmentRecord>, sqlx::Error> {
+        self.contact_commitments_where(
+            account_id,
+            None,
+            Some(CommitmentStatus::Open),
+            Some((floor, horizon)),
+        )
+        .await
+    }
+
+    async fn contact_commitments_where(
+        &self,
+        account_id: &AccountId,
+        email: Option<&str>,
+        status: Option<CommitmentStatus>,
+        due_window: Option<(DateTime<Utc>, DateTime<Utc>)>,
+    ) -> Result<Vec<ContactCommitmentRecord>, sqlx::Error> {
         let mut sql = String::from(
             r#"SELECT id, account_id, email, thread_id, direction, status, who_owes, what,
                       by_when, by_when_source, evidence_msg_id, extracted_at, resolved_at
@@ -204,6 +233,10 @@ impl super::Store {
         }
         if status.is_some() {
             sql.push_str(" AND status = ?");
+        }
+        if due_window.is_some() {
+            sql.push_str(" AND direction = 'yours' AND by_when >= ? AND by_when <= ? AND ");
+            sql.push_str(crate::commitment_date_source::ACTIONABLE_BY_WHEN_SQL);
         }
         // History reads retain legacy evidence. Only the active view depends on
         // current stored asks; retiring an extractor must not hide old records.
@@ -218,6 +251,9 @@ impl super::Store {
         }
         if let Some(status) = status {
             query = query.bind(status.as_str().to_string());
+        }
+        if let Some((floor, horizon)) = due_window {
+            query = query.bind(floor.timestamp()).bind(horizon.timestamp());
         }
         if status == Some(CommitmentStatus::Open) {
             query = query

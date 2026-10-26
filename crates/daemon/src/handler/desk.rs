@@ -17,12 +17,13 @@ use super::turn_units::{TurnKeys, TurnUnits};
 use super::HandlerResult;
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Utc};
+use futures::{StreamExt, TryStreamExt};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::CalendarPartstat;
 use mxr_protocol::{DeskElsewhereData, DeskLaneData, DeskLaneKind, DeskRowData, ResponseData};
 use mxr_store::{
-    CadenceDriftRow, CommitmentDirection, CommitmentStatus, ContactCommitmentRecord,
-    DeliveryListFilter, DeskContact, DeskLatestExchange, DeskMessage, ScreenerDisposition,
+    CadenceDriftRow, CommitmentDirection, ContactCommitmentRecord, DeliveryListFilter, DeskContact,
+    DeskLatestExchange, DeskMessage, ScreenerDisposition,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -109,8 +110,16 @@ pub(super) async fn compose_desk(
     let mut screener_senders = Vec::new();
     let mut elsewhere = DeskElsewhereData::default();
     let mut last_from_people_at: Option<DateTime<Utc>> = None;
-    for account in &accounts {
-        let desk = account_desk(state, account, now).await?;
+    // Bound concurrency and retain account order: the first account with a
+    // screener queue still owns the link, but its peers need not wait for
+    // another account's local reads to finish.
+    let mut desks = futures::stream::iter(accounts.iter().cloned())
+        .map(|account| async move {
+            let desk = account_desk(state, &account, now).await?;
+            Ok::<_, super::HandlerError>((account, desk))
+        })
+        .buffered(3);
+    while let Some((account, desk)) = desks.try_next().await? {
         rows.extend(desk.rows);
         turn_keys.extend(desk.turn_keys);
         screener_senders.extend(
@@ -667,7 +676,7 @@ async fn due_commitments(
     let floor = now - Duration::days(DESK_WINDOW_DAYS);
     Ok(state
         .store
-        .list_contact_commitments(account_id, None, Some(CommitmentStatus::Open))
+        .desk_due_commitments(account_id, floor, horizon)
         .await?
         .into_iter()
         .filter_map(|commitment| {

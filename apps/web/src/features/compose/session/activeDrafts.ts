@@ -30,6 +30,8 @@ import {
 } from "@/lib/workspaceOwner";
 
 const activeDraftStorageKey = "mxr.compose.activeDrafts";
+const canonicalDraftKey = (draftId: string, binding: WorkspaceBinding) =>
+  `compose:draft:${encodeURIComponent(binding.target)}:${binding.workspace.workspace_id}:${binding.workspace.recovery_generation}:${draftId}`;
 
 interface ActiveDraftEntry {
   snapshot?: ComposeDraftState;
@@ -124,7 +126,74 @@ export async function loadInitialComposeSession(
     );
   }
   if (intent.draftId) return restoreComposeSession(intent.draftId);
-  return startComposeSession(intent.kind, intent.messageId, intent.inviteAction);
+  const started = await startComposeSession(intent.kind, intent.messageId, intent.inviteAction);
+  if (intent.kind !== "reply" && intent.kind !== "reply_all") return started;
+
+  const canonicalId = started.session.draftId;
+  if (!canonicalId) return started;
+  const retained = findActiveDraftByCanonicalId(canonicalId, intent.key);
+  if (!retained?.snapshot) return started;
+  const snapshot = retained.snapshot;
+  const binding = snapshot.binding;
+  const selected = selectedWorkspace();
+  if (
+    !binding ||
+    !selected ||
+    binding.target !== selected.target ||
+    !sameOwner(binding.workspace, selected.workspace)
+  )
+    return started;
+
+  await requestCoordinator.settleCompose(
+    composeQueueKey(snapshot.draftPath, snapshot.recoverySourcePath),
+  );
+  const latest = findActiveDraftByCanonicalId(canonicalId, intent.key)?.snapshot ?? snapshot;
+  if (
+    !latest.binding ||
+    latest.binding.target !== binding.target ||
+    !sameOwner(latest.binding.workspace, binding.workspace)
+  )
+    return started;
+  rememberComposeBinding(latest.draftPath, binding);
+  return { retainedSnapshot: true, session: { ...latest, previewHtml: "" } };
+}
+
+function findActiveDraftByCanonicalId(
+  draftId: string,
+  excludeKey: string,
+): ActiveDraftEntry | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = window.localStorage.getItem(activeDraftStorageKey);
+    if (!raw) return undefined;
+    const parsed: unknown = JSON.parse(raw);
+    if (!record(parsed)) return undefined;
+    const selected = selectedWorkspace();
+    if (!selected) return undefined;
+    const canonicalKey = canonicalDraftKey(draftId, {
+      target: selected.target,
+      workspace: selected.workspace,
+    });
+    const canonical = parsed[canonicalKey];
+    const entries = [
+      ...(canonical === undefined ? [] : [[canonicalKey, canonical] as const]),
+      ...Object.entries(parsed),
+    ];
+    for (const [key, value] of entries) {
+      if (key === excludeKey || !record(value) || typeof value.draftPath !== "string") continue;
+      const entry = readActiveDraftEntry(value);
+      const snapshot = entry.snapshot;
+      if (
+        snapshot?.draftId === draftId &&
+        snapshot.binding?.target === selected.target &&
+        sameOwner(snapshot.binding.workspace, selected.workspace)
+      )
+        return entry;
+    }
+  } catch {
+    // A malformed or unreadable journal stays untouched; the resolved canonical file is safe.
+  }
+  return undefined;
 }
 
 function readActiveDraft(key: string): ActiveDraftEntry | undefined {
@@ -144,21 +213,27 @@ function readActiveDraft(key: string): ActiveDraftEntry | undefined {
     if (entry === undefined) return undefined;
     if (!record(entry) || typeof entry.draftPath !== "string")
       throw new Error("Retained compose identity is malformed");
-    return {
-      draftPath: entry.draftPath,
-      updatedAt: typeof entry.updatedAt === "number" ? entry.updatedAt : 0,
-      accountId: typeof entry.accountId === "string" ? entry.accountId : undefined,
-      recoverySourcePath:
-        typeof entry.recoverySourcePath === "string" ? entry.recoverySourcePath : undefined,
-      preservedRecoveryPath:
-        typeof entry.preservedRecoveryPath === "string" ? entry.preservedRecoveryPath : undefined,
-      snapshot: entry.snapshot === undefined ? undefined : parseSnapshot(entry.snapshot),
-    };
+    return readActiveDraftEntry(entry);
   } catch (error) {
     throw new Error("Cannot read retained private compose work; the journal was preserved", {
       cause: error,
     });
   }
+}
+
+function readActiveDraftEntry(entry: Record<string, unknown>): ActiveDraftEntry {
+  if (typeof entry.draftPath !== "string")
+    throw new Error("Retained compose identity is malformed");
+  return {
+    draftPath: entry.draftPath,
+    updatedAt: typeof entry.updatedAt === "number" ? entry.updatedAt : 0,
+    accountId: typeof entry.accountId === "string" ? entry.accountId : undefined,
+    recoverySourcePath:
+      typeof entry.recoverySourcePath === "string" ? entry.recoverySourcePath : undefined,
+    preservedRecoveryPath:
+      typeof entry.preservedRecoveryPath === "string" ? entry.preservedRecoveryPath : undefined,
+    snapshot: entry.snapshot === undefined ? undefined : parseSnapshot(entry.snapshot),
+  };
 }
 
 export function rememberActiveDraft(key: string, draft: ComposeDraftState): boolean {
@@ -190,7 +265,7 @@ export function rememberActiveDraft(key: string, draft: ComposeDraftState): bool
         parsed[`${key}:retained:${ownerKey}`] = prior;
       }
     }
-    parsed[key] = {
+    const entry: ActiveDraftEntry = {
       snapshot: draft,
       draftPath: draft.draftPath,
       recoverySourcePath: draft.recoverySourcePath,
@@ -198,6 +273,23 @@ export function rememberActiveDraft(key: string, draft: ComposeDraftState): bool
       accountId: draft.accountId,
       updatedAt: Date.now(),
     };
+    parsed[key] = entry;
+    if (draft.draftId && draft.binding) {
+      parsed[canonicalDraftKey(draft.draftId, draft.binding)] = entry;
+      for (const [storedKey, stored] of Object.entries(parsed)) {
+        if (!record(stored) || !record(stored.snapshot) || !record(stored.snapshot.binding))
+          continue;
+        const owner = parseWorkspace(stored.snapshot.binding.workspace);
+        if (
+          stored.snapshot.draftId === draft.draftId &&
+          stored.snapshot.recoverySourcePath === draft.recoverySourcePath &&
+          stored.snapshot.binding.target === draft.binding.target &&
+          owner &&
+          sameOwner(owner, draft.binding.workspace)
+        )
+          parsed[storedKey] = entry;
+      }
+    }
     window.localStorage.setItem(activeDraftStorageKey, JSON.stringify(parsed));
     return true;
   } catch {
@@ -225,6 +317,24 @@ export function forgetActiveDraft(key: string, binding?: WorkspaceBinding): bool
     delete parsed[
       `${key}:retained:${binding.workspace.workspace_id}:${binding.workspace.recovery_generation}`
     ];
+    if (record(entry) && record(entry.snapshot) && typeof entry.snapshot.draftId === "string") {
+      for (const [storedKey, stored] of Object.entries(parsed)) {
+        if (
+          !record(stored) ||
+          !record(stored.snapshot) ||
+          stored.snapshot.draftId !== entry.snapshot.draftId ||
+          !record(stored.snapshot.binding)
+        )
+          continue;
+        const owner = parseWorkspace(stored.snapshot.binding.workspace);
+        if (
+          owner &&
+          stored.snapshot.binding.target === binding.target &&
+          sameOwner(owner, binding.workspace)
+        )
+          delete parsed[storedKey];
+      }
+    }
     window.localStorage.setItem(activeDraftStorageKey, JSON.stringify(parsed));
     return true;
   } catch {

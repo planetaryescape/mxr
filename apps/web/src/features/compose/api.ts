@@ -90,6 +90,26 @@ export async function restoreComposeSession(
   );
 }
 
+export function setComposeAudience(input: {
+  draftPath: string;
+  draftId: string;
+  replyAll: boolean;
+  expectedRevision: number;
+  dryRun: boolean;
+}): Promise<ComposeSessionResponse> {
+  return ownedSession(
+    "/api/v1/mail/compose/session/audience",
+    {
+      draft_path: input.draftPath,
+      draft_id: input.draftId,
+      reply_all: input.replyAll,
+      expected_revision: input.expectedRevision,
+      dry_run: input.dryRun,
+    },
+    requireComposeBinding(input.draftPath),
+  );
+}
+
 export function refreshComposeSession(
   draftPath: string,
   expectedAttachments?: string[],

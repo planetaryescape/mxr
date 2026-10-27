@@ -3146,6 +3146,326 @@ pub(super) async fn prepare_reply(
     })
 }
 
+/// Resolve a reply source by account-scoped RFC Message-ID. Provider thread IDs
+/// are deliberately not used here: they are hints for sending, not local
+/// conversation identity.
+async fn reply_source_for_draft(state: &AppState, draft: &Draft) -> Result<Envelope, HandlerError> {
+    let headers = draft
+        .reply_headers
+        .as_ref()
+        .ok_or_else(|| HandlerError::InvalidRequest("draft is not a reply".to_string()))?;
+    let matches = state
+        .store
+        .list_envelopes_by_message_id_header(&draft.account_id, &headers.in_reply_to)
+        .await?;
+    match matches.as_slice() {
+        [source, duplicates @ ..]
+            if duplicates.iter().all(|other| {
+                other.thread_id == source.thread_id
+                    && other.from == source.from
+                    && other.to == source.to
+                    && other.cc == source.cc
+            }) =>
+        {
+            Ok(source.clone())
+        }
+        [] => Err(HandlerError::InvalidRequest(
+            "reply source message no longer exists".to_string(),
+        )),
+        _ => Err(HandlerError::InvalidRequest(
+            "reply source Message-ID is ambiguous in this account".to_string(),
+        )),
+    }
+}
+
+fn reply_conversation_lock_id(
+    account_id: &mxr_core::AccountId,
+    thread_id: &mxr_core::ThreadId,
+) -> mxr_core::DraftId {
+    // This ID is only a mutex key. The namespace prevents collision with a
+    // persisted draft ID; it is never written to the drafts table.
+    const REPLY_LOCK_NAMESPACE: uuid::Uuid = uuid::Uuid::from_bytes([
+        0xe4, 0xc8, 0xa3, 0x1d, 0x91, 0x6b, 0x5f, 0x47, 0xa4, 0x22, 0x70, 0x92, 0xa0, 0xf1, 0x88,
+        0x3c,
+    ]);
+    let key = format!("{account_id}:{thread_id}");
+    mxr_core::DraftId::from_uuid(uuid::Uuid::new_v5(&REPLY_LOCK_NAMESPACE, key.as_bytes()))
+}
+
+async fn reply_automatic_audience(
+    state: &AppState,
+    source: &Envelope,
+    reply_all: bool,
+) -> Result<(Vec<Address>, Vec<Address>, Address), HandlerError> {
+    let body = state.sync_engine.get_body(&source.id).await.ok();
+    let (primary_email, owned) = account_owned_addresses(state, &source.account_id).await?;
+    let from = reply_from_default(&owned, &primary_email, source, body.as_ref());
+    let from = mxr_mail_parse::parse_address_list(&from)
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            HandlerError::InvalidRequest("account has no usable reply From address".to_string())
+        })?;
+    let reply_to_header = body
+        .as_ref()
+        .and_then(|body| body.metadata.reply_to.first());
+    let recipients = super::reply_recipients::reply_recipients(
+        &source.from,
+        &source.to,
+        &source.cc,
+        reply_to_header,
+        &owned,
+        reply_all,
+    );
+    Ok((
+        mxr_mail_parse::parse_address_list(&recipients.to.join(", ")),
+        mxr_mail_parse::parse_address_list(&recipients.cc.join(", ")),
+        from,
+    ))
+}
+
+pub(super) async fn ensure_reply_draft(
+    state: &AppState,
+    message_id: &mxr_core::MessageId,
+    reply_all: bool,
+    dry_run: bool,
+) -> HandlerResult {
+    let source = state
+        .store
+        .get_envelope(message_id)
+        .await?
+        .ok_or_else(|| HandlerError::InvalidRequest("Message not found".to_string()))?;
+    let Some(in_reply_to) = source.message_id_header.clone() else {
+        return Err(HandlerError::InvalidRequest(
+            "cannot prepare a reply without a Message-ID header".to_string(),
+        ));
+    };
+    let _conversation_guard = state
+        .acquire_draft_operation(&reply_conversation_lock_id(
+            &source.account_id,
+            &source.thread_id,
+        ))
+        .await;
+
+    let mut drafts = state.store.list_drafts(&source.account_id).await?;
+    // Legacy duplicates stay intact; choose the oldest, then the stable id.
+    drafts.sort_by(|left, right| {
+        left.created_at
+            .cmp(&right.created_at)
+            .then_with(|| left.id.as_str().cmp(&right.id.as_str()))
+    });
+    for candidate in drafts {
+        let Some(headers) = candidate.reply_headers.as_ref() else {
+            continue;
+        };
+        if !matches!(
+            candidate.intent,
+            mxr_core::DraftIntent::Reply | mxr_core::DraftIntent::ReplyAll
+        ) {
+            continue;
+        }
+        let sources = state
+            .store
+            .list_envelopes_by_message_id_header(&candidate.account_id, &headers.in_reply_to)
+            .await?;
+        if !sources.iter().any(|envelope| {
+            envelope.thread_id == source.thread_id && envelope.account_id == source.account_id
+        }) {
+            continue;
+        }
+        if state.store.get_draft_status(&candidate.id).await? != Some(DraftStatus::Draft)
+            || state.store.is_restored_draft(&candidate.id).await?
+            || state
+                .store
+                .get_draft_send_outcome(&candidate.id)
+                .await?
+                .is_some()
+            || state
+                .store
+                .list_pending_scheduled_sends(Some(&candidate.account_id))
+                .await?
+                .iter()
+                .any(|scheduled| scheduled.draft_id == candidate.id)
+        {
+            continue;
+        }
+        let _draft_guard = state.acquire_draft_operation(&candidate.id).await;
+        let current = state.store.get_draft(&candidate.id).await?;
+        if let Some(current) = current.filter(|draft| {
+            draft.account_id == source.account_id
+                && matches!(
+                    draft.intent,
+                    mxr_core::DraftIntent::Reply | mxr_core::DraftIntent::ReplyAll
+                )
+                && draft
+                    .reply_headers
+                    .as_ref()
+                    .is_some_and(|h| h.in_reply_to == headers.in_reply_to)
+        }) {
+            if state.store.get_draft_status(&current.id).await? == Some(DraftStatus::Draft)
+                && !state.store.is_restored_draft(&current.id).await?
+                && state
+                    .store
+                    .get_draft_send_outcome(&current.id)
+                    .await?
+                    .is_none()
+                && !state
+                    .store
+                    .list_pending_scheduled_sends(Some(&current.account_id))
+                    .await?
+                    .iter()
+                    .any(|scheduled| scheduled.draft_id == current.id)
+            {
+                return Ok(ResponseData::Draft { draft: current });
+            }
+        }
+    }
+
+    let (to, cc, from) = reply_automatic_audience(state, &source, reply_all).await?;
+    let now = chrono::Utc::now();
+    let draft = Draft {
+        revision: None,
+        id: mxr_core::DraftId::new(),
+        account_id: source.account_id.clone(),
+        from: Some(from),
+        reply_headers: Some(ReplyHeaders {
+            in_reply_to,
+            references: build_reply_references(&source),
+            thread_id: None,
+        }),
+        intent: if reply_all {
+            mxr_core::DraftIntent::ReplyAll
+        } else {
+            mxr_core::DraftIntent::Reply
+        },
+        to,
+        cc,
+        bcc: Vec::new(),
+        subject: mxr_compose::prefix_subject(mxr_compose::SubjectMarker::Reply, &source.subject),
+        content: DraftContent::markdown(""),
+        attachments: Vec::new(),
+        managed_attachments: Some(Vec::new()),
+        inline_assets: Vec::new(),
+        inline_calendar_reply: None,
+        created_at: now,
+        updated_at: now,
+    };
+    if dry_run {
+        return Ok(ResponseData::Draft { draft });
+    }
+    let _draft_guard = state.acquire_draft_operation(&draft.id).await;
+    create_draft_locked(state, &draft).await
+}
+
+fn address_key(address: &Address) -> String {
+    address.email.trim().to_ascii_lowercase()
+}
+
+fn subtract_automatic(addresses: &[Address], automatic: &[Address]) -> Vec<Address> {
+    let automatic: HashSet<_> = automatic.iter().map(address_key).collect();
+    addresses
+        .iter()
+        .filter(|address| !automatic.contains(&address_key(address)))
+        .cloned()
+        .collect()
+}
+
+fn merge_audience(
+    to: Vec<Address>,
+    cc: Vec<Address>,
+    bcc: Vec<Address>,
+) -> (Vec<Address>, Vec<Address>, Vec<Address>) {
+    let mut bcc_seen = HashSet::new();
+    let bcc: Vec<_> = bcc
+        .into_iter()
+        .filter(|address| bcc_seen.insert(address_key(address)))
+        .collect();
+    // A custom Bcc must not become visible just because the reply policy also
+    // selected that address for To or Cc.
+    let mut visible_seen = bcc_seen;
+    let mut visible = |addresses: Vec<Address>| {
+        addresses
+            .into_iter()
+            .filter(|address| visible_seen.insert(address_key(address)))
+            .collect()
+    };
+    (visible(to), visible(cc), bcc)
+}
+
+pub(super) async fn set_reply_draft_audience(
+    state: &AppState,
+    draft_id: &mxr_core::DraftId,
+    reply_all: bool,
+    expected_revision: i64,
+    dry_run: bool,
+) -> HandlerResult {
+    let _draft_guard = state.acquire_draft_operation(draft_id).await;
+    let mut draft = checked_draft(state, draft_id, Some(expected_revision)).await?;
+    if state.store.is_restored_draft(draft_id).await?
+        || state
+            .store
+            .get_draft_send_outcome(draft_id)
+            .await?
+            .is_some()
+        || state
+            .store
+            .list_pending_scheduled_sends(Some(&draft.account_id))
+            .await?
+            .iter()
+            .any(|scheduled| scheduled.draft_id == *draft_id)
+    {
+        return Err(HandlerError::InvalidRequest(
+            "draft is held by send recovery or scheduled for sending".to_string(),
+        ));
+    }
+    if draft.intent != mxr_core::DraftIntent::Reply
+        && draft.intent != mxr_core::DraftIntent::ReplyAll
+    {
+        return Err(HandlerError::InvalidRequest(
+            "audience can only be changed on a reply draft".to_string(),
+        ));
+    }
+    let source = reply_source_for_draft(state, &draft).await?;
+    let (old_to, old_cc, _) = reply_automatic_audience(
+        state,
+        &source,
+        draft.intent == mxr_core::DraftIntent::ReplyAll,
+    )
+    .await?;
+    let (new_to, new_cc, _) = reply_automatic_audience(state, &source, reply_all).await?;
+    let custom_to = subtract_automatic(&draft.to, &old_to);
+    let custom_cc = subtract_automatic(&draft.cc, &old_cc);
+    let (to, cc, bcc) = merge_audience(
+        new_to.into_iter().chain(custom_to).collect(),
+        new_cc.into_iter().chain(custom_cc).collect(),
+        draft.bcc.clone(),
+    );
+    draft.to = to;
+    draft.cc = cc;
+    draft.bcc = bcc;
+    draft.intent = if reply_all {
+        mxr_core::DraftIntent::ReplyAll
+    } else {
+        mxr_core::DraftIntent::Reply
+    };
+    if dry_run {
+        return Ok(ResponseData::Draft { draft });
+    }
+    draft.updated_at = chrono::Utc::now();
+    if state.store.update_draft(&draft).await? {
+        get_draft(state, draft_id).await
+    } else {
+        Err(HandlerError::DraftConflict {
+            expected: Some(expected_revision),
+            current: state
+                .store
+                .get_draft(draft_id)
+                .await?
+                .and_then(|d| d.revision),
+        })
+    }
+}
+
 pub(super) async fn prepare_forward(
     state: &AppState,
     message_id: &mxr_core::MessageId,

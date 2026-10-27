@@ -12,6 +12,7 @@ export interface EditorStubProps {
   onChange: (value: string) => void;
   autoFocus?: boolean;
   focusNonce?: number;
+  readOnly?: boolean;
   onSelectionChange?: (selection: { from: number; to: number } | null) => void;
 }
 
@@ -20,6 +21,7 @@ export function EditorStub({
   onChange,
   autoFocus = false,
   focusNonce = 0,
+  readOnly = false,
   onSelectionChange,
 }: EditorStubProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -30,6 +32,7 @@ export function EditorStub({
     <textarea
       ref={ref}
       aria-label="Message body"
+      readOnly={readOnly}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onSelect={(event) => {

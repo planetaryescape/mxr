@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { replyWithBodyIntent } from "../composeUiStore";
+import { replyIntent, replyWithBodyIntent } from "../composeUiStore";
 import {
   addressList,
   applyPrefill,
@@ -39,6 +39,10 @@ describe("applyPrefill", () => {
 
   test("each AI reply gets its own session", () => {
     expect(replyWithBodyIntent("m-1", "a").key).toMatch(/^compose:reply:m-1:draft-/);
+  });
+
+  test("reply and reply all share the same message-level entry key", () => {
+    expect(replyIntent("m-1", "single").key).toBe(replyIntent("m-1", "all").key);
   });
 });
 

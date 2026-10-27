@@ -1,5 +1,6 @@
 ---
 source: crates/web/src/tests.rs
+assertion_line: 1287
 expression: summary
 ---
 {
@@ -181,6 +182,7 @@ expression: summary
     "ComposeModelsResponse",
     "ComposeProposalData",
     "ComposeSessionAttachmentRequest",
+    "ComposeSessionAudienceRequest",
     "ComposeSessionData",
     "ComposeSessionKindRequest",
     "ComposeSessionPathRequest",

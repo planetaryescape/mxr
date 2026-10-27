@@ -74,12 +74,19 @@ async fn prepared_session(
             "from": "me@example.com",
             "attach": [],
             "body": "Body text",
+            "expected_revision": started["session"]["revision"],
         }))
         .send()
         .await
         .unwrap();
-    assert_eq!(updated.status(), reqwest::StatusCode::OK);
-    let accepted: serde_json::Value = updated.json().await.unwrap();
+    let status = updated.status();
+    let body = updated.text().await.unwrap();
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "compose update failed: {body}"
+    );
+    let accepted: serde_json::Value = serde_json::from_str(&body).unwrap();
     (
         draft_path,
         account_id,
@@ -309,6 +316,37 @@ async fn scheduling_a_reply_session_stores_it_with_reply_headers_then_schedules_
     let envelope = sample_envelope();
     let account = sample_account(&envelope.account_id);
     let source_message_id = envelope.id.clone();
+    let now = chrono::Utc::now();
+    let canonical = mxr_core::Draft {
+        revision: Some(1),
+        id: mxr_core::DraftId::new(),
+        account_id: envelope.account_id.clone(),
+        from: None,
+        reply_headers: Some(mxr_core::ReplyHeaders {
+            in_reply_to: "<msg-1@example.com>".into(),
+            references: vec!["<root@example.com>".into()],
+            thread_id: None,
+        }),
+        intent: mxr_core::DraftIntent::Reply,
+        to: vec![mxr_core::Address {
+            name: None,
+            email: "sender@example.com".into(),
+        }],
+        cc: Vec::new(),
+        bcc: Vec::new(),
+        subject: "Re: Mailroom".into(),
+        content: mxr_core::DraftContent::markdown(""),
+        managed_attachments: None,
+        attachments: Vec::new(),
+        inline_assets: Vec::new(),
+        inline_calendar_reply: None,
+        created_at: now,
+        updated_at: now,
+    };
+    let listed_draft = canonical.clone();
+    let ensured_draft = canonical.clone();
+    let canonical_state = Arc::new(Mutex::new(canonical.clone()));
+    let daemon_state = canonical_state.clone();
     let requests = Arc::new(Mutex::new(Vec::<Request>::new()));
     let seen = requests.clone();
     let _ipc = spawn_fake_ipc_server(
@@ -321,20 +359,25 @@ async fn scheduling_a_reply_session_stores_it_with_reply_headers_then_schedules_
                 Request::GetEnvelope { .. } => ok(ResponseData::Envelope {
                     envelope: envelope.clone(),
                 }),
-                Request::PrepareReply { .. } => ok(ResponseData::ReplyContext {
-                    context: mxr_protocol::ReplyContext {
-                        account_id: envelope.account_id.clone(),
-                        in_reply_to: "<msg-1@example.com>".into(),
-                        references: vec!["<root@example.com>".into()],
-                        reply_to: "sender@example.com".into(),
-                        cc: String::new(),
-                        subject: "Mailroom".into(),
-                        from: "sender@example.com".into(),
-                        thread_context: "Original thread context".into(),
-                        thread_id: None,
-                    },
+                Request::EnsureReplyDraft { .. } => ok(ResponseData::Draft {
+                    draft: ensured_draft.clone(),
                 }),
-                Request::SaveDraft { .. } | Request::ScheduleSend { .. } => ok(ResponseData::Ack),
+                Request::ListDrafts => ok(ResponseData::Drafts {
+                    drafts: vec![listed_draft.clone()],
+                }),
+                Request::GetDraft { .. } => ok(ResponseData::Draft {
+                    draft: daemon_state.lock().unwrap().clone(),
+                }),
+                Request::UpdateDraft { draft } => {
+                    let mut draft = draft.clone();
+                    draft.revision = Some(2);
+                    *daemon_state.lock().unwrap() = draft.clone();
+                    ok(ResponseData::Draft { draft })
+                }
+                Request::SaveDraft { draft } => ok(ResponseData::Draft {
+                    draft: draft.clone(),
+                }),
+                Request::ScheduleSend { .. } => ok(ResponseData::Ack),
                 _ => None,
             };
             seen.lock().unwrap().push(request);
@@ -376,10 +419,10 @@ async fn scheduling_a_reply_session_stores_it_with_reply_headers_then_schedules_
     let stored = requests
         .iter()
         .find_map(|request| match request {
-            Request::SaveDraft { draft } => Some(draft.clone()),
+            Request::SaveDraft { draft } | Request::UpdateDraft { draft } => Some(draft.clone()),
             _ => None,
         })
-        .expect("session stored as a local draft");
+        .unwrap_or_else(|| canonical.clone());
     assert_eq!(stored.id.to_string(), draft_id);
     let headers = stored
         .reply_headers

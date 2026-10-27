@@ -154,6 +154,7 @@ fn mail_router() -> Router<AppState> {
         .route("/compose/session", post(start_compose_session))
         .route("/compose/session/refresh", post(refresh_compose_session))
         .route("/compose/session/restore", post(restore_compose_session))
+        .route("/compose/session/audience", post(set_compose_audience))
         .route("/compose/session/update", post(update_compose_session))
         .route("/compose/session/send", post(send_compose_session))
         .route(

@@ -538,14 +538,20 @@ on a card until you approve it.
 
 ## Compose
 
-Compose opens in place, for a new message, a reply, reply all or a forward.
-A reply opens under the conversation; you can pop it
-out or go fullscreen. A popped-out or fullscreen compose is a modal sheet:
+Replies and forwards open under the message they answer, with one audience
+line such as “To Pat · Reply all”. Select that line to edit To, Cc and Bcc.
+New messages open in a fresh sheet, leaving earlier drafts in Drafts. A reply
+whose conversation closes stays open in that sheet, keeping the same draft
+and typed text. You can move a reply to
+the sheet or go fullscreen. A sheet is modal:
 Tab stays inside it, `Esc` saves the draft and leaves (inside the Markdown
 editor `Esc` stays with vim, so use `:q`), and focus goes back to where you
-were. On a phone it covers the whole screen. New messages start in the To field and replies in the
-body. The editor is Markdown with vim keys by default; **Settings →
-Compose** switches to rich text.
+were. On a phone it covers the whole screen. New messages start in the To
+field and replies in the body. The editor is Markdown with vim keys by
+default. **Writing options** changes Rich text or Markdown for this draft only;
+**Settings → Compose** remains the default for new drafts. Snippets are in
+Writing options; signatures fold under the message body. Send timing and reply
+actions are in More send options.
 
 **Draft for me** is one line above the page. Click it, or press ⌘J, and say
 what the email should do or what to change. The placeholder names what will

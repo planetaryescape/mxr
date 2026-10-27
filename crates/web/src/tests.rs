@@ -1357,6 +1357,80 @@ async fn forward_session_preview_and_updates_keep_original_html_and_managed_file
         .starts_with("New introduction."));
 }
 
+#[tokio::test]
+async fn audience_apply_recovery_keeps_private_body_with_the_accepted_revision() {
+    let temp = TempDir::new().unwrap();
+    let source_path = temp.path().join("reply.md");
+    let account_id = AccountId::new();
+    let draft_id = DraftId::new();
+    let frontmatter = ComposeFrontmatter {
+        to: "sender@example.com".into(),
+        from: "me@example.com".into(),
+        subject: "Re: Update".into(),
+        intent: mxr_core::DraftIntent::Reply,
+        ..Default::default()
+    };
+    let original = render_compose_file(
+        &frontmatter,
+        "private text typed before audience update",
+        None,
+    )
+    .unwrap();
+    std::fs::write(&source_path, &original).unwrap();
+    let now = Utc::now();
+    let accepted = Draft {
+        id: draft_id.clone(),
+        revision: Some(8),
+        account_id,
+        from: None,
+        reply_headers: Some(mxr_core::ReplyHeaders {
+            in_reply_to: "<original@example.com>".into(),
+            references: vec![],
+            thread_id: None,
+        }),
+        intent: mxr_core::DraftIntent::ReplyAll,
+        to: vec![Address {
+            name: None,
+            email: "sender@example.com".into(),
+        }],
+        cc: vec![Address {
+            name: None,
+            email: "team@example.com".into(),
+        }],
+        bcc: vec![],
+        subject: "Re: Update".into(),
+        content: DraftContent::markdown("canonical body before recovery"),
+        managed_attachments: None,
+        attachments: vec![],
+        inline_assets: vec![],
+        inline_calendar_reply: None,
+        created_at: now,
+        updated_at: now,
+    };
+
+    let recovery = preserve_compose_snapshot(&source_path, &original, &accepted)
+        .await
+        .unwrap();
+    let recovery_path = PathBuf::from(&recovery.draft_path);
+    let recovered_content = read_compose_file(&recovery_path).await.unwrap();
+    let (_, recovered_body) = parse_compose_content(&recovered_content).unwrap();
+    let recovered_metadata = read_draft_session_metadata(&recovery_path)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(recovery.draft_id, draft_id);
+    assert_eq!(recovery.revision, Some(8));
+    assert_eq!(recovered_body, "private text typed before audience update");
+    assert_eq!(recovered_metadata.id, accepted.id);
+    assert_eq!(recovered_metadata.revision, accepted.revision);
+    tokio::fs::remove_file(&recovery_path).await.unwrap();
+    tokio::fs::remove_file(draft_session_metadata_path(&recovery_path))
+        .await
+        .unwrap();
+    remove_compose_attachment_dir(&recovery_path).await.unwrap();
+}
+
 #[test]
 fn openapi_response_objects_have_the_required_description() {
     use utoipa::OpenApi;
@@ -2762,7 +2836,7 @@ async fn search_endpoint_returns_attachment_rows_for_attachment_scope() {
 }
 
 #[tokio::test]
-async fn compose_session_endpoint_prepares_reply_draft() {
+async fn compose_session_endpoint_ensures_canonical_reply_draft() {
     let temp = TempDir::new().unwrap();
     let socket_path = temp.path().join("mxr.sock");
     let envelope = sample_envelope();
@@ -2770,6 +2844,35 @@ async fn compose_session_endpoint_prepares_reply_draft() {
     let message_id = envelope.id.to_string();
     let expected_account_id = envelope.account_id.to_string();
     let expected_message_id = envelope.id.clone();
+    let created_at = Utc::now();
+    let draft = Draft {
+        revision: Some(1),
+        id: DraftId::new(),
+        account_id: envelope.account_id.clone(),
+        from: None,
+        reply_headers: Some(mxr_core::ReplyHeaders {
+            in_reply_to: "<msg-1@example.com>".into(),
+            references: vec!["<root@example.com>".into()],
+            thread_id: None,
+        }),
+        intent: mxr_core::DraftIntent::Reply,
+        to: vec![Address {
+            name: None,
+            email: "sender@example.com".into(),
+        }],
+        cc: Vec::new(),
+        bcc: Vec::new(),
+        subject: "Re: Mailroom".into(),
+        content: DraftContent::markdown(""),
+        managed_attachments: None,
+        attachments: Vec::new(),
+        inline_assets: Vec::new(),
+        inline_calendar_reply: None,
+        created_at,
+        updated_at: created_at,
+    };
+    let expected_draft_id = draft.id.to_string();
+    let stored_draft = draft.clone();
     let _ipc = spawn_fake_ipc_server(
         &socket_path,
         move |request| match request {
@@ -2785,24 +2888,52 @@ async fn compose_session_endpoint_prepares_reply_draft() {
                     },
                 })
             }
-            Request::PrepareReply {
+            Request::EnsureReplyDraft {
                 message_id,
-                reply_all: false,
+                reply_all: _,
+                dry_run: false,
             } if message_id == expected_message_id => Some(Response::Ok {
-                data: ResponseData::ReplyContext {
-                    context: mxr_protocol::ReplyContext {
-                        account_id: mxr_core::AccountId::new(),
-                        in_reply_to: "<msg-1@example.com>".into(),
-                        references: vec!["<root@example.com>".into()],
-                        reply_to: "sender@example.com".into(),
-                        cc: String::new(),
-                        subject: "Mailroom".into(),
-                        from: "sender@example.com".into(),
-                        thread_context: "Original thread context".into(),
-                        thread_id: None,
-                    },
+                data: ResponseData::Draft {
+                    draft: draft.clone(),
                 },
             }),
+            Request::ListDrafts => Some(Response::Ok {
+                data: ResponseData::Drafts {
+                    drafts: vec![stored_draft.clone()],
+                },
+            }),
+            Request::GetDraft { draft_id } if draft_id == draft.id => Some(Response::Ok {
+                data: ResponseData::Draft {
+                    draft: draft.clone(),
+                },
+            }),
+            Request::SetReplyDraftAudience {
+                draft_id,
+                reply_all,
+                dry_run,
+                ..
+            } if draft_id == draft.id => {
+                let mut preview = draft.clone();
+                preview.intent = if reply_all {
+                    mxr_core::DraftIntent::ReplyAll
+                } else {
+                    mxr_core::DraftIntent::Reply
+                };
+                preview.cc = if reply_all {
+                    vec![Address {
+                        name: None,
+                        email: "team@example.com".into(),
+                    }]
+                } else {
+                    Vec::new()
+                };
+                if !dry_run {
+                    preview.revision = Some(2);
+                }
+                Some(Response::Ok {
+                    data: ResponseData::Draft { draft: preview },
+                })
+            }
             _ => None,
         },
         None,
@@ -2834,7 +2965,98 @@ async fn compose_session_endpoint_prepares_reply_draft() {
     assert_eq!(json["session"]["accountId"], expected_account_id);
     assert_eq!(json["session"]["frontmatter"]["to"], "sender@example.com");
     assert_eq!(json["session"]["frontmatter"]["subject"], "Re: Mailroom");
+    assert_eq!(json["session"]["draftId"], expected_draft_id);
     assert_eq!(json["session"]["issues"].as_array().unwrap().len(), 1);
+
+    let draft_path = json["session"]["draftPath"].as_str().unwrap().to_string();
+    let original_file = std::fs::read_to_string(&draft_path).unwrap();
+    let private_file = format!("{original_file}\nprivate text from the first reply entry");
+    std::fs::write(&draft_path, &private_file).unwrap();
+    let resumed = test_http_client()
+        .post(format!("http://{addr}/compose/session"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({
+            "kind": "reply_all",
+            "message_id": message_id,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resumed.status(), reqwest::StatusCode::OK);
+    let resumed: serde_json::Value = resumed.json().await.unwrap();
+    assert_eq!(resumed["session"]["draftPath"], draft_path);
+    assert_eq!(
+        resumed["session"]["bodyMarkdown"],
+        "private text from the first reply entry"
+    );
+    assert_eq!(resumed["session"]["kind"], "reply");
+    std::fs::write(&draft_path, &original_file).unwrap();
+
+    let preview = test_http_client()
+        .post(format!(
+            "http://{addr}/api/v1/mail/compose/session/audience"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({
+            "draft_path": draft_path,
+            "draft_id": expected_draft_id,
+            "reply_all": true,
+            "expected_revision": 1,
+            "dry_run": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(preview.status(), reqwest::StatusCode::OK);
+    let preview: serde_json::Value = preview.json().await.unwrap();
+    assert_eq!(preview["session"]["frontmatter"]["cc"], "team@example.com");
+    assert_eq!(preview["session"]["bodyMarkdown"], "");
+    assert_eq!(std::fs::read_to_string(&draft_path).unwrap(), original_file);
+
+    let stale_local = format!("{original_file}\nprivate text typed after the saved revision");
+    std::fs::write(&draft_path, &stale_local).unwrap();
+    let stale = test_http_client()
+        .post(format!(
+            "http://{addr}/api/v1/mail/compose/session/audience"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({
+            "draft_path": draft_path,
+            "draft_id": expected_draft_id,
+            "reply_all": true,
+            "expected_revision": 1,
+            "dry_run": false,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stale.status(), reqwest::StatusCode::CONFLICT);
+    assert_eq!(std::fs::read_to_string(&draft_path).unwrap(), stale_local);
+    std::fs::write(&draft_path, &original_file).unwrap();
+
+    let applied = test_http_client()
+        .post(format!(
+            "http://{addr}/api/v1/mail/compose/session/audience"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({
+            "draft_path": draft_path,
+            "draft_id": expected_draft_id,
+            "reply_all": true,
+            "expected_revision": 1,
+            "dry_run": false,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(applied.status(), reqwest::StatusCode::OK);
+    let applied: serde_json::Value = applied.json().await.unwrap();
+    assert_eq!(applied["session"]["draftId"], expected_draft_id);
+    assert_eq!(applied["session"]["revision"], 2);
+    assert_eq!(applied["session"]["draftIntent"], "reply_all");
+    assert_eq!(applied["session"]["kind"], "reply_all");
+    assert_eq!(applied["session"]["frontmatter"]["cc"], "team@example.com");
+    assert_eq!(applied["session"]["bodyMarkdown"], "");
 }
 
 #[tokio::test]
@@ -4596,9 +4818,29 @@ async fn a_restored_session_carries_the_stored_drafts_intent() {
         assert_eq!(body["session"]["draftIntent"], json!(expected), "{body}");
         // The existing flows still see a new message.
         assert_eq!(body["session"]["kind"], json!("new"), "{body}");
-        mxr_compose::delete_draft_file_async(Path::new(&compose_draft_path(&body)))
-            .await
-            .ok();
+        let old_path = compose_draft_path(&body);
+        let private_text = format!(
+            "{}\nprivate unsaved text",
+            std::fs::read_to_string(&old_path).unwrap()
+        );
+        std::fs::write(&old_path, &private_text).unwrap();
+        let mut advanced = draft.clone();
+        advanced.content = DraftContent::markdown("canonical text changed in another client");
+        store.update(advanced).unwrap();
+        let fresh_path = restore_session_path(&client, addr, &draft.id).await;
+        assert_ne!(fresh_path, old_path);
+        assert_eq!(std::fs::read_to_string(&old_path).unwrap(), private_text);
+        let fresh = load_compose_session(Path::new(&fresh_path)).await.unwrap();
+        assert_eq!(fresh["revision"], draft.revision.unwrap() + 1);
+        assert_eq!(
+            fresh["bodyMarkdown"],
+            "canonical text changed in another client"
+        );
+        for path in [old_path, fresh_path] {
+            mxr_compose::delete_draft_file_async(Path::new(&path))
+                .await
+                .ok();
+        }
     }
 }
 
@@ -6247,13 +6489,20 @@ async fn draft_revision_conflict_is_409_and_preserves_browser_scratch_text() {
     let address = bind_and_serve(
         std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
         0,
-        WebServerConfig::new(socket, TEST_AUTH_TOKEN.into()),
+        WebServerConfig::new(socket.clone(), TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let second_bridge = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket.clone(), TEST_AUTH_TOKEN.into()),
     )
     .await
     .unwrap();
     let client = test_http_client();
     let first = restore_session_path(&client, address, &id).await;
-    let second = restore_session_path(&client, address, &id).await;
+    let second = restore_session_path(&client, second_bridge, &id).await;
     edit_session(
         &client,
         address,
@@ -6262,7 +6511,7 @@ async fn draft_revision_conflict_is_409_and_preserves_browser_scratch_text() {
         "accepted browser text",
     )
     .await;
-    let response = client.post(format!("http://{address}/api/v1/mail/compose/session/update")).bearer_auth(TEST_AUTH_TOKEN)
+    let response = client.post(format!("http://{second_bridge}/api/v1/mail/compose/session/update")).bearer_auth(TEST_AUTH_TOKEN)
         .json(&json!({"draft_path": second, "expected_revision": 1, "to": "alice@example.com", "cc": "", "bcc": "", "subject": "Concurrent draft", "from": "me@example.com", "body": "stale browser text"})).send().await.unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
     let error: serde_json::Value = response.json().await.unwrap();

@@ -109,6 +109,26 @@ async fn eval(
     }
 }
 
+/// Keep the one-connection in-memory database alive while fixture workers
+/// drain or abort, then verify later fixture reads can still see its schema.
+async fn shutdown_scenario_workers(state: &AppState) {
+    let mut database_lifetime = state.store.writer().acquire().await.expect("database");
+    state
+        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
+        .await;
+    let required_tables: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_schema
+         WHERE type = 'table' AND name IN ('messages', 'todos')",
+    )
+    .fetch_one(&mut *database_lifetime)
+    .await
+    .expect("check in-memory schema after worker shutdown");
+    assert_eq!(
+        required_tables, 2,
+        "worker shutdown preserves the in-memory database schema"
+    );
+}
+
 /// Counts and the sorted mismatch list, without the rule wording, so a
 /// reworded reason is not a diff but a changed answer is.
 fn report(summary: &ClassifyEvalSummaryData, mismatches: &[ClassifyEvalMismatchData]) -> String {
@@ -380,9 +400,7 @@ async fn a_stored_ask_without_its_item_projection_is_not_graded_as_delivered() {
     let (state, _) = scenario_state().await;
     let (before, _) = eval(&state, None).await;
     // The production read must not be credited with the fixture workers' writes.
-    state
-        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
-        .await;
+    shutdown_scenario_workers(&state).await;
     let removed = sqlx::query("DELETE FROM todos WHERE source_message_id IN (SELECT id FROM messages WHERE provider_id = 'demo-msg-9')")
         .execute(state.store.writer()).await.expect("remove only the synthetic projection").rows_affected();
     assert_eq!(removed, 1);
@@ -440,9 +458,7 @@ async fn linked_product_fields_are_measured_from_the_row_without_repairing_them(
     let (state, _) = scenario_state().await;
     eval(&state, None).await;
     // The production read must not be credited with the fixture workers' writes.
-    state
-        .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
-        .await;
+    shutdown_scenario_workers(&state).await;
     let changed = sqlx::query("UPDATE todos SET amount_minor = amount_minor + 100, due_at = due_at + 172800 WHERE user_edited = 0 AND source_message_id IN (SELECT id FROM messages WHERE provider_id = 'demo-msg-9')")
         .execute(state.store.writer()).await.expect("change only projected fields").rows_affected();
     assert_eq!(changed, 1);
@@ -484,9 +500,7 @@ async fn a_correction_remains_excluded_after_source_fingerprint_changes() {
     ] {
         let (state, account) = scenario_state().await;
         eval(&state, Some(&account)).await;
-        state
-            .shutdown_runtime_tasks(std::time::Duration::from_secs(2))
-            .await;
+        shutdown_scenario_workers(&state).await;
         let id: String = sqlx::query_scalar(
             "SELECT id FROM messages WHERE provider_id = 'demo-msg-9' AND account_id = ?",
         )

@@ -241,3 +241,15 @@ test("same-count different server attachment selection cannot replace retained p
   expect(reopened.session.revision).toBe(current.revision);
   expect(reopened.retainedSnapshot).toBe(true);
 });
+
+test("returning to an earlier message uses the latest canonical journal text", async () => {
+  const first = { ...draft(), draftIntent: "reply" as const };
+  const second = { ...first, revision: 3, bodyMarkdown: "latest text from message B" };
+  const a = { key: "compose:reply:A", title: "Reply", kind: "reply" as const, messageId: "A" };
+  rememberActiveDraft(a.key, first);
+  rememberActiveDraft("compose:reply:B", first);
+  rememberActiveDraft("compose:reply:B", second);
+  const reopened = await loadInitialComposeSession(a);
+  expect(reopened.session.bodyMarkdown).toBe(second.bodyMarkdown);
+  expect(reopened.session.revision).toBe(3);
+});

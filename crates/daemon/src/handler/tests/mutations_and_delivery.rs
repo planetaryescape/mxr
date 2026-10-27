@@ -3360,6 +3360,15 @@ async fn reply_audience_preview_is_read_only_and_apply_preserves_body_custom_rec
     let account_id = state.default_account_id_opt().unwrap();
     let message_id =
         seed_reply_source_with_raw_headers(&state, &account_id, "audience-reply", &[]).await;
+    let mut duplicate = state
+        .store
+        .get_envelope(&message_id)
+        .await
+        .unwrap()
+        .unwrap();
+    duplicate.id = mxr_core::MessageId::new();
+    duplicate.provider_id = "duplicate-audience-source".into();
+    state.store.upsert_envelope(&duplicate).await.unwrap();
     let state = Arc::new(state);
     let created = handle_request(
         &state,
@@ -3457,6 +3466,22 @@ async fn reply_audience_preview_is_read_only_and_apply_preserves_body_custom_rec
     assert!(applied.bcc.iter().any(|a| a.email == "sender@example.com"));
     assert_eq!(applied.intent, mxr_core::DraftIntent::ReplyAll);
     assert!(applied.revision.unwrap() > revision);
+    duplicate.thread_id = mxr_core::ThreadId::new();
+    state.store.upsert_envelope(&duplicate).await.unwrap();
+    let ambiguous = handle_request(
+        &state,
+        &from_request(Request::SetReplyDraftAudience {
+            draft_id: applied.id,
+            reply_all: false,
+            expected_revision: applied.revision.unwrap(),
+            dry_run: false,
+        }),
+    )
+    .await;
+    assert!(matches!(
+        ambiguous.payload,
+        IpcPayload::Response(Response::Error { .. })
+    ));
 }
 
 #[tokio::test]

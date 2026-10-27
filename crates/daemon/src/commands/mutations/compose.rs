@@ -925,11 +925,7 @@ fn print_reply_draft(
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(draft)?),
         OutputFormat::Jsonl => println!("{}", serde_json::to_string(draft)?),
         OutputFormat::Ids => println!("{}", draft.id),
-        OutputFormat::Csv => {
-            let mut writer = csv::Writer::from_writer(Vec::new());
-            writer.serialize(draft)?;
-            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
-        }
+        OutputFormat::Csv => println!("{}", reply_draft_csv(draft)?.trim_end()),
         OutputFormat::Table => println!(
             "{}{} — {} (revision {})",
             if dry_run { "Preview: " } else { "" },
@@ -939,6 +935,22 @@ fn print_reply_draft(
         ),
     }
     Ok(())
+}
+
+fn reply_draft_csv(draft: &Draft) -> anyhow::Result<String> {
+    let mut writer = csv::Writer::from_writer(Vec::new());
+    writer.write_record(["draft_id", "account_id", "subject", "revision", "intent"])?;
+    writer.write_record([
+        draft.id.as_str().as_str(),
+        draft.account_id.as_str().as_str(),
+        &draft.subject,
+        &draft
+            .revision
+            .map(|value| value.to_string())
+            .unwrap_or_default(),
+        draft.intent.as_db_str(),
+    ])?;
+    Ok(String::from_utf8(writer.into_inner()?)?)
 }
 
 fn filter_drafts_by_account(drafts: Vec<Draft>, account_id: Option<&AccountId>) -> Vec<Draft> {
@@ -3251,7 +3263,7 @@ mod tests {
     /// Assembling an HTML body onto a draft, and the structured outcome the
     /// compose command reports.
     mod html_compose_tests {
-        use super::super::{apply_html_body, compose_result_output};
+        use super::super::{apply_html_body, compose_result_output, reply_draft_csv};
         use crate::cli::OutputFormat;
         use crate::commands::mutations::compose_html::HtmlComposeInput;
         use mxr_core::types::{Address, Draft, DraftContent, InlineAsset};
@@ -3452,6 +3464,18 @@ Quarterly numbers are in the table below.</td></tr></table></body></html>";
             let row = lines.next().expect("csv data row");
             assert!(row.contains(draft.id.as_str().as_str()), "row={row}");
             assert!(row.contains("Quarterly numbers"), "row={row}");
+        }
+
+        #[test]
+        fn reply_csv_handles_nested_recipients_and_attachments() {
+            let draft = html_draft_for_output();
+            let out = reply_draft_csv(&draft).unwrap();
+            let mut reader = csv::Reader::from_reader(out.as_bytes());
+            assert_eq!(reader.headers().unwrap().get(0), Some("draft_id"));
+            let rows = reader.records().collect::<Result<Vec<_>, _>>().unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].get(0), Some(draft.id.as_str().as_str()));
+            assert_eq!(rows[0].get(2), Some(draft.subject.as_str()));
         }
 
         #[test]

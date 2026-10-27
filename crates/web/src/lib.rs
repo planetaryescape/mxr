@@ -3483,7 +3483,7 @@ async fn restore_saved_draft_session(
         if tokio::fs::try_exists(&active_path).await.unwrap_or(false) {
             workspace_owner::require_sidecar(&active_path).await?;
             if let Some(active_draft) = read_draft_session_metadata(&active_path).await? {
-                if active_draft.id == draft.id {
+                if active_draft.id == draft.id && active_draft.revision == draft.revision {
                     let mut session = load_compose_session(&active_path).await?;
                     session["accountId"] = json!(account.account_id);
                     session["draftIntent"] = json!(active_draft.intent);

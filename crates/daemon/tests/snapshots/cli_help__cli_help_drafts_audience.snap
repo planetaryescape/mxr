@@ -4,7 +4,7 @@ expression: stdout
 ---
 Change a saved reply between reply and reply-all while preserving its content
 
-Usage: mxr drafts audience [OPTIONS] --expected-revision <EXPECTED_REVISION> <DRAFT_ID>
+Usage: mxr drafts audience [OPTIONS] --expected-revision <EXPECTED_REVISION> <--all|--single> <DRAFT_ID>
 
 Arguments:
   <DRAFT_ID>

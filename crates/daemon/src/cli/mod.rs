@@ -2330,6 +2330,7 @@ pub enum DraftsAction {
         dry_run: bool,
     },
     /// Change a saved reply between reply and reply-all while preserving its content.
+    #[command(group = clap::ArgGroup::new("audience").required(true).args(["all", "single"]))]
     Audience {
         draft_id: String,
         #[arg(long, conflicts_with = "single")]

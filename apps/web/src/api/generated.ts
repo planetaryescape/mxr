@@ -18637,6 +18637,22 @@ export interface operations {
                     "application/json": components["schemas"]["ComposeSessionResponse"];
                 };
             };
+            /** @description Invalid draft identity or unsupported compose content */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Stale draft revision; preserve unsent text */
             409: {
                 headers: {

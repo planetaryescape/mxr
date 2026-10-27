@@ -274,8 +274,22 @@ export function rememberActiveDraft(key: string, draft: ComposeDraftState): bool
       updatedAt: Date.now(),
     };
     parsed[key] = entry;
-    if (draft.draftId && draft.binding)
+    if (draft.draftId && draft.binding) {
       parsed[canonicalDraftKey(draft.draftId, draft.binding)] = entry;
+      for (const [storedKey, stored] of Object.entries(parsed)) {
+        if (!record(stored) || !record(stored.snapshot) || !record(stored.snapshot.binding))
+          continue;
+        const owner = parseWorkspace(stored.snapshot.binding.workspace);
+        if (
+          stored.snapshot.draftId === draft.draftId &&
+          stored.snapshot.recoverySourcePath === draft.recoverySourcePath &&
+          stored.snapshot.binding.target === draft.binding.target &&
+          owner &&
+          sameOwner(owner, draft.binding.workspace)
+        )
+          parsed[storedKey] = entry;
+      }
+    }
     window.localStorage.setItem(activeDraftStorageKey, JSON.stringify(parsed));
     return true;
   } catch {

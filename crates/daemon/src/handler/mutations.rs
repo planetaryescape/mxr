@@ -3159,7 +3159,16 @@ async fn reply_source_for_draft(state: &AppState, draft: &Draft) -> Result<Envel
         .list_envelopes_by_message_id_header(&draft.account_id, &headers.in_reply_to)
         .await?;
     match matches.as_slice() {
-        [source] => Ok(source.clone()),
+        [source, duplicates @ ..]
+            if duplicates.iter().all(|other| {
+                other.thread_id == source.thread_id
+                    && other.from == source.from
+                    && other.to == source.to
+                    && other.cc == source.cc
+            }) =>
+        {
+            Ok(source.clone())
+        }
         [] => Err(HandlerError::InvalidRequest(
             "reply source message no longer exists".to_string(),
         )),

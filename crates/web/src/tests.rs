@@ -4818,9 +4818,29 @@ async fn a_restored_session_carries_the_stored_drafts_intent() {
         assert_eq!(body["session"]["draftIntent"], json!(expected), "{body}");
         // The existing flows still see a new message.
         assert_eq!(body["session"]["kind"], json!("new"), "{body}");
-        mxr_compose::delete_draft_file_async(Path::new(&compose_draft_path(&body)))
-            .await
-            .ok();
+        let old_path = compose_draft_path(&body);
+        let private_text = format!(
+            "{}\nprivate unsaved text",
+            std::fs::read_to_string(&old_path).unwrap()
+        );
+        std::fs::write(&old_path, &private_text).unwrap();
+        let mut advanced = draft.clone();
+        advanced.content = DraftContent::markdown("canonical text changed in another client");
+        store.update(advanced).unwrap();
+        let fresh_path = restore_session_path(&client, addr, &draft.id).await;
+        assert_ne!(fresh_path, old_path);
+        assert_eq!(std::fs::read_to_string(&old_path).unwrap(), private_text);
+        let fresh = load_compose_session(Path::new(&fresh_path)).await.unwrap();
+        assert_eq!(fresh["revision"], draft.revision.unwrap() + 1);
+        assert_eq!(
+            fresh["bodyMarkdown"],
+            "canonical text changed in another client"
+        );
+        for path in [old_path, fresh_path] {
+            mxr_compose::delete_draft_file_async(Path::new(&path))
+                .await
+                .ok();
+        }
     }
 }
 

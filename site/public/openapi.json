@@ -2115,6 +2115,19 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid draft identity or unsupported compose content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
           "409": {
             "description": "Stale draft revision; preserve unsent text",
             "content": {

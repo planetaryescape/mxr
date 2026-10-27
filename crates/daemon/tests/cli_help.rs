@@ -389,6 +389,11 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_reply_all", &["reply-all", "--help"]),
         ("cli_help_forward", &["forward", "--help"]),
         ("cli_help_drafts", &["drafts", "--help"]),
+        ("cli_help_drafts_reply", &["drafts", "reply", "--help"]),
+        (
+            "cli_help_drafts_audience",
+            &["drafts", "audience", "--help"],
+        ),
         ("cli_help_drafts_list", &["drafts", "list", "--help"]),
         (
             "cli_help_drafts_scheduled",
@@ -839,4 +844,21 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_voice_show", &["voice", "show", "--help"]),
         ("cli_help_web_stop", &["web", "stop", "--help"]),
     ]
+}
+
+#[test]
+fn reply_audience_requires_one_explicit_policy() {
+    let base = [
+        "mxr",
+        "drafts",
+        "audience",
+        "draft-id",
+        "--expected-revision",
+        "2",
+    ];
+    assert!(Cli::try_parse_from(base).is_err());
+    for flag in ["--all", "--single"] {
+        assert!(Cli::try_parse_from(base.into_iter().chain([flag])).is_ok());
+    }
+    assert!(Cli::try_parse_from(base.into_iter().chain(["--all", "--single"])).is_err());
 }

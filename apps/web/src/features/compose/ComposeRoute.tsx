@@ -24,10 +24,8 @@ export function ComposeRoute() {
   useEffect(() => {
     if (handledRef.current) return;
     handledRef.current = true;
-    openCompose(
-      intentFromComposeLocation(location.pathname, location.search as Record<string, unknown>),
-      "overlay",
-    );
+    const intent = intentFromComposeLocation(location.pathname, location.search);
+    openCompose(intent, intent.kind === "new" ? "overlay" : "inline");
     if (canGoBack) {
       router.history.back();
     } else {

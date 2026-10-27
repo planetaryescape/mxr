@@ -4,7 +4,7 @@ import { render } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { ComposeRoute } from "./ComposeRoute";
-import { useComposeUi } from "./composeUiStore";
+import { newMessageIntent, useComposeUi } from "./composeUiStore";
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn<(options: unknown) => Promise<void>>(),
@@ -67,10 +67,12 @@ describe("/compose deep links", () => {
     render(<ComposeRoute />);
 
     expect(useComposeUi.getState().intent).toMatchObject({
-      key: "compose:reply_all:m-7",
+      key: "compose:reply:m-7",
       kind: "reply_all",
       messageId: "m-7",
+      quiet: true,
     });
+    expect(useComposeUi.getState().surface).toBe("inline");
   });
 
   test("an in-app link returns to the page it came from", () => {
@@ -78,8 +80,12 @@ describe("/compose deep links", () => {
     router.location = { pathname: "/compose/new", search: {} };
     render(<ComposeRoute />);
 
-    expect(useComposeUi.getState().intent?.key).toBe("compose:new:new");
+    expect(useComposeUi.getState().intent?.key).toMatch(/^compose:new:/);
     expect(router.back).toHaveBeenCalledTimes(1);
     expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  test("starting another new message creates a fresh session key", () => {
+    expect(newMessageIntent().key).not.toBe(newMessageIntent().key);
   });
 });

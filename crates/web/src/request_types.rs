@@ -170,6 +170,16 @@ pub(super) struct ComposeSessionRestoreRequest {
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(super) struct ComposeSessionAudienceRequest {
+    pub(super) draft_path: String,
+    pub(super) draft_id: String,
+    pub(super) reply_all: bool,
+    pub(super) expected_revision: i64,
+    #[serde(default)]
+    pub(super) dry_run: bool,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionUpdateRequest {
     /// Explicit canonical persistence retry using a private recovery's observed revision.
     #[serde(default)]

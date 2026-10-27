@@ -2318,6 +2318,31 @@ pub enum DemoAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum DraftsAction {
+    /// Ensure one canonical local reply draft exists for the message's conversation.
+    Reply {
+        message_id: String,
+        #[arg(long, conflicts_with = "single")]
+        all: bool,
+        #[arg(long, conflicts_with = "all")]
+        single: bool,
+        /// Preview the selected or newly prepared draft without saving it.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Change a saved reply between reply and reply-all while preserving its content.
+    #[command(group = clap::ArgGroup::new("audience").required(true).args(["all", "single"]))]
+    Audience {
+        draft_id: String,
+        #[arg(long, conflicts_with = "single")]
+        all: bool,
+        #[arg(long, conflicts_with = "all")]
+        single: bool,
+        #[arg(long, required = true)]
+        expected_revision: i64,
+        /// Preview the exact recipient selection without saving it.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Upload client-local files as immutable resources and attach to a saved draft.
     Attach {
         draft_id: String,

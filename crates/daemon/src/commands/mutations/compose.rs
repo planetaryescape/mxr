@@ -816,6 +816,143 @@ pub async fn drafts(account: Option<String>, format: Option<OutputFormat>) -> an
     Ok(())
 }
 
+pub async fn drafts_reply(
+    message_id: String,
+    reply_all: bool,
+    dry_run: bool,
+    account: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    client.capture_workspace().await?;
+    let explicit_account = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let message_id = parse_message_id(&message_id)?;
+    let envelope = match client
+        .request(Request::GetEnvelope {
+            message_id: message_id.clone(),
+        })
+        .await?
+    {
+        Response::Ok {
+            data: ResponseData::Envelope { envelope },
+        } => envelope,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response reading reply source"),
+    };
+    if explicit_account
+        .as_ref()
+        .is_some_and(|account_id| *account_id != envelope.account_id)
+    {
+        anyhow::bail!("Message {message_id} belongs to a different account");
+    }
+    let response = client
+        .request(Request::EnsureReplyDraft {
+            message_id,
+            reply_all,
+            dry_run,
+        })
+        .await?;
+    let draft = match response {
+        Response::Ok {
+            data: ResponseData::Draft { draft },
+        } => draft,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response ensuring reply draft"),
+    };
+    print_reply_draft(&draft, format, dry_run)
+}
+
+pub async fn drafts_audience(
+    draft_id: String,
+    reply_all: bool,
+    expected_revision: i64,
+    dry_run: bool,
+    account: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let draft_id = draft_id.parse::<DraftId>()?;
+    let mut client = IpcClient::connect().await?;
+    client.capture_workspace().await?;
+    let explicit_account = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let existing = match client
+        .request(Request::GetDraft {
+            draft_id: draft_id.clone(),
+        })
+        .await?
+    {
+        Response::Ok {
+            data: ResponseData::Draft { draft },
+        } => draft,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response reading reply draft"),
+    };
+    if explicit_account
+        .as_ref()
+        .is_some_and(|account_id| *account_id != existing.account_id)
+    {
+        anyhow::bail!("Draft belongs to a different account");
+    }
+    let response = client
+        .request(Request::SetReplyDraftAudience {
+            draft_id,
+            reply_all,
+            expected_revision,
+            dry_run,
+        })
+        .await?;
+    let draft = match response {
+        Response::Ok {
+            data: ResponseData::Draft { draft },
+        } => draft,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response changing reply audience"),
+    };
+    if explicit_account
+        .as_ref()
+        .is_some_and(|account_id| *account_id != draft.account_id)
+    {
+        anyhow::bail!("Draft belongs to a different account");
+    }
+    print_reply_draft(&draft, format, dry_run)
+}
+
+fn print_reply_draft(
+    draft: &Draft,
+    format: Option<OutputFormat>,
+    dry_run: bool,
+) -> anyhow::Result<()> {
+    match resolve_format(format) {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(draft)?),
+        OutputFormat::Jsonl => println!("{}", serde_json::to_string(draft)?),
+        OutputFormat::Ids => println!("{}", draft.id),
+        OutputFormat::Csv => println!("{}", reply_draft_csv(draft)?.trim_end()),
+        OutputFormat::Table => println!(
+            "{}{} — {} (revision {})",
+            if dry_run { "Preview: " } else { "" },
+            draft.id,
+            draft.subject,
+            draft.revision.unwrap_or_default()
+        ),
+    }
+    Ok(())
+}
+
+fn reply_draft_csv(draft: &Draft) -> anyhow::Result<String> {
+    let mut writer = csv::Writer::from_writer(Vec::new());
+    writer.write_record(["draft_id", "account_id", "subject", "revision", "intent"])?;
+    writer.write_record([
+        draft.id.as_str().as_str(),
+        draft.account_id.as_str().as_str(),
+        &draft.subject,
+        &draft
+            .revision
+            .map(|value| value.to_string())
+            .unwrap_or_default(),
+        draft.intent.as_db_str(),
+    ])?;
+    Ok(String::from_utf8(writer.into_inner()?)?)
+}
+
 fn filter_drafts_by_account(drafts: Vec<Draft>, account_id: Option<&AccountId>) -> Vec<Draft> {
     drafts
         .into_iter()
@@ -3126,7 +3263,7 @@ mod tests {
     /// Assembling an HTML body onto a draft, and the structured outcome the
     /// compose command reports.
     mod html_compose_tests {
-        use super::super::{apply_html_body, compose_result_output};
+        use super::super::{apply_html_body, compose_result_output, reply_draft_csv};
         use crate::cli::OutputFormat;
         use crate::commands::mutations::compose_html::HtmlComposeInput;
         use mxr_core::types::{Address, Draft, DraftContent, InlineAsset};
@@ -3327,6 +3464,18 @@ Quarterly numbers are in the table below.</td></tr></table></body></html>";
             let row = lines.next().expect("csv data row");
             assert!(row.contains(draft.id.as_str().as_str()), "row={row}");
             assert!(row.contains("Quarterly numbers"), "row={row}");
+        }
+
+        #[test]
+        fn reply_csv_handles_nested_recipients_and_attachments() {
+            let draft = html_draft_for_output();
+            let out = reply_draft_csv(&draft).unwrap();
+            let mut reader = csv::Reader::from_reader(out.as_bytes());
+            assert_eq!(reader.headers().unwrap().get(0), Some("draft_id"));
+            let rows = reader.records().collect::<Result<Vec<_>, _>>().unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].get(0), Some(draft.id.as_str().as_str()));
+            assert_eq!(rows[0].get(2), Some(draft.subject.as_str()));
         }
 
         #[test]

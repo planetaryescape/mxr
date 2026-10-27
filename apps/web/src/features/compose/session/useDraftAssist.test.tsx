@@ -149,14 +149,20 @@ describe("useDraftAssist", () => {
   });
 
   test("retrying with another model after editing uses the live text", async () => {
-    apiFetch.mockResolvedValue(proposal("Thursday works.", [{ kind: "kept", text: "Thursday works." }]));
+    apiFetch.mockResolvedValue(
+      proposal("Thursday works.", [{ kind: "kept", text: "Thursday works." }]),
+    );
     const { result } = renderHook(() => useHarness(draftWith("Thursday works.")), { wrapper });
     act(() => result.current.assist.submit());
     await waitFor(() => expect(result.current.assist.proofOpen).toBe(true));
     act(() => result.current.setDraft(draftWith("Friday works.\n\n-- \nBK")));
     act(() => result.current.assist.againWithModel("gpt-6-luna"));
     await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2));
-    expect(apiFetch.mock.calls[1]?.[1]?.body).toMatchObject({ model: "gpt-6-luna", text: "Friday works.", action: "finish" });
+    expect(apiFetch.mock.calls[1]?.[1]?.body).toMatchObject({
+      model: "gpt-6-luna",
+      text: "Friday works.",
+      action: "finish",
+    });
   });
 
   test("the request carries the text without the signature and UTF-8 selection offsets", async () => {
@@ -180,6 +186,20 @@ describe("useDraftAssist", () => {
       adjust: { shorter: false, warmer: false, more_formal: false, proofread: false },
     });
     expect(init.body).not.toHaveProperty("instruction");
+  });
+
+  test("a resumed canonical reply keeps its stored mode for assist", async () => {
+    apiFetch.mockResolvedValue(proposal("Hello", [{ kind: "added", text: "Hello" }]));
+    const { result } = renderHook(
+      () =>
+        useHarness(draftWith("Hello", { draftIntent: "reply" }), { ...REPLY, kind: "reply_all" }),
+      { wrapper },
+    );
+    act(() => result.current.assist.submit());
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
+    expect(apiFetch.mock.calls[0]?.[1]?.body).toMatchObject({
+      draft: { kind: "reply", message_id: "m1", all: false },
+    });
   });
 
   test("an assist stays with its original workspace and fails closed after ownership changes", async () => {

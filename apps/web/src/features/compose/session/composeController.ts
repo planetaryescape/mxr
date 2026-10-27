@@ -8,6 +8,7 @@ import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from "react";
 import type {
   ComposeFrontmatter,
   ComposeIssue,
+  ComposeSessionResponse,
   DraftSafetyReport,
   RuntimeAccount,
   SuggestedCollaborator,
@@ -51,6 +52,11 @@ export interface ComposeController extends DraftAssistController {
   uploading: number;
   sending: boolean;
   discarding: boolean;
+  changingAudience: boolean;
+  audiencePreview: ComposeSessionResponse | null;
+  requestReplyAudience: (replyAll: boolean) => Promise<void>;
+  confirmReplyAudience: () => Promise<void>;
+  cancelReplyAudience: () => void;
 
   showCc: boolean;
   setShowCc: Dispatch<SetStateAction<boolean>>;
@@ -93,6 +99,8 @@ export interface ComposeController extends DraftAssistController {
   insertSnippet: (body: string) => void;
   signaturePickerOpen: boolean;
   setSignaturePickerOpen: Dispatch<SetStateAction<boolean>>;
+  signatureFoldOpen: boolean;
+  setSignatureFoldOpen: Dispatch<SetStateAction<boolean>>;
   signatureList: Signature[];
   /** Append a signature block (`\n\n--\n{body}`) to the message body. */
   insertSignature: (body: string) => void;

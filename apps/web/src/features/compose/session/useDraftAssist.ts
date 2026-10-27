@@ -116,10 +116,14 @@ function assistDraft(intent: ComposeIntent, draft: ComposeDraftState): ComposeAs
         to: addressList(draft.frontmatter.to),
       };
     }
+    const storedReplyMode =
+      draft.draftIntent === "reply" || draft.draftIntent === "reply_all"
+        ? draft.draftIntent
+        : undefined;
     return {
       kind: "reply",
       message_id: intent.messageId,
-      all: intent.kind === "reply_all",
+      all: storedReplyMode ? storedReplyMode === "reply_all" : intent.kind === "reply_all",
     };
   }
   // A reply or forward reopened from Drafts has no message in the session: the

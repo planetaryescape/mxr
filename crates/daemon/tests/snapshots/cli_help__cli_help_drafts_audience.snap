@@ -1,0 +1,22 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Change a saved reply between reply and reply-all while preserving its content
+
+Usage: mxr drafts audience [OPTIONS] --expected-revision <EXPECTED_REVISION> <--all|--single> <DRAFT_ID>
+
+Arguments:
+  <DRAFT_ID>
+
+Options:
+      --all
+
+      --single
+
+      --expected-revision <EXPECTED_REVISION>
+
+      --dry-run
+          Preview the exact recipient selection without saving it
+  -h, --help
+          Print help

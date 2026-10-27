@@ -2194,6 +2194,26 @@ async fn dispatch(
             message_id,
             reply_all,
         } => mutations::prepare_reply(state, message_id, *reply_all).await,
+        Request::EnsureReplyDraft {
+            message_id,
+            reply_all,
+            dry_run,
+        } => mutations::ensure_reply_draft(state, message_id, *reply_all, *dry_run).await,
+        Request::SetReplyDraftAudience {
+            draft_id,
+            reply_all,
+            expected_revision,
+            dry_run,
+        } => {
+            mutations::set_reply_draft_audience(
+                state,
+                draft_id,
+                *reply_all,
+                *expected_revision,
+                *dry_run,
+            )
+            .await
+        }
         Request::PrepareForward { message_id } => {
             mutations::prepare_forward(state, message_id).await
         }
@@ -2678,6 +2698,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::DraftEval { .. }
         | Request::DraftEvalQuick
         | Request::PrepareReply { .. }
+        | Request::EnsureReplyDraft { dry_run: true, .. }
+        | Request::SetReplyDraftAudience { dry_run: true, .. }
         | Request::PrepareForward { .. }
         | Request::ResolveSendFrom { .. }
         | Request::ListOwedReplies { .. }
@@ -2725,6 +2747,8 @@ fn classify_request(req: &Request) -> RequestClass {
         // optional linked provider resource) ---
         Request::SaveDraft { .. }
         | Request::UpdateDraft { .. }
+        | Request::EnsureReplyDraft { dry_run: false, .. }
+        | Request::SetReplyDraftAudience { dry_run: false, .. }
         | Request::ApplyComposeProposal { .. }
         | Request::DeleteDraft { .. }
         | Request::BeginDraftAttachment { .. }
@@ -3130,6 +3154,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ClassifyCompare { .. } => "classify_compare",
         Request::ClassifyEval { .. } => "classify_eval",
         Request::PrepareReply { .. } => "prepare_reply",
+        Request::EnsureReplyDraft { .. } => "ensure_reply_draft",
+        Request::SetReplyDraftAudience { .. } => "set_reply_draft_audience",
         Request::PrepareForward { .. } => "prepare_forward",
         Request::SendDraft { .. } => "send_draft",
         Request::SaveDraft { .. } => "save_draft",

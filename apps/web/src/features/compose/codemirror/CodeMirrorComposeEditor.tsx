@@ -1,9 +1,9 @@
 import { markdown } from "@codemirror/lang-markdown";
-import { EditorState, Prec, StateEffect, StateField } from "@codemirror/state";
+import { Compartment, EditorState, Prec, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, keymap } from "@codemirror/view";
 import { getCM, Vim, vim } from "@replit/codemirror-vim";
 import { basicSetup } from "codemirror";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
   codeMirrorKey,
@@ -25,12 +25,15 @@ interface CodeMirrorComposeEditorProps {
   autoFocus?: boolean;
   /** Focus mode: a one-word mode indicator instead of the status row. */
   quiet?: boolean;
+  /** Inline replies grow with their text so the conversation scrolls. */
+  inline?: boolean;
   /** The selection in the body (UTF-16), or null when there is none. */
   onSelectionChange?: (selection: { from: number; to: number } | null) => void;
   /** Ranges the model wrote that the user has not edited; drawn with a hairline. */
   modelSpans?: readonly ModelSpan[];
   /** Changes when the editor should take focus back, e.g. after a proof closes. */
   focusNonce?: number;
+  readOnly?: boolean;
 }
 
 const setModelSpans = StateEffect.define<readonly ModelSpan[]>();
@@ -96,6 +99,13 @@ const tokenTheme = EditorView.theme({
   },
 });
 
+const inlineTheme = EditorView.theme({
+  "&": { height: "auto" },
+  ".cm-editor": { height: "auto" },
+  ".cm-scroller": { overflow: "visible" },
+  ".cm-content": { minHeight: "320px" },
+});
+
 // The vim block cursor ships hard-coded red at the highest precedence; only
 // a theme at that precedence replaces it with the theme's own ink.
 const vimCursorTheme = Prec.highest(
@@ -119,12 +129,19 @@ export function CodeMirrorComposeEditor({
   onClose,
   autoFocus = false,
   quiet = false,
+  inline = false,
   onSelectionChange,
   modelSpans,
   focusNonce = 0,
+  readOnly = false,
 }: CodeMirrorComposeEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const [inlineLayout] = useState(() => new Compartment());
+  const [editableLayout] = useState(() => new Compartment());
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
+  const initialInlineRef = useRef(inline);
   const initialValueRef = useRef(value);
   const initialSpansRef = useRef(modelSpans ?? []);
   const callbacksRef = useRef({ onChange, onSave, onSend, onDiscard, onClose, onSelectionChange });
@@ -186,6 +203,11 @@ export function CodeMirrorComposeEditor({
           vimCursorTheme,
           vim(),
           tokenTheme,
+          inlineLayout.of(initialInlineRef.current ? inlineTheme : []),
+          editableLayout.of([
+            EditorView.editable.of(!readOnlyRef.current),
+            EditorState.readOnly.of(readOnlyRef.current),
+          ]),
           keymap.of([
             {
               key: codeMirrorKey(definedShortcut("compose.save")),
@@ -230,7 +252,23 @@ export function CodeMirrorComposeEditor({
       view.destroy();
       viewRef.current = null;
     };
-  }, [autoFocus]);
+  }, [autoFocus, editableLayout, inlineLayout]);
+
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (view) view.dispatch({ effects: inlineLayout.reconfigure(inline ? inlineTheme : []) });
+  }, [inline, inlineLayout]);
+
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (view)
+      view.dispatch({
+        effects: editableLayout.reconfigure([
+          EditorView.editable.of(!readOnly),
+          EditorState.readOnly.of(readOnly),
+        ]),
+      });
+  }, [editableLayout, readOnly]);
 
   // Each change of `focusNonce` asks for the editor back (after a proof).
   useEffect(() => {

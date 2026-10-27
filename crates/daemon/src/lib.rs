@@ -1246,6 +1246,32 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
         }) => {
             crate::server::ensure_daemon_running().await?;
             match action {
+                Some(crate::cli::DraftsAction::Reply {
+                    message_id,
+                    all,
+                    dry_run,
+                    ..
+                }) => {
+                    commands::mutations::drafts_reply(message_id, all, dry_run, account, format)
+                        .await?;
+                }
+                Some(crate::cli::DraftsAction::Audience {
+                    draft_id,
+                    all,
+                    expected_revision,
+                    dry_run,
+                    ..
+                }) => {
+                    commands::mutations::drafts_audience(
+                        draft_id,
+                        all,
+                        expected_revision,
+                        dry_run,
+                        account,
+                        format,
+                    )
+                    .await?;
+                }
                 None | Some(crate::cli::DraftsAction::List) => {
                     commands::mutations::drafts(account, format).await?;
                 }

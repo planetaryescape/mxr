@@ -1,11 +1,22 @@
-import { Archive, BellRing, ChevronDown, Clock, Loader2, Paperclip, Send } from "lucide-react";
+import {
+  Archive,
+  BellRing,
+  Check,
+  ChevronDown,
+  Clock,
+  Loader2,
+  MoreHorizontal,
+  Paperclip,
+  Send,
+} from "lucide-react";
 
-import { Segmented } from "@/components/Segmented";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -40,6 +51,8 @@ interface ComposeActionBarProps {
   onRetrySave: () => void;
   editorPreference: ComposeEditor;
   onEditorChange: (editor: ComposeEditor) => void;
+  onOpenSnippets: () => void;
+  onOpenSignatures: () => void;
 }
 
 export function ComposeActionBar({
@@ -57,6 +70,8 @@ export function ComposeActionBar({
   onRetrySave,
   editorPreference,
   onEditorChange,
+  onOpenSnippets,
+  onOpenSignatures,
 }: ComposeActionBarProps) {
   return (
     <footer className="shrink-0 border-t border-rule">
@@ -111,19 +126,6 @@ export function ComposeActionBar({
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
-          onClick={onSendLater}
-          disabled={busy}
-          aria-label="Send later"
-          title="Send later (⇧⌘L)"
-          // The send menu has it too; on a phone the room goes to the editor switch.
-          className="max-sm:hidden"
-        >
-          <Clock className="size-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
           size="sm"
           onClick={onAttach}
           disabled={uploading > 0}
@@ -136,15 +138,27 @@ export function ComposeActionBar({
           )}
           <span className="max-sm:sr-only">Attach</span>
         </Button>
-        <Segmented
-          label="Editor mode"
-          value={editorPreference}
-          options={[
-            ["tiptap", "Rich text"],
-            ["codemirror-vim", "Markdown"],
-          ]}
-          onChange={(value) => onEditorChange(value as ComposeEditor)}
-        />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Writing options">
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuLabel>Editor</DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => onEditorChange("tiptap")}>
+              {editorPreference === "tiptap" ? <Check className="size-3.5" /> : null}
+              Rich text
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onEditorChange("codemirror-vim")}>
+              {editorPreference === "codemirror-vim" ? <Check className="size-3.5" /> : null}
+              Markdown
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onOpenSnippets}>Insert snippet…</DropdownMenuItem>
+            <DropdownMenuItem onSelect={onOpenSignatures}>Insert signature…</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div className="ml-auto flex min-w-0 shrink-0 items-center gap-3">
           {saveError ? (
             <span role="alert" className="flex min-w-0 items-center gap-1.5">

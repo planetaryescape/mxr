@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.167](https://github.com/planetaryescape/mxr/compare/v0.6.166...v0.6.167) (2026-10-27)
+
+
+### Features
+
+* keep replies inline and resume conversation drafts ([b2ea14e](https://github.com/planetaryescape/mxr/commit/b2ea14e8b9a8f4d342cb38af247b409d5109e5bb))
+
 ## [0.6.166](https://github.com/planetaryescape/mxr/compare/v0.6.165...v0.6.166) (2026-10-26)
 
 

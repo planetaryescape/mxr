@@ -796,7 +796,7 @@ catalogue are built inside the first rung that needs them.
 | C1 | type a few words, press `⌘J`, and get your draft finished, as a proof you accept, in every client | `ComposeAssist` with `text`, `selection` and `DraftTarget`; `mxr-compose` (shared body regions); `mxr-composer` (plan, check: kept, gaps); `ComposeProposalData` with `changes`; the help line and proof on web; the TUI and Raycast proofs; `mxr compose assist`/`apply`; Unfilled gap; the MCP tool on the new request | shipped in v0.6.157 |
 | C2 | pick which model drafts, with a default in Settings | `[llm.compose] model`, `llm.models`, `ModelChoiceData.sees`, `model` on the request, the picker in all clients, old keys warn | shipped in v0.6.163 |
 | C3 | get drafts that follow humanizer 3.1 and your own habits | the catalogue, `PatternRates`, the style block, the voice-relative check, sentence repair, style marks, the invented-fact check | shipped in v0.6.165; style is advisory and the recorded corpus has no pass/fail style threshold |
-| C4 | reply inline under the message, with one recipients line and one Send | the compose screen above on web and desktop; sheet for new messages; `⋯` for the rest | implemented in the candidate; pending parent review and release |
+| C4 | reply inline under the message, with one recipients line and one Send | the compose screen above on web and desktop; sheet for new messages; `⋯` for the rest | shipped in v0.6.167 |
 | C5 | see which of your emails shaped a draft, and have a voice rebuild change your drafts | the one `Voice`, usual length and register in the prompt, provenance links, `--set mine` without the rewrite model | planned |
 
 C0 comes first because C1 rewrites the request and the prompt, and only a

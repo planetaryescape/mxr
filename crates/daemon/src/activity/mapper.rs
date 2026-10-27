@@ -386,6 +386,32 @@ pub fn map_request(
             Some(draft.id.as_str().clone()),
             None,
         ),
+        Request::EnsureReplyDraft { dry_run: true, .. } => {
+            skip_activity!("reply_preview", "read-only draft preview")
+        }
+        Request::EnsureReplyDraft {
+            message_id,
+            dry_run: false,
+            ..
+        } => (
+            "draft.ensure_reply",
+            Some("message"),
+            Some(message_id.as_str().clone()),
+            None,
+        ),
+        Request::SetReplyDraftAudience { dry_run: true, .. } => {
+            skip_activity!("reply_audience_preview", "read-only draft preview")
+        }
+        Request::SetReplyDraftAudience {
+            draft_id,
+            dry_run: false,
+            ..
+        } => (
+            "draft.update",
+            Some("draft"),
+            Some(draft_id.as_str().clone()),
+            None,
+        ),
         Request::DeleteDraft { draft_id, .. } => (
             "draft.discard",
             Some("draft"),

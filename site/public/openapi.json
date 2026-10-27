@@ -2090,6 +2090,54 @@
         }
       }
     },
+    "/api/v1/mail/compose/session/audience": {
+      "post": {
+        "tags": [],
+        "operationId": "compose_session_audience",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionAudienceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Reply audience preview or updated compose session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeSessionResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid compose session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/mail/compose/session/collaborators": {
       "post": {
         "tags": [],
@@ -13555,6 +13603,33 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "ComposeSessionAudienceRequest": {
+        "type": "object",
+        "required": [
+          "draft_path",
+          "draft_id",
+          "reply_all",
+          "expected_revision"
+        ],
+        "properties": {
+          "draft_id": {
+            "type": "string"
+          },
+          "draft_path": {
+            "type": "string"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reply_all": {
+            "type": "boolean"
           }
         }
       },
@@ -30355,6 +30430,63 @@
               },
               "message_id": {
                 "$ref": "#/components/schemas/MessageId"
+              },
+              "reply_all": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Create or return the canonical unsent reply draft for this conversation.",
+            "required": [
+              "message_id",
+              "reply_all",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "EnsureReplyDraft"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "reply_all": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Change the audience of an existing reply without replacing its content.",
+            "required": [
+              "draft_id",
+              "reply_all",
+              "expected_revision",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetReplyDraftAudience"
+                ]
+              },
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
               },
               "reply_all": {
                 "type": "boolean"

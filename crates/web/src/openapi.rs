@@ -5,10 +5,10 @@
 //! endpoints instead of a schema-only OpenAPI document.
 
 use crate::request_types::{
-    ComposeSessionPathRequest, ComposeSessionResponse, ComposeSessionRestoreRequest,
-    ComposeSessionScheduleRequest, ComposeSessionSendRequest, ComposeSessionStartRequest,
-    ComposeSessionUpdateRequest, DiscardedComposeResponse, DraftConflictResponse,
-    SavedDraftResponse, ScheduledComposeResponse,
+    ComposeSessionAudienceRequest, ComposeSessionPathRequest, ComposeSessionResponse,
+    ComposeSessionRestoreRequest, ComposeSessionScheduleRequest, ComposeSessionSendRequest,
+    ComposeSessionStartRequest, ComposeSessionUpdateRequest, DiscardedComposeResponse,
+    DraftConflictResponse, SavedDraftResponse, ScheduledComposeResponse,
 };
 use mxr_protocol::{DaemonEvent, MutationCommand, Request, Response, ResponseData};
 use utoipa::{
@@ -63,7 +63,7 @@ use utoipa::{
         mail_draft_refine, mail_compose_models, mail_compose_assist, mail_compose_apply, mail_humanizer_score, mail_humanizer_rewrite,
         mail_relationship_profile, mail_relationship_rebuild, mail_commitments_list,
         mail_commitments_resolve, mail_thread_briefing, mail_contacts_briefing, mail_contacts_expert,
-        compose_session_start, compose_session_refresh, compose_session_restore,
+        compose_session_start, compose_session_refresh, compose_session_restore, compose_session_audience,
         compose_session_update, compose_session_send, compose_session_safety_check,
         compose_session_collaborators, compose_session_save, compose_session_schedule,
         compose_session_attachment, compose_session_discard, rules_list, rule_detail, rule_form,
@@ -1868,6 +1868,9 @@ fn mail_sender_kind() {}
 #[utoipa::path(post, path = "/api/v1/mail/compose/session", request_body = ComposeSessionStartRequest, responses((status = 200, description = "Compose session result", body = ComposeSessionResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid compose session", body = DraftConflictResponse)))]
 #[allow(dead_code)]
 fn compose_session_start() {}
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/audience", request_body = ComposeSessionAudienceRequest, responses((status = 200, description = "Reply audience preview or updated compose session", body = ComposeSessionResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid compose session", body = DraftConflictResponse)))]
+#[allow(dead_code)]
+fn compose_session_audience() {}
 #[utoipa::path(post, path = "/api/v1/mail/compose/session/refresh", request_body = ComposeSessionPathRequest, responses((status = 200, description = "Compose session result", body = ComposeSessionResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid compose session", body = DraftConflictResponse)))]
 #[allow(dead_code)]
 fn compose_session_refresh() {}

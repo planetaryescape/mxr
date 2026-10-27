@@ -7,13 +7,12 @@ import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { BridgeRequestError } from "@/api/client";
-import { PHONE_QUERY } from "@/hooks/useMediaQuery";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { useConnectionStore } from "@/state/connectionStore";
 import { useUndo } from "@/state/undoStore";
 import type { ComposeSessionResponse, DraftSafetyReport } from "./api";
 import { ComposeHost } from "./ComposeHost";
-import { draftIntent, inviteReplyIntent, useComposeUi } from "./composeUiStore";
+import { draftIntent, inviteReplyIntent, replyIntent, useComposeUi } from "./composeUiStore";
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn<(options: unknown) => Promise<void>>(),
@@ -181,6 +180,13 @@ function openNewMessage() {
       .getState()
       .openCompose({ key: "compose:new:new", title: "New message", kind: "new" }, "overlay");
   });
+}
+
+async function openSendLater() {
+  fireEvent.keyDown(await screen.findByRole("button", { name: "More send options" }), {
+    key: "Enter",
+  });
+  fireEvent.click(await screen.findByRole("menuitem", { name: /Send later/ }));
 }
 
 beforeEach(() => {
@@ -488,7 +494,7 @@ test("a Messages reply stays in its thread slot and summarizes the live draft au
   act(() =>
     useComposeUi.getState().openCompose(
       {
-        key: "compose:reply:m1",
+        key: "compose:reply:messages-slot-test",
         title: "Reply",
         kind: "reply",
         messageId: "m1",
@@ -503,14 +509,14 @@ test("a Messages reply stays in its thread slot and summarizes the live draft au
   const threadSlot = screen.getByTestId("thread-slot");
   const summary = await within(threadSlot).findByTestId("compose-summary");
   expect(summary).toHaveTextContent("reply-to@example.com");
-  expect(summary).toHaveTextContent("copy@example.com");
-  expect(summary).toHaveTextContent("hidden@example.com");
+  expect(summary).toHaveTextContent("Reply");
+  expect(summary).not.toHaveTextContent("Cc:");
+  expect(summary).not.toHaveTextContent("Bcc:");
   expect(summary).toHaveTextContent("alias@example.com");
-  expect(summary).toHaveTextContent("Work");
   expect(screen.getByRole("heading", { name: "Reply · Contract renewal" })).toBeInTheDocument();
   expect(within(screen.getByTestId("generic-slot")).queryByTestId("compose-summary")).toBeNull();
 
-  fireEvent.click(within(summary).getByRole("button", { name: "Edit recipients and sender" }));
+  fireEvent.click(within(summary).getByRole("button", { name: /Edit recipients:/ }));
   expect(
     within(threadSlot).getByRole("button", { name: "Done editing recipients" }),
   ).toHaveAttribute("aria-expanded", "true");
@@ -529,20 +535,18 @@ test("a Messages reply stays in its thread slot and summarizes the live draft au
   expect(within(threadSlot).getByText("alias@example.com")).toBeInTheDocument();
   fireEvent.click(within(threadSlot).getByRole("button", { name: "Done editing recipients" }));
   const foldedAgain = await within(threadSlot).findByTestId("compose-summary");
-  expect(foldedAgain).toHaveTextContent("copy@example.com");
-  expect(foldedAgain).toHaveTextContent("hidden@example.com");
-  expect(
-    within(foldedAgain).getByRole("button", { name: "Edit recipients and sender" }),
-  ).toHaveAttribute("aria-expanded", "false");
+  expect(foldedAgain).toHaveTextContent("reply-to@example.com");
+  expect(within(foldedAgain).getByRole("button", { name: /Edit recipients:/ })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
   await waitFor(() =>
-    expect(
-      within(foldedAgain).getByRole("button", { name: "Edit recipients and sender" }),
-    ).toHaveFocus(),
+    expect(within(foldedAgain).getByRole("button", { name: /Edit recipients:/ })).toHaveFocus(),
   );
   expect(within(threadSlot).queryByLabelText("To")).toBeNull();
 });
 
-test("popout and fullscreen reply dialogs include the source subject in their accessible name", async () => {
+test("sheet and fullscreen reply dialogs include the source subject in their accessible name", async () => {
   api.startComposeSession.mockResolvedValue(
     session({
       frontmatter: {
@@ -578,7 +582,7 @@ test("popout and fullscreen reply dialogs include the source subject in their ac
   );
   await within(screen.getByTestId("thread-slot")).findByTestId("compose-summary");
 
-  fireEvent.click(screen.getByRole("button", { name: "Popout" }));
+  fireEvent.click(screen.getByRole("button", { name: "Sheet" }));
   expect(await screen.findByRole("dialog", { name: "Reply · Contract renewal" })).toBeVisible();
 
   fireEvent.click(screen.getByRole("button", { name: "Fullscreen (⇧⌘F)" }));
@@ -656,7 +660,7 @@ test("a docked reply names its source and restores edited recipients and body af
   };
   act(() => useComposeUi.getState().openCompose(firstIntent, "inline"));
   await screen.findByTestId("compose-summary");
-  fireEvent.click(screen.getByRole("button", { name: "Edit recipients and sender" }));
+  fireEvent.click(screen.getByRole("button", { name: /Edit recipients:/ }));
   fireEvent.click(screen.getByRole("button", { name: "Remove m1@example.com" }));
   const to = screen.getByRole("combobox", { name: "To" });
   fireEvent.change(to, { target: { value: "reply-to@example.net" } });
@@ -700,25 +704,27 @@ test("a docked reply names its source and restores edited recipients and body af
     );
   });
 
+  fireEvent.click(await screen.findByRole("button", { name: /close composer/i }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: "Return to original topic" }));
   act(() => useComposeUi.getState().openCompose(firstIntent, "inline"));
-  expect(
-    await screen.findByRole("dialog", { name: "Reply · Contract renewal" }),
-  ).toBeInTheDocument();
+  const restoredSlot = screen.getByTestId("thread-1-slot");
+  const restoredSummary = await within(restoredSlot).findByTestId("compose-summary");
   expect(await screen.findByRole("textbox", { name: "Message body" })).toHaveValue(
     "Edited body kept for the original topic",
   );
-  expect(screen.getByTestId("compose-summary")).toHaveTextContent("reply-to@example.net");
-  expect(screen.getByTestId("compose-summary")).toHaveTextContent("copy@example.net");
   expect(useComposeUi.getState().intent).toMatchObject({
     messageId: "m1",
     contextThreadId: "thread-1",
   });
-  fireEvent.click(screen.getByRole("button", { name: "Return to original topic" }));
-  const restoredInline = await within(screen.getByTestId("thread-1-slot")).findByTestId(
-    "compose-summary",
-  );
+  const restoredInline = await within(restoredSlot).findByTestId("compose-summary");
+  expect(restoredSummary).toBe(restoredInline);
   expect(restoredInline).toHaveTextContent("reply-to@example.net");
-  expect(restoredInline).toHaveTextContent("copy@example.net");
+  expect(restoredInline).not.toHaveTextContent("copy@example.net");
+  fireEvent.click(within(restoredInline).getByRole("button", { name: /Edit recipients:/ }));
+  expect(
+    await screen.findByRole("button", { name: "Remove copy@example.net" }),
+  ).toBeInTheDocument();
 });
 
 test("a reply with no To recipient shows an add action without empty Cc and Bcc rows", async () => {
@@ -756,12 +762,10 @@ test("a reply with no To recipient shows an add action without empty Cc and Bcc 
     ),
   );
   const summary = await screen.findByTestId("compose-summary");
-  expect(summary).toHaveTextContent("No recipient");
+  expect(summary).toHaveTextContent("Add recipient");
   expect(summary).not.toHaveTextContent("Cc:");
   expect(summary).not.toHaveTextContent("Bcc:");
-  fireEvent.click(
-    within(summary).getByRole("button", { name: "Add or edit recipients and sender" }),
-  );
+  fireEvent.click(within(summary).getByRole("button", { name: /Edit recipients:/ }));
   expect(await screen.findByRole("combobox", { name: "To" })).toBeInTheDocument();
 });
 
@@ -1001,7 +1005,7 @@ describe("ComposeHost send later", () => {
     renderHost();
     openNewMessage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Send later" }));
+    await openSendLater();
     const field = await screen.findByLabelText("Or type a time");
     fireEvent.change(field, { target: { value: "in 2 hours" } });
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/in 2 hours$/));
@@ -1031,7 +1035,7 @@ describe("ComposeHost send later", () => {
     renderHost();
     openNewMessage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Send later" }));
+    await openSendLater();
     fireEvent.click(await screen.findByRole("button", { name: /In 2 hours.*\d\d:\d\d/ }));
 
     await waitFor(() =>
@@ -1157,7 +1161,7 @@ describe("ComposeHost invite replies", () => {
 
     // Scheduling goes through the compose session, which carries the RSVP,
     // so invite replies can be sent later like any other reply.
-    fireEvent.click(await screen.findByRole("button", { name: "Send later" }));
+    await openSendLater();
     fireEvent.click(await screen.findByRole("button", { name: /In 2 hours.*\d\d:\d\d/ }));
     await waitFor(() => expect(api.scheduleComposeSession).toHaveBeenCalledTimes(1));
   });
@@ -1402,50 +1406,35 @@ describe("saved draft discard preview", () => {
   });
 });
 
-describe("ComposeHost docked without a thread", () => {
-  const realMatchMedia = window.matchMedia;
-
-  function screenWidth(phone: boolean) {
-    window.matchMedia = ((query: string) => ({
-      matches: phone && query === PHONE_QUERY,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    })) as typeof window.matchMedia;
-  }
-
-  function openDockedReply() {
-    act(() => {
+describe("ComposeHost when an inline conversation slot disappears", () => {
+  test("moves the same reply into its sheet and keeps typed text", async () => {
+    function Route() {
+      const [visible, setVisible] = useState(true);
+      return (
+        <>
+          {visible ? <div id="inline-composer-slot-thread-1" /> : null}
+          <button type="button" onClick={() => setVisible(false)}>
+            Leave conversation
+          </button>
+          <ComposeHost />
+        </>
+      );
+    }
+    renderHost(<Route />);
+    act(() =>
       useComposeUi
         .getState()
-        .openCompose({ key: "compose:new:new", title: "New message", kind: "new" }, "inline");
-    });
-  }
+        .openCompose({ ...replyIntent("m-1", "single"), contextThreadId: "thread-1" }, "inline"),
+    );
 
-  afterEach(() => {
-    window.matchMedia = realMatchMedia;
-  });
+    const editor = await screen.findByRole("textbox", { name: "Message body" });
+    fireEvent.change(editor, { target: { value: "Keep this reply" } });
+    fireEvent.click(screen.getByRole("button", { name: "Leave conversation" }));
 
-  test("on a phone it is the title bar alone, so the list stays usable", async () => {
-    screenWidth(true);
-    renderHost();
-    openDockedReply();
-    const dock = await screen.findByRole("dialog", { name: "New message" });
-    await waitFor(() => expect(api.startComposeSession).toHaveBeenCalled());
-    expect(within(dock).getByRole("button", { name: "Fullscreen (⇧⌘F)" })).toBeInTheDocument();
-    expect(within(dock).getByRole("button", { name: "Close composer (saves draft)" })).toBeInTheDocument();
-    expect(within(dock).queryAllByRole("textbox")).toHaveLength(0);
-  });
-
-  test("on a wider screen it keeps the whole editor in the corner", async () => {
-    screenWidth(false);
-    renderHost();
-    openDockedReply();
-    const dock = await screen.findByRole("dialog", { name: "New message" });
-    await waitFor(() => expect(within(dock).getAllByRole("textbox").length).toBeGreaterThan(0));
+    const sheet = await screen.findByRole("dialog", { name: "Reply" });
+    expect(within(sheet).getByRole("textbox", { name: "Message body" })).toHaveValue(
+      "Keep this reply",
+    );
+    expect(within(sheet).getByRole("button", { name: "Fullscreen (⇧⌘F)" })).toBeInTheDocument();
   });
 });

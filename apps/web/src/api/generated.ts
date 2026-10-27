@@ -987,6 +987,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/compose/session/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["compose_session_audience"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/compose/session/collaborators": {
         parameters: {
             query?: never;
@@ -6505,6 +6521,14 @@ export interface components {
             operation: string;
             resource_id?: components["schemas"]["DraftAttachmentId"] | null;
         };
+        ComposeSessionAudienceRequest: {
+            draft_id: string;
+            draft_path: string;
+            dry_run?: boolean;
+            /** Format: int64 */
+            expected_revision: number;
+            reply_all: boolean;
+        };
         ComposeSessionData: {
             accountId?: string | null;
             bodyMarkdown: string;
@@ -11953,6 +11977,22 @@ export interface components {
                   /** @enum {string} */
                   cmd: "PrepareReply";
                   message_id: components["schemas"]["MessageId"];
+                  reply_all: boolean;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "EnsureReplyDraft";
+                  dry_run?: boolean;
+                  message_id: components["schemas"]["MessageId"];
+                  reply_all: boolean;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "SetReplyDraftAudience";
+                  draft_id: components["schemas"]["DraftId"];
+                  dry_run?: boolean;
+                  /** Format: int64 */
+                  expected_revision: number;
                   reply_all: boolean;
               }
             | {
@@ -18572,6 +18612,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    compose_session_audience: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeSessionAudienceRequest"];
+            };
+        };
+        responses: {
+            /** @description Reply audience preview or updated compose session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposeSessionResponse"];
+                };
+            };
+            /** @description Stale draft revision; preserve unsent text */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Invalid compose session */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
             };
         };
     };

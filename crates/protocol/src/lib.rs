@@ -887,6 +887,23 @@ mod tests {
                 IpcCategory::CoreMail,
             ),
             (
+                Request::EnsureReplyDraft {
+                    message_id: MessageId::new(),
+                    reply_all: true,
+                    dry_run: true,
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
+                Request::SetReplyDraftAudience {
+                    draft_id: DraftId::new(),
+                    reply_all: false,
+                    expected_revision: 7,
+                    dry_run: false,
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
                 Request::PrepareForward {
                     message_id: MessageId::new(),
                 },

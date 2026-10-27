@@ -286,6 +286,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::Unsnooze { message_id }
         | Request::SetReplyLater { message_id, .. }
         | Request::PrepareReply { message_id, .. }
+        | Request::EnsureReplyDraft { message_id, .. }
         | Request::PrepareForward { message_id }
         | Request::RecordPromise { message_id, .. }
         | Request::CreateTodo { message_id, .. }
@@ -450,6 +451,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ScheduleSend { draft_id, .. }
         | Request::CancelScheduledSend { draft_id }
         | Request::DeleteDraft { draft_id, .. }
+        | Request::SetReplyDraftAudience { draft_id, .. }
         | Request::GetDraft { draft_id }
         | Request::ResetOrphanedDraft { draft_id } => Targets(vec![T::Draft(draft_id)]),
 

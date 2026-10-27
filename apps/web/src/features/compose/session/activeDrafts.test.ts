@@ -83,6 +83,65 @@ test("storage failure reports unsuccessful retention without erasing editor text
   expect(original.bodyMarkdown).toBe("private unsent edits\n\n");
 });
 
+test("reply entry from another message resumes the matching canonical draft and its unsaved text", async () => {
+  const local = { ...draft(), draftIntent: "reply_all" as const };
+  observeWorkspace(local.binding!);
+  rememberActiveDraft("compose:reply:message-a", local);
+  api.startComposeSession.mockResolvedValueOnce({
+    session: {
+      ...local,
+      draftPath: "/private/new-bridge-session.md",
+      bodyMarkdown: "older canonical body",
+      previewHtml: "",
+      binding: local.binding,
+      kind: "reply",
+    },
+  });
+
+  const loaded = await loadInitialComposeSession({
+    key: "compose:reply:message-b",
+    title: "Reply",
+    kind: "reply",
+    messageId: "message-b",
+  });
+
+  expect(api.startComposeSession).toHaveBeenCalledOnce();
+  expect(loaded.session.draftPath).toBe(local.draftPath);
+  expect(loaded.session.draftId).toBe(local.draftId);
+  expect(loaded.session.draftIntent).toBe("reply_all");
+  expect(loaded.session.bodyMarkdown).toBe(local.bodyMarkdown);
+  expect(loaded.retainedSnapshot).toBe(true);
+});
+
+test("canonical reply journal lookup does not cross workspace owners", async () => {
+  const local = draft();
+  observeWorkspace(local.binding!);
+  rememberActiveDraft("compose:reply:message-a", local);
+  observeWorkspace({
+    target: local.binding!.target,
+    workspace: { workspace_id: "owner-b", recovery_generation: "generation-b" },
+  });
+  api.startComposeSession.mockResolvedValueOnce({
+    session: {
+      ...local,
+      draftPath: "/private/fresh.md",
+      bodyMarkdown: "canonical",
+      previewHtml: "",
+    },
+  });
+
+  const loaded = await loadInitialComposeSession({
+    key: "compose:reply:message-b",
+    title: "Reply",
+    kind: "reply",
+    messageId: "message-b",
+  });
+
+  expect(loaded.session.draftPath).toBe("/private/fresh.md");
+  expect(loaded.session.bodyMarkdown).toBe("canonical");
+  expect(loaded.retainedSnapshot).not.toBe(true);
+});
+
 test("another owner's explicit reopen retains A and selects its private snapshot on return", async () => {
   const a = draft();
   expect(rememberActiveDraft(intent.key, a)).toBe(true);

@@ -2,7 +2,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Bold, Italic, Link2, List, ListOrdered, RemoveFormatting } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 import { composeCommandOf } from "@/features/compose/session/composeShortcuts";
@@ -14,8 +14,11 @@ interface TiptapComposeEditorProps {
   onSend: () => void;
   onDiscard: () => void;
   autoFocus?: boolean;
+  /** Inline replies grow with their text so the conversation scrolls. */
+  inline?: boolean;
   /** Changes when the editor should take focus back, e.g. after a proof closes. */
   focusNonce?: number;
+  readOnly?: boolean;
 }
 
 export function TiptapComposeEditor({
@@ -25,11 +28,14 @@ export function TiptapComposeEditor({
   onSend,
   onDiscard,
   autoFocus = false,
+  inline = false,
   focusNonce = 0,
+  readOnly = false,
 }: TiptapComposeEditorProps) {
   const editor = useEditor({
     extensions: [StarterKit, Placeholder.configure({ placeholder: "Write the message body..." })],
     content: textToDoc(value),
+    editable: !readOnly,
     editorProps: {
       attributes: {
         class:
@@ -78,14 +84,27 @@ export function TiptapComposeEditor({
   }, [autoFocus, editor]);
 
   useEffect(() => {
+    if (!editor) return;
+    editor.view.dom.style.height = inline ? "auto" : "";
+    editor.view.dom.style.minHeight = inline ? "320px" : "";
+  }, [editor, inline]);
+
+  useEffect(() => {
     if (!editor || focusNonce === 0) return;
     editor.commands.focus("end");
   }, [editor, focusNonce]);
 
+  useLayoutEffect(() => {
+    editor?.setEditable(!readOnly);
+  }, [editor, readOnly]);
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className={inline ? "flex flex-col" : "flex h-full min-h-0 flex-col"}>
       <TiptapToolbar editor={editor} />
-      <EditorContent editor={editor} className="min-h-0 flex-1 overflow-auto" />
+      <EditorContent
+        editor={editor}
+        className={inline ? "flex-none overflow-visible" : "min-h-0 flex-1 overflow-auto"}
+      />
     </div>
   );
 }
@@ -125,6 +144,7 @@ function TiptapToolbar({ editor }: { editor: Editor | null }) {
       className="flex w-full shrink-0 items-center gap-0.5 border-b border-rule-soft px-3 py-1"
     >
       <ToolbarButton
+        disabled={!editor?.isEditable}
         label="Bold"
         active={active?.bold}
         onClick={() => editor.chain().focus().toggleBold().run()}
@@ -132,6 +152,7 @@ function TiptapToolbar({ editor }: { editor: Editor | null }) {
         <Bold className="size-3.5" />
       </ToolbarButton>
       <ToolbarButton
+        disabled={!editor?.isEditable}
         label="Italic"
         active={active?.italic}
         onClick={() => editor.chain().focus().toggleItalic().run()}
@@ -139,6 +160,7 @@ function TiptapToolbar({ editor }: { editor: Editor | null }) {
         <Italic className="size-3.5" />
       </ToolbarButton>
       <ToolbarButton
+        disabled={!editor?.isEditable}
         label="Bullet list"
         active={active?.bulletList}
         onClick={() => editor.chain().focus().toggleBulletList().run()}
@@ -146,16 +168,23 @@ function TiptapToolbar({ editor }: { editor: Editor | null }) {
         <List className="size-3.5" />
       </ToolbarButton>
       <ToolbarButton
+        disabled={!editor?.isEditable}
         label="Ordered list"
         active={active?.orderedList}
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
       >
         <ListOrdered className="size-3.5" />
       </ToolbarButton>
-      <ToolbarButton label="Link" active={active?.link} onClick={setLink}>
+      <ToolbarButton
+        disabled={!editor?.isEditable}
+        label="Link"
+        active={active?.link}
+        onClick={setLink}
+      >
         <Link2 className="size-3.5" />
       </ToolbarButton>
       <ToolbarButton
+        disabled={!editor?.isEditable}
         label="Clear formatting"
         onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
       >
@@ -170,11 +199,13 @@ function ToolbarButton({
   active,
   onClick,
   children,
+  disabled = false,
 }: {
   label: string;
   active?: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <Button
@@ -182,6 +213,7 @@ function ToolbarButton({
       variant={active ? "secondary" : "ghost"}
       size="icon-xs"
       aria-label={label}
+      disabled={disabled}
       aria-pressed={active ?? false}
       title={label}
       // Keep the selection in the editor — formatting acts on it.

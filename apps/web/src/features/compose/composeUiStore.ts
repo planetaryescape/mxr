@@ -43,7 +43,10 @@ export const useComposeUi = create<ComposeUiState>((set, get) => ({
   intent: null,
   surface: "overlay",
   commands: null,
-  openCompose: (intent, surface = "overlay") => {
+  openCompose: (
+    intent,
+    surface = intent.kind === "reply" || intent.kind === "reply_all" ? "inline" : "overlay",
+  ) => {
     // A draft is a file the daemon writes; without it the composer could
     // only spin. One already open stays usable.
     if (get().intent?.key !== intent.key && refuseWhileDaemonDown("open the composer")) return;
@@ -56,18 +59,16 @@ export const useComposeUi = create<ComposeUiState>((set, get) => ({
 
 /** Intent for a brand-new message (the global `c` shortcut). */
 export function newMessageIntent(): ComposeIntent {
-  return { key: "compose:new:new", title: "New message", kind: "new" };
+  return { key: `compose:new:${crypto.randomUUID()}`, title: "New message", kind: "new" };
 }
 
 /** New message with optional To / Subject prefill (compose launcher, deep
- * links). Without prefill it is the same intent, and draft, as `c`. */
+ * links). Each invocation starts a fresh draft, like `c`. */
 export function prefilledMessageIntent(to?: string, subject?: string): ComposeIntent {
   const prefillTo = to?.trim() || undefined;
   const prefillSubject = subject?.trim() || undefined;
-  const prefillKey = [prefillTo ?? "", prefillSubject ?? ""].join("|");
-  if (prefillKey === "|") return newMessageIntent();
   return {
-    key: `compose:new:${prefillKey}`,
+    key: `compose:new:${crypto.randomUUID()}`,
     title: "New message",
     kind: "new",
     prefillTo,
@@ -140,5 +141,11 @@ export function replyIntent(messageId: string, mode: "single" | "all" | "forward
   const kind: ComposeKind = mode === "forward" ? "forward" : mode === "all" ? "reply_all" : "reply";
   const title =
     kind === "forward" ? "Forward message" : kind === "reply_all" ? "Reply all" : "Reply";
-  return { key: `compose:${kind}:${messageId}`, title, kind, messageId };
+  return {
+    key: kind === "forward" ? `compose:forward:${messageId}` : `compose:reply:${messageId}`,
+    title,
+    kind,
+    messageId,
+    quiet: kind !== "forward",
+  };
 }

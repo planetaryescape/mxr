@@ -11,7 +11,13 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/api/client";
-import { discardComposeSession, type ComposeFrontmatter } from "./api";
+import { requestCoordinator } from "@/lib/requestCoordinator";
+import {
+  discardComposeSession,
+  setComposeAudience,
+  type ComposeFrontmatter,
+  type ComposeSessionResponse,
+} from "./api";
 import { formatRelativeAge } from "@/lib/utils";
 import {
   forgetActiveDraft,
@@ -23,6 +29,7 @@ import {
   applyPrefill,
   countRecipients,
   draftFingerprint,
+  composeQueueKey,
   draftFromSession,
   errorMessage,
   expandSnippet,
@@ -50,6 +57,18 @@ export type { ComposeController, Signature } from "./session/composeController";
 export type { ComposeUploadProgress } from "./session/useComposeAttachments";
 export type { ComposeSessionOptions } from "./session/useComposeSend";
 
+function audienceIdentity(value: ComposeDraftState) {
+  return JSON.stringify({
+    draftPath: value.draftPath,
+    draftId: value.draftId,
+    accountId: value.accountId,
+    revision: value.revision,
+    to: value.frontmatter.to.trim(),
+    cc: value.frontmatter.cc.trim(),
+    bcc: value.frontmatter.bcc.trim(),
+  });
+}
+
 export function useComposeSession(
   intent: ComposeIntent,
   options: ComposeSessionOptions = {},
@@ -63,6 +82,8 @@ export function useComposeSession(
     staleTime: 60_000,
   });
   const canonicalReopenRef = useRef(false);
+  const audienceOperationRef = useRef(0);
+  const audienceOperationLockedRef = useRef(false);
   const sessionQuery = useQuery({
     queryKey: ["compose-session", intent.key],
     queryFn: () => loadInitialComposeSession(intent, canonicalReopenRef.current),
@@ -82,16 +103,20 @@ export function useComposeSession(
   const [dirty, setDirty] = useState(false);
   const [snippetPickerOpen, setSnippetPickerOpen] = useState(false);
   const [signaturePickerOpen, setSignaturePickerOpen] = useState(false);
-  // Fetched lazily — the list is only needed once the picker opens.
+  const [signatureFoldOpen, setSignatureFoldOpen] = useState(false);
+  // Fetched lazily when the signature fold or picker opens.
   const signatures = useQuery({
     queryKey: ["signatures"],
     queryFn: () => apiFetch<{ signatures: Signature[] }>("/api/v1/mail/signatures"),
-    enabled: signaturePickerOpen,
+    enabled: signaturePickerOpen || signatureFoldOpen,
     staleTime: 60_000,
   });
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  const [changingAudience, setChangingAudience] = useState(false);
+  const [audiencePreview, setAudiencePreview] = useState<ComposeSessionResponse | null>(null);
+  const audiencePreviewFingerprintRef = useRef<string | null>(null);
   // Validation stays quiet until it can help: after the first send attempt,
   // or (for malformed addresses only) once a recipient field is left.
   const [sendAttempted, setSendAttempted] = useState(false);
@@ -106,6 +131,8 @@ export function useComposeSession(
     queryClient,
     draft,
     draftRef,
+    operationLockRef: audienceOperationLockedRef,
+    operationPaused: changingAudience,
     setDraft,
     dirty,
     setDirty,
@@ -234,15 +261,164 @@ export function useComposeSession(
   // Send later and the shortcuts cannot start a second one.
   const busy =
     autosave.saving ||
+    changingAudience ||
     send.sendLocked ||
     send.sendPending ||
     discardSession.isPending ||
     attachments.uploading > 0;
 
+  useEffect(() => {
+    audienceOperationRef.current += 1;
+    audienceOperationLockedRef.current = false;
+    setChangingAudience(false);
+    setAudiencePreview(null);
+    audiencePreviewFingerprintRef.current = null;
+    return () => {
+      audienceOperationRef.current += 1;
+      audienceOperationLockedRef.current = false;
+    };
+  }, [intent.key]);
+
+  function beginAudienceOperation() {
+    if (audienceOperationLockedRef.current) return null;
+    audienceOperationLockedRef.current = true;
+    const token = ++audienceOperationRef.current;
+    setChangingAudience(true);
+    return token;
+  }
+
+  function finishAudienceOperation(token: number) {
+    if (audienceOperationRef.current !== token) return;
+    audienceOperationLockedRef.current = false;
+    setChangingAudience(false);
+  }
+
+  async function requestReplyAudience(replyAll: boolean) {
+    const token = beginAudienceOperation();
+    if (token == null) return;
+    const current = draftRef.current;
+    if (!current?.draftId || current.revision == null || current.recoverySourcePath) {
+      finishAudienceOperation(token);
+      toast.error("Reply audience is not ready", {
+        description: "Save or reopen the canonical reply before changing its audience.",
+      });
+      return;
+    }
+    try {
+      if (dirty) await saveCurrentDraft();
+      await requestCoordinator.settleCompose(
+        composeQueueKey(current.draftPath, current.recoverySourcePath),
+      );
+      const saved = draftRef.current;
+      if (!saved?.draftId || saved.revision == null || saved.recoverySourcePath) return;
+      const preview = await setComposeAudience({
+        draftPath: saved.draftPath,
+        draftId: saved.draftId,
+        replyAll,
+        expectedRevision: saved.revision,
+        dryRun: true,
+      });
+      if (
+        audienceOperationRef.current === token &&
+        draftRef.current?.draftPath === saved.draftPath &&
+        draftRef.current.draftId === saved.draftId
+      ) {
+        setAudiencePreview(preview);
+        audiencePreviewFingerprintRef.current = audienceIdentity(saved);
+      }
+    } catch (error) {
+      if (audienceOperationRef.current === token)
+        toast.error("Could not preview the reply audience", { description: errorMessage(error) });
+    } finally {
+      finishAudienceOperation(token);
+    }
+  }
+
+  async function confirmReplyAudience() {
+    const requested = audiencePreview?.session.kind === "reply_all";
+    const current = draftRef.current;
+    if (!audiencePreview || requested == null || !current?.draftId || current.revision == null)
+      return;
+    const displayedFingerprint = audiencePreviewFingerprintRef.current;
+    const token = beginAudienceOperation();
+    if (token == null) return;
+    try {
+      if (displayedFingerprint !== audienceIdentity(current)) {
+        const fresh = await setComposeAudience({
+          draftPath: current.draftPath,
+          draftId: current.draftId,
+          replyAll: requested,
+          expectedRevision: current.revision,
+          dryRun: true,
+        });
+        if (audienceOperationRef.current === token) {
+          setAudiencePreview(fresh);
+          audiencePreviewFingerprintRef.current = audienceIdentity(current);
+        }
+        return;
+      }
+      if (dirty) await saveCurrentDraft();
+      await requestCoordinator.settleCompose(
+        composeQueueKey(current.draftPath, current.recoverySourcePath),
+      );
+      const saved = draftRef.current;
+      if (!saved?.draftId || saved.revision == null || saved.recoverySourcePath) return;
+      const preview = await setComposeAudience({
+        draftPath: saved.draftPath,
+        draftId: saved.draftId,
+        replyAll: requested,
+        expectedRevision: saved.revision,
+        dryRun: true,
+      });
+      const displayedAudience = audienceFingerprint(audiencePreview.session.frontmatter);
+      const currentAudience = audienceFingerprint(preview.session.frontmatter);
+      if (
+        displayedFingerprint !== audienceIdentity(saved) ||
+        displayedAudience !== currentAudience
+      ) {
+        if (audienceOperationRef.current === token) {
+          setAudiencePreview(preview);
+          audiencePreviewFingerprintRef.current = audienceIdentity(saved);
+        }
+        return;
+      }
+      const applied = await setComposeAudience({
+        draftPath: saved.draftPath,
+        draftId: saved.draftId,
+        replyAll: requested,
+        expectedRevision: preview.session.revision ?? saved.revision,
+        dryRun: false,
+      });
+      const latest = draftRef.current;
+      if (
+        audienceOperationRef.current !== token ||
+        !latest ||
+        latest.draftPath !== saved.draftPath ||
+        latest.draftId !== saved.draftId
+      )
+        return;
+      const next = { ...draftFromSession(applied.session), modelSpans: latest.modelSpans };
+      draftRef.current = next;
+      setDraft(next);
+      setDirty(false);
+      lastSavedFingerprintRef.current = draftFingerprint(next);
+      setAudiencePreview(null);
+      audiencePreviewFingerprintRef.current = null;
+    } catch (error) {
+      if (audienceOperationRef.current === token)
+        toast.error("Reply audience was not changed", {
+          description: `${errorMessage(error)} Your draft text remains available here.`,
+        });
+    } finally {
+      finishAudienceOperation(token);
+    }
+  }
+
   function updateFrontmatter<K extends keyof ComposeFrontmatter>(
     field: K,
     value: ComposeFrontmatter[K],
   ) {
+    if (audienceOperationLockedRef.current) return;
     setDraft((current) =>
       current ? { ...current, frontmatter: { ...current.frontmatter, [field]: value } } : current,
     );
@@ -250,6 +426,7 @@ export function useComposeSession(
   }
 
   function updateBody(value: string) {
+    if (audienceOperationLockedRef.current) return;
     const expanded = expandSnippet(value, snippets.data?.snippets ?? []);
     setDraft((current) =>
       current
@@ -268,6 +445,7 @@ export function useComposeSession(
   }
 
   function updateAccount(accountId: string) {
+    if (audienceOperationLockedRef.current) return;
     if (draftRef.current?.revision != null || autosave.saving) {
       toast.error("Saved drafts keep their account", {
         description: "Start a new draft to use another account.",
@@ -291,6 +469,7 @@ export function useComposeSession(
   }
 
   function handleAttachShortcut() {
+    if (audienceOperationLockedRef.current) return;
     if (attachments.uploading > 0) return;
     fileInputRef.current?.click();
   }
@@ -316,6 +495,7 @@ export function useComposeSession(
   }
 
   function addCc(email: string) {
+    if (audienceOperationLockedRef.current) return;
     const current = draftRef.current;
     if (!current) return;
     const everyone = splitAddresses(
@@ -327,6 +507,7 @@ export function useComposeSession(
   }
 
   function insertSnippet(body: string) {
+    if (audienceOperationLockedRef.current) return;
     const current = draftRef.current;
     if (!current) return;
     const base = current.bodyMarkdown;
@@ -335,6 +516,7 @@ export function useComposeSession(
   }
 
   function insertSignature(body: string) {
+    if (audienceOperationLockedRef.current) return;
     const current = draftRef.current;
     if (!current) return;
     updateBody(`${current.bodyMarkdown.replace(/\n*$/, "")}\n\n--\n${body}`);
@@ -401,6 +583,7 @@ export function useComposeSession(
   }
 
   function removeAttachment(path: string) {
+    if (audienceOperationLockedRef.current) return;
     const current = draftRef.current;
     if (!current) return;
     updateFrontmatter(
@@ -440,6 +623,14 @@ export function useComposeSession(
     uploading: attachments.uploading,
     sending: send.sendPending || autosave.saving,
     discarding: discardSession.isPending,
+    changingAudience,
+    audiencePreview,
+    requestReplyAudience,
+    confirmReplyAudience,
+    cancelReplyAudience: () => {
+      setAudiencePreview(null);
+      audiencePreviewFingerprintRef.current = null;
+    },
 
     showCc,
     setShowCc,
@@ -475,6 +666,8 @@ export function useComposeSession(
     insertSnippet,
     signaturePickerOpen,
     setSignaturePickerOpen,
+    signatureFoldOpen,
+    setSignatureFoldOpen,
     signatureList: signatures.data?.signatures ?? [],
     insertSignature,
     collaboratorSuggestions,
@@ -528,4 +721,17 @@ export function saveStatusLabel({
 export function savedLabel(at: Date, now = Date.now()): string {
   if (now - at.getTime() < 60_000) return "Saved just now";
   return `Saved ${formatRelativeAge(at)} ago`;
+}
+
+function audienceFingerprint(
+  frontmatter: Pick<Partial<ComposeFrontmatter>, "to" | "cc" | "bcc">,
+): string {
+  return JSON.stringify(
+    [frontmatter.to, frontmatter.cc, frontmatter.bcc].map((value) =>
+      (value ?? "")
+        .split(/[;,]/)
+        .map((address) => address.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
 }

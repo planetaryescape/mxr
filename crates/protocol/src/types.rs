@@ -1646,6 +1646,21 @@ pub enum Request {
         message_id: MessageId,
         reply_all: bool,
     },
+    /// Create or return the canonical unsent reply draft for this conversation.
+    EnsureReplyDraft {
+        message_id: MessageId,
+        reply_all: bool,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Change the audience of an existing reply without replacing its content.
+    SetReplyDraftAudience {
+        draft_id: DraftId,
+        reply_all: bool,
+        expected_revision: i64,
+        #[serde(default)]
+        dry_run: bool,
+    },
     PrepareForward {
         message_id: MessageId,
     },
@@ -2904,6 +2919,8 @@ impl Request {
             Self::PreviewDraft { .. }
                 | Self::SaveDraft { .. }
                 | Self::UpdateDraft { .. }
+                | Self::EnsureReplyDraft { .. }
+                | Self::SetReplyDraftAudience { .. }
                 | Self::SaveDraftToServer { .. }
                 | Self::DeleteDraft { .. }
                 | Self::GetDraft { .. }
@@ -3057,6 +3074,8 @@ impl Request {
             | Self::ClassifyCompare { .. }
             | Self::ClassifyEval { .. }
             | Self::PrepareReply { .. }
+            | Self::EnsureReplyDraft { .. }
+            | Self::SetReplyDraftAudience { .. }
             | Self::PrepareForward { .. }
             | Self::SendDraft { .. }
             | Self::GetSendOutcome { .. }

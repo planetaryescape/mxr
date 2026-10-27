@@ -109,7 +109,7 @@ export function ComposeTopBar({
   );
 }
 
-function FromControl({
+export function FromControl({
   accounts,
   value,
   onChange,
@@ -130,12 +130,13 @@ function FromControl({
 
   // Single account, single address: nothing to choose — show the address plainly.
   if (accounts.length === 1 && !hasAliases) {
+    const senderAddress = fromAddress || selected?.email;
     return (
       <span
         className="min-w-0 truncate font-mono text-2xs text-muted-foreground sm:max-w-[220px]"
-        title={selected?.email}
+        title={senderAddress}
       >
-        {selected?.email}
+        {senderAddress}
       </span>
     );
   }

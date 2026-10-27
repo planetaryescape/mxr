@@ -69,6 +69,24 @@ total message limit. Unsupported attachment declarations fail explicitly rather
 than dropping the file. Saved forwards are HTML drafts, so the existing
 markdown-only `drafts edit` command cannot edit them.
 
+## Resume a conversation reply
+
+The web composer resumes one unsent reply per account and conversation. Opening
+Reply all on an existing reply keeps its current audience until you change it
+explicitly. The audience preview preserves custom recipients and Bcc.
+
+The same operations are available from the CLI:
+
+```bash
+mxr drafts reply MESSAGE_ID --dry-run --format json
+mxr drafts reply MESSAGE_ID --format json
+mxr drafts audience DRAFT_ID --all --expected-revision REVISION --dry-run --format json
+mxr drafts audience DRAFT_ID --all --expected-revision REVISION --format json
+```
+
+Use the returned revision for the next change. A stale revision is rejected;
+none of these commands sends the reply.
+
 ## Local and linked provider drafts
 
 mxr's local draft store is canonical. The CLI, TUI, web app, and MCP all read

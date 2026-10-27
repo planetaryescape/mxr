@@ -389,6 +389,11 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_reply_all", &["reply-all", "--help"]),
         ("cli_help_forward", &["forward", "--help"]),
         ("cli_help_drafts", &["drafts", "--help"]),
+        ("cli_help_drafts_reply", &["drafts", "reply", "--help"]),
+        (
+            "cli_help_drafts_audience",
+            &["drafts", "audience", "--help"],
+        ),
         ("cli_help_drafts_list", &["drafts", "list", "--help"]),
         (
             "cli_help_drafts_scheduled",

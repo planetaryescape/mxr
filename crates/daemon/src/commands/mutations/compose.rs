@@ -816,6 +816,131 @@ pub async fn drafts(account: Option<String>, format: Option<OutputFormat>) -> an
     Ok(())
 }
 
+pub async fn drafts_reply(
+    message_id: String,
+    reply_all: bool,
+    dry_run: bool,
+    account: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    client.capture_workspace().await?;
+    let explicit_account = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let message_id = parse_message_id(&message_id)?;
+    let envelope = match client
+        .request(Request::GetEnvelope {
+            message_id: message_id.clone(),
+        })
+        .await?
+    {
+        Response::Ok {
+            data: ResponseData::Envelope { envelope },
+        } => envelope,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response reading reply source"),
+    };
+    if explicit_account
+        .as_ref()
+        .is_some_and(|account_id| *account_id != envelope.account_id)
+    {
+        anyhow::bail!("Message {message_id} belongs to a different account");
+    }
+    let response = client
+        .request(Request::EnsureReplyDraft {
+            message_id,
+            reply_all,
+            dry_run,
+        })
+        .await?;
+    let draft = match response {
+        Response::Ok {
+            data: ResponseData::Draft { draft },
+        } => draft,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response ensuring reply draft"),
+    };
+    print_reply_draft(&draft, format, dry_run)
+}
+
+pub async fn drafts_audience(
+    draft_id: String,
+    reply_all: bool,
+    expected_revision: i64,
+    dry_run: bool,
+    account: Option<String>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let draft_id = draft_id.parse::<DraftId>()?;
+    let mut client = IpcClient::connect().await?;
+    client.capture_workspace().await?;
+    let explicit_account = resolve_optional_account(&mut client, account.as_deref()).await?;
+    let existing = match client
+        .request(Request::GetDraft {
+            draft_id: draft_id.clone(),
+        })
+        .await?
+    {
+        Response::Ok {
+            data: ResponseData::Draft { draft },
+        } => draft,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response reading reply draft"),
+    };
+    if explicit_account
+        .as_ref()
+        .is_some_and(|account_id| *account_id != existing.account_id)
+    {
+        anyhow::bail!("Draft belongs to a different account");
+    }
+    let response = client
+        .request(Request::SetReplyDraftAudience {
+            draft_id,
+            reply_all,
+            expected_revision,
+            dry_run,
+        })
+        .await?;
+    let draft = match response {
+        Response::Ok {
+            data: ResponseData::Draft { draft },
+        } => draft,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response changing reply audience"),
+    };
+    if explicit_account
+        .as_ref()
+        .is_some_and(|account_id| *account_id != draft.account_id)
+    {
+        anyhow::bail!("Draft belongs to a different account");
+    }
+    print_reply_draft(&draft, format, dry_run)
+}
+
+fn print_reply_draft(
+    draft: &Draft,
+    format: Option<OutputFormat>,
+    dry_run: bool,
+) -> anyhow::Result<()> {
+    match resolve_format(format) {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(draft)?),
+        OutputFormat::Jsonl => println!("{}", serde_json::to_string(draft)?),
+        OutputFormat::Ids => println!("{}", draft.id),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.serialize(draft)?;
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Table => println!(
+            "{}{} — {} (revision {})",
+            if dry_run { "Preview: " } else { "" },
+            draft.id,
+            draft.subject,
+            draft.revision.unwrap_or_default()
+        ),
+    }
+    Ok(())
+}
+
 fn filter_drafts_by_account(drafts: Vec<Draft>, account_id: Option<&AccountId>) -> Vec<Draft> {
     drafts
         .into_iter()

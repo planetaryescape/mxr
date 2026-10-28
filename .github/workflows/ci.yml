@@ -272,7 +272,11 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: (needs.changes.outputs.classifier == 'true' || github.event_name == 'push') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
-    timeout-minutes: 30
+    # About 12 minutes on a usual runner; a runner 2.5 times slower took 29
+    # (docs/issues/classify-eval-full-near-timeout.md). The limit only stops a
+    # hung job: a slower classifier fails the test's work-per-sync budget,
+    # which a slow runner doesn't move.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -284,6 +288,18 @@ jobs:
         run: |
           set -o pipefail
           cargo test -p mxr --lib -- --ignored --exact handler::tests::classify_eval_full::the_full_set_is_graded_on_the_whole_demo --nocapture 2>&1 | tee classify-eval-full.log
+      # Runs after a timeout too: the rows of the stages that finished say
+      # whether the runner or the classifier was slow.
+      - name: Summarise the timings
+        if: always()
+        run: |
+          {
+            echo "### Classifier eval timings"
+            echo
+            sed -n 's/^ *Finished \(.*\)$/Compile: \1/p' classify-eval-full.log
+            echo
+            sed -n 's/^classify-eval-timing: //p' classify-eval-full.log
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the grading log
         if: always()
         uses: actions/upload-artifact@v7

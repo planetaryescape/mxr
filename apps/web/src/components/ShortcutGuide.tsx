@@ -6,6 +6,9 @@ import { formatChord, isMacPlatform } from "@/lib/keys/chord";
 import { shortcutContinuations } from "@/lib/keys/continuations";
 import { useKeyScope } from "@/state/keyScopeStore";
 
+/** How long a prefix waits before its guide opens; the TUI waits as long (blueprint 35). */
+export const SHORTCUT_GUIDE_DELAY_MS = 300;
+
 /** A pause after a prefix teaches its next keys without opening a modal. */
 export function ShortcutGuide() {
   const prefix = useKeyScope((s) => s.pendingPrefix);
@@ -14,7 +17,7 @@ export function ShortcutGuide() {
   useEffect(() => {
     setShown(null);
     if (!prefix) return;
-    const timer = setTimeout(() => setShown(prefix), 200);
+    const timer = setTimeout(() => setShown(prefix), SHORTCUT_GUIDE_DELAY_MS);
     return () => clearTimeout(timer);
   }, [prefix]);
   if (!prefix || shown !== prefix) return null;

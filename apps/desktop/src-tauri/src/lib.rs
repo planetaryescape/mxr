@@ -4,12 +4,16 @@
 //! loads the URL it prints and adds a global new-message shortcut. It bundles
 //! no frontend (only a down page), manages no daemon and has no updater.
 //!
+//! Its menu comes from the key definition and runs the web app's actions by
+//! id (`menu`).
+//!
 //! Security: the shell grants no Tauri IPC to anything. There are no
 //! capabilities and no `invoke` handler, so neither the bundled down page
 //! nor the bridge origin can call Rust. "Try again" is a navigation that
 //! `on_navigation` intercepts.
 
 mod downloads;
+mod menu;
 mod mxr_cli;
 mod navigation;
 
@@ -80,6 +84,19 @@ fn open_new_message(app: &AppHandle) {
     if let Some(script) = shell
         .bridge()
         .and_then(|bridge| new_message_script(&bridge))
+    {
+        let _ = window.eval(script);
+    }
+}
+
+/// Runs a menu command in the web app (see `menu`). Only on the web app,
+/// for the same reason `open_new_message` checks the bridge.
+fn run_menu_command(app: &AppHandle, id: &str) {
+    let Some(window) = show_main(app) else { return };
+    let shell = app.state::<Arc<Shell>>();
+    if let Some(script) = shell
+        .bridge()
+        .and_then(|bridge| menu::menu_action_script(&bridge, id))
     {
         let _ = window.eval(script);
     }
@@ -198,6 +215,12 @@ pub fn run() {
                 })
                 .build(),
         )
+        .menu(menu::build)
+        .on_menu_event(|app, event| {
+            if menu::is_command(event.id().as_ref()) {
+                run_menu_command(app, event.id().as_ref());
+            }
+        })
         .manage(Arc::new(Shell::default()))
         .setup(move |app| {
             create_main_window(app.handle())?;

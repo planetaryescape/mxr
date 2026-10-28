@@ -157,6 +157,7 @@ mod mutations_and_bulk;
 mod now;
 mod pattern_select;
 mod places;
+mod prefix_guide;
 mod reader_and_diagnostics;
 mod reading;
 mod records;

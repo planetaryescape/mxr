@@ -187,6 +187,17 @@ impl App {
         if self.search_is_pending() {
             timeout = timeout.min(SEARCH_SPINNER_TICK);
         }
+        // A waiting prefix redraws when its guide is due, then once it has
+        // timed out so the guide and the "g …" hint go away.
+        if let (Some(waited), Some(left)) =
+            (self.input.prefix_waited(now), self.input.prefix_left(now))
+        {
+            let wake = crate::input::PREFIX_GUIDE_DELAY
+                .checked_sub(waited)
+                .filter(|wait| !wait.is_zero())
+                .map_or(left, |wait| wait.min(left));
+            timeout = timeout.min(wake + Duration::from_millis(1));
+        }
         // The assistant's running line counts the seconds.
         if self.assistant.open && self.assistant.running() {
             timeout = timeout.min(Duration::from_secs(1));

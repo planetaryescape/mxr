@@ -51,6 +51,7 @@ fn g_view_chord(second: char) -> Option<Action> {
         // Labels here; the web app shows them as pages.
         '#' => Some(Action::GoToTrash),
         '!' => Some(Action::GoToSpam),
+        'n' => Some(Action::OpenSnoozed),
         // Waiting on lives in Messages here, as the sidebar's item does.
         'w' => Some(Action::OpenMessages),
         // Filter this list, as the web app does (Ctrl-f works too).
@@ -816,6 +817,7 @@ mod tests {
             ('m', KeyModifiers::NONE, Action::OpenMessages),
             ('e', KeyModifiers::NONE, Action::OpenArchiveMode),
             ('S', KeyModifiers::SHIFT, Action::OpenScreenerQueue),
+            ('n', KeyModifiers::NONE, Action::OpenSnoozed),
         ] {
             let mut input = InputHandler::new();
             assert_eq!(input.handle_key(key(KeyCode::Char('g'))), None);

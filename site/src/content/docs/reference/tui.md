@@ -98,7 +98,21 @@ Changed and Routine, one line per source, with what arrived after the cut
 below it ([Read Updates as a briefing](/guides/updates/)). `E` lets go of
 the digest after a preview, `e` lets go of one source, `t` makes a to-do
 from a line, `P` tunes the source, `L` opens the line's link and `o` the
-email. The keys are in the [keybindings reference](/reference/keybindings/#updates).
+email. `Space` opens the lit line's details under it, as the web app's peek
+does: the whole fact when the row cuts it, when the latest email arrived and
+its first lines, why the update is here, the numbers the mail quoted, a
+tracker's state, a parcel's items and references, and where `L` and `o` go.
+`Space` again or `Esc` closes them. The keys are in the
+[keybindings reference](/reference/keybindings/#updates).
+
+## Snoozed
+
+`g n` opens **Snoozed**: snoozed mail, waking soonest first, one row per
+conversation, with the wake time where the date usually is and "Back Fri 31
+Oct, 09:00" in place of the snippet. It is a mail list, so `Enter` opens the
+message and the list's keys act on the lit conversation. `w` wakes it now:
+every snoozed message in the conversation goes back to the inbox. `b` sends
+it away again. `mxr snoozed` and `mxr unsnooze` do the same from the CLI.
 
 ## Reading and Paper trail
 
@@ -293,7 +307,8 @@ them too.
 - Reply-later queue browser: list of flagged messages and due reminders,
   opened with **Reply queue** (`gq`). `F` there replies to each queued
   message in turn, from the selected one: sending one reply opens the next
-  ([Focus & reply](/guides/focus-and-reply/)). Cancel a pending reminder
+  ([Focus & reply](/guides/focus-and-reply/)). `w` takes the selected
+  message out of the queue, as the web app's **Done** does. Cancel a pending reminder
   from the focused sent message with the palette (`:`) → **Cancel no-reply reminder**
 - Promise prompt: after a send whose message promises something with a
   date, a toast asks "Remind me …?"; `y` keeps it as a reminder, `n` or

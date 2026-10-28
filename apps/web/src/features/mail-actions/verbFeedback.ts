@@ -22,6 +22,7 @@ export type OtherVerb =
   | "unsubscribe"
   | "sweep"
   | "desk-done"
+  | "wake"
   | "mode-done"
   | "digest-let-go"
   | "pin"
@@ -311,13 +312,25 @@ export const VERB_FEEDBACK: Record<Verb, VerbFeedback> = {
   },
   "desk-done": {
     // On the desk, archive is Done in every lane (see features/desk/deskDone).
-    actions: ["list.row-action", "mail.archive", "mail.read-archive", "focus.done"],
+    actions: ["mail.archive", "mail.read-archive", "focus.done"],
     alsoFrom: `the check on every desk row, ${SWIPE} (short right)`,
     optimistic: "The row leaves the desk at once; focus mode moves to the next conversation.",
     pastTense: "Done",
     tone: "success",
     sound: "archived",
     undo: "daemon-mutation",
+  },
+  wake: {
+    // The list's row action: Wake now on /snoozed. The reply queue's row
+    // action is its Done, which says "Out of the reply queue".
+    actions: ["list.row-action"],
+    alsoFrom: "the Wake now chip on a Snoozed row, Done on a reply-queue row",
+    optimistic: "Nothing moves until the daemon answers; then the conversation leaves Snoozed.",
+    pastTense: "Back in your inbox",
+    tone: "success",
+    sound: null,
+    // Not now (`b`) sets it again.
+    undo: "reverse-request",
   },
   "mode-done": {
     // Done here, per mode (features/modes/modeDone): other modes keep the

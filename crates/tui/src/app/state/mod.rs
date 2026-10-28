@@ -54,9 +54,9 @@ pub use mailbox::{
     BodyViewMetadata, BodyViewMode, BodyViewState, CalendarInvitesPageState, DeskPageState,
     LayoutMode, MailListMode, MailListRow, MailboxState, MailboxView, OwedRepliesPageState,
     PendingAttachmentAction, PendingBrowserOpen, PendingSweepConfirm, PlaceFetch, PlacePageState,
-    SenderKindMenu, SidebarHeader, SidebarItem, SidebarSection, SubscriptionEntry,
-    SubscriptionsPageState, SweepTarget, ThreadSummaryPreview, PLACE_PAGE_MESSAGES,
-    PLACE_PAGE_SENDERS,
+    SenderKindMenu, SidebarHeader, SidebarItem, SidebarSection, SnoozedPageState,
+    SubscriptionEntry, SubscriptionsPageState, SweepTarget, ThreadSummaryPreview,
+    PLACE_PAGE_MESSAGES, PLACE_PAGE_SENDERS,
 };
 pub use messages::{
     row_key, AckCountdown, DoneNote, MessagesFocus, MessagesItem, MessagesPageState, MessagesRowKey,

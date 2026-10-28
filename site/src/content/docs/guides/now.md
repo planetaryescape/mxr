@@ -450,8 +450,9 @@ drops any time set to bring it back. It stays off the desk until someone
 writes in it again, you or them.
 
 - **Web app:** the check at the end of the row. On the desk the archive key
-  is Done, in every lane and on a selection, and from the reader when you
-  opened the conversation from the desk. With a mouse the check shows when
+  (`e`) is Done, in every lane and on a selection, and from the reader when you
+  opened the conversation from the desk. `w` was Done too until it became
+  Wake; on the desk it says Done is `e` until 0.6.206. With a mouse the check shows when
   you point at the row; on a touch screen it is always there, and a short
   swipe right is Done too.
 - **TUI:** the archive key on a desk row, or in the conversation opened

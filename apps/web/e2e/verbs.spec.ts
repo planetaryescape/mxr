@@ -586,6 +586,36 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     await leavesThenUndoes(page, "desk-done", rowId);
   },
 
+  wake: async (page) => {
+    const snoozed = async () =>
+      (await bridge<{ snoozed: { message_id: string }[] }>(page, "/api/v1/mail/snoozed")).snoozed;
+    // Something to wake: snooze one conversation from the inbox.
+    await openList(page, "/m/inbox");
+    await mailList(page).focus();
+    await cursorTo(page, isSingleMessage);
+    await page.keyboard.press("b");
+    await expect(page.getByRole("dialog", { name: "Not now" })).toBeVisible();
+    await page.keyboard.press("1");
+    await expectToast(page, "snooze");
+    const before = (await snoozed()).map((entry) => entry.message_id);
+    expect(before.length).toBeGreaterThan(0);
+
+    await openList(page, "/snoozed");
+    await mailList(page).focus();
+    await page.keyboard.press("w");
+    await expectToast(page, "wake");
+    await expect.poll(async () => (await snoozed()).length).toBeLessThan(before.length);
+    const after = new Set((await snoozed()).map((entry) => entry.message_id));
+    const woken = before.filter((id) => !after.has(id));
+    expect(woken.length).toBeGreaterThan(0);
+
+    // The reverse request: snooze it again.
+    for (const id of woken) {
+      await bridge(page, "/api/v1/mail/actions/snooze", { message_id: id, until: "tomorrow" });
+    }
+    await expect.poll(async () => (await snoozed()).length).toBe(before.length);
+  },
+
   "mode-done": async (page) => {
     const { messages } = await bridge<MessagesModeAnswer>(page, "/api/v1/mail/people");
     const candidates = messages.your_turn.flatMap((person) => {

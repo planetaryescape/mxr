@@ -52,7 +52,7 @@ pub const TUI_CONTEXTS: [&str; 14] = [
 /// handler (`App::announce_moved`). The tool screens, Search and the
 /// assistant pane list their keys here too, for help and the docs; a TUI
 /// runner test holds them to what each handler does.
-pub const SCREEN_CONTEXTS: [&str; 25] = [
+pub const SCREEN_CONTEXTS: [&str; 26] = [
     "accounts",
     "assistant",
     "invites",
@@ -78,6 +78,8 @@ pub const SCREEN_CONTEXTS: [&str; 25] = [
     "assistant-input",
     "assistant-approval",
     "assistant-question",
+    // The web's desk page: its list says where `w` (Done until K5) went.
+    "desk",
 ];
 
 /// Overlays: pickers, confirms, previews, prompts and sheets (blueprint 35,

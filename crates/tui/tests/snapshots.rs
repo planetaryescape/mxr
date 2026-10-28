@@ -92,6 +92,7 @@ fn sample_mail_row() -> MailListRow {
         reply_later: false,
         pending_mutation: false,
         mode_chip: None,
+        wake_at: None,
     }
 }
 

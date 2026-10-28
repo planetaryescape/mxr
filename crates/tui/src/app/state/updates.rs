@@ -46,6 +46,9 @@ pub struct UpdatesPageState {
     pub last_copied: Option<String>,
     /// Ask the daemon for the latest one-time code (`y` on a line without one).
     pub pending_latest_code: bool,
+    /// The line whose details Space opened under it, by id. It stays with
+    /// that line as the cursor moves, as the web's peek does.
+    pub peek: Option<String>,
 }
 
 impl UpdatesPageState {

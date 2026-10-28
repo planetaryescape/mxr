@@ -32,7 +32,10 @@ impl App {
             // From the sidebar and the reader too: both sit beside the list,
             // and the web's `*` reaches the list from them the same way.
             || (self.screen == Screen::Mailbox
-                && self.mailbox.mailbox_view == MailboxView::Messages)
+                && matches!(
+                    self.mailbox.mailbox_view,
+                    MailboxView::Messages | MailboxView::Snoozed
+                ))
     }
 
     /// Without this, `*a` or `V` in one label and then `gs` would leave the

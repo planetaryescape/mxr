@@ -89,7 +89,8 @@ the mail quoted, a parcel's items and references, and the link and the
 email. When a gist replaced the subject, the details also show the subject,
 what the email asks of you if it does, and which model wrote the line. The
 email's lines load when the details open, as plain text. `Escape` closes
-them.
+them. The TUI's `Space` opens the same details under the line, without the
+gist lines.
 
 ## The digest is a fixed cut; mail after it waits
 
@@ -143,7 +144,7 @@ The keys:
 | Key | What it does |
 |---|---|
 | `Enter` | Open Routine, when it is collapsed (web) |
-| `Space` | Open or close the details under this line (web) |
+| `Space` | Open or close the details under this line |
 | `E` | Let go of the digest, after a preview |
 | `e` | Let go of this source |
 | `t` | This needs me: make a to-do from the line |

@@ -213,12 +213,23 @@ impl SelectionLimit {
         }
     }
 
-    /// `Some` when the hard cap cut off matches the search counted.
-    fn capped(self, matched_total: u32, selected: usize) -> Option<CappedSelection> {
-        (self.bound_by_hard_cap() && matched_total as usize > selected).then_some(CappedSelection {
-            matched_total,
-            selected,
-        })
+    /// `Some` when the hard cap cut off matches the search counted. `fetched`
+    /// is how many results came back and `fetch_limit` how many the search
+    /// asked for. The daemon's total can overcount (hits in accounts the user
+    /// cannot see), so a page that did not fill the request was not cut.
+    fn capped(
+        self,
+        matched_total: u32,
+        fetched: usize,
+        fetch_limit: u32,
+    ) -> Option<CappedSelection> {
+        (self.bound_by_hard_cap()
+            && fetched >= fetch_limit as usize
+            && matched_total as usize > fetched)
+            .then_some(CappedSelection {
+                matched_total,
+                selected: fetched,
+            })
     }
 }
 
@@ -278,7 +289,7 @@ pub async fn resolve_message_selection(
         (true, Some(query)) => {
             let (results, total) =
                 run_selection_search(client, query, limit.cap(), account_id).await?;
-            let capped = limit.capped(total, results.len());
+            let capped = limit.capped(total, results.len(), limit.cap());
             Ok(MessageSelection {
                 ids: results.into_iter().map(|r| r.message_id).collect(),
                 capped,
@@ -341,7 +352,7 @@ pub async fn resolve_thread_selection(
             let fetch_cap = raw_cap.saturating_mul(4).min(SEARCH_HARD_CAP);
             let (results, total) =
                 run_selection_search(client, query, fetch_cap, account_id).await?;
-            let capped = limit.capped(total, results.len());
+            let capped = limit.capped(total, results.len(), fetch_cap);
             // Dedup-preserving-order: the first occurrence of each
             // thread_id wins, which (because results are date-desc) is
             // the most recent message in that thread.
@@ -508,6 +519,36 @@ mod tests {
 
         assert_eq!(selection.ids.len(), 1_000);
         assert_eq!(selection.capped, None);
+    }
+
+    #[tokio::test]
+    async fn a_total_that_overcounts_a_page_that_was_not_cut_reports_nothing() {
+        // 990 visible matches but a total of 1,010: nothing was cut off.
+        let daemon = FakeBulkDaemon::start_with_total(990, 1_010);
+        let mut client = daemon.client().await;
+
+        let messages = resolve_message_selection(
+            &mut client,
+            Vec::new(),
+            Some("*".into()),
+            None,
+            SelectionLimit::Unbounded,
+        )
+        .await
+        .unwrap();
+        let threads = resolve_thread_selection(
+            &mut client,
+            Vec::new(),
+            Some("*".into()),
+            None,
+            SelectionLimit::Unbounded,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(messages.ids.len(), 990);
+        assert_eq!(messages.capped, None);
+        assert_eq!(threads.capped, None);
     }
 
     #[tokio::test]

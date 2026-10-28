@@ -332,6 +332,12 @@ pub(crate) struct FakeBulkDaemon {
 
 impl FakeBulkDaemon {
     pub(crate) fn start(matching: usize) -> Self {
+        Self::start_with_total(matching, matching)
+    }
+
+    /// Like [`Self::start`], but the search reports `total` matches while
+    /// holding only `matching` of them, as the real total can overcount.
+    pub(crate) fn start_with_total(matching: usize, total: usize) -> Self {
         use futures::{SinkExt, StreamExt};
         use mxr_protocol::{ClientKind, IpcCodec, IpcMessage, IpcPayload, Request, Response};
 
@@ -374,7 +380,7 @@ impl FakeBulkDaemon {
                                         mode: SearchMode::Lexical,
                                     })
                                     .collect(),
-                                total: served_ids.len() as u32,
+                                total: total as u32,
                                 has_more: served_ids.len() > limit as usize,
                                 next_offset: None,
                                 explain: None,

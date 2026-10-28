@@ -10,7 +10,7 @@ Arguments:
   [MESSAGE_ID]...  Message ID(s). If omitted, reads IDs from stdin when stdin is piped
 
 Options:
-      --search <SEARCH>    Operate on messages matching search query
+      --search <SEARCH>    Operate on the newest messages matching a search query, up to 1,000. The command says before acting when more than 1,000 match
       --account <ACCOUNT>
       --yes                Skip confirmation
       --dry-run            Show what would happen

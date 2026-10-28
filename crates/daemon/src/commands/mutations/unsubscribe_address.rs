@@ -13,10 +13,9 @@ use super::helpers::{
     SelectionCounts,
 };
 use super::{unsubscribe_method_text, IpcClient, OutputFormat};
-use crate::commands::selection::SEARCH_HARD_CAP;
+use crate::commands::selection::{selection_search_request, SEARCH_HARD_CAP};
 use crate::output::resolve_format;
 use mxr_core::id::MessageId;
-use mxr_core::types::{SearchMode, SortOrder};
 use mxr_core::AccountId;
 use mxr_protocol::{
     Request, Response, ResponseData, UnsubscribePlanData, UnsubscribePlanRequestData,
@@ -233,6 +232,7 @@ async fn address_selection(
             ids: Vec::new(),
             envelopes: Vec::new(),
             used_search: true,
+            capped: None,
         });
     }
     let mut selection = resolve_mutation_selection(client, ids, None, account_id).await?;
@@ -245,16 +245,7 @@ fn address_search_request(
     search: Option<&str>,
     account_id: Option<&AccountId>,
 ) -> Request {
-    Request::Search {
-        query: address_query(address, search),
-        limit: SEARCH_HARD_CAP,
-        offset: 0,
-        account_id: account_id.cloned(),
-        mode: Some(SearchMode::Lexical),
-        sort: Some(SortOrder::DateDesc),
-        explain: false,
-        limit_from_config: false,
-    }
+    selection_search_request(address_query(address, search), SEARCH_HARD_CAP, account_id)
 }
 
 /// The search for one address. A `--search` scope narrows it with AND.
@@ -523,7 +514,7 @@ fn print_run(plans: &[AddressPlan], format: Option<OutputFormat>) -> anyhow::Res
 mod tests {
     use super::*;
     use crate::commands::mutations::helpers::MutationSelection;
-    use mxr_core::types::UnsubscribeMethod;
+    use mxr_core::types::{SearchMode, SortOrder, UnsubscribeMethod};
 
     #[test]
     fn a_dry_run_keeps_the_matched_messages_next_to_the_requests() {
@@ -537,6 +528,7 @@ mod tests {
             ids: vec![id.clone()],
             envelopes: vec![envelope],
             used_search: true,
+            capped: None,
         };
         let request = UnsubscribePlanRequestData {
             message_id: id,

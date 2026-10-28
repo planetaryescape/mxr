@@ -37,7 +37,7 @@ Complete reference for the `mxr` CLI. Pronounced "Mixer".
 - **Mutation ID** = printed by destructive mutations (`archive`, `trash`, `spam`, `read`, `read-archive`). Pass to `mxr undo` within ~60s.
 - **`--dry-run`** = preview without mutating. Exercises the same selection path as the real mutation.
 - **`--yes`** = skip confirmation. Required for non-interactive batch mutations. On `compose`/`reply`/`reply-all`/`forward` it is the **send** switch — to save a draft instead, use `--draft` (see [Compose, drafts, send](#compose-drafts-send)).
-- **`--search QUERY`** = batch path; resolves to multiple IDs. Mutually exclusive with positional `<id>...`. Most mutations also accept piped IDs on stdin.
+- **`--search QUERY`** = batch path; resolves to multiple IDs. Mutually exclusive with positional `<id>...`. Most mutations also accept piped IDs on stdin. It takes the newest 1,000 matches at most, found lexically whatever `search.default_mode` is. When more match, the dry run, the confirmation prompt and (with `--yes`) stderr say `Selected 1,000 of N matching messages (the newest 1,000); narrow the search to reach the rest.`, and JSON output adds `matched_total` and `capped: true`. Explicit and piped IDs have no cap.
 - **`--first` / `--limit N`** (on read-shaped commands with `--search`) = cap how many matches the command iterates over.
 
 ---

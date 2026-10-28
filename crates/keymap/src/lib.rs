@@ -52,11 +52,9 @@ pub const TUI_CONTEXTS: [&str; 14] = [
 /// handler (`App::announce_moved`). The tool screens, Search and the
 /// assistant pane list their keys here too, for help and the docs; a TUI
 /// runner test holds them to what each handler does.
-pub const SCREEN_CONTEXTS: [&str; 27] = [
+pub const SCREEN_CONTEXTS: [&str; 25] = [
     "accounts",
     "assistant",
-    "categories",
-    "drafts",
     "invites",
     "not-sure",
     "rules",
@@ -80,6 +78,72 @@ pub const SCREEN_CONTEXTS: [&str; 27] = [
     "assistant-input",
     "assistant-approval",
     "assistant-question",
+];
+
+/// Overlays: pickers, confirms, previews, prompts and sheets (blueprint 35,
+/// "Overlays share one grammar"). An open overlay owns every key, so its
+/// keys are read by the overlay itself in both clients, never by a
+/// dispatcher. The names are shared: a TUI binding names the overlay it is
+/// live in, and a web action's `scopes` name the dialog that reads it. A
+/// TUI runner test holds each TUI overlay's handler to its entries.
+pub const OVERLAY_CONTEXTS: [&str; 54] = [
+    // Both clients.
+    "help",
+    "palette",
+    "label-picker",
+    "links",
+    "unsubscribe",
+    "move-picker",
+    "move-picker-sender",
+    "new-sender-picker",
+    "sender-kind-picker",
+    "not-now",
+    "correct-todo",
+    "delete-confirm",
+    "bulk-confirm",
+    "sweep-confirm",
+    "reply-later",
+    "sender-ask",
+    "categories",
+    // The TUI's.
+    "not-now-custom",
+    "send-review",
+    "send-time",
+    "error",
+    "sheet",
+    "platform",
+    "welcome",
+    "snippets",
+    "sender-profile",
+    "reply-queue",
+    "drafts",
+    "compose-picker",
+    "model-picker",
+    "voice-source",
+    "attachments",
+    "save-attachment",
+    "export",
+    "export-destination",
+    "export-path",
+    "filter-bar",
+    "analytics-filter",
+    "saved-search-form",
+    "messages-filter",
+    "draft-options",
+    "records-prompt",
+    "pass-menu",
+    "todo-prompt",
+    "arrivals-list",
+    "resume-draft",
+    "account-mode-switch",
+    "identity-editor",
+    "auth-session",
+    "promise-prompt",
+    // The web's.
+    "send-confirm",
+    "let-go-preview",
+    "compose-discard",
+    "search-palette",
 ];
 
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).
@@ -212,6 +276,11 @@ pub struct KeyAction {
     /// own shortcut for the same action, or `""` for none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raycast_key: Option<String>,
+    /// An overlay key the web gets from the browser or the dialog
+    /// primitive (Esc closes a dialog, Enter presses the focused button,
+    /// Tab moves between buttons), so no web code reads it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub web_native: bool,
 }
 
 impl KeyAction {
@@ -244,6 +313,20 @@ impl KeyAction {
             format!("Cmd+{letter}")
         };
         (key != "Cmd+k").then_some(key)
+    }
+
+    /// True for an overlay's key: every place it is live in, in either
+    /// client, is an overlay. The overlay reads it, so it is in neither
+    /// client's dispatcher, palette or remaps.
+    pub fn is_overlay(&self) -> bool {
+        let web = if self.is_for(Client::Web) {
+            self.web_scopes()
+        } else {
+            Vec::new()
+        };
+        let tui = self.tui.iter().flat_map(|binding| binding.contexts.iter());
+        let mut places = web.into_iter().chain(tui).peekable();
+        places.peek().is_some() && places.all(|place| OVERLAY_CONTEXTS.contains(&place))
     }
 
     /// The web scopes the action's keys are live in.
@@ -478,7 +561,7 @@ impl Keymap {
     pub fn raycast_keys(&self) -> BTreeMap<String, RaycastShortcut> {
         self.actions
             .iter()
-            .filter(|action| action.is_for(Client::Web))
+            .filter(|action| action.is_for(Client::Web) && !action.is_overlay())
             .filter_map(|action| {
                 let shortcut = RaycastShortcut::parse(&action.raycast_key()?)?;
                 Some((action.id.clone(), shortcut))
@@ -528,10 +611,22 @@ impl Keymap {
             if action.clients.is_empty() {
                 problems.push(format!("{id}: is bound in no client"));
             }
+            let overlay = action.is_overlay();
             for scope in &action.scopes {
-                if !WEB_SCOPES.contains(&scope.as_str()) {
+                if OVERLAY_CONTEXTS.contains(&scope.as_str()) {
+                    if !overlay {
+                        problems.push(format!(
+                            "{id}: `{scope}` is an overlay, which reads its own keys; an action is live in overlays only or in none"
+                        ));
+                    }
+                } else if !WEB_SCOPES.contains(&scope.as_str()) {
                     problems.push(format!("{id}: unknown web scope `{scope}`"));
                 }
+            }
+            if action.web_native && !(overlay && action.is_for(Client::Web)) {
+                problems.push(format!(
+                    "{id}: only an overlay's web keys can be the browser's own (`web_native`)"
+                ));
             }
             let web_keys = action
                 .keys
@@ -575,6 +670,7 @@ impl Keymap {
                     for context in list {
                         if !TUI_CONTEXTS.contains(&context.as_str())
                             && !SCREEN_CONTEXTS.contains(&context.as_str())
+                            && !OVERLAY_CONTEXTS.contains(&context.as_str())
                         {
                             problems.push(format!("{id}: unknown TUI context `{context}`"));
                         }
@@ -608,7 +704,8 @@ impl Keymap {
                 for context in &moved.contexts {
                     let known = TUI_CONTEXTS.contains(&context.as_str())
                         || WEB_SCOPES.contains(&context.as_str())
-                        || SCREEN_CONTEXTS.contains(&context.as_str());
+                        || SCREEN_CONTEXTS.contains(&context.as_str())
+                        || OVERLAY_CONTEXTS.contains(&context.as_str());
                     if !known {
                         problems.push(format!(
                             "{}: the move of `{}` names unknown context `{context}`",

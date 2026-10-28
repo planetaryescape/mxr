@@ -553,7 +553,7 @@ impl App {
         let shifted = plain_or_shift(key.modifiers);
         // The sender menu moved to `P` (blueprint 35).
         if key.code == KeyCode::Char('K') && shifted {
-            self.announce_moved("arrivals", "K");
+            self.announce_moved("arrivals-list", "K");
             return None;
         }
         let list = self.mailbox.trust.arrivals_list.as_mut()?;

@@ -155,7 +155,7 @@ export function RulesListRoute() {
         open={confirmDelete !== null}
         onOpenChange={(open) => !open && setConfirmDelete(null)}
       >
-        <AlertDialogContent>
+        <AlertDialogContent yesNo>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {confirmDelete}?</AlertDialogTitle>
             <AlertDialogDescription>

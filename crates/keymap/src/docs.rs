@@ -1,5 +1,6 @@
 //! The TUI half of `site/src/content/docs/reference/keybindings.md`, written
-//! from the definition so the published tables can't drift from it. The web
+//! from the definition so the published tables can't drift from it,
+//! overlays included. The web
 //! half comes from the web registry (`apps/web/src/lib/actions/keybindingsDoc.ts`).
 
 use crate::{place_title, KeyAction, Keymap, TUI_CONTEXTS};
@@ -87,6 +88,81 @@ pub(crate) const PLACES: &[(&str, &str)] = &[
     ),
 ];
 
+/// What the overlays' tables say before them.
+const OVERLAYS_INTRO: &str = "An open overlay takes every key until it closes. Each one closes with `Esc` without changing anything, and with `q` where nothing is typed; `Enter` runs the highlighted option, and in a yes-or-no question `y` is `Enter` and `n` is `Esc`. Each prints its keys in its footer too.";
+
+/// Each TUI overlay's table, in page order, with what to say above it.
+pub(crate) const OVERLAYS: &[(&str, &str)] = &[
+    ("help", "`?` opens it. Letters type into its filter."),
+    ("palette", "`:` or `Ctrl-k` opens it. Letters type into its filter."),
+    ("label-picker", "`l` labels and `v` moves. Letters type into its filter."),
+    ("links", "`L` opens it."),
+    ("unsubscribe", "`D` opens it."),
+    (
+        "move-picker",
+        "`X` moves this email; a capital moves everything from its sender.",
+    ),
+    ("move-picker-sender", "`P` moves everything from the sender. Either case picks."),
+    (
+        "new-sender-picker",
+        "`X` or `P` on a new sender: a capital answers its question (from `P`, either case does).",
+    ),
+    ("sender-kind-picker", "`P` in Reading and Paper trail. Either case picks."),
+    ("not-now", "`b` opens it on Later; the digits pick the presets."),
+    (
+        "not-now-custom",
+        "Letters type the time, read as you type.",
+    ),
+    ("correct-todo", "`X` on a to-do."),
+    (
+        "delete-confirm",
+        "Deleting a saved search, rule, category, draft or assistant conversation, and cancelling a scheduled send. It opens on Keep, so a bare `Enter` changes nothing.",
+    ),
+    ("bulk-confirm", "A batch action over many conversations shows them first."),
+    ("sweep-confirm", "`E` in Reading and Paper trail. A whole place's sweep opens on Cancel."),
+    (
+        "reply-later",
+        "Letters type when to bring it back; with nothing typed, `Enter` flags it for reply later.",
+    ),
+    ("sender-ask", "After a Not-sure answer. Any other key drops the question and does what it always does."),
+    ("categories", ""),
+    (
+        "send-review",
+        "After you save and quit `$EDITOR`. It opens on Send.",
+    ),
+    ("send-time", "Letters type the time, read as you type."),
+    ("drafts", ""),
+    ("compose-picker", "`c` opens it. Letters type into its fields."),
+    ("model-picker", ""),
+    ("draft-options", "Letters type into the instruction field."),
+    ("voice-source", ""),
+    ("attachments", "`A` opens it."),
+    ("save-attachment", "Letters type the path."),
+    ("export", "Export, from the palette."),
+    ("export-destination", ""),
+    ("export-path", "Letters type the path."),
+    ("filter-bar", "`Ctrl-f` or `g f` opens it. Letters type the filter."),
+    ("messages-filter", "`g f` or `Ctrl-f` in Messages."),
+    ("saved-search-form", "Letters type into the field."),
+    ("analytics-filter", "Letters type into the field."),
+    ("todo-prompt", "Letters type the to-do, or `field=value` to fix one."),
+    ("records-prompt", "Letters type `field=value`."),
+    ("pass-menu", "Pass to a mode, from the palette."),
+    ("arrivals-list", "The emails behind Now's arrivals line."),
+    ("snippets", ""),
+    ("sender-profile", ""),
+    ("reply-queue", ""),
+    ("sheet", ""),
+    ("platform", ""),
+    ("error", ""),
+    ("welcome", "On first run, before an account exists."),
+    ("resume-draft", "Adding an account while an unsaved account form is kept."),
+    ("account-mode-switch", "Changing an account form's type drops what doesn't fit the new one."),
+    ("identity-editor", "`i` on the Accounts screen. Letters type the tag."),
+    ("auth-session", "While Microsoft sign-in waits for the code."),
+    ("promise-prompt", "Any other key works as usual and leaves the question for later."),
+];
+
 impl Keymap {
     /// Markdown tables of every TUI key, by place: the keys every mail
     /// context shares, then the list's and reader's, then each place's own.
@@ -96,6 +172,7 @@ impl Keymap {
         let mut out = Vec::new();
         section(
             &mut out,
+            "###",
             "Everywhere in mail",
             "In the mail list, the reader, the sidebar and every mode.",
             self.place_rows("list", |action, key| {
@@ -104,6 +181,7 @@ impl Keymap {
         );
         section(
             &mut out,
+            "###",
             "List and reader",
             "In the mail list, the reader, and the Reading and Paper trail lists. Mail verbs act on the selected conversations, or on the open one.",
             self.place_rows("list", |action, key| {
@@ -117,7 +195,22 @@ impl Keymap {
                 !everywhere.contains(&row) && !(skip_email_verbs && on_an_email.contains(&row))
             });
             let title = place_title(place).unwrap_or(place);
-            section(&mut out, title, intro, rows);
+            section(&mut out, "###", title, intro, rows);
+        }
+        let overlays: Vec<_> = OVERLAYS
+            .iter()
+            .map(|(place, intro)| (place, intro, self.place_rows(place, |_, _| true)))
+            .filter(|(_, _, rows)| !rows.is_empty())
+            .collect();
+        if !overlays.is_empty() {
+            out.push("### Overlays".into());
+            out.push(String::new());
+            out.push(OVERLAYS_INTRO.into());
+            out.push(String::new());
+            for (place, intro, rows) in overlays {
+                let title = place_title(place).unwrap_or(place);
+                section(&mut out, "####", title, intro, rows);
+            }
         }
         out.join("\n").trim_end().to_string()
     }
@@ -188,11 +281,17 @@ impl Keymap {
     }
 }
 
-fn section(out: &mut Vec<String>, title: &str, intro: &str, rows: Vec<(String, String)>) {
+fn section(
+    out: &mut Vec<String>,
+    level: &str,
+    title: &str,
+    intro: &str,
+    rows: Vec<(String, String)>,
+) {
     if rows.is_empty() {
         return;
     }
-    out.push(format!("### {title}"));
+    out.push(format!("{level} {title}"));
     out.push(String::new());
     if !intro.is_empty() {
         out.push(intro.to_string());

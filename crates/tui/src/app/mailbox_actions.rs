@@ -200,7 +200,8 @@ impl App {
                 ActivePane::MessageView => {
                     self.apply(Action::CloseMessageView);
                 }
-                ActivePane::MailList => {
+                // The sidebar's Esc reaches the list beside it, as in the web.
+                ActivePane::MailList | ActivePane::Sidebar => {
                     if !self.mailbox.selected_set.is_empty() {
                         self.apply(Action::ClearSelection);
                     } else if self.search.active {
@@ -211,7 +212,6 @@ impl App {
                         self.apply(Action::CloseMessageView);
                     }
                 }
-                ActivePane::Sidebar => {}
             },
             Action::QuitView => {
                 self.should_quit = true;

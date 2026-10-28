@@ -462,7 +462,6 @@ export function MailboxList({
     viewportMiddle: () => moveTo(viewportIndex("middle")),
     open: () => focusedRow && onOpenRow(focusedRow, { focusReader: true }),
     ...(rowAction ? { rowAction: () => focusedRow && rowAction.run(focusedRow) } : {}),
-    focusSidebar: () => setActivePane("sidebar"),
     ...(onFilter ? { filter: onFilter } : {}),
     escape: () => {
       if (visualAnchor) {

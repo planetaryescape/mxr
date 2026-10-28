@@ -511,7 +511,16 @@ fn new_account_draft_prompt_can_start_fresh_form() {
     app.apply(Action::OpenAccountFormNew);
     assert!(app.accounts.page.resume_new_account_draft_prompt_open);
 
+    // n keeps the draft for later (blueprint 35's Destroy rule): only the
+    // option named "Discard draft" throws it away.
     let action = app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+    assert!(action.is_none());
+    assert!(!app.accounts.page.resume_new_account_draft_prompt_open);
+    assert!(!app.accounts.page.form.visible);
+    assert!(app.accounts.page.new_account_draft.is_some());
+
+    app.apply(Action::OpenAccountFormNew);
+    let action = app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
     assert!(action.is_none());
     assert!(app.accounts.page.form.visible);
     assert!(app.accounts.page.form.is_new_account);

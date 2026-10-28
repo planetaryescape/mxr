@@ -391,12 +391,21 @@ pub fn draw_sender_kind_menu(
         )),
         Line::from(""),
     ];
-    for (key, kind, label) in SENDER_KIND_CHOICES {
+    for (index, (key, kind, label)) in SENDER_KIND_CHOICES.into_iter().enumerate() {
         let current = kind == Some(menu.current.kind) && menu.current.corrected
             || kind.is_none() && !menu.current.corrected;
+        let lit = index == menu.selected;
         lines.push(Line::from(vec![
-            Span::styled(format!("  {key}  "), Style::default().fg(theme.accent)),
-            Span::raw(label),
+            Span::raw(if lit { "\u{203a} " } else { "  " }),
+            Span::styled(format!("{key}  "), Style::default().fg(theme.accent)),
+            Span::styled(
+                label,
+                if lit {
+                    Style::default().add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                },
+            ),
             Span::styled(
                 if current { "  (now)" } else { "" },
                 Style::default().fg(theme.text_muted),
@@ -405,7 +414,7 @@ pub fn draw_sender_kind_menu(
     }
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        "Remembered for this sender's future mail. Esc closes.",
+        "Remembered for this sender's future mail. j/k move, Enter picks, Esc closes.",
         Style::default().fg(theme.text_muted),
     )));
     frame.render_widget(Paragraph::new(lines), inner);

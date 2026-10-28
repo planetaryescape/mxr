@@ -223,11 +223,14 @@ fn strip_html_tags(text: &str) -> String {
 }
 
 pub fn open_url(url: &str) {
-    #[cfg(target_os = "macos")]
+    // Tests press Enter in the links picker without opening a browser.
+    #[cfg(test)]
+    let _ = url;
+    #[cfg(all(target_os = "macos", not(test)))]
     {
         let _ = std::process::Command::new("open").arg(url).spawn();
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(test)))]
     {
         let _ = std::process::Command::new("xdg-open").arg(url).spawn();
     }

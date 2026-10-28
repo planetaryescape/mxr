@@ -17,7 +17,7 @@ expression: rendered
 "        │Safety: SAFE                                                                                          │        "
 "        │  no issues                                                                                           │        "
 "        │                                                                                                      │        "
-"        │[s] send   [a] send at   [n] remind   [d] save draft                                                  │        "
+"        │› [s] send   [a] send at   [n] remind   [d] save draft                                                │        "
 "        │[r] draft for me   [e/Esc] edit again   [#] discard draft                                             │        "
 "        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯        "
 "                                                                                                                        "

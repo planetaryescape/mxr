@@ -145,7 +145,7 @@ export function ConfirmDelete({
           <Trash2 className="size-3.5" />
         </Button>
       </AlertDialogTrigger>
-      <AlertDialogContent>
+      <AlertDialogContent yesNo>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete {what}?</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>

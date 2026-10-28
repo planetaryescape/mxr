@@ -7,10 +7,12 @@ use crate::action::{Action, PatternKind};
 use crate::app::AnalyticsView;
 use mxr_core::types::SemanticProfile;
 use mxr_protocol::CalendarInviteActionData as Invite;
+use mxr_protocol::{ModeKindData as Mode, SenderKindData as Kind};
 
 /// The action a definition name stands for. `inline:` names are keys a pane
-/// handles in place, and `SidebarSelect` is whatever the selected sidebar
-/// item opens, so neither has one action.
+/// handles in place, `lit:` names run whichever overlay option is lit, and
+/// `SidebarSelect` is whatever the selected sidebar item opens, so none has
+/// one action.
 pub(crate) fn action_named(name: &str) -> Option<Action> {
     Some(match name {
         "ApplyLabel" => Action::ApplyLabel,
@@ -312,6 +314,92 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
         "CycleWrappedWindow" => Action::CycleWrappedWindow,
         "SubmitSearch" => Action::SubmitSearch,
         "OpenMessageView" => Action::OpenMessageView,
+        // Overlays' keys (`runner::tests::overlay_keys` holds them to their
+        // handlers).
+        "AnswerAlwaysForSender(false)" => Action::AnswerAlwaysForSender(false),
+        "AnswerAlwaysForSender(true)" => Action::AnswerAlwaysForSender(true),
+        "AnswerNewSender(PaperTrail)" => Action::AnswerNewSender(Kind::PaperTrail),
+        "AnswerNewSender(People)" => Action::AnswerNewSender(Kind::People),
+        "AnswerNewSender(Reading)" => Action::AnswerNewSender(Kind::Reading),
+        "AnswerNewSender(ScreenedOut)" => Action::AnswerNewSender(Kind::ScreenedOut),
+        "ArrivalsNextBucket" => Action::ArrivalsNextBucket,
+        "CancelOutlookAuth" => Action::CancelOutlookAuth,
+        "CancelUnsubscribe" => Action::CancelUnsubscribe,
+        "CloseAnalyticsFilterModal" => Action::CloseAnalyticsFilterModal,
+        "CloseArrivals" => Action::CloseArrivals,
+        "CloseCommandPalette" => Action::CloseCommandPalette,
+        "CloseReplyQueueModal" => Action::CloseReplyQueueModal,
+        "CloseSearch" => Action::CloseSearch,
+        "CloseSenderViewModal" => Action::CloseSenderViewModal,
+        "CloseSnippetsModal" => Action::CloseSnippetsModal,
+        "CloseStoredDraftsModal" => Action::CloseStoredDraftsModal,
+        "CloseSummaryModal" => Action::CloseSummaryModal,
+        "ConfirmUnsubscribeAndArchiveSender" => Action::ConfirmUnsubscribeAndArchiveSender,
+        "ConfirmUnsubscribeOnly" => Action::ConfirmUnsubscribeOnly,
+        "CycleSearchMode" => Action::CycleSearchMode,
+        "MoveEmailTo { mode: Archive, sender: false }" => Action::MoveEmailTo {
+            mode: Mode::Archive,
+            sender: false,
+        },
+        "MoveEmailTo { mode: Archive, sender: true }" => Action::MoveEmailTo {
+            mode: Mode::Archive,
+            sender: true,
+        },
+        "MoveEmailTo { mode: Messages, sender: false }" => Action::MoveEmailTo {
+            mode: Mode::Messages,
+            sender: false,
+        },
+        "MoveEmailTo { mode: Messages, sender: true }" => Action::MoveEmailTo {
+            mode: Mode::Messages,
+            sender: true,
+        },
+        "MoveEmailTo { mode: Reading, sender: false }" => Action::MoveEmailTo {
+            mode: Mode::Reading,
+            sender: false,
+        },
+        "MoveEmailTo { mode: Reading, sender: true }" => Action::MoveEmailTo {
+            mode: Mode::Reading,
+            sender: true,
+        },
+        "MoveEmailTo { mode: Todo, sender: false }" => Action::MoveEmailTo {
+            mode: Mode::Todo,
+            sender: false,
+        },
+        "MoveEmailTo { mode: Todo, sender: true }" => Action::MoveEmailTo {
+            mode: Mode::Todo,
+            sender: true,
+        },
+        "MoveEmailTo { mode: Updates, sender: false }" => Action::MoveEmailTo {
+            mode: Mode::Updates,
+            sender: false,
+        },
+        "MoveEmailTo { mode: Updates, sender: true }" => Action::MoveEmailTo {
+            mode: Mode::Updates,
+            sender: true,
+        },
+        "OpenSenderProfileMessage" => Action::OpenSenderProfileMessage,
+        "RefinePendingDraft" => Action::RefinePendingDraft,
+        "ReplyQueueModalFocus" => Action::ReplyQueueModalFocus,
+        "ReplyQueueModalNext" => Action::ReplyQueueModalNext,
+        "ReplyQueueModalPrev" => Action::ReplyQueueModalPrev,
+        "ReplyQueueModalReply" => Action::ReplyQueueModalReply,
+        "SaveSavedSearchForm" => Action::SaveSavedSearchForm,
+        "SenderProfileNextMessage" => Action::SenderProfileNextMessage,
+        "SenderProfilePrevMessage" => Action::SenderProfilePrevMessage,
+        "SetSenderKind(None)" => Action::SetSenderKind(None),
+        "SetSenderKind(Some(PaperTrail))" => Action::SetSenderKind(Some(Kind::PaperTrail)),
+        "SetSenderKind(Some(People))" => Action::SetSenderKind(Some(Kind::People)),
+        "SetSenderKind(Some(Reading))" => Action::SetSenderKind(Some(Kind::Reading)),
+        "SetSenderKind(Some(ScreenedOut))" => Action::SetSenderKind(Some(Kind::ScreenedOut)),
+        "SnippetsModalNext" => Action::SnippetsModalNext,
+        "SnippetsModalPrev" => Action::SnippetsModalPrev,
+        "StoredDraftsModalEdit" => Action::StoredDraftsModalEdit,
+        "StoredDraftsModalNext" => Action::StoredDraftsModalNext,
+        "StoredDraftsModalPrev" => Action::StoredDraftsModalPrev,
+        "StoredDraftsModalPreviewCancelSchedule" => Action::StoredDraftsModalPreviewCancelSchedule,
+        "StoredDraftsModalPreviewDelete" => Action::StoredDraftsModalPreviewDelete,
+        "StoredDraftsModalPreviewPush" => Action::StoredDraftsModalPreviewPush,
+        "SubmitAnalyticsFilterModal" => Action::SubmitAnalyticsFilterModal,
         _ => return None,
     })
 }
@@ -340,6 +428,7 @@ mod tests {
         ];
         for binding in mxr_keymap::defaults().actions.iter().flat_map(|a| &a.tui) {
             if binding.name.starts_with("inline:")
+                || binding.name.starts_with("lit:")
                 || binding.name == "SidebarSelect"
                 || proof_actions.contains(&binding.name.as_str())
             {

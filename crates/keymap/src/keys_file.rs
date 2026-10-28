@@ -184,7 +184,13 @@ pub fn action_keys_problems(keymap: &Keymap, id: &str, keys: &[String]) -> Vec<S
             action.label
         )];
     }
-    // Tool screens and overlays still read their own keys, so a TUI-only
+    if action.is_overlay() {
+        return vec![format!(
+            "{id}: {} is an overlay's key; every overlay answers to the same keys (blueprint 35's overlay grammar), so keys.toml can't change it",
+            action.label
+        )];
+    }
+    // Tool screens still read their own keys, so a TUI-only
     // action that lives only there has nothing a remap could change.
     let remaps_in_tui = action.tui.iter().any(|binding| {
         !binding.keys.is_empty()

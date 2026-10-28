@@ -17,6 +17,7 @@ import { useUndo } from "@/state/undoStore";
 
 import { invalidateMailQueries, performUndo } from "../mailMutations";
 import type { MailTarget } from "../target";
+import { announceMovedOverlayKey, optionLetter, pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 /**
  * TUI `D`: unsubscribe only (Enter or u), or unsubscribe and archive
@@ -91,16 +92,18 @@ export function UnsubscribeDialog({
         onKeyDown={(event) => {
           // Enter on a focused option is that option's click, not a shortcut.
           if (event.key === "Enter" && event.target instanceof HTMLButtonElement) return;
-          if (event.key === "u" || event.key === "Enter") {
+          if (pressedOverlayKey(event, "unsubscribe.confirm")) {
             event.preventDefault();
             unsubscribeOnly();
-          } else if (event.key === "a" && !preview.isLoading) {
+          } else if (pressedOverlayKey(event, "unsubscribe.and-archive")) {
             event.preventDefault();
-            unsubscribeAndArchive();
-          } else if (event.key === "n") {
+            if (!preview.isLoading) unsubscribeAndArchive();
+          } else if (pressedOverlayKey(event, "overlay.no")) {
             // n is Esc, as in the TUI (blueprint 35).
             event.preventDefault();
             onClose();
+          } else if (announceMovedOverlayKey(event, "unsubscribe")) {
+            event.preventDefault();
           }
         }}
       >
@@ -121,7 +124,7 @@ export function UnsubscribeDialog({
                 {how ? `${how}. ` : ""}Keep the mail you already have
               </span>
             </span>
-            <KeyChip>u</KeyChip>
+            <KeyChip>{optionLetter("unsubscribe.confirm")}</KeyChip>
           </button>
           <button
             type="button"
@@ -147,7 +150,7 @@ export function UnsubscribeDialog({
                     : "Everything from this sender leaves the inbox; undo for a minute"}
               </span>
             </span>
-            <KeyChip>a</KeyChip>
+            <KeyChip>{optionLetter("unsubscribe.and-archive")}</KeyChip>
           </button>
         </div>
       </DialogContent>

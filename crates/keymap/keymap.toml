@@ -80,7 +80,7 @@ note = "z also undoes, for Gmail muscle memory"
 [[action.tui]]
 name = "UndoLastMutation"
 keys = ["u"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "now", "messages", "archive", "reading", "reading-reader", "updates", "search", "search-preview"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "now", "messages", "archive", "reading", "reading-reader", "updates", "search", "search-preview", "arrivals-list"]
 
 # Now and the modes, in rail order. g + letter, as in the TUI.
 [[action]]
@@ -1009,7 +1009,7 @@ label = "Not now…"
 short_label = "Not now"
 description = "Later with no time, or snooze until a time"
 group = "Mail"
-scopes = ["list", "reader", "now"]
+scopes = ["list", "reader", "now", "sidebar"]
 keys = ["b"]
 
 [[action.tui]]
@@ -1196,7 +1196,7 @@ contexts = ["list", "reader", "place", "search", "search-preview"]
 id = "mail.attachments"
 label = "Attachments"
 group = "Mail"
-scopes = ["list", "reader"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["A"]
 
 [[action.tui]]
@@ -1208,13 +1208,13 @@ contexts = ["list", "reader", "sidebar"]
 id = "invite.accept"
 label = "Accept invite"
 group = "Triage"
-scopes = ["list", "reader"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["i a"]
 
 [[action.tui]]
 name = "RespondInvite(Accept)"
 keys = ["i a"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place"]
 
 [[action.moved]]
 key = "a"
@@ -1225,13 +1225,13 @@ until = "0.6.185"
 id = "invite.tentative"
 label = "Maybe (invite)"
 group = "Triage"
-scopes = ["list", "reader"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["i m"]
 
 [[action.tui]]
 name = "RespondInvite(Tentative)"
 keys = ["i m"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place"]
 
 [[action.moved]]
 key = "t"
@@ -1247,13 +1247,13 @@ until = "0.6.185"
 id = "invite.decline"
 label = "Decline invite"
 group = "Triage"
-scopes = ["list", "reader"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["i d"]
 
 [[action.tui]]
 name = "RespondInvite(Decline)"
 keys = ["i d"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place"]
 
 [[action.moved]]
 key = "d"
@@ -1264,13 +1264,13 @@ until = "0.6.185"
 id = "invite.accept-comment"
 label = "Accept with comment"
 group = "Triage"
-scopes = ["list", "reader"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["i A"]
 
 [[action.tui]]
 name = "RespondInviteWithComment(Accept)"
 keys = ["i A"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place"]
 
 [[action.moved]]
 key = "A"
@@ -1281,13 +1281,13 @@ until = "0.6.185"
 id = "invite.tentative-comment"
 label = "Maybe with comment"
 group = "Triage"
-scopes = ["list", "reader"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["i M"]
 
 [[action.tui]]
 name = "RespondInviteWithComment(Tentative)"
 keys = ["i M"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place"]
 
 [[action.moved]]
 key = "T"
@@ -1303,13 +1303,13 @@ until = "0.6.185"
 id = "invite.decline-comment"
 label = "Decline with comment"
 group = "Triage"
-scopes = ["list", "reader"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["i D"]
 
 [[action.tui]]
 name = "RespondInviteWithComment(Decline)"
 keys = ["i D"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place"]
 
 [[action.moved]]
 key = "D"
@@ -1571,7 +1571,7 @@ id = "list.page-down"
 label = "Half page down"
 short_label = "Page down"
 group = "Move"
-scopes = ["list", "now", "messages", "todo", "catchup", "expired", "updates", "reading", "archive"]
+scopes = ["list", "now", "messages", "todo", "catchup", "expired", "updates", "reading", "archive", "sidebar"]
 keys = ["Ctrl+d", "PageDown"]
 hide_in_palette = true
 
@@ -1591,7 +1591,7 @@ id = "list.page-up"
 label = "Half page up"
 short_label = "Page up"
 group = "Move"
-scopes = ["list", "now", "messages", "todo", "catchup", "expired", "updates", "reading", "archive"]
+scopes = ["list", "now", "messages", "todo", "catchup", "expired", "updates", "reading", "archive", "sidebar"]
 keys = ["Ctrl+u", "PageUp"]
 hide_in_palette = true
 
@@ -1651,19 +1651,14 @@ hide_in_palette = true
 
 [[action.tui]]
 name = "OpenSelected"
-keys = ["ArrowRight", "o"]
+keys = ["ArrowRight", "o", "Enter"]
 contexts = ["list"]
-
-[[action.tui]]
-name = "OpenSelected"
-keys = ["Enter"]
-contexts = ["list", "reader"]
 
 [[action]]
 id = "list.sidebar"
 label = "Go to sidebar"
 group = "Move"
-scopes = ["list"]
+scopes = ["list", "now", "messages", "todo", "updates", "reading", "archive"]
 keys = ["h", "ArrowLeft"]
 hide_in_palette = true
 
@@ -1689,7 +1684,7 @@ id = "list.toggle-select"
 label = "Select and move down"
 short_label = "Select"
 group = "Select"
-scopes = ["list"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["x"]
 hide_in_palette = true
 
@@ -1703,7 +1698,7 @@ id = "list.visual"
 label = "Visual line mode"
 description = "Extend a selection with j and k"
 group = "Select"
-scopes = ["list"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["V"]
 hide_in_palette = true
 
@@ -1716,73 +1711,83 @@ contexts = ["list", "reader", "sidebar", "place"]
 id = "list.select-all"
 label = "Select all"
 group = "Select"
-scopes = ["list"]
-keys = ["* a", "Mod+a"]
+scopes = ["list", "reader", "sidebar"]
+keys = ["* a"]
 hide_in_palette = true
 
 [[action.tui]]
 name = "PatternSelect(All)"
 keys = ["* a"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place"]
+
+[[action]]
+id = "list.select-all-chord"
+label = "Select all"
+group = "Select"
+scopes = ["list"]
+keys = ["Mod+a"]
+hide_in_palette = true
+clients = ["web"]
+note = "Only in the mail list: in the reader and the sidebar ⌘A / Ctrl+A stays the browser's select-all, and a terminal can't send Ctrl+A"
 
 [[action]]
 id = "list.select-none"
 label = "Select none"
 group = "Select"
-scopes = ["list"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["* n"]
 hide_in_palette = true
 
 [[action.tui]]
 name = "PatternSelect(None)"
 keys = ["* n"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place"]
 
 [[action]]
 id = "list.select-read"
 label = "Select read"
 group = "Select"
-scopes = ["list"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["* r"]
 hide_in_palette = true
 
 [[action.tui]]
 name = "PatternSelect(Read)"
 keys = ["* r"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place"]
 
 [[action]]
 id = "list.select-unread"
 label = "Select unread"
 group = "Select"
-scopes = ["list"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["* u"]
 hide_in_palette = true
 
 [[action.tui]]
 name = "PatternSelect(Unread)"
 keys = ["* u"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place"]
 
 [[action]]
 id = "list.select-starred"
 label = "Select starred"
 group = "Select"
-scopes = ["list"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["* s"]
 hide_in_palette = true
 
 [[action.tui]]
 name = "PatternSelect(Starred)"
 keys = ["* s"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place"]
 
 [[action]]
 id = "list.escape"
 label = "Clear selection, then close"
 short_label = "Clear"
 group = "Select"
-scopes = ["list"]
+scopes = ["list", "sidebar"]
 keys = ["Escape"]
 hide_in_palette = true
 
@@ -1795,7 +1800,7 @@ contexts = ["list", "sidebar", "place"]
 id = "list.filter"
 label = "Filter this list"
 group = "Search"
-scopes = ["list"]
+scopes = ["list", "reader", "sidebar"]
 keys = ["g f"]
 mac_keys = ["Ctrl+f"]
 note = "Ctrl+F works on macOS only, where it is not the browser's Find"
@@ -2033,7 +2038,7 @@ label = "Reader view, or back to plain"
 short_label = "Reader view"
 description = "Cleaned text with quotes folded; press again for plain text, as in the TUI"
 group = "View"
-scopes = ["reader"]
+scopes = ["reader", "list"]
 keys = ["R"]
 hide_in_palette = true
 
@@ -2080,7 +2085,7 @@ contexts = ["reader"]
 id = "reader.signature"
 label = "Show or hide signatures"
 group = "View"
-scopes = ["reader"]
+scopes = ["reader", "list"]
 keys = ["S"]
 hide_in_palette = true
 
@@ -2116,7 +2121,7 @@ until = "0.6.180"
 id = "reader.open-original"
 label = "Open original in a new tab"
 group = "View"
-scopes = ["reader"]
+scopes = ["reader", "list"]
 keys = ["O"]
 hide_in_palette = true
 
@@ -2161,7 +2166,7 @@ contexts = ["list", "reader"]
 id = "reader.fullscreen"
 label = "Full-width reader"
 group = "View"
-scopes = ["reader"]
+scopes = ["reader", "list", "sidebar"]
 keys = ["F"]
 
 [[action.tui]]
@@ -4179,7 +4184,7 @@ keys = ["X"]
 [[action.tui]]
 name = "OpenMoveMenu"
 keys = ["X"]
-contexts = ["list", "reader", "place", "now", "messages", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "place", "now", "messages", "reading", "reading-reader", "updates", "arrivals-list"]
 
 [[action.moved]]
 key = "m"
@@ -4213,14 +4218,14 @@ keys = ["P"]
 [[action.tui]]
 name = "OpenSenderMoveMenu"
 keys = ["P"]
-contexts = ["list", "now", "messages"]
+contexts = ["list", "now", "messages", "arrivals-list"]
 
 # The emails behind one count of Now's arrivals line (/now/arrivals). The TUI
 # has no such page, so these are the web's alone; X and P above work there too.
 
 [[action.moved]]
 key = "K"
-contexts = ["arrivals", "list", "messages", "now"]
+contexts = ["arrivals", "arrivals-list", "list", "messages", "now"]
 until = "0.6.180"
 [[action]]
 id = "arrivals.down"
@@ -4229,7 +4234,10 @@ group = "Move"
 scopes = ["arrivals"]
 keys = ["j", "ArrowDown"]
 hide_in_palette = true
-clients = ["web"]
+[[action.tui]]
+name = "inline:down"
+keys = ["j", "ArrowDown"]
+contexts = ["arrivals-list"]
 
 [[action]]
 id = "arrivals.up"
@@ -4238,7 +4246,10 @@ group = "Move"
 scopes = ["arrivals"]
 keys = ["k", "ArrowUp"]
 hide_in_palette = true
-clients = ["web"]
+[[action.tui]]
+name = "inline:up"
+keys = ["k", "ArrowUp"]
+contexts = ["arrivals-list"]
 
 [[action]]
 id = "arrivals.open"
@@ -4248,7 +4259,10 @@ group = "Move"
 scopes = ["arrivals"]
 keys = ["Enter", "o"]
 hide_in_palette = true
-clients = ["web"]
+[[action.tui]]
+name = "inline:open"
+keys = ["Enter", "o"]
+contexts = ["arrivals-list"]
 
 [[action]]
 id = "semantic.backfill"
@@ -6974,22 +6988,1427 @@ name = "inline:focus_sidebar"
 keys = ["h", "ArrowLeft"]
 contexts = ["invites"]
 
-# Where a TUI key reaches the pane beside the focused one. The TUI draws the
-# sidebar, the mail list and the reader side by side, and a mode in the
-# list's pane, so a key the focused pane doesn't take goes on to the pane
-# beside it; the web's keys follow focus. The key check accepts such a key
-# when it does what both clients do in `to` (`Keymap::client_differences`).
-[[tui_pass_through]]
-from = ["sidebar", "reader"]
-to = "list"
-why = "The TUI's sidebar and reader sit beside the mail list, so list keys reach the list from them"
+# Overlays: pickers, confirms, previews, prompts and sheets (blueprint 35,
+# "Overlays share one grammar"). An open overlay owns every key, so the
+# overlay reads these itself in both clients; no dispatcher, palette or
+# keys.toml remap reaches them. A TUI runner test
+# (`screen_keys_are_what_the_definition_says`) holds each TUI overlay's
+# handler to its entries, and the web's dialogs read theirs with
+# `definedKeys`, except an action marked `web_native`, whose keys the browser
+# or the dialog primitive gives (Esc closing a dialog, Enter pressing the
+# focused button, Tab moving between buttons). `inline:` names act in place;
+# `lit:run` runs whichever option is highlighted.
 
-[[tui_pass_through]]
-from = ["list", "sidebar"]
-to = "reader"
-why = "The TUI's reader is a preview beside the list, so its view keys work from the list and the sidebar"
+[[action]]
+id = "overlay.close"
+label = "Close"
+group = "Navigate"
+scopes = ["links", "unsubscribe", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "not-now", "delete-confirm", "bulk-confirm", "sweep-confirm", "send-confirm", "let-go-preview", "compose-discard"]
+keys = ["Escape", "q"]
+[[action.tui]]
+name = "inline:close"
+keys = ["Escape", "q"]
+contexts = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "not-now", "delete-confirm", "bulk-confirm", "sweep-confirm", "model-picker", "voice-source", "pass-menu", "categories", "resume-draft"]
+[[action.tui]]
+name = "CancelUnsubscribe"
+keys = ["Escape", "q"]
+contexts = ["unsubscribe"]
+[[action.tui]]
+name = "CloseSnippetsModal"
+keys = ["Escape", "q"]
+contexts = ["snippets"]
+[[action.tui]]
+name = "CloseSummaryModal"
+keys = ["Escape", "q"]
+contexts = ["sheet"]
+[[action.tui]]
+name = "CloseSenderViewModal"
+keys = ["Escape", "q"]
+contexts = ["sender-profile"]
+[[action.tui]]
+name = "CloseReplyQueueModal"
+keys = ["Escape", "q"]
+contexts = ["reply-queue"]
+[[action.tui]]
+name = "CloseStoredDraftsModal"
+keys = ["Escape", "q"]
+contexts = ["drafts"]
+[[action.tui]]
+name = "CloseArrivals"
+keys = ["Escape", "q"]
+contexts = ["arrivals-list"]
+[[action.tui]]
+name = "inline:close"
+keys = ["Escape", "q", "A"]
+contexts = ["attachments"]
+[[action.tui]]
+name = "inline:close"
+keys = ["Escape", "q", "Enter", "x"]
+contexts = ["error", "platform"]
+[[action.tui]]
+name = "inline:close"
+keys = ["Escape", "q", "Ctrl+f"]
+contexts = ["messages-filter"]
 
-[[tui_pass_through]]
-from = ["todo", "now", "messages", "archive", "updates", "reading"]
-to = "list"
-why = "The TUI draws a mode in the mail list's pane, so the list's sidebar, pattern and invite keys reach it; the web's modes don't take them yet"
+[[action]]
+id = "overlay.cancel"
+label = "Close"
+description = "Where letters type, only Esc closes."
+group = "Navigate"
+scopes = ["palette", "label-picker", "reply-later", "search-palette"]
+keys = ["Escape"]
+web_native = true
+[[action.tui]]
+name = "CloseCommandPalette"
+keys = ["Escape"]
+contexts = ["palette"]
+[[action.tui]]
+name = "inline:close"
+keys = ["Escape"]
+contexts = ["label-picker", "reply-later", "compose-picker", "save-attachment", "export", "export-destination", "export-path", "saved-search-form", "draft-options", "records-prompt", "todo-prompt", "identity-editor", "account-mode-switch"]
+[[action.tui]]
+name = "CloseSearch"
+keys = ["Escape"]
+contexts = ["filter-bar"]
+[[action.tui]]
+name = "CloseAnalyticsFilterModal"
+keys = ["Escape"]
+contexts = ["analytics-filter"]
+[[action.tui]]
+name = "CancelOutlookAuth"
+keys = ["Escape"]
+contexts = ["auth-session"]
+
+[[action]]
+id = "overlay.back"
+label = "Back"
+group = "Navigate"
+clients = ["tui"]
+note = "The web's time field sits in the picker itself, so there is no step to go back from"
+[[action.tui]]
+name = "inline:back"
+keys = ["Escape"]
+contexts = ["not-now-custom", "send-time"]
+
+[[action]]
+id = "overlay.down"
+label = "Move down"
+group = "Navigate"
+scopes = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo"]
+keys = ["j", "ArrowDown"]
+[[action.tui]]
+name = "inline:down"
+keys = ["j", "ArrowDown"]
+contexts = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "help", "error", "bulk-confirm", "voice-source", "attachments", "model-picker", "messages-filter", "categories"]
+[[action.tui]]
+name = "SnippetsModalNext"
+keys = ["j", "ArrowDown"]
+contexts = ["snippets"]
+[[action.tui]]
+name = "SenderProfileNextMessage"
+keys = ["j", "ArrowDown"]
+contexts = ["sender-profile"]
+[[action.tui]]
+name = "ReplyQueueModalNext"
+keys = ["j", "ArrowDown"]
+contexts = ["reply-queue"]
+[[action.tui]]
+name = "StoredDraftsModalNext"
+keys = ["j", "ArrowDown"]
+contexts = ["drafts"]
+
+[[action]]
+id = "overlay.up"
+label = "Move up"
+group = "Navigate"
+scopes = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo"]
+keys = ["k", "ArrowUp"]
+[[action.tui]]
+name = "inline:up"
+keys = ["k", "ArrowUp"]
+contexts = ["links", "move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "help", "error", "bulk-confirm", "voice-source", "attachments", "model-picker", "messages-filter", "categories"]
+[[action.tui]]
+name = "SnippetsModalPrev"
+keys = ["k", "ArrowUp"]
+contexts = ["snippets"]
+[[action.tui]]
+name = "SenderProfilePrevMessage"
+keys = ["k", "ArrowUp"]
+contexts = ["sender-profile"]
+[[action.tui]]
+name = "ReplyQueueModalPrev"
+keys = ["k", "ArrowUp"]
+contexts = ["reply-queue"]
+[[action.tui]]
+name = "StoredDraftsModalPrev"
+keys = ["k", "ArrowUp"]
+contexts = ["drafts"]
+
+[[action]]
+id = "overlay.filter-down"
+label = "Move down"
+description = "Where letters type, Ctrl-n moves instead of j."
+group = "Navigate"
+scopes = ["not-now", "palette", "label-picker"]
+keys = ["ArrowDown"]
+mac_keys = ["Ctrl+n"]
+[[action.tui]]
+name = "inline:down"
+keys = ["ArrowDown", "Ctrl+n"]
+contexts = ["not-now", "palette", "label-picker", "compose-picker"]
+
+[[action]]
+id = "overlay.filter-up"
+label = "Move up"
+description = "Where letters type, Ctrl-p moves instead of k."
+group = "Navigate"
+scopes = ["not-now", "palette", "label-picker"]
+keys = ["ArrowUp"]
+mac_keys = ["Ctrl+p"]
+[[action.tui]]
+name = "inline:up"
+keys = ["ArrowUp", "Ctrl+p"]
+contexts = ["not-now", "palette", "label-picker", "compose-picker"]
+
+[[action]]
+id = "tui.overlay.down-letter"
+label = "Move down"
+group = "Navigate"
+clients = ["tui"]
+note = "The web's Not-now picker types a time as soon as you type, so j there is a letter; the TUI types it in its Custom row"
+[[action.tui]]
+name = "inline:down"
+keys = ["j"]
+contexts = ["not-now"]
+
+[[action]]
+id = "tui.overlay.up-letter"
+label = "Move up"
+group = "Navigate"
+clients = ["tui"]
+note = "The web's Not-now picker types a time as soon as you type, so k there is a letter; the TUI types it in its Custom row"
+[[action.tui]]
+name = "inline:up"
+keys = ["k"]
+contexts = ["not-now"]
+
+[[action]]
+id = "overlay.page-down"
+label = "Page down"
+group = "Navigate"
+clients = ["tui"]
+note = "The web's dialogs scroll with the browser's own keys"
+[[action.tui]]
+name = "inline:page_down"
+keys = ["Ctrl+d"]
+contexts = ["help"]
+[[action.tui]]
+name = "inline:page_down"
+keys = ["Ctrl+d", "PageDown"]
+contexts = ["error"]
+[[action.tui]]
+name = "inline:page_down"
+keys = ["PageDown"]
+contexts = ["voice-source"]
+
+[[action]]
+id = "overlay.page-up"
+label = "Page up"
+group = "Navigate"
+clients = ["tui"]
+note = "The web's dialogs scroll with the browser's own keys"
+[[action.tui]]
+name = "inline:page_up"
+keys = ["Ctrl+u"]
+contexts = ["help"]
+[[action.tui]]
+name = "inline:page_up"
+keys = ["Ctrl+u", "PageUp"]
+contexts = ["error"]
+[[action.tui]]
+name = "inline:page_up"
+keys = ["PageUp"]
+contexts = ["voice-source"]
+
+[[action]]
+id = "overlay.run"
+label = "Run the highlighted option"
+group = "Navigate"
+scopes = ["move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "correct-todo", "not-now", "delete-confirm", "bulk-confirm", "sweep-confirm", "palette", "label-picker", "send-confirm"]
+keys = ["Enter"]
+web_native = true
+[[action.tui]]
+name = "lit:run"
+keys = ["Enter"]
+contexts = ["move-picker", "move-picker-sender", "new-sender-picker", "sender-kind-picker", "palette", "label-picker"]
+[[action.tui]]
+name = "inline:run"
+keys = ["Enter"]
+contexts = ["correct-todo", "delete-confirm", "sweep-confirm", "send-review", "model-picker", "export", "messages-filter", "draft-options", "pass-menu", "categories", "resume-draft", "account-mode-switch", "identity-editor", "save-attachment", "export-path", "records-prompt", "todo-prompt", "send-time"]
+[[action.tui]]
+name = "Snooze"
+keys = ["Enter"]
+contexts = ["not-now", "not-now-custom"]
+[[action.tui]]
+name = "OpenSelected"
+keys = ["Enter"]
+contexts = ["bulk-confirm"]
+[[action.tui]]
+name = "FlagReplyLater"
+keys = ["Enter"]
+contexts = ["reply-later"]
+[[action.tui]]
+name = "SubmitSearch"
+keys = ["Enter"]
+contexts = ["filter-bar"]
+[[action.tui]]
+name = "SubmitAnalyticsFilterModal"
+keys = ["Enter"]
+contexts = ["analytics-filter"]
+[[action.tui]]
+name = "SaveSavedSearchForm"
+keys = ["Enter", "Ctrl+s"]
+contexts = ["saved-search-form"]
+
+[[action]]
+id = "overlay.yes"
+label = "Yes"
+description = "In a yes-or-no question, y does what Enter would on the action."
+group = "Navigate"
+scopes = ["delete-confirm", "bulk-confirm", "send-confirm", "let-go-preview", "compose-discard"]
+keys = ["y"]
+[[action.tui]]
+name = "inline:yes"
+keys = ["y"]
+contexts = ["delete-confirm", "sweep-confirm", "resume-draft", "account-mode-switch"]
+[[action.tui]]
+name = "OpenSelected"
+keys = ["y", "Y"]
+contexts = ["bulk-confirm"]
+
+[[action]]
+id = "overlay.no"
+label = "No"
+description = "In a yes-or-no question, n is Esc."
+group = "Navigate"
+scopes = ["unsubscribe", "delete-confirm", "bulk-confirm", "send-confirm", "let-go-preview", "compose-discard"]
+keys = ["n"]
+[[action.tui]]
+name = "inline:no"
+keys = ["n"]
+contexts = ["delete-confirm", "bulk-confirm", "sweep-confirm", "resume-draft", "account-mode-switch"]
+[[action.tui]]
+name = "CancelUnsubscribe"
+keys = ["n"]
+contexts = ["unsubscribe"]
+
+[[action]]
+id = "overlay.switch"
+label = "Light the other option"
+group = "Navigate"
+scopes = ["delete-confirm", "bulk-confirm", "sweep-confirm"]
+keys = ["Tab", "Shift+Tab"]
+web_native = true
+[[action.tui]]
+name = "inline:switch"
+keys = ["Tab", "Shift+Tab"]
+contexts = ["delete-confirm", "sweep-confirm", "resume-draft"]
+
+[[action]]
+id = "tui.confirm.switch"
+label = "Light the other option"
+group = "Navigate"
+clients = ["tui"]
+note = "The web's two buttons move with Tab, as a browser's do"
+[[action.tui]]
+name = "inline:switch"
+keys = ["j", "k", "h", "l", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]
+contexts = ["delete-confirm", "resume-draft"]
+
+[[action]]
+id = "overlay.other-reading"
+label = "Use the other reading of the time"
+group = "Navigate"
+clients = ["tui"]
+note = "The web lists every reading of the time under its field to click"
+[[action.tui]]
+name = "inline:other_reading"
+keys = ["Tab"]
+contexts = ["not-now-custom", "send-time", "reply-later"]
+
+[[action]]
+id = "help.close"
+label = "Close help"
+group = "Navigate"
+scopes = ["help"]
+keys = ["Escape", "?"]
+[[action.tui]]
+name = "Help"
+keys = ["Escape", "?", "Enter", "q"]
+contexts = ["help"]
+
+[[action]]
+id = "tui.help.next-place"
+label = "Show the next place's keys first"
+group = "Navigate"
+clients = ["tui"]
+note = "The web's help lists every place at once"
+[[action.tui]]
+name = "inline:next_place"
+keys = ["Tab"]
+contexts = ["help"]
+
+[[action]]
+id = "links.open"
+label = "Open the link"
+group = "Read"
+scopes = ["links"]
+keys = ["Enter", "o"]
+[[action.tui]]
+name = "inline:open"
+keys = ["Enter", "o"]
+contexts = ["links"]
+
+[[action]]
+id = "links.copy"
+label = "Copy the link"
+group = "Read"
+scopes = ["links"]
+keys = ["y"]
+[[action.tui]]
+name = "inline:copy"
+keys = ["y"]
+contexts = ["links"]
+
+[[action]]
+id = "unsubscribe.confirm"
+label = "Unsubscribe"
+group = "Mail"
+scopes = ["unsubscribe"]
+keys = ["Enter", "u", "U"]
+[[action.tui]]
+name = "ConfirmUnsubscribeOnly"
+keys = ["Enter", "u", "U"]
+contexts = ["unsubscribe"]
+
+[[action]]
+id = "unsubscribe.and-archive"
+label = "Unsubscribe and archive their mail"
+group = "Mail"
+scopes = ["unsubscribe"]
+keys = ["e", "E"]
+[[action.tui]]
+name = "ConfirmUnsubscribeAndArchiveSender"
+keys = ["e", "E"]
+contexts = ["unsubscribe"]
+[[action.moved]]
+key = "a"
+contexts = ["unsubscribe"]
+until = "0.6.204"
+[[action.moved]]
+key = "A"
+contexts = ["unsubscribe"]
+until = "0.6.204"
+
+[[action]]
+id = "move-picker.messages"
+label = "Move this email to Messages"
+group = "Move"
+scopes = ["move-picker", "new-sender-picker"]
+keys = ["m"]
+[[action.tui]]
+name = "MoveEmailTo { mode: Messages, sender: false }"
+keys = ["m"]
+contexts = ["move-picker", "new-sender-picker"]
+
+[[action]]
+id = "move-picker.todo"
+label = "Move this email to To do"
+group = "Move"
+scopes = ["move-picker", "new-sender-picker"]
+keys = ["x"]
+[[action.tui]]
+name = "MoveEmailTo { mode: Todo, sender: false }"
+keys = ["x"]
+contexts = ["move-picker", "new-sender-picker"]
+
+[[action]]
+id = "move-picker.updates"
+label = "Move this email to Updates"
+group = "Move"
+scopes = ["move-picker", "new-sender-picker"]
+keys = ["u"]
+[[action.tui]]
+name = "MoveEmailTo { mode: Updates, sender: false }"
+keys = ["u"]
+contexts = ["move-picker", "new-sender-picker"]
+
+[[action]]
+id = "move-picker.reading"
+label = "Move this email to Reading"
+group = "Move"
+scopes = ["move-picker", "new-sender-picker"]
+keys = ["r"]
+[[action.tui]]
+name = "MoveEmailTo { mode: Reading, sender: false }"
+keys = ["r"]
+contexts = ["move-picker", "new-sender-picker"]
+
+[[action]]
+id = "move-picker.archive"
+label = "Move this email to Archive"
+group = "Move"
+scopes = ["move-picker", "new-sender-picker"]
+keys = ["e"]
+[[action.tui]]
+name = "MoveEmailTo { mode: Archive, sender: false }"
+keys = ["e"]
+contexts = ["move-picker", "new-sender-picker"]
+
+[[action]]
+id = "move-picker.sender-messages"
+label = "Move the sender to Messages"
+group = "Move"
+scopes = ["move-picker"]
+keys = ["M"]
+[[action.tui]]
+name = "MoveEmailTo { mode: Messages, sender: true }"
+keys = ["M"]
+contexts = ["move-picker"]
+
+[[action]]
+id = "move-picker-sender.messages"
+label = "Move the sender to Messages"
+description = "From P either case picks."
+group = "Move"
+scopes = ["move-picker-sender"]
+keys = ["m", "M"]
+[[action.tui]]
+name = "MoveEmailTo { mode: Messages, sender: true }"
+keys = ["m", "M"]
+contexts = ["move-picker-sender"]
+
+[[action]]
+id = "move-picker.sender-updates"
+label = "Move the sender to Updates"
+group = "Move"
+scopes = ["move-picker"]
+keys = ["U"]
+[[action.tui]]
+name = "MoveEmailTo { mode: Updates, sender: true }"
+keys = ["U"]
+contexts = ["move-picker"]
+
+[[action]]
+id = "move-picker-sender.updates"
+label = "Move the sender to Updates"
+description = "From P either case picks."
+group = "Move"
+scopes = ["move-picker-sender"]
+keys = ["u", "U"]
+[[action.tui]]
+name = "MoveEmailTo { mode: Updates, sender: true }"
+keys = ["u", "U"]
+contexts = ["move-picker-sender"]
+
+[[action]]
+id = "move-picker.sender-reading"
+label = "Move the sender to Reading"
+group = "Move"
+scopes = ["move-picker"]
+keys = ["R"]
+[[action.tui]]
+name = "MoveEmailTo { mode: Reading, sender: true }"
+keys = ["R"]
+contexts = ["move-picker"]
+
+[[action]]
+id = "move-picker-sender.reading"
+label = "Move the sender to Reading"
+description = "From P either case picks."
+group = "Move"
+scopes = ["move-picker-sender"]
+keys = ["r", "R"]
+[[action.tui]]
+name = "MoveEmailTo { mode: Reading, sender: true }"
+keys = ["r", "R"]
+contexts = ["move-picker-sender"]
+
+[[action]]
+id = "new-sender-picker.people"
+label = "Answer: People"
+description = "A new sender's question; from P either case answers."
+group = "Move"
+scopes = ["new-sender-picker"]
+keys = ["M"]
+[[action.tui]]
+name = "AnswerNewSender(People)"
+keys = ["M"]
+contexts = ["new-sender-picker"]
+
+[[action]]
+id = "new-sender-picker.paper-trail"
+label = "Answer: Paper trail"
+description = "A new sender's question; from P either case answers."
+group = "Move"
+scopes = ["new-sender-picker"]
+keys = ["U"]
+[[action.tui]]
+name = "AnswerNewSender(PaperTrail)"
+keys = ["U"]
+contexts = ["new-sender-picker"]
+
+[[action]]
+id = "new-sender-picker.reading"
+label = "Answer: Reading"
+description = "A new sender's question; from P either case answers."
+group = "Move"
+scopes = ["new-sender-picker"]
+keys = ["R"]
+[[action.tui]]
+name = "AnswerNewSender(Reading)"
+keys = ["R"]
+contexts = ["new-sender-picker"]
+
+[[action]]
+id = "new-sender-picker.screened-out"
+label = "Answer: Screened out"
+description = "A new sender's question; from P either case answers."
+group = "Move"
+scopes = ["new-sender-picker"]
+keys = ["D"]
+[[action.tui]]
+name = "AnswerNewSender(ScreenedOut)"
+keys = ["D"]
+contexts = ["new-sender-picker"]
+
+[[action]]
+id = "sender-kind-picker.people"
+label = "Move the sender to People"
+group = "Move"
+scopes = ["sender-kind-picker"]
+keys = ["m", "M"]
+[[action.tui]]
+name = "SetSenderKind(Some(People))"
+keys = ["m", "M"]
+contexts = ["sender-kind-picker"]
+
+[[action]]
+id = "sender-kind-picker.reading"
+label = "Move the sender to Reading"
+group = "Move"
+scopes = ["sender-kind-picker"]
+keys = ["r", "R"]
+[[action.tui]]
+name = "SetSenderKind(Some(Reading))"
+keys = ["r", "R"]
+contexts = ["sender-kind-picker"]
+
+[[action]]
+id = "sender-kind-picker.paper-trail"
+label = "Move the sender to Paper trail"
+group = "Move"
+scopes = ["sender-kind-picker"]
+keys = ["u", "U"]
+[[action.tui]]
+name = "SetSenderKind(Some(PaperTrail))"
+keys = ["u", "U"]
+contexts = ["sender-kind-picker"]
+
+[[action]]
+id = "sender-kind-picker.screened-out"
+label = "Move the sender to Screened out"
+group = "Move"
+scopes = ["sender-kind-picker"]
+keys = ["d", "D"]
+[[action.tui]]
+name = "SetSenderKind(Some(ScreenedOut))"
+keys = ["d", "D"]
+contexts = ["sender-kind-picker"]
+
+[[action]]
+id = "sender-kind-picker.automatic"
+label = "Automatic: let the rules decide"
+group = "Move"
+scopes = ["sender-kind-picker"]
+keys = ["a", "A"]
+[[action.tui]]
+name = "SetSenderKind(None)"
+keys = ["a", "A"]
+contexts = ["sender-kind-picker"]
+
+[[action]]
+id = "not-now.preset"
+label = "Pick that time"
+description = "The digit printed beside each of the four presets."
+group = "Mail"
+scopes = ["not-now"]
+keys = ["1", "2", "3", "4"]
+[[action.tui]]
+name = "inline:preset"
+keys = ["1", "2", "3", "4"]
+contexts = ["not-now"]
+
+[[action]]
+id = "correct-todo.not-a-todo"
+label = "Not a to-do"
+group = "Mail"
+scopes = ["correct-todo"]
+keys = ["1"]
+[[action.tui]]
+name = "inline:reason"
+keys = ["1"]
+contexts = ["correct-todo"]
+
+[[action]]
+id = "correct-todo.not-mine"
+label = "Not mine"
+group = "Mail"
+scopes = ["correct-todo"]
+keys = ["2"]
+[[action.tui]]
+name = "inline:reason"
+keys = ["2"]
+contexts = ["correct-todo"]
+
+[[action]]
+id = "correct-todo.already-done"
+label = "Already done"
+group = "Mail"
+scopes = ["correct-todo"]
+keys = ["3"]
+[[action.tui]]
+name = "inline:reason"
+keys = ["3"]
+contexts = ["correct-todo"]
+
+[[action]]
+id = "correct-todo.wrong-details"
+label = "Wrong details"
+group = "Mail"
+scopes = ["correct-todo"]
+keys = ["4"]
+[[action.tui]]
+name = "inline:reason"
+keys = ["4"]
+contexts = ["correct-todo"]
+
+[[action]]
+id = "sender-ask.yes"
+label = "Yes, always for this sender"
+group = "Move"
+scopes = ["sender-ask"]
+keys = ["y", "Enter"]
+[[action.tui]]
+name = "AnswerAlwaysForSender(true)"
+keys = ["y", "Enter"]
+contexts = ["sender-ask"]
+
+[[action]]
+id = "sender-ask.no"
+label = "No, this email only"
+group = "Move"
+scopes = ["sender-ask"]
+keys = ["n", "Escape"]
+[[action.tui]]
+name = "AnswerAlwaysForSender(false)"
+keys = ["n", "Escape"]
+contexts = ["sender-ask"]
+
+[[action]]
+id = "label-picker.apply"
+label = "Apply the ticked labels"
+group = "Mail"
+clients = ["web"]
+scopes = ["label-picker"]
+keys = ["Mod+Enter"]
+note = "The web's label picker ticks several labels with Enter, then applies them; the TUI's picks one"
+
+[[action]]
+id = "send-confirm.override"
+label = "Override the block and send once"
+group = "Compose"
+scopes = ["send-confirm"]
+keys = ["O", "o"]
+[[action.tui]]
+name = "inline:override"
+keys = ["O", "Ctrl+o"]
+contexts = ["send-review"]
+
+[[action]]
+id = "search-palette.down"
+label = "Next result"
+group = "Search"
+clients = ["web"]
+scopes = ["search-palette"]
+keys = ["ArrowDown", "Ctrl+j"]
+note = "The TUI searches on its Search screen"
+
+[[action]]
+id = "search-palette.up"
+label = "Previous result"
+group = "Search"
+clients = ["web"]
+scopes = ["search-palette"]
+keys = ["ArrowUp", "Ctrl+k"]
+note = "The TUI searches on its Search screen"
+
+[[action]]
+id = "search-palette.open"
+label = "Open the result"
+group = "Search"
+clients = ["web"]
+scopes = ["search-palette"]
+keys = ["Enter"]
+note = "The TUI searches on its Search screen"
+
+[[action]]
+id = "search-palette.all"
+label = "Search everything on the Search page"
+group = "Search"
+clients = ["web"]
+scopes = ["search-palette"]
+keys = ["Mod+Enter"]
+mac_keys = ["Ctrl+Enter"]
+note = "The TUI searches on its Search screen"
+
+[[action]]
+id = "send-review.send"
+label = "Send"
+group = "Compose"
+clients = ["tui"]
+note = "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page"
+[[action.tui]]
+name = "inline:send"
+keys = ["s"]
+contexts = ["send-review"]
+
+[[action]]
+id = "send-review.later"
+label = "Send later"
+group = "Compose"
+clients = ["tui"]
+note = "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page"
+[[action.tui]]
+name = "inline:send_later"
+keys = ["a"]
+contexts = ["send-review"]
+
+[[action]]
+id = "send-review.remind"
+label = "Send, and remind me if nobody replies"
+group = "Compose"
+clients = ["tui"]
+note = "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page"
+[[action.tui]]
+name = "inline:remind"
+keys = ["n"]
+contexts = ["send-review"]
+
+[[action]]
+id = "send-review.save"
+label = "Save as a draft on the server"
+group = "Compose"
+clients = ["tui"]
+note = "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page"
+[[action.tui]]
+name = "inline:save"
+keys = ["d"]
+contexts = ["send-review"]
+
+[[action]]
+id = "send-review.edit"
+label = "Edit again"
+description = "Esc goes back to the draft too; it never throws it away."
+group = "Compose"
+clients = ["tui"]
+note = "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page"
+[[action.tui]]
+name = "inline:edit"
+keys = ["e", "Escape"]
+contexts = ["send-review"]
+
+[[action]]
+id = "send-review.refine"
+label = "Refine with the assistant"
+group = "Compose"
+clients = ["tui"]
+note = "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page"
+[[action.tui]]
+name = "RefinePendingDraft"
+keys = ["r"]
+contexts = ["send-review"]
+
+[[action]]
+id = "send-review.discard"
+label = "Discard draft"
+group = "Compose"
+clients = ["tui"]
+note = "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page"
+[[action.tui]]
+name = "inline:discard"
+keys = ["#"]
+contexts = ["send-review"]
+
+[[action]]
+id = "send-review.add-cc"
+label = "Add the suggested person to Cc"
+group = "Compose"
+clients = ["tui"]
+note = "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page"
+[[action.tui]]
+name = "inline:add_cc"
+keys = ["Ctrl+a"]
+contexts = ["send-review"]
+
+[[action]]
+id = "welcome.start"
+label = "Start setting up"
+group = "Accounts"
+clients = ["tui"]
+note = "The web app's first run is a page"
+[[action.tui]]
+name = "inline:start"
+keys = ["Enter", "Space"]
+contexts = ["welcome"]
+
+[[action]]
+id = "welcome.demo"
+label = "Try the demo"
+group = "Accounts"
+clients = ["tui"]
+note = "The web app's first run is a page"
+[[action.tui]]
+name = "inline:demo"
+keys = ["d"]
+contexts = ["welcome"]
+
+[[action]]
+id = "welcome.gmail"
+label = "Add Gmail"
+group = "Accounts"
+clients = ["tui"]
+note = "The web app's first run is a page"
+[[action.tui]]
+name = "inline:gmail"
+keys = ["g"]
+contexts = ["welcome"]
+
+[[action]]
+id = "welcome.imap"
+label = "Add IMAP and SMTP"
+group = "Accounts"
+clients = ["tui"]
+note = "The web app's first run is a page"
+[[action.tui]]
+name = "inline:imap"
+keys = ["i"]
+contexts = ["welcome"]
+
+[[action]]
+id = "welcome.dismiss"
+label = "Not now"
+group = "Accounts"
+clients = ["tui"]
+note = "The web app's first run is a page"
+[[action.tui]]
+name = "inline:dismiss"
+keys = ["Escape"]
+contexts = ["welcome"]
+
+[[action]]
+id = "welcome.quit"
+label = "Quit"
+group = "Navigate"
+clients = ["tui"]
+note = "The web app's first run is a page"
+[[action.tui]]
+name = "QuitView"
+keys = ["q"]
+contexts = ["welcome"]
+
+[[action]]
+id = "sender-profile.overview"
+label = "Overview"
+group = "View"
+clients = ["tui"]
+note = "The web shows a sender on the person page"
+[[action.tui]]
+name = "inline:overview"
+keys = ["1"]
+contexts = ["sender-profile"]
+
+[[action]]
+id = "sender-profile.relationship"
+label = "Relationship"
+group = "View"
+clients = ["tui"]
+note = "The web shows a sender on the person page"
+[[action.tui]]
+name = "inline:relationship"
+keys = ["2"]
+contexts = ["sender-profile"]
+
+[[action]]
+id = "sender-profile.messages"
+label = "Their emails"
+group = "View"
+clients = ["tui"]
+note = "The web shows a sender on the person page"
+[[action.tui]]
+name = "inline:messages"
+keys = ["3"]
+contexts = ["sender-profile"]
+
+[[action]]
+id = "sender-profile.open"
+label = "Open the email"
+group = "Read"
+clients = ["tui"]
+note = "The web shows a sender on the person page"
+[[action.tui]]
+name = "OpenSenderProfileMessage"
+keys = ["Enter", "o"]
+contexts = ["sender-profile"]
+
+[[action]]
+id = "sender-profile.whois"
+label = "Who is this?"
+group = "Read"
+clients = ["tui"]
+note = "The web shows a sender on the person page"
+[[action.tui]]
+name = "OpenWhoisOnFocusedSender"
+keys = ["W"]
+contexts = ["sender-profile"]
+
+[[action]]
+id = "reply-queue.reply"
+label = "Reply"
+group = "Mail"
+clients = ["tui"]
+note = "The web's reply queue is the Focus page"
+[[action.tui]]
+name = "ReplyQueueModalReply"
+keys = ["Enter", "r"]
+contexts = ["reply-queue"]
+
+[[action]]
+id = "reply-queue.focus"
+label = "Focus and reply, one at a time"
+group = "Mail"
+clients = ["tui"]
+note = "The web's reply queue is the Focus page"
+[[action.tui]]
+name = "ReplyQueueModalFocus"
+keys = ["F"]
+contexts = ["reply-queue"]
+
+[[action]]
+id = "drafts.edit"
+label = "Edit the draft"
+group = "Compose"
+clients = ["tui"]
+note = "The web's drafts are a page"
+[[action.tui]]
+name = "StoredDraftsModalEdit"
+keys = ["Enter"]
+contexts = ["drafts"]
+
+[[action]]
+id = "drafts.delete"
+label = "Delete the draft"
+group = "Compose"
+clients = ["tui"]
+note = "The web's drafts are a page"
+[[action.tui]]
+name = "StoredDraftsModalPreviewDelete"
+keys = ["#"]
+contexts = ["drafts"]
+
+[[action]]
+id = "drafts.cancel-schedule"
+label = "Cancel the scheduled send"
+group = "Compose"
+clients = ["tui"]
+note = "The web's drafts are a page"
+[[action.tui]]
+name = "StoredDraftsModalPreviewCancelSchedule"
+keys = ["c"]
+contexts = ["drafts"]
+
+[[action]]
+id = "drafts.push"
+label = "Sync the draft to the server"
+group = "Compose"
+clients = ["tui"]
+note = "The web's drafts are a page"
+[[action.tui]]
+name = "StoredDraftsModalPreviewPush"
+keys = ["p"]
+contexts = ["drafts"]
+
+[[action]]
+id = "compose-picker.next"
+label = "Next field: the subject"
+group = "Compose"
+clients = ["tui"]
+note = "The web composer has its own fields"
+[[action.tui]]
+name = "inline:next"
+keys = ["Enter"]
+contexts = ["compose-picker"]
+
+[[action]]
+id = "compose-picker.add"
+label = "Add the highlighted person"
+group = "Compose"
+clients = ["tui"]
+note = "The web composer has its own fields"
+[[action.tui]]
+name = "inline:add"
+keys = ["Tab"]
+contexts = ["compose-picker"]
+
+[[action]]
+id = "attachments.open"
+label = "Open the attachment"
+group = "Read"
+clients = ["tui"]
+note = "The web reader lists attachments in the email"
+[[action.tui]]
+name = "inline:open"
+keys = ["Enter", "o"]
+contexts = ["attachments"]
+
+[[action]]
+id = "attachments.save"
+label = "Save it somewhere"
+group = "Read"
+clients = ["tui"]
+note = "The web reader lists attachments in the email"
+[[action.tui]]
+name = "inline:save"
+keys = ["d"]
+contexts = ["attachments"]
+
+[[action]]
+id = "save-attachment.preset"
+label = "Downloads, Desktop or here"
+group = "Read"
+clients = ["tui"]
+note = "The browser saves downloads itself"
+[[action.tui]]
+name = "inline:preset"
+keys = ["1", "2", "3"]
+contexts = ["save-attachment"]
+
+[[action]]
+id = "export.format-down"
+label = "Move down"
+group = "Navigate"
+clients = ["tui"]
+note = "The web exports from the palette straight to a file"
+[[action.tui]]
+name = "inline:down"
+keys = ["ArrowDown"]
+contexts = ["export"]
+
+[[action]]
+id = "export.format-up"
+label = "Move up"
+group = "Navigate"
+clients = ["tui"]
+note = "The web exports from the palette straight to a file"
+[[action.tui]]
+name = "inline:up"
+keys = ["ArrowUp"]
+contexts = ["export"]
+
+[[action]]
+id = "export.markdown"
+label = "Markdown"
+group = "Mail"
+clients = ["tui"]
+note = "The web exports from the palette straight to a file"
+[[action.tui]]
+name = "inline:format"
+keys = ["m"]
+contexts = ["export"]
+
+[[action]]
+id = "export.json"
+label = "JSON"
+group = "Mail"
+clients = ["tui"]
+note = "The web exports from the palette straight to a file"
+[[action.tui]]
+name = "inline:format"
+keys = ["j"]
+contexts = ["export"]
+
+[[action]]
+id = "export.mbox"
+label = "Mbox"
+group = "Mail"
+clients = ["tui"]
+note = "The web exports from the palette straight to a file"
+[[action.tui]]
+name = "inline:format"
+keys = ["x"]
+contexts = ["export"]
+
+[[action]]
+id = "export.llm-context"
+label = "LLM context"
+group = "Mail"
+clients = ["tui"]
+note = "The web exports from the palette straight to a file"
+[[action.tui]]
+name = "inline:format"
+keys = ["l"]
+contexts = ["export"]
+
+[[action]]
+id = "export.clipboard"
+label = "Copy to the clipboard"
+group = "Mail"
+clients = ["tui"]
+note = "The web exports from the palette straight to a file"
+[[action.tui]]
+name = "inline:clipboard"
+keys = ["c"]
+contexts = ["export-destination"]
+
+[[action]]
+id = "export.save"
+label = "Save to a file"
+group = "Mail"
+clients = ["tui"]
+note = "The web exports from the palette straight to a file"
+[[action.tui]]
+name = "inline:save"
+keys = ["s"]
+contexts = ["export-destination"]
+
+[[action]]
+id = "filter-bar.mode"
+label = "Next search mode"
+group = "Search"
+clients = ["tui"]
+note = "The web's list filter is a field above the list"
+[[action.tui]]
+name = "CycleSearchMode"
+keys = ["Tab"]
+contexts = ["filter-bar"]
+
+[[action]]
+id = "tui.form.next"
+label = "Next field"
+group = "Navigate"
+clients = ["tui"]
+note = "The web's forms are pages, where Tab moves between fields as a browser's does"
+[[action.tui]]
+name = "inline:next"
+keys = ["Tab"]
+contexts = ["analytics-filter", "saved-search-form"]
+
+[[action]]
+id = "tui.form.previous"
+label = "Previous field"
+group = "Navigate"
+clients = ["tui"]
+note = "The web's forms are pages, where Tab moves between fields as a browser's does"
+[[action.tui]]
+name = "inline:previous"
+keys = ["Shift+Tab"]
+contexts = ["analytics-filter", "saved-search-form"]
+
+[[action]]
+id = "analytics-filter.cycle"
+label = "Next or previous choice"
+group = "Analytics"
+clients = ["tui"]
+note = "The web's filters are page controls"
+[[action.tui]]
+name = "inline:cycle"
+keys = ["ArrowLeft", "ArrowRight"]
+contexts = ["analytics-filter"]
+
+[[action]]
+id = "saved-search-form.mode"
+label = "Next search mode"
+group = "Search"
+clients = ["tui"]
+note = "The web's saved-search form is a page"
+[[action.tui]]
+name = "inline:mode"
+keys = ["Space"]
+contexts = ["saved-search-form"]
+
+[[action]]
+id = "messages-filter.pick"
+label = "Pick it"
+group = "View"
+clients = ["tui"]
+note = "The web's Messages filters are a row of buttons"
+[[action.tui]]
+name = "inline:pick"
+keys = ["Space"]
+contexts = ["messages-filter"]
+
+[[action]]
+id = "draft-options.next"
+label = "Next field"
+group = "Compose"
+clients = ["tui"]
+note = "The web's draft options sit beside the composer"
+[[action.tui]]
+name = "inline:next"
+keys = ["Tab", "ArrowUp", "ArrowDown", "j", "k"]
+contexts = ["draft-options"]
+
+[[action]]
+id = "draft-options.cycle"
+label = "Next or previous choice"
+group = "Compose"
+clients = ["tui"]
+note = "The web's draft options sit beside the composer"
+[[action.tui]]
+name = "inline:cycle"
+keys = ["ArrowLeft", "ArrowRight", "h", "l"]
+contexts = ["draft-options"]
+
+[[action]]
+id = "pass-menu.file"
+label = "See what filing would make"
+group = "Mail"
+clients = ["tui"]
+note = "The web files from the Archive page's own button"
+[[action.tui]]
+name = "inline:file"
+keys = ["a"]
+contexts = ["pass-menu"]
+
+[[action]]
+id = "promise-prompt.keep"
+label = "Yes, remind me"
+group = "Mail"
+clients = ["tui"]
+note = "The web asks about a promise on the sent email's row"
+[[action.tui]]
+name = "inline:keep"
+keys = ["y"]
+contexts = ["promise-prompt"]
+
+[[action]]
+id = "promise-prompt.let-go"
+label = "No, let it go"
+group = "Mail"
+clients = ["tui"]
+note = "The web asks about a promise on the sent email's row"
+[[action.tui]]
+name = "inline:let_go"
+keys = ["n", "Escape"]
+contexts = ["promise-prompt"]
+
+[[action]]
+id = "arrivals-list.next-bucket"
+label = "Next kind of arrival"
+group = "View"
+clients = ["tui"]
+note = "The web's arrivals page lists every kind at once"
+[[action.tui]]
+name = "ArrivalsNextBucket"
+keys = ["Tab"]
+contexts = ["arrivals-list"]
+
+[[action]]
+id = "resume-draft.resume"
+label = "Resume the form"
+group = "Accounts"
+clients = ["tui"]
+note = "The web's account form keeps its fields in the page"
+[[action.tui]]
+name = "inline:resume"
+keys = ["c"]
+contexts = ["resume-draft"]
+
+[[action]]
+id = "identity-editor.next"
+label = "Other field"
+group = "Accounts"
+clients = ["tui"]
+note = "The web edits colour and tag in the account's page"
+[[action.tui]]
+name = "inline:next"
+keys = ["Tab", "Shift+Tab", "ArrowUp", "ArrowDown"]
+contexts = ["identity-editor"]
+
+[[action]]
+id = "identity-editor.colour"
+label = "Next or previous colour"
+group = "Accounts"
+clients = ["tui"]
+note = "The web edits colour and tag in the account's page"
+[[action.tui]]
+name = "inline:colour"
+keys = ["ArrowLeft", "ArrowRight", "Space"]
+contexts = ["identity-editor"]
+
+[[action]]
+id = "categories.explain"
+label = "Why is this here?"
+group = "Mail"
+clients = ["tui"]
+note = "The web's Categories dialog is a filter list: letters type and Enter picks"
+[[action.tui]]
+name = "inline:explain"
+keys = ["w"]
+contexts = ["categories"]
+
+[[action]]
+id = "categories.filter"
+label = "Filter"
+group = "Mail"
+clients = ["tui"]
+note = "The web's Categories dialog is a filter list: letters type and Enter picks"
+[[action.tui]]
+name = "inline:filter"
+keys = ["/"]
+contexts = ["categories"]
+
+[[action]]
+id = "categories.create"
+label = "New category"
+group = "Mail"
+clients = ["tui"]
+note = "The web's Categories dialog is a filter list: letters type and Enter picks"
+[[action.tui]]
+name = "inline:create"
+keys = ["c"]
+contexts = ["categories"]
+
+[[action]]
+id = "categories.rename"
+label = "Rename"
+group = "Mail"
+clients = ["tui"]
+note = "The web's Categories dialog is a filter list: letters type and Enter picks"
+[[action.tui]]
+name = "inline:rename"
+keys = ["r"]
+contexts = ["categories"]
+
+[[action]]
+id = "categories.delete"
+label = "Delete the category"
+group = "Mail"
+clients = ["tui"]
+note = "The web's Categories dialog is a filter list: letters type and Enter picks"
+[[action.tui]]
+name = "inline:delete"
+keys = ["#"]
+contexts = ["categories"]
+
+

@@ -3,6 +3,7 @@ import * as React from "react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { focusActivePane } from "@/lib/keys/focusPane";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 import { cn } from "@/lib/utils";
 
 import { overlayMotion, scrimMotion, sheetMotion } from "./motion";
@@ -27,14 +28,46 @@ const AlertDialogOverlay = React.forwardRef<
 ));
 AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName;
 
+/**
+ * A yes-or-no confirm's keys (blueprint 35's overlay grammar): `y` does what
+ * the action button names and `n` is Esc. Enter and Tab stay the buttons'
+ * own, so a confirm that opens on its cancel button destroys nothing on a
+ * bare Enter.
+ */
+function answerYesOrNo(event: React.KeyboardEvent<HTMLDivElement>) {
+  const target = event.target;
+  if (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || target.closest("input, textarea, select"))
+  ) {
+    return;
+  }
+  const yes = pressedOverlayKey(event, "overlay.yes");
+  if (!yes && !pressedOverlayKey(event, "overlay.no")) return;
+  const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>(
+    yes ? "[data-alert-action]:not(:disabled)" : "[data-alert-cancel]",
+  );
+  // Two actions would make `y` ambiguous.
+  if (buttons.length !== 1) return;
+  event.preventDefault();
+  buttons[0]?.click();
+}
+
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
->(({ className, onCloseAutoFocus, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content> & {
+    /** Answer to `y` and `n` (a yes-or-no confirm). */
+    yesNo?: boolean;
+  }
+>(({ className, onCloseAutoFocus, onKeyDown, yesNo, ...props }, ref) => (
   <AlertDialogPortal>
     <AlertDialogOverlay />
     <AlertDialogPrimitive.Content
       ref={ref}
+      onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (yesNo && !event.defaultPrevented) answerYesOrNo(event);
+      }}
       onCloseAutoFocus={(event) => {
         onCloseAutoFocus?.(event);
         if (event.defaultPrevented) return;
@@ -99,6 +132,7 @@ const AlertDialogAction = React.forwardRef<
 >(({ className, variant, size, ...props }, ref) => (
   <AlertDialogPrimitive.Action
     ref={ref}
+    data-alert-action=""
     className={cn(buttonVariants({ variant, size, className }))}
     {...props}
   />
@@ -112,6 +146,7 @@ const AlertDialogCancel = React.forwardRef<
 >(({ className, variant = "outline", size, ...props }, ref) => (
   <AlertDialogPrimitive.Cancel
     ref={ref}
+    data-alert-cancel=""
     className={cn(buttonVariants({ variant, size, className }))}
     {...props}
   />

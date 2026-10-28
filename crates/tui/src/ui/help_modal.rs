@@ -156,7 +156,20 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             });
         }
     }
-    sections.push(overlays_section());
+    // Every overlay's keys, from the definition: help can't be opened from
+    // inside one, so they are listed wherever it is.
+    for overlay in mxr_keymap::OVERLAY_CONTEXTS {
+        let entries = keys.rows(overlay);
+        if !entries.is_empty() {
+            sections.push(HelpSection {
+                title: format!(
+                    "{} keys",
+                    mxr_keymap::place_title(overlay).unwrap_or(overlay)
+                ),
+                entries,
+            });
+        }
+    }
     sections.extend(command_sections(state));
     sections
 }
@@ -313,37 +326,6 @@ fn common_entries(
     }
 
     entries
-}
-
-/// Overlays still read their own keys (blueprint 35's overlay grammar has
-/// not moved them into the key definition yet), so these lines are kept by
-/// hand until it does. Each overlay also prints its keys in its footer.
-fn overlays_section() -> HelpSection {
-    HelpSection {
-        title: "Overlays (keys not in the definition yet)".into(),
-        entries: vec![
-            (
-                "Help: j/k Ctrl-d/u".into(),
-                "Scroll; ? or q closes with no filter".into(),
-            ),
-            ("Label Picker".into(), "Type, j/k, Enter, Esc".into()),
-            ("Compose Picker".into(), "Type, Tab, Enter, Esc".into()),
-            ("Attachments".into(), "j/k, Enter/o, d, Esc/q".into()),
-            ("Links".into(), "j/k, Enter/o open, y copy, Esc".into()),
-            (
-                "Unsubscribe".into(),
-                "Enter unsubscribe, a archive sender, Esc/n/q cancel".into(),
-            ),
-            (
-                "Delete confirms".into(),
-                "Open on Keep: Enter runs the lit one, y deletes, j/k move, Esc/n/q keep".into(),
-            ),
-            (
-                "Bulk Confirm".into(),
-                "Enter/y confirm, Esc/n/q cancel".into(),
-            ),
-        ],
-    }
 }
 
 fn binding_context(state: &HelpModalState<'_>) -> ViewContext {
@@ -927,6 +909,7 @@ mod tests {
         let places = mxr_keymap::TUI_CONTEXTS
             .iter()
             .chain(mxr_keymap::SCREEN_CONTEXTS.iter())
+            .chain(mxr_keymap::OVERLAY_CONTEXTS.iter())
             .copied()
             .filter(|place| {
                 keymap

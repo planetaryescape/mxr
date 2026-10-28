@@ -32,7 +32,7 @@ or an email) and that it can't be undone from mxr. It runs the dry run
 below before anything is sent. A source that sent eight or more issues you
 never opened gets a quiet "Unsubscribe?" offer on its items.
 `mxr reading sources` prints each source's evidence. Choose **Just unsubscribe**
-(Enter or `u`) to keep existing mail, or **Unsubscribe and clear** (`a`) to mark
+(Enter or `u`) to keep existing mail, or **Unsubscribe and clear** (`e`) to mark
 read and archive the previewed issues. Both use the method shown in the preview.
 
 ## What mxr will do

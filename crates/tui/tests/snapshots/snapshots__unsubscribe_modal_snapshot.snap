@@ -1,6 +1,5 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 579
 expression: snapshot
 ---
 "                                                                                                    "
@@ -13,7 +12,7 @@ expression: snapshot
 "                 │                                                                │                 "
 "                 │Choose what to do:                                              │                 "
 "                 │[Enter] unsubscribe only                                        │                 "
-"                 │[a] unsubscribe + archive all from this sender (2 messages)     │                 "
+"                 │[e] unsubscribe + archive all from this sender (2 messages)     │                 "
 "                 │[Esc] cancel                                                    │                 "
 "                 │                                                                │                 "
 "                 │                                                                │                 "

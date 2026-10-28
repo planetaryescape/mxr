@@ -163,6 +163,7 @@ impl App {
                     reason: issue.why.clone(),
                     corrected: false,
                 },
+                selected: 0,
             });
             return;
         }
@@ -182,6 +183,7 @@ impl App {
                 .clone()
                 .unwrap_or_else(|| bundle.sender_email.clone()),
             current: bundle.kind.clone(),
+            selected: 0,
         });
     }
 

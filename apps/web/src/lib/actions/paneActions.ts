@@ -7,6 +7,8 @@
 
 import { Maximize2, Shuffle, SquareStack } from "lucide-react";
 
+import { useMailboxPane } from "@/state/mailboxPaneStore";
+
 import type { ActionBehavior } from "./types";
 
 export const sidebarActions: ActionBehavior[] = [
@@ -33,11 +35,14 @@ export const listActions: ActionBehavior[] = [
   { id: "list.viewport-top", command: "viewportTop" },
   { id: "list.viewport-middle", command: "viewportMiddle" },
   { id: "list.open", command: "open" },
-  { id: "list.sidebar", command: "focusSidebar" },
+  // From the mail list and from each mode's list alike: no view has to
+  // register it, as the sidebar is beside all of them.
+  { id: "list.sidebar", run: () => useMailboxPane.getState().setActivePane("sidebar") },
   { id: "list.row-action", command: "rowAction" },
   { id: "list.toggle-select", command: "toggleSelect" },
   { id: "list.visual", command: "visual" },
   { id: "list.select-all", command: "selectAll" },
+  { id: "list.select-all-chord", command: "selectAll" },
   { id: "list.select-none", command: "selectNone" },
   { id: "list.select-read", command: "selectRead" },
   { id: "list.select-unread", command: "selectUnread" },

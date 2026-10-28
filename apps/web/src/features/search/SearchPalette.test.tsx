@@ -124,6 +124,8 @@ describe("SearchPalette", () => {
   });
 
   test("Cmd/Ctrl+Enter opens the full search page even with a result selected", async () => {
+    // Cmd is macOS's Mod.
+    const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
     renderWithQueryClient(<SearchPalette />);
 
     const input = await screen.findByRole("textbox", { name: "Search mail" });
@@ -142,6 +144,7 @@ describe("SearchPalette", () => {
     expect(router.navigate).not.toHaveBeenCalledWith(
       expect.objectContaining({ to: "/m/$mailbox/$threadId" }),
     );
+    platform.mockRestore();
   });
 
   test("Ctrl+Enter also opens the full search page", async () => {

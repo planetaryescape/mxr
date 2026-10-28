@@ -35,6 +35,7 @@ import { performMailAction } from "../mailMutations";
 import { describeTarget } from "../mailVerbs";
 import { openMailDialog } from "../mailDialogStore";
 import type { MailTarget } from "../target";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 type Presence = "all" | "some" | "none";
 
@@ -131,7 +132,7 @@ export function LabelsDialog({ target, onClose }: { target: MailTarget; onClose:
         <Command
           loop
           onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            if (pressedOverlayKey(event, "label-picker.apply")) {
               event.preventDefault();
               apply();
             }
@@ -311,7 +312,7 @@ function ManageLabel({
         </Button>
       </form>
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
+        <AlertDialogContent yesNo>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{name}”?</AlertDialogTitle>
             <AlertDialogDescription>

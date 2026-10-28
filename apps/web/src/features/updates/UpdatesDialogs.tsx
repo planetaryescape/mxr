@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 
 import { letGoRequest, type UpdateLine, type UpdateSetting } from "./api";
 import { displaySourceName, SETTING_LABEL, SETTINGS } from "./digestView";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 /**
  * Let go of a digest: the daemon's dry run of exactly the cut, then the
@@ -62,11 +63,11 @@ export function LetGoAllDialog({
         onKeyDown={(event) => {
           if (event.ctrlKey || event.metaKey || event.altKey) return;
           // A preview's yes or no, as in the TUI (blueprint 35).
-          if (event.key === "y" && result && result.message_count > 0) {
+          if (pressedOverlayKey(event, "overlay.yes") && result && result.message_count > 0) {
             event.preventDefault();
             onOpenChange(false);
             onConfirm(result.selection_token);
-          } else if (event.key === "n") {
+          } else if (pressedOverlayKey(event, "overlay.no")) {
             event.preventDefault();
             onOpenChange(false);
           }

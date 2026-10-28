@@ -130,22 +130,35 @@ fn pattern_keys_select_from_search_results_on_the_search_screen() {
 }
 
 #[test]
-fn pattern_keys_outside_mail_lists_do_nothing_but_say_where_they_work() {
+fn pattern_keys_reach_the_list_from_the_sidebar_and_the_reader_beside_it() {
+    for pane in [ActivePane::Sidebar, ActivePane::MessageView] {
+        let mut app = mail_list_app(4);
+        let envelopes = app.mailbox.envelopes.clone();
+        app.mailbox.active_pane = pane;
+        press(&mut app, '*');
+        press(&mut app, 'u');
+        assert_eq!(selected_ids(&app), ids_of(&envelopes, &[1, 3]), "{pane:?}");
+    }
+}
+
+#[test]
+fn escape_in_the_sidebar_clears_the_list_beside_it() {
+    let mut app = mail_list_app(4);
+    app.mailbox.active_pane = ActivePane::Sidebar;
+    press(&mut app, '*');
+    press(&mut app, 'a');
+    assert_eq!(selected_ids(&app).len(), 4);
+    press_key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(selected_ids(&app).is_empty());
+}
+
+#[test]
+fn pattern_keys_are_not_keys_in_a_mode() {
     let mut app = mail_list_app(3);
     app.mailbox.mailbox_view = MailboxView::Todo;
     press(&mut app, '*');
     press(&mut app, 'a');
     assert!(selected_ids(&app).is_empty());
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Pattern select works in mail lists and search results")
-    );
-
-    let mut sidebar = mail_list_app(3);
-    sidebar.mailbox.active_pane = ActivePane::Sidebar;
-    press(&mut sidebar, '*');
-    press(&mut sidebar, 'a');
-    assert!(selected_ids(&sidebar).is_empty());
 }
 
 #[test]

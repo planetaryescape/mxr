@@ -1,4 +1,5 @@
 import type { components } from "@/api/generated";
+import { optionLetter } from "@/lib/keys/overlayKeys";
 
 /*
  * Arrival view fields from crates/protocol/src/types/arrivals.rs.
@@ -118,18 +119,22 @@ export type ArrivalModesResponse = { kind: "ArrivalModes"; items: ArrivalItem[] 
 export type MessageMovedResponse = { kind: "MessageMoved"; outcome: MoveOutcome };
 export type MoveUndoneResponse = { kind: "MoveUndone"; correction_id: number; copy: string };
 
-/** Picker keys: a mode's `g` letter. Capitals set the sender's mode. */
-export const MOVE_KEYS = {
-  m: "messages",
-  x: "todo",
-  u: "updates",
-  r: "reading",
-  e: "archive",
-} as const satisfies Record<string, ModeId>;
+/** Picker keys: a mode's `g` letter, from the key definition. Capitals set the sender's mode. */
+export const MOVE_KEYS: Readonly<Record<string, ModeId>> = Object.fromEntries(
+  (
+    [
+      ["messages", "move-picker.messages"],
+      ["todo", "move-picker.todo"],
+      ["updates", "move-picker.updates"],
+      ["reading", "move-picker.reading"],
+      ["archive", "move-picker.archive"],
+    ] as const
+  ).map(([mode, id]) => [optionLetter(id), mode]),
+);
 
 /** The mode a picker key names, if any (own keys only, never `toString`). */
 export function modeForKey(key: string): ModeId | undefined {
-  return Object.hasOwn(MOVE_KEYS, key) ? MOVE_KEYS[key as keyof typeof MOVE_KEYS] : undefined;
+  return Object.hasOwn(MOVE_KEYS, key) ? MOVE_KEYS[key] : undefined;
 }
 
 export const MODE_NAMES = {

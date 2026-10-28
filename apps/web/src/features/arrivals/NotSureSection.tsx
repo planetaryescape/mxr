@@ -10,6 +10,7 @@ import { useKeyScope } from "@/state/keyScopeStore";
 import { openMovePicker, performMove } from "./moves";
 import { modeForKey, SENDER_MODES, type ModeId, type NotSure } from "./types";
 import { useTrustHint } from "./useTrustHint";
+import { optionLetter, pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 /** An answer that moved mail somewhere a sender's mail can go: ask once. */
 interface PendingAsk {
@@ -197,10 +198,10 @@ function SenderAsk({ ask, onDone }: { ask: PendingAsk; onDone: () => void }) {
       data-testid="not-sure-sender-ask"
       ref={(node) => node?.focus()}
       onKeyDown={(event) => {
-        if (event.key === "y" || event.key === "Enter") {
+        if (pressedOverlayKey(event, "sender-ask.yes")) {
           event.preventDefault();
           yes();
-        } else if (event.key === "n" || event.key === "Escape") {
+        } else if (pressedOverlayKey(event, "sender-ask.no")) {
           event.preventDefault();
           onDone();
         }
@@ -209,10 +210,10 @@ function SenderAsk({ ask, onDone }: { ask: PendingAsk; onDone: () => void }) {
     >
       <span>Always for {who}?</span>
       <Button size="sm" variant="ghost" className="h-7 gap-1.5 px-2" onClick={yes}>
-        <KeyChip>y</KeyChip> Yes
+        <KeyChip>{optionLetter("sender-ask.yes")}</KeyChip> Yes
       </Button>
       <Button size="sm" variant="ghost" className="h-7 gap-1.5 px-2" onClick={onDone}>
-        <KeyChip>n</KeyChip> No
+        <KeyChip>{optionLetter("sender-ask.no")}</KeyChip> No
       </Button>
     </div>
   );

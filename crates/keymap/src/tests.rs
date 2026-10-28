@@ -269,6 +269,82 @@ fn every_place_with_tui_keys_has_a_table() {
         })
         .collect();
     assert!(missing.is_empty(), "no table or title for {missing:?}");
+    let missing: Vec<&str> = OVERLAY_CONTEXTS
+        .into_iter()
+        .filter(|place| {
+            keymap
+                .actions
+                .iter()
+                .flat_map(|a| &a.tui)
+                .any(|binding| !binding.keys.is_empty() && binding.contexts.includes(place))
+        })
+        .filter(|place| {
+            !crate::docs::OVERLAYS
+                .iter()
+                .any(|(listed, _)| listed == place)
+                || place_title(place).is_none()
+        })
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "no overlay table or title for {missing:?}"
+    );
+}
+
+/// An overlay reads its own keys, so an action lives in overlays only or
+/// in none, only an overlay's web keys can be the browser's, and keys.toml
+/// can't remap an overlay's key.
+#[test]
+fn overlay_keys_stay_in_overlays() {
+    let keymap = Keymap::parse(
+        r#"
+        [[action]]
+        id = "overlay.close"
+        label = "Close"
+        group = "Navigate"
+        scopes = ["links"]
+        keys = ["Escape"]
+        web_native = true
+        [[action.tui]]
+        name = "inline:close"
+        keys = ["Escape"]
+        contexts = ["links"]
+
+        [[action]]
+        id = "mixed"
+        label = "Mixed"
+        group = "Navigate"
+        scopes = ["list", "links"]
+        keys = ["x"]
+        web_native = true
+        [[action.tui]]
+        name = "ToggleSelect"
+        keys = ["x"]
+        contexts = ["list"]
+        "#,
+    )
+    .expect("the test definition parses");
+    assert!(keymap
+        .get("overlay.close")
+        .is_some_and(KeyAction::is_overlay));
+    assert!(!keymap.get("mixed").is_some_and(KeyAction::is_overlay));
+    let problems = keymap.problems();
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.starts_with("mixed: `links` is an overlay")),
+        "{problems:?}"
+    );
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.starts_with("mixed: only an overlay's web keys")),
+        "{problems:?}"
+    );
+    assert!(!keymap.raycast_keys().contains_key("overlay.close"));
+    assert!(
+        action_keys_problems(&keymap, "overlay.close", &["c".into()])[0].contains("overlay's key"),
+    );
 }
 
 #[test]

@@ -42,7 +42,10 @@ export function isMacPlatform(): boolean {
  * `Mod` is Cmd on macOS and Ctrl elsewhere; a literal Ctrl on macOS stays
  * "Ctrl" so TUI chords like Ctrl-d work there without stealing Cmd.
  */
-export function tokenFromEvent(event: KeyboardEvent, mac = isMacPlatform()): KeyToken | null {
+export function tokenFromEvent(
+  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
+  mac = isMacPlatform(),
+): KeyToken | null {
   const rawKey = event.key;
   if (!rawKey || MODIFIER_KEYS.has(rawKey)) return null;
   const key = rawKey === " " ? "Space" : rawKey;
@@ -78,7 +81,11 @@ export function tokenFromEvent(event: KeyboardEvent, mac = isMacPlatform()): Key
  * so the character is the key. A plain letter or digit with Alt is still a
  * chord ("Alt+a"), and so is plain Alt off macOS, which is not AltGr.
  */
-function isAltComposed(event: KeyboardEvent, key: string, mac: boolean): boolean {
+function isAltComposed(
+  event: Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "altKey">,
+  key: string,
+  mac: boolean,
+): boolean {
   if (!event.altKey || [...key].length !== 1 || /^[a-z0-9]$/i.test(key)) return false;
   return mac ? !event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
 }

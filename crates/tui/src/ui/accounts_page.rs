@@ -236,7 +236,7 @@ pub fn draw(
     }
 
     if state.resume_new_account_draft_prompt_open {
-        draw_resume_new_account_draft_modal(frame, area, theme);
+        draw_resume_new_account_draft_modal(frame, area, state.resume_draft_choice, theme);
     }
 }
 
@@ -907,17 +907,24 @@ fn draw_mode_switch_confirm_modal(frame: &mut Frame, area: Rect, theme: &crate::
     frame.render_widget(paragraph, popup);
 }
 
-fn draw_resume_new_account_draft_modal(frame: &mut Frame, area: Rect, theme: &crate::theme::Theme) {
+fn draw_resume_new_account_draft_modal(
+    frame: &mut Frame,
+    area: Rect,
+    choice: crate::app::ConfirmChoice,
+    theme: &crate::theme::Theme,
+) {
     let popup = centered_rect(62, 32, area);
     frame.render_widget(Clear, popup);
 
     let lines = vec![
         Line::from("Unsaved new account form found."),
         Line::from(""),
-        Line::from("Continue the draft you were editing,"),
-        Line::from("or start a fresh account form."),
+        Line::from("Resume the form you were filling in,"),
+        Line::from("or discard it and start a fresh one."),
         Line::from(""),
-        Line::from("Enter/c: continue  n: start new  Esc: cancel"),
+        crate::ui::confirm_choice::options("Resume draft", "Discard draft", choice, theme),
+        Line::from(""),
+        crate::ui::confirm_choice::keys_hint(theme),
     ];
 
     let paragraph = Paragraph::new(lines)

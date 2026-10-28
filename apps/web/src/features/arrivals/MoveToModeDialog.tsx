@@ -14,23 +14,35 @@ import { cn } from "@/lib/utils";
 
 import { performMove, type MoveSubject } from "./moves";
 import { MODE_NAMES, modeForKey, MOVE_KEYS, SENDER_MODES, type ModeId } from "./types";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
+import { definedKeys } from "@/lib/actions/definition";
 
 /** Marks the options j, k and the arrows step through. */
 const OPTION = "data-move-option";
+
+/**
+ * The modes a sender's mail can go to, with their keys' ids in the key
+ * definition: a capital in `X`'s picker, either case in `P`'s.
+ */
+const SENDER_CHOICES = [
+  ["messages", "move-picker.sender-messages", "move-picker-sender.messages"],
+  ["updates", "move-picker.sender-updates", "move-picker-sender.updates"],
+  ["reading", "move-picker.sender-reading", "move-picker-sender.reading"],
+] as const satisfies readonly (readonly [ModeId, string, string])[];
 
 /** What one key press in the picker asks for, or nothing. */
 export function pickerChoice(
   key: string,
   sender: boolean,
 ): { mode: ModeId; sender: boolean } | null {
-  const lower = key.toLowerCase();
-  const mode = modeForKey(lower);
-  if (!mode || key.length !== 1) return null;
-  // A capital in the email picker means "for this sender"; the sender
-  // picker takes either case.
-  const forSender = sender || key !== lower;
-  if (forSender && !SENDER_MODES.includes(mode)) return null;
-  return { mode, sender: forSender };
+  if (key.length !== 1) return null;
+  const forSender = SENDER_CHOICES.find(([, capital, either]) =>
+    definedKeys(sender ? either : capital).includes(key),
+  );
+  if (forSender) return { mode: forSender[0], sender: true };
+  if (sender) return null;
+  const mode = modeForKey(key);
+  return mode ? { mode, sender: false } : null;
 }
 
 /**
@@ -86,9 +98,10 @@ export function MoveToModeDialog({
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
-    if (["j", "k", "ArrowDown", "ArrowUp"].includes(event.key)) {
+    const down = pressedOverlayKey(event, "overlay.down");
+    if (down || pressedOverlayKey(event, "overlay.up")) {
       event.preventDefault();
-      step(event.key === "j" || event.key === "ArrowDown" ? 1 : -1);
+      step(down ? 1 : -1);
       return;
     }
     if (newSender) {

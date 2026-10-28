@@ -5,7 +5,12 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { docChord, renderKeybindingsMarkdown, undocumentedActionIds } from "./keybindingsDoc";
+import {
+  docChord,
+  renderKeybindingsMarkdown,
+  undocumentedActionIds,
+  undocumentedOverlays,
+} from "./keybindingsDoc";
 
 const DOC = resolve(__dirname, "../../../../../site/src/content/docs/reference/keybindings.md");
 const START =
@@ -33,6 +38,7 @@ describe("web keybindings reference", () => {
 
   test("every bound key has a table, so a new scope can't go unpublished", () => {
     expect(undocumentedActionIds()).toEqual([]);
+    expect(undocumentedOverlays()).toEqual([]);
   });
 
   test("renders modifier chords for both platforms", () => {

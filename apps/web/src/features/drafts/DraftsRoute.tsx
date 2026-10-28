@@ -157,7 +157,7 @@ function DraftRow({
               <span className="hidden sm:inline">Delete</span>
             </button>
           </AlertDialogTrigger>
-          <AlertDialogContent>
+          <AlertDialogContent yesNo>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this draft?</AlertDialogTitle>
               <AlertDialogDescription>

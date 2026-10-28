@@ -88,11 +88,11 @@ describe("ReadingUnsubscribeDialog", () => {
     expect(api.unsubscribeFromSender).not.toHaveBeenCalled();
   });
 
-  test("a commits exactly the previewed token and clears the issues", async () => {
+  test("e commits exactly the previewed token and clears the issues", async () => {
     renderDialog();
     await screen.findByText("Unsubscribe and clear 12 issues");
     await vi.waitFor(() => expect(screen.getByTestId("unsubscribe-clear")).toBeEnabled());
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "a" });
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "e" });
     await vi.waitFor(() =>
       expect(api.commitUnsubscribePreview).toHaveBeenLastCalledWith({
         address: "news@digest.example",

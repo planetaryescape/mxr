@@ -78,6 +78,45 @@ async fn delete_account_cascades_owned_messages() {
     );
 }
 
+/// The upsert reads before it writes. Opened as a deferred transaction, the
+/// read pins a snapshot and the write then fails at once with SQLITE_BUSY
+/// (or SQLITE_BUSY_SNAPSHOT once the other writer commits) instead of
+/// waiting out `busy_timeout`. Another process writing the same database,
+/// such as a test or CLI command next to the daemon, must make it wait.
+#[tokio::test]
+async fn upsert_envelope_waits_for_another_connections_write() {
+    use sqlx::Connection;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.db");
+    let store = Store::new(&path).await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let mut other = sqlx::SqliteConnection::connect_with(
+        &sqlx::sqlite::SqliteConnectOptions::new().filename(&path),
+    )
+    .await
+    .unwrap();
+    sqlx::raw_sql("BEGIN IMMEDIATE")
+        .execute(&mut other)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE accounts SET name = 'Other writer' WHERE id = ?")
+        .bind(account.id.as_str())
+        .execute(&mut other)
+        .await
+        .unwrap();
+
+    let env = test_envelope(&account.id);
+    let (upserted, ()) = tokio::join!(store.upsert_envelope(&env), async {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        sqlx::raw_sql("COMMIT").execute(&mut other).await.unwrap();
+    });
+
+    assert_eq!(upserted.unwrap(), env.id);
+}
+
 #[tokio::test]
 async fn relationship_summary_roundtrips_and_updates_by_contact_email() {
     let store = Store::in_memory().await.unwrap();

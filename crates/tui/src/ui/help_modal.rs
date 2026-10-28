@@ -1,7 +1,8 @@
 use super::centered_rect;
 use crate::action::UiContext;
-use crate::keybindings::{all_bindings_for_context, ViewContext};
+use crate::keybindings::ViewContext;
 use crate::ui::command_palette::commands_for_context;
+use crate::ui::help_keys::{places_for, KeyRows, ALWAYS_LISTED};
 use nucleo::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo::{Config, Matcher, Utf32Str};
 use ratatui::prelude::*;
@@ -41,8 +42,10 @@ pub struct HelpModalState<'a> {
     pub selected: usize,
     /// The mode on screen, when it has a guide: help leads with it.
     pub mode_guide: Option<&'a mxr_protocol::ModeGuideData>,
-    /// In a mode: its name and every key it binds, from the key definition.
-    pub mode_keys: Option<(&'static str, Vec<(String, String)>)>,
+    /// Where keys are going, innermost first (a mode, the list, a lens):
+    /// the key definition's places whose keys help lists. Empty to list
+    /// the places of `ui_context`.
+    pub key_places: Vec<&'static str>,
     /// In a mode: the lit item's verbs, as the hint bar shows them.
     pub mode_common: Option<Vec<(String, String)>>,
     pub _marker: std::marker::PhantomData<&'a ()>,
@@ -92,309 +95,197 @@ fn mode_section(guide: &mxr_protocol::ModeGuideData) -> HelpSection {
     }
 }
 
-fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
-    let mut sections: Vec<HelpSection> = state.mode_guide.map(mode_section).into_iter().collect();
-    sections.extend(vec![
-        HelpSection {
-            title: "Start Here".into(),
-            entries: vec![
-                (":".into(), "Open command palette".into()),
-                ("@".into(), "Show or hide the assistant".into()),
-                ("gC".into(), "Accounts and settings".into()),
-                ("?".into(), "Toggle Help".into()),
-                ("Esc".into(), "Back / Close".into()),
-                ("q".into(), "Quit".into()),
-            ],
-        },
-        // Phase 3.3: task-oriented entry points. Each line answers
-        // "how do I do X" — pointing at a specific binding or palette
-        // command — so a new user doesn't have to scan the keybinding
-        // table to figure out what to press first.
-        HelpSection {
-            title: "How do I…".into(),
-            entries: vec![
-                (
-                    "Add an account".into(),
-                    "g C → c (or palette: New IMAP/SMTP Account)".into(),
-                ),
-                (
-                    "Compose and send".into(),
-                    "c → write in $EDITOR → save → s to send".into(),
-                ),
-                (
-                    "Search and save a search".into(),
-                    "/ to query → palette: New Saved Search → c in sidebar to refine".into(),
-                ),
-                (
-                    "Manage rules".into(),
-                    "g R → c new / E edit / D dry-run / palette: Refresh Rules".into(),
-                ),
-                (
-                    "Reset local state".into(),
-                    "shell: mxr reset --hard (or mxr burn) — keeps config + creds".into(),
-                ),
-                (
-                    "Repair an unhealthy account".into(),
-                    "g C → select account → r when [unhealthy] indicator shown".into(),
-                ),
-                (
-                    "Open analytics".into(),
-                    "palette: Analytics: Storage / Stale Threads / Contact Asymmetry / Response Time".into(),
-                ),
-                (
-                    "Undo a destructive action".into(),
-                    "u within 60s of archive/trash/spam/mark-read".into(),
-                ),
-            ],
-        },
-        HelpSection {
-            title: "Most Common Actions".into(),
-            entries: state
-                .mode_common
-                .clone()
-                .unwrap_or_else(|| context_entries(state)),
-        },
-    ]);
+fn key_rows<'a>(state: &'a HelpModalState<'_>) -> KeyRows<'a> {
+    KeyRows {
+        config: state
+            .keybindings
+            .unwrap_or_else(|| crate::keybindings::shown_keybindings()),
+        view: binding_context(state),
+    }
+}
 
-    let mut screens = screen_sections(state.ui_context);
-    if let Some(config) = state.keybindings {
-        if matches!(
-            state.ui_context,
-            UiContext::MailboxList
-                | UiContext::MailboxMessage
-                | UiContext::SearchResults
-                | UiContext::SearchPreview
-        ) {
-            let view = binding_context(state);
-            let mut entries = config.all_bindings_for_context(view);
-            if matches!(
-                state.ui_context,
-                UiContext::SearchResults | UiContext::SearchPreview
-            ) {
-                // Search owns query editing and back/focus navigation unless
-                // an explicit mail override claims that key first.
-                for section in screen_sections(state.ui_context) {
-                    for (keys, label) in search_controls(section.entries, config, view) {
-                        for key in keys.split(" / ") {
-                            let canonical = search_key_display(key);
-                            entries.retain(|(key, _)| *key != canonical);
-                        }
-                        entries.push((keys, label));
-                    }
-                }
-            }
-            screens = vec![HelpSection {
-                title: state.ui_context.label().into(),
-                entries,
-            }];
-        }
+fn places(state: &HelpModalState<'_>) -> Vec<&'static str> {
+    if state.key_places.is_empty() {
+        places_for(state.ui_context)
+    } else {
+        state.key_places.clone()
     }
-    if let (UiContext::MailboxList, Some((title, entries))) = (state.ui_context, &state.mode_keys) {
-        screens = vec![HelpSection {
-            title: format!("{title} keys"),
-            entries: entries.clone(),
-        }];
-    }
-    sections.extend(screens);
+}
+
+fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
+    let keys = key_rows(state);
+    let places = places(state);
+    let here = places.first().copied().unwrap_or("list");
+    // A tool screen leaves the shell's keys to the mail list's.
+    let shell = if mxr_keymap::TUI_CONTEXTS.contains(&here) {
+        here
+    } else {
+        "list"
+    };
+    let mut sections: Vec<HelpSection> = state.mode_guide.map(mode_section).into_iter().collect();
     sections.push(HelpSection {
-        title: "Modals".into(),
-        entries: vec![
-            ("Help: j/k Ctrl-d/u".into(), "Scroll".into()),
-            ("Label Picker".into(), "Type, j/k, Enter, Esc".into()),
-            ("Compose Picker".into(), "Type, Tab, Enter, Esc".into()),
-            ("Attachments".into(), "j/k, Enter/o, d, Esc".into()),
-            ("Links".into(), "j/k, Enter/o open, y copy, Esc".into()),
-            (
-                "Unsubscribe".into(),
-                "Enter unsubscribe, a archive sender, Esc cancel".into(),
-            ),
-            (
-                "Bulk Confirm".into(),
-                "Enter/y confirm, Esc/n cancel".into(),
-            ),
-            (
-                "Assistant (@)".into(),
-                "Enter send, Esc pane keys: y/n approve/reject, 1-9 choose (or open a reply link), s skip, N new, L history, T trust, # delete, Ctrl-c stop".into(),
-            ),
-        ],
+        title: "Start Here".into(),
+        entries: [
+            "shell.command-palette",
+            "assistant.toggle",
+            "nav.settings",
+            "shell.help",
+            "list.escape",
+            "tui.quit-view",
+        ]
+        .into_iter()
+        .filter_map(|id| defined_row(&keys, id, shell))
+        .collect(),
     });
-    sections.extend(command_sections(state));
-    if let Some(config) = state.keybindings.filter(|_| {
-        matches!(
-            state.ui_context,
-            UiContext::MailboxList
-                | UiContext::MailboxMessage
-                | UiContext::SearchResults
-                | UiContext::SearchPreview
-        )
-    }) {
-        // Replace shortcuts in the introductory rows too, not just the key table.
-        let defaults = crate::keybindings::shown_keybindings();
-        let view = binding_context(state);
-        for section in &mut sections {
-            if section.title == "How do I…" {
-                for (label, hint) in &mut section.entries {
-                    let action = match label.as_str() {
-                        "Compose and send" => Some((crate::action::Action::Compose, "c")),
-                        "Search and save a search" => {
-                            Some((crate::action::Action::OpenGlobalSearch, "/"))
-                        }
-                        "Undo a destructive action" => {
-                            Some((crate::action::Action::UndoLastMutation, "u"))
-                        }
-                        _ => None,
-                    };
-                    if let Some((action, old_key)) = action {
-                        if config.has_action_override(view, &action) {
-                            let effective = config
-                                .primary_key_display(view, &action)
-                                .unwrap_or_else(|| "palette".into());
-                            if let Some(rest) = hint.strip_prefix(old_key) {
-                                *hint = format!("{effective}{rest}");
-                            }
-                        }
-                    }
-                }
-                continue;
-            }
-            if section.title != "Start Here"
-                && section.title != "Most Common Actions"
-                && !state
-                    .mode_guide
-                    .is_some_and(|guide| section.title == guide.name)
-            {
-                continue;
-            }
-            if section.title == "Most Common Actions"
-                && matches!(
-                    state.ui_context,
-                    UiContext::SearchResults | UiContext::SearchPreview
-                )
-            {
-                continue; // Search controls were already filtered by ownership.
-            }
-            for (key, _) in &mut section.entries {
-                if let Ok(binding) = crate::keybindings::parse_key_string(key) {
-                    if let Some(name) =
-                        crate::keybindings::resolve_action(defaults, view, &binding.keys).or_else(
-                            || {
-                                crate::keybindings::resolve_action(
-                                    defaults,
-                                    ViewContext::MailList,
-                                    &binding.keys,
-                                )
-                            },
-                        )
-                    {
-                        if let Some(action) = crate::keybindings::action_from_name(&name) {
-                            if config.has_action_override(view, &action) {
-                                *key = config
-                                    .primary_key_display(view, &action)
-                                    .unwrap_or_else(|| "palette".into());
-                            }
-                        }
-                    }
-                }
-            }
+    sections.push(how_do_i(&keys, shell));
+    sections.push(HelpSection {
+        title: "Most Common Actions".into(),
+        entries: common_entries(state, &keys, here),
+    });
+    for place in places.iter().chain(&ALWAYS_LISTED) {
+        let entries = keys.rows(place);
+        if !entries.is_empty() {
+            sections.push(HelpSection {
+                title: format!("{} keys", mxr_keymap::place_title(place).unwrap_or(place)),
+                entries,
+            });
         }
     }
+    sections.push(overlays_section());
+    sections.extend(command_sections(state));
     sections
 }
 
-fn binding_context(state: &HelpModalState<'_>) -> ViewContext {
-    state.binding_context.unwrap_or(match state.ui_context {
-        UiContext::MailboxMessage | UiContext::SearchPreview => ViewContext::ThreadView,
-        _ => ViewContext::MailList,
-    })
+/// An action's key in `place` and its label, from the definition; `None`
+/// where it has no key.
+fn defined_row(keys: &KeyRows<'_>, id: &str, place: &str) -> Option<(String, String)> {
+    let action = mxr_keymap::defaults().get(id)?;
+    Some((keys.key(id, place)?, action.label.clone()))
 }
 
-fn search_key_display(key: &str) -> String {
-    // The tailored Search table uses a display arrow rather than key grammar.
-    if key == "→" {
-        "Right".into()
-    } else {
-        key.into()
+/// Task-oriented entry points. Each line answers "how do I do X" with the
+/// keys that do it, so a new user doesn't have to scan the tables first.
+fn how_do_i(keys: &KeyRows<'_>, place: &str) -> HelpSection {
+    let key = |id: &str, place: &str| keys.key(id, place).unwrap_or_else(|| "palette".into());
+    HelpSection {
+        title: "How do I…".into(),
+        entries: vec![
+            (
+                "Add an account".into(),
+                format!(
+                    "{} → {} (or palette: Add account)",
+                    key("nav.settings", place),
+                    key("tui.accounts.new", "accounts")
+                ),
+            ),
+            (
+                "Compose and send".into(),
+                format!(
+                    "{} → write in $EDITOR → save → s to send",
+                    key("shell.compose", "list")
+                ),
+            ),
+            (
+                "Search and save a search".into(),
+                format!(
+                    "{} to query → palette: New Saved Search → {} in sidebar to refine",
+                    key("shell.search-palette", place),
+                    key("tui.open-saved-search-form-new", "sidebar")
+                ),
+            ),
+            (
+                "Manage rules".into(),
+                format!(
+                    "{} → {} new / {} edit / {} dry-run / palette: Refresh Rules",
+                    key("nav.rules", place),
+                    key("tui.rules.new", "rules"),
+                    key("tui.rules.edit", "rules"),
+                    key("tui.rules.dry-run", "rules")
+                ),
+            ),
+            (
+                "Reset local state".into(),
+                "shell: mxr reset --hard (or mxr burn) — keeps config + creds".into(),
+            ),
+            (
+                "Repair an unhealthy account".into(),
+                format!(
+                    "{} → select account → {} when [unhealthy] indicator shown",
+                    key("nav.settings", place),
+                    key("tui.accounts.repair", "accounts")
+                ),
+            ),
+            (
+                "Open analytics".into(),
+                "palette: Analytics: Storage / Stale Threads / Contact Asymmetry / Response Time"
+                    .into(),
+            ),
+            (
+                "Undo a destructive action".into(),
+                format!(
+                    "{} within 60s of archive/trash/spam/mark-read",
+                    key("mail.undo", "list")
+                ),
+            ),
+        ],
     }
 }
 
-fn search_controls(
-    entries: Vec<(String, String)>,
-    config: &crate::keybindings::KeybindingConfig,
-    view: ViewContext,
+/// The few keys to try first here: the lit item's verbs in a mode, else
+/// the screen's main actions, with where help is and what is selected.
+fn common_entries(
+    state: &HelpModalState<'_>,
+    keys: &KeyRows<'_>,
+    here: &str,
 ) -> Vec<(String, String)> {
-    entries
-        .into_iter()
-        .filter_map(|(keys, label)| {
-            let keys = keys
-                .split(" / ")
-                .filter(|key| {
-                    crate::keybindings::parse_key_string(&search_key_display(key))
-                        .is_ok_and(|binding| !config.overrides_prefix(view, &binding.keys[0]))
-                })
-                .collect::<Vec<_>>()
-                .join(" / ");
-            (!keys.is_empty()).then_some((keys, label))
-        })
-        .collect()
-}
-
-fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
-    let mut entries = match state.ui_context {
-        UiContext::MailboxSidebar | UiContext::MailboxList | UiContext::MailboxMessage => vec![
-            ("/".into(), "Search all indexed mail".into()),
-            ("Ctrl-f".into(), "Filter current mailbox only".into()),
-            (":".into(), "Open command palette".into()),
-        ],
-        UiContext::SearchEditor => vec![
-            ("Enter".into(), "Run search now".into()),
-            ("Tab".into(), "Switch results and preview".into()),
-            ("Esc".into(), "Preview -> results -> mailbox".into()),
-        ],
-        UiContext::SearchResults | UiContext::SearchPreview => search_controls(
-            vec![
-                ("/".into(), "Edit query".into()),
-                ("Tab".into(), "Switch results and preview".into()),
-                if state.ui_context == UiContext::SearchResults {
-                    ("Esc".into(), "Return to mailbox".into())
-                } else {
-                    ("h / Esc".into(), "Return focus to results".into())
-                },
+    let mut entries = vec![("Context".to_string(), state.ui_context.label().to_string())];
+    if let Some(common) = &state.mode_common {
+        entries.extend(common.iter().cloned());
+    } else {
+        let ids: &[&str] = match state.ui_context {
+            UiContext::MailboxSidebar | UiContext::MailboxList | UiContext::MailboxMessage => &[
+                "shell.search-palette",
+                "list.filter",
+                "shell.command-palette",
             ],
-            state
-                .keybindings
-                .unwrap_or_else(|| crate::keybindings::shown_keybindings()),
-            binding_context(state),
-        ),
-        UiContext::RulesList | UiContext::RulesForm => vec![
-            ("c".into(), "Start a new rule".into()),
-            ("D".into(), "Dry run before save".into()),
-            ("E".into(), "Edit selected rule".into()),
-        ],
-        UiContext::Diagnostics => vec![
-            ("r".into(), "Refresh diagnostics".into()),
-            ("c".into(), "Edit config".into()),
-            ("L".into(), "Open log file".into()),
-        ],
-        UiContext::AccountsList | UiContext::AccountsForm => vec![
-            ("c".into(), "Add an account".into()),
-            ("t".into(), "Test selected account".into()),
-        ],
-        UiContext::Analytics => vec![
-            ("Tab".into(), "Next analytics view".into()),
-            ("Shift-Tab".into(), "Previous analytics view".into()),
-            ("r".into(), "Refresh current view".into()),
-            ("Esc".into(), "Back to mailbox".into()),
-        ],
-        UiContext::Deliveries => vec![
-            ("j / k".into(), "Move row".into()),
-            ("r".into(), "Resolve (mark delivered)".into()),
-            ("d".into(), "Dismiss (false positive)".into()),
-            ("D".into(), "Cycle filter".into()),
-            ("R".into(), "Refresh".into()),
-        ],
-    };
-
-    entries.insert(0, ("Context".into(), state.ui_context.label().into()));
+            UiContext::SearchEditor => &["tui.search.run", "tui.search.stop-editing"],
+            UiContext::SearchResults => &["tui.search.edit", "tui.search.open", "tui.screen.back"],
+            UiContext::SearchPreview => &["tui.search.edit", "tui.search-preview.results"],
+            UiContext::RulesList | UiContext::RulesForm => {
+                &["tui.rules.new", "tui.rules.dry-run", "tui.rules.edit"]
+            }
+            UiContext::Diagnostics => &[
+                "tui.diagnostics.refresh",
+                "tui.diagnostics.config",
+                "tui.diagnostics.logs",
+            ],
+            UiContext::AccountsList | UiContext::AccountsForm => {
+                &["tui.accounts.new", "tui.accounts.test"]
+            }
+            UiContext::Analytics => &[
+                "tui.analytics.next-view",
+                "tui.analytics.previous-view",
+                "tui.analytics.refresh",
+                "tui.screen.back",
+            ],
+            UiContext::Deliveries => &[
+                "tui.deliveries.resolve",
+                "tui.deliveries.dismiss",
+                "tui.deliveries.filter",
+                "tui.deliveries.refresh",
+            ],
+        };
+        // The mailbox's keys are the list's wherever the pane is.
+        let place = if matches!(
+            state.ui_context,
+            UiContext::MailboxSidebar | UiContext::MailboxList | UiContext::MailboxMessage
+        ) {
+            here
+        } else {
+            places_for(state.ui_context)[0]
+        };
+        entries.extend(ids.iter().filter_map(|id| defined_row(keys, id, place)));
+    }
 
     if state.selected_count > 0 {
         entries.push((
@@ -419,128 +310,35 @@ fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
     entries
 }
 
-fn screen_sections(context: UiContext) -> Vec<HelpSection> {
-    match context {
-        UiContext::MailboxSidebar => vec![HelpSection {
-            title: "Mailbox Sidebar".into(),
-            entries: all_bindings_for_context(ViewContext::MailList),
-        }],
-        UiContext::MailboxList => vec![HelpSection {
-            title: "Mailbox List".into(),
-            entries: all_bindings_for_context(ViewContext::MailList),
-        }],
-        UiContext::MailboxMessage => vec![HelpSection {
-            title: "Mailbox Message".into(),
-            entries: all_bindings_for_context(ViewContext::ThreadView),
-        }],
-        UiContext::SearchEditor => {
-            vec![HelpSection {
-                title: "Search Page".into(),
-                entries: vec![
-                    ("Enter".into(), "Run search now".into()),
-                    (
-                        "Tab".into(),
-                        "Cycle lexical / hybrid / semantic mode".into(),
-                    ),
-                    ("Esc".into(), "Stop editing".into()),
-                ],
-            }]
-        }
-        UiContext::SearchResults => {
-            vec![HelpSection {
-                title: "Search Page".into(),
-                entries: vec![
-                    ("/".into(), "Edit query".into()),
-                    ("o / Enter / →".into(), "Open selected message".into()),
-                    ("F".into(), "Open selected message in full view".into()),
-                    ("x".into(), "Select result".into()),
-                    ("Tab".into(), "Switch results and preview".into()),
-                    (
-                        "j / k".into(),
-                        "Move result cursor / update open message".into(),
-                    ),
-                    ("Esc".into(), "Return to mailbox".into()),
-                ],
-            }]
-        }
-        UiContext::SearchPreview => vec![HelpSection {
-            title: "Search Preview".into(),
-            entries: vec![
-                ("j / k".into(), "Move through messages in the thread".into()),
-                ("h / Esc".into(), "Return focus to results".into()),
-                ("/".into(), "Edit query".into()),
-                ("x".into(), "Select current message".into()),
-                ("Tab".into(), "Switch results and preview".into()),
-                ("F".into(), "Toggle full message view".into()),
-                ("A".into(), "Open attachments".into()),
-                ("L".into(), "Open links".into()),
-                ("D".into(), "Unsubscribe when available".into()),
-                ("R".into(), "Toggle reading view".into()),
-                ("H".into(), "Toggle original HTML".into()),
-                ("M".into(), "Toggle remote images".into()),
-                ("O".into(), "Open in browser".into()),
-                ("r".into(), "Reply".into()),
-                ("a".into(), "Reply all".into()),
-                ("f".into(), "Forward".into()),
-                ("e".into(), "Archive".into()),
-            ],
-        }],
-        UiContext::RulesList | UiContext::RulesForm => vec![HelpSection {
-            title: "Rules Page".into(),
-            entries: vec![
-                ("j / k".into(), "Move rules".into()),
-                ("Enter".into(), "Refresh overview".into()),
-                ("c".into(), "New rule".into()),
-                ("E".into(), "Edit rule".into()),
-                ("D".into(), "Dry run".into()),
-                ("H".into(), "History".into()),
-                ("Ctrl-s".into(), "Save rule form".into()),
-            ],
-        }],
-        UiContext::Diagnostics => vec![HelpSection {
-            title: "Diagnostics Page".into(),
-            entries: vec![
-                ("j / k".into(), "Change section".into()),
-                ("Ctrl-d / Ctrl-u".into(), "Scroll details".into()),
-                ("Enter / o".into(), "Toggle fullscreen".into()),
-                ("d".into(), "Open selected section details".into()),
-                ("r".into(), "Refresh".into()),
-                ("c".into(), "Edit config".into()),
-                ("b".into(), "Generate bug report".into()),
-                ("L".into(), "Open logs".into()),
-            ],
-        }],
-        UiContext::AccountsList | UiContext::AccountsForm => vec![HelpSection {
-            title: "Accounts Page".into(),
-            entries: vec![
-                ("j / k".into(), "Move accounts or fields".into()),
-                ("Enter".into(), "Edit selected account".into()),
-                ("c".into(), "New account".into()),
-                ("t".into(), "Test account".into()),
-                ("d".into(), "Set default".into()),
-                ("s".into(), "Save account form".into()),
-            ],
-        }],
-        UiContext::Analytics => vec![HelpSection {
-            title: "Analytics Page".into(),
-            entries: vec![
-                ("Tab / Shift-Tab".into(), "Switch view".into()),
-                ("j / k".into(), "Move row".into()),
-                ("r".into(), "Refresh".into()),
-                ("Esc".into(), "Back to mailbox".into()),
-            ],
-        }],
-        UiContext::Deliveries => vec![HelpSection {
-            title: "Deliveries Page".into(),
-            entries: vec![
-                ("j / k".into(), "Move row".into()),
-                ("r".into(), "Resolve (mark delivered)".into()),
-                ("d".into(), "Dismiss (false positive)".into()),
-                ("D".into(), "Cycle filter".into()),
-                ("R".into(), "Refresh".into()),
-            ],
-        }],
+/// Overlays still read their own keys (blueprint 35's overlay grammar has
+/// not moved them into the key definition yet), so these lines are kept by
+/// hand until it does. Each overlay also prints its keys in its footer.
+fn overlays_section() -> HelpSection {
+    HelpSection {
+        title: "Overlays (keys not in the definition yet)".into(),
+        entries: vec![
+            ("Help: j/k Ctrl-d/u".into(), "Scroll".into()),
+            ("Label Picker".into(), "Type, j/k, Enter, Esc".into()),
+            ("Compose Picker".into(), "Type, Tab, Enter, Esc".into()),
+            ("Attachments".into(), "j/k, Enter/o, d, Esc".into()),
+            ("Links".into(), "j/k, Enter/o open, y copy, Esc".into()),
+            (
+                "Unsubscribe".into(),
+                "Enter unsubscribe, a archive sender, Esc cancel".into(),
+            ),
+            (
+                "Bulk Confirm".into(),
+                "Enter/y confirm, Esc/n cancel".into(),
+            ),
+        ],
     }
+}
+
+fn binding_context(state: &HelpModalState<'_>) -> ViewContext {
+    state.binding_context.unwrap_or(match state.ui_context {
+        UiContext::MailboxMessage | UiContext::SearchPreview => ViewContext::ThreadView,
+        _ => ViewContext::MailList,
+    })
 }
 
 fn command_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
@@ -931,7 +729,7 @@ mod tests {
             query,
             selected: 0,
             mode_guide: None,
-            mode_keys: None,
+            key_places: Vec::new(),
             mode_common: None,
             _marker: std::marker::PhantomData,
         }
@@ -955,7 +753,7 @@ mod tests {
         // The keybindings sections still ship — task-oriented help is
         // additive, not a replacement.
         assert!(
-            titles.iter().any(|t| t.starts_with("Mailbox")),
+            titles.contains(&"Mail list keys".to_string()),
             "keybinding sections must still appear; got {titles:?}"
         );
     }
@@ -978,10 +776,11 @@ mod tests {
             .any(|row| row.label == "Archive" && row.shortcut == ";"));
         assert!(rows
             .iter()
-            .any(|row| row.label == "Trash" && row.shortcut == "wq"));
-        assert!(!rows
-            .iter()
-            .any(|row| matches!(row.shortcut.as_str(), "e" | "#")));
+            .any(|row| row.label == "Move to Trash" && row.shortcut == "wq"));
+        assert!(!rows.iter().any(|row| matches!(
+            (row.shortcut.as_str(), row.label.as_str()),
+            ("e", "Archive") | ("#", "Move to Trash")
+        )));
         let mut palette = crate::ui::command_palette::CommandPalette {
             keybindings: config.clone(),
             binding_context: state.binding_context,
@@ -1049,7 +848,7 @@ mod tests {
             .into_iter()
             .map(|section| section.title)
             .collect();
-        assert!(titles.contains(&"Accounts Page".to_string()));
+        assert!(titles.contains(&"Accounts keys".to_string()));
         assert!(titles
             .iter()
             .any(|title| title.starts_with("Commands: Accounts")));
@@ -1071,10 +870,10 @@ mod tests {
 
     #[test]
     fn help_search_fuzzy_matches_descriptions() {
-        let state = help_state(UiContext::MailboxList, "fcmb");
+        let state = help_state(UiContext::MailboxList, "ftl");
         let first = search_results(&state).into_iter().next().unwrap();
         assert_eq!(first.row.shortcut, "Ctrl-f");
-        assert_eq!(first.row.label, "Filter current mailbox only");
+        assert_eq!(first.row.label, "Filter this list");
     }
 
     #[test]
@@ -1082,7 +881,7 @@ mod tests {
         let state = help_state(UiContext::MailboxList, "gC");
         let results = search_results(&state);
         assert_eq!(results[0].row.shortcut, "gC");
-        assert!(results[0].row.label.contains("Accounts and settings"));
+        assert_eq!(results[0].row.label, "Settings");
     }
 
     #[test]
@@ -1103,9 +902,65 @@ mod tests {
         let state = help_state(UiContext::SearchEditor, "");
         let duplicates = help_rows(&state)
             .into_iter()
-            .filter(|row| row.shortcut == "Enter" && row.label == "Run search now")
+            .filter(|row| row.shortcut == "Enter" && row.label == "Run the search")
             .count();
         assert_eq!(duplicates, 1);
+    }
+
+    /// Every key the definition binds in a place shows in help opened
+    /// there, with the action it runs, so help can't drift from the keys.
+    #[test]
+    fn every_bound_tui_key_shows_in_help_where_it_works() {
+        let keymap = mxr_keymap::defaults();
+        let places = mxr_keymap::TUI_CONTEXTS
+            .iter()
+            .chain(mxr_keymap::SCREEN_CONTEXTS.iter())
+            .copied()
+            .filter(|place| {
+                keymap
+                    .actions
+                    .iter()
+                    .flat_map(|a| &a.tui)
+                    .any(|b| !b.keys.is_empty() && b.contexts.includes(place))
+            });
+        let mut missing = Vec::new();
+        for place in places {
+            let mut state = help_state(UiContext::MailboxList, "");
+            state.key_places = vec![place];
+            let title = format!("{} keys", mxr_keymap::place_title(place).unwrap_or(place));
+            let sections = help_sections(&state);
+            let Some(section) = sections.iter().find(|section| section.title == title) else {
+                missing.push(format!("{place}: no section"));
+                continue;
+            };
+            for action in &keymap.actions {
+                for binding in action.tui.iter().filter(|b| b.contexts.includes(place)) {
+                    for key in &binding.keys {
+                        let shown = crate::ui::command_palette::shown_key(key);
+                        let listed = section.entries.iter().any(|(keys, label)| {
+                            *label == action.label && keys.split(" / ").any(|k| k == shown)
+                        });
+                        if !listed {
+                            missing.push(format!("{place}: `{shown}` {}", action.label));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(missing.is_empty(), "{}", missing.join("\n"));
+    }
+
+    /// Analytics lists every view's keys, each under its view.
+    #[test]
+    fn analytics_help_lists_every_views_keys() {
+        let titles: Vec<String> = help_sections(&help_state(UiContext::Analytics, ""))
+            .into_iter()
+            .map(|section| section.title)
+            .collect();
+        for view in ["analytics", "analytics-storage", "analytics-wrapped"] {
+            let title = format!("{} keys", mxr_keymap::place_title(view).unwrap());
+            assert!(titles.contains(&title), "{title} missing from {titles:?}");
+        }
     }
 
     #[test]

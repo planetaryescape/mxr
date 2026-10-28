@@ -132,7 +132,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -167,7 +169,9 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "search",
+            "search-preview"
           ]
         }
       ],
@@ -1992,7 +1996,9 @@
           ],
           "contexts": [
             "list",
-            "reader"
+            "reader",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2018,7 +2024,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2045,7 +2053,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2070,7 +2080,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2094,7 +2106,9 @@
           ],
           "contexts": [
             "list",
-            "reader"
+            "reader",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2119,7 +2133,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2144,7 +2160,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2169,7 +2187,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2194,7 +2214,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2259,7 +2281,9 @@
           ],
           "contexts": [
             "list",
-            "reader"
+            "reader",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2308,7 +2332,9 @@
             "reader",
             "place",
             "reading",
-            "reading-reader"
+            "reading-reader",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2368,7 +2394,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2393,7 +2421,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ],
@@ -2419,7 +2449,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2475,7 +2507,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2533,7 +2567,9 @@
           ],
           "contexts": [
             "list",
-            "reader"
+            "reader",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -2558,7 +2594,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -4204,7 +4242,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -4284,7 +4324,9 @@
           ],
           "contexts": [
             "list",
-            "reader"
+            "reader",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -4341,7 +4383,9 @@
           "contexts": [
             "list",
             "reader",
-            "place"
+            "place",
+            "search",
+            "search-preview"
           ]
         }
       ]
@@ -9686,6 +9730,2656 @@
           ],
           "contexts": [
             "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.screen.back",
+      "label": "Back to the mailbox",
+      "group": "Navigate",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenMailboxScreen",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "rules",
+            "accounts",
+            "diagnostics",
+            "analytics",
+            "analytics-wrapped",
+            "search"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.screen.down",
+      "label": "Next row",
+      "group": "Navigate",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:move_down",
+          "keys": [
+            "j",
+            "ArrowDown"
+          ],
+          "contexts": [
+            "rules",
+            "accounts",
+            "analytics",
+            "deliveries",
+            "search"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.screen.up",
+      "label": "Previous row",
+      "group": "Navigate",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:move_up",
+          "keys": [
+            "k",
+            "ArrowUp"
+          ],
+          "contexts": [
+            "rules",
+            "accounts",
+            "analytics",
+            "deliveries",
+            "search"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules.new",
+      "label": "New rule",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenRuleFormNew",
+          "keys": [
+            "c"
+          ],
+          "contexts": [
+            "rules"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules.edit",
+      "label": "Edit rule",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenRuleFormEdit",
+          "keys": [
+            "E"
+          ],
+          "contexts": [
+            "rules"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules.toggle",
+      "label": "Turn rule on or off",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ToggleRuleEnabled",
+          "keys": [
+            "e"
+          ],
+          "contexts": [
+            "rules"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules.overview",
+      "label": "Refresh the rule's overview",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "RefreshRules",
+          "keys": [
+            "Enter",
+            "o"
+          ],
+          "contexts": [
+            "rules"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules.dry-run",
+      "label": "Dry run: what the rule would change",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ShowRuleDryRun",
+          "keys": [
+            "D"
+          ],
+          "contexts": [
+            "rules"
+          ]
+        },
+        {
+          "name": "ShowRuleDryRun",
+          "keys": [
+            "Ctrl+d"
+          ],
+          "contexts": [
+            "rules-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules.dry-run-next",
+      "label": "Next page of the dry run",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:dry_run_next_page",
+          "keys": [
+            "PageDown"
+          ],
+          "contexts": [
+            "rules"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules.dry-run-previous",
+      "label": "Previous page of the dry run",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:dry_run_previous_page",
+          "keys": [
+            "PageUp"
+          ],
+          "contexts": [
+            "rules"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules.apply",
+      "label": "Apply the sorting preview",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ApplyRuleTreatment",
+          "keys": [
+            "A"
+          ],
+          "contexts": [
+            "rules"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules.history",
+      "label": "Rule history",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ShowRuleHistory",
+          "keys": [
+            "H"
+          ],
+          "contexts": [
+            "rules"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules.delete",
+      "label": "Delete rule (asks first)",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "DeleteRule",
+          "keys": [
+            "#"
+          ],
+          "contexts": [
+            "rules"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules-form.save",
+      "label": "Save the rule",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "SaveRuleForm",
+          "keys": [
+            "Ctrl+s",
+            "Enter"
+          ],
+          "contexts": [
+            "rules-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules-form.next-field",
+      "label": "Next field",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:next_field",
+          "keys": [
+            "Tab"
+          ],
+          "contexts": [
+            "rules-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules-form.previous-field",
+      "label": "Previous field",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:previous_field",
+          "keys": [
+            "Shift+Tab"
+          ],
+          "contexts": [
+            "rules-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.rules-form.close",
+      "label": "Close the form",
+      "group": "Rules",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:close_form",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "rules-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts.new",
+      "label": "Add account",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenAccountFormNew",
+          "keys": [
+            "c"
+          ],
+          "contexts": [
+            "accounts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts.edit",
+      "label": "Edit account",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:edit_account",
+          "keys": [
+            "Enter",
+            "o"
+          ],
+          "contexts": [
+            "accounts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts.test",
+      "label": "Test account",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "TestAccountForm",
+          "keys": [
+            "t"
+          ],
+          "contexts": [
+            "accounts",
+            "accounts-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts.default",
+      "label": "Make it the default account",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "SetDefaultAccount",
+          "keys": [
+            "d"
+          ],
+          "contexts": [
+            "accounts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts.repair",
+      "label": "Refresh accounts, or repair the selected one when it is unhealthy",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "RefreshAccounts",
+          "keys": [
+            "r"
+          ],
+          "contexts": [
+            "accounts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts.refresh",
+      "label": "Refresh accounts",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "RefreshAccounts",
+          "keys": [
+            "R"
+          ],
+          "contexts": [
+            "accounts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts.details",
+      "label": "Details of the last test",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:result_details",
+          "keys": [
+            "O"
+          ],
+          "contexts": [
+            "accounts"
+          ]
+        },
+        {
+          "name": "inline:result_details",
+          "keys": [
+            "o"
+          ],
+          "contexts": [
+            "accounts-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts-form.close",
+      "label": "Close the form (a new account keeps its draft)",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:close_form",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "accounts-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts-form.next-field",
+      "label": "Next field",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:next_field",
+          "keys": [
+            "j",
+            "ArrowDown",
+            "Tab"
+          ],
+          "contexts": [
+            "accounts-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts-form.previous-field",
+      "label": "Previous field",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:previous_field",
+          "keys": [
+            "k",
+            "ArrowUp",
+            "Shift+Tab"
+          ],
+          "contexts": [
+            "accounts-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts-form.next-kind",
+      "label": "Next account type",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:next_kind",
+          "keys": [
+            "l",
+            "ArrowRight"
+          ],
+          "contexts": [
+            "accounts-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts-form.previous-kind",
+      "label": "Previous account type",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:previous_kind",
+          "keys": [
+            "h",
+            "ArrowLeft"
+          ],
+          "contexts": [
+            "accounts-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts-form.edit-field",
+      "label": "Edit or toggle the field",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:edit_field",
+          "keys": [
+            "Enter",
+            "i",
+            "Space"
+          ],
+          "contexts": [
+            "accounts-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts-form.reauthorize",
+      "label": "Sign in to Gmail again",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ReauthorizeAccountForm",
+          "keys": [
+            "r"
+          ],
+          "contexts": [
+            "accounts-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts-form.save",
+      "label": "Save the account",
+      "group": "Accounts",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "SaveAccountForm",
+          "keys": [
+            "s"
+          ],
+          "contexts": [
+            "accounts-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.next-pane",
+      "label": "Next section",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:next_pane",
+          "keys": [
+            "j",
+            "ArrowDown",
+            "Tab",
+            "ArrowRight"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.previous-pane",
+      "label": "Previous section",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:previous_pane",
+          "keys": [
+            "k",
+            "ArrowUp",
+            "Shift+Tab",
+            "ArrowLeft"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.scroll-down",
+      "label": "Scroll the section down",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:scroll_down",
+          "keys": [
+            "Ctrl+d",
+            "PageDown"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.scroll-up",
+      "label": "Scroll the section up",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:scroll_up",
+          "keys": [
+            "Ctrl+u",
+            "PageUp"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.fullscreen",
+      "label": "Full screen for the section, or back",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:toggle_fullscreen",
+          "keys": [
+            "Enter",
+            "o"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.search",
+      "label": "Search the events, logs or activity section",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:search_pane",
+          "keys": [
+            "/"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.details",
+      "label": "Details of the section",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenDiagnosticsPaneDetails",
+          "keys": [
+            "d"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.refresh",
+      "label": "Refresh diagnostics",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "RefreshDiagnostics",
+          "keys": [
+            "r"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.bug-report",
+      "label": "Generate a bug report",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "GenerateBugReport",
+          "keys": [
+            "b"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.config",
+      "label": "Edit config",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "EditConfig",
+          "keys": [
+            "c"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.logs",
+      "label": "Open logs",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenLogs",
+          "keys": [
+            "L"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.preview-activation",
+      "label": "Preview activating the restored archive",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "PreviewRecoveryActivation",
+          "keys": [
+            "a"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.activate",
+      "label": "Activate the restored archive",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ConfirmRecoveryActivation",
+          "keys": [
+            "A"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.preview-draft",
+      "label": "Preview the recovered draft",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "PreviewRecoveredDraft",
+          "keys": [
+            "p"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.restore-draft",
+      "label": "Restore the recovered draft",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ConfirmRecoveredDraft",
+          "keys": [
+            "P"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.next-draft",
+      "label": "Next recovered draft",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "NextRecoveredDraft",
+          "keys": [
+            "]"
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics.previous-draft",
+      "label": "Previous recovered draft",
+      "group": "Diagnostics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "PreviousRecoveredDraft",
+          "keys": [
+            "["
+          ],
+          "contexts": [
+            "diagnostics"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.next-view",
+      "label": "Next view",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "NextAnalyticsView",
+          "keys": [
+            "Tab"
+          ],
+          "contexts": [
+            "analytics",
+            "analytics-wrapped"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.previous-view",
+      "label": "Previous view",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "PrevAnalyticsView",
+          "keys": [
+            "Shift+Tab"
+          ],
+          "contexts": [
+            "analytics",
+            "analytics-wrapped"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.refresh",
+      "label": "Refresh the view",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "RefreshAnalytics",
+          "keys": [
+            "r"
+          ],
+          "contexts": [
+            "analytics",
+            "analytics-wrapped"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.filter",
+      "label": "Filter: every CLI flag for the view",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenAnalyticsFilterModal",
+          "keys": [
+            "f"
+          ],
+          "contexts": [
+            "analytics",
+            "analytics-wrapped"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.drill-down",
+      "label": "Drill down: a sender to a search, a thread to the conversation",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "AnalyticsRowDrillDown",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "analytics",
+            "analytics-wrapped"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.storage-mode",
+      "label": "Breakdown or largest messages",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "CycleStorageMode",
+          "keys": [
+            "m"
+          ],
+          "contexts": [
+            "analytics-storage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.storage-group",
+      "label": "Group the breakdown by sender, type or label",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "CycleStorageGroupBy",
+          "keys": [
+            "b"
+          ],
+          "contexts": [
+            "analytics-storage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.stale-perspective",
+      "label": "Mine or theirs",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ToggleStalePerspective",
+          "keys": [
+            "p"
+          ],
+          "contexts": [
+            "analytics-stale"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.stale-older-less",
+      "label": "Older than: 7 days less",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "AdjustStaleOlderThanDays(-7)",
+          "keys": [
+            "["
+          ],
+          "contexts": [
+            "analytics-stale"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.stale-older-more",
+      "label": "Older than: 7 days more",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "AdjustStaleOlderThanDays(7)",
+          "keys": [
+            "]"
+          ],
+          "contexts": [
+            "analytics-stale"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.stale-within-less",
+      "label": "Within: 30 days less",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "AdjustStaleWithinDays(-30)",
+          "keys": [
+            "{"
+          ],
+          "contexts": [
+            "analytics-stale"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.stale-within-more",
+      "label": "Within: 30 days more",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "AdjustStaleWithinDays(30)",
+          "keys": [
+            "}"
+          ],
+          "contexts": [
+            "analytics-stale"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.contacts-mode",
+      "label": "Asymmetry, decay or refresh",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "CycleContactsMode",
+          "keys": [
+            "m"
+          ],
+          "contexts": [
+            "analytics-contacts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.contacts-refresh",
+      "label": "Rebuild the contacts table",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "RefreshContacts",
+          "keys": [
+            "R"
+          ],
+          "contexts": [
+            "analytics-contacts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.response-direction",
+      "label": "Clock or business hours",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ToggleResponseTimeDirection",
+          "keys": [
+            "d"
+          ],
+          "contexts": [
+            "analytics-response-time"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.subscriptions-rank",
+      "label": "Rank by volume or open rate",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ToggleSubscriptionsRank",
+          "keys": [
+            "o"
+          ],
+          "contexts": [
+            "analytics-subscriptions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.unsubscribe",
+      "label": "Unsubscribe from the selected sender (asks first)",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "AnalyticsUnsubscribe",
+          "keys": [
+            "u"
+          ],
+          "contexts": [
+            "analytics-subscriptions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.wrapped-left",
+      "label": "Tile to the left",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:tile_left",
+          "keys": [
+            "h",
+            "ArrowLeft"
+          ],
+          "contexts": [
+            "analytics-wrapped"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.wrapped-right",
+      "label": "Tile to the right",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:tile_right",
+          "keys": [
+            "l",
+            "ArrowRight"
+          ],
+          "contexts": [
+            "analytics-wrapped"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.wrapped-down",
+      "label": "Tile below",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:tile_down",
+          "keys": [
+            "j",
+            "ArrowDown"
+          ],
+          "contexts": [
+            "analytics-wrapped"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.wrapped-up",
+      "label": "Tile above",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:tile_up",
+          "keys": [
+            "k",
+            "ArrowUp"
+          ],
+          "contexts": [
+            "analytics-wrapped"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.wrapped-year-back",
+      "label": "A year back",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "StepWrappedYear(-1)",
+          "keys": [
+            "y"
+          ],
+          "contexts": [
+            "analytics-wrapped"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.wrapped-year-forward",
+      "label": "A year forward",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "StepWrappedYear(1)",
+          "keys": [
+            "Y"
+          ],
+          "contexts": [
+            "analytics-wrapped"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics.wrapped-window",
+      "label": "Year to date, a year, or the last days",
+      "group": "Analytics",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "CycleWrappedWindow",
+          "keys": [
+            "t"
+          ],
+          "contexts": [
+            "analytics-wrapped"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.deliveries.open",
+      "label": "Open the source email in a split preview",
+      "group": "Deliveries",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:open_source",
+          "keys": [
+            "Enter",
+            "o",
+            "ArrowRight"
+          ],
+          "contexts": [
+            "deliveries"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.deliveries.close",
+      "label": "Close the preview",
+      "group": "Deliveries",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:close_preview",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "deliveries"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.deliveries.scroll-down",
+      "label": "Scroll the open email down",
+      "group": "Deliveries",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:scroll_down",
+          "keys": [
+            "Ctrl+d"
+          ],
+          "contexts": [
+            "deliveries"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.deliveries.scroll-up",
+      "label": "Scroll the open email up",
+      "group": "Deliveries",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:scroll_up",
+          "keys": [
+            "Ctrl+u"
+          ],
+          "contexts": [
+            "deliveries"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.deliveries.resolve",
+      "label": "Resolve: mark it delivered",
+      "group": "Deliveries",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:resolve",
+          "keys": [
+            "r"
+          ],
+          "contexts": [
+            "deliveries"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.deliveries.dismiss",
+      "label": "Dismiss a false positive",
+      "group": "Deliveries",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:dismiss",
+          "keys": [
+            "d"
+          ],
+          "contexts": [
+            "deliveries"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.deliveries.filter",
+      "label": "Active, delivered or all",
+      "group": "Deliveries",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:cycle_filter",
+          "keys": [
+            "D"
+          ],
+          "contexts": [
+            "deliveries"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.deliveries.refresh",
+      "label": "Refresh the list",
+      "group": "Deliveries",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:refresh",
+          "keys": [
+            "R"
+          ],
+          "contexts": [
+            "deliveries"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.search.edit",
+      "label": "Edit the query",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:edit_query",
+          "keys": [
+            "/"
+          ],
+          "contexts": [
+            "search",
+            "search-preview"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.search.open",
+      "label": "Open the result in the preview",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenSelected",
+          "keys": [
+            "Enter",
+            "o",
+            "ArrowRight"
+          ],
+          "contexts": [
+            "search"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.search.run",
+      "label": "Run the search",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "SubmitSearch",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "search-editor"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.search.stop-editing",
+      "label": "Stop editing the query",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:stop_editing",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "search-editor"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.search-preview.results",
+      "label": "Back to the results",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:focus_results",
+          "keys": [
+            "h",
+            "ArrowLeft",
+            "Escape"
+          ],
+          "contexts": [
+            "search-preview"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.search-preview.down",
+      "label": "Next message in the thread",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:next_message",
+          "keys": [
+            "j",
+            "ArrowDown"
+          ],
+          "contexts": [
+            "search-preview"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.search-preview.up",
+      "label": "Previous message in the thread",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:previous_message",
+          "keys": [
+            "k",
+            "ArrowUp"
+          ],
+          "contexts": [
+            "search-preview"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.search-preview.page-down",
+      "label": "Scroll the message down",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:page_down",
+          "keys": [
+            "Ctrl+d"
+          ],
+          "contexts": [
+            "search-preview"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.search-preview.page-up",
+      "label": "Scroll the message up",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:page_up",
+          "keys": [
+            "Ctrl+u"
+          ],
+          "contexts": [
+            "search-preview"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.search-preview.bottom",
+      "label": "End of the message",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:jump_bottom",
+          "keys": [
+            "G"
+          ],
+          "contexts": [
+            "search-preview"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.search-preview.html",
+      "label": "Original HTML",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ToggleHtmlView",
+          "keys": [
+            "H"
+          ],
+          "contexts": [
+            "search-preview"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.search-preview.images",
+      "label": "Remote images",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ToggleRemoteContent",
+          "keys": [
+            "M"
+          ],
+          "contexts": [
+            "search-preview"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.away",
+      "label": "Give the keys back to the screen",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:focus_away",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.write",
+      "label": "Write a message",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:focus_input",
+          "keys": [
+            "i",
+            "Enter"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.hide",
+      "label": "Hide the assistant",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ToggleAssistant",
+          "keys": [
+            "@"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.screen.palette",
+      "label": "Command palette",
+      "group": "Navigate",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenCommandPalette",
+          "keys": [
+            "Ctrl+k",
+            "Ctrl+p"
+          ],
+          "contexts": [
+            "assistant",
+            "assistant-input"
+          ]
+        },
+        {
+          "name": "OpenCommandPalette",
+          "keys": [
+            "Ctrl+k"
+          ],
+          "contexts": [
+            "accounts-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.stop",
+      "label": "Stop the running turn",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:stop_turn",
+          "keys": [
+            "Ctrl+c"
+          ],
+          "contexts": [
+            "assistant",
+            "assistant-input"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.scroll-down",
+      "label": "Scroll down",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:scroll_down",
+          "keys": [
+            "j",
+            "ArrowDown"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.scroll-up",
+      "label": "Scroll up",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:scroll_up",
+          "keys": [
+            "k",
+            "ArrowUp"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.page-down",
+      "label": "Page down",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:page_down",
+          "keys": [
+            "Ctrl+d",
+            "PageDown"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.page-up",
+      "label": "Page up",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:page_up",
+          "keys": [
+            "Ctrl+u",
+            "PageUp"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.latest",
+      "label": "Latest message",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:latest",
+          "keys": [
+            "G"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.steps",
+      "label": "Open or fold the steps",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:toggle_steps",
+          "keys": [
+            "e"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.link",
+      "label": "Open the reply's link by number",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:open_link",
+          "keys": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.new",
+      "label": "New conversation",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "NewAssistantConversation",
+          "keys": [
+            "N"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.history",
+      "label": "Past conversations",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenAssistantConversations",
+          "keys": [
+            "L"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.models",
+      "label": "Choose the model",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenAssistantModels",
+          "keys": [
+            "M"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.trust",
+      "label": "Auto-approve reversible changes in this conversation",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ToggleAssistantTrust",
+          "keys": [
+            "T"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.delete",
+      "label": "Delete the conversation (shows what goes first)",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "DeleteAssistantConversation",
+          "keys": [
+            "#"
+          ],
+          "contexts": [
+            "assistant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.send",
+      "label": "Send",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:send",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "assistant-input"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.newline",
+      "label": "New line",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:newline",
+          "keys": [
+            "Alt+Enter",
+            "Ctrl+j"
+          ],
+          "contexts": [
+            "assistant-input"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.pane-keys",
+      "label": "To the pane keys",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:focus_pane",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "assistant-input"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.approve",
+      "label": "Approve the waiting change",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:approve",
+          "keys": [
+            "y"
+          ],
+          "contexts": [
+            "assistant-approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.reject",
+      "label": "Reject it, with a reason",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:reject",
+          "keys": [
+            "n"
+          ],
+          "contexts": [
+            "assistant-approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.exact-call",
+      "label": "Show or hide its exact call",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:exact_call",
+          "keys": [
+            "x"
+          ],
+          "contexts": [
+            "assistant-approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.all-messages",
+      "label": "Show all or fewer of its messages",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:all_messages",
+          "keys": [
+            "a"
+          ],
+          "contexts": [
+            "assistant-approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.choose",
+      "label": "Choose an answer by number",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:choose",
+          "keys": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "contexts": [
+            "assistant-question"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.own-answer",
+      "label": "Write your own answer",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:own_answer",
+          "keys": [
+            "o"
+          ],
+          "contexts": [
+            "assistant-question"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.next-question",
+      "label": "Next question",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:next_question",
+          "keys": [
+            "Tab"
+          ],
+          "contexts": [
+            "assistant-question"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.previous-question",
+      "label": "Previous question",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:previous_question",
+          "keys": [
+            "Shift+Tab"
+          ],
+          "contexts": [
+            "assistant-question"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.answer",
+      "label": "Answer",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:answer",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "assistant-question"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant.skip",
+      "label": "Skip the question",
+      "group": "Assistant",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:skip",
+          "keys": [
+            "s",
+            "Escape"
+          ],
+          "contexts": [
+            "assistant-question"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.invites.open",
+      "label": "Open the invite's email",
+      "group": "Mail",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenMessageView",
+          "keys": [
+            "Enter",
+            "o",
+            "ArrowRight"
+          ],
+          "contexts": [
+            "invites"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.invites.search",
+      "label": "Search mail",
+      "group": "Search",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenGlobalSearch",
+          "keys": [
+            "/"
+          ],
+          "contexts": [
+            "invites"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.invites.undo",
+      "label": "Undo the RSVP while it can still be stopped",
+      "group": "Mail",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "UndoLastMutation",
+          "keys": [
+            "u"
+          ],
+          "contexts": [
+            "invites"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.invites.sidebar",
+      "label": "Go to sidebar",
+      "group": "Navigate",
+      "hide_in_palette": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:focus_sidebar",
+          "keys": [
+            "h",
+            "ArrowLeft"
+          ],
+          "contexts": [
+            "invites"
           ]
         }
       ]

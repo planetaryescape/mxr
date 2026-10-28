@@ -378,17 +378,17 @@ fn assert_search_help_matches_dispatch(source: &str, archive_key: char) {
         assert_eq!(press_char(&mut app, '/'), None);
         assert!(app.search.page.editing, "slash edits the existing query");
         app.search.page.editing = false;
-        let lines = rendered_help_lines(&mut app, "Edit query");
+        let lines = rendered_help_lines(&mut app, "Edit the query");
         assert!(
             lines
                 .iter()
-                .any(|line| line.starts_with('/') && line.contains("Edit query")),
+                .any(|line| line.starts_with('/') && line.contains("Edit the query")),
             "missing query control in {pane:?}: {lines:?}"
         );
         let back = if pane == SearchPane::Results {
-            "Return to mailbox"
+            "Back to the mailbox"
         } else {
-            "Return focus to results"
+            "Back to the results"
         };
         let lines = rendered_help_lines(&mut app, back);
         assert!(
@@ -397,18 +397,18 @@ fn assert_search_help_matches_dispatch(source: &str, archive_key: char) {
                 .any(|line| line.contains("Esc") && line.contains(back)),
             "missing back control in {pane:?}: {lines:?}"
         );
-        let lines = rendered_help_lines(&mut app, "Search All Mail");
+        let lines = rendered_help_lines(&mut app, "Search mail");
         assert!(
             !lines
                 .iter()
-                .any(|line| line.starts_with('/') && line.contains("Search All Mail")),
+                .any(|line| line.starts_with('/') && line.contains("Search mail")),
             "slash must not advertise a different action in Search: {lines:?}"
         );
-        let lines = rendered_help_lines(&mut app, "Run search now");
+        let lines = rendered_help_lines(&mut app, "Run the search");
         assert!(
             !lines
                 .iter()
-                .any(|line| line.starts_with("Enter") && line.contains("Run search now")),
+                .any(|line| line.starts_with("Enter") && line.contains("Run the search")),
             "Enter opens a message outside query editing: {lines:?}"
         );
         let lines = rendered_help_lines(&mut app, "Archive");
@@ -472,11 +472,15 @@ fn configured_search_help_does_not_restore_explicitly_overridden_controls() {
         app.screen = Screen::Search;
         app.search.page.editing = false;
         app.search.page.active_pane = pane;
-        for (query, key) in [("Archive", "/"), ("Trash", "h"), ("Spam", "Esc")] {
+        for (query, key) in [("Archive", "/"), ("Trash", "h"), ("spam", "Esc")] {
             let lines = rendered_help_lines(&mut app, query);
             assert!(lines.iter().any(|line| line.split_whitespace().next() == Some(key) && line.contains(query)), "missing configured control: {lines:?}");
         }
-        for query in ["Edit query", "Return focus to results", "Return to mailbox"] {
+        for query in [
+            "Edit the query",
+            "Back to the results",
+            "Back to the mailbox",
+        ] {
             let lines = rendered_help_lines(&mut app, query);
             assert!(
                 !lines.iter().any(|line| matches!(
@@ -904,7 +908,7 @@ fn configured_actions_retire_unlisted_mail_aliases_without_stealing_navigation()
 }
 
 /// A key and its name in the web app's chord grammar (`lib/keys/chord.ts`).
-fn probe_keys() -> Vec<(KeyEvent, String)> {
+pub(super) fn probe_keys() -> Vec<(KeyEvent, String)> {
     let mut keys = Vec::new();
     for c in '!'..='~' {
         let modifiers = if c.is_ascii_uppercase() {

@@ -796,7 +796,7 @@ fn help_modal_snapshot() {
                 query: "",
                 selected: 0,
                 mode_guide: None,
-                mode_keys: None,
+                key_places: Vec::new(),
                 mode_common: None,
                 _marker: std::marker::PhantomData,
             },

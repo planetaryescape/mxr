@@ -1047,73 +1047,13 @@ phase (D113).
 
 ## One key map across Now and the modes
 
-> [Chapter 35](35-keyboard.md) keeps this table's verbs and moves some keys: let go of all to `E`, the sender menu to `P`, `T` into `X`, snooze and Later into one `b` picker, groups to `{` `}`, and Not-sure and new-sender answers into the `X` picker. Let go of all (`E`), the sender menu (`P`), groups (`{` `}`), `T` into `X`, the Not-sure and new-sender answers into `X`, and snooze and Later into `b` have already moved; for every other key, this table still describes today's keys until K3 ships.
-
-Checked against `docs/reference/tui-keymap.json` and the web registry
-(`apps/web/src/lib/actions/`, `features/mail-actions/verbActions.ts`,
-`features/places/actions.ts`, `features/focus/actions.ts`) at `bdf997c4`.
-Modes get their own scope in both clients, as `place` has today, and
-`keymapParity.test.ts` holds web and TUI to the same table.
-
-| Key | Meaning wherever it applies | Now | Msgs | To do | Upd | Read | Arch | Meaning today |
-|---|---|:-:|:-:|:-:|:-:|:-:|:-:|---|
-| `Enter` | The mode's primary verb: open person, do it, expand source, read, open document | yes | yes | yes | yes | yes | yes | Open |
-| `e` | Done here (tick off in To do, let go in Updates and Reading) | yes | yes | yes | yes | yes | | Archive; Done on desk and in focus |
-| `A` | Let go of everything in view, with dry-run preview | card | | | yes | yes | | Sweep place; attachments (list) |
-| `t` | Make a to-do from this | yes | yes | | yes | yes | yes | unbound |
-| `T` | Pass to another mode (menu) | yes | yes | yes | yes | yes | yes | unbound |
-| `X` | Not this mode, for this email | yes | yes | yes | yes | yes | yes | web reader expand all |
-| `K` | This sender here: mode, never/always, lead time, mute, changes only, never summarise | yes | yes | yes | yes | yes | yes | Sender kind menu (place) |
-| `o` | Open the email itself, as sent | yes | yes | yes | yes | yes | yes | Open (list alias) |
-| `r` / `a` | Reply / reply all | yes | yes | | | | | same |
-| `.` | Got it: a short acknowledgement after a countdown | | yes | | | | | unbound |
-| `b` | Later: reply later, or the Later shelf | | yes | | | yes | | Reply later |
-| `Z` | Not now: snooze, or schedule in To do | yes | yes | yes | | | | Snooze |
-| `,` | Edit extracted fields; mark a record checked | | | yes | | | yes | unbound |
-| `L` | Open the item's link: tracker page, linked article | | | | yes | yes | | Links |
-| `D` | Unsubscribe, with evidence and preview | | | | | yes | | Unsubscribe |
-| `R` | Original layout or cleaned | | | | | yes | | Reader mode (TUI) |
-| `y` / `Y` | Copy reference / amount | | | | | | yes | Summarize (TUI) |
-| `p` | This person's or issuer's page | | yes | | | | yes | Sender view; pin (place) |
-| `s` | Pin a person (star) | | yes | | | | | Star |
-| `c` | Compose; in Messages a new topic with this person | yes | yes | | | | | Compose |
-| `>` | Quote the selection into the reply | | yes | | | | | More senders (place) |
-| `{` / `}` | Previous / next topic | | yes | | | | | — |
-| `[` / `]` | Previous / next year | | | | | | yes | Collapse / expand (sidebar) |
-| `Mod+Enter` | Send, then the next person whose turn it is | | yes | | | | | Focus send |
-| `g F` | Step through the Now band | | yes | yes | | | | Focus & reply |
-| `/`, `g f`, `x`, `u`, `?` | Search (Archive's ask box), filter (facets), select, undo, help | yes | yes | yes | yes | yes | yes | same |
-| `g h` `g m` `g x` `g u` `g r` `g e` `g i` | Now, Messages, To do, Updates, Reading, Archive, Inbox | | | | | | | `g u` was Subscriptions |
-
-Where the research notes disagreed, the reason for the choice:
-
-- `e` is done here everywhere, including tick-off: it is already Done on
-  the desk (`deskDone.ts`) and in focus (`focus.done`).
-- Let go of all is `A`, not `L` (updates.md): `A` is Sweep all with a
-  dry-run preview in the place keymap, and Paper trail becomes Updates;
-  `L` opens links in list, place and reader in both clients.
-- `x` stays select everywhere, because batch done needs it. todo.md read
-  it as "screened out", which is only the letter inside the `K` menu
-  (`placeCopy.ts`); updates.md used it for "let go of source". Dismissal
-  moved to `X`, let go of a source to `e`.
-- Later is `b` (FlagReplyLater today), not `l` (Apply label, reading.md)
-  or `Z` (messages.md); `Z` stays snooze.
-- Unsubscribe is `D` in both clients, not `U` (Mark unread, reading.md).
-- Archive's research keys collided with global ones: `c` (compose) became
-  `,`, `f` (forward) became `g f`, `x` (select) became `E` (export), `v`
-  (move) folded into `,`, `g i` (Inbox) became `p`, `d` (screener deny)
-  became `X`, and `e` (done) became `o`.
-- Updates' `m` (mark read and archive) and `c` (compose) moved into the
-  `K` menu, whose option letters become the `g` letters (`m`, `x`, `u`,
-  `r`, `e`, and `d` to screen out).
-- No "why" key: `?` is help in both clients, every row shows its reason
-  line, and the TUI footer shows the selected row's reason and link domain.
-- `v` (move) is not reused for "view original" (messages.md, updates.md,
-  reading.md); `o` opens the email as sent everywhere.
-- `g u` moves from Subscriptions to Updates, with the old binding in
-  `retiredAliases` as `g R` and `g P` were; `g p` redirects to Updates;
-  `g q`, `g w` and `g o` open Messages filters. `g m`, `g x` and `g e` are
-  unbound in both keymaps.
+The modes share one key map, and [chapter 35](35-keyboard.md) owns it: its
+verb table keeps this chapter's verbs (`e` is done here, `o` opens the
+email as sent, `t` makes a to-do, `X` passes the email to another mode) and
+sets each key. Every key outside the overlays lives in one definition,
+`crates/keymap/keymap.toml`, which both clients read and which generates
+the [keybindings reference](../../site/src/content/docs/reference/keybindings.md),
+the TUI tables included. `mxr keys --context todo` lists a mode's keys.
 
 ## The app teaches itself in place, with no tour
 

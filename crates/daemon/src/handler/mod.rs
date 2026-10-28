@@ -2139,9 +2139,11 @@ async fn dispatch(
             knobs,
             body,
         } => draft_refine::draft_refine(state, draft_id, knobs.clone(), body.as_deref()).await,
-        Request::DraftEval { account_id, limit } => {
-            draft_eval::draft_eval(state, account_id.as_ref(), *limit).await
-        }
+        Request::DraftEval {
+            account_id,
+            limit,
+            rewrite,
+        } => draft_eval::draft_eval(state, account_id.as_ref(), *limit, *rewrite).await,
         Request::ComposeAssist {
             draft,
             text,

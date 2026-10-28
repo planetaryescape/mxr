@@ -54,6 +54,7 @@ pub struct ComposeAssistReview {
     pub current_index: usize,
     pub note_input: Option<String>,
     pub proof_scroll_offset: u16,
+    pub voice_source_index: usize,
     pub request_pending: bool,
 }
 
@@ -198,6 +199,7 @@ pub struct ComposeState {
     pub pending_compose: Option<ComposeAction>,
     pub pending_send_confirm: Option<PendingSend>,
     pub assist_review: Option<ComposeAssistReview>,
+    pub viewing_voice_source: bool,
     pub assist_request_id: u64,
     pub assist_after_editor: bool,
     pub model_picker: Option<ComposeModelPicker>,

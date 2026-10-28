@@ -8308,6 +8308,25 @@
       ]
     },
     {
+      "id": "compose.proof.open-source",
+      "label": "Open next voice example",
+      "group": "Compose",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ComposeProofOpenSource",
+          "keys": [
+            "o"
+          ],
+          "contexts": [
+            "compose-assist-proof"
+          ]
+        }
+      ]
+    },
+    {
       "id": "compose.proof.previous",
       "label": "Previous writing proof",
       "group": "Compose",

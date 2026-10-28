@@ -281,10 +281,15 @@ gemma4", "Checking"), in the copy desk's wire voice ([29](29-assistant-design.md
 
 ## One voice, built once per draft, and what's shown is what was used
 
-Today there are two models of how you write. The prompt uses habits and
-up to five real emails (`draft_voice::voice_material`). The chip and the
-Tone Mismatch safety check use stylometry from `contact_style`. They can
-disagree, and only the first one writes.
+The backend now gathers examples, habits, relationship stylometry and local
+style-check rates from one per-operation voice snapshot. Up to five examples
+that survive prompt budgeting are the same examples returned in provenance;
+their bodies stay out of provenance so clients can open the source messages.
+Fresh contact stylometry supplies the usual register and word count, falling
+back to the rebuilt account voice profile. A rebuild therefore affects the
+next prompt. Explicit adjustments take precedence. Cloud drafting without
+history opt-in gets no history examples, summaries, profile-derived habits,
+counts or source IDs; style rates remain local to checks.
 
 The composer builds one `Voice` per draft:
 
@@ -473,8 +478,9 @@ as a reviewed diff, with no model in CI.
 drafting model you have configured. It drafts every case with a real model
 and grades it with the same checks, and its numbers are the live baseline.
 Choosing the model per run (`--model`) waits for rung C2. `--set mine` is
-today's replay of your own recent replies. It stays on this machine, and no
-longer calls the rewrite model unless asked.
+today's replay of your own recent replies. It stays on this machine. The
+drafting model runs once per case; `--rewrite` explicitly opts into the
+configured humanizer rewrite model as an additional pass.
 
 `composer_version` combines the prompt's version and the catalogue's, and
 goes into every proposal's provenance, so a bad draft can be traced to
@@ -797,7 +803,11 @@ catalogue are built inside the first rung that needs them.
 | C2 | pick which model drafts, with a default in Settings | `[llm.compose] model`, `llm.models`, `ModelChoiceData.sees`, `model` on the request, the picker in all clients, old keys warn | shipped in v0.6.163 |
 | C3 | get drafts that follow humanizer 3.1 and your own habits | the catalogue, `PatternRates`, the style block, the voice-relative check, sentence repair, style marks, the invented-fact check | shipped in v0.6.165; style is advisory and the recorded corpus has no pass/fail style threshold |
 | C4 | reply inline under the message, with one recipients line and one Send | the compose screen above on web and desktop; sheet for new messages; `⋯` for the rest | shipped in v0.6.167 |
-| C5 | see which of your emails shaped a draft, and have a voice rebuild change your drafts | the one `Voice`, usual length and register in the prompt, provenance links, `--set mine` without the rewrite model | planned |
+| C5 | see which of your emails shaped a draft, and have a voice rebuild change your drafts | shared voice snapshot, prompt/check alignment, exact source provenance, clickable source readers in web/TUI/Raycast, and `--set mine` replay contract | candidate implementation; installed journey and release pending |
+
+`--set mine` applies its answer-time cutoff to message evidence and omits stored
+relationship profiles, whose derived rows do not retain a cutoff-safe source
+history.
 
 C0 comes first because C1 rewrites the request and the prompt, and only a
 corpus can show that the rewrite didn't lose what today's prompt does

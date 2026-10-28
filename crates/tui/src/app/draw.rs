@@ -806,7 +806,12 @@ impl App {
             &time_preview,
             theme,
         );
-        if let Some(review) = self.compose.assist_review.as_mut() {
+        if let Some(review) = self
+            .compose
+            .assist_review
+            .as_mut()
+            .filter(|_| !self.compose.viewing_voice_source)
+        {
             if let Some(proposal) = review.proposal() {
                 let scroll = ui::compose_assist_proof::draw(
                     frame,

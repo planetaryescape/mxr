@@ -2471,7 +2471,8 @@ mod tests {
             request,
             Request::DraftEval {
                 account_id: None,
-                limit: 10
+                limit: 10,
+                rewrite: false
             }
         ));
         assert_eq!(

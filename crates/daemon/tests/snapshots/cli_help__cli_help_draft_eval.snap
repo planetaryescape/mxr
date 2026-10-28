@@ -4,7 +4,7 @@ expression: stdout
 ---
 Measure drafting with your LLM. Nothing is saved or sent.
 
-With --set mine (the default), replay your most recent replies: draft each one from what was known just before you replied and compare it with what you sent (greeting, sign-off, length, invented numbers). With --set quick, draft each labelled compose case and grade it against what that case required (kept sentences, answers, gaps, invented numbers, length, leftovers). Calls your LLM once per case. Uses --account with --set mine.
+With --set mine (the default), replay your most recent replies: draft each one from what was known just before you replied and compare it with what you sent (greeting, sign-off, length, invented numbers). With --set quick, draft each labelled compose case and grade it against what that case required (kept sentences, answers, gaps, invented numbers, length, leftovers). Calls your drafting LLM once per case. --rewrite also runs the configured humanizer rewrite model for each replay. Uses --account with --set mine.
 
 Usage: mxr draft eval [OPTIONS]
 
@@ -22,6 +22,9 @@ Options:
           - quick: The labelled compose corpus, graded check by check
 
           [default: mine]
+
+      --rewrite
+          Also run the configured humanizer rewrite model for each replay
 
   -h, --help
           Print help (see a summary with '-h')

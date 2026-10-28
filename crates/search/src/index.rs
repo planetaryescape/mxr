@@ -4,7 +4,10 @@ use mxr_core::types::MessageFlags;
 use mxr_core::types::{Envelope, MessageBody, SortOrder};
 use mxr_core::MxrError;
 use mxr_reader::{clean, ReaderConfig};
+use std::panic::AssertUnwindSafe;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tantivy::{
     collector::{Count, TopDocs},
     query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery},
@@ -18,42 +21,91 @@ pub struct SearchIndex {
     reader: IndexReader,
     writer: IndexWriter,
     schema: MxrSchema,
-    /// Cleaning applied to message bodies before they are indexed. It must
-    /// match what the reader shows, or search would match text no one sees.
-    reader_config: ReaderConfig,
+    /// Bodies whose cleaning panicked and were indexed from the fallback text.
+    /// Shared with the service handle so a rebuild can report the count.
+    pub(crate) clean_fallbacks: Arc<AtomicU64>,
 }
 
-/// Label the reader puts where a collapsed quoted reply was.
-const QUOTE_LABEL: &str = "[previous message]";
+/// The cleaning search indexes. It is the reader's pipeline with quote
+/// collapsing off: quoted replies stay searchable, while HTML markup, CSS,
+/// tracking links, signatures and boilerplate do not match. It never runs
+/// `render.html_command`, since a rebuild would spawn it once per message.
+fn index_reader_config() -> ReaderConfig {
+    ReaderConfig {
+        html_command: None,
+        collapse_quotes: false,
+        ..ReaderConfig::default()
+    }
+}
 
-/// The body text a person sees in the reader for this message: the cleaned
-/// text, without markup, quoted earlier messages or signatures.
-fn indexed_body_text(body: &MessageBody, config: &ReaderConfig) -> String {
-    // Mirrors the reader view, which prefers the plain part when it has text.
+/// The body text search matches for this message. Cleaning is wrapped in
+/// `catch_unwind` because html2text panics on some malformed tables; a message
+/// that panics is still indexed from its plain text or stripped HTML.
+fn indexed_body_text(body: &MessageBody, clean_fallbacks: &AtomicU64) -> String {
     let plain = body
         .text_plain
         .as_deref()
         .filter(|text| !text.trim().is_empty());
+    // Mirrors the reader view, which prefers the plain part when it has text.
     let (text, html) = match plain {
         Some(text) => (Some(text), None),
         None => (None, body.text_html.as_deref()),
     };
-    let cleaned = clean(text, html, config).content;
-    // The reader shows a "[previous message]" label in place of a quoted reply
-    // that was collapsed. The label is not body text, so a message that is only
-    // a quote falls through to the uncleaned text below.
-    if !cleaned.replace(QUOTE_LABEL, "").trim().is_empty() {
-        return cleaned;
+    let cleaned = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        clean(text, html, &index_reader_config()).content
+    }));
+    match cleaned {
+        Ok(content) if !content.trim().is_empty() => content,
+        // Cleaning left nothing to index, so index the message text as written.
+        Ok(_) => plain_fallback_text(body),
+        Err(_) => {
+            clean_fallbacks.fetch_add(1, Ordering::Relaxed);
+            plain_fallback_text(body)
+        }
     }
-    // Index a quote-only message's words anyway, so it is still findable by its body.
-    let uncleaned = ReaderConfig {
-        collapse_quotes: false,
-        strip_signatures: false,
-        strip_boilerplate: false,
-        strip_tracking: false,
-        ..config.clone()
-    };
-    clean(text, html, &uncleaned).content
+}
+
+fn plain_fallback_text(body: &MessageBody) -> String {
+    match body
+        .text_plain
+        .as_deref()
+        .filter(|text| !text.trim().is_empty())
+    {
+        Some(text) => text.to_string(),
+        None => strip_html_tags(body.text_html.as_deref().unwrap_or("")),
+    }
+}
+
+/// Text between tags, with `<style>` and `<script>` contents dropped. Used only
+/// when the reader's HTML conversion cannot run, so it stays deliberately simple.
+fn strip_html_tags(html: &str) -> String {
+    let lower = html.to_ascii_lowercase();
+    let mut out = String::with_capacity(html.len());
+    let mut pos = 0;
+    while let Some(offset) = html[pos..].find('<') {
+        let tag_start = pos + offset;
+        out.push_str(&html[pos..tag_start]);
+        let tag_end = html[tag_start..]
+            .find('>')
+            .map_or(html.len(), |end| tag_start + end + 1);
+        let tag = &lower[tag_start..tag_end];
+        pos = tag_end;
+        for raw in ["style", "script"] {
+            if tag.starts_with(&format!("<{raw}")) {
+                let close = format!("</{raw}");
+                pos = lower[tag_end..]
+                    .find(&close)
+                    .map_or(html.len(), |end| tag_end + end);
+                let close_end = html[pos..]
+                    .find('>')
+                    .map_or(html.len(), |end| pos + end + 1);
+                pos = close_end;
+            }
+        }
+        out.push(' ');
+    }
+    out.push_str(&html[pos..]);
+    out
 }
 
 #[derive(Debug, Clone)]
@@ -170,14 +222,6 @@ impl SearchIndex {
         &self.schema
     }
 
-    /// Index bodies with the cleaning the reader uses for display. Indexes
-    /// opened or created without this use [`ReaderConfig::default`].
-    #[must_use]
-    pub fn with_reader_config(mut self, reader_config: ReaderConfig) -> Self {
-        self.reader_config = reader_config;
-        self
-    }
-
     pub fn open(index_path: &Path) -> Result<Self, MxrError> {
         let (index, _) = Self::open_with_rebuild_status(index_path)?;
         Ok(index)
@@ -229,7 +273,7 @@ impl SearchIndex {
                 reader,
                 writer,
                 schema: schema_def,
-                reader_config: ReaderConfig::default(),
+                clean_fallbacks: Arc::new(AtomicU64::new(0)),
             },
             rebuilt,
         ))
@@ -254,7 +298,7 @@ impl SearchIndex {
             reader,
             writer,
             schema: schema_def,
-            reader_config: ReaderConfig::default(),
+            clean_fallbacks: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -378,7 +422,7 @@ impl SearchIndex {
             doc.add_text(s.labels, label.to_lowercase());
         }
 
-        doc.add_text(s.body_text, indexed_body_text(body, &self.reader_config));
+        doc.add_text(s.body_text, indexed_body_text(body, &self.clean_fallbacks));
         for attachment in &body.attachments {
             doc.add_text(s.attachment_filenames, attachment.filename.to_lowercase());
         }
@@ -773,6 +817,9 @@ mod reader_text_tests {
 <div class="gmail_signature">sigwordzeta</div>
 </body></html>"#;
 
+    /// html2text panics on this table (unchecked column arithmetic).
+    const PANICKING_HTML: &str = r#"<table><tr><td colspan="18446744073709551615">tablewordalpha</td><td>tablewordbeta</td></tr></table>"#;
+
     #[test]
     fn html_only_message_matches_visible_words_not_markup() {
         let (index, id) = index_one(None, Some(HTML_MESSAGE));
@@ -787,29 +834,37 @@ mod reader_text_tests {
     }
 
     #[test]
-    fn html_quoted_reply_and_signature_do_not_match() {
-        let (index, _) = index_one(None, Some(HTML_MESSAGE));
+    fn html_signature_does_not_match_but_quoted_reply_does() {
+        let (index, id) = index_one(None, Some(HTML_MESSAGE));
 
-        assert!(search_ids(&index, "earlierquotedword").is_empty());
         assert!(search_ids(&index, "sigwordzeta").is_empty());
+        assert_eq!(search_ids(&index, "earlierquotedword"), vec![id]);
     }
 
     #[test]
-    fn plain_text_quoted_block_does_not_match() {
+    fn plain_text_quoted_block_stays_searchable() {
         let text =
             "Fresh plainwordalpha reply.\n\n> quotedplainword from before\n> more quoted text";
         let (index, id) = index_one(Some(text), None);
 
-        assert_eq!(search_ids(&index, "plainwordalpha"), vec![id]);
-        assert!(search_ids(&index, "quotedplainword").is_empty());
+        assert_eq!(search_ids(&index, "plainwordalpha"), vec![id.clone()]);
+        assert_eq!(search_ids(&index, "quotedplainword"), vec![id]);
     }
 
     #[test]
-    fn message_that_is_only_a_quote_stays_findable_by_its_body() {
-        let text = "> only quoted fallbackword here\n> second line";
+    fn inline_reply_quote_is_findable() {
+        let text = "Intro.\n> Can we use ultramarine?\nYes.";
         let (index, id) = index_one(Some(text), None);
 
-        assert_eq!(search_ids(&index, "fallbackword"), vec![id]);
+        assert_eq!(search_ids(&index, "ultramarine"), vec![id]);
+    }
+
+    #[test]
+    fn named_quote_only_message_is_findable() {
+        let text = "On Tue, Alice wrote:\n> ultramarine";
+        let (index, id) = index_one(Some(text), None);
+
+        assert_eq!(search_ids(&index, "ultramarine"), vec![id]);
     }
 
     #[test]
@@ -821,17 +876,38 @@ mod reader_text_tests {
     }
 
     #[test]
-    fn clean_index_text_drops_markup_and_keeps_visible_text() {
-        let text = indexed_body_text(
-            &body_for(
-                &TestEnvelopeBuilder::new().build(),
-                None,
-                Some(HTML_MESSAGE),
-            ),
-            &ReaderConfig::default(),
+    fn malformed_table_that_panics_html2text_is_indexed_from_fallback() {
+        // Both shapes: HTML only (tag-stripped fallback) and with a plain part.
+        let (index, id) = index_one(None, Some(PANICKING_HTML));
+        assert_eq!(search_ids(&index, "tablewordalpha"), vec![id]);
+        assert_eq!(index.clean_fallbacks.load(Ordering::Relaxed), 1);
+
+        let (index, id) = index_one(Some("plain tablewordbeta"), Some(PANICKING_HTML));
+        assert_eq!(search_ids(&index, "tablewordbeta"), vec![id]);
+        assert_eq!(index.clean_fallbacks.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn strip_html_tags_drops_style_and_script_contents() {
+        let text = strip_html_tags(
+            "<p>keepme</p><style>.hidden{x:1}</style><script>var hiddenjs=1;</script><b>also</b>",
         );
 
+        assert!(text.contains("keepme"));
+        assert!(text.contains("also"));
+        assert!(!text.contains("hidden"));
+        assert!(!text.contains("hiddenjs"));
+        assert!(!text.contains('<'));
+    }
+
+    #[test]
+    fn clean_index_text_drops_markup_and_keeps_visible_text() {
+        let envelope = TestEnvelopeBuilder::new().build();
+        let counter = AtomicU64::new(0);
+        let text = indexed_body_text(&body_for(&envelope, None, Some(HTML_MESSAGE)), &counter);
+
         assert!(text.contains("visiblebananaword"));
+        assert!(text.contains("earlierquotedword"));
         assert!(!text.contains('<'));
         assert!(!text.contains("cssproperty"));
         assert!(!text.contains("quuxtoken"));
@@ -856,9 +932,10 @@ mod reader_text_tests {
             })
             .collect();
 
+        let counter = AtomicU64::new(0);
         let clean_started = Instant::now();
         for (_, body) in &envelopes {
-            std::hint::black_box(indexed_body_text(body, &ReaderConfig::default()));
+            std::hint::black_box(indexed_body_text(body, &counter));
         }
         let clean_elapsed = clean_started.elapsed();
 

@@ -25,6 +25,7 @@ pub struct SearchUpdateBatch {
 pub struct SearchServiceHandle {
     tx: mpsc::Sender<SearchCommand>,
     rebuilds: Arc<AtomicU64>,
+    clean_fallbacks: Arc<AtomicU64>,
 }
 
 /// Whether the lexical index can answer a search right now.
@@ -101,6 +102,7 @@ enum SearchCommand {
 impl SearchServiceHandle {
     pub fn start(index: SearchIndex) -> (Self, JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel::<SearchCommand>(32);
+        let clean_fallbacks = Arc::clone(&index.clean_fallbacks);
         let handle = tokio::spawn(async move {
             let mut index = index;
             while let Some(command) = rx.recv().await {
@@ -186,6 +188,7 @@ impl SearchServiceHandle {
             Self {
                 tx,
                 rebuilds: Arc::new(AtomicU64::new(0)),
+                clean_fallbacks,
             },
             handle,
         )
@@ -199,6 +202,12 @@ impl SearchServiceHandle {
         RebuildGuard {
             rebuilds: Arc::clone(&self.rebuilds),
         }
+    }
+
+    /// Bodies indexed from their fallback text since the last call, because
+    /// cleaning panicked on them. Counts only; no message content.
+    pub fn take_clean_fallbacks(&self) -> u64 {
+        self.clean_fallbacks.swap(0, Ordering::AcqRel)
     }
 
     pub fn availability(&self) -> IndexAvailability {

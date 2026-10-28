@@ -847,8 +847,7 @@ impl AppState {
         let background_db = Arc::new(Semaphore::new(BACKGROUND_DB_PERMITS));
         // Indexing never runs `render.html_command`: a rebuild would spawn it
         // once per HTML message. The built-in converter yields the same words.
-        let search_index =
-            open_search_index(&index_path, &store, mxr_reader::ReaderConfig::default()).await?;
+        let search_index = open_search_index(&index_path, &store).await?;
         let lexical_content_stale = std::sync::OnceLock::new();
         if let Some(path) = search_index.stale_content_path {
             let _ = lexical_content_stale.set(path);
@@ -2696,12 +2695,9 @@ struct OpenedSearchIndex {
 async fn open_search_index(
     index_path: &std::path::Path,
     store: &Store,
-    reader_config: mxr_reader::ReaderConfig,
 ) -> anyhow::Result<OpenedSearchIndex> {
     let existed = index_path.join("meta.json").exists();
-    let index = open_search_index_files(index_path, store)
-        .await?
-        .with_reader_config(reader_config);
+    let index = open_search_index_files(index_path, store).await?;
     if !existed {
         // A new index is built from the current text, so there is nothing to rebuild.
         mxr_search::record_lexical_content_version(index_path)?;
@@ -3017,18 +3013,14 @@ mod tests {
         std::fs::create_dir_all(&index_path).unwrap();
         let store = Store::in_memory().await.unwrap();
 
-        let opened = open_search_index(&index_path, &store, mxr_reader::ReaderConfig::default())
-            .await
-            .unwrap();
+        let opened = open_search_index(&index_path, &store).await.unwrap();
         assert!(opened.stale_content_path.is_none());
         assert!(mxr_search::lexical_content_is_current(&index_path));
         drop(opened);
 
         // An index built before the marker existed has to rebuild once.
         std::fs::remove_file(dir.path().join("search_index.content-version")).unwrap();
-        let opened = open_search_index(&index_path, &store, mxr_reader::ReaderConfig::default())
-            .await
-            .unwrap();
+        let opened = open_search_index(&index_path, &store).await.unwrap();
         assert_eq!(opened.stale_content_path, Some(index_path.clone()));
         // The marker is written only after a completed rebuild, not on open.
         assert!(!mxr_search::lexical_content_is_current(&index_path));

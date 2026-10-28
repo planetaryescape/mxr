@@ -21,11 +21,11 @@ mxr records ask "dell receipt"
 
 ## What a search matches
 
-A search matches the words you see in the reader for a message. Markup, styles,
-tracking links, quoted earlier messages and signatures are not indexed, so
-`mxr search "earlier phrase"` finds nothing when the only copy of the phrase is
-inside a quoted reply. `has:youtube`, `has:link` and the other `has:` filters
-still read the raw message, so they keep finding links inside HTML.
+A search matches the words in a message's text. Quoted replies stay searchable,
+so a phrase you only find inside an earlier message in the thread still matches.
+HTML markup, styles, tracking links, signatures and boilerplate do not match.
+`has:youtube`, `has:link` and the other `has:` filters still read the raw
+message, so they keep finding links inside HTML.
 
 After you upgrade, the first start rebuilds the search index once, from the local
 store, because the indexed text changed. Until the rebuild finishes, search

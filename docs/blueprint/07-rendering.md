@@ -97,7 +97,7 @@ Reader mode does NOT require ML. A `reader.rs` module with regex patterns and he
 - Tracking detection: "View in browser", "Unsubscribe", "Update your preferences" link patterns
 
 This is the same pipeline used for:
-- **Search indexing**: Tantivy indexes the same cleaned text the reader shows, not raw HTML with signatures or quoted replies. The index is rebuilt once when this text changes (`search_index.content-version` next to the index directory)
+- **Search indexing**: Tantivy indexes the reader's cleaned text with quote collapsing off, so quoted replies stay searchable while HTML markup, CSS, tracking links and signatures do not match. The index is rebuilt once when this text changes (`search_index.content-version` next to the index directory)
 - **Thread export**: LLM context format uses reader mode output
 - **Rules matching**: Rules can match on cleaned content instead of wading through signature noise
 

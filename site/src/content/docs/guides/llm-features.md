@@ -343,8 +343,7 @@ the background and renders above the message body; opening a long uncached
 thread can also start a debounced background summary. In the web reader, the
 **Summary** button or **Summarize thread** in the palette calls the same daemon
 request and renders the result in the **AI overview** collapsible above the
-thread. Summarize lost its `y` key to the thread briefing, `B`; pressing `y`
-says so until 0.6.180.
+thread. Summarize lost its `y` key to the thread briefing, `B`.
 
 ## Draft for me builds on what you typed
 

@@ -170,13 +170,9 @@ fn at_opens_the_pane_with_the_keys_and_asks_if_it_can_run() {
     at(&mut app);
     assert!(!app.assistant.open);
 
-    // Ctrl-a moved to @: it says so and opens nothing.
+    // Ctrl-a, its old key, opens nothing.
     press(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
     assert!(!app.assistant.open);
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Toggle assistant is now @")
-    );
 }
 
 #[test]

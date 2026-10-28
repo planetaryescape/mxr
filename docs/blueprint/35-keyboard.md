@@ -291,7 +291,7 @@ A closing overlay stops owning keys as soon as it starts to close. This fixes `d
 
 ## Prefixes show what can follow
 
-Both clients wait four seconds after a prefix, so the list of next keys can be read. This was 1,000 ms, after vim's `timeoutlen`, Zed and which-key; the web section of 26 October raised it, and the TUI followed in K4. After 300 ms a box above the status line lists the keys that can follow, from the definition with the person's keys (Helix's auto-info, Emacs 30's which-key). Typing faster than that never shows it, and `Esc` cancels the prefix. A prefix with nothing to list in the current place waits only 1,000 ms, since there is no guide to read; today that is the TUI's `z`, held so the retired `z z` can say where it went.
+Both clients wait four seconds after a prefix, so the list of next keys can be read. This was 1,000 ms, after vim's `timeoutlen`, Zed and which-key; the web section of 26 October raised it, and the TUI followed in K4. After 300 ms a box above the status line lists the keys that can follow, from the definition with the person's keys (Helix's auto-info, Emacs 30's which-key). Typing faster than that never shows it, and `Esc` cancels the prefix. Until 0.6.180 the TUI held `z` as a prefix with nothing to list, waiting only 1,000 ms, so the retired `z z` could say where it went. No such prefix is left, so that shorter wait is gone, and `z` undoes in both clients.
 
 A key that completes no binding cancels the prefix and says so ("`g z` is not a shortcut"). Today both clients run the second key on its own, so a mistyped `g U` marks mail unread.
 

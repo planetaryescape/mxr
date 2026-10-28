@@ -114,11 +114,9 @@ export const navigationActions: ActionBehavior[] = [
   { id: "nav.subscriptions", icon: MailX, run: go("/subscriptions") },
   { id: "nav.screener", icon: Shield, run: go("/screener") },
   { id: "nav.jobs", icon: ListTodo, run: go("/jobs") },
-  { id: "nav.tab-mail", icon: Inbox, run: go("/m/inbox") },
   { id: "nav.search-page", icon: Search, run: go("/search") },
   { id: "nav.rules", icon: Workflow, run: go("/rules") },
   { id: "nav.accounts", icon: Users, run: go("/accounts") },
   { id: "nav.diagnostics", icon: Stethoscope, run: go("/diagnostics") },
-  { id: "nav.tab-analytics", run: go("/analytics") },
   { id: "nav.deliveries", icon: Package, run: go("/deliveries") },
 ];

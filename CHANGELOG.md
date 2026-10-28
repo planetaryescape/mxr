@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.183](https://github.com/planetaryescape/mxr/compare/v0.6.182...v0.6.183) (2026-10-28)
+
+
+### Features
+
+* fold messages and quotes and archive-and-step in the TUI reader; web dialog keys from the definition ([#762](https://github.com/planetaryescape/mxr/issues/762)) ([78df13d](https://github.com/planetaryescape/mxr/commit/78df13d8855a2b4afe983cd0e673c1833be7d9ff))
+
+
+### Bug Fixes
+
+* let upsert_envelope wait for another writer instead of failing busy ([#769](https://github.com/planetaryescape/mxr/issues/769)) ([e3c036b](https://github.com/planetaryescape/mxr/commit/e3c036b6cf9d4e4c34c183c1110c375ff797ffbf))
+
 ## [0.6.182](https://github.com/planetaryescape/mxr/compare/v0.6.181...v0.6.182) (2026-10-28)
 
 

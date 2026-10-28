@@ -150,8 +150,8 @@ impl App {
         let mut chars = chord.chars();
         if let (Some(first), None) = (chars.next(), chars.next()) {
             let keymap = mxr_keymap::defaults();
-            // A retired sequence (`z z`) still waits for its second key
-            // while its move is announced.
+            // A retired sequence still waits for its second key while its
+            // move is announced.
             if keymap.tui_starts_sequence(context, &chord)
                 || keymap.moved_starts_sequence(context, &chord)
                 || self.keybindings.modes.starts_sequence(context, &chord)

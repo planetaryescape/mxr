@@ -899,24 +899,25 @@ fn an_action_key_that_clashes_is_left_out() {
 
 #[test]
 fn a_remap_onto_a_moved_key_drops_that_notice() {
-    let (action, moved) = defaults()
+    // Any moved key with a web action beside it will do; which ones exist
+    // changes as moves expire (D171).
+    let (moved, target) = defaults()
         .actions
         .iter()
-        .find_map(|action| action.moved.first().map(|moved| (action, moved.clone())))
-        .expect("the definition announces a moved key");
-    let target = defaults()
-        .actions
-        .iter()
-        .find(|other| {
-            other.id != action.id
-                && !other.palette_only
-                && other.is_for(Client::Web)
-                && other
-                    .web_scopes()
-                    .iter()
-                    .any(|scope| moved.contexts.iter().any(|c| c == scope))
+        .flat_map(|action| action.moved.iter().map(move |moved| (action, moved)))
+        .find_map(|(action, moved)| {
+            let target = defaults().actions.iter().find(|other| {
+                other.id != action.id
+                    && !other.palette_only
+                    && other.is_for(Client::Web)
+                    && other
+                        .web_scopes()
+                        .iter()
+                        .any(|scope| moved.contexts.iter().any(|c| c == scope))
+            })?;
+            Some((moved.clone(), target))
         })
-        .expect("another action lives where the key moved");
+        .expect("another action lives where a key moved");
     let keys = vec![moved.key.clone()];
     let remapped = defaults().with_action_keys(&target.id, &keys);
     let still = remapped.moved_entry(

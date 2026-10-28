@@ -69,14 +69,6 @@ fn each_rail_key_opens_its_mode() {
         chord(&mut app, key);
         assert_eq!(app.mailbox.mailbox_view, view, "g {key}");
     }
-    // g p (Paper trail, then Updates) retired: it says where Updates is.
-    chord(&mut app, 'h');
-    chord(&mut app, 'p');
-    assert_eq!(app.mailbox.mailbox_view, MailboxView::Now, "g p");
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Go to Updates is now g u")
-    );
     app.mailbox.labels = make_test_labels();
     chord(&mut app, 'i');
     assert_eq!(

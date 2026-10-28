@@ -215,19 +215,6 @@ impl App {
         ))
     }
 
-    /// A prefix that just started and has nothing to list here waits
-    /// [`BARE_PREFIX_TIMEOUT`] instead of the full wait.
-    ///
-    /// [`BARE_PREFIX_TIMEOUT`]: crate::input::BARE_PREFIX_TIMEOUT
-    pub(crate) fn shorten_bare_prefix(&mut self) {
-        if self
-            .prefix_choices()
-            .is_some_and(|(_, choices)| choices.is_empty())
-        {
-            self.input.cap_wait(crate::input::BARE_PREFIX_TIMEOUT);
-        }
-    }
-
     /// Test-only: as if the waiting prefix was pressed `by` earlier.
     #[cfg(test)]
     pub(crate) fn age_prefix_for_tests(&mut self, by: std::time::Duration) {

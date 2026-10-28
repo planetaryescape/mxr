@@ -11645,6 +11645,11 @@ export interface components {
               }
             | {
                   /** @enum {string} */
+                  cmd: "PlanUnsubscribe";
+                  message_ids: components["schemas"]["MessageId"][];
+              }
+            | {
+                  /** @enum {string} */
                   cmd: "Snooze";
                   message_id: components["schemas"]["MessageId"];
                   /** Format: date-time */
@@ -13543,6 +13548,11 @@ export interface components {
                   /** @enum {string} */
                   kind: "UnsubscribePurgeResult";
                   result: components["schemas"]["UnsubscribePurgeResultData"];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "UnsubscribePlan";
+                  plan: components["schemas"]["UnsubscribePlanData"];
               }
             | {
                   /** @enum {string} */
@@ -15936,6 +15946,29 @@ export interface components {
                   };
               }
             | "None";
+        /**
+         * @description What `PlanUnsubscribe` will send for an address. An address sends at most
+         *     one request: from the newest message that has a usable method.
+         */
+        UnsubscribePlanData: {
+            /**
+             * @description True when the chosen message already has a confirmed receipt, so the
+             *     sender is not sent another request.
+             */
+            already_unsubscribed?: boolean;
+            /**
+             * Format: int32
+             * @description Messages the address matched that still exist.
+             */
+            matched_messages?: number;
+            request?:
+                components["schemas"]["UnsubscribePlanRequestData"] | null;
+        };
+        UnsubscribePlanRequestData: {
+            /** @description The message whose List-Unsubscribe header the request uses. */
+            message_id: components["schemas"]["MessageId"];
+            method: components["schemas"]["UnsubscribeMethod"];
+        };
         UnsubscribePurgeResultData: {
             account_id?: components["schemas"]["AccountId"] | null;
             address: string;

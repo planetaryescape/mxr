@@ -29141,6 +29141,28 @@
           },
           {
             "type": "object",
+            "description": "Plans the one unsubscribe request for messages picked by an email\naddress: the newest message with a usable method, preferring one-click,\nthen an http(s) link, then mailto. Read-only. The CLI sends that message\nthrough `Unsubscribe`, so the per-message receipt still applies.",
+            "required": [
+              "message_ids",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "PlanUnsubscribe"
+                ]
+              },
+              "message_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MessageId"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "message_id",
               "wake_at",
@@ -36392,6 +36414,24 @@
               },
               "result": {
                 "$ref": "#/components/schemas/UnsubscribePurgeResultData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "plan",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "UnsubscribePlan"
+                ]
+              },
+              "plan": {
+                "$ref": "#/components/schemas/UnsubscribePlanData"
               }
             }
           },
@@ -44076,6 +44116,49 @@
             ]
           }
         ]
+      },
+      "UnsubscribePlanData": {
+        "type": "object",
+        "description": "What `PlanUnsubscribe` will send for an address. An address sends at most\none request: from the newest message that has a usable method.",
+        "properties": {
+          "already_unsubscribed": {
+            "type": "boolean",
+            "description": "True when the chosen message already has a confirmed receipt, so the\nsender is not sent another request."
+          },
+          "matched_messages": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Messages the address matched that still exist.",
+            "minimum": 0
+          },
+          "request": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UnsubscribePlanRequestData",
+                "description": "The one request to send. `None` when no matched message has a usable\nmethod, or when the chosen message already has a receipt."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "UnsubscribePlanRequestData": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "method"
+        ],
+        "properties": {
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId",
+            "description": "The message whose List-Unsubscribe header the request uses."
+          },
+          "method": {
+            "$ref": "#/components/schemas/UnsubscribeMethod"
+          }
+        }
       },
       "UnsubscribePurgeResultData": {
         "type": "object",

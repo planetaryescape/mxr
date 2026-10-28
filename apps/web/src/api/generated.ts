@@ -24059,39 +24059,23 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description The account's config key, such as `work` */
-                key: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetAccountIdentityBody"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description The `AccountOperation` variant. When the daemon refuses a tag (malformed, or held by another account), `result.ok` is false and `result.save.detail` says why; nothing is saved */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["ResponseData"];
-                };
+                content?: never;
             };
             /** @description Missing or invalid bridge token */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-            /** @description The body doesn't match the shape: a colour outside the eight slots, or a field of the wrong type */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
                 content?: never;
             };
         };
@@ -24175,20 +24159,36 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description The account's config key, such as `work` */
+                key: string;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAccountIdentityBody"];
+            };
+        };
         responses: {
-            /** @description OK */
+            /** @description The `AccountOperation` variant. When the daemon refuses a tag (malformed, or held by another account), `result.ok` is false and `result.save.detail` says why; nothing is saved */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Missing or invalid bridge token */
-            401: {
+            /** @description The body doesn't match the shape: a colour outside the eight slots, or a field of the wrong type */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

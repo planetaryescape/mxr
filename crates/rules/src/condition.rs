@@ -77,6 +77,27 @@ pub enum StringMatch {
     Glob(String),
 }
 
+const WHOLE_WORD_PREFIX: &str = r"(?i)(?:^|[^\p{Alphabetic}\p{N}])";
+const WHOLE_WORD_SUFFIX: &str = r"(?:$|[^\p{Alphabetic}\p{N}])";
+
+/// Inverts `regex::escape` for the literal part of a `whole_word` pattern.
+/// Callers rebuild the pattern from the result and compare, so input that
+/// was never produced by `regex::escape` simply fails that check.
+fn unescape_regex_literal(escaped: &str) -> String {
+    let mut out = String::with_capacity(escaped.len());
+    let mut chars = escaped.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            if let Some(next) = chars.next() {
+                out.push(next);
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 /// A message-like view for condition evaluation.
 /// The engine evaluates conditions against this trait so it
 /// doesn't depend on mxr-core's concrete Envelope type directly.
@@ -102,6 +123,33 @@ pub trait MessageView {
 }
 
 impl StringMatch {
+    /// Case-insensitive whole-word match, the rules form of a search `+word`.
+    ///
+    /// Word edges are "start or end of text" or a character that the search
+    /// tokenizer also splits on (anything not alphabetic or numeric), so
+    /// `invoice` matches "Your invoice." but not "invoices". The word is
+    /// escaped, so punctuation like `c++` or `a.b` matches literally.
+    pub fn whole_word(word: &str) -> Self {
+        Self::Regex(format!(
+            "{WHOLE_WORD_PREFIX}{}{WHOLE_WORD_SUFFIX}",
+            regex::escape(word)
+        ))
+    }
+
+    /// The word a `whole_word` pattern was built from, so the rules form can
+    /// show it as `+word` again. Any other pattern returns `None`.
+    pub fn whole_word_term(&self) -> Option<String> {
+        let Self::Regex(pattern) = self else {
+            return None;
+        };
+        let escaped = pattern
+            .strip_prefix(WHOLE_WORD_PREFIX)?
+            .strip_suffix(WHOLE_WORD_SUFFIX)?;
+        let word = unescape_regex_literal(escaped);
+        matches!(Self::whole_word(&word), Self::Regex(rebuilt) if rebuilt == *pattern)
+            .then_some(word)
+    }
+
     /// Evaluate this match against a haystack string.
     pub fn matches(&self, haystack: &str) -> bool {
         match self {
@@ -254,6 +302,49 @@ mod tests {
     fn regex_invalid_pattern_returns_false() {
         let m = StringMatch::Regex(r"[invalid".into());
         assert!(!m.matches("anything"));
+    }
+
+    #[test]
+    fn whole_word_matches_the_word_only() {
+        let m = StringMatch::whole_word("invoice");
+        assert!(m.matches("Your invoice."));
+        assert!(m.matches("INVOICE attached"));
+        assert!(m.matches("(invoice)"));
+        assert!(m.matches("invoice"));
+        assert!(!m.matches("Your invoices are ready"));
+        assert!(!m.matches("reinvoiced"));
+        assert!(!m.matches("uninvoice"));
+    }
+
+    #[test]
+    fn whole_word_term_round_trips_only_whole_word_patterns() {
+        assert_eq!(
+            StringMatch::whole_word("c++").whole_word_term().as_deref(),
+            Some("c++")
+        );
+        assert_eq!(
+            StringMatch::whole_word("a\\b").whole_word_term().as_deref(),
+            Some("a\\b")
+        );
+        assert_eq!(
+            StringMatch::Regex(r"invoice\s*#\d+".into()).whole_word_term(),
+            None
+        );
+        assert_eq!(
+            StringMatch::Contains("invoice".into()).whole_word_term(),
+            None
+        );
+    }
+
+    #[test]
+    fn whole_word_escapes_regex_metacharacters() {
+        let cpp = StringMatch::whole_word("c++");
+        assert!(cpp.matches("I write c++ daily"));
+        assert!(!cpp.matches("I write cxx daily"));
+
+        let dotted = StringMatch::whole_word("a.b");
+        assert!(dotted.matches("see a.b here"));
+        assert!(!dotted.matches("see axb here"));
     }
 
     // -- Condition composition tests --

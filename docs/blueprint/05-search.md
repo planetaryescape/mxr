@@ -226,9 +226,10 @@ If a query has no semantic text terms, or negates semantic text terms, mxr falls
 
 Known local-semantics caveats:
 
-- `+word` is preserved as `QueryNode::Exact`, but current Tantivy
-  execution treats it like normal text because the index does not yet
-  maintain a non-stemmed mirror field.
+- `+word` is preserved as `QueryNode::Exact`. The text fields are not
+  stemmed, so `+word` and plain `word` both match whole tokens only:
+  `+running` does not match "runs". If a stemmed field is added later,
+  `+word` needs an unstemmed mirror field to keep that meaning.
 - Gmail color-star variants parse, but execute as boolean `is:starred`
   because mxr stores star state as a flag rather than per-color star
   metadata.

@@ -670,6 +670,31 @@ fn classify_request_keeps_send_and_destructive_gates() {
     assert!(!request_requires_send_capability(&del));
 }
 
+/// `+word` in the rules form is a whole-word match: it fires on the word
+/// and its punctuation-bearing forms are matched literally.
+#[test]
+fn rules_form_exact_word_matches_whole_word_only() {
+    let condition = parse_rule_condition_string("+invoice").unwrap();
+    let Conditions::Field(FieldCondition::BodyContains { pattern }) = condition else {
+        panic!("expected a BodyContains condition for +invoice");
+    };
+    assert!(pattern.matches("Your invoice is ready"));
+    assert!(!pattern.matches("Your invoices are ready"));
+
+    let shown = conditions_to_query(&Conditions::Field(FieldCondition::BodyContains {
+        pattern: StringMatch::whole_word("invoice"),
+    }))
+    .unwrap();
+    assert_eq!(shown, "+invoice", "a saved +word rule should show as +word");
+
+    let cpp = parse_rule_condition_string("+c++").unwrap();
+    let Conditions::Field(FieldCondition::BodyContains { pattern }) = cpp else {
+        panic!("expected a BodyContains condition for +c++");
+    };
+    assert!(pattern.matches("I write c++ daily"));
+    assert!(!pattern.matches("I write cxx daily"));
+}
+
 /// The rules form maps the link-density search filters to the rules
 /// engine's `LinkDensity` condition (and rejects `has:calendar`, which
 /// has no rule-engine equivalent). Guards the live

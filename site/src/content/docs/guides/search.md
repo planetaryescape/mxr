@@ -52,9 +52,11 @@ against mxr's local index. The important practical consequence: syntax
 parity is separate from storage parity. For example, Gmail's color-star
 operators parse, but mxr currently stores starred as a boolean, so
 `has:yellow-star` and `has:purple-question` both mean "starred" locally.
-Likewise `+word` is preserved in the AST as a no-stemming hint, but the
-current Tantivy schema executes it like a normal text term until mxr grows
-a non-stemmed mirror field.
+`+word` matches the word exactly, case-insensitively, and never its
+inflections: `+running` finds "running" but not "run" or "runs". Plain words
+already behave this way, because the text fields are not stemmed, so `+word`
+only matters once a stemmed field exists. Rules use the same whole-word
+meaning for `+word`; see [Rules](/guides/rules/#word-matching).
 
 The same gap applies to address operators, and it bites harder because the
 query still parses and simply returns nothing: `from:`, `to:`, `cc:`, `bcc:`

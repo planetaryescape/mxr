@@ -108,7 +108,7 @@ As in Gmail, a query leaves out Trash and Spam unless it asks for them with `in:
 |---|---|---|
 | bare text | `invoice receipt` | full-text across subject, sender name/email, snippet, body text, and attachment filenames |
 | quoted phrase | `"quarterly review"` | phrase search across text fields |
-| `+` | `+unicorn` | parsed as Gmail's exact/no-stemming hint; current Tantivy execution treats it like normal text until a non-stemmed mirror field exists |
+| `+` | `+unicorn` | exact word, case-insensitive. Matches the whole token only, so `+unicorn` does not match "unicorns". The text fields are not stemmed, so plain words already match the same way. |
 | `from:` / `to:` / `cc:` / `bcc:` | `from:alice@example.com` | whole address, case-insensitive; no partial or domain match |
 | `subject:` | `subject:"quarterly review"` | quoted phrase, exact within tokens |
 | `body:` | `body:reimbursement` | full-text body |

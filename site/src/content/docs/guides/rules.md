@@ -24,6 +24,16 @@ mxr rules dry-run --all
 mxr rules history
 ```
 
+## Word matching
+
+A plain word in a condition matches anywhere in the message body, ignoring
+case, so `invoice` also fires on "invoices" and "reinvoiced". This is unchanged
+for existing rules.
+
+`+word` matches the whole word, ignoring case: `+invoice` fires on "Your
+invoice." but not on "invoices". Punctuation in the word is literal, so `+c++`
+matches "c++" and nothing else.
+
 ## TUI
 
 The Rules page gives you:

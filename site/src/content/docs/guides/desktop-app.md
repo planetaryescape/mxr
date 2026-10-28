@@ -45,8 +45,31 @@ Command+Q quits.
 
 Only one copy runs. Opening a second one focuses the first.
 
-The window remembers its size and position. It has the standard macOS menu,
-so copy, paste and the other text shortcuts work.
+The window remembers its size and position.
+
+## The menu bar
+
+Besides the standard mxr, Edit and Window menus, the menu bar has:
+
+- **View**: Command palette (⌘K), Show or hide the assistant (⌘.), Keyboard
+  help, and Enter Full Screen.
+- **Go**: every place `g` reaches, such as Go to Now, To do, Go to Inbox and
+  Go to Trash, then the tools: Rules, Settings, Diagnostics and the rest.
+- **Message**: Reply, Reply all, Forward, Archive, Not now…, Move to…, Move
+  to label…, Star or unstar, Mark read, Mark unread and Move to Trash.
+
+The menus come from the same key definition as the web app and the TUI, and
+a command does exactly what its key does. It acts on what is open or lit, asks
+for the same confirmation, and says so when it has nothing to act on there.
+Only the palette and the assistant have menu shortcuts. The single keys (`e`,
+`r`, `g i`) work in the window as they do in a browser, and the Edit menu keeps
+⌘Z, ⌘A and the other text shortcuts for typing.
+
+To give a menu command a shortcut of your own, open **System Settings →
+Keyboard → Keyboard Shortcuts → App Shortcuts**, add one for mxr, and type the
+command's title exactly as the menu shows it, such as `Archive` or
+`Go to Inbox`. Each title is the action's name in the key definition, so it
+stays the same when you change the action's keys.
 
 ## New message from anywhere
 

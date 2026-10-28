@@ -3,7 +3,17 @@ use crate::keybindings::{format_keybinding, KeyBinding, KeyPress, KeybindingConf
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::{Duration, Instant};
 
-const MULTI_KEY_TIMEOUT: Duration = Duration::from_millis(500);
+/// How long a prefix waits for its next key. Four seconds, as the web app
+/// waits, so the prefix guide that opens after [`PREFIX_GUIDE_DELAY`] can be
+/// read (blueprint 35, 26 October); a fast sequence never waits on it.
+pub(crate) const MULTI_KEY_TIMEOUT: Duration = Duration::from_millis(4000);
+/// How long a prefix with nothing to list waits instead (today `z`, kept so
+/// the retired `z z` can say where it went): no guide needs reading, and a
+/// stray press must not swallow the next key for four seconds. Vim's
+/// `timeoutlen`.
+pub(crate) const BARE_PREFIX_TIMEOUT: Duration = Duration::from_millis(1000);
+/// How long a prefix waits before the guide lists the keys that can follow.
+pub(crate) const PREFIX_GUIDE_DELAY: Duration = Duration::from_millis(300);
 
 fn plain_or_shift(modifiers: KeyModifiers) -> bool {
     modifiers.is_empty() || modifiers == KeyModifiers::SHIFT
@@ -67,6 +77,9 @@ pub struct InputHandler {
     used_this_turn: bool,
     /// A sequence that completed nothing, spelled for the status line.
     dead_end: Option<String>,
+    /// The waiting prefix's whole wait: [`MULTI_KEY_TIMEOUT`], or less once
+    /// [`Self::cap_wait`] shortened it.
+    wait: Duration,
 }
 
 struct ConfiguredChord {
@@ -88,6 +101,7 @@ impl InputHandler {
             configured: None,
             used_this_turn: false,
             dead_end: None,
+            wait: MULTI_KEY_TIMEOUT,
         }
     }
 
@@ -149,6 +163,45 @@ impl InputHandler {
         }
     }
 
+    /// How long the waiting prefix has waited, if one has not timed out.
+    pub(crate) fn prefix_waited(&self, now: Instant) -> Option<Duration> {
+        let deadline = match (&self.configured, &self.state) {
+            (Some(chord), _) => chord.deadline,
+            (None, KeyState::WaitingForSecond { deadline, .. }) => *deadline,
+            (None, KeyState::Normal) => return None,
+        };
+        (now <= deadline).then(|| self.wait.saturating_sub(deadline - now))
+    }
+
+    /// How long the waiting prefix has left before it times out.
+    pub(crate) fn prefix_left(&self, now: Instant) -> Option<Duration> {
+        self.prefix_waited(now)
+            .map(|waited| self.wait.saturating_sub(waited))
+    }
+
+    /// Shorten the prefix that has just started waiting to `wait` in all.
+    pub(crate) fn cap_wait(&mut self, wait: Duration) {
+        let cut = self.wait.saturating_sub(wait);
+        if let Some(chord) = &mut self.configured {
+            chord.deadline -= cut;
+        }
+        if let KeyState::WaitingForSecond { deadline, .. } = &mut self.state {
+            *deadline -= cut;
+        }
+        self.wait = self.wait.min(wait);
+    }
+
+    /// Test-only: as if the waiting prefix was pressed `by` earlier.
+    #[cfg(test)]
+    pub(crate) fn age_prefix_for_tests(&mut self, by: Duration) {
+        if let Some(chord) = &mut self.configured {
+            chord.deadline -= by;
+        }
+        if let KeyState::WaitingForSecond { deadline, .. } = &mut self.state {
+            *deadline -= by;
+        }
+    }
+
     /// Wait for the second key of a sequence the key definition knows
     /// (`g`, `*`, `i`), as the built-in chords do.
     pub(crate) fn wait_for_second(&mut self, first: char) {
@@ -178,6 +231,9 @@ impl InputHandler {
 
     pub(crate) fn begin_turn(&mut self) {
         self.used_this_turn = false;
+        if !self.is_pending() {
+            self.wait = MULTI_KEY_TIMEOUT;
+        }
     }
 
     pub(crate) fn end_turn(&mut self) {

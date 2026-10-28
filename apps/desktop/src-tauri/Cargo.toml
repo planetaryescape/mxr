@@ -19,11 +19,16 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-window-state = "2"
+# Reads crates/keymap/keymap.toml, compiled in, for the menu. Not the
+# mxr-keymap crate: its version follows every release, and this crate's own
+# Cargo.lock (built --locked) would go stale on each one.
+toml = "1"
 
 [profile.release]
 codegen-units = 1

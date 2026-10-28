@@ -6,7 +6,7 @@ import { snapshotActionContext } from "@/lib/actions/context";
 import { setController } from "@/lib/keys/controllers";
 import { installKeyDispatcher } from "@/lib/keys/dispatcher";
 import { useKeyScope } from "@/state/keyScopeStore";
-import { ShortcutGuide } from "./ShortcutGuide";
+import { SHORTCUT_GUIDE_DELAY_MS, ShortcutGuide } from "./ShortcutGuide";
 
 vi.mock("@tanstack/react-router", async (original) => ({
   ...(await original<typeof import("@tanstack/react-router")>()),
@@ -42,9 +42,12 @@ test("a paused prefix shows live next keys without moving focus, and Escape canc
   const button = screen.getByRole("button");
   button.focus();
   fireEvent.keyDown(button, { key: "g" });
+  act(() => {
+    vi.advanceTimersByTime(SHORTCUT_GUIDE_DELAY_MS - 1);
+  });
   expect(screen.queryByRole("complementary", { name: "Next shortcut keys" })).toBeNull();
   act(() => {
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(1);
   });
   expect(screen.getByRole("complementary", { name: "Next shortcut keys" })).toHaveTextContent(
     "Go to Inbox",

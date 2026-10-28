@@ -166,3 +166,57 @@ fn key_display(key: &str) -> String {
         other => other.into(),
     }
 }
+
+impl App {
+    /// The prefix guide, once a prefix has waited [`PREFIX_GUIDE_DELAY`]
+    /// (blueprint 35): the prefix and the keys that can follow it where keys
+    /// are going, from the same rows help lists.
+    ///
+    /// [`PREFIX_GUIDE_DELAY`]: crate::input::PREFIX_GUIDE_DELAY
+    pub(crate) fn prefix_guide(
+        &self,
+        now: std::time::Instant,
+    ) -> Option<(char, Vec<crate::ui::prefix_guide::Continuation>)> {
+        if self.input.prefix_waited(now)? < crate::input::PREFIX_GUIDE_DELAY {
+            return None;
+        }
+        self.prefix_choices()
+            .filter(|(_, choices)| !choices.is_empty())
+    }
+
+    /// The waiting prefix and every key that can follow it here.
+    fn prefix_choices(&self) -> Option<(char, Vec<crate::ui::prefix_guide::Continuation>)> {
+        let prefix = self.input.pending_prefix()?;
+        let mut places = self.help_key_places();
+        if places.is_empty() {
+            places = crate::ui::help_keys::places_for(self.current_ui_context());
+        }
+        let keys = crate::ui::help_keys::KeyRows {
+            config: &self.keybindings,
+            view: self.keybinding_context(),
+        };
+        Some((
+            prefix,
+            crate::ui::prefix_guide::continuations(&keys, &places, prefix),
+        ))
+    }
+
+    /// A prefix that just started and has nothing to list here waits
+    /// [`BARE_PREFIX_TIMEOUT`] instead of the full wait.
+    ///
+    /// [`BARE_PREFIX_TIMEOUT`]: crate::input::BARE_PREFIX_TIMEOUT
+    pub(crate) fn shorten_bare_prefix(&mut self) {
+        if self
+            .prefix_choices()
+            .is_some_and(|(_, choices)| choices.is_empty())
+        {
+            self.input.cap_wait(crate::input::BARE_PREFIX_TIMEOUT);
+        }
+    }
+
+    /// Test-only: as if the waiting prefix was pressed `by` earlier.
+    #[cfg(test)]
+    pub(crate) fn age_prefix_for_tests(&mut self, by: std::time::Duration) {
+        self.input.age_prefix_for_tests(by);
+    }
+}

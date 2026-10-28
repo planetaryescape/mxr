@@ -35,6 +35,7 @@ pub mod owed_lens;
 pub mod personal_category_picker;
 pub mod place_lens;
 pub mod platform_modal;
+pub(crate) mod prefix_guide;
 pub mod reading_lens;
 pub mod received_label;
 pub mod records_lens;

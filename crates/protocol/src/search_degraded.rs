@@ -42,6 +42,11 @@ pub struct SearchDegraded {
     pub reason: SearchDegradedReason,
     /// The parts of a message the limited search looked at.
     pub searched_fields: Vec<String>,
+    /// A notice the daemon wrote for this reply, shown in place of the one
+    /// built from `reason`. Clients older than this field ignore it and show
+    /// the generic notice for `reason`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notice_override: Option<String>,
 }
 
 impl SearchDegraded {
@@ -52,11 +57,21 @@ impl SearchDegraded {
                 .iter()
                 .map(ToString::to_string)
                 .collect(),
+            notice_override: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_notice(mut self, notice: impl Into<String>) -> Self {
+        self.notice_override = Some(notice.into());
+        self
     }
 
     /// The one line every client shows above limited results.
     pub fn notice(&self) -> String {
+        if let Some(notice) = &self.notice_override {
+            return notice.clone();
+        }
         format!(
             "{}: {} only. {}",
             self.reason.headline(),
@@ -112,6 +127,25 @@ mod tests {
             SearchDegraded::new(SearchDegradedReason::IndexStopped).notice(),
             "Search is limited while the index is unavailable: subject, sender and preview only. Restart the daemon or run `mxr doctor --reindex`."
         );
+    }
+
+    #[test]
+    fn a_daemon_notice_replaces_the_generic_one_and_older_clients_ignore_it() {
+        let degraded = SearchDegraded::new(SearchDegradedReason::IndexStopped)
+            .with_notice("the last index rebuild failed");
+        assert_eq!(degraded.notice(), "the last index rebuild failed");
+
+        // A reply with no notice keeps the wire shape older clients decode.
+        let plain =
+            serde_json::to_value(SearchDegraded::new(SearchDegradedReason::IndexStopped)).unwrap();
+        assert!(plain.get("notice_override").is_none());
+        let decoded: SearchDegraded = serde_json::from_value(serde_json::json!({
+            "reason": "index_stopped",
+            "searched_fields": ["subject"],
+            "notice_override": "x"
+        }))
+        .unwrap();
+        assert_eq!(decoded.reason, SearchDegradedReason::IndexStopped);
     }
 
     #[test]

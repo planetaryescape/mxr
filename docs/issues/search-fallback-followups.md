@@ -13,3 +13,21 @@ Fix direction: NFC-normalise query text before splitting, or split with FTS5's o
 The index's text query includes `from_email` as a whole-address term, so a bare `alice@example.com` matches mail from that address. The fallback's bare words search subject, sender name and preview only, so that query finds such mail only when the address also appears in those fields.
 
 Fix direction: for a bare term containing `@`, also accept `LOWER(m.from_email) = LOWER(term)`, within the same AND.
+
+## Rules still match the raw body text
+
+Search indexes the reader's cleaned text, but rules do not. `RuleMessage` sets `body_text` from `text_plain` only, and its `MessageView` implementation reads `text_plain` or `text_html` for other body fields (`crates/daemon/src/loops.rs:1854` and `:1899`). A rule on body text can match words that search does not index, such as markup and script contents. Changing what rules match is a separate behaviour change, so it stays out of the reader-text change.
+
+Fix direction: decide whether rules should match the reader text, then route `RuleMessage` through `mxr_reader::clean` the same way the index does, and say so in the rules guide.
+
+## Search uses the built-in HTML converter, not html_command
+
+The index cleans HTML with the built-in converter even when `render.html_command` is set, because a rebuild would otherwise start one external process per HTML message (`crates/daemon/src/state.rs`, `open_search_index` call in `AppState::new`). For `html_command` users, a word the external renderer produces differently (table layout, entity handling) can read one way in the reader and match another way in search.
+
+Fix direction: only if this shows up in practice, run the external command in batches or cache its output per body hash, and include the setting in the content-version marker.
+
+## The reader's HTML conversion can panic on other malformed tables
+
+html2text 0.17.4 panicked on a table with a huge `colspan`, from unchecked column arithmetic. PR 767 clamps `colspan` and `rowspan` before html2text runs and guards the built-in conversion (`crates/reader/src/html.rs`). With that change, `mxr_reader::clean` converts the reproduction table without panicking (checked on 4fe5d04ee). The search index also catches any panic in its conversion and indexes that part as tag-stripped text (`crates/search/src/index.rs`, `convert_guarded`).
+
+Other malformed HTML may still reach a panic the clamp does not cover. If one does, the reader display paths are the ones to check: `crates/tui/src/app/body_helpers.rs:396`, `crates/tui/src/runner.rs:6116`, `crates/daemon/src/commands/cat.rs:24`, and the daemon handlers that clean bodies for LLM or assistant features (`crates/daemon/src/handler/promises.rs:98`, `updates.rs:109`, `todos.rs:926`, `thread_gist.rs:534`, `todo_resolution.rs:130`, `safety_llm.rs:95`, `commitments_extract.rs:67`, `decisions_extract.rs:97`, `briefing.rs:78`, `archive_ask.rs:103`).

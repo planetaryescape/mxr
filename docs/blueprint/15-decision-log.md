@@ -1564,3 +1564,7 @@ Outlook blocks and bounded earlier cached text rather than a separate splitter.
 **Why**: BK, 2026-10-22, as recorded in the classifier run's ledger. Blueprint 22 already planned "[name] asked" rows beside promises, and R1b's corpus marks colleagues' dated requests as a policy call that this settles. On BK's mail, eight requests in 60 days made no to-do.
 
 **Trade-offs accepted**: More To do rows from person mail, so the request classes carry the 90% precision target in 37 and reach the not-sure line below it.
+
+## D186: The lexical index converts HTML to text but keeps quotes and signatures
+
+The lexical index converts HTML to text with the reader's built-in converter and keeps quoted replies and signatures, because every removal heuristic can drop words the reader shows (G10c review).

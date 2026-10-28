@@ -41,7 +41,11 @@ async fn reindex_in_batches(
 ) -> Result<u32, MxrError> {
     // Searches answer from SQLite while the index is wiped and refilled,
     // instead of from the part of it that exists so far.
-    let _rebuilding = search.begin_rebuild();
+    // Only a complete rebuild clears the incomplete state. A rebuild that fails
+    // part way drops this guard unfinished, so search keeps answering from SQLite.
+    let rebuilding = search.begin_rebuild();
+    // Count only the bodies this rebuild falls back on, not earlier syncs.
+    search.take_clean_fallbacks();
     let total = store
         .count_all_messages()
         .await
@@ -92,6 +96,14 @@ async fn reindex_in_batches(
 
     progress(ReindexProgress::Complete { indexed });
 
+    let clean_fallbacks = search.take_clean_fallbacks();
+    if clean_fallbacks > 0 {
+        tracing::warn!(
+            count = clean_fallbacks,
+            "Indexed message bodies from fallback text because cleaning failed"
+        );
+    }
+
     // Verify
     let doc_count = search.num_docs().await?;
     if doc_count != indexed as u64 {
@@ -113,6 +125,7 @@ async fn reindex_in_batches(
         .await
         .map_err(|e| MxrError::Store(e.to_string()))?;
 
+    rebuilding.finish();
     Ok(indexed)
 }
 

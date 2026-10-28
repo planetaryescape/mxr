@@ -5091,6 +5091,7 @@ dependencies = [
  "chrono",
  "mail-query",
  "mxr-core",
+ "mxr-reader",
  "proptest",
  "serde",
  "tantivy",

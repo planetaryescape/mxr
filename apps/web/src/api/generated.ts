@@ -14753,6 +14753,8 @@ export interface components {
          *     lexical index. Absent on a reply from the index.
          */
         SearchDegraded: {
+            /** @description A notice the daemon wrote for this reply, shown in place of the one built from `reason`. Clients older than this field ignore it and show the generic notice for `reason`. */
+            notice_override?: string | null;
             reason: components["schemas"]["SearchDegradedReason"];
             /** @description The parts of a message the limited search looked at. */
             searched_fields: string[];

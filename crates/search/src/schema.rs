@@ -131,8 +131,10 @@ impl MxrSchema {
 
     /// Fields a bare-word search reads, with their boosts: the default
     /// string search and prose queries share this list so they find the
-    /// same mail. `content_hints` carries attachment MIME types and list
-    /// ids, so "spreadsheet" finds a message with an `.xlsx`.
+    /// same mail. `content_hints` is not here: it holds raw markup, which
+    /// prose must not match. Attachment MIME types go into
+    /// `attachment_filenames`, so "spreadsheet" still finds a message with an
+    /// `.xlsx`.
     pub(crate) fn default_text_fields(&self) -> Vec<(Field, f32)> {
         vec![
             (self.subject, 3.0),
@@ -140,7 +142,6 @@ impl MxrSchema {
             (self.snippet, 1.0),
             (self.body_text, 0.5),
             (self.attachment_filenames, 0.75),
-            (self.content_hints, 1.0),
         ]
     }
 }

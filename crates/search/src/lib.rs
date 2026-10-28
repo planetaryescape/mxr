@@ -1,3 +1,4 @@
+mod content_version;
 mod index;
 pub mod query_builder;
 mod schema;
@@ -24,6 +25,9 @@ pub use mail_query::{
     RelativeUnit, SizeOp, Visitor,
 };
 
+pub use content_version::{
+    lexical_content_is_current, record_lexical_content_version, LEXICAL_CONTENT_VERSION,
+};
 pub use index::{SearchIndex, SearchPage, SearchResult};
 pub use query_builder::{build_query, CompiledQuery, QueryBuilder, MAX_PROSE_WORDS};
 pub use schema::MxrSchema;

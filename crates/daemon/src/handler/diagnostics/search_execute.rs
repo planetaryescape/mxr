@@ -103,6 +103,12 @@ async fn run_search(
             }
             IndexAvailability::Stopped => SearchDegradedReason::IndexStopped,
             IndexAvailability::Rebuilding => SearchDegradedReason::IndexRebuilding,
+            // Wire reason stays `index_stopped`: a failed rebuild means full
+            // search is unavailable until a reindex or restart. The retry text
+            // is chosen here, not by a new reason value that older clients reject.
+            IndexAvailability::Incomplete => {
+                return answer_incomplete(state, query, options, limited_ok).await;
+            }
         };
         return answer_without_index(state, query, options, reason, limited_ok).await;
     }
@@ -114,6 +120,30 @@ async fn run_search(
         limited_ok,
     )
     .await
+}
+
+/// Shown when the last rebuild failed. Clients render it in place of the
+/// generic notice for `index_stopped`.
+const INCOMPLETE_NOTICE: &str = "Search is limited because the last index rebuild failed. Run `mxr doctor --reindex` or restart the daemon to retry the rebuild.";
+
+async fn answer_incomplete(
+    state: &AppState,
+    query: &str,
+    options: &SearchExecutionOptions,
+    limited_ok: bool,
+) -> Result<SearchExecution, SearchError> {
+    let mut execution = answer_without_index(
+        state,
+        query,
+        options,
+        SearchDegradedReason::IndexStopped,
+        limited_ok,
+    )
+    .await?;
+    execution.degraded = execution
+        .degraded
+        .map(|degraded| degraded.with_notice(INCOMPLETE_NOTICE));
+    Ok(execution)
 }
 
 async fn answer_without_index(

@@ -3,7 +3,11 @@ use mxr_core::id::MessageId;
 use mxr_core::types::MessageFlags;
 use mxr_core::types::{Envelope, MessageBody, SortOrder};
 use mxr_core::MxrError;
+use mxr_reader::{clean, ReaderConfig};
+use std::panic::AssertUnwindSafe;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tantivy::{
     collector::{Count, TopDocs},
     query::{AllQuery, BooleanQuery, Occur, Query, QueryParser, TermQuery},
@@ -17,6 +21,96 @@ pub struct SearchIndex {
     reader: IndexReader,
     writer: IndexWriter,
     schema: MxrSchema,
+    /// Bodies whose cleaning panicked and were indexed from the fallback text.
+    /// Shared with the service handle so a rebuild can report the count.
+    pub(crate) clean_fallbacks: Arc<AtomicU64>,
+}
+
+/// The reader's HTML conversion with every removal step off. Quoted replies,
+/// signatures and boilerplate stay in the text: each removal can drop words the
+/// reader shows. Markup, CSS and scripts are still dropped by the conversion.
+fn conversion_only_config() -> ReaderConfig {
+    ReaderConfig {
+        html_command: None,
+        collapse_quotes: false,
+        strip_signatures: false,
+        strip_boilerplate: false,
+        strip_tracking: false,
+    }
+}
+
+/// The values added to the body field for a message: `text_plain` as stored,
+/// and `text_html` converted to text. A part that is itself an HTML document is
+/// converted rather than indexed as markup. The reader's built-in converter is
+/// used, never `render.html_command`.
+fn indexed_body_parts(body: &MessageBody, clean_fallbacks: &AtomicU64) -> Vec<String> {
+    let mut parts = Vec::with_capacity(2);
+    if let Some(plain) = body.text_plain.as_deref() {
+        parts.push(convert_part(plain, false, clean_fallbacks));
+    }
+    if let Some(html) = body.text_html.as_deref() {
+        parts.push(convert_part(html, true, clean_fallbacks));
+    }
+    parts.retain(|part| !part.trim().is_empty());
+    parts
+}
+
+/// Converts one part with the reader's pipeline. A panic in html2text, which
+/// it hits on some malformed tables, falls back to tag stripping and is counted.
+fn convert_part(text: &str, as_html: bool, clean_fallbacks: &AtomicU64) -> String {
+    let config = conversion_only_config();
+    convert_guarded(text, clean_fallbacks, || {
+        if as_html {
+            clean(None, Some(text), &config).content
+        } else {
+            clean(Some(text), None, &config).content
+        }
+    })
+}
+
+/// Runs one conversion, and on a panic indexes the part as tag-stripped text
+/// and counts it. Taking the conversion as a closure lets tests make it panic.
+fn convert_guarded(
+    text: &str,
+    clean_fallbacks: &AtomicU64,
+    convert: impl FnOnce() -> String,
+) -> String {
+    std::panic::catch_unwind(AssertUnwindSafe(convert)).unwrap_or_else(|_| {
+        clean_fallbacks.fetch_add(1, Ordering::Relaxed);
+        strip_html_tags(text)
+    })
+}
+
+/// Text between tags, with `<style>` and `<script>` contents dropped. Used only
+/// when the reader's HTML conversion cannot run, so it stays deliberately simple.
+fn strip_html_tags(html: &str) -> String {
+    let lower = html.to_ascii_lowercase();
+    let mut out = String::with_capacity(html.len());
+    let mut pos = 0;
+    while let Some(offset) = html[pos..].find('<') {
+        let tag_start = pos + offset;
+        out.push_str(&html[pos..tag_start]);
+        let tag_end = html[tag_start..]
+            .find('>')
+            .map_or(html.len(), |end| tag_start + end + 1);
+        let tag = &lower[tag_start..tag_end];
+        pos = tag_end;
+        for raw in ["style", "script"] {
+            if tag.starts_with(&format!("<{raw}")) {
+                let close = format!("</{raw}");
+                pos = lower[tag_end..]
+                    .find(&close)
+                    .map_or(html.len(), |end| tag_end + end);
+                let close_end = html[pos..]
+                    .find('>')
+                    .map_or(html.len(), |end| pos + end + 1);
+                pos = close_end;
+            }
+        }
+        out.push(' ');
+    }
+    out.push_str(&html[pos..]);
+    out
 }
 
 #[derive(Debug, Clone)]
@@ -184,6 +278,7 @@ impl SearchIndex {
                 reader,
                 writer,
                 schema: schema_def,
+                clean_fallbacks: Arc::new(AtomicU64::new(0)),
             },
             rebuilt,
         ))
@@ -208,6 +303,7 @@ impl SearchIndex {
             reader,
             writer,
             schema: schema_def,
+            clean_fallbacks: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -331,13 +427,13 @@ impl SearchIndex {
             doc.add_text(s.labels, label.to_lowercase());
         }
 
-        let body_text = body.text_plain.as_deref().unwrap_or("");
-        doc.add_text(s.body_text, body_text);
-        if let Some(html) = body.text_html.as_deref() {
-            doc.add_text(s.body_text, html);
+        for part in indexed_body_parts(body, &self.clean_fallbacks) {
+            doc.add_text(s.body_text, part);
         }
         for attachment in &body.attachments {
             doc.add_text(s.attachment_filenames, attachment.filename.to_lowercase());
+            // MIME types are words prose can match ("spreadsheet" for an .xlsx).
+            doc.add_text(s.attachment_filenames, attachment.mime_type.to_lowercase());
         }
         if let Some(list_id) = body.metadata.list_id.as_deref() {
             doc.add_text(s.list_id, list_id);
@@ -668,5 +764,279 @@ impl SearchIndex {
             has_more,
             next_offset,
         })
+    }
+}
+
+#[cfg(test)]
+mod reader_text_tests {
+    #![expect(
+        clippy::unwrap_used,
+        reason = "tests unwrap fixture setup for direct failures"
+    )]
+
+    use super::*;
+    use crate::parse_query;
+    use crate::query_builder::QueryBuilder;
+    use crate::test_fixtures::TestEnvelopeBuilder;
+    use mxr_core::types::MessageMetadata;
+    use std::time::Instant;
+
+    fn body_for(
+        envelope: &Envelope,
+        text_plain: Option<&str>,
+        text_html: Option<&str>,
+    ) -> MessageBody {
+        MessageBody {
+            message_id: envelope.id.clone(),
+            text_plain: text_plain.map(str::to_string),
+            text_html: text_html.map(str::to_string),
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
+        }
+    }
+
+    fn search_ids(index: &SearchIndex, query: &str) -> Vec<String> {
+        let ast = parse_query(query).unwrap();
+        let schema = MxrSchema::build();
+        let built = QueryBuilder::new(&schema).build(&ast);
+        index
+            .search_ast(built, 50, 0, SortOrder::Relevance)
+            .unwrap()
+            .results
+            .into_iter()
+            .map(|result| result.message_id)
+            .collect()
+    }
+
+    fn index_one(text_plain: Option<&str>, text_html: Option<&str>) -> (SearchIndex, String) {
+        let mut index = SearchIndex::in_memory().unwrap();
+        let envelope = TestEnvelopeBuilder::new().subject("Notes").build();
+        let body = body_for(&envelope, text_plain, text_html);
+        index.index_body(&envelope, &body).unwrap();
+        index.commit().unwrap();
+        (index, envelope.id.as_str())
+    }
+
+    const HTML_MESSAGE: &str = r#"<html><head><style>.cssproperty{color:red}</style></head><body>
+<div class="mxrclassword">Visible visiblebananaword sentence.</div>
+<img src="https://track.example.net/pixel?id=quuxtoken">
+<blockquote>earlierquotedword from the last message</blockquote>
+<div>On Mon, Jan 1, someone wrote:</div>
+<div class="gmail_signature">sigwordzeta</div>
+</body></html>"#;
+
+    const SCRIPT_MESSAGE: &str = r#"<p>Visible tail</p><script>var zzscriptword = 1;</script><div class="zzclassword">x</div><zztagword>tail</zztagword>"#;
+
+    /// html2text panics on this table (unchecked column arithmetic).
+    const PANICKING_HTML: &str = r#"<table><tr><td colspan="18446744073709551615">tablewordalpha</td><td>tablewordbeta</td></tr></table>"#;
+
+    #[test]
+    fn html_only_message_matches_visible_words_not_markup() {
+        let (index, id) = index_one(None, Some(HTML_MESSAGE));
+
+        assert_eq!(search_ids(&index, "body:visiblebananaword"), vec![id]);
+        for hidden in ["cssproperty", "mxrclassword", "quuxtoken", "track"] {
+            assert!(
+                search_ids(&index, &format!("body:{hidden}")).is_empty(),
+                "{hidden} is markup and must not match"
+            );
+        }
+    }
+
+    #[test]
+    fn script_contents_class_names_and_tag_names_do_not_match() {
+        let (index, id) = index_one(None, Some(SCRIPT_MESSAGE));
+
+        assert_eq!(search_ids(&index, "body:tail"), vec![id]);
+        for hidden in ["zzscriptword", "zzclassword", "zztagword"] {
+            assert!(
+                search_ids(&index, &format!("body:{hidden}")).is_empty(),
+                "{hidden} is code or markup and must not match"
+            );
+        }
+    }
+
+    #[test]
+    fn quoted_reply_and_signature_in_html_are_searchable() {
+        let (index, id) = index_one(None, Some(HTML_MESSAGE));
+
+        assert_eq!(
+            search_ids(&index, "body:earlierquotedword"),
+            vec![id.clone()]
+        );
+        assert_eq!(search_ids(&index, "body:sigwordzeta"), vec![id]);
+    }
+
+    #[test]
+    fn plain_text_quoted_block_is_searchable() {
+        let text =
+            "Fresh plainwordalpha reply.\n\n> quotedplainword from before\n> more quoted text";
+        let (index, id) = index_one(Some(text), None);
+
+        assert_eq!(search_ids(&index, "body:plainwordalpha"), vec![id.clone()]);
+        assert_eq!(search_ids(&index, "body:quotedplainword"), vec![id]);
+    }
+
+    #[test]
+    fn inline_reply_quote_is_findable() {
+        let text = "Intro.\n> Can we use ultramarine?\nYes.";
+        let (index, id) = index_one(Some(text), None);
+
+        assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
+    }
+
+    #[test]
+    fn named_quote_only_message_is_findable() {
+        let text = "On Tue, Alice wrote:\n> ultramarine";
+        let (index, id) = index_one(Some(text), None);
+
+        assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
+    }
+
+    #[test]
+    fn confidential_line_does_not_hide_later_words() {
+        let text = "Intro.\n> This email is confidential.\n> ultramarine\nYes, cobalt.";
+        let (index, id) = index_one(Some(text), None);
+
+        assert_eq!(search_ids(&index, "body:cobalt"), vec![id.clone()]);
+        assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
+    }
+
+    #[test]
+    fn html_part_words_are_indexed_alongside_a_shorter_plain_part() {
+        let html = r#"<p>Intro ultramarine.</p><div class="gmail_signature">Sam</div>"#;
+        let (index, id) = index_one(Some("Intro."), Some(html));
+
+        assert_eq!(search_ids(&index, "body:ultramarine"), vec![id]);
+    }
+
+    #[test]
+    fn has_youtube_still_matches_raw_html_link() {
+        let html = r#"<p>Watch this</p><a href="https://youtube.com/watch?v=abc">clip</a>"#;
+        let (index, id) = index_one(None, Some(html));
+
+        assert_eq!(search_ids(&index, "has:youtube"), vec![id]);
+    }
+
+    #[test]
+    fn malformed_table_with_huge_colspan_still_indexes() {
+        // PR 767 clamps spans before html2text runs, so this table converts
+        // without a panic and nothing is counted as a fallback.
+        let (index, id) = index_one(None, Some(PANICKING_HTML));
+        assert_eq!(search_ids(&index, "body:tablewordalpha"), vec![id.clone()]);
+        assert_eq!(search_ids(&index, "body:tablewordbeta"), vec![id]);
+        assert_eq!(index.clean_fallbacks.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn a_converter_panic_falls_back_to_tag_stripped_text_and_is_counted() {
+        let counter = AtomicU64::new(0);
+        let text = convert_guarded(
+            "<p>keepme</p><script>var hidden=1;</script><b>also</b>",
+            &counter,
+            || std::panic::resume_unwind(Box::new("converter failed")),
+        );
+
+        assert!(text.contains("keepme"));
+        assert!(text.contains("also"));
+        assert!(!text.contains("hidden"));
+        assert!(!text.contains('<'));
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn script_words_match_no_prose_path_but_has_filters_still_read_raw_html() {
+        let html = r#"<p>Watch</p><script>var zzscriptword = 1;</script><a href="https://youtube.com/x">clip</a>"#;
+        let (index, id) = index_one(None, Some(html));
+
+        // Bare-word search, the string search, and the any-words path that
+        // Archive Ask uses for prose.
+        assert!(search_ids(&index, "zzscriptword").is_empty());
+        assert!(index
+            .search("zzscriptword", 10, 0, SortOrder::Relevance)
+            .unwrap()
+            .results
+            .is_empty());
+        let schema = MxrSchema::build();
+        let any_words = QueryBuilder::new(&schema)
+            .build_any_words("zzscriptword")
+            .unwrap();
+        assert!(index
+            .search_ast(any_words, 10, 0, SortOrder::Relevance)
+            .unwrap()
+            .results
+            .is_empty());
+
+        assert_eq!(search_ids(&index, "has:youtube"), vec![id]);
+    }
+
+    #[test]
+    fn strip_html_tags_drops_style_and_script_contents() {
+        let text = strip_html_tags(
+            "<p>keepme</p><style>.hidden{x:1}</style><script>var hiddenjs=1;</script><b>also</b>",
+        );
+
+        assert!(text.contains("keepme"));
+        assert!(text.contains("also"));
+        assert!(!text.contains("hidden"));
+        assert!(!text.contains("hiddenjs"));
+        assert!(!text.contains('<'));
+    }
+
+    #[test]
+    fn indexed_parts_keep_quotes_and_signatures_and_drop_markup() {
+        let envelope = TestEnvelopeBuilder::new().build();
+        let counter = AtomicU64::new(0);
+        let parts = indexed_body_parts(&body_for(&envelope, None, Some(HTML_MESSAGE)), &counter);
+        let text = parts.join("\n");
+
+        assert!(text.contains("visiblebananaword"));
+        assert!(text.contains("earlierquotedword"));
+        assert!(text.contains("sigwordzeta"));
+        assert!(!text.contains('<'));
+        assert!(!text.contains("cssproperty"));
+        assert!(!text.contains("quuxtoken"));
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
+    }
+
+    /// Debug-build timing for the upgrade cost: run with
+    /// `cargo test -p mxr-search --lib reindex_timing -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "timing probe, run by hand"]
+    fn reindex_timing_50k_messages() {
+        const COUNT: usize = 50_000;
+        let envelopes: Vec<(Envelope, MessageBody)> = (0..COUNT)
+            .map(|i| {
+                let envelope = TestEnvelopeBuilder::new()
+                    .subject(format!("Subject {i}"))
+                    .build();
+                let html = format!(
+                    r#"<html><head><style>.c{i}{{color:red}}</style></head><body><p>Message {i} body text about invoice {i}.</p><a href="https://track.example.net/{i}">link</a><blockquote>earlier {i}</blockquote><div>-- sig {i}</div></body></html>"#
+                );
+                let body = body_for(&envelope, None, Some(&html));
+                (envelope, body)
+            })
+            .collect();
+
+        let counter = AtomicU64::new(0);
+        let clean_started = Instant::now();
+        for (_, body) in &envelopes {
+            std::hint::black_box(indexed_body_parts(body, &counter));
+        }
+        let clean_elapsed = clean_started.elapsed();
+
+        let mut index = SearchIndex::in_memory().unwrap();
+        let index_started = Instant::now();
+        for (envelope, body) in &envelopes {
+            index.index_body(envelope, body).unwrap();
+        }
+        index.commit().unwrap();
+        let index_elapsed = index_started.elapsed();
+
+        eprintln!(
+            "reindex timing, {COUNT} messages, debug build: indexed {index_elapsed:?} (conversion alone {clean_elapsed:?})"
+        );
+        assert_eq!(index.num_docs(), COUNT as u64);
     }
 }

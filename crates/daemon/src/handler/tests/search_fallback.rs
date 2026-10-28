@@ -237,7 +237,7 @@ async fn a_rebuild_in_progress_answers_from_sqlite_until_it_ends() {
 
     let rebuild = state.search.begin_rebuild();
     let during = page(send(&state, search_request("invoice", None, 10, 0)).await);
-    drop(rebuild);
+    rebuild.finish();
     let after = page(send(&state, search_request("invoice", None, 10, 0)).await);
 
     assert_eq!(during.ids, vec![wanted.id.as_str()]);
@@ -248,6 +248,64 @@ async fn a_rebuild_in_progress_answers_from_sqlite_until_it_ends() {
     // Back on the index, which was never given this message.
     assert!(after.ids.is_empty());
     assert!(after.degraded.is_none());
+}
+
+#[tokio::test]
+async fn a_failed_rebuild_keeps_search_limited_until_a_later_rebuild_finishes() {
+    let state = Arc::new(AppState::in_memory().await.unwrap());
+    let account = state.default_account_id();
+    let wanted = store_message(&state, &account, "a", "Quarterly invoice", "x@one.test", 1).await;
+    store_message(&state, &account, "b", "Weekly digest", "x@one.test", 2).await;
+
+    // Reindex has no failure injection point, so this mirrors its failure path:
+    // clear the index, commit the first batch, then drop the guard unfinished,
+    // which is what its `?` does when a later batch fails.
+    let rebuild = state.search.begin_rebuild();
+    state.search.clear().await.unwrap();
+    let first_batch = state
+        .store
+        .list_all_envelopes_paginated(1, 0)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|envelope| mxr_search::SearchIndexEntry {
+            envelope,
+            body: None,
+            reply_later: false,
+        })
+        .collect();
+    state
+        .search
+        .apply_batch(mxr_search::SearchUpdateBatch {
+            entries: first_batch,
+            removed_message_ids: vec![],
+        })
+        .await
+        .unwrap();
+    drop(rebuild);
+
+    assert!(!matches!(
+        state.search.availability(),
+        mxr_search::IndexAvailability::Ready { .. }
+    ));
+    let failed = page(send(&state, search_request("invoice", None, 10, 0)).await);
+    assert_eq!(failed.ids, vec![wanted.id.as_str()]);
+    let failed_degraded = failed.degraded.expect("limited answer carries degraded");
+    assert_eq!(failed_degraded.reason, SearchDegradedReason::IndexStopped);
+    assert!(failed_degraded
+        .notice()
+        .contains("the last index rebuild failed"));
+
+    crate::reindex::reindex(&state.search, &state.store, |_| {})
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        state.search.availability(),
+        mxr_search::IndexAvailability::Ready { .. }
+    ));
+    let restored = page(send(&state, search_request("invoice", None, 10, 0)).await);
+    assert!(restored.degraded.is_none());
 }
 
 #[tokio::test]

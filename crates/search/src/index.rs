@@ -771,8 +771,7 @@ impl SearchIndex {
 mod reader_text_tests {
     #![expect(
         clippy::unwrap_used,
-        clippy::panic,
-        reason = "tests unwrap fixture setup for direct failures and simulate a converter panic"
+        reason = "tests unwrap fixture setup for direct failures"
     )]
 
     use super::*;
@@ -936,7 +935,7 @@ mod reader_text_tests {
         let text = convert_guarded(
             "<p>keepme</p><script>var hidden=1;</script><b>also</b>",
             &counter,
-            || panic!("converter failed"),
+            || std::panic::resume_unwind(Box::new("converter failed")),
         );
 
         assert!(text.contains("keepme"));

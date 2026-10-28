@@ -396,6 +396,8 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "go_drafts" => Some(Action::GoToDrafts),
         "go_trash" => Some(Action::GoToTrash),
         "go_spam" => Some(Action::GoToSpam),
+        "open_snoozed" => Some(Action::OpenSnoozed),
+        "wake" => Some(Action::Wake),
         "open_desk" => Some(Action::OpenDesk),
         "open_now" => Some(Action::OpenNow),
         "open_messages" => Some(Action::OpenMessages),
@@ -561,6 +563,7 @@ fn action_display_name(action: &str) -> String {
         "sender_profile" => "Sender".into(),
         "open_analytics" => "Analytics".into(),
         "open_reply_queue" => "Reply Queue".into(),
+        "open_snoozed" => "Snoozed".into(),
         "open_owed_replies" => "Owed Replies".into(),
         "open_calendar_invites" => "Invites".into(),
         "open_screener" => "Screener".into(),
@@ -935,6 +938,8 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("D", "unsubscribe"),
     // Not now (D173): Later or a time, one picker.
     ("b", "snooze"),
+    // Wake undoes it, in Snoozed (blueprint 35).
+    ("w", "wake"),
     ("t", "create_todo"),
     ("O", "open_in_browser"),
     ("R", "toggle_reader_mode"),

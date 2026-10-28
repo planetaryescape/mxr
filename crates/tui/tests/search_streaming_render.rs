@@ -63,6 +63,7 @@ fn streaming_row(env: Envelope) -> MailListRow {
         reply_later: false,
         pending_mutation: false,
         mode_chip: None,
+        wake_at: None,
     }
 }
 

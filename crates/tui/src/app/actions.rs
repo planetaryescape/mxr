@@ -222,7 +222,9 @@ impl App {
             | Action::UpdatesTuneChoice(_)
             | Action::UpdatesOpenLink
             | Action::UpdatesCopyCode
+            | Action::UpdatesPeek
             | Action::UpdatesClose => self.apply_updates_action(action),
+            Action::OpenSnoozed | Action::Wake => self.apply_snoozed_action(action),
             Action::OpenMailboxScreen
             | Action::OpenSearchScreen
             | Action::OpenGlobalSearch

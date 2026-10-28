@@ -310,15 +310,17 @@ key = "0"
 contexts = ["global"]
 until = "0.6.180"
 
-# Web-only views, on letters the TUI does not use.
 [[action]]
 id = "nav.snoozed"
 label = "Go to Snoozed"
 group = "Navigate"
 scopes = ["global"]
 keys = ["g n"]
-clients = ["web"]
-note = "The TUI has no Snoozed list; snoozed mail comes back to the Inbox when it wakes"
+
+[[action.tui]]
+name = "OpenSnoozed"
+keys = ["g n"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
 
 [[action]]
 id = "nav.trash"
@@ -903,6 +905,12 @@ keys = ["e"]
 name = "Archive"
 keys = ["e"]
 contexts = ["list", "reader", "search", "search-preview"]
+
+# The web's desk ran Done (its archive) on `w` too; `w` is Wake now.
+[[action.moved]]
+key = "w"
+contexts = ["desk"]
+until = "0.6.206"
 
 [[action]]
 id = "mail.read-archive"
@@ -1669,15 +1677,18 @@ contexts = ["list", "place", "todo", "now", "messages", "archive", "reading", "u
 
 [[action]]
 id = "list.row-action"
-label = "This list's row action"
-short_label = "Row action"
-description = "Wake now in Snoozed, Done in the reply queue"
+label = "Wake: bring it back now"
+short_label = "Wake"
+description = "Snoozed: back in the inbox now. Reply later: out of the queue"
 group = "Mail"
 scopes = ["list"]
 keys = ["w"]
 hide_in_palette = true
-clients = ["web"]
-note = "The row action of the web's Snoozed and reply-queue pages; the TUI has no Snoozed list and its reply queue is a modal with its own keys"
+
+[[action.tui]]
+name = "Wake"
+keys = ["w"]
+contexts = ["list", "reply-queue"]
 
 [[action]]
 id = "list.toggle-select"
@@ -4117,8 +4128,11 @@ short_label = "Peek"
 group = "Triage"
 scopes = ["updates"]
 keys = ["Space"]
-clients = ["web"]
-note = "The TUI shows each update's details on its line, so there is nothing to peek at"
+
+[[action.tui]]
+name = "UpdatesPeek"
+keys = ["Space"]
+contexts = ["updates"]
 
 [[action]]
 id = "updates.pin"

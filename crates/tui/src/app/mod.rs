@@ -64,6 +64,7 @@ mod selection_helpers;
 mod selection_scope;
 mod semantic_actions;
 mod sidebar_helpers;
+mod snoozed_actions;
 mod state;
 mod todo_actions;
 mod updates_actions;

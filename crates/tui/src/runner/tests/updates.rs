@@ -508,3 +508,92 @@ fn y_on_a_line_without_a_code_asks_for_the_latest_and_copies_a_current_one() {
         "an expired code is not copied"
     );
 }
+
+fn screen(app: &mut App) -> String {
+    let backend = ratatui::backend::TestBackend::new(140, 40);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|frame| app.draw(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn space_peeks_under_the_lit_line_with_its_email_and_closes_again() {
+    let mut app = updates_app();
+    app.dismiss_active_hint();
+    select_source(&mut app, "Strava");
+    let line = match app.selected_updates_row() {
+        Some(UpdatesRow::Line(line)) => line.clone(),
+        _ => panic!("a line"),
+    };
+    let message_id = line.latest_message_id.clone().expect("latest email");
+    assert!(
+        !screen(&mut app).contains("o opens the email"),
+        "no peek yet"
+    );
+
+    press(&mut app, KeyCode::Char(' '));
+    assert_eq!(
+        app.mailbox.updates_page.peek.as_deref(),
+        Some(line.id.as_str())
+    );
+    assert!(
+        app.mailbox.priority_body_fetches.contains(&message_id),
+        "the peek fetches the latest email the way the reader does"
+    );
+    let shown = screen(&mut app);
+    assert!(shown.contains("Here because: automated sender"), "{shown}");
+    assert!(shown.contains("Received"), "{shown}");
+    assert!(shown.contains("o opens the email"), "{shown}");
+
+    app.mailbox.body_cache.insert(
+        message_id.clone(),
+        mxr_core::MessageBody {
+            message_id,
+            text_plain: Some("Hi Sam,\nYou ran 21.3 km this morning\nUnsubscribe here".into()),
+            text_html: None,
+            attachments: Vec::new(),
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        },
+    );
+    let shown = screen(&mut app);
+    assert!(shown.contains("You ran 21.3 km this morning"), "{shown}");
+    assert!(
+        !shown.contains("Unsubscribe here"),
+        "footers stay out: {shown}"
+    );
+
+    // The peek stays with its line as the cursor moves, as on the web.
+    press(&mut app, KeyCode::Char('j'));
+    assert_eq!(
+        app.mailbox.updates_page.peek.as_deref(),
+        Some(line.id.as_str())
+    );
+    select_source(&mut app, "Strava");
+    press(&mut app, KeyCode::Char(' '));
+    assert_eq!(app.mailbox.updates_page.peek, None, "Space again closes it");
+    assert!(!screen(&mut app).contains("o opens the email"));
+}
+
+#[test]
+fn esc_closes_an_open_peek_before_anything_else() {
+    let mut app = updates_app();
+    app.mailbox.selected_index = 0;
+    press(&mut app, KeyCode::Char(' '));
+    assert!(app.mailbox.updates_page.peek.is_some());
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.mailbox.updates_page.peek, None);
+    assert!(
+        queued(&app).is_empty(),
+        "closing the peek dismisses no hint: {:?}",
+        queued(&app)
+    );
+}

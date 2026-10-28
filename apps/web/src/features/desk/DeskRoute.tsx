@@ -1,5 +1,4 @@
 import { Link } from "@tanstack/react-router";
-import { Check } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -29,10 +28,11 @@ import { targetFromRows, type MailTarget } from "@/features/mail-actions/target"
 import { ListWithReader } from "@/features/mailbox/ListWithReader";
 import { dueDay, useNextPromise } from "@/features/promises/useNextPromise";
 import type { RowRenderState } from "@/features/mailbox/MailboxList";
-import type { RowAction } from "@/features/mailbox/MailboxRow";
 import type { MessageRowView } from "@/features/mailbox/types";
 import type { SwipeMap } from "@/features/swipe/swipeRules";
+import { movedOverlayKey } from "@/lib/actions/definition";
 import { plural } from "@/lib/format";
+import { useKeyScope } from "@/state/keyScopeStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 /**
@@ -159,16 +159,12 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
     [doneRow, gistLine, index, memberships],
   );
 
-  // `w`, the list's row action, is Done too.
-  const done = useMemo<RowAction>(
-    () => ({
-      label: "Done",
-      icon: Check,
-      describe: (row) => `Done with ${row.subject || "this conversation"}`,
-      run: doneRow,
-    }),
-    [doneRow],
-  );
+  // `w` was Done here too until it became Wake (blueprint 35); it says
+  // Done is `e` until the move in the key definition expires.
+  const announceDoneMoved = useCallback(() => {
+    const moved = movedOverlayKey("desk", "w");
+    if (moved) useKeyScope.getState().showMoved("Done", moved.keys?.[0] ?? null);
+  }, []);
 
   const title = lane ? LANE_TITLES[lane] : messages ? "Messages" : "Desk";
   const laneTotal = lane && desk.data ? desk.data[lane].total : null;
@@ -220,7 +216,7 @@ export function DeskRoute({ lane, mode }: { lane?: DeskLaneKind; mode?: "message
       airyHeaders
       interceptVerb={interceptVerb}
       swipeActions={swipeActions}
-      rowAction={done}
+      onRowActionKey={announceDoneMoved}
       rowGists
       empty={<ClearDesk lane={lane} lowTide={lowTide} messages={messages} />}
     />

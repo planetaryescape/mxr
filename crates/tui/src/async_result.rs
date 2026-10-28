@@ -75,6 +75,8 @@ pub(crate) enum AsyncResult {
     Labels(Result<Vec<Label>, MxrError>),
     AllEnvelopes(Result<Vec<Envelope>, MxrError>),
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
+    /// Snoozed (`ListSnoozed`) and the envelopes of what it lists.
+    Snoozed(Result<(Vec<mxr_core::types::Snoozed>, Vec<Envelope>), MxrError>),
     OwedReplies(
         Result<
             (

@@ -743,8 +743,12 @@ impl App {
                         Some("Pattern select works in mail lists and search results".into());
                     return;
                 }
+                // Field by field, not `mailbox_list_envelopes`, so the
+                // selection below can be written while this is borrowed.
                 let envelopes = if self.screen == Screen::Search {
                     &self.search.page.results
+                } else if self.mailbox.mailbox_view == MailboxView::Snoozed {
+                    &self.mailbox.snoozed_page.envelopes
                 } else {
                     &self.mailbox.envelopes
                 };

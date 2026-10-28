@@ -2151,6 +2151,47 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if app.mailbox.pending_snoozed_refresh {
+            app.mailbox.pending_snoozed_refresh = false;
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                // The web's Snoozed page makes the same two requests.
+                let snoozed = match ipc_call(&bg, Request::ListSnoozed).await {
+                    Ok(Response::Ok {
+                        data: ResponseData::SnoozedMessages { snoozed },
+                    }) => snoozed,
+                    Ok(Response::Error { message, .. }) => {
+                        return AsyncResult::Snoozed(Err(MxrError::Ipc(message)));
+                    }
+                    Err(e) => return AsyncResult::Snoozed(Err(e)),
+                    _ => {
+                        return AsyncResult::Snoozed(Err(MxrError::Ipc(
+                            "unexpected response to ListSnoozed".into(),
+                        )));
+                    }
+                };
+                if snoozed.is_empty() {
+                    return AsyncResult::Snoozed(Ok((snoozed, Vec::new())));
+                }
+                let message_ids = snoozed
+                    .iter()
+                    .map(|entry| entry.message_id.clone())
+                    .collect();
+                let result = match ipc_call(&bg, Request::ListEnvelopesByIds { message_ids }).await
+                {
+                    Ok(Response::Ok {
+                        data: ResponseData::Envelopes { envelopes },
+                    }) => Ok((snoozed, envelopes)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to ListEnvelopesByIds".into(),
+                    )),
+                };
+                AsyncResult::Snoozed(result)
+            });
+        }
+
         if app.mailbox.pending_owed_refresh {
             app.mailbox.pending_owed_refresh = false;
             let bg = bg.clone();
@@ -4582,6 +4623,12 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::Subscriptions(Err(e)) => {
                             app.status_message = Some(format!("Subscriptions error: {e}"));
+                        }
+                        AsyncResult::Snoozed(Ok((snoozed, envelopes))) => {
+                            app.set_snoozed(snoozed, envelopes);
+                        }
+                        AsyncResult::Snoozed(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't load Snoozed: {e}"));
                         }
                         AsyncResult::OwedReplies(Ok((rows, people))) => {
                             if rows.is_empty() && !app.mailbox.owed_page.entries.is_empty() {

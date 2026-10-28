@@ -18,6 +18,7 @@ const VERBOSE_LOG_LINES: usize = 500;
 const GITHUB_ISSUE_URL: &str =
     "https://github.com/planetaryescape/mxr/issues/new?template=bug_report.yml";
 const GITHUB_BODY_LIMIT: usize = 8_000;
+const UNSANITIZED_WARNING: &str = "warning: this report is not sanitized. It may contain email addresses, names, subjects, message text and tokens. Read it before you share it.";
 
 #[derive(Debug, Clone)]
 pub struct BugReportOptions {
@@ -61,6 +62,7 @@ struct DaemonSummary {
 }
 
 pub async fn run(options: BugReportOptions) -> anyhow::Result<()> {
+    warn_if_unsanitized(&options);
     let report = generate_report_markdown(&options).await?;
 
     if options.stdout {
@@ -108,10 +110,22 @@ pub async fn run(options: BugReportOptions) -> anyhow::Result<()> {
     }
 
     if let Some(path) = output_path {
-        println!("Bug report saved to {}", path.display());
+        if options.no_sanitize {
+            println!("Bug report saved to {} (not sanitized)", path.display());
+        } else {
+            println!("Bug report saved to {}", path.display());
+        }
     }
 
     Ok(())
+}
+
+/// Stderr only, so `--stdout` piping and scripts see the same bytes.
+/// Never prompts or blocks: the user asked for the unsanitized report.
+fn warn_if_unsanitized(options: &BugReportOptions) {
+    if options.no_sanitize {
+        eprintln!("{UNSANITIZED_WARNING}");
+    }
 }
 
 pub async fn generate_report_markdown(options: &BugReportOptions) -> anyhow::Result<String> {

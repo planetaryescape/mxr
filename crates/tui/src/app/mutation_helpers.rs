@@ -116,6 +116,7 @@ impl App {
             | MutationEffect::StatusOnly(_)
             | MutationEffect::NextTime(_)
             | MutationEffect::RefreshPlaces(_)
+            | MutationEffect::FocusRestore { .. }
             | MutationEffect::SenderMoved(_)
             | MutationEffect::Todo(_)
             | MutationEffect::Records(_)
@@ -158,6 +159,11 @@ impl App {
         effect: MutationEffect,
         show_completion_status: bool,
     ) {
+        // Anything done from Snoozed (a wake, a new time, an archive, an
+        // undo) can change what is snoozed, so the list is fetched again.
+        if self.mailbox.mailbox_view == MailboxView::Snoozed {
+            self.mailbox.pending_snoozed_refresh = true;
+        }
         match effect {
             MutationEffect::RemoveFromList(id) => {
                 self.apply_removed_message_ids(std::slice::from_ref(&id));
@@ -280,6 +286,13 @@ impl App {
                     self.push_toast(Toast::success(msg));
                 }
             }
+            MutationEffect::FocusRestore { thread_id } => {
+                self.focus_restore(&thread_id);
+                self.refresh_places();
+                if show_completion_status {
+                    self.push_toast(Toast::success("Back in the queue"));
+                }
+            }
             MutationEffect::RefreshPlaces(msg) | MutationEffect::SenderMoved(msg) => {
                 self.refresh_places();
                 if show_completion_status && !msg.is_empty() {
@@ -307,7 +320,7 @@ impl App {
                     self.push_toast(Toast::success(status));
                 }
                 self.pending_promise_check = sent_message_id.clone();
-                self.advance_focus_run_after_send(draft_path.as_deref());
+                self.advance_focus_after_send(draft_path.as_deref());
                 if let Some(path) = draft_path {
                     self.schedule_draft_cleanup(path);
                 }
@@ -482,6 +495,7 @@ impl App {
             | MutationEffect::StatusOnly(_)
             | MutationEffect::NextTime(_)
             | MutationEffect::RefreshPlaces(_)
+            | MutationEffect::FocusRestore { .. }
             | MutationEffect::SenderMoved(_)
             | MutationEffect::Todo(_)
             | MutationEffect::Records(_)
@@ -620,6 +634,7 @@ impl App {
             prompt.error = Some(error.to_string());
         }
         let compose = self.compose.pending_send_mutations.remove(&id);
+        self.focus_mutation_failed(id);
         self.handle_mutation_reconciliation_failed(id);
         self.pending_optimistic.clear(id);
         self.reopen_hint_after_failure(id);
@@ -645,6 +660,9 @@ impl App {
         self.mailbox.pending_subscriptions_refresh = true;
         // A desk row taken off at once (Done) comes back.
         self.mailbox.pending_desk_refresh = true;
+        if self.mailbox.mailbox_view == MailboxView::Snoozed {
+            self.mailbox.pending_snoozed_refresh = true;
+        }
         if let Some(label_id) = self
             .mailbox
             .pending_active_label
@@ -673,6 +691,10 @@ impl App {
             .retain(|envelope| !ids.iter().any(|id| id == &envelope.id));
         self.mailbox
             .all_envelopes
+            .retain(|envelope| !ids.iter().any(|id| id == &envelope.id));
+        self.mailbox
+            .snoozed_page
+            .envelopes
             .retain(|envelope| !ids.iter().any(|id| id == &envelope.id));
         self.search
             .page
@@ -873,7 +895,7 @@ impl App {
         let source: &[Envelope] = if self.screen == Screen::Search {
             &self.search.page.results
         } else {
-            &self.mailbox.envelopes
+            self.mailbox_list_envelopes()
         };
         let tid = env.thread_id.clone();
         let mut ids: Vec<MessageId> = source
@@ -970,7 +992,7 @@ impl App {
         let source: &[Envelope] = if self.screen == Screen::Search {
             &self.search.page.results
         } else {
-            &self.mailbox.envelopes
+            self.mailbox_list_envelopes()
         };
         let ids: Vec<MessageId> = match self.mailbox.mail_list_mode {
             MailListMode::Threads => rows[start..=end]

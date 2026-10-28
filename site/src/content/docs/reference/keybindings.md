@@ -215,6 +215,7 @@ In the mail list, the reader, the sidebar and every mode.
 | `g Y` | Activity log |
 | `g L` | Daemon logs |
 | `g C` | Settings |
+| `g n` | Go to Snoozed |
 | `g #` | Go to Trash |
 | `g !` | Go to Spam |
 | `g q` | Reply later |
@@ -225,6 +226,7 @@ In the mail list, the reader, the sidebar and every mode.
 | `g R` | Rules |
 | `g D` | Diagnostics |
 | `g P` | Deliveries |
+| `g F` | Focus & reply |
 | `g x` | To do |
 | `@` | Show or hide the assistant |
 | `* t` | Pattern select thread |
@@ -292,6 +294,7 @@ Inbox, labels and saved searches.
 | `Ctrl+u`, `PageUp` | Half page up |
 | `→`, `o`, `Enter` | Open conversation |
 | `←`, `h` | Go to sidebar |
+| `w` | Wake: bring it back now |
 | `Esc` | Clear selection, then close |
 | `Ctrl+f` | Filter this list |
 | `S` | Show or hide signatures |
@@ -552,6 +555,7 @@ The briefing: the latest digest, one line per source, with what arrived since be
 | `L` | Open the link |
 | `y` | Copy the one-time code |
 | `o` | Open the email |
+| `Space` | Peek at this update under its line |
 | `s` | Pin or unpin this source's latest email |
 | `Esc` | Dismiss the hint |
 | `X` | Move to… |
@@ -652,6 +656,22 @@ The records lens, with the answer box focused.
 | `Esc` | Close |
 | `q` | Quit view |
 | `→` | Records open card |
+
+### Focus & reply
+
+`g F`: everyone you owe a reply, one conversation at a time. `r` writes the reply in `$EDITOR`, and Send in the review moves on to the next. The navigation keys above work here too.
+
+| Key | Action |
+|-----|--------|
+| `/` | Search mail |
+| `c` | Compose |
+| `u`, `z` | Undo last action |
+| `j` | Skip for now |
+| `e` | Done, no reply needed |
+| `b` | Not now… |
+| `d` | Draft in your voice |
+| `r` | Back to the reply |
+| `Esc`, `q` | Leave focus mode |
 
 ### Screener queue
 
@@ -1524,6 +1544,7 @@ The emails behind Now's arrivals line.
 
 | Key | Action |
 |-----|--------|
+| `w` | Wake: bring it back now |
 | `Esc`, `q` | Close |
 | `j`, `↓` | Move down |
 | `k`, `↑` | Move up |
@@ -1691,7 +1712,7 @@ Work on every page except while typing in a field or compose.
 | `g Y` | Activity log |  |
 | `g L` | Daemon logs |  |
 | `g C` | Settings | The TUI opens its Accounts screen, where its settings live; Edit config is in its palette |
-| `g n` | Go to Snoozed | The TUI has no Snoozed list; snoozed mail comes back to the Inbox when it wakes |
+| `g n` | Go to Snoozed |  |
 | `g #` | Go to Trash |  |
 | `g !` | Go to Spam |  |
 | `g q` | Reply later |  |
@@ -1702,7 +1723,7 @@ Work on every page except while typing in a field or compose.
 | `g R` | Rules |  |
 | `g D` | Diagnostics |  |
 | `g P` | Deliveries |  |
-| `g F` | Focus & reply | The TUI has no Focus page; it starts Focus & reply from the reply queue (g q, then F) |
+| `g F` | Focus & reply |  |
 | `g x` | To do |  |
 
 ### Mail actions
@@ -1752,7 +1773,7 @@ With a conversation open beside the list, the reader's view keys work from here 
 | `Ctrl+U`, `PageUp` | Half page up |  |
 | `Enter`, `o`, `ArrowRight` | Open conversation |  |
 | `h`, `ArrowLeft` | Go to sidebar |  |
-| `w` | This list's row action | The row action of the web's Snoozed and reply-queue pages; the TUI has no Snoozed list and its reply queue is a modal with its own keys |
+| `w` | Wake: bring it back now |  |
 | `x` | Select and move down |  |
 | `V` | Visual line mode |  |
 | `* a` | Select all |  |
@@ -1868,12 +1889,11 @@ One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out o
 |-----|--------|------|
 | `⌘Enter / Ctrl+Enter` | Send and next |  |
 | `j` | Skip for now | Goes to the end of the queue |
-| `e` | Done, no reply needed | e on the desk in the TUI |
+| `e` | Done, no reply needed |  |
 | `b` | Not now… |  |
-| `w` | Send, remind me if nobody replies… |  |
 | `d` | Draft in your voice |  |
 | `r` | Back to the reply |  |
-| `Esc` | Leave focus mode |  |
+| `Esc`, `q` | Leave focus mode |  |
 
 ### Now
 
@@ -2008,7 +2028,7 @@ Tasks that expired or were let go. `E` on To do opens it.
 | `L` | Open the link |  |
 | `y` | Copy the one-time code |  |
 | `o` | Open the email |  |
-| `Space` | Peek at this update under its line | The TUI shows each update's details on its line, so there is nothing to peek at |
+| `Space` | Peek at this update under its line |  |
 | `s` | Pin or unpin this source's latest email |  |
 | `Esc` | Dismiss the hint |  |
 

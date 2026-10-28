@@ -31,7 +31,7 @@ impl App {
         let source: &[Envelope] = if self.screen == Screen::Search {
             &self.search.page.results
         } else {
-            &self.mailbox.envelopes
+            self.mailbox_list_envelopes()
         };
         let mut seen: HashSet<&MessageId> = HashSet::new();
         let rows: Vec<BulkPreviewRow> = source

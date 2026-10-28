@@ -28,6 +28,7 @@ const CONTEXTS: &[&str] = &[
     "reading",
     "reading-reader",
     "updates",
+    "focus",
 ];
 
 /// A key a pane handles in place (scrolling, moving focus) without
@@ -228,6 +229,7 @@ fn app_in(context: &str) -> App {
             app.mailbox.reading_page.reader_focused = true;
         }
         "updates" => app.mailbox.mailbox_view = MailboxView::Updates,
+        "focus" => app.apply(Action::OpenFocus),
         "screener" => app.modals.screener.visible = true,
         other => panic!("unknown context {other}"),
     }

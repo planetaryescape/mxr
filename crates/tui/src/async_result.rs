@@ -75,6 +75,8 @@ pub(crate) enum AsyncResult {
     Labels(Result<Vec<Label>, MxrError>),
     AllEnvelopes(Result<Vec<Envelope>, MxrError>),
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
+    /// Snoozed (`ListSnoozed`) and the envelopes of what it lists.
+    Snoozed(Result<(Vec<mxr_core::types::Snoozed>, Vec<Envelope>), MxrError>),
     OwedReplies(
         Result<
             (
@@ -85,6 +87,12 @@ pub(crate) enum AsyncResult {
         >,
     ),
     Desk(Result<crate::app::DeskPageState, MxrError>),
+    /// Focus & reply's sources: the desk's You owe lane with the people
+    /// split, and the reply-later queue.
+    FocusQueue {
+        owed: Result<(mxr_protocol::DeskLaneData, mxr_protocol::PeopleSplitData), MxrError>,
+        reply_later: Result<Vec<Envelope>, MxrError>,
+    },
     /// Now and, when the daemon served it, its guide.
     /// Boxed: Now is large next to the other variants.
     Now(Result<Box<(mxr_protocol::NowData, Option<mxr_protocol::ModeGuideData>)>, MxrError>),

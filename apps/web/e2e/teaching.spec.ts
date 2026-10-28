@@ -183,7 +183,7 @@ test("? leads with the mode's job, then the keys", async ({ page }) => {
   await expect(modeHelp).toContainText("To do: Things email asked you to do");
   // The purpose is said once; the keys are the sheet's own list.
   await expect(modeHelp).toContainText("Each row is one thing to do");
-  await expect(help.getByText(/^Schedule/).first()).toBeVisible();
+  await expect(help.getByText(/^Not now: schedule/).first()).toBeVisible();
 });
 
 /** The runway itself, not the catch-up or any other To do route. */
@@ -331,8 +331,8 @@ test("? in Messages leads with the mode", async ({ page }) => {
   await expect(page.getByTestId("messages-row").first()).toBeVisible();
   await page.keyboard.press("?");
   const modeHelp = page.getByRole("dialog").getByTestId("mode-help");
-  await expect(modeHelp).toContainText("Messages: People you talk with");
-  await expect(modeHelp).toContainText("Each row is a person");
+  await expect(modeHelp).toContainText("Messages: Conversations that need your attention");
+  await expect(modeHelp).toContainText("grouped by person or conversation");
 });
 
 const PEOPLE_ROUTE = /\/api\/v1\/mail\/people(\?.*)?$/;

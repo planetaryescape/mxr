@@ -80,6 +80,12 @@ pub enum MailboxView {
     /// one row each, with the selected person's page beside them.
     /// (`Messages` above is the plain mail list.)
     People,
+    /// Focus & reply (`Request::GetDesk` and `Request::ListReplyQueue`):
+    /// everyone you owe a reply, one conversation at a time.
+    Focus,
+    /// Snoozed (`Request::ListSnoozed`): snoozed mail as a mail list, waking
+    /// soonest first, where `w` wakes the lit conversation.
+    Snoozed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,6 +195,8 @@ pub struct MailListRow {
     /// Where the email went (D119): "Reading", "Spam". Inbox shows it
     /// quietly; the selected row's full chip is in the list's title.
     pub mode_chip: Option<&'static str>,
+    /// In Snoozed: when the row comes back, shown in place of its date.
+    pub wake_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone)]
@@ -256,6 +264,15 @@ pub(crate) enum SidebarSelectionKey {
 #[derive(Debug, Clone, Default)]
 pub struct SubscriptionsPageState {
     pub entries: Vec<SubscriptionEntry>,
+}
+
+/// Snoozed mail as last fetched: the envelopes, waking soonest first, and
+/// when each wakes.
+#[derive(Debug, Clone, Default)]
+pub struct SnoozedPageState {
+    pub envelopes: Vec<Envelope>,
+    pub wake_at: HashMap<MessageId, chrono::DateTime<chrono::Utc>>,
+    pub loaded: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -652,6 +669,7 @@ pub struct MailboxState {
     pub saved_search_unread_counts: HashMap<mxr_core::id::SavedSearchId, u32>,
     pub subscriptions_page: SubscriptionsPageState,
     pub owed_page: OwedRepliesPageState,
+    pub snoozed_page: SnoozedPageState,
     pub desk_page: DeskPageState,
     /// To do (`GetTodoRunway`): the runway, its guide and its lists.
     pub todo_page: super::TodoPageState,
@@ -666,6 +684,7 @@ pub struct MailboxState {
     /// Reading (`GetReadingEdition`): the edition, the reader and its guide.
     pub reading_page: super::ReadingPageState,
     pub updates_page: super::UpdatesPageState,
+    pub focus_page: super::FocusPageState,
     /// The rail (`GetRail`): badges, counts and which modes are early.
     pub rail: Option<mxr_protocol::RailData>,
     pub pending_rail_refresh: bool,
@@ -678,6 +697,7 @@ pub struct MailboxState {
     pub pending_all_envelopes_refresh: bool,
     pub pending_subscriptions_refresh: bool,
     pub pending_owed_refresh: bool,
+    pub pending_snoozed_refresh: bool,
     pub pending_desk_refresh: bool,
     /// The place to (re)fetch for the place lens.
     pub pending_place_refresh: Option<mxr_protocol::MailPlaceData>,
@@ -787,6 +807,7 @@ impl MailboxState {
             saved_search_unread_counts: HashMap::new(),
             subscriptions_page: SubscriptionsPageState::default(),
             owed_page: OwedRepliesPageState::default(),
+            snoozed_page: SnoozedPageState::default(),
             desk_page: DeskPageState::default(),
             todo_page: super::TodoPageState::default(),
             records_page: super::RecordsPageState::default(),
@@ -795,6 +816,7 @@ impl MailboxState {
             messages_page: super::MessagesPageState::default(),
             reading_page: super::ReadingPageState::default(),
             updates_page: super::UpdatesPageState::default(),
+            focus_page: super::FocusPageState::default(),
             rail: None,
             pending_rail_refresh: false,
             place_page: PlacePageState::default(),
@@ -806,6 +828,7 @@ impl MailboxState {
             pending_all_envelopes_refresh: false,
             pending_subscriptions_refresh: false,
             pending_owed_refresh: false,
+            pending_snoozed_refresh: false,
             // Fetch once at startup so the sidebar badge is right before
             // the desk is first opened.
             pending_desk_refresh: true,

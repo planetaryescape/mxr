@@ -19,6 +19,7 @@ pub fn place_title(place: &str) -> Option<&'static str> {
         "reading" => "Reading",
         "reading-reader" => "Reading: the issue",
         "archive" => "Archive",
+        "focus" => "Focus & reply",
         "invites" => "Calendar invites",
         "search" => "Search results",
         "search-preview" => "Search preview",

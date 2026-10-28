@@ -164,6 +164,42 @@ echo spaced >'apps/web/src/file with spaces.ts'
 commit_all 'path with spaces'
 assert_scope push "$baseline" HEAD false true true false false
 
+# A release-please merge only bumps versions: the workspace version, each
+# workspace crate's Cargo.lock entry, the manifest, CHANGELOG and the OpenAPI
+# document under site/. It runs the docs build and nothing that compiles.
+write_release_files() {
+  local version="$1" serde_version="$2" serde_checksum="$3"
+  printf '[workspace.package]\nversion = "%s"\nedition = "2021"\n\n[workspace.dependencies]\nserde = "%s"\n' \
+    "$version" "$serde_version" >Cargo.toml
+  printf '# generated\nversion = 4\n\n[[package]]\nname = "mxr"\nversion = "%s"\ndependencies = [\n "mxr-core",\n "serde",\n]\n\n[[package]]\nname = "mxr-core"\nversion = "%s"\n\n[[package]]\nname = "serde"\nversion = "%s"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\nchecksum = "%s"\n' \
+    "$version" "$version" "$serde_version" "$serde_checksum" >Cargo.lock
+  printf '{\n  ".": "%s"\n}\n' "$version" >.release-please-manifest.json
+  mkdir -p site/public
+  printf '{\n  "info": {\n    "version": "%s"\n  }\n}\n' "$version" >site/public/openapi.json
+  echo "## $version" >>CHANGELOG.md
+}
+
+reset_fixture
+write_release_files 0.6.1 1.0.1 aaaa
+commit_all 'before the release'
+release_base="$(git rev-parse HEAD)"
+write_release_files 0.6.2 1.0.1 aaaa
+commit_all 'chore(main): release 0.6.2'
+assert_scope push "$release_base" HEAD false false false true false false
+
+# The same release with a real dependency bump in the lock file is Rust.
+git reset -q --hard "$release_base"
+write_release_files 0.6.2 1.0.2 bbbb
+commit_all 'chore(main): release 0.6.2'
+assert_scope push "$release_base" HEAD true false false true false true
+
+# So is a manifest change beyond the version, whatever the commit says.
+git reset -q --hard "$release_base"
+write_release_files 0.6.2 1.0.1 aaaa
+printf 'tokio = "1"\n' >>Cargo.toml
+commit_all 'chore(main): release 0.6.2'
+assert_scope push "$release_base" HEAD true false false true false true
+
 reset_fixture
 assert_scope push '' HEAD true true true true false true
 assert_scope push 0000000000000000000000000000000000000000 HEAD true true true true false true

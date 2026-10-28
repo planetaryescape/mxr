@@ -8,6 +8,7 @@ mod confirm_choice;
 mod deliveries;
 mod diagnostics;
 mod export_modal;
+mod focus;
 mod mailbox;
 mod messages;
 mod modals;
@@ -47,14 +48,15 @@ pub use diagnostics::{
     DiagnosticsPageState, DiagnosticsPaneKind, DiagnosticsState, RecoveryPreview,
 };
 pub use export_modal::{ExportDestination, ExportModalState, ExportStage, PendingExport};
+pub use focus::{FocusItem, FocusPageState, FocusProgress, FocusReply, FocusReturn, FocusSource};
 pub(in crate::app) use mailbox::PendingPreviewRead;
 pub(crate) use mailbox::SidebarSelectionKey;
 pub use mailbox::{
-    ActivePane, ArchiveStep, AttachmentOperation, AttachmentPanelState, AttachmentSummary,
-    BodySource, BodyViewMetadata, BodyViewMode, BodyViewState, CalendarInvitesPageState,
-    DeskPageState, LayoutMode, MailListMode, MailListRow, MailboxState, MailboxView,
-    OwedRepliesPageState, PendingAttachmentAction, PendingBrowserOpen, PendingSweepConfirm,
-    PlaceFetch, PlacePageState, SenderKindMenu, SidebarHeader, SidebarItem, SidebarSection,
+    ActivePane, ArchiveStep, AttachmentOperation, AttachmentPanelState, AttachmentSummary, BodySource,
+    BodyViewMetadata, BodyViewMode, BodyViewState, CalendarInvitesPageState, DeskPageState,
+    LayoutMode, MailListMode, MailListRow, MailboxState, MailboxView, OwedRepliesPageState,
+    PendingAttachmentAction, PendingBrowserOpen, PendingSweepConfirm, PlaceFetch, PlacePageState,
+    SenderKindMenu, SidebarHeader, SidebarItem, SidebarSection, SnoozedPageState,
     SubscriptionEntry, SubscriptionsPageState, SweepTarget, ThreadSummaryPreview,
     PLACE_PAGE_MESSAGES, PLACE_PAGE_SENDERS,
 };

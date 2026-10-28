@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { AlarmClockOff } from "lucide-react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { gistOrder, MailboxList, type MailboxListProps } from "./MailboxList";
@@ -335,6 +336,30 @@ describe("MailboxList palette actions", () => {
       route: { fromQueueLabel: "Follow Up" },
       target: { messageIds: ["msg-2"] },
     });
+  });
+});
+
+describe("MailboxList row action", () => {
+  test("w runs the list's row action on the lit row", () => {
+    const run = vi.fn<(row: MessageRowView) => void>();
+    renderList({
+      rowAction: { label: "Wake now", icon: AlarmClockOff, describe: () => "Wake", run },
+    });
+
+    type({ key: "j" }, { key: "w" });
+
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ id: "msg-2" }));
+  });
+
+  test("w on a list with no row action runs its own key handler and nothing else", () => {
+    const onRowActionKey = vi.fn<() => void>();
+    renderList({ onRowActionKey });
+
+    type({ key: "w" });
+
+    expect(onRowActionKey).toHaveBeenCalledOnce();
+    expect(api.archiveMessagesRecoverably).not.toHaveBeenCalled();
+    expect(usePendingMailOps.getState().ops).toEqual([]);
   });
 });
 

@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// The places both clients have, with the web scopes live in each,
 /// innermost first.
-const SHARED_PLACES: [(&str, &[&str]); 10] = [
+const SHARED_PLACES: [(&str, &[&str]); 11] = [
     ("list", &["list", "global"]),
     ("reader", &["reader", "global"]),
     ("sidebar", &["sidebar", "global"]),
@@ -30,6 +30,7 @@ const SHARED_PLACES: [(&str, &[&str]); 10] = [
     ("archive", &["archive", "global"]),
     ("updates", &["updates", "global"]),
     ("reading", &["reading", "global"]),
+    ("focus", &["focus", "global"]),
     // The TUI's screener is a modal that takes every key.
     ("screener", &["screener"]),
 ];

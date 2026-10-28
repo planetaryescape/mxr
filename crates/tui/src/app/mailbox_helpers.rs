@@ -71,6 +71,7 @@ impl App {
                     reply_later: false,
                     pending_mutation: false,
                     mode_chip: None,
+                    wake_at: None,
                 })
                 .collect(),
             MailListMode::Threads => {
@@ -98,6 +99,7 @@ impl App {
                             reply_later: false,
                             pending_mutation: false,
                             mode_chip: None,
+                            wake_at: None,
                         }
                     });
                     entry.message_count += 1;
@@ -204,7 +206,14 @@ impl App {
             MailListMode::Messages => "Messages",
         };
         let list_count = self.mail_row_count();
-        let base = if self.search.active {
+        let base = if self.mailbox.mailbox_view == MailboxView::Snoozed {
+            let loading = if self.mailbox.snoozed_page.loaded {
+                ""
+            } else {
+                " · loading"
+            };
+            format!("Snoozed {list_name} ({list_count}) · waking soonest first{loading}")
+        } else if self.search.active {
             format!("Search: {} ({list_count})", self.search.bar.query)
         } else if let Some(label_id) = self
             .mailbox
@@ -361,7 +370,7 @@ impl App {
                     .map(|entry| entry.envelope.clone())
                     .collect()
             } else {
-                self.mailbox.envelopes.clone()
+                self.mailbox_list_envelopes().to_vec()
             };
         let len = source_envelopes.len();
         if len == 0 {

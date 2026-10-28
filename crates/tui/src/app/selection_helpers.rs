@@ -11,22 +11,48 @@ impl App {
                 .map(|entry| &entry.envelope);
         }
 
+        let envelopes = self.mailbox_list_envelopes();
         match self.mailbox.mail_list_mode {
-            MailListMode::Messages => self.mailbox.envelopes.get(self.mailbox.selected_index),
-            MailListMode::Threads => self.selected_mail_row().and_then(|row| {
-                self.mailbox
-                    .envelopes
-                    .iter()
-                    .find(|env| env.id == row.representative.id)
-            }),
+            MailListMode::Messages => envelopes.get(self.mailbox.selected_index),
+            MailListMode::Threads => self
+                .selected_mail_row()
+                .and_then(|row| envelopes.iter().find(|env| env.id == row.representative.id)),
+        }
+    }
+
+    /// The envelopes the mailbox's mail list shows: Snoozed's own, or the
+    /// label, filter or all-mail list. Rows, selection and mutations all
+    /// read this, so they agree on what a row is.
+    pub(crate) fn mailbox_list_envelopes(&self) -> &[Envelope] {
+        if self.mailbox.mailbox_view == MailboxView::Snoozed {
+            &self.mailbox.snoozed_page.envelopes
+        } else {
+            &self.mailbox.envelopes
         }
     }
 
     pub fn mail_list_rows(&self) -> Vec<MailListRow> {
         let mut rows = self.with_pending_mutation_markers(Self::build_mail_list_rows(
-            &self.mailbox.envelopes,
+            self.mailbox_list_envelopes(),
             self.mailbox.mail_list_mode,
         ));
+        if self.mailbox.mailbox_view == MailboxView::Snoozed {
+            // A conversation wakes when its first snoozed message does.
+            let wakes = &self.mailbox.snoozed_page.wake_at;
+            for row in &mut rows {
+                row.wake_at = self
+                    .mailbox
+                    .snoozed_page
+                    .envelopes
+                    .iter()
+                    .filter(|env| match self.mailbox.mail_list_mode {
+                        MailListMode::Threads => env.thread_id == row.thread_id,
+                        MailListMode::Messages => env.id == row.representative.id,
+                    })
+                    .filter_map(|env| wakes.get(&env.id).copied())
+                    .min();
+            }
+        }
         let chips = &self.mailbox.trust.chips;
         if !chips.is_empty() {
             for row in &mut rows {
@@ -69,8 +95,7 @@ impl App {
         let mut reply_later_thread_ids: HashSet<mxr_core::ThreadId> = HashSet::new();
         if !pending_ids.is_empty() || !self.mailbox.reply_later_message_ids.is_empty() {
             for envelope in self
-                .mailbox
-                .envelopes
+                .mailbox_list_envelopes()
                 .iter()
                 .chain(self.search.page.results.iter())
             {
@@ -114,6 +139,7 @@ impl App {
                 | MutationEffect::StatusOnly(_)
                 | MutationEffect::NextTime(_)
                 | MutationEffect::RefreshPlaces(_)
+                | MutationEffect::FocusRestore { .. }
                 | MutationEffect::SenderMoved(_)
                 | MutationEffect::Todo(_)
                 | MutationEffect::Records(_)

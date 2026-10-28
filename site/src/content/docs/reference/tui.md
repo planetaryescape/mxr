@@ -100,6 +100,17 @@ continue in its mode. `gm` opens [Messages](/guides/messages/), `gx` opens
 Waiting on and New from people lanes. See the
 [keyboard reference](/reference/keybindings/#everywhere-in-mail) for navigation keys.
 
+## Focus & reply
+
+**Focus & reply** (`gF`) is the web app's queue of everyone you owe a reply,
+one conversation at a time: the desk's You owe lane, then the reply-later
+queue. It shows why the conversation is here and its newest message from
+them. `r` writes the reply in `$EDITOR`, and Send in the review moves on to
+the next one; `j` skips, `e` is Done, `b` is Not now and `d` drafts in your
+voice; sending with a reminder is in the palette. `Esc` or `q` goes back to where you
+opened it ([Reply to everyone you owe](/guides/focus-and-reply/#in-the-tui)).
+The keys are in the [keybindings reference](/reference/keybindings/#focus--reply).
+
 ## Updates
 
 **Updates** (`gu`) is the briefing lens: the latest digest in Needs a look,
@@ -107,7 +118,21 @@ Changed and Routine, one line per source, with what arrived after the cut
 below it ([Read Updates as a briefing](/guides/updates/)). `E` lets go of
 the digest after a preview, `e` lets go of one source, `t` makes a to-do
 from a line, `P` tunes the source, `L` opens the line's link and `o` the
-email. The keys are in the [keybindings reference](/reference/keybindings/#updates).
+email. `Space` opens the lit line's details under it, as the web app's peek
+does: the whole fact when the row cuts it, when the latest email arrived and
+its first lines, why the update is here, the numbers the mail quoted, a
+tracker's state, a parcel's items and references, and where `L` and `o` go.
+`Space` again or `Esc` closes them. The keys are in the
+[keybindings reference](/reference/keybindings/#updates).
+
+## Snoozed
+
+`g n` opens **Snoozed**: snoozed mail, waking soonest first, one row per
+conversation, with the wake time where the date usually is and "Back Fri 31
+Oct, 09:00" in place of the snippet. It is a mail list, so `Enter` opens the
+message and the list's keys act on the lit conversation. `w` wakes it now:
+every snoozed message in the conversation goes back to the inbox. `b` sends
+it away again. `mxr snoozed` and `mxr unsnooze` do the same from the CLI.
 
 ## Reading and Paper trail
 
@@ -300,9 +325,9 @@ them too.
   `q` cancels
 - Analytics filter modal
 - Reply-later queue browser: list of flagged messages and due reminders,
-  opened with **Reply queue** (`gq`). `F` there replies to each queued
-  message in turn, from the selected one: sending one reply opens the next
-  ([Focus & reply](/guides/focus-and-reply/)). Cancel a pending reminder
+  opened with **Reply queue** (`gq`). `F` there opens
+  [Focus & reply](/guides/focus-and-reply/) on the selected message. `w` takes the selected
+  message out of the queue, as the web app's **Done** does. Cancel a pending reminder
   from the focused sent message with the palette (`:`) → **Cancel no-reply reminder**
 - Promise prompt: after a send whose message promises something with a
   date, a toast asks "Remind me …?"; `y` keeps it as a reminder, `n` or

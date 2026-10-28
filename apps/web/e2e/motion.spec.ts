@@ -551,6 +551,7 @@ test("on a phone the compose sheet covers the tab bar and its actions stay on on
   expect(box!.y).toBeLessThanOrEqual(1);
   expect(box!.y + box!.height).toBeGreaterThanOrEqual(843);
   const send = await page.getByRole("button", { name: "Send", exact: true }).boundingBox();
-  const markdown = await page.getByRole("radio", { name: "Markdown" }).boundingBox();
-  expect(Math.abs(send!.y - markdown!.y)).toBeLessThan(20);
+  // The editor switch moved into Writing options, the row's last control.
+  const options = await page.getByRole("button", { name: "Writing options" }).boundingBox();
+  expect(Math.abs(send!.y - options!.y)).toBeLessThan(20);
 });

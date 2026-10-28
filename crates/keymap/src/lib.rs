@@ -30,7 +30,7 @@ pub const DEFAULT_KEYMAP: &str = include_str!("../keymap.toml");
 
 /// The mail contexts the TUI's keymap probe covers. A TUI binding with
 /// `contexts = "all"` is live in every one of them.
-pub const TUI_CONTEXTS: [&str; 14] = [
+pub const TUI_CONTEXTS: [&str; 15] = [
     "list",
     "reader",
     "sidebar",
@@ -45,6 +45,7 @@ pub const TUI_CONTEXTS: [&str; 14] = [
     "reading",
     "reading-reader",
     "updates",
+    "focus",
 ];
 
 /// TUI screens and overlays, and web rows, that read keys outside the
@@ -52,7 +53,7 @@ pub const TUI_CONTEXTS: [&str; 14] = [
 /// handler (`App::announce_moved`). The tool screens, Search and the
 /// assistant pane list their keys here too, for help and the docs; a TUI
 /// runner test holds them to what each handler does.
-pub const SCREEN_CONTEXTS: [&str; 23] = [
+pub const SCREEN_CONTEXTS: [&str; 24] = [
     "accounts",
     "assistant",
     "invites",
@@ -76,6 +77,8 @@ pub const SCREEN_CONTEXTS: [&str; 23] = [
     "search-preview",
     "search-editor",
     "assistant-input",
+    // The web's desk page: its list says where `w` (Done until K5) went.
+    "desk",
 ];
 
 /// Overlays: pickers, confirms, previews, prompts and sheets (blueprint 35,

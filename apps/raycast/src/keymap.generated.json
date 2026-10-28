@@ -80,12 +80,6 @@
     ],
     "key": "d"
   },
-  "focus.remind": {
-    "modifiers": [
-      "cmd"
-    ],
-    "key": "w"
-  },
   "focus.reply": {
     "modifiers": [
       "cmd"

@@ -7,9 +7,12 @@ use crate::{place_title, KeyAction, Keymap, TUI_CONTEXTS};
 use std::collections::BTreeSet;
 
 /// The mail contexts a key must work in to be listed once under
-/// "Everywhere in mail". The screener is a queue overlay with its own few keys.
+/// "Everywhere in mail". The screener is a queue overlay with its own few
+/// keys, and Focus & reply has no list to select in.
 fn mail_contexts() -> impl Iterator<Item = &'static str> {
-    TUI_CONTEXTS.into_iter().filter(|c| *c != "screener")
+    TUI_CONTEXTS
+        .into_iter()
+        .filter(|c| *c != "screener" && *c != "focus")
 }
 
 /// The places that show an email, whose shared verbs are listed once.
@@ -48,6 +51,10 @@ pub(crate) const PLACES: &[(&str, &str)] = &[
     ),
     ("reading-reader", "One item from the edition, open."),
     ("archive", "The records lens, with the answer box focused."),
+    (
+        "focus",
+        "`g F`: everyone you owe a reply, one conversation at a time. `r` writes the reply in `$EDITOR`, and Send in the review moves on to the next. The navigation keys above work here too.",
+    ),
     ("screener", "New senders waiting for a decision."),
     (
         "invites",

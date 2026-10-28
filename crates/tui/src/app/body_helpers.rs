@@ -558,6 +558,7 @@ impl App {
             .retain(|id| id != &message_id);
         self.mailbox.body_cache.insert(message_id.clone(), body);
         self.queue_html_assets_for_message(&message_id);
+        self.focus_body_arrived(&message_id);
 
         if self.mailbox.pending_browser_open_after_load.as_ref() == Some(&message_id) {
             self.mailbox.pending_browser_open_after_load = None;
@@ -619,6 +620,7 @@ impl App {
         if self.mailbox.pending_browser_open_after_load.as_ref() == Some(message_id) {
             self.mailbox.pending_browser_open_after_load = None;
         }
+        self.focus_body_failed(message_id, &message);
 
         if let Some(env) = self
             .mailbox

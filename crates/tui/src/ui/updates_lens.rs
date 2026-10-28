@@ -28,6 +28,8 @@ pub struct UpdatesView<'a> {
     /// doesn't read the clock.
     pub now: chrono::DateTime<chrono::Utc>,
     pub account_marks: crate::ui::account_mark::AccountMarks,
+    /// The peeked line's latest email as plain text, once fetched.
+    pub peek_body: Option<&'a str>,
 }
 
 /// What follows the fact: a delta, estimate, identity, time and "in To do".
@@ -254,6 +256,19 @@ fn body_for(
                         width.saturating_sub(8),
                     ) {
                         body.text(format!("    {text}"), Style::default().fg(theme.accent));
+                    }
+                }
+                if view.page.peek.as_deref() == Some(line.id.as_str()) {
+                    let peek = crate::ui::updates_peek::peek_lines(
+                        line,
+                        view.peek_body,
+                        view.now,
+                        crate::ui::received_label::DisplayZone::Local,
+                    );
+                    for item in peek {
+                        for text in wrap(&item, width.saturating_sub(10)) {
+                            body.text(format!("    \u{2502} {text}"), secondary);
+                        }
                     }
                 }
             }
@@ -697,6 +712,7 @@ pub(crate) mod tests {
                     selected_index: 0,
                     active_pane: &ActivePane::MailList,
                     account_marks: crate::ui::account_mark::AccountMarks::default(),
+                    peek_body: None,
                 },
                 &theme,
             );

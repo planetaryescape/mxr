@@ -398,6 +398,7 @@ impl App {
             MailboxView::ArchiveMode => {
                 mailbox.records_page.answer.is_some() || mailbox.records_page.card.is_some()
             }
+            MailboxView::Focus => true,
             _ => false,
         }
     }
@@ -645,6 +646,7 @@ impl App {
                 (KeyCode::Char('F'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::ReplyQueueModalFocus)
                 }
+                (KeyCode::Char('w'), KeyModifiers::NONE) => Some(Action::Wake),
                 _ => None,
             };
         }
@@ -1866,6 +1868,9 @@ impl App {
             ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::Updates => {
                 self.updates_lens_key(key)
             }
+            ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::Focus => {
+                self.focus_page_key(key)
+            }
             ActivePane::MailList => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
@@ -1884,6 +1889,8 @@ impl App {
                 (KeyCode::Char('P'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenSenderMoveMenu)
                 }
+                // Wake: the list's row action, as the web's (live in Snoozed).
+                (KeyCode::Char('w'), KeyModifiers::NONE) => Some(Action::Wake),
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },

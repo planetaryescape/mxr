@@ -30,6 +30,7 @@ impl App {
             }
             MailboxView::Reading => "reading",
             MailboxView::ArchiveMode => "archive",
+            MailboxView::Focus => "focus",
             _ => return None,
         })
     }
@@ -55,6 +56,19 @@ impl App {
                     },
                     Vec::new(),
                 )
+            }
+            "focus" => {
+                let page = &self.mailbox.focus_page;
+                if page.current().is_some() {
+                    ("focus", Vec::new())
+                } else {
+                    // The end: leave, or `j` for the ones set aside.
+                    let mut omit = vec!["focus.reply", "focus.done", "focus.snooze", "focus.draft"];
+                    if page.deferred.is_empty() {
+                        omit.push("focus.skip");
+                    }
+                    ("focus", omit)
+                }
             }
             "catchup" => ("catchup", Vec::new()),
             "expired" => ("expired", Vec::new()),

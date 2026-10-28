@@ -97,7 +97,7 @@ impl App {
                                 self.status_message = Some("Showing full message view".into());
                             }
                         }
-                        MailboxView::Messages => {
+                        MailboxView::Messages | MailboxView::Snoozed => {
                             if let Some(row) = self.selected_mail_row() {
                                 self.open_envelope(row.representative);
                                 self.mailbox.layout_mode = LayoutMode::FullScreen;
@@ -138,6 +138,8 @@ impl App {
                         MailboxView::Reading => {
                             self.apply(Action::ReadingRead);
                         }
+                        // One conversation, already on screen.
+                        MailboxView::Focus => {}
                     }
                 }
             }

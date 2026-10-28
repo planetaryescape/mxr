@@ -22,6 +22,7 @@ pub mod drafts_modal;
 pub mod error_modal;
 pub mod expert_modal;
 pub mod export_modal;
+pub mod focus_lens;
 pub(crate) mod help_keys;
 pub mod help_modal;
 pub mod hint_bar;
@@ -66,6 +67,7 @@ pub mod toasts;
 pub mod todo_lens;
 pub mod unsubscribe_modal;
 pub mod updates_lens;
+pub mod updates_peek;
 pub mod url_modal;
 pub mod whois_modal;
 

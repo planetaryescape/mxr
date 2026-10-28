@@ -2151,6 +2151,47 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if app.mailbox.pending_snoozed_refresh {
+            app.mailbox.pending_snoozed_refresh = false;
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                // The web's Snoozed page makes the same two requests.
+                let snoozed = match ipc_call(&bg, Request::ListSnoozed).await {
+                    Ok(Response::Ok {
+                        data: ResponseData::SnoozedMessages { snoozed },
+                    }) => snoozed,
+                    Ok(Response::Error { message, .. }) => {
+                        return AsyncResult::Snoozed(Err(MxrError::Ipc(message)));
+                    }
+                    Err(e) => return AsyncResult::Snoozed(Err(e)),
+                    _ => {
+                        return AsyncResult::Snoozed(Err(MxrError::Ipc(
+                            "unexpected response to ListSnoozed".into(),
+                        )));
+                    }
+                };
+                if snoozed.is_empty() {
+                    return AsyncResult::Snoozed(Ok((snoozed, Vec::new())));
+                }
+                let message_ids = snoozed
+                    .iter()
+                    .map(|entry| entry.message_id.clone())
+                    .collect();
+                let result = match ipc_call(&bg, Request::ListEnvelopesByIds { message_ids }).await
+                {
+                    Ok(Response::Ok {
+                        data: ResponseData::Envelopes { envelopes },
+                    }) => Ok((snoozed, envelopes)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc(
+                        "unexpected response to ListEnvelopesByIds".into(),
+                    )),
+                };
+                AsyncResult::Snoozed(result)
+            });
+        }
+
         if app.mailbox.pending_owed_refresh {
             app.mailbox.pending_owed_refresh = false;
             let bg = bg.clone();
@@ -2196,6 +2237,40 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                 };
                 AsyncResult::Desk(result)
+            });
+        }
+
+        if std::mem::take(&mut app.mailbox.focus_page.pending_refresh) {
+            let owed_only = app.mailbox.focus_page.owed_only;
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let owed = async {
+                    match ipc_call(&bg, crate::app::focus_desk_request()).await {
+                        Ok(Response::Ok {
+                            data: ResponseData::Desk { owed, people, .. },
+                        }) => Ok((owed, people)),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Ok(_) => Err(MxrError::Ipc("unexpected response to GetDesk".into())),
+                        Err(e) => Err(e),
+                    }
+                };
+                let reply_later = async {
+                    if owed_only {
+                        return Ok(Vec::new());
+                    }
+                    match ipc_call(&bg, Request::ListReplyQueue).await {
+                        Ok(Response::Ok {
+                            data: ResponseData::ReplyQueue { messages },
+                        }) => Ok(messages),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Ok(_) => Err(MxrError::Ipc(
+                            "unexpected response to ListReplyQueue".into(),
+                        )),
+                        Err(e) => Err(e),
+                    }
+                };
+                let (owed, reply_later) = futures::join!(owed, reply_later);
+                AsyncResult::FocusQueue { owed, reply_later }
             });
         }
 
@@ -4498,6 +4573,7 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::ComposeReady(Err(e)) => {
                             app.compose.assist_after_editor = false;
+                            app.compose.remind_after_editor = false;
                             app.status_message = Some(format!("Compose error: {e}"));
                         }
                         AsyncResult::DraftEditReady(Ok(data)) => {
@@ -4588,6 +4664,12 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::Subscriptions(Err(e)) => {
                             app.status_message = Some(format!("Subscriptions error: {e}"));
+                        }
+                        AsyncResult::Snoozed(Ok((snoozed, envelopes))) => {
+                            app.set_snoozed(snoozed, envelopes);
+                        }
+                        AsyncResult::Snoozed(Err(e)) => {
+                            app.status_message = Some(format!("Couldn't load Snoozed: {e}"));
                         }
                         AsyncResult::OwedReplies(Ok((rows, people))) => {
                             if rows.is_empty() && !app.mailbox.owed_page.entries.is_empty() {
@@ -4767,6 +4849,9 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::TodoResolutionPreview(_, _, Err(e)) => {
                             app.status_message = Some(format!("Couldn't review that resolution: {e}"));
+                        }
+                        AsyncResult::FocusQueue { owed, reply_later } => {
+                            app.set_focus_sources(owed, reply_later);
                         }
                         AsyncResult::Desk(Ok(desk)) => app.set_desk(desk),
                         AsyncResult::Desk(Err(e)) => {

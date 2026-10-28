@@ -38,7 +38,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -72,7 +73,8 @@
             "messages",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -107,7 +109,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -142,7 +145,8 @@
             "reading-reader",
             "updates",
             "search",
-            "search-preview"
+            "search-preview",
+            "focus"
           ]
         }
       ]
@@ -181,7 +185,17 @@
             "updates",
             "search",
             "search-preview",
-            "arrivals-list"
+            "arrivals-list",
+            "focus"
+          ]
+        },
+        {
+          "name": "UndoLastMutation",
+          "keys": [
+            "z"
+          ],
+          "contexts": [
+            "focus"
           ]
         }
       ],
@@ -217,7 +231,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -252,7 +267,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -287,7 +303,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -344,7 +361,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -390,7 +408,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -425,7 +444,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         },
         {
@@ -446,7 +466,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -480,7 +501,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -514,7 +536,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -549,7 +572,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -605,7 +629,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -640,7 +665,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -674,7 +700,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -708,7 +735,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -764,7 +792,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -799,7 +828,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -843,9 +873,29 @@
       "keys": [
         "g n"
       ],
-      "note": "The TUI has no Snoozed list; snoozed mail comes back to the Inbox when it wakes",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "OpenSnoozed",
+          "keys": [
+            "g n"
+          ],
+          "contexts": [
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates",
+            "focus"
+          ]
+        }
       ]
     },
     {
@@ -877,7 +927,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -911,7 +962,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -945,7 +997,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -979,7 +1032,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1013,7 +1067,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -1057,7 +1112,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1107,7 +1163,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -1216,7 +1273,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -1294,7 +1352,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -1383,7 +1442,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -1440,7 +1500,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1475,7 +1536,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1510,7 +1572,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1545,7 +1608,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1580,7 +1644,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1615,7 +1680,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1650,7 +1716,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1685,7 +1752,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1720,7 +1788,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -2080,6 +2149,15 @@
             "search",
             "search-preview"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "w",
+          "contexts": [
+            "desk"
+          ],
+          "until": "0.6.206"
         }
       ]
     },
@@ -3655,9 +3733,9 @@
     },
     {
       "id": "list.row-action",
-      "label": "This list's row action",
-      "short_label": "Row action",
-      "description": "Wake now in Snoozed, Done in the reply queue",
+      "label": "Wake: bring it back now",
+      "short_label": "Wake",
+      "description": "Snoozed: back in the inbox now. Reply later: out of the queue",
       "group": "Mail",
       "scopes": [
         "list"
@@ -3666,9 +3744,17 @@
         "w"
       ],
       "hide_in_palette": true,
-      "note": "The row action of the web's Snoozed and reply-queue pages; the TUI has no Snoozed list and its reply queue is a modal with its own keys",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "Wake",
+          "keys": [
+            "w"
+          ],
+          "contexts": [
+            "list",
+            "reply-queue"
+          ]
+        }
       ]
     },
     {
@@ -4798,9 +4884,29 @@
       "keys": [
         "g F"
       ],
-      "note": "The TUI has no Focus page; it starts Focus & reply from the reply queue (g q, then F)",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "OpenFocus",
+          "keys": [
+            "g F"
+          ],
+          "contexts": [
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates",
+            "focus"
+          ]
+        }
       ]
     },
     {
@@ -4827,6 +4933,17 @@
         "j"
       ],
       "note": "Goes to the end of the queue",
+      "tui": [
+        {
+          "name": "FocusSkip",
+          "keys": [
+            "j"
+          ],
+          "contexts": [
+            "focus"
+          ]
+        }
+      ],
       "moved": [
         {
           "key": "s",
@@ -4847,7 +4964,17 @@
       "keys": [
         "e"
       ],
-      "note": "e on the desk in the TUI"
+      "tui": [
+        {
+          "name": "FocusDone",
+          "keys": [
+            "e"
+          ],
+          "contexts": [
+            "focus"
+          ]
+        }
+      ]
     },
     {
       "id": "focus.snooze",
@@ -4859,6 +4986,17 @@
       ],
       "keys": [
         "b"
+      ],
+      "tui": [
+        {
+          "name": "Snooze",
+          "keys": [
+            "b"
+          ],
+          "contexts": [
+            "focus"
+          ]
+        }
       ],
       "moved": [
         {
@@ -4878,8 +5016,24 @@
       "scopes": [
         "focus"
       ],
-      "keys": [
-        "w"
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "FocusRemind",
+          "keys": [],
+          "contexts": [
+            "focus"
+          ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "w",
+          "contexts": [
+            "focus"
+          ],
+          "until": "0.6.206"
+        }
       ]
     },
     {
@@ -4892,11 +5046,23 @@
       ],
       "keys": [
         "d"
+      ],
+      "tui": [
+        {
+          "name": "FocusDraft",
+          "keys": [
+            "d"
+          ],
+          "contexts": [
+            "focus"
+          ]
+        }
       ]
     },
     {
       "id": "focus.reply",
       "label": "Back to the reply",
+      "short_label": "Reply",
       "group": "Compose",
       "scopes": [
         "focus"
@@ -4904,7 +5070,18 @@
       "keys": [
         "r"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "FocusReply",
+          "keys": [
+            "r"
+          ],
+          "contexts": [
+            "focus"
+          ]
+        }
+      ]
     },
     {
       "id": "focus.leave",
@@ -4914,9 +5091,23 @@
         "focus"
       ],
       "keys": [
-        "Escape"
+        "Escape",
+        "q"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "FocusLeave",
+          "keys": [
+            "Escape",
+            "q"
+          ],
+          "contexts": [
+            "focus"
+          ]
+        }
+      ],
+      "raycast_key": ""
     },
     {
       "id": "place.down",
@@ -5177,7 +5368,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -7998,9 +8190,16 @@
       "keys": [
         "Space"
       ],
-      "note": "The TUI shows each update's details on its line, so there is nothing to peek at",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "UpdatesPeek",
+          "keys": [
+            "Space"
+          ],
+          "contexts": [
+            "updates"
+          ]
+        }
       ]
     },
     {
@@ -8467,7 +8666,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -15824,6 +16024,17 @@
         "todo.catchup-let-go",
         "todo.catchup-let-go-all",
         "todo.catchup-back"
+      ]
+    },
+    {
+      "id": "focus",
+      "actions": [
+        "focus.reply",
+        "focus.skip",
+        "focus.done",
+        "focus.snooze",
+        "focus.draft",
+        "focus.leave"
       ]
     },
     {

@@ -218,6 +218,9 @@ pub struct ComposeState {
     pub voice_source_request_id: u64,
     pub assist_request_id: u64,
     pub assist_after_editor: bool,
+    /// Open the send review on "remind me if nobody replies" once the
+    /// editor closes (Focus & reply's `w`).
+    pub remind_after_editor: bool,
     pub model_picker: Option<ComposeModelPicker>,
     pub pending_send_at_input: Option<String>,
     pub pending_remind_at_input: Option<String>,

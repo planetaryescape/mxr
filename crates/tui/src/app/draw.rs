@@ -339,6 +339,8 @@ impl App {
                                 },
                                 theme,
                             );
+                        } else if self.mailbox.mailbox_view == MailboxView::Focus {
+                            ui::focus_lens::draw(frame, chunks[1], &self.focus_view(), theme);
                         } else if self.mailbox.mailbox_view == MailboxView::People {
                             ui::messages_lens::draw(frame, chunks[1], &self.messages_view(), theme);
                         } else if self.mailbox.mailbox_view == MailboxView::Updates {
@@ -351,6 +353,7 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                     account_marks: account_marks.clone(),
+                                    peek_body: self.updates_peek_body(),
                                 },
                                 theme,
                             );
@@ -519,6 +522,8 @@ impl App {
                                 },
                                 theme,
                             );
+                        } else if self.mailbox.mailbox_view == MailboxView::Focus {
+                            ui::focus_lens::draw(frame, chunks[1], &self.focus_view(), theme);
                         } else if self.mailbox.mailbox_view == MailboxView::People {
                             ui::messages_lens::draw(frame, chunks[1], &self.messages_view(), theme);
                         } else if self.mailbox.mailbox_view == MailboxView::Updates {
@@ -531,6 +536,7 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                     account_marks: account_marks.clone(),
+                                    peek_body: self.updates_peek_body(),
                                 },
                                 theme,
                             );

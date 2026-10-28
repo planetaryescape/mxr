@@ -33,3 +33,7 @@ Resolved. Replies said "Q1 Report review" and the user had to go and find it. Th
 ## The TUI can't open a linked email
 
 Resolved. The latest reply with links numbers them after their words, "Q1 report [1]" (the same email keeps one number, up to nine), and with no question waiting `1`-`9` opens one: an email in the reader at its latest message, wherever it now is, and a person selected in Messages, or a note when Messages doesn't list them. The pane stays open and the keys go to the screen. Other replies keep their links as words, so a number only ever means one link; a later reply without links ("anything else?") leaves the earlier one's numbers in place. A step's readout rows still show as words in the TUI.
+
+## A provider's error body filled the panel
+
+Resolved in v0.6.153 (#677). A turn sent no output cap, so OpenRouter reserved Claude Sonnet 5.5's whole 65,536-token output and answered `402 Payment Required` for a key that could afford 62,047; the panel showed that JSON body as the error. Each model call now asks for at most 16,384 tokens (`Limits::default`, `crates/assistant/src/turn.rs`). `plain_error` (`crates/daemon/src/assistant/view.rs`) turns a 402 about credits into "The model's provider wants more credits for this request", and any other unknown error over 200 characters or containing JSON into "The model's provider returned an error". The raw text stays under **Details**.

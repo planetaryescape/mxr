@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.177](https://github.com/planetaryescape/mxr/compare/v0.6.176...v0.6.177) (2026-10-28)
+
+
+### Bug Fixes
+
+* make +word an exact-word match in rules and say what search does ([#756](https://github.com/planetaryescape/mxr/issues/756)) ([a7b8abf](https://github.com/planetaryescape/mxr/commit/a7b8abf58632db45a26f3f757a4904728e937caa))
+
 ## [0.6.176](https://github.com/planetaryescape/mxr/compare/v0.6.175...v0.6.176) (2026-10-28)
 
 

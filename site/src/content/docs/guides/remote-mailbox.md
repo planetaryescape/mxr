@@ -22,7 +22,7 @@ mxr serve --foreground --listen 127.0.0.1:18741 --dry-run --format json
 mxr serve --foreground --listen 127.0.0.1:18741
 ```
 
-The gateway binds only to loopback and uses this computer's local daemon. A saved remote selection does not change which daemon it serves. Keep both terminals open. Use the same mxr version on host and clients; this connection requires IPC protocol 15. Upgrade the host and clients together; old pairings retain read-only authority.
+The gateway binds only to loopback and uses this computer's local daemon. A saved remote selection does not change which daemon it serves. Keep both terminals open. Use the same mxr version on host and clients; the host daemon must report the same IPC protocol version as the client (`protocol_version` in `mxr status --format json`). Upgrade the host and clients together; old pairings retain read-only authority.
 
 `mxr daemon` and `mxr restart` manage the current computer's local daemon even when a saved remote connection is selected. Run host lifecycle commands on the host computer.
 

@@ -51,9 +51,10 @@ use crate::commands::resolve_optional_account;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use helpers::{
-    confirm_action, print_batch_mutation_output, print_dry_run_output, requires_confirmation,
-    resolve_mutation_selection, resolve_mutation_selection_with_limit, run_simple_mutation,
-    selection_counts, BatchMutationError, MutationRunOptions, MutationSelection,
+    confirm_action, confirm_selection, print_batch_mutation_output, print_dry_run_output,
+    requires_confirmation, resolve_mutation_selection, resolve_mutation_selection_with_limit,
+    run_simple_mutation, selection_counts, BatchMutationError, MutationRunOptions,
+    MutationSelection,
 };
 use mxr_core::types::UnsubscribeMethod;
 use mxr_protocol::*;
@@ -240,16 +241,14 @@ pub async fn archive(
         })
         .await?;
     if dry_run {
-        return archive::print_operation(&operation, format);
+        return archive::print_selected_operation(&operation, format, selection.capped, true);
     }
-    if requires_confirmation(false, selection.used_search, selection.ids.len(), yes) {
-        confirm_action("archive", &selection)?;
-    }
+    confirm_selection("archive", &selection, false, yes)?;
     let operation_id = operation.identity.operation_id.clone();
     let result = client.submit_archive(&operation, !async_job).await;
     match result {
         Ok(operation) => {
-            archive::print_operation(&operation, format)?;
+            archive::print_selected_operation(&operation, format, selection.capped, false)?;
             if !async_job {
                 archive::require_confirmed_completion(&operation)?;
             }
@@ -684,9 +683,7 @@ pub async fn snooze(
         print_dry_run_output(&action, &selection, format)?;
         return Ok(());
     }
-    if requires_confirmation(false, selection.used_search, selection.ids.len(), yes) {
-        confirm_action(&action, &selection)?;
-    }
+    confirm_selection(&action, &selection, false, yes)?;
     let mut succeeded = 0usize;
     let mut errors = Vec::new();
     for id in &selection.ids {
@@ -1034,9 +1031,7 @@ pub async fn unsubscribe(
         print_dry_run_output("unsubscribe", &selection, format)?;
         return Ok(());
     }
-    if requires_confirmation(true, selection.used_search, selection.ids.len(), yes) {
-        confirm_action("unsubscribe", &selection)?;
-    }
+    confirm_selection("unsubscribe", &selection, true, yes)?;
     let mut succeeded = 0usize;
     let mut errors = Vec::new();
     for id in &selection.ids {
@@ -1164,6 +1159,7 @@ async fn unsubscribe_purge(
                 ids: preview.message_ids.clone(),
                 envelopes: Vec::new(),
                 used_search: true,
+                capped: None,
             },
         )?;
     }

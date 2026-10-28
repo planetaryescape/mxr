@@ -328,6 +328,33 @@ records, for every message whose envelope resolved. The value is `OneClick`,
 {"action":"archive","dry_run":true,"message_id":"019706f4-9b6e-7c31-8a3f-2a1c4de50b91","from":"Alice","subject":"Quarterly review"}
 ```
 
+### Searches that match more than 1,000 messages
+
+A `--search` selection holds at most the newest 1,000 matches, whatever
+`search.default_mode` is: it always searches lexically, newest first. When the
+daemon reports more visible matches than that, the dry-run preview, the result
+and the archive object gain one field, in addition to the ones shown here
+(`--format jsonl` repeats it on each line):
+
+```json
+{ "capped": true }
+```
+
+The field is absent when the selection holds every match and for explicit or
+piped IDs, which have no cap. There is no count of the matches left out: the
+daemon can tell whether another visible match exists, not how many. The same
+notice goes to stderr before any change, or into the dry-run preview and
+confirmation prompt in table output:
+
+```text
+More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest.
+```
+
+`mxr unsubscribe <address>` reports it per address: the address's entry in
+`addresses` carries `capped`, and the top level carries it when any address
+does. With `--format jsonl`, each dry-run line of a capped address carries
+`capped`. The request it sends still comes from the newest message.
+
 ## Mutation result
 
 Archive, trash, spam, read, star, label, and move report the selection at the

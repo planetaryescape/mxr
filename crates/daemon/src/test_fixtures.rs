@@ -310,3 +310,228 @@ pub(crate) fn make_empty_body(message_id: &MessageId) -> MessageBody {
         metadata: MessageMetadata::default(),
     }
 }
+
+// -- Fake daemon for bulk selection -------------------------------------------
+
+/// A daemon that answers only what a `--search` bulk command sends: the
+/// search, the envelope lookup, the unsubscribe plan and the mutation. It holds
+/// `matching` messages newest first and returns the first `limit` of them,
+/// with `has_more` set when more remain, the way the real daemon pages a
+/// search. Tests drive the production
+/// selection and mutation code through a real `IpcClient` against it.
+pub(crate) struct FakeBulkDaemon {
+    _dir: tempfile::TempDir,
+    socket: std::path::PathBuf,
+    /// The messages the search matches, newest first.
+    pub(crate) message_ids: Vec<MessageId>,
+    /// Every request that arrived, in order.
+    pub(crate) requests: std::sync::Arc<std::sync::Mutex<Vec<mxr_protocol::Request>>>,
+    /// A label per request as it arrives, shared with `NoticeSink` so a test can
+    /// see whether a notice was written before a mutation request arrived.
+    pub(crate) events: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl FakeBulkDaemon {
+    pub(crate) fn start(matching: usize) -> Self {
+        Self::start_with_total(matching, matching)
+    }
+
+    /// Like [`Self::start`], but the search reports `total` as its match count
+    /// whatever `matching` is. The real total is an estimate; `has_more` is the
+    /// exact signal and always follows `matching`.
+    pub(crate) fn start_with_total(matching: usize, total: usize) -> Self {
+        use futures::{SinkExt, StreamExt};
+        use mxr_protocol::{ClientKind, IpcCodec, IpcMessage, IpcPayload, Request, Response};
+
+        let dir = tempfile::tempdir().expect("temporary socket directory");
+        let socket = dir.path().join("d.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).expect("bind fake daemon");
+        let message_ids: Vec<MessageId> = (0..matching).map(|_| MessageId::new()).collect();
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        let served_ids = message_ids.clone();
+        let served_requests = requests.clone();
+        let served_events = events.clone();
+        tokio::spawn(async move {
+            let Ok((stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut framed = tokio_util::codec::Framed::new(stream, IpcCodec::new());
+            while let Some(Ok(message)) = framed.next().await {
+                let IpcPayload::Request(request) = message.payload else {
+                    continue;
+                };
+                served_requests
+                    .lock()
+                    .expect("request log")
+                    .push(request.clone());
+                let (label, response) = match request {
+                    Request::Search { limit, .. } => (
+                        "search",
+                        Response::Ok {
+                            data: mxr_protocol::ResponseData::SearchResults {
+                                results: served_ids
+                                    .iter()
+                                    .take(limit as usize)
+                                    .map(|id| mxr_protocol::SearchResultItem {
+                                        message_id: id.clone(),
+                                        account_id: AccountId::new(),
+                                        thread_id: ThreadId::new(),
+                                        score: 1.0,
+                                        mode: SearchMode::Lexical,
+                                    })
+                                    .collect(),
+                                total: total as u32,
+                                has_more: served_ids.len() > limit as usize,
+                                next_offset: None,
+                                explain: None,
+                                limit: Some(limit),
+                                degraded: None,
+                            },
+                        },
+                    ),
+                    Request::ListEnvelopesByIds { message_ids } => (
+                        "envelopes",
+                        Response::Ok {
+                            data: mxr_protocol::ResponseData::Envelopes {
+                                envelopes: message_ids
+                                    .into_iter()
+                                    .map(|id| {
+                                        let mut envelope = TestEnvelopeBuilder::new().build();
+                                        envelope.id = id;
+                                        envelope
+                                    })
+                                    .collect(),
+                            },
+                        },
+                    ),
+                    Request::PlanUnsubscribe { message_ids } => (
+                        "plan",
+                        Response::Ok {
+                            data: mxr_protocol::ResponseData::UnsubscribePlan {
+                                plan: mxr_protocol::UnsubscribePlanData {
+                                    matched_messages: message_ids.len() as u32,
+                                    request: message_ids.first().map(|id| {
+                                        mxr_protocol::UnsubscribePlanRequestData {
+                                            message_id: id.clone(),
+                                            method: UnsubscribeMethod::HttpLink {
+                                                url: "https://example.com/unsubscribe".into(),
+                                            },
+                                        }
+                                    }),
+                                    already_unsubscribed: false,
+                                },
+                            },
+                        },
+                    ),
+                    Request::Unsubscribe { .. } => (
+                        "unsubscribe",
+                        Response::Ok {
+                            data: mxr_protocol::ResponseData::Ack,
+                        },
+                    ),
+                    Request::Mutation { .. } => (
+                        "mutation",
+                        Response::Ok {
+                            data: mxr_protocol::ResponseData::Ack,
+                        },
+                    ),
+                    Request::StartMutationJob { .. } => (
+                        "mutation",
+                        Response::Ok {
+                            data: mxr_protocol::ResponseData::JobStarted {
+                                job: serde_json::from_value(serde_json::json!({
+                                    "job_id": "job-1",
+                                    "kind": "mutation",
+                                    "status": "running",
+                                    "progress": {
+                                        "total": 0, "completed": 0, "succeeded": 0,
+                                        "skipped": 0, "failed": 0
+                                    },
+                                    "started_at": 0
+                                }))
+                                .expect("job fixture"),
+                            },
+                        },
+                    ),
+                    other => unreachable!("the fake bulk daemon was sent {other:?}"),
+                };
+                served_events
+                    .lock()
+                    .expect("event log")
+                    .push(label.to_owned());
+                let reply = IpcMessage {
+                    expected_workspace: None,
+                    id: message.id,
+                    source: ClientKind::Daemon,
+                    payload: IpcPayload::Response(response),
+                };
+                if framed.send(reply).await.is_err() {
+                    return;
+                }
+            }
+        });
+
+        Self {
+            _dir: dir,
+            socket,
+            message_ids,
+            requests,
+            events,
+        }
+    }
+
+    pub(crate) async fn client(&self) -> crate::ipc_client::IpcClient {
+        crate::ipc_client::IpcClient::connect_to(&self.socket)
+            .await
+            .expect("connect to fake bulk daemon")
+    }
+
+    pub(crate) fn search_requests(&self) -> Vec<mxr_protocol::Request> {
+        self.requests
+            .lock()
+            .expect("request log")
+            .iter()
+            .filter(|request| matches!(request, mxr_protocol::Request::Search { .. }))
+            .cloned()
+            .collect()
+    }
+
+    /// A notice sink that records into the same log as the requests.
+    pub(crate) fn notice_sink(&self) -> NoticeSink {
+        NoticeSink {
+            events: self.events.clone(),
+            line: Vec::new(),
+        }
+    }
+}
+
+/// Stands in for stderr: each finished line lands in the daemon's event log as
+/// `notice: <line>`.
+pub(crate) struct NoticeSink {
+    events: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    line: Vec<u8>,
+}
+
+impl std::io::Write for NoticeSink {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        for byte in buf {
+            if *byte == b'\n' {
+                let line = String::from_utf8_lossy(&self.line).into_owned();
+                self.events
+                    .lock()
+                    .expect("event log")
+                    .push(format!("notice: {line}"));
+                self.line.clear();
+            } else {
+                self.line.push(*byte);
+            }
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}

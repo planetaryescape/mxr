@@ -3105,6 +3105,7 @@ mod tests {
             ids: envelopes.iter().map(|env| env.id.clone()).collect(),
             envelopes,
             used_search: true,
+            capped: None,
         };
 
         let lines = render_selection_preview_lines("archive", &selection);

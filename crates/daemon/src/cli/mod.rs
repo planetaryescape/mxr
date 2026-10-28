@@ -1794,7 +1794,8 @@ pub enum Command {
         /// Message ID(s). If omitted, reads IDs from stdin when stdin is piped.
         #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
         message_ids: Vec<String>,
-        /// Operate on messages matching search query
+        /// Operate on the newest messages matching a search query, up to 1,000.
+        /// The command says before acting when more than 1,000 match.
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]

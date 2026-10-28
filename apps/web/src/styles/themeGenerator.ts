@@ -16,10 +16,17 @@
 import { clampChroma, formatHex, formatRgb, interpolate, oklch, parse, wcagContrast } from "culori";
 import type { Oklch } from "culori";
 
+import { ACCOUNT_SLOTS, type AccountSlot } from "./accountSlots.ts";
+
 export type ThemeId = "midnight" | "light" | "eclipse" | "paper";
 
 /** Contrast ratios on the desk for text-1, text-2 and text-3 (WCAG 2.1). */
 export type Contrast = readonly [number, number, number];
+
+/** A slot's chip fill and the text drawn on it. Each pair must meet 4.5:1 (themes.test.ts). */
+export type AccountPalette = Readonly<
+  Record<AccountSlot, { readonly fill: string; readonly ink: string }>
+>;
 
 export interface ThemeInput {
   id: ThemeId;
@@ -40,6 +47,8 @@ export interface ThemeInput {
   ink?: { hue?: number; chroma?: readonly [number, number, number] };
   /** Unread marks and count badges use the text tier instead of the accent (Paper: rust reads as error red). */
   neutralMarks?: boolean;
+  /** `--account-<slot>` and `--account-<slot>-ink` for the account chip. */
+  accountPalette: AccountPalette;
   /** Role name to CSS colour. Replaces what the rules would produce; each entry is a documented exception. */
   overrides?: Readonly<Record<string, string>>;
 }
@@ -379,6 +388,11 @@ export function generateRoles(input: ThemeInput): Roles {
   set("chart-4", "var(--star)");
   set("chart-5", status("orange"));
   set("chart-6", status("teal"));
+
+  for (const slot of ACCOUNT_SLOTS) {
+    set(`account-${slot}`, input.accountPalette[slot].fill);
+    set(`account-${slot}-ink`, input.accountPalette[slot].ink);
+  }
 
   for (const [name, value] of Object.entries(input.overrides ?? {})) {
     if (!roles.has(name)) throw new Error(`${input.id}: override of unknown role --${name}`);

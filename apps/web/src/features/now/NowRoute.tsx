@@ -38,6 +38,7 @@ import {
   nowItems,
   type CardItem,
   type NowItem,
+  nowRowAccount,
   type PersonItem,
   type PickItem,
   type TodoItem,
@@ -284,7 +285,11 @@ function NowBody({ now }: { now: Now }) {
   const litPerson = current?.kind === "person" ? current : null;
   const litSender = litPerson?.person.new_sender;
   // The status bar says why the lit row is here; the row itself never grows a line.
-  useLitReason(reasonOf(current), litSender ? NEW_SENDER_NOTE : null);
+  useLitReason(
+    reasonOf(current),
+    litSender ? NEW_SENDER_NOTE : null,
+    current ? nowRowAccount(current) : undefined,
+  );
   // The status strip names the verbs of whatever is lit.
   usePageKeys(keysOf(current));
   useShortcutScope("now", true);

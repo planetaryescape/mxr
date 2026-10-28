@@ -603,6 +603,7 @@ mod tests {
 
     fn row(title: &str, thread: &str) -> AssistantReadoutRowData {
         AssistantReadoutRowData {
+            account_id: None,
             title: title.into(),
             detail: None,
             link: Some(mxr_protocol::AssistantLinkData::Thread {

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { blend, differenceEuclidean, parse, wcagContrast } from "culori";
 import { describe, expect, test } from "vitest";
 
+import { ACCOUNT_SLOTS } from "./accountSlots";
 import { generateIncreased, generateRoles } from "./themeGenerator";
 import { renderThemesCss, THEMES } from "./themes";
 
@@ -182,6 +183,13 @@ describe.each(THEMES)("$id as generated", (theme) => {
       ["unread-marker-foreground", "unread-marker"],
     ] as const;
     expect(pairs.filter(([fg, bg]) => ratio(fg, bg) < 4.5)).toEqual([]);
+  });
+
+  test("each account chip's ink passes 4.5:1 on its fill (docs/blueprint/33)", () => {
+    const failing = ACCOUNT_SLOTS.filter(
+      (slot) => ratio(`account-${slot}-ink`, `account-${slot}`) < 4.5,
+    );
+    expect(failing).toEqual([]);
   });
 
   test("status colours and the accent read as text on the desk (4.5:1)", () => {

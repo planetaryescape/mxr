@@ -1832,12 +1832,14 @@ mod tests {
                     failed_call_ids: Vec::new(),
                     rows: vec![
                         mxr_protocol::AssistantReadoutRowData {
+                            account_id: None,
                             title: "Weekly sync".into(),
                             detail: Some("Quinn".into()),
                             link: None,
                             ..Default::default()
                         },
                         mxr_protocol::AssistantReadoutRowData {
+                            account_id: None,
                             title: "Invoice".into(),
                             detail: None,
                             link: None,
@@ -1872,6 +1874,7 @@ mod tests {
                     leaves_machine: None,
                     failed_call_ids: Vec::new(),
                     rows: vec![mxr_protocol::AssistantReadoutRowData {
+                        account_id: None,
                         title: hostile.into(),
                         detail: Some(hostile.into()),
                         link: None,

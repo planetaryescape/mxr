@@ -103,3 +103,17 @@ export function sinceLabel(iso: string): string {
   const day = sameDay ? "" : `${at.toLocaleDateString(undefined, { weekday: "short" })} `;
   return `since ${day}${formatTime(at)}`;
 }
+
+/** The account a Now row's mail came to. Undefined for the Updates card, which can span accounts. */
+export function nowRowAccount(item: NowItem): string | undefined {
+  switch (item.kind) {
+    case "person":
+      return item.person.row.account_id;
+    case "todo":
+      return item.todo.todo.account_id;
+    case "reading":
+      return item.pick.account_id;
+    case "updates":
+      return undefined;
+  }
+}

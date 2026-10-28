@@ -2,9 +2,11 @@ import { RefreshCw } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 
 import { ConnectionPill } from "@/components/ConnectionPill";
+import { AccountMark } from "@/components/AccountMark";
 import { KeyChip } from "@/components/KeyChip";
 import { InstallOffer } from "@/features/install/InstallOffer";
 import { useSyncHealthToasts } from "@/features/freshness/AccountSyncHealth";
+import { useAccountIdentities } from "@/features/accounts/useAccountIdentities";
 import { useFreshnessLive } from "@/features/freshness/api";
 import { FreshnessIndicator } from "@/features/freshness/FreshnessIndicator";
 import { syncNow } from "@/features/mailbox/actions";
@@ -36,6 +38,10 @@ export function StatusBar() {
   const hints = pageKeys.length > 0 ? pageKeyHints(pageKeys, ctx) : fallback;
   const reason = useLitReasonStore((s) => s.reason);
   const note = useLitReasonStore((s) => s.note);
+  const litAccountId = useLitReasonStore((s) => s.accountId);
+  const accounts = useAccountIdentities();
+  const litIdentity =
+    reason && litAccountId && accounts.marksShown ? accounts.byId.get(litAccountId) : undefined;
   // The status bar is mounted on every page, so it owns the one live
   // subscription; the phone's topbar indicator reads the same query.
   useFreshnessLive();
@@ -81,7 +87,21 @@ export function StatusBar() {
       <span aria-hidden className="text-faint">
         │
       </span>
-      <FreshnessIndicator reason={reason} note={note} />
+      <FreshnessIndicator
+        reason={reason}
+        note={note}
+        leading={
+          litIdentity ? (
+            <>
+              <AccountMark identity={litIdentity} />
+              <span>{litIdentity.name}</span>
+              <span aria-hidden className="text-faint">
+                ·
+              </span>
+            </>
+          ) : null
+        }
+      />
       <span className="ml-auto flex min-w-0 shrink items-center gap-3">
         {pendingPrefix ? (
           <span aria-live="polite" className="inline-flex items-center gap-1 text-foreground">

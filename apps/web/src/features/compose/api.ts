@@ -37,6 +37,8 @@ export interface RuntimeAccount {
   send?: unknown;
   enabled: boolean;
   is_default: boolean;
+  /** Absent from a daemon older than docs/blueprint/33: such an account draws no mark. */
+  identity?: components["schemas"]["AccountIdentityData"] | null;
   capabilities?: {
     supports_send?: boolean;
     supports_local_drafts?: boolean;

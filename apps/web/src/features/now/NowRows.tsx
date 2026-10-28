@@ -5,6 +5,7 @@ import { memo, type ReactNode } from "react";
 import { Avatar } from "@/components/Avatar";
 import { ModeMarks, NewMark } from "@/components/ModeMark";
 import { Row, RowVerb, type LampVia } from "@/components/Row";
+import { useRowAccountMark } from "@/features/accounts/useAccountIdentities";
 import { rowAge, rowPerson } from "@/features/desk/deskCopy";
 import { rowParty } from "@/features/todo/todoRows";
 import { otherModes, type ThreadModes } from "@/features/modes/membership";
@@ -14,7 +15,7 @@ import { useClockLabel } from "@/lib/minuteClock";
 import { definedShortcut } from "@/lib/actions/definition";
 import { cn } from "@/lib/utils";
 
-import { itemTarget, sinceLabel, type NowItem } from "./nowItems";
+import { itemTarget, nowRowAccount, sinceLabel, type NowItem } from "./nowItems";
 
 type Person = Extract<NowItem, { kind: "person" }>;
 type Due = Extract<NowItem, { kind: "todo" }>;
@@ -66,8 +67,11 @@ function NowRow({
   verbs?: ReactNode;
   unread?: boolean;
 }) {
+  const mark = useRowAccountMark(nowRowAccount(item));
   return (
     <Row
+      // The Updates card can hold lines from several accounts, so it wears no single chip.
+      accountId={nowRowAccount(item)}
       data-index={state.index}
       data-testid="now-row"
       data-kind={item.kind}
@@ -90,7 +94,7 @@ function NowRow({
           // SAFETY: Now items only ever target static routes, which the router accepts as a `to` string.
           {...(itemTarget(item) as { to: string })}
           data-testid="now-open"
-          aria-label={label}
+          aria-label={mark ? `${label}, ${mark.name}` : label}
           onFocus={() => state.onSelect(item, "key")}
           onClick={() => state.onSelect(item, "pointer")}
           className={cn(className, "focus-visible:ring-2 focus-visible:ring-signal")}

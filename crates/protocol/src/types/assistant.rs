@@ -2,6 +2,7 @@
 //! mailbox through mxr's own tools. Changes it wants to make, and questions
 //! it asks, wait for the user's decision.
 
+use mxr_core::id::AccountId;
 use serde::{Deserialize, Serialize};
 
 /// Where a conversation stands.
@@ -202,6 +203,9 @@ pub struct AssistantReadoutRowData {
     /// The email or the person's latest activity is unread.
     #[serde(default, skip_serializing_if = "is_false")]
     pub unread: bool,
+    /// The account the listed email came to. Absent for people and to-dos, and from older daemons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<AccountId>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -536,6 +540,7 @@ mod tests {
 
         let response = crate::ResponseData::AssistantStepRows {
             rows: vec![AssistantReadoutRowData {
+                account_id: None,
                 title: "Quarterly report".into(),
                 ..Default::default()
             }],
@@ -555,6 +560,7 @@ mod tests {
     #[test]
     fn a_row_carries_email_fields_and_reads_without_them() {
         let row = AssistantReadoutRowData {
+            account_id: None,
             title: "Invoice 4471".into(),
             detail: Some("Dana Ruiz".into()),
             sender: Some("Dana Ruiz".into()),
@@ -572,6 +578,7 @@ mod tests {
 
         // Empty fields stay off the wire, so older clients see today's row.
         let plain = serde_json::to_value(AssistantReadoutRowData {
+            account_id: None,
             title: "Invoice".into(),
             ..Default::default()
         })

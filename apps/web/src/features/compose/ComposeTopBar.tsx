@@ -16,6 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AccountMark } from "@/components/AccountMark";
+import { useAccountIdentities } from "@/features/accounts/useAccountIdentities";
+
 import type { RuntimeAccount } from "./api";
 
 interface ComposeTopBarProps {
@@ -124,25 +127,39 @@ export function FromControl({
   fromAddress: string;
   onFromChange: (email: string) => void;
 }) {
+  // The From line always names the account: one account or several, with one address or aliases (docs/blueprint/33).
+  const identities = useAccountIdentities();
   if (accounts.length === 0) return null;
   const selected = accounts.find((account) => account.account_id === value) ?? accounts[0];
   const hasAliases = addresses.length > 1;
+  const sole = accounts.length === 1 ? selected : undefined;
+  const soleChip = sole ? identities.byId.get(sole.account_id) : undefined;
 
-  // Single account, single address: nothing to choose — show the address plainly.
-  if (accounts.length === 1 && !hasAliases) {
-    const senderAddress = fromAddress || selected?.email;
+  // Single account, single address: nothing to choose, so the address shows beside the account.
+  if (sole && !hasAliases) {
+    const senderAddress = fromAddress || sole.email;
     return (
-      <span
-        className="min-w-0 truncate font-mono text-2xs text-muted-foreground sm:max-w-[220px]"
-        title={senderAddress}
-      >
-        {senderAddress}
+      <span className="flex min-w-0 items-center gap-2">
+        {soleChip ? <AccountMark identity={soleChip} size="header" /> : null}
+        <span className="min-w-0 truncate text-xs">{sole.name || sole.email}</span>
+        <span
+          className="min-w-0 truncate font-mono text-2xs text-muted-foreground sm:max-w-[220px]"
+          title={senderAddress}
+        >
+          {senderAddress}
+        </span>
       </span>
     );
   }
 
   return (
     <div className="flex min-w-0 items-center gap-2">
+      {sole ? (
+        <span className="flex min-w-0 shrink-0 items-center gap-2">
+          {soleChip ? <AccountMark identity={soleChip} size="header" /> : null}
+          <span className="max-w-[160px] truncate text-xs">{sole.name || sole.email}</span>
+        </span>
+      ) : null}
       {accounts.length > 1 ? (
         <Select value={value || accounts[0]?.account_id} onValueChange={onChange}>
           <SelectTrigger
@@ -152,11 +169,19 @@ export function FromControl({
             <SelectValue placeholder="Account" />
           </SelectTrigger>
           <SelectContent>
-            {accounts.map((account) => (
-              <SelectItem key={account.account_id} value={account.account_id}>
-                {account.name || account.email} · {account.email}
-              </SelectItem>
-            ))}
+            {accounts.map((account) => {
+              const chip = identities.byId.get(account.account_id);
+              return (
+                <SelectItem key={account.account_id} value={account.account_id}>
+                  <span className="flex min-w-0 items-center gap-2">
+                    {chip ? <AccountMark identity={chip} /> : null}
+                    <span className="truncate">
+                      {account.name || account.email} · {account.email}
+                    </span>
+                  </span>
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       ) : null}

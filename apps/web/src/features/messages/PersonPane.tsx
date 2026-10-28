@@ -17,9 +17,11 @@ import { useComposeUi } from "@/features/compose/composeUiStore";
 import { ModeMarks } from "@/components/ModeMark";
 import { ReasonLine } from "@/components/ReasonLine";
 import { otherModes, useThreadModes } from "@/features/modes/membership";
+import { OtherAccountLine } from "@/features/thread/OtherAccountLine";
 import { cn } from "@/lib/utils";
 
 import { mergePeople, refreshMessages, type MergeSuggestion, type PersonPage } from "./api";
+
 import { ConversationView } from "./Conversation";
 import { ConversationPeople } from "./ConversationPeople";
 import { GotItBar } from "./GotItBar";
@@ -167,13 +169,16 @@ export function PersonPane(props: PersonPaneProps) {
       >
         <ModeFrame width="reader">
           {conversation ? (
-            <ConversationView
-              key={props.topic ?? conversation.thread_id}
-              conversation={conversation}
-              asSent={props.asSent}
-              onToggleAsSent={props.onToggleAsSent}
-              disclosuresEnabled={!props.loading}
-            />
+            <>
+              <OtherAccountLine accountId={conversation.account_id} />
+              <ConversationView
+                key={props.topic ?? conversation.thread_id}
+                conversation={conversation}
+                asSent={props.asSent}
+                onToggleAsSent={props.onToggleAsSent}
+                disclosuresEnabled={!props.loading}
+              />
+            </>
           ) : (
             <p className="px-5 py-6 text-sm text-muted-foreground">No conversation to show.</p>
           )}

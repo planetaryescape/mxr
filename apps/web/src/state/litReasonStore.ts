@@ -14,7 +14,9 @@ interface LitReasonState {
   reason: string | null;
   /** A second clause after the reason, such as a new sender's key choices. */
   note: string | null;
-  set: (owner: string, reason: string, note: string | null) => void;
+  /** The lit row's account, so the status line can name it when the view mixes accounts. */
+  accountId: string | null;
+  set: (owner: string, reason: string, note: string | null, accountId: string | null) => void;
   clear: (owner: string) => void;
 }
 
@@ -22,9 +24,12 @@ export const useLitReasonStore = create<LitReasonState>((set) => ({
   owner: null,
   reason: null,
   note: null,
-  set: (owner, reason, note) => set({ owner, reason, note }),
+  accountId: null,
+  set: (owner, reason, note, accountId) => set({ owner, reason, note, accountId }),
   clear: (owner) =>
-    set((state) => (state.owner === owner ? { owner: null, reason: null, note: null } : state)),
+    set((state) =>
+      state.owner === owner ? { owner: null, reason: null, note: null, accountId: null } : state,
+    ),
 }));
 
 /**
@@ -32,12 +37,16 @@ export const useLitReasonStore = create<LitReasonState>((set) => ({
  * (or the lit row has no reason): the status bar goes back to its freshness
  * line. The reason also clears when the page unmounts.
  */
-export function useLitReason(reason: string | null | undefined, note?: string | null): void {
+export function useLitReason(
+  reason: string | null | undefined,
+  note?: string | null,
+  accountId?: string | null,
+): void {
   const owner = useId();
   useEffect(() => {
     const { set, clear } = useLitReasonStore.getState();
-    if (reason) set(owner, reason, note ?? null);
+    if (reason) set(owner, reason, note ?? null, accountId ?? null);
     else clear(owner);
-  }, [note, owner, reason]);
+  }, [accountId, note, owner, reason]);
   useEffect(() => () => useLitReasonStore.getState().clear(owner), [owner]);
 }

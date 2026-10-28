@@ -410,7 +410,7 @@ function Bands({
     setCursorKey(next.key);
   };
   // The lit entry's reason goes to the status bar; the row itself never grows a line.
-  useLitReason(itemOf(current)?.why);
+  useLitReason(itemOf(current)?.why, null, itemOf(current)?.account_id);
   const litItem = itemOf(current);
   usePageKeys(
     // The email's reader owns the keys while it has focus, as it owns the scope.

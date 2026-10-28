@@ -6779,12 +6779,14 @@ async fn assistant_step_rows_route_returns_every_row_the_step_listed() {
                 data: ResponseData::AssistantStepRows {
                     rows: vec![
                         mxr_protocol::AssistantReadoutRowData {
+                            account_id: None,
                             title: "Quarterly report".into(),
                             detail: Some("Ann".into()),
                             link: None,
                             ..Default::default()
                         },
                         mxr_protocol::AssistantReadoutRowData {
+                            account_id: None,
                             title: "Invoice 42".into(),
                             detail: None,
                             link: None,
@@ -6845,4 +6847,75 @@ async fn assistant_step_rows_route_returns_every_row_the_step_listed() {
         .await
         .unwrap();
     assert!(!response.status().is_success());
+}
+
+#[tokio::test]
+async fn account_identity_route_forwards_colour_tag_and_dry_run() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+
+    // The fake daemon echoes what it received, so the test can check the forwarded fields.
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        |request| match request {
+            Request::SetAccountIdentity {
+                key,
+                color,
+                tag,
+                dry_run,
+            } => Some(Response::Ok {
+                data: ResponseData::AccountOperation {
+                    result: mxr_protocol::AccountOperationResult {
+                        ok: true,
+                        summary: format!("{key} {color:?} {tag:?} dry_run={dry_run}"),
+                        save: None,
+                        auth: None,
+                        sync: None,
+                        send: None,
+                        device_code_url: None,
+                        device_code_user_code: None,
+                    },
+                },
+            }),
+            _ => None,
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = test_http_client()
+        .post(format!(
+            "http://{addr}/api/v1/platform/accounts/work/identity"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "color": "amber", "tag": "W", "dry_run": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(
+        json["result"]["summary"],
+        "work Some(Amber) Some(\"W\") dry_run=true"
+    );
+
+    // A colour the daemon doesn't know is refused at the bridge, before any IPC.
+    let response = test_http_client()
+        .post(format!(
+            "http://{addr}/api/v1/platform/accounts/work/identity"
+        ))
+        .bearer_auth(TEST_AUTH_TOKEN)
+        .json(&serde_json::json!({ "color": "teal" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
 }

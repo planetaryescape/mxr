@@ -70,7 +70,7 @@ use utoipa::{
         rule_history, rule_dry_run, rule_upsert, rule_upsert_form, rule_delete, rule_treatment, rule_categories, category_why,
         saved_searches_list, saved_searches_create, saved_searches_delete, saved_searches_update,
         saved_searches_run, accounts_list, accounts_config, account_test,
-        account_upsert, account_set_default, account_remove, account_disable,
+        account_upsert, account_set_default, account_remove, account_disable, account_identity,
         account_addresses_list, account_addresses_add, account_addresses_remove,
         account_addresses_primary, auth_session_start, auth_session_get,
         auth_session_cancel, auth_session_complete, subscriptions_list,
@@ -170,6 +170,7 @@ use utoipa::{
         crate::reading_routes::MarginaliaSyncBody,
         crate::updates_routes::UpdatesLetGoBody,
         crate::updates_routes::UpdateSourceBody,
+        crate::routes_v6::SetAccountIdentityBody,
         crate::arrival_routes::ArrivalModesBody,
         crate::arrival_routes::MoveBody,
     )),
@@ -1940,6 +1941,20 @@ endpoint!(post account_upsert "/api/v1/platform/accounts/upsert", "Create or upd
 endpoint!(post account_set_default "/api/v1/platform/accounts/default", "Set default account");
 endpoint!(delete account_remove "/api/v1/platform/accounts/{key}", "Remove account");
 endpoint!(post account_disable "/api/v1/platform/accounts/{key}/disable", "Disable account");
+#[utoipa::path(
+    post,
+    path = "/api/v1/platform/accounts/{key}/identity",
+    summary = "Set an account's colour and tag",
+    params(("key" = String, Path, description = "The account's config key, such as `work`")),
+    request_body = crate::routes_v6::SetAccountIdentityBody,
+    responses(
+        (status = 200, description = "The `AccountOperation` variant. When the daemon refuses a tag (malformed, or held by another account), `result.ok` is false and `result.save.detail` says why; nothing is saved", body = ResponseData),
+        (status = 422, description = "The body doesn't match the shape: a colour outside the eight slots, or a field of the wrong type"),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn account_identity() {}
 endpoint!(get account_addresses_list "/api/v1/platform/accounts/{account_id}/addresses", "List account addresses");
 endpoint!(post account_addresses_add "/api/v1/platform/accounts/{account_id}/addresses", "Add account address");
 endpoint!(post account_addresses_remove "/api/v1/platform/accounts/{account_id}/addresses/remove", "Remove account address");

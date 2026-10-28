@@ -67,6 +67,7 @@ export const LedgerRow = memo(function LedgerRow({
   const secondary = [what, record.stage_line, record.detail_line].filter(Boolean).join(" · ");
   return (
     <Row
+      accountId={record.account_id}
       data-testid="record-row"
       data-index={index}
       data-id={record.id}

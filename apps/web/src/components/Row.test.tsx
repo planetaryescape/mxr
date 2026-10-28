@@ -1,25 +1,54 @@
 /* @vitest-environment jsdom */
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import type { RuntimeAccount } from "@/features/compose/api";
+import { AccountIdentitiesContext, identitiesFrom } from "@/features/accounts/useAccountIdentities";
 import { LANDING_MS, useLanding } from "@/state/landingStore";
 
 import { Row, RowVerb } from "./Row";
 
-function renderRow(props: Partial<React.ComponentProps<typeof Row>> = {}) {
+/** Two enabled accounts with identities: the view mixes accounts unless scoped. */
+const ACCOUNTS: RuntimeAccount[] = [
+  {
+    account_id: "work",
+    name: "Work",
+    email: "bk@work.example",
+    provider_kind: "imap",
+    is_default: true,
+    enabled: true,
+    identity: { color: "sky", tag: "W" },
+  },
+  {
+    account_id: "home",
+    name: "Home",
+    email: "bk@home.example",
+    provider_kind: "imap",
+    is_default: false,
+    enabled: true,
+    identity: { color: "amber", tag: "H" },
+  },
+];
+
+function renderRow(
+  props: Partial<React.ComponentProps<typeof Row>> = {},
+  identities = identitiesFrom([], false),
+) {
   return render(
-    <ul>
-      <Row
-        lit={false}
-        primary="Pat Colleague"
-        secondary="RustConf invite"
-        trail={<time>2h</time>}
-        verbs={<RowVerb keys="r" label="reply" onClick={() => {}} />}
-        data-testid="row"
-        {...props}
-      />
-    </ul>,
+    <AccountIdentitiesContext.Provider value={identities}>
+      <ul>
+        <Row
+          lit={false}
+          primary="Pat Colleague"
+          secondary="RustConf invite"
+          trail={<time>2h</time>}
+          verbs={<RowVerb keys="r" label="reply" onClick={() => {}} />}
+          data-testid="row"
+          {...props}
+        />
+      </ul>
+    </AccountIdentitiesContext.Provider>,
   );
 }
 
@@ -183,6 +212,48 @@ describe("Row", () => {
       renderRow({ land: ["thread-1"] });
       act(() => useLanding.getState().land(["thread-2"]));
       expect(screen.getByTestId("row")).not.toHaveClass("landed");
+    });
+  });
+
+  describe("account mark (docs/blueprint/33)", () => {
+    test("a row from a mixed view carries its account's chip before the time", () => {
+      renderRow({ accountId: "work", time: <span>10:02</span> }, identitiesFrom(ACCOUNTS, false));
+      const chip = screen.getByRole("img", { name: "Work" });
+      expect(chip).toHaveTextContent("W");
+      const time = screen.getByText("10:02");
+      expect(chip.compareDocumentPosition(time) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    test("no mark when the view is scoped to one account", () => {
+      renderRow({ accountId: "work" }, identitiesFrom(ACCOUNTS, true));
+      expect(screen.queryByRole("img")).toBeNull();
+    });
+
+    test("no mark for a row whose account is unknown, or for a one-account user", () => {
+      const { unmount } = renderRow({ accountId: "nobody" }, identitiesFrom(ACCOUNTS, false));
+      expect(screen.queryByRole("img")).toBeNull();
+      unmount();
+      renderRow({ accountId: "work" }, identitiesFrom(ACCOUNTS.slice(0, 1), false));
+      expect(screen.queryByRole("img")).toBeNull();
+    });
+
+    test("an older daemon with no identity draws no mark", () => {
+      const withoutIdentity = ACCOUNTS.map(({ identity: _identity, ...account }) => account);
+      renderRow({ accountId: "work" }, identitiesFrom(withoutIdentity, false));
+      expect(screen.queryByRole("img")).toBeNull();
+    });
+
+    test("the chip stays on the lit row, in front of the verbs, with the time after", () => {
+      renderRow(
+        { accountId: "home", lit: true, time: <span>10:02</span> },
+        identitiesFrom(ACCOUNTS, false),
+      );
+      const chip = screen.getByRole("img", { name: "Home" });
+      const verb = screen.getByRole("button", { name: "reply" });
+      const time = screen.getByText("10:02");
+      expect(chip.compareDocumentPosition(verb) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(verb.compareDocumentPosition(time) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(within(screen.getByTestId("row")).getByText("10:02")).toBeVisible();
     });
   });
 });

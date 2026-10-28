@@ -649,6 +649,13 @@ The account switcher at the top of the sidebar shows mail from one account or
 all of them. Unlike the TUI it does not change your default account; it only
 filters what the web shows.
 
+With more than one account, each email row in a mixed view ends with a small
+chip: the account's tag, such as `W` or `PE`, on its colour, so you can see
+where mail came to without opening it. The reader and the compose From line name
+the account too. On the **Accounts** page, **Colour and tag** sets an account's
+colour and tag. A tag is one to three letters or digits, and no other account
+can use it.
+
 **Accounts** lists each account with **Make default** and **Disable**; open
 one to manage it. The account page has **Test connection**, **Sign in again**
 (for OAuth accounts), **Make default**, send-as addresses, and **Disable** or

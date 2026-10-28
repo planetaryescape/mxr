@@ -3839,6 +3839,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/accounts/{key}/identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set an account's colour and tag */
+        post: operations["account_identity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/analytics/cadence-drift": {
         parameters: {
             query?: never;
@@ -5655,6 +5672,7 @@ export interface components {
         };
         /** @description One thing a result lists: an email, a person, a to-do. */
         AssistantReadoutRowData: {
+            account_id?: components["schemas"]["AccountId"] | null;
             /**
              * Format: int64
              * @description When the email arrived or the person last wrote: unix seconds.
@@ -14879,6 +14897,14 @@ export interface components {
             outbound_count: number;
             /** Format: date-time */
             week_start: string;
+        };
+        /** @description Body of `POST /api/v1/platform/accounts/{key}/identity`. Omitted fields keep their stored value. */
+        SetAccountIdentityBody: {
+            color?: components["schemas"]["AccountColor"] | null;
+            /** @description Ask the daemon what would change without saving it. */
+            dry_run?: boolean;
+            /** @description One to three uppercase letters or digits; the daemon refuses a tag another account holds. */
+            tag?: string | null;
         };
         /** @enum {string} */
         SignatureContextData: "new" | "reply";
@@ -24122,6 +24148,47 @@ export interface operations {
             };
             /** @description Missing or invalid bridge token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    account_identity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The account's config key, such as `work` */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAccountIdentityBody"];
+            };
+        };
+        responses: {
+            /** @description The `AccountOperation` variant. When the daemon refuses a tag (malformed, or held by another account), `result.ok` is false and `result.save.detail` says why; nothing is saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body doesn't match the shape: a colour outside the eight slots, or a field of the wrong type */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

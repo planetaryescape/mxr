@@ -129,6 +129,7 @@ export const UpdateLineRow = memo(function UpdateLineRow({
 
   return (
     <Row
+      accountId={line.account_id}
       ref={rowRef}
       data-index={index}
       data-testid="update-line"

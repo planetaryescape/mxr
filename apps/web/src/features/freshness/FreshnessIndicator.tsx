@@ -11,7 +11,7 @@
 
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useSignInAgain } from "./AccountSyncHealth";
 import { useFreshnessQuery } from "./api";
@@ -89,6 +89,7 @@ export function FreshnessIndicator({
   compact = false,
   reason,
   note,
+  leading,
 }: {
   compact?: boolean;
   /**
@@ -98,6 +99,8 @@ export function FreshnessIndicator({
    */
   reason?: string | null;
   note?: string | null;
+  /** Drawn before the reason, such as the lit row's account chip. */
+  leading?: ReactNode;
 }) {
   const { data } = useFreshnessQuery();
   const [open, setOpen] = useState(false);
@@ -178,6 +181,7 @@ export function FreshnessIndicator({
               title={reasonText(reason) + (note ? ` · ${note}` : "")}
               className="min-w-0 truncate text-text-2"
             >
+              {leading}
               {reasonText(reason)}
               {note ? ` · ${note}` : ""}
             </span>

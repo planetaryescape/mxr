@@ -5,6 +5,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { disableAccount, fetchAccounts, setDefaultAccount } from "./api";
+import { AccountIdentityDialog } from "./AccountIdentityDialog";
+import { useAccountIdentities } from "./useAccountIdentities";
 import { Page } from "@/components/Page";
 import { PageEmpty, PageError, PageSkeleton, RuledList, RuledRow } from "@/components/PageParts";
 import {
@@ -19,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import type { RuntimeAccount } from "@/features/compose/api";
+import { AccountMark } from "@/components/AccountMark";
 import { SyncHealthWords } from "@/features/freshness/AccountSyncHealth";
 import { StatusDot } from "@/components/StatusDot";
 import { useHeldPending } from "@/hooks/useDelayedPending";
@@ -27,6 +30,8 @@ export function AccountsListRoute() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [confirmDisable, setConfirmDisable] = useState<RuntimeAccount | null>(null);
+  const [editingIdentity, setEditingIdentity] = useState<RuntimeAccount | null>(null);
+  const identities = useAccountIdentities();
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
   const accountsHeld = useHeldPending(accounts.isPending);
   const makeDefault = useMutation({
@@ -84,11 +89,13 @@ export function AccountsListRoute() {
         <RuledList label="Accounts">
           {rows.map((account) => {
             const key = account.key ?? account.account_id;
+            const chip = identities.byId.get(account.account_id);
             return (
               <RuledRow
                 key={account.account_id}
                 title={
                   <span className="flex items-center gap-2">
+                    {chip ? <AccountMark identity={chip} size="header" /> : null}
                     {account.enabled ? null : (
                       <StatusDot className="size-1.5 bg-muted-foreground" />
                     )}
@@ -109,6 +116,15 @@ export function AccountsListRoute() {
                 openLabel={`Manage ${account.email}`}
                 actions={
                   <>
+                    {account.key && identities.byId.has(account.account_id) ? (
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => setEditingIdentity(account)}
+                      >
+                        Colour and tag
+                      </Button>
+                    ) : null}
                     {!account.is_default ? (
                       <Button
                         variant="outline"
@@ -136,6 +152,11 @@ export function AccountsListRoute() {
           })}
         </RuledList>
       )}
+      <AccountIdentityDialog
+        account={editingIdentity}
+        identities={identities}
+        onClose={() => setEditingIdentity(null)}
+      />
       <AlertDialog
         open={confirmDisable !== null}
         onOpenChange={(open) => !open && setConfirmDisable(null)}

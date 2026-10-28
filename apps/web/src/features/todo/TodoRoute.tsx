@@ -378,7 +378,7 @@ function Bands({
   });
 
   // The status bar says why the lit row is here and which keys work on it.
-  useLitReason(current?.todo.why);
+  useLitReason(current?.todo.why, null, current?.todo.account_id);
   // While the open email has focus these keys aren't live, so the strip doesn't offer them.
   const listLive = !params.threadId || activePane !== "reader";
   usePageKeys(current && listLive ? stripKeys(current.band === "done" ? "todo.done" : "todo") : []);

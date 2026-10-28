@@ -331,6 +331,7 @@ mod tests {
     fn a_readout_is_one_line() {
         use mxr_protocol::{AssistantReadoutFactData, AssistantReadoutRowData};
         let row = |title: &str| AssistantReadoutRowData {
+            account_id: None,
             title: title.into(),
             detail: None,
             link: None,

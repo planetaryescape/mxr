@@ -5,6 +5,7 @@ import { useEffect } from "react";
 
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AccountIdentitiesProvider } from "@/features/accounts/useAccountIdentities";
 import { useConnectionStatusBootstrap } from "@/hooks/useConnectionStatus";
 import { useDaemonEventInvalidation } from "@/hooks/useDaemonEventInvalidation";
 import { useProtocolCompatibilityBootstrap } from "@/hooks/useProtocolCompatibility";
@@ -44,15 +45,17 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider delayDuration={300}>
-        <RealtimeBootstrap />
-        <RouterProvider router={router} />
-        <Toaster position={toastPosition} />
-        {/* Opt-in: the floating button covers the reader's corner in normal dev use. */}
-        {import.meta.env.DEV && import.meta.env.VITE_MXR_DEVTOOLS === "1" ? (
-          <ReactQueryDevtools buttonPosition="bottom-left" />
-        ) : null}
-      </TooltipProvider>
+      <AccountIdentitiesProvider>
+        <TooltipProvider delayDuration={300}>
+          <RealtimeBootstrap />
+          <RouterProvider router={router} />
+          <Toaster position={toastPosition} />
+          {/* Opt-in: the floating button covers the reader's corner in normal dev use. */}
+          {import.meta.env.DEV && import.meta.env.VITE_MXR_DEVTOOLS === "1" ? (
+            <ReactQueryDevtools buttonPosition="bottom-left" />
+          ) : null}
+        </TooltipProvider>
+      </AccountIdentitiesProvider>
     </QueryClientProvider>
   );
 }

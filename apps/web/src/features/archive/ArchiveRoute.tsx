@@ -462,7 +462,11 @@ function Ledger({
   };
 
   // The lit record's reason goes to the status bar; the row never grows a line.
-  useLitReason(showingSubscriptions ? subscription?.why : current?.why);
+  useLitReason(
+    showingSubscriptions ? subscription?.why : current?.why,
+    null,
+    showingSubscriptions ? subscription?.account_id : current?.account_id,
+  );
   const emailOpen = Boolean(params.threadId) && activePane === "reader";
   usePageKeys(
     emailOpen || ledger.total === 0

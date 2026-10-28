@@ -295,6 +295,7 @@ mod tests {
                     leaves_machine: None,
                     failed_call_ids: Vec::new(),
                     rows: vec![AssistantReadoutRowData {
+                        account_id: None,
                         title: hostile.into(),
                         detail: Some(hostile.into()),
                         sender: Some(hostile.into()),

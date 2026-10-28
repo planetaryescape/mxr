@@ -70,6 +70,8 @@ import {
   rememberLayout,
   removeHighlight,
 } from "./readingVerbs";
+import { OtherAccountLine } from "@/features/thread/OtherAccountLine";
+
 import type { ReadingEdition } from "./api";
 
 /** How often reading time is reported while the page is visible. */
@@ -263,6 +265,7 @@ function Reader({ detail }: { detail: ReadingDetail }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="reading-reader">
       <header className="shrink-0">
+        <OtherAccountLine accountId={item.account_id} />
         <ReaderToolbar wrap width="reading">
           <ToolButton
             icon={ArrowLeft}

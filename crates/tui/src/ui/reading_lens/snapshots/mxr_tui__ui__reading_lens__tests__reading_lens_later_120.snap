@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/reading_lens/tests.rs
+assertion_line: 425
 expression: rendered
 ---
 "╭ Reading ─ Newsletters you chose, as an edition. Read when you like. ──────────────────────────────────────── Later 2 ╮"
@@ -36,5 +37,5 @@ expression: rendered
 "│                                               │                                                                     ││"
 "│                                               ╰─────────────────────────────────────────────────────────────────────╯│"
 "│ On Later since Thu 3 Sep. Later never fades.                                                                         │"
-"│ Enter read · L article · b later · e let go · D unsubscribe · A let go all · B Later shelf · M Marginalia · ? help   │"
+"│ Enter read · L article · b later · e let go · D unsubscribe · E let go all · 1 edition · 2 Later · 3 highlights      │"
 "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯"

@@ -513,13 +513,6 @@
     ],
     "key": "b"
   },
-  "reading.later-shelf": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "b"
-  },
   "reading.let-go": {
     "modifiers": [
       "cmd"
@@ -572,13 +565,6 @@
       "cmd"
     ],
     "key": "j"
-  },
-  "reading.reader-issue": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "i"
   },
   "reading.reader-later": {
     "modifiers": [
@@ -687,13 +673,6 @@
     ],
     "key": "o"
   },
-  "todo.catchup": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "c"
-  },
   "todo.catchup-let-go": {
     "modifiers": [
       "cmd"
@@ -725,13 +704,6 @@
       "cmd"
     ],
     "key": "j"
-  },
-  "todo.expired": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "e"
   },
   "todo.open-email": {
     "modifiers": [

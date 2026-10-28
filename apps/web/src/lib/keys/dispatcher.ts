@@ -112,7 +112,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
     if (binding.moved) {
       options.onMoved?.(binding.action, binding.movedTo ?? binding.action.shortcut ?? null);
     } else {
-      invokeAction(binding.action, ctx);
+      invokeAction(binding.action, ctx, "key");
     }
   };
 
@@ -140,7 +140,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
       event.preventDefault();
       if (event.repeat) return;
       clear();
-      invokeAction(global.action, options.context());
+      invokeAction(global.action, options.context(), "key");
       return;
     }
     if (activatesNativeControl(event.target, token)) return;
@@ -158,7 +158,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
       // browser doesn't act on it either.
       if (exact || continues) event.preventDefault();
       if (exact && !exact.moved && !continues && REPEATABLE_ACTION_IDS.has(exact.action.id)) {
-        invokeAction(exact.action, ctx);
+        invokeAction(exact.action, ctx, "key");
       }
       return;
     }

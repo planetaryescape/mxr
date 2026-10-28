@@ -238,6 +238,59 @@ fn a_tui_only_action_needs_a_tui_binding_and_no_web_keys() {
     );
 }
 
+/// A palette-only TUI action names what the palette runs with a binding that
+/// has no keys; a keyless binding anywhere else would be a key nobody can press.
+#[test]
+fn a_keyless_tui_binding_is_for_a_palette_only_action() {
+    let keymap = Keymap::parse(
+        r#"
+        [[action]]
+        id = "tui.config"
+        label = "Edit config"
+        group = "Settings"
+        clients = ["tui"]
+        palette_only = true
+
+        [[action.tui]]
+        name = "EditConfig"
+        keys = []
+        contexts = "all"
+
+        [[action]]
+        id = "tui.keyless"
+        label = "Keyless"
+        group = "TUI"
+        clients = ["tui"]
+
+        [[action.tui]]
+        name = "Help"
+        keys = []
+        contexts = "all"
+
+        [[action]]
+        id = "tui.keyed"
+        label = "Keyed"
+        group = "TUI"
+        clients = ["tui"]
+        palette_only = true
+
+        [[action.tui]]
+        name = "Help"
+        keys = ["?"]
+        contexts = ["list"]
+        "#,
+    )
+    .expect("parses");
+    assert_eq!(
+        keymap.problems(),
+        vec![
+            "tui.keyless: a TUI binding with no keys is for a palette-only action".to_string(),
+            "tui.keyed: is palette-only but has keys".to_string(),
+        ]
+    );
+    assert!(keymap.tui_binding("list", "").is_none());
+}
+
 #[test]
 fn the_tui_lookup_finds_keys_and_sequences_in_their_context() {
     let keymap = defaults();

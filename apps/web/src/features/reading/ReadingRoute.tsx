@@ -24,7 +24,7 @@ import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useLitReason } from "@/state/litReasonStore";
-import { stripKeys } from "@/lib/actions/definition";
+import { definedShortcut, stripKeys } from "@/lib/actions/definition";
 import { usePageKeys } from "@/state/pageKeysStore";
 import { useThreadModesMap } from "@/features/modes/membership";
 import type { LampVia } from "@/components/Row";
@@ -213,6 +213,8 @@ function EditionHeader({
         <nav aria-label="Reading views" className="-mb-px flex h-8 gap-6">
           <Link
             to="/reading"
+            title={`Edition (${definedShortcut("reading.edition")})`}
+            aria-keyshortcuts={definedShortcut("reading.edition")}
             aria-current={view === "later" ? undefined : "page"}
             className={pageTabClass(view !== "later")}
           >
@@ -221,6 +223,8 @@ function EditionHeader({
           <Link
             to="/reading"
             search={{ view: "later" }}
+            title={`Later (${definedShortcut("reading.later-shelf")})`}
+            aria-keyshortcuts={definedShortcut("reading.later-shelf")}
             data-testid="later-count"
             aria-current={view === "later" ? "page" : undefined}
             className={pageTabClass(view === "later")}
@@ -232,7 +236,12 @@ function EditionHeader({
       }
       primary={
         view !== "later" && anything ? (
-          <Button size="sm" title="Let go of all (A)" aria-keyshortcuts="A" onClick={onLetGoAll}>
+          <Button
+            size="sm"
+            title={`Let go of all (${definedShortcut("reading.let-go-all")})`}
+            aria-keyshortcuts={definedShortcut("reading.let-go-all")}
+            onClick={onLetGoAll}
+          >
             Let go of all
           </Button>
         ) : null
@@ -310,12 +319,12 @@ function Bands({
   const closeHint = useActiveHintDismiss();
 
   const read = useCallback(
-    (key: string) => {
+    (key: string, at?: "highlights") => {
       setActivePane("reader");
       void navigate({
         to: "/reading/item/$itemKey",
         params: { itemKey: key },
-        search: (prev) => ({ ...pickSearch(prev, READING_LIST_SEARCH), row: key }),
+        search: (prev) => ({ ...pickSearch(prev, READING_LIST_SEARCH), row: key, at }),
       });
     },
     [navigate, setActivePane],
@@ -504,8 +513,13 @@ function Bands({
       const item = itemOf(current);
       if (item) void openMoveSenderFor(item.message_id, item.source);
     },
-    laterShelf: () =>
-      void navigate({ to: "/reading", search: view === "later" ? {} : { view: "later" } }),
+    // The tabs: `1` the edition, `2` Later, `3` the lit item's highlights
+    // (there is no page of every highlight yet).
+    edition: () => void navigate({ to: "/reading", search: {} }),
+    laterShelf: () => void navigate({ to: "/reading", search: { view: "later" } }),
+    highlights: () => {
+      if (current) read(current.key, "highlights");
+    },
     // The daemon knows whether it was sent before; then it only opens.
     marginalia: () => {
       if (!current) return;

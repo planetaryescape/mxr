@@ -14074,6 +14074,12 @@ export interface components {
                   kind: "ModeGuides";
               }
             | {
+                  hint: string;
+                  /** @enum {string} */
+                  kind: "HintSeen";
+                  newly_seen: boolean;
+              }
+            | {
                   /** @enum {string} */
                   kind: "Now";
                   now: components["schemas"]["NowData"];

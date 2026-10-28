@@ -188,14 +188,32 @@ export function isAvailable(action: Action, ctx: ActionContext): boolean {
   return allowed.includes("global") || allowed.some((scope) => ctx.scopes.includes(scope));
 }
 
+/** Where an action was run from: a key, the palette, or a pointer. */
+export type InvocationSource = "key" | "palette" | "pointer";
+
+type InvocationListener = (action: Action, source: InvocationSource) => void;
+
+const invocationListeners = new Set<InvocationListener>();
+
+/**
+ * Hear every action run through `invokeAction`, with where it came from
+ * ("Next time" teaches keys after a palette or pointer run). Returns a cleanup.
+ */
+export function onActionInvoked(listener: InvocationListener): () => void {
+  invocationListeners.add(listener);
+  return () => invocationListeners.delete(listener);
+}
+
 /** Run an action from any surface (key, palette, button). */
-export function invokeAction(action: Action, ctx: ActionContext): void {
+export function invokeAction(action: Action, ctx: ActionContext, source: InvocationSource): void {
   if (action.command !== undefined) {
     const scope = commandScope(action, ctx);
-    if (scope) runCommand(scope, action.command);
-    return;
+    if (!scope) return;
+    runCommand(scope, action.command);
+  } else {
+    void action.run(ctx);
   }
-  void action.run(ctx);
+  for (const listener of invocationListeners) listener(action, source);
 }
 
 let singleton: ActionRegistry | null = null;

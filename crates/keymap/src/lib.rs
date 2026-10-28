@@ -275,7 +275,8 @@ pub struct MovedKey {
 }
 
 /// A TUI binding: the action name its dispatcher returns for these keys, in
-/// these contexts.
+/// these contexts. A palette-only action's binding has no keys: it names the
+/// TUI action the palette runs, and the contexts it is listed in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TuiBinding {
     pub name: String,
@@ -507,8 +508,14 @@ impl Keymap {
             if !action.is_for(Client::Web) && web_keys.clone().next().is_some() {
                 problems.push(format!("{id}: has web keys but is not a web action"));
             }
-            if action.palette_only && web_keys.clone().next().is_some() {
+            let tui_keys = action.tui.iter().any(|binding| !binding.keys.is_empty());
+            if action.palette_only && (web_keys.clone().next().is_some() || tui_keys) {
                 problems.push(format!("{id}: is palette-only but has keys"));
+            }
+            if !action.palette_only && action.tui.iter().any(|binding| binding.keys.is_empty()) {
+                problems.push(format!(
+                    "{id}: a TUI binding with no keys is for a palette-only action"
+                ));
             }
             for key in web_keys.chain(action.tui.iter().flat_map(|b| &b.keys)) {
                 if !is_well_formed(key) {

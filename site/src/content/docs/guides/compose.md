@@ -549,7 +549,7 @@ mxr snippets set decline "Thanks for the offer; can't take this on right now." -
 mxr snippets remove decline
 ```
 
-The TUI exposes a read-only snippets browser via `Ctrl-p → Snippets`.
+The TUI exposes a read-only snippets browser via the palette (`:`) → **Snippets**.
 
 ## Recipes
 

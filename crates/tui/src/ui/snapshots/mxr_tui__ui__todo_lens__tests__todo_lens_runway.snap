@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/todo_lens.rs
+assertion_line: 1154
 expression: rendered
 ---
 "╭ To do ─ Things email asked you to do, ordered by when to act. ───────────────────────────────────────────────────────╮"
@@ -18,7 +19,7 @@ expression: rendered
 "│                                                                                                                      │"
 "│  DONE THIS WEEK (1)                                                                                                  │"
 "│                                                                                                                      │"
-"│  3 expired since you last looked · E open the list                                                                   │"
+"│  3 expired since you last looked · 3 open the list                                                                   │"
 "│                                                                                                                      │"
 "│                                                                                                                      │"
 "│                                                                                                                      │"
@@ -30,5 +31,5 @@ expression: rendered
 "│                                                                                                                      │"
 "│                                                                                                                      │"
 "│ link goes to camden.gov.uk · Here because: "payment due 9 October" (rule).                                           │"
-"│ ↵ Open email to pay  e tick off  b schedule  , edit  X correct to-do  o open the email  C catch up  ? keys           │"
+"│ ↵ Open email to pay  e tick off  b schedule  , edit  X correct to-do  o open the email  2 catch up  ? keys           │"
 "╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯"

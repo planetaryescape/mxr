@@ -108,7 +108,7 @@ The whole loop stays in the keyboard. No mouse, no context switches.
 
 ## In real life
 
-- **Monday morning:** open mxr, hit `Ctrl-p → Reply Queue` to see what
+- **Monday morning:** open mxr, hit `gq` to see what
   you bookmarked over the weekend; walk it with `j/k` and `r`.
 - **Inbox bombing after vacation:** `mxr screener --format ids queue
   | xargs -n1 mxr cat | less` to skim every unknown sender at once,

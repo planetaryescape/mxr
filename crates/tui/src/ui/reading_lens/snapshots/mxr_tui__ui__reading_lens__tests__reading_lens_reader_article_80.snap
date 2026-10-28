@@ -1,6 +1,6 @@
 ---
 source: crates/tui/src/ui/reading_lens/tests.rs
-assertion_line: 303
+assertion_line: 306
 expression: rendered
 ---
 "╭ Reading ─ Newsletters you chose, as an edition. Read when you like.  Later 2 ╮"
@@ -37,5 +37,5 @@ expression: rendered
 "││                                                                            ││"
 "│╰────────────────────────────────────────────────────────────────────────────╯│"
 "│ Here because: you subscribed, and it has an unsubscribe link (rule). Fades … │"
-"│ Esc back · j/k scroll · h highlight · H highlights · L article · b later     │"
+"│ Esc back · j/k scroll · " highlight · 3 highlights · L article · b later     │"
 "╰──────────────────────────────────────────────────────────────────────────────╯"

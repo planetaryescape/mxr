@@ -985,7 +985,14 @@
       "scopes": [
         "global"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "OpenSubscriptions",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
     },
     {
       "id": "nav.screener",
@@ -1056,12 +1063,7 @@
             "reader",
             "sidebar",
             "place",
-            "todo",
-            "catchup",
-            "expired",
             "archive",
-            "reading",
-            "reading-reader",
             "updates"
           ],
           "until": "0.6.180",
@@ -1076,6 +1078,14 @@
       "scopes": [
         "global"
       ],
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "OpenSearchScreen",
+          "keys": [],
+          "contexts": "all"
+        }
+      ],
       "moved": [
         {
           "key": "2",
@@ -1085,12 +1095,7 @@
             "reader",
             "sidebar",
             "place",
-            "todo",
-            "catchup",
-            "expired",
             "archive",
-            "reading",
-            "reading-reader",
             "updates"
           ],
           "until": "0.6.180",
@@ -1140,12 +1145,7 @@
             "reader",
             "sidebar",
             "place",
-            "todo",
-            "catchup",
-            "expired",
             "archive",
-            "reading",
-            "reading-reader",
             "updates"
           ],
           "until": "0.6.180"
@@ -2272,7 +2272,17 @@
         "list",
         "reader"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "FlagReplyLater",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader"
+          ]
+        }
+      ]
     },
     {
       "id": "mail.make-todo",
@@ -2314,6 +2324,17 @@
         "reader"
       ],
       "palette_only": true,
+      "tui": [
+        {
+          "name": "PassToMode",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader",
+            "place"
+          ]
+        }
+      ],
       "moved": [
         {
           "key": "T",
@@ -2412,6 +2433,16 @@
         "reader"
       ],
       "palette_only": true,
+      "tui": [
+        {
+          "name": "ExportThread",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader"
+          ]
+        }
+      ],
       "moved": [
         {
           "key": "E",
@@ -2459,6 +2490,17 @@
         "reader"
       ],
       "palette_only": true,
+      "tui": [
+        {
+          "name": "OpenWhoisOnFocusedSender",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader",
+            "place"
+          ]
+        }
+      ],
       "moved": [
         {
           "key": "W",
@@ -2833,7 +2875,17 @@
         "list",
         "reader"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "CancelAutoReminder",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader"
+          ]
+        }
+      ]
     },
     {
       "id": "mail.compose-to-sender",
@@ -2854,7 +2906,17 @@
         "list",
         "reader"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "RouteToLabel",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader"
+          ]
+        }
+      ]
     },
     {
       "id": "mail.draft-assist",
@@ -2864,7 +2926,17 @@
       "scopes": [
         "reader"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "DraftAssistCurrentThread",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader"
+          ]
+        }
+      ]
     },
     {
       "id": "mail.find-expert",
@@ -2874,7 +2946,17 @@
       "scopes": [
         "global"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "FindExpertOnFocusedMessage",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader"
+          ]
+        }
+      ]
     },
     {
       "id": "mail.sync",
@@ -2884,7 +2966,14 @@
       "scopes": [
         "global"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "SyncNow",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
     },
     {
       "id": "sidebar.down",
@@ -3310,7 +3399,16 @@
       "scopes": [
         "list"
       ],
-      "hide_in_palette": true,
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "ViewportTop",
+          "keys": [],
+          "contexts": [
+            "list"
+          ]
+        }
+      ],
       "moved": [
         {
           "key": "H",
@@ -3338,7 +3436,16 @@
       "scopes": [
         "list"
       ],
-      "hide_in_palette": true,
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "ViewportMiddle",
+          "keys": [],
+          "contexts": [
+            "list"
+          ]
+        }
+      ],
       "moved": [
         {
           "key": "M",
@@ -3735,7 +3842,17 @@
         "list",
         "reader"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "ToggleMailListMode",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader"
+          ]
+        }
+      ]
     },
     {
       "id": "reader.scroll-down",
@@ -4254,6 +4371,17 @@
       "scopes": [
         "reader"
       ],
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "SummarizeCurrentThread",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader"
+          ]
+        }
+      ],
       "moved": [
         {
           "key": "y",
@@ -4681,8 +4809,18 @@
       "label": "Sweep this sender's bundle…",
       "short_label": "Sweep sender",
       "group": "Triage",
+      "palette_only": true,
       "clients": [
         "tui"
+      ],
+      "tui": [
+        {
+          "name": "SweepBundle",
+          "keys": [],
+          "contexts": [
+            "place"
+          ]
+        }
       ],
       "moved": [
         {
@@ -5046,25 +5184,65 @@
       ]
     },
     {
+      "id": "todo.runway",
+      "label": "Runway",
+      "short_label": "Runway",
+      "group": "Triage",
+      "scopes": [
+        "todo",
+        "catchup",
+        "expired"
+      ],
+      "keys": [
+        "1"
+      ],
+      "tui": [
+        {
+          "name": "TodoShowRunway",
+          "keys": [
+            "1"
+          ],
+          "contexts": [
+            "todo",
+            "catchup",
+            "expired"
+          ]
+        }
+      ]
+    },
+    {
       "id": "todo.expired",
       "label": "Expired list",
       "short_label": "Expired",
       "group": "Triage",
       "scopes": [
-        "todo"
+        "todo",
+        "catchup",
+        "expired"
       ],
       "keys": [
-        "E"
+        "3"
       ],
       "tui": [
         {
           "name": "TodoOpenExpired",
           "keys": [
-            "E"
+            "3"
           ],
           "contexts": [
-            "todo"
+            "todo",
+            "catchup",
+            "expired"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "E",
+          "contexts": [
+            "todo"
+          ],
+          "until": "0.6.197"
         }
       ]
     },
@@ -5074,20 +5252,33 @@
       "short_label": "Catch-up",
       "group": "Triage",
       "scopes": [
-        "todo"
+        "todo",
+        "catchup",
+        "expired"
       ],
       "keys": [
-        "C"
+        "2"
       ],
       "tui": [
         {
           "name": "TodoOpenCatchup",
           "keys": [
-            "C"
+            "2"
           ],
           "contexts": [
-            "todo"
+            "todo",
+            "catchup",
+            "expired"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "C",
+          "contexts": [
+            "todo"
+          ],
+          "until": "0.6.197"
         }
       ]
     },
@@ -5640,13 +5831,22 @@
     },
     {
       "id": "archive.check",
-      "label": "Mark checked",
+      "label": "Mark this record checked",
       "short_label": "Checked",
       "group": "Triage",
       "scopes": [
         "archive"
       ],
       "palette_only": true,
+      "tui": [
+        {
+          "name": "RecordsMarkChecked",
+          "keys": [],
+          "contexts": [
+            "archive"
+          ]
+        }
+      ],
       "moved": [
         {
           "key": "v",
@@ -5683,7 +5883,7 @@
     },
     {
       "id": "archive.export",
-      "label": "Export…",
+      "label": "Export the records in view…",
       "short_label": "Export",
       "description": "CSV of the records in view, after a preview of what it holds",
       "group": "Triage",
@@ -5691,6 +5891,15 @@
         "archive"
       ],
       "palette_only": true,
+      "tui": [
+        {
+          "name": "RecordsExport",
+          "keys": [],
+          "contexts": [
+            "archive"
+          ]
+        }
+      ],
       "moved": [
         {
           "key": "E",
@@ -6049,26 +6258,98 @@
       ]
     },
     {
-      "id": "reading.later-shelf",
-      "label": "Open Later",
-      "short_label": "Later shelf",
+      "id": "reading.edition",
+      "label": "Edition",
+      "short_label": "Edition",
       "group": "Read",
       "scopes": [
-        "reading"
+        "reading",
+        "reading-reader"
       ],
       "keys": [
-        "B"
+        "1"
       ],
       "tui": [
         {
-          "name": "ReadingLaterShelf",
+          "name": "ReadingEdition",
           "keys": [
-            "B"
+            "1"
           ],
           "contexts": [
             "reading",
             "reading-reader"
           ]
+        }
+      ]
+    },
+    {
+      "id": "reading.later-shelf",
+      "label": "Later",
+      "short_label": "Later",
+      "description": "What you kept with b; Later never fades",
+      "group": "Read",
+      "scopes": [
+        "reading",
+        "reading-reader"
+      ],
+      "keys": [
+        "2"
+      ],
+      "tui": [
+        {
+          "name": "ReadingLaterShelf",
+          "keys": [
+            "2"
+          ],
+          "contexts": [
+            "reading",
+            "reading-reader"
+          ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "B",
+          "contexts": [
+            "reading",
+            "reading-reader"
+          ],
+          "until": "0.6.197"
+        }
+      ]
+    },
+    {
+      "id": "reading.highlights",
+      "label": "Highlights",
+      "short_label": "Highlights",
+      "description": "Your highlights in the open issue",
+      "group": "Read",
+      "scopes": [
+        "reading",
+        "reading-reader"
+      ],
+      "keys": [
+        "3"
+      ],
+      "tui": [
+        {
+          "name": "ReadingHighlights",
+          "keys": [
+            "3"
+          ],
+          "contexts": [
+            "reading",
+            "reading-reader"
+          ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "H",
+          "contexts": [
+            "reading-reader"
+          ],
+          "until": "0.6.197"
         }
       ]
     },
@@ -6146,7 +6427,7 @@
     },
     {
       "id": "reading.reader-article",
-      "label": "Article: fetch and read it",
+      "label": "Article or issue: switch between them",
       "short_label": "Article",
       "group": "Read",
       "scopes": [
@@ -6164,8 +6445,16 @@
       "scopes": [
         "reading-reader"
       ],
-      "keys": [
-        "I"
+      "palette_only": true,
+      "moved": [
+        {
+          "key": "I",
+          "contexts": [
+            "reading-reader"
+          ],
+          "until": "0.6.197",
+          "to": "reading.reader-article"
+        }
       ]
     },
     {
@@ -6312,25 +6601,6 @@
             "ArrowLeft",
             "Escape",
             "q"
-          ],
-          "contexts": [
-            "reading-reader"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "tui.reading-highlights",
-      "label": "Your highlights in this issue",
-      "group": "TUI",
-      "clients": [
-        "tui"
-      ],
-      "tui": [
-        {
-          "name": "ReadingHighlights",
-          "keys": [
-            "H"
           ],
           "contexts": [
             "reading-reader"
@@ -7507,6 +7777,15 @@
       ],
       "palette_only": true,
       "note": "Previews the daemon's dry run first; undo afterwards",
+      "tui": [
+        {
+          "name": "UpdatesSweep",
+          "keys": [],
+          "contexts": [
+            "updates"
+          ]
+        }
+      ],
       "moved": [
         {
           "key": "S",
@@ -7705,7 +7984,14 @@
       "scopes": [
         "global"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "BackfillSemantic",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
     },
     {
       "id": "semantic.enable",
@@ -7715,7 +8001,14 @@
       "scopes": [
         "global"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "EnableSemantic",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
     },
     {
       "id": "semantic.disable",
@@ -7725,7 +8018,14 @@
       "scopes": [
         "global"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "DisableSemantic",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
     },
     {
       "id": "semantic.reindex",
@@ -7735,7 +8035,14 @@
       "scopes": [
         "global"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "ReindexSemantic",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
     },
     {
       "id": "rules.new",
@@ -7746,6 +8053,13 @@
         "global"
       ],
       "palette_only": true,
+      "tui": [
+        {
+          "name": "OpenRuleFormNew",
+          "keys": [],
+          "contexts": "all"
+        }
+      ],
       "moved": [
         {
           "key": "n",
@@ -7766,6 +8080,13 @@
         "global"
       ],
       "palette_only": true,
+      "tui": [
+        {
+          "name": "OpenAccountFormNew",
+          "keys": [],
+          "contexts": "all"
+        }
+      ],
       "moved": [
         {
           "key": "n",
@@ -7795,7 +8116,14 @@
       "scopes": [
         "global"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "OpenAnalyticsView(Wrapped)",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
     },
     {
       "id": "ask.archive",
@@ -7852,7 +8180,14 @@
       "scopes": [
         "global"
       ],
-      "palette_only": true
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "NewAssistantConversation",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
     },
     {
       "id": "tui.pattern-select-thread",
@@ -8011,8 +8346,18 @@
       "id": "tui.center-current",
       "label": "Center current",
       "group": "TUI",
+      "palette_only": true,
       "clients": [
         "tui"
+      ],
+      "tui": [
+        {
+          "name": "CenterCurrent",
+          "keys": [],
+          "contexts": [
+            "list"
+          ]
+        }
       ],
       "moved": [
         {
@@ -8040,8 +8385,18 @@
       "id": "tui.viewport-bottom",
       "label": "Viewport bottom",
       "group": "TUI",
+      "palette_only": true,
       "clients": [
         "tui"
+      ],
+      "tui": [
+        {
+          "name": "ViewportBottom",
+          "keys": [],
+          "contexts": [
+            "list"
+          ]
+        }
       ],
       "moved": [
         {
@@ -8091,8 +8446,18 @@
       "id": "tui.more-from-sender",
       "label": "More from this sender",
       "group": "TUI",
+      "palette_only": true,
       "clients": [
         "tui"
+      ],
+      "tui": [
+        {
+          "name": "MoreFromSender",
+          "keys": [],
+          "contexts": [
+            "place"
+          ]
+        }
       ],
       "moved": [
         {
@@ -8108,8 +8473,18 @@
       "id": "tui.more-place-senders",
       "label": "More senders in this place",
       "group": "TUI",
+      "palette_only": true,
       "clients": [
         "tui"
+      ],
+      "tui": [
+        {
+          "name": "MorePlaceSenders",
+          "keys": [],
+          "contexts": [
+            "place"
+          ]
+        }
       ],
       "moved": [
         {
@@ -8182,8 +8557,18 @@
       "id": "tui.todo-microsoft-send",
       "label": "Send to Microsoft To Do",
       "group": "Triage",
+      "palette_only": true,
       "clients": [
         "tui"
+      ],
+      "tui": [
+        {
+          "name": "TodoSendToMicrosoft",
+          "keys": [],
+          "contexts": [
+            "todo"
+          ]
+        }
       ],
       "moved": [
         {
@@ -8199,8 +8584,18 @@
       "id": "tui.todo-microsoft-sync",
       "label": "Sync the linked Microsoft To Do task",
       "group": "Triage",
+      "palette_only": true,
       "clients": [
         "tui"
+      ],
+      "tui": [
+        {
+          "name": "TodoSyncMicrosoft",
+          "keys": [],
+          "contexts": [
+            "todo"
+          ]
+        }
       ],
       "moved": [
         {
@@ -8306,8 +8701,16 @@
       "id": "tui.delete-assistant-conversation",
       "label": "Delete conversation",
       "group": "Mail",
+      "palette_only": true,
       "clients": [
         "tui"
+      ],
+      "tui": [
+        {
+          "name": "DeleteAssistantConversation",
+          "keys": [],
+          "contexts": "all"
+        }
       ],
       "moved": [
         {
@@ -8317,6 +8720,705 @@
           ],
           "until": "0.6.185",
           "to_key": "#"
+        }
+      ]
+    },
+    {
+      "id": "tui.mailbox",
+      "label": "Mailbox",
+      "group": "Navigate",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenMailboxScreen",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.categories",
+      "label": "Categories",
+      "group": "Navigate",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenPersonalCategories",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.assign-category",
+      "label": "Assign a category",
+      "group": "Mail",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "AssignPersonalCategory",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.clear-selection",
+      "label": "Clear selection",
+      "group": "Select",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ClearSelection",
+          "keys": [],
+          "contexts": [
+            "list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.snippets",
+      "label": "Snippets",
+      "group": "Compose",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenSnippets",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.local-drafts",
+      "label": "Drafts saved on this computer",
+      "group": "Compose",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenStoredDrafts",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.reopen-send-draft",
+      "label": "Reopen last send draft",
+      "group": "Compose",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ReopenLastSendDraft",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.check-send-outcome",
+      "label": "Check last send outcome",
+      "group": "Compose",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "CheckLastSendOutcome",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.preview-send-recovery",
+      "label": "Preview last send recovery",
+      "group": "Compose",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "PreviewLastSendRecovery",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.resume-previewed-send",
+      "label": "Resume previewed approved send",
+      "group": "Compose",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ResumePreviewedSend",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.draft-options",
+      "label": "Draft: reply with tone and length…",
+      "group": "Compose",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "DraftWithOptions",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.draft-new-for-sender",
+      "label": "Draft: new for sender",
+      "group": "Compose",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "DraftNewForSender",
+          "keys": [],
+          "contexts": [
+            "list",
+            "reader"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.voice-profile",
+      "label": "Voice: show profile",
+      "group": "Settings",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenVoiceProfile",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.voice-rebuild",
+      "label": "Voice: rebuild profile",
+      "group": "Settings",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "RebuildUserVoice",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.commitments",
+      "label": "Commitments: show open",
+      "group": "Compose",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenCommitments",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.edit-config",
+      "label": "Edit config",
+      "group": "Settings",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "EditConfig",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant-conversations",
+      "label": "Assistant: past conversations",
+      "group": "View",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenAssistantConversations",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant-models",
+      "label": "Assistant: choose the model (local or cloud)",
+      "group": "View",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenAssistantModels",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.assistant-trust",
+      "label": "Assistant: approve reversible changes automatically (on/off)",
+      "group": "View",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ToggleAssistantTrust",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.rules-refresh",
+      "label": "Refresh rules",
+      "group": "Rules",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "RefreshRules",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.rule-edit",
+      "label": "Edit rule",
+      "group": "Rules",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenRuleFormEdit",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.rule-toggle",
+      "label": "Turn rule on or off",
+      "group": "Rules",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ToggleRuleEnabled",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.rule-dry-run",
+      "label": "Rule dry run",
+      "group": "Rules",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ShowRuleDryRun",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.rule-history",
+      "label": "Rule history",
+      "group": "Rules",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ShowRuleHistory",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.rule-delete",
+      "label": "Delete rule",
+      "group": "Rules",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "DeleteRule",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics-refresh",
+      "label": "Refresh diagnostics",
+      "group": "Diagnostics",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "RefreshDiagnostics",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.bug-report",
+      "label": "Generate bug report",
+      "group": "Diagnostics",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "GenerateBugReport",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.diagnostics-details",
+      "label": "Open diagnostics details",
+      "group": "Diagnostics",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenDiagnosticsPaneDetails",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.accounts-refresh",
+      "label": "Refresh accounts",
+      "group": "Accounts",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "RefreshAccounts",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.account-test",
+      "label": "Test account",
+      "group": "Accounts",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "TestAccountForm",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.account-default",
+      "label": "Set default account",
+      "group": "Accounts",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "SetDefaultAccount",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics-storage",
+      "label": "Analytics: Storage",
+      "group": "Analytics",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenAnalyticsView(Storage)",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics-stale",
+      "label": "Analytics: Stale Threads",
+      "group": "Analytics",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenAnalyticsView(StaleThreads)",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics-contacts",
+      "label": "Analytics: Contacts",
+      "group": "Analytics",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenAnalyticsView(Contacts)",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics-cadence",
+      "label": "Analytics: Cadence Drift",
+      "group": "Analytics",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenAnalyticsView(CadenceDrift)",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics-response-time",
+      "label": "Analytics: Response Time",
+      "group": "Analytics",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenAnalyticsView(ResponseTime)",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.analytics-subscriptions",
+      "label": "Analytics: Subscriptions",
+      "group": "Analytics",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenAnalyticsView(Subscriptions)",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.semantic-install-bge-small",
+      "label": "Semantic: Install Profile (BGE Small EN)",
+      "group": "Semantic",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "InstallSemanticProfile(BgeSmallEnV15)",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.semantic-install-e5",
+      "label": "Semantic: Install Profile (Multilingual E5)",
+      "group": "Semantic",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "InstallSemanticProfile(MultilingualE5Small)",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.semantic-install-bge-m3",
+      "label": "Semantic: Install Profile (BGE-M3)",
+      "group": "Semantic",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "InstallSemanticProfile(BgeM3)",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.semantic-use-bge-small",
+      "label": "Semantic: Use Profile (BGE Small EN)",
+      "group": "Semantic",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "UseSemanticProfile(BgeSmallEnV15)",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.semantic-use-e5",
+      "label": "Semantic: Use Profile (Multilingual E5)",
+      "group": "Semantic",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "UseSemanticProfile(MultilingualE5Small)",
+          "keys": [],
+          "contexts": "all"
+        }
+      ]
+    },
+    {
+      "id": "tui.semantic-use-bge-m3",
+      "label": "Semantic: Use Profile (BGE-M3)",
+      "group": "Semantic",
+      "palette_only": true,
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "UseSemanticProfile(BgeM3)",
+          "keys": [],
+          "contexts": "all"
         }
       ]
     },

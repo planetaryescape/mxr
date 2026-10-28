@@ -1,4 +1,12 @@
-use crate::action::{action_allowed_in_context, Action, PatternKind, UiContext};
+//! The command palette (`:`, `Ctrl-k`). Its commands come from the key
+//! definition (`crates/keymap/keymap.toml`, blueprint 35): every TUI action
+//! live where the keys are going, with all of its keys there after the
+//! person's remaps, and every palette-only action. Nothing here names a key.
+
+use crate::action::{action_allowed_in_context, Action, UiContext};
+use crate::keybindings::{KeybindingConfig, ViewContext};
+use crate::keymap_names::action_named;
+use mxr_keymap::{Client, KeyAction, TuiBinding, MODE_SECTIONS};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -8,15 +16,32 @@ pub const RECENT_COMMAND_CAPACITY: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct PaletteCommand {
+    /// The definition's action id; `None` for archive recovery commands,
+    /// which come from the local journal.
+    pub id: Option<&'static str>,
     pub label: String,
+    /// Every key that runs it here, `" / "` between them; empty for none.
     pub shortcut: String,
     pub action: Action,
     pub category: String,
 }
 
+impl PaletteCommand {
+    /// The key to name for it here, if it has one.
+    pub fn first_key(&self) -> Option<&str> {
+        self.shortcut
+            .split(" / ")
+            .next()
+            .filter(|key| !key.is_empty())
+    }
+}
+
 pub struct CommandPalette {
-    pub(crate) keybindings: crate::keybindings::KeybindingConfig,
-    pub(crate) binding_context: Option<crate::keybindings::ViewContext>,
+    pub(crate) keybindings: KeybindingConfig,
+    pub(crate) binding_context: Option<ViewContext>,
+    /// Where keys are going (`App::key_place`): a mode, the list, the
+    /// reader, the sidebar; `None` off the mailbox.
+    pub(crate) key_place: Option<&'static str>,
     pub visible: bool,
     pub input: String,
     pub commands: Vec<PaletteCommand>,
@@ -26,11 +51,17 @@ pub struct CommandPalette {
     /// Most-recent-first list of actions the user has confirmed. Used to
     /// bias filtered results toward muscle-memory commands.
     pub recent_actions: Vec<Action>,
+    /// Rebuild the commands from the definition on each open. False for a
+    /// palette given its own commands (`with_commands`).
+    pub(crate) from_definition: bool,
 }
 
 impl Default for CommandPalette {
     fn default() -> Self {
-        Self::with_commands(default_commands())
+        Self {
+            from_definition: true,
+            ..Self::with_commands(default_commands())
+        }
     }
 }
 
@@ -42,6 +73,7 @@ impl CommandPalette {
         Self {
             keybindings: crate::keybindings::default_keybindings(),
             binding_context: None,
+            key_place: None,
             visible: false,
             input: String::new(),
             commands,
@@ -49,6 +81,7 @@ impl CommandPalette {
             selected: 0,
             context,
             recent_actions,
+            from_definition: false,
         }
     }
 
@@ -69,21 +102,16 @@ impl CommandPalette {
         self.visible = !self.visible;
         if self.visible {
             self.context = context;
+            // Rebuilt on each open, so each row shows the keys that work
+            // where the palette was opened, with the person's remaps.
+            if self.from_definition {
+                let place = self.key_place.or_else(|| place_for(context));
+                let view = self
+                    .binding_context
+                    .unwrap_or_else(|| view_context_for(context));
+                self.commands = defined_commands(place, &self.keybindings, view);
+            }
             add_archive_recovery_commands(&mut self.commands, operations);
-            // Re-derive shortcuts for the focused view so each row shows
-            // the key that actually fires there (e.g. thread-view chords
-            // when the palette opens over a message). Mail-list shortcuts
-            // re-apply first as the baseline so a previous context's
-            // overrides don't linger.
-            apply_registered_mail_list_shortcuts(&mut self.commands);
-            apply_context_shortcuts(&mut self.commands, context);
-            apply_effective_shortcuts(
-                &mut self.commands,
-                &self.keybindings,
-                context,
-                self.binding_context
-                    .unwrap_or_else(|| view_context_for(context)),
-            );
             self.input.clear();
             self.selected = 0;
             self.update_filtered(None);
@@ -118,14 +146,16 @@ impl CommandPalette {
     }
 
     pub fn confirm(&mut self) -> Option<Action> {
-        if let Some(&idx) = self.filtered.get(self.selected) {
-            self.visible = false;
-            let action = self.commands[idx].action.clone();
-            self.record_recent(action.clone());
-            Some(action)
-        } else {
-            None
-        }
+        self.confirm_command().map(|command| command.action)
+    }
+
+    /// Close the palette on the highlighted command and return it.
+    pub fn confirm_command(&mut self) -> Option<PaletteCommand> {
+        let &idx = self.filtered.get(self.selected)?;
+        self.visible = false;
+        let command = self.commands[idx].clone();
+        self.record_recent(command.action.clone());
+        Some(command)
     }
 
     /// Record a confirmed action as most-recent. Existing occurrences are
@@ -206,74 +236,177 @@ impl CommandPalette {
     }
 }
 
+/// The commands help lists for `context`, with the default keys.
 pub fn commands_for_context(context: UiContext) -> Vec<PaletteCommand> {
-    let mut commands = default_commands();
-    apply_context_shortcuts(&mut commands, context);
-    commands
+    commands_with_keybindings(
+        context,
+        crate::keybindings::shown_keybindings(),
+        view_context_for(context),
+    )
+}
+
+/// The commands help lists for `context`, with the person's keys.
+pub(crate) fn commands_with_keybindings(
+    context: UiContext,
+    config: &KeybindingConfig,
+    view: ViewContext,
+) -> Vec<PaletteCommand> {
+    defined_commands(place_for(context), config, view)
         .into_iter()
         .filter(|command| action_allowed_in_context(&command.action, context))
         .collect()
 }
 
-pub(crate) fn commands_with_keybindings(
-    context: UiContext,
-    config: &crate::keybindings::KeybindingConfig,
-    view: crate::keybindings::ViewContext,
-) -> Vec<PaletteCommand> {
-    let mut commands = commands_for_context(context);
-    apply_effective_shortcuts(&mut commands, config, context, view);
+/// Every command the definition offers, wherever it is live, with its
+/// default keys: what recents are restored against before the palette
+/// first opens.
+pub fn default_commands() -> Vec<PaletteCommand> {
+    let mut commands = defined_commands(
+        None,
+        crate::keybindings::shown_keybindings(),
+        ViewContext::MailList,
+    );
+    add_archive_recovery_commands(&mut commands, &[]);
     commands
 }
 
-fn apply_effective_shortcuts(
-    commands: &mut [PaletteCommand],
-    config: &crate::keybindings::KeybindingConfig,
-    view_context: UiContext,
-    view: crate::keybindings::ViewContext,
-) {
-    if !matches!(
-        view_context,
-        UiContext::MailboxList
-            | UiContext::MailboxMessage
-            | UiContext::SearchResults
-            | UiContext::SearchPreview
-    ) {
-        return;
-    }
-    for command in commands {
-        // Do not retain a registry shortcut after its key was removed or stolen.
-        if crate::keybindings::primary_key_display(view, &command.action).is_some()
-            || config.has_action_override(view, &command.action)
-        {
-            command.shortcut = config
-                .primary_key_display(view, &command.action)
-                .unwrap_or_default();
-        }
+/// The definition's context for a mailbox pane, when the app didn't say.
+fn place_for(context: UiContext) -> Option<&'static str> {
+    match context {
+        UiContext::MailboxList => Some("list"),
+        UiContext::MailboxMessage => Some("reader"),
+        UiContext::MailboxSidebar => Some("sidebar"),
+        _ => None,
     }
 }
 
 /// Keybinding view map that governs which chord fires for `context`.
 /// Message/preview panes resolve through the thread-view map (matching
 /// the help modal's mapping); everything else uses the mail-list map.
-fn view_context_for(context: UiContext) -> crate::keybindings::ViewContext {
+fn view_context_for(context: UiContext) -> ViewContext {
     match context {
-        UiContext::MailboxMessage | UiContext::SearchPreview => {
-            crate::keybindings::ViewContext::ThreadView
-        }
-        _ => crate::keybindings::ViewContext::MailList,
+        UiContext::MailboxMessage | UiContext::SearchPreview => ViewContext::ThreadView,
+        _ => ViewContext::MailList,
     }
 }
 
-/// Override each command's shortcut with the key bound to its action in
-/// the focused view's keybinding map. Commands without a binding in that
-/// map keep their registry-derived (mail-list) or hand-set shortcut.
-fn apply_context_shortcuts(commands: &mut [PaletteCommand], context: UiContext) {
-    let view = view_context_for(context);
-    for cmd in commands.iter_mut() {
-        if let Some(shortcut) = crate::keybindings::primary_key_display(view, &cmd.action) {
-            cmd.shortcut = shortcut;
+/// One command per TUI action the definition lists in `place` (every TUI
+/// action off the mailbox, where `action_allowed_in_context` filters), in
+/// the definition's order. Motion keys stay out, as in the web palette.
+pub(crate) fn defined_commands(
+    place: Option<&str>,
+    config: &KeybindingConfig,
+    view: ViewContext,
+) -> Vec<PaletteCommand> {
+    let keymap = mxr_keymap::defaults();
+    let mut commands: Vec<PaletteCommand> = Vec::new();
+    for action in &keymap.actions {
+        if !action.is_for(Client::Tui) || action.hide_in_palette {
+            continue;
         }
+        // The bindings live here; off the mailbox, the list's (or any).
+        let live: Vec<&TuiBinding> = match place {
+            Some(place) => action
+                .tui
+                .iter()
+                .filter(|b| b.contexts.includes(place))
+                .collect(),
+            None => {
+                let list: Vec<&TuiBinding> = action
+                    .tui
+                    .iter()
+                    .filter(|b| b.contexts.includes("list"))
+                    .collect();
+                if list.is_empty() {
+                    action.tui.iter().take(1).collect()
+                } else {
+                    list
+                }
+            }
+        };
+        // The first binding's action is what the palette runs; the others
+        // only add keys (`g 0` is Inbox too).
+        let Some(tui_action) = live.first().and_then(|b| action_named(&b.name)) else {
+            continue;
+        };
+        // Two definition actions can run one TUI action in one place (Reply
+        // in the list and in Now); the first names it.
+        if commands.iter().any(|command| command.action == tui_action) {
+            continue;
+        }
+        let mut keys: Vec<String> = Vec::new();
+        for binding in live {
+            for key in effective_keys(action, binding, place, config, view, &tui_action) {
+                if !keys.contains(&key) {
+                    keys.push(key);
+                }
+            }
+        }
+        commands.push(PaletteCommand {
+            id: Some(action.id.as_str()),
+            label: action.label.clone(),
+            shortcut: keys.join(" / "),
+            action: tui_action,
+            category: action.group.clone(),
+        });
     }
+    #[cfg(debug_assertions)]
+    commands.push(PaletteCommand {
+        id: None,
+        label: "Dump Action Trace".into(),
+        shortcut: "Ctrl-Alt-d".into(),
+        action: Action::DumpActionTrace,
+        category: "Diagnostics".into(),
+    });
+    commands
+}
+
+/// The keys that run `action` in `place`: a mode section's remaps, or the
+/// list and reader maps' remaps from `keys.toml`, else the definition's.
+fn effective_keys(
+    action: &KeyAction,
+    binding: &TuiBinding,
+    place: Option<&str>,
+    config: &KeybindingConfig,
+    view: ViewContext,
+    tui_action: &Action,
+) -> Vec<String> {
+    match place {
+        Some(place) if MODE_SECTIONS.contains(&place) => {
+            let remaps = &config.modes;
+            let remapped = remaps.keys_for(place, &action.id);
+            if !remapped.is_empty() {
+                return remapped.into_iter().map(shown_key).collect();
+            }
+            binding
+                .keys
+                .iter()
+                .filter(|key| remaps.lookup(place, key).is_none())
+                .map(|key| shown_key(key))
+                .collect()
+        }
+        // The list and reader maps also govern search and the other screens.
+        Some("list" | "reader") | None if config.has_action_override(view, tui_action) => {
+            config.key_displays(view, tui_action)
+        }
+        _ => binding.keys.iter().map(|key| shown_key(key)).collect(),
+    }
+}
+
+/// A definition key as the TUI spells keys elsewhere (help, the hint bar):
+/// `g R` → `gR`, `Ctrl+d` → `Ctrl-d`, `Escape` → `Esc`.
+fn shown_key(key: &str) -> String {
+    key.split(' ')
+        .map(|chord| match chord {
+            "Escape" => "Esc".to_string(),
+            "ArrowUp" => "Up".to_string(),
+            "ArrowDown" => "Down".to_string(),
+            "ArrowLeft" => "Left".to_string(),
+            "ArrowRight" => "Right".to_string(),
+            "+" => "+".to_string(),
+            chord => chord.replace('+', "-"),
+        })
+        .collect()
 }
 
 fn filtered_indices(
@@ -332,988 +465,6 @@ fn match_score(command: &PaletteCommand, query: &str) -> Option<u8> {
     None
 }
 
-fn apply_registered_mail_list_shortcuts(commands: &mut [PaletteCommand]) {
-    for cmd in commands.iter_mut() {
-        if let Some(shortcut) = crate::keybindings::primary_mail_list_key_display(&cmd.action) {
-            cmd.shortcut = shortcut;
-        }
-    }
-}
-
-pub fn default_commands() -> Vec<PaletteCommand> {
-    let mut commands = vec![
-        PaletteCommand {
-            label: "Compose".into(),
-            shortcut: "c".into(),
-            action: Action::Compose,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Reply".into(),
-            shortcut: "r".into(),
-            action: Action::Reply,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Reply All".into(),
-            shortcut: "a".into(),
-            action: Action::ReplyAll,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Forward".into(),
-            shortcut: "f".into(),
-            action: Action::Forward,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Archive".into(),
-            shortcut: "e".into(),
-            action: Action::Archive,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Mark Read and Archive".into(),
-            shortcut: String::new(),
-            action: Action::MarkReadAndArchive,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Delete".into(),
-            shortcut: "#".into(),
-            action: Action::Trash,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Mark Spam".into(),
-            shortcut: "!".into(),
-            action: Action::Spam,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Star / Unstar".into(),
-            shortcut: "s".into(),
-            action: Action::Star,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Mark Read".into(),
-            shortcut: "I".into(),
-            action: Action::MarkRead,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Mark Unread".into(),
-            shortcut: "U".into(),
-            action: Action::MarkUnread,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Apply Label".into(),
-            shortcut: "l".into(),
-            action: Action::ApplyLabel,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Move To Label".into(),
-            shortcut: "v".into(),
-            action: Action::MoveToLabel,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Route To Label".into(),
-            shortcut: "palette".into(),
-            action: Action::RouteToLabel,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Not Now (later or snooze)".into(),
-            shortcut: "b".into(),
-            action: Action::Snooze,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Pass To A Mode (file in Archive)".into(),
-            shortcut: "palette".into(),
-            action: Action::PassToMode,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Who Is This Sender".into(),
-            shortcut: "palette".into(),
-            action: Action::OpenWhoisOnFocusedSender,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Accept Invite".into(),
-            shortcut: "ia".into(),
-            action: Action::RespondInvite(mxr_protocol::CalendarInviteActionData::Accept),
-            category: "Calendar".into(),
-        },
-        PaletteCommand {
-            label: "Maybe Invite".into(),
-            shortcut: "im".into(),
-            action: Action::RespondInvite(mxr_protocol::CalendarInviteActionData::Tentative),
-            category: "Calendar".into(),
-        },
-        PaletteCommand {
-            label: "Decline Invite".into(),
-            shortcut: "id".into(),
-            action: Action::RespondInvite(mxr_protocol::CalendarInviteActionData::Decline),
-            category: "Calendar".into(),
-        },
-        PaletteCommand {
-            label: "Reply Later (at a time)".into(),
-            shortcut: "palette".into(),
-            action: Action::FlagReplyLater,
-            category: "Triage".into(),
-        },
-        PaletteCommand {
-            label: "Cancel Reminder".into(),
-            shortcut: String::new(),
-            action: Action::CancelAutoReminder,
-            category: "Triage".into(),
-        },
-        PaletteCommand {
-            label: "Reply Queue".into(),
-            shortcut: String::new(),
-            action: Action::OpenReplyQueue,
-            category: "Triage".into(),
-        },
-        PaletteCommand {
-            label: "View activity".into(),
-            shortcut: "gY".into(),
-            action: Action::OpenActivityScreen,
-            category: "Activity".into(),
-        },
-        PaletteCommand {
-            label: "Screener Queue".into(),
-            shortcut: String::new(),
-            action: Action::OpenScreenerQueue,
-            category: "Triage".into(),
-        },
-        PaletteCommand {
-            label: "Owed Replies".into(),
-            shortcut: String::new(),
-            action: Action::OpenOwedReplies,
-            category: "Triage".into(),
-        },
-        PaletteCommand {
-            label: "Calendar Invites".into(),
-            shortcut: String::new(),
-            action: Action::OpenCalendarInvites,
-            category: "Triage".into(),
-        },
-        PaletteCommand {
-            label: "Subscriptions".into(),
-            shortcut: String::new(),
-            action: Action::OpenSubscriptions,
-            category: "Triage".into(),
-        },
-        PaletteCommand {
-            label: "Analytics".into(),
-            shortcut: String::new(),
-            action: Action::OpenAnalyticsScreen,
-            category: "Analytics".into(),
-        },
-        PaletteCommand {
-            label: "Sender View".into(),
-            shortcut: String::new(),
-            action: Action::OpenSenderView,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Summarize Thread".into(),
-            shortcut: String::new(),
-            action: Action::SummarizeCurrentThread,
-            category: "AI".into(),
-        },
-        PaletteCommand {
-            label: "Thread Briefing".into(),
-            shortcut: "B".into(),
-            action: Action::OpenThreadBriefing,
-            category: "AI".into(),
-        },
-        PaletteCommand {
-            label: "Snippets".into(),
-            shortcut: String::new(),
-            action: Action::OpenSnippets,
-            category: "Compose".into(),
-        },
-        PaletteCommand {
-            label: "Categories".into(),
-            shortcut: String::new(),
-            action: Action::OpenPersonalCategories,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Assign Category".into(),
-            shortcut: String::new(),
-            action: Action::AssignPersonalCategory,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Now".into(),
-            shortcut: "gh".into(),
-            action: Action::OpenNow,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Messages".into(),
-            shortcut: "gm".into(),
-            action: Action::OpenMessages,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "To do".into(),
-            shortcut: "gx".into(),
-            action: Action::OpenTodo,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Make a to-do from this conversation".into(),
-            shortcut: "t".into(),
-            action: Action::CreateTodoFromMessage,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Reading".into(),
-            shortcut: "gr".into(),
-            action: Action::OpenReading,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Updates".into(),
-            shortcut: "gu".into(),
-            action: Action::OpenUpdates,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Archive".into(),
-            shortcut: "ge".into(),
-            action: Action::OpenArchiveMode,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Sweep this place (preview first)".into(),
-            shortcut: "E".into(),
-            action: Action::SweepPlace,
-            category: "Mail".into(),
-        },
-        // Keys that moved to the palette (blueprint 35, K3's third wave).
-        PaletteCommand {
-            label: "Sweep this sender's bundle (preview first)".into(),
-            shortcut: String::new(),
-            action: Action::SweepBundle,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "More senders in this place".into(),
-            shortcut: String::new(),
-            action: Action::MorePlaceSenders,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "More from this sender".into(),
-            shortcut: String::new(),
-            action: Action::MoreFromSender,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Updates: sweep this sender out (preview first)".into(),
-            shortcut: String::new(),
-            action: Action::UpdatesSweep,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Archive: export the records in view (preview first)".into(),
-            shortcut: String::new(),
-            action: Action::RecordsExport,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Archive: mark this record checked".into(),
-            shortcut: String::new(),
-            action: Action::RecordsMarkChecked,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "To do: send to Microsoft To Do (preview first)".into(),
-            shortcut: String::new(),
-            action: Action::TodoSendToMicrosoft,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "To do: sync the linked Microsoft To Do task (preview first)".into(),
-            shortcut: String::new(),
-            action: Action::TodoSyncMicrosoft,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Drafts".into(),
-            shortcut: String::new(),
-            action: Action::OpenStoredDrafts,
-            category: "Compose".into(),
-        },
-        PaletteCommand {
-            label: "Unsubscribe".into(),
-            shortcut: "D".into(),
-            action: Action::Unsubscribe,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Attachments".into(),
-            shortcut: "A".into(),
-            action: Action::AttachmentList,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Open Links".into(),
-            shortcut: "L".into(),
-            action: Action::OpenLinks,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Open In Browser".into(),
-            shortcut: "O".into(),
-            action: Action::OpenInBrowser,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Toggle Reading View".into(),
-            shortcut: "R".into(),
-            action: Action::ToggleReaderMode,
-            category: "View".into(),
-        },
-        PaletteCommand {
-            label: "Toggle Original HTML".into(),
-            shortcut: "H".into(),
-            action: Action::ToggleHtmlView,
-            category: "View".into(),
-        },
-        PaletteCommand {
-            label: "Toggle Remote Images".into(),
-            shortcut: "M".into(),
-            action: Action::ToggleRemoteContent,
-            category: "View".into(),
-        },
-        PaletteCommand {
-            label: "Export Thread".into(),
-            shortcut: String::new(),
-            action: Action::ExportThread,
-            category: "Mail".into(),
-        },
-        PaletteCommand {
-            label: "Clear Selection".into(),
-            shortcut: "Esc".into(),
-            action: Action::ClearSelection,
-            category: "Selection".into(),
-        },
-        PaletteCommand {
-            label: "Toggle Select".into(),
-            shortcut: "x".into(),
-            action: Action::ToggleSelect,
-            category: "Selection".into(),
-        },
-        PaletteCommand {
-            label: "Visual Select".into(),
-            shortcut: "V".into(),
-            action: Action::VisualLineMode,
-            category: "Selection".into(),
-        },
-        PaletteCommand {
-            label: "Select All".into(),
-            shortcut: "* a".into(),
-            action: Action::PatternSelect(PatternKind::All),
-            category: "Selection".into(),
-        },
-        PaletteCommand {
-            label: "Select None".into(),
-            shortcut: "* n".into(),
-            action: Action::PatternSelect(PatternKind::None),
-            category: "Selection".into(),
-        },
-        PaletteCommand {
-            label: "Select Read".into(),
-            shortcut: "* r".into(),
-            action: Action::PatternSelect(PatternKind::Read),
-            category: "Selection".into(),
-        },
-        PaletteCommand {
-            label: "Select Unread".into(),
-            shortcut: "* u".into(),
-            action: Action::PatternSelect(PatternKind::Unread),
-            category: "Selection".into(),
-        },
-        PaletteCommand {
-            label: "Select Starred".into(),
-            shortcut: "* s".into(),
-            action: Action::PatternSelect(PatternKind::Starred),
-            category: "Selection".into(),
-        },
-        PaletteCommand {
-            label: "Select Thread".into(),
-            shortcut: "* t".into(),
-            action: Action::PatternSelect(PatternKind::Thread),
-            category: "Selection".into(),
-        },
-        PaletteCommand {
-            label: "Move Down".into(),
-            shortcut: "j".into(),
-            action: Action::MoveDown,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Move Up".into(),
-            shortcut: "k".into(),
-            action: Action::MoveUp,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Page Down".into(),
-            shortcut: "Ctrl-d".into(),
-            action: Action::PageDown,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Page Up".into(),
-            shortcut: "Ctrl-u".into(),
-            action: Action::PageUp,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Jump Top".into(),
-            shortcut: "gg".into(),
-            action: Action::JumpTop,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Jump Bottom".into(),
-            shortcut: "G".into(),
-            action: Action::JumpBottom,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Viewport Top".into(),
-            shortcut: String::new(),
-            action: Action::ViewportTop,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Viewport Middle".into(),
-            shortcut: String::new(),
-            action: Action::ViewportMiddle,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Viewport Bottom".into(),
-            shortcut: String::new(),
-            action: Action::ViewportBottom,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Center Current".into(),
-            shortcut: String::new(),
-            action: Action::CenterCurrent,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Open Selected".into(),
-            shortcut: "Enter".into(),
-            action: Action::OpenSelected,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Next Search Result".into(),
-            shortcut: "n".into(),
-            action: Action::NextSearchResult,
-            category: "Search".into(),
-        },
-        PaletteCommand {
-            label: "Previous Search Result".into(),
-            shortcut: "N".into(),
-            action: Action::PrevSearchResult,
-            category: "Search".into(),
-        },
-        PaletteCommand {
-            label: "Go to Inbox".into(),
-            shortcut: "gi".into(),
-            action: Action::GoToInbox,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Go to Starred".into(),
-            shortcut: "gs".into(),
-            action: Action::GoToStarred,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Go to Sent".into(),
-            shortcut: "gt".into(),
-            action: Action::GoToSent,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Go to Drafts".into(),
-            shortcut: "gd".into(),
-            action: Action::GoToDrafts,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Go to All Mail".into(),
-            shortcut: "ga".into(),
-            action: Action::GoToAllMail,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Go to Label".into(),
-            shortcut: "gl".into(),
-            action: Action::GoToLabel,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Open Mailbox Tab".into(),
-            shortcut: String::new(),
-            action: Action::OpenTab1,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Open Search Tab".into(),
-            shortcut: String::new(),
-            action: Action::OpenTab2,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Open Rules Tab".into(),
-            shortcut: "gR".into(),
-            action: Action::OpenTab3,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Open Accounts Tab".into(),
-            shortcut: "gC".into(),
-            action: Action::OpenTab4,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Open Diagnostics Tab".into(),
-            shortcut: "gD".into(),
-            action: Action::OpenTab5,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Open Deliveries Tab".into(),
-            shortcut: "gP".into(),
-            action: Action::OpenTab7,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Edit Config".into(),
-            shortcut: String::new(),
-            action: Action::EditConfig,
-            category: "System".into(),
-        },
-        PaletteCommand {
-            label: "Open Logs".into(),
-            shortcut: "gL".into(),
-            action: Action::OpenLogs,
-            category: "System".into(),
-        },
-        PaletteCommand {
-            label: "Search All Mail".into(),
-            shortcut: "/".into(),
-            action: Action::OpenGlobalSearch,
-            category: "Search".into(),
-        },
-        PaletteCommand {
-            label: "Command Palette".into(),
-            shortcut: ":".into(),
-            action: Action::OpenCommandPalette,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Assistant: show or hide".into(),
-            shortcut: "@".into(),
-            action: Action::ToggleAssistant,
-            category: "Assistant".into(),
-        },
-        PaletteCommand {
-            label: "Assistant: new conversation".into(),
-            shortcut: String::new(),
-            action: Action::NewAssistantConversation,
-            category: "Assistant".into(),
-        },
-        PaletteCommand {
-            label: "Assistant: past conversations".into(),
-            shortcut: String::new(),
-            action: Action::OpenAssistantConversations,
-            category: "Assistant".into(),
-        },
-        PaletteCommand {
-            label: "Assistant: choose the model (local or cloud)".into(),
-            shortcut: "M in the pane".into(),
-            action: Action::OpenAssistantModels,
-            category: "Assistant".into(),
-        },
-        PaletteCommand {
-            label: "Assistant: approve reversible changes automatically (on/off)".into(),
-            shortcut: String::new(),
-            action: Action::ToggleAssistantTrust,
-            category: "Assistant".into(),
-        },
-        PaletteCommand {
-            label: "Assistant: delete conversation".into(),
-            shortcut: "# in the pane".into(),
-            action: Action::DeleteAssistantConversation,
-            category: "Assistant".into(),
-        },
-        PaletteCommand {
-            label: "Filter Current Mailbox".into(),
-            shortcut: "Ctrl-f".into(),
-            action: Action::OpenMailboxFilter,
-            category: "Search".into(),
-        },
-        PaletteCommand {
-            label: "Switch Pane".into(),
-            shortcut: "Tab".into(),
-            action: Action::SwitchPane,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Open Mailbox".into(),
-            shortcut: String::new(),
-            action: Action::OpenMailboxScreen,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Open Search Page".into(),
-            shortcut: String::new(),
-            action: Action::OpenSearchScreen,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Open Rules Page".into(),
-            shortcut: String::new(),
-            action: Action::OpenRulesScreen,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Reopen last send draft".into(),
-            shortcut: String::new(),
-            action: Action::ReopenLastSendDraft,
-            category: "Compose".into(),
-        },
-        PaletteCommand {
-            label: "Check last send outcome".into(),
-            shortcut: String::new(),
-            action: Action::CheckLastSendOutcome,
-            category: "Compose".into(),
-        },
-        PaletteCommand {
-            label: "Preview last send recovery".into(),
-            shortcut: String::new(),
-            action: Action::PreviewLastSendRecovery,
-            category: "Compose".into(),
-        },
-        PaletteCommand {
-            label: "Resume previewed approved send".into(),
-            shortcut: String::new(),
-            action: Action::ResumePreviewedSend,
-            category: "Compose".into(),
-        },
-        PaletteCommand {
-            label: "Open Diagnostics Page".into(),
-            shortcut: String::new(),
-            action: Action::OpenDiagnosticsScreen,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Open Accounts Page".into(),
-            shortcut: String::new(),
-            action: Action::OpenAccountsScreen,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Refresh Rules".into(),
-            shortcut: String::new(),
-            action: Action::RefreshRules,
-            category: "Rules".into(),
-        },
-        PaletteCommand {
-            label: "New Rule".into(),
-            shortcut: String::new(),
-            action: Action::OpenRuleFormNew,
-            category: "Rules".into(),
-        },
-        PaletteCommand {
-            label: "Edit Rule".into(),
-            shortcut: String::new(),
-            action: Action::OpenRuleFormEdit,
-            category: "Rules".into(),
-        },
-        PaletteCommand {
-            label: "Toggle Rule Enabled".into(),
-            shortcut: String::new(),
-            action: Action::ToggleRuleEnabled,
-            category: "Rules".into(),
-        },
-        PaletteCommand {
-            label: "Rule Dry Run".into(),
-            shortcut: String::new(),
-            action: Action::ShowRuleDryRun,
-            category: "Rules".into(),
-        },
-        PaletteCommand {
-            label: "Rule History".into(),
-            shortcut: String::new(),
-            action: Action::ShowRuleHistory,
-            category: "Rules".into(),
-        },
-        PaletteCommand {
-            label: "Delete Rule".into(),
-            shortcut: String::new(),
-            action: Action::DeleteRule,
-            category: "Rules".into(),
-        },
-        PaletteCommand {
-            label: "Refresh Diagnostics".into(),
-            shortcut: String::new(),
-            action: Action::RefreshDiagnostics,
-            category: "Diagnostics".into(),
-        },
-        PaletteCommand {
-            label: "Generate Bug Report".into(),
-            shortcut: String::new(),
-            action: Action::GenerateBugReport,
-            category: "Diagnostics".into(),
-        },
-        PaletteCommand {
-            label: "Open Diagnostics Details".into(),
-            shortcut: "d".into(),
-            action: Action::OpenDiagnosticsPaneDetails,
-            category: "Diagnostics".into(),
-        },
-        PaletteCommand {
-            label: "Refresh Accounts".into(),
-            shortcut: String::new(),
-            action: Action::RefreshAccounts,
-            category: "Accounts".into(),
-        },
-        PaletteCommand {
-            label: "New IMAP/SMTP Account".into(),
-            shortcut: String::new(),
-            action: Action::OpenAccountFormNew,
-            category: "Accounts".into(),
-        },
-        PaletteCommand {
-            label: "Test Account".into(),
-            shortcut: String::new(),
-            action: Action::TestAccountForm,
-            category: "Accounts".into(),
-        },
-        PaletteCommand {
-            label: "Set Default Account".into(),
-            shortcut: String::new(),
-            action: Action::SetDefaultAccount,
-            category: "Accounts".into(),
-        },
-        PaletteCommand {
-            label: "Toggle Thread/Message List".into(),
-            shortcut: String::new(),
-            action: Action::ToggleMailListMode,
-            category: "View".into(),
-        },
-        PaletteCommand {
-            label: "Toggle Full View".into(),
-            shortcut: "F".into(),
-            action: Action::ToggleFullscreen,
-            category: "View".into(),
-        },
-        PaletteCommand {
-            label: "Toggle Signature".into(),
-            shortcut: "S".into(),
-            action: Action::ToggleSignature,
-            category: "Compose".into(),
-        },
-        PaletteCommand {
-            label: "Sync now".into(),
-            shortcut: String::new(),
-            action: Action::SyncNow,
-            category: "Sync".into(),
-        },
-        PaletteCommand {
-            label: "Analytics: Storage".into(),
-            shortcut: String::new(),
-            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Storage),
-            category: "Analytics".into(),
-        },
-        PaletteCommand {
-            label: "Analytics: Stale Threads".into(),
-            shortcut: String::new(),
-            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::StaleThreads),
-            category: "Analytics".into(),
-        },
-        PaletteCommand {
-            label: "Analytics: Contacts".into(),
-            shortcut: String::new(),
-            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Contacts),
-            category: "Analytics".into(),
-        },
-        PaletteCommand {
-            label: "Analytics: Cadence Drift".into(),
-            shortcut: String::new(),
-            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::CadenceDrift),
-            category: "Analytics".into(),
-        },
-        PaletteCommand {
-            label: "Analytics: Response Time".into(),
-            shortcut: String::new(),
-            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::ResponseTime),
-            category: "Analytics".into(),
-        },
-        PaletteCommand {
-            label: "Analytics: Subscriptions".into(),
-            shortcut: String::new(),
-            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Subscriptions),
-            category: "Analytics".into(),
-        },
-        PaletteCommand {
-            label: "Analytics: Wrapped".into(),
-            shortcut: String::new(),
-            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Wrapped),
-            category: "Analytics".into(),
-        },
-        PaletteCommand {
-            label: "Semantic: Enable".into(),
-            shortcut: String::new(),
-            action: Action::EnableSemantic,
-            category: "Semantic".into(),
-        },
-        PaletteCommand {
-            label: "Semantic: Disable".into(),
-            shortcut: String::new(),
-            action: Action::DisableSemantic,
-            category: "Semantic".into(),
-        },
-        PaletteCommand {
-            label: "Semantic: Reindex".into(),
-            shortcut: String::new(),
-            action: Action::ReindexSemantic,
-            category: "Semantic".into(),
-        },
-        PaletteCommand {
-            label: "Semantic: Backfill Missing".into(),
-            shortcut: String::new(),
-            action: Action::BackfillSemantic,
-            category: "Semantic".into(),
-        },
-        PaletteCommand {
-            label: "Draft: Assist Current Thread".into(),
-            shortcut: String::new(),
-            action: Action::DraftAssistCurrentThread,
-            category: "AI".into(),
-        },
-        PaletteCommand {
-            label: "Draft: Reply with Tone & Length…".into(),
-            shortcut: String::new(),
-            action: Action::DraftWithOptions,
-            category: "AI".into(),
-        },
-        PaletteCommand {
-            label: "Draft: New For Sender".into(),
-            shortcut: String::new(),
-            action: Action::DraftNewForSender,
-            category: "AI".into(),
-        },
-        PaletteCommand {
-            label: "Voice: Show Profile".into(),
-            shortcut: String::new(),
-            action: Action::OpenVoiceProfile,
-            category: "AI".into(),
-        },
-        PaletteCommand {
-            label: "Voice: Rebuild Profile".into(),
-            shortcut: String::new(),
-            action: Action::RebuildUserVoice,
-            category: "AI".into(),
-        },
-        PaletteCommand {
-            label: "Commitments: Show Open".into(),
-            shortcut: String::new(),
-            action: Action::OpenCommitments,
-            category: "AI".into(),
-        },
-        PaletteCommand {
-            label: "Semantic: Install Profile (BGE Small EN)".into(),
-            shortcut: String::new(),
-            action: Action::InstallSemanticProfile(mxr_core::types::SemanticProfile::BgeSmallEnV15),
-            category: "Semantic".into(),
-        },
-        PaletteCommand {
-            label: "Semantic: Install Profile (Multilingual E5)".into(),
-            shortcut: String::new(),
-            action: Action::InstallSemanticProfile(
-                mxr_core::types::SemanticProfile::MultilingualE5Small,
-            ),
-            category: "Semantic".into(),
-        },
-        PaletteCommand {
-            label: "Semantic: Install Profile (BGE-M3)".into(),
-            shortcut: String::new(),
-            action: Action::InstallSemanticProfile(mxr_core::types::SemanticProfile::BgeM3),
-            category: "Semantic".into(),
-        },
-        PaletteCommand {
-            label: "Semantic: Use Profile (BGE Small EN)".into(),
-            shortcut: String::new(),
-            action: Action::UseSemanticProfile(mxr_core::types::SemanticProfile::BgeSmallEnV15),
-            category: "Semantic".into(),
-        },
-        PaletteCommand {
-            label: "Semantic: Use Profile (Multilingual E5)".into(),
-            shortcut: String::new(),
-            action: Action::UseSemanticProfile(
-                mxr_core::types::SemanticProfile::MultilingualE5Small,
-            ),
-            category: "Semantic".into(),
-        },
-        PaletteCommand {
-            label: "Semantic: Use Profile (BGE-M3)".into(),
-            shortcut: String::new(),
-            action: Action::UseSemanticProfile(mxr_core::types::SemanticProfile::BgeM3),
-            category: "Semantic".into(),
-        },
-        PaletteCommand {
-            label: "Help".into(),
-            shortcut: "?".into(),
-            action: Action::Help,
-            category: "Navigation".into(),
-        },
-        PaletteCommand {
-            label: "Find expert".into(),
-            shortcut: String::new(),
-            action: Action::FindExpertOnFocusedMessage,
-            category: "AI".into(),
-        },
-        PaletteCommand {
-            label: "Quit".into(),
-            shortcut: "q".into(),
-            action: Action::QuitView,
-            category: "Navigation".into(),
-        },
-        #[cfg(debug_assertions)]
-        PaletteCommand {
-            label: "Dump Action Trace".into(),
-            shortcut: "Ctrl-Alt-d".into(),
-            action: Action::DumpActionTrace,
-            category: "Diagnostics".into(),
-        },
-    ];
-    add_archive_recovery_commands(&mut commands, &[]);
-    apply_registered_mail_list_shortcuts(&mut commands);
-    commands
-}
-
 fn archive_operations(data_dir: &std::path::Path) -> Vec<mxr_protocol::ArchiveOperationData> {
     mxr_client::ArchiveJournal::open_existing(data_dir)
         .ok()
@@ -1331,6 +482,7 @@ fn add_archive_recovery_commands(
         .any(|command| command.action == Action::PreviewArchiveSelection)
     {
         commands.push(PaletteCommand {
+            id: None,
             label: "Preview Archive selection".into(),
             category: "Recovery".into(),
             shortcut: String::new(),
@@ -1346,12 +498,14 @@ fn add_archive_recovery_commands(
     for operation in operations {
         let id = operation.identity.operation_id.clone();
         commands.push(PaletteCommand {
+            id: None,
             label: format!("Archive recovery: query {id}"),
             shortcut: String::new(),
             action: Action::CheckArchiveOperation(id.clone()),
             category: "Recovery".into(),
         });
         commands.push(PaletteCommand {
+            id: None,
             label: format!("Archive recovery: submit reviewed {id}"),
             shortcut: String::new(),
             action: Action::SubmitArchiveOperation(id),
@@ -1556,9 +710,9 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
 fn category_style(category: &str, theme: &crate::theme::Theme) -> (&'static str, Color) {
     match category {
         "Mail" => ("@", theme.warning),
-        "Navigation" => (">", theme.accent),
+        "Navigate" => (">", theme.accent),
         "Search" => ("/", theme.link_fg),
-        "Selection" => ("+", theme.success),
+        "Select" => ("+", theme.success),
         "View" => ("~", theme.text_secondary),
         "Rules" => ("#", theme.error),
         "Diagnostics" => ("!", theme.warning),
@@ -1570,60 +724,168 @@ fn category_style(category: &str, theme: &crate::theme::Theme) -> (&'static str,
 
 #[cfg(test)]
 mod tests {
-    use super::{archive_operations, commands_for_context, CommandPalette};
+    use super::{
+        archive_operations, commands_for_context, defined_commands, shown_key, CommandPalette,
+    };
     use crate::action::UiContext;
+    use crate::keybindings::{shown_keybindings, ViewContext};
+    use crate::keymap_names::action_named;
+    use mxr_keymap::{Client, TUI_CONTEXTS};
+
+    /// Every key the TUI binds in a mail context is findable in the palette
+    /// opened there, with every key the action has there. Motion the
+    /// definition keeps out of palettes (`hide_in_palette`) is the exception.
+    #[test]
+    fn every_bound_key_is_findable_in_the_palette_where_it_works() {
+        let keymap = mxr_keymap::defaults();
+        let mut missing = Vec::new();
+        for place in TUI_CONTEXTS {
+            let commands =
+                defined_commands(Some(place), shown_keybindings(), ViewContext::MailList);
+            for action in keymap.actions.iter().filter(|a| a.is_for(Client::Tui)) {
+                if action.hide_in_palette {
+                    continue;
+                }
+                for binding in action.tui.iter().filter(|b| b.contexts.includes(place)) {
+                    let Some(tui_action) = action_named(&binding.name) else {
+                        continue;
+                    };
+                    let Some(command) = commands
+                        .iter()
+                        .find(|c| c.id == Some(action.id.as_str()))
+                        .or_else(|| commands.iter().find(|c| c.action == tui_action))
+                    else {
+                        missing.push(format!("{place}: {} ({})", action.id, binding.name));
+                        continue;
+                    };
+                    // The command another id names may carry other keys.
+                    if command.id != Some(action.id.as_str()) {
+                        continue;
+                    }
+                    for key in &binding.keys {
+                        let shown = shown_key(key);
+                        if !command.shortcut.split(" / ").any(|k| k == shown) {
+                            missing.push(format!("{place}: {} lacks `{shown}`", action.id));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(missing.is_empty(), "{}", missing.join("\n"));
+    }
+
+    /// The commands that had no key keep a palette entry: they are in the
+    /// definition as palette-only actions now.
+    #[test]
+    fn palette_only_commands_stay_findable() {
+        let labels: Vec<String> =
+            defined_commands(None, shown_keybindings(), ViewContext::MailList)
+                .into_iter()
+                .map(|command| command.label)
+                .collect();
+        for needle in [
+            "Edit config",
+            "Export as Markdown",
+            "Send to Microsoft To Do",
+            "Sync the linked Microsoft To Do task",
+            "Export the records in view…",
+            "Mark this record checked",
+            "Drafts saved on this computer",
+            "Analytics: Storage",
+            "Semantic: Install Profile (BGE-M3)",
+            "Top of screen",
+            "Center current",
+        ] {
+            assert!(
+                labels.iter().any(|label| label == needle),
+                "{needle} missing from {labels:?}"
+            );
+        }
+    }
+
+    /// Opened in To do, the palette offers To do's verbs with To do's keys,
+    /// the tabs included, and a person's `[todo]` remap.
+    #[test]
+    fn a_modes_palette_shows_its_keys_and_remaps() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("keys.toml"),
+            "[todo]\n\"w\" = \"todo.done\"\n",
+        )
+        .unwrap();
+        let config = crate::keybindings::load_keybindings(dir.path());
+        let mut palette = CommandPalette {
+            keybindings: config,
+            key_place: Some("todo"),
+            ..Default::default()
+        };
+        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
+        let shortcut = |id: &str| {
+            palette
+                .commands
+                .iter()
+                .find(|command| command.id == Some(id))
+                .map(|command| command.shortcut.clone())
+        };
+        assert_eq!(shortcut("todo.done").as_deref(), Some("w"));
+        assert_eq!(shortcut("todo.catchup").as_deref(), Some("2"));
+        assert_eq!(shortcut("todo.expired").as_deref(), Some("3"));
+        assert_eq!(shortcut("nav.inbox").as_deref(), Some("gi / g0"));
+        assert_eq!(shortcut("mail.reply"), None, "Reply is not a To do verb");
+    }
 
     #[test]
     fn toggle_rederives_shortcuts_for_the_focused_context() {
         let mut palette = CommandPalette::default();
-        let shortcut_of = |palette: &CommandPalette, label: &str| {
+        let shortcut_of = |palette: &CommandPalette, id: &str| {
             palette
                 .commands
                 .iter()
-                .find(|cmd| cmd.label == label)
+                .find(|cmd| cmd.id == Some(id))
                 .map(|cmd| cmd.shortcut.clone())
-                .unwrap()
         };
 
-        // Message context resolves through the thread-view map.
-        palette.toggle(UiContext::MailboxMessage);
-        assert_eq!(shortcut_of(&palette, "Open Links"), "L");
-        // Compose has no thread-view binding; the mail-list baseline
-        // shortcut survives as the fallback.
-        assert_eq!(shortcut_of(&palette, "Compose"), "c");
+        // The reader's keys, from the definition's reader context.
+        palette.toggle_with_archive_operations(UiContext::MailboxMessage, &[]);
+        assert_eq!(shortcut_of(&palette, "mail.links").as_deref(), Some("L"));
+        assert_eq!(shortcut_of(&palette, "shell.compose").as_deref(), Some("c"));
 
-        // Back in the mailbox list, the mail-list map wins again.
-        palette.toggle(UiContext::MailboxMessage); // close
-        palette.toggle(UiContext::MailboxList); // reopen
-        assert_eq!(shortcut_of(&palette, "Compose"), "c");
-        assert_eq!(shortcut_of(&palette, "Archive"), "e");
+        // Back in the mailbox list, the list's keys.
+        palette.toggle_with_archive_operations(UiContext::MailboxMessage, &[]); // close
+        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]); // reopen
+        assert_eq!(shortcut_of(&palette, "shell.compose").as_deref(), Some("c"));
+        assert_eq!(shortcut_of(&palette, "mail.archive").as_deref(), Some("e"));
+        assert_eq!(
+            shortcut_of(&palette, "nav.inbox").as_deref(),
+            Some("gi / g0")
+        );
     }
 
     #[test]
     fn rules_context_hides_mail_only_commands() {
-        let labels: Vec<String> = commands_for_context(UiContext::RulesList)
+        let ids: Vec<&str> = commands_for_context(UiContext::RulesList)
             .into_iter()
-            .map(|command| command.label)
+            .filter_map(|command| command.id)
             .collect();
 
-        assert!(labels.contains(&"New Rule".to_string()));
-        assert!(!labels.contains(&"Apply Label".to_string()));
-        assert!(!labels.contains(&"Archive".to_string()));
+        assert!(ids.contains(&"rules.new"));
+        assert!(!ids.contains(&"mail.label"));
+        assert!(!ids.contains(&"mail.archive"));
     }
 
     #[test]
     fn restore_recents_round_trip_preserves_order_and_skips_unknown_labels() {
         let mut palette = CommandPalette::default();
         // Confirm three real commands so we have known recents to snapshot.
-        palette.toggle(UiContext::MailboxList);
+        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
         palette.input = "archive".to_string();
         palette.update_filtered(None);
         palette.confirm().expect("archive command should exist");
-        palette.toggle(UiContext::MailboxList);
+        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
         palette.input = "reply all".to_string();
         palette.update_filtered(None);
         palette.confirm().expect("reply all command should exist");
-        palette.toggle(UiContext::MailboxList);
+        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
         palette.input = "star".to_string();
         palette.update_filtered(None);
         palette.confirm().expect("star command should exist");
@@ -1633,8 +895,8 @@ mod tests {
         assert_eq!(
             snapshot,
             vec![
-                "Star / Unstar".to_string(),
-                "Reply All".to_string(),
+                "Star or unstar".to_string(),
+                "Reply all".to_string(),
                 "Archive".to_string(),
             ],
             "snapshot order must match record_recent semantics"
@@ -1644,9 +906,9 @@ mod tests {
         // in the middle. The unknown label must be dropped silently while
         // the surrounding entries survive in order.
         let persisted = vec![
-            "Star / Unstar".to_string(),
+            "Star or unstar".to_string(),
             "RemovedInThisVersion".to_string(),
-            "Reply All".to_string(),
+            "Reply all".to_string(),
             "Archive".to_string(),
         ];
         let mut fresh = CommandPalette::default();
@@ -1656,8 +918,8 @@ mod tests {
         assert_eq!(
             restored_snapshot,
             vec![
-                "Star / Unstar".to_string(),
-                "Reply All".to_string(),
+                "Star or unstar".to_string(),
+                "Reply all".to_string(),
                 "Archive".to_string(),
             ],
             "restored recents must skip unknown labels and preserve order"
@@ -1667,22 +929,22 @@ mod tests {
     #[test]
     fn filtering_preserves_selected_command_identity() {
         let mut palette = CommandPalette::default();
-        palette.toggle(UiContext::MailboxList);
+        palette.toggle_with_archive_operations(UiContext::MailboxList, &[]);
         palette.selected = palette
             .filtered
             .iter()
-            .position(|&index| palette.commands[index].label == "Open Search Page")
+            .position(|&index| palette.commands[index].label == "Search page")
             .unwrap();
 
-        palette.on_char('o');
         palette.on_char('p');
+        palette.on_char('a');
 
         let selected = palette
             .filtered
             .get(palette.selected)
             .map(|&index| palette.commands[index].label.clone());
 
-        assert_eq!(selected.as_deref(), Some("Open Search Page"));
+        assert_eq!(selected.as_deref(), Some("Search page"));
     }
 
     #[test]

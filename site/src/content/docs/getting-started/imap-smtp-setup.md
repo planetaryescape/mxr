@@ -156,7 +156,7 @@ You can mix and match: one account on Gmail, another on IMAP/SMTP, a third on so
 
 Manage accounts from the TUI:
 
-- `Ctrl-p` then `Open Accounts Page`
+- `gC`, or `:` then **Settings**
 
 IMAP/SMTP accounts are fully config-backed and editable through the Accounts page.
 

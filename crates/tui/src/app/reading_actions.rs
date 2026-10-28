@@ -56,7 +56,8 @@ impl App {
             Action::ReadingHighlights => self.reading_highlights_open(),
             Action::ReadingOpenEmail => self.reading_open_email(),
             Action::ReadingBack => self.reading_back(),
-            Action::ReadingLaterShelf => self.toggle_later_shelf(),
+            Action::ReadingEdition => self.show_reading_tab(false),
+            Action::ReadingLaterShelf => self.show_reading_tab(true),
             Action::ReadingMarginalia => self.reading_marginalia(),
             _ => {}
         }
@@ -348,12 +349,17 @@ impl App {
         );
     }
 
-    /// `B`: the Later shelf, or back to the edition.
-    fn toggle_later_shelf(&mut self) {
+    /// `1` the edition, `2` Later: the tab, from the list or the reader.
+    /// Leaving the reader reports the time read, as Esc does.
+    fn show_reading_tab(&mut self, later: bool) {
+        if self.mailbox.reading_page.reader_focused {
+            self.reading_back();
+        }
         let page = &mut self.mailbox.reading_page;
-        page.later_shelf = !page.later_shelf;
-        page.reader_focused = false;
-        self.mailbox.selected_index = 0;
+        if page.later_shelf != later {
+            page.later_shelf = later;
+            self.mailbox.selected_index = 0;
+        }
     }
 
     /// `A`: ask the daemon what letting go of everything shown would do;
@@ -709,7 +715,11 @@ impl App {
                 KeyCode::Char('"') if plain_or_shift(key.modifiers) => {
                     return Some(Action::ReadingHighlight)
                 }
-                KeyCode::Char('H') if shifted => return Some(Action::ReadingHighlights),
+                // The highlights are the Highlights tab now, on `3`.
+                KeyCode::Char('H') if shifted => {
+                    self.announce_moved("reading-reader", "H");
+                    return None;
+                }
                 _ => {}
             }
         }
@@ -718,7 +728,7 @@ impl App {
                 return Some(Action::DismissHint);
             }
             if page.later_shelf {
-                return Some(Action::ReadingLaterShelf);
+                return Some(Action::ReadingEdition);
             }
         }
         let defined = self.defined_key("reading", key);

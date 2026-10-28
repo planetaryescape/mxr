@@ -460,8 +460,9 @@ fn runway_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) -
         };
         body.text(
             format!(
-                "Catch up: {} {things} from before mxr sorted your mail might still need you \u{b7} C go through them",
-                runway.catchup_count
+                "Catch up: {} {things} from before mxr sorted your mail might still need you \u{b7} {} go through them",
+                runway.catchup_count,
+                mxr_keymap::guide_key("todo.catchup").unwrap_or_default()
             ),
             Style::default().fg(theme.accent),
         );
@@ -527,7 +528,10 @@ fn runway_body(view: &TodoView<'_>, width: usize, theme: &crate::theme::Theme) -
     if expired > 0 {
         body.push(Line::from(""));
         body.text(
-            format!("{expired} expired since you last looked \u{b7} E open the list"),
+            format!(
+                "{expired} expired since you last looked \u{b7} {} open the list",
+                mxr_keymap::guide_key("todo.expired").unwrap_or_default()
+            ),
             muted,
         );
     }
@@ -1158,7 +1162,7 @@ pub(crate) mod tests {
         assert!(rendered.contains("Camden Council"));
         assert!(rendered.contains("\u{a3}142.00"));
         assert!(rendered.contains("\u{2593}\u{2593}\u{2593}\u{2593}\u{2593}\u{2593}\u{2591}\u{2591}\u{2591}\u{2591} act by Wed 7 Oct \u{b7} due Fri 9 Oct"));
-        assert!(rendered.contains("3 expired since you last looked \u{b7} E open the list"));
+        assert!(rendered.contains("3 expired since you last looked \u{b7} 3 open the list"));
         // The footer says where Enter goes before it's pressed.
         assert!(rendered.contains("link goes to camden.gov.uk \u{b7} Here because"));
         assert!(rendered.contains("\u{21b5} Open email to pay  e tick off  b schedule"));

@@ -372,6 +372,8 @@ function Bands({
     edit: () => actionable && openMailDialog({ kind: "todo-edit", todo: actionable }),
     openEmail: () => current?.todo.thread_id && openEmail(current.todo),
     details: () => current && toggleDetails(current.todo),
+    // `1` is this tab already; `2` and `3` open the others.
+    runway: () => undefined,
     expired: () => openView("expired"),
     catchup: () => openView("catchup"),
     closeHint,

@@ -163,7 +163,7 @@ the digest refreshes. It protects that email from a sweep, rather than
 pinning every future email from the sender.
 
 To sweep the sender, choose **Sweep this sender out of Updates** in the
-palette (**Updates: sweep this sender out** in the TUI). It previews first,
+palette (**Sweep this sender out of Updates**). It previews first,
 applies to that line's account,
 leaves pinned emails in place and asks before archiving. Cancel to leave
 the mail untouched, or use `u` after applying to undo it. Parcel trackers

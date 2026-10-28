@@ -34,7 +34,7 @@ mxr remind MESSAGE_ID --cancel
 
 In the TUI compose confirmation, press `n`, enter the same relative
 time string, and press `Enter` to send and set the reminder in one
-flow. Use `Ctrl-p → Cancel Reminder` from the focused sent message to
+flow. Use the palette (`:`) → **Cancel no-reply reminder** from the focused sent message to
 cancel a pending reminder.
 
 The one-shot `reply --yes` prints its send operation ID and recovery query to

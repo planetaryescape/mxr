@@ -2080,19 +2080,23 @@ fn command_palette_includes_major_mail_actions() {
         .into_iter()
         .map(|cmd| cmd.label)
         .collect();
-    assert!(labels.contains(&"Reply".to_string()));
-    assert!(labels.contains(&"Reply All".to_string()));
-    assert!(labels.contains(&"Archive".to_string()));
-    assert!(labels.contains(&"Delete".to_string()));
-    assert!(labels.contains(&"Apply Label".to_string()));
-    assert!(labels.contains(&"Not Now (later or snooze)".to_string()));
-    assert!(labels.contains(&"Who Is This Sender".to_string()));
-    assert!(labels.contains(&"Pass To A Mode (file in Archive)".to_string()));
-    assert!(labels.contains(&"Clear Selection".to_string()));
-    assert!(labels.contains(&"Open Accounts Page".to_string()));
-    assert!(labels.contains(&"New IMAP/SMTP Account".to_string()));
-    assert!(labels.contains(&"Set Default Account".to_string()));
-    assert!(labels.contains(&"Edit Config".to_string()));
+    for label in [
+        "Reply",
+        "Reply all",
+        "Archive",
+        "Move to Trash",
+        "Labels…",
+        "Not now…",
+        "Who is this sender?",
+        "Pass to a mode…",
+        "Clear selection",
+        "Settings",
+        "Add account",
+        "Set default account",
+        "Edit config",
+    ] {
+        assert!(labels.contains(&label.to_string()), "{label}");
+    }
 }
 
 #[test]

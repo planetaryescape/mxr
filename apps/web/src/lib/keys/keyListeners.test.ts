@@ -206,10 +206,6 @@ const ALLOWED = {
     rule: "dispatcher or observer",
     why: "holds keys typed before a field takes focus",
   },
-  "lib/actions/keyHints.ts": {
-    rule: "dispatcher or observer",
-    why: "counts key presses as keyboard use",
-  },
   "features/sound/player.ts": {
     rule: "dispatcher or observer",
     why: "unlocks audio on the first key press",

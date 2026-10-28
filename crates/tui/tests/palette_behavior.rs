@@ -6,8 +6,6 @@
 
 use mxr_tui::action::{Action, UiContext};
 use mxr_tui::app::{App, Screen};
-use mxr_tui::keybindings::{action_from_name, default_keybindings, ViewContext};
-use mxr_tui::ui::command_palette::commands_for_context;
 use mxr_tui::ui::command_palette::{CommandPalette, PaletteCommand};
 
 fn palette_with(commands: Vec<PaletteCommand>) -> CommandPalette {
@@ -58,12 +56,14 @@ fn confirm_returns_selected_command_action() {
     // path can drive a mutation.
     let mut palette = palette_with(vec![
         PaletteCommand {
+            id: None,
             label: "Reply".into(),
             shortcut: "r".into(),
             action: Action::Reply,
             category: "test".into(),
         },
         PaletteCommand {
+            id: None,
             label: "Star".into(),
             shortcut: "s".into(),
             action: Action::Star,
@@ -91,18 +91,21 @@ fn recently_used_commands_surface_to_top_with_empty_query() {
     // empty-query list, ahead of registration order.
     let mut palette = palette_with(vec![
         PaletteCommand {
+            id: None,
             label: "Compose".into(),
             shortcut: "c".into(),
             action: Action::Compose,
             category: "test".into(),
         },
         PaletteCommand {
+            id: None,
             label: "Star".into(),
             shortcut: "s".into(),
             action: Action::Star,
             category: "test".into(),
         },
         PaletteCommand {
+            id: None,
             label: "Reply".into(),
             shortcut: "r".into(),
             action: Action::Reply,
@@ -136,18 +139,21 @@ fn most_recent_command_ranks_first_when_multiple_are_recent() {
     // but below the most recent.
     let mut palette = palette_with(vec![
         PaletteCommand {
+            id: None,
             label: "Compose".into(),
             shortcut: "c".into(),
             action: Action::Compose,
             category: "test".into(),
         },
         PaletteCommand {
+            id: None,
             label: "Star".into(),
             shortcut: "s".into(),
             action: Action::Star,
             category: "test".into(),
         },
         PaletteCommand {
+            id: None,
             label: "Reply".into(),
             shortcut: "r".into(),
             action: Action::Reply,
@@ -189,18 +195,21 @@ fn empty_query_lists_all_commands_in_registration_order() {
     // users who don't yet know what to search for.
     let palette = palette_with(vec![
         PaletteCommand {
+            id: None,
             label: "First".into(),
             shortcut: "1".into(),
             action: Action::Noop,
             category: "test".into(),
         },
         PaletteCommand {
+            id: None,
             label: "Second".into(),
             shortcut: "2".into(),
             action: Action::Noop,
             category: "test".into(),
         },
         PaletteCommand {
+            id: None,
             label: "Third".into(),
             shortcut: "3".into(),
             action: Action::Noop,
@@ -232,12 +241,14 @@ fn prefix_match_ranks_above_substring_match() {
     // palette ranks prefix matches above mid-word substring matches.
     let mut palette = palette_with(vec![
         PaletteCommand {
+            id: None,
             label: "Mark for Reply".into(),
             shortcut: "x".into(),
             action: Action::Noop,
             category: "test".into(),
         },
         PaletteCommand {
+            id: None,
             label: "Reply".into(),
             shortcut: "r".into(),
             action: Action::Reply,
@@ -254,54 +265,5 @@ fn prefix_match_ranks_above_substring_match() {
     assert_eq!(
         first.label, "Reply",
         "prefix match ('Reply') must rank above substring match ('Mark for Reply')"
-    );
-}
-
-#[test]
-fn every_default_keybinding_is_searchable_in_palette() {
-    let config = default_keybindings();
-    let contexts = [
-        (
-            ViewContext::MailList,
-            UiContext::MailboxList,
-            config.mail_list.values().cloned().collect::<Vec<_>>(),
-        ),
-        (
-            ViewContext::MessageView,
-            UiContext::MailboxMessage,
-            config.message_view.values().cloned().collect::<Vec<_>>(),
-        ),
-        (
-            ViewContext::ThreadView,
-            UiContext::MailboxMessage,
-            config.thread_view.values().cloned().collect::<Vec<_>>(),
-        ),
-    ];
-
-    let mut missing = Vec::new();
-    for (key_context, ui_context, action_names) in contexts {
-        let palette_actions: Vec<Action> = commands_for_context(ui_context)
-            .into_iter()
-            .map(|command| command.action)
-            .collect();
-
-        for action_name in action_names {
-            let Some(action) = action_from_name(&action_name) else {
-                continue;
-            };
-            // Esc backs out of whatever is open; it is not a command.
-            if action == Action::Back {
-                continue;
-            }
-
-            if !palette_actions.contains(&action) {
-                missing.push(format!("{key_context:?}:{action_name}"));
-            }
-        }
-    }
-
-    assert!(
-        missing.is_empty(),
-        "default keybound actions must be discoverable from the palette; missing: {missing:?}"
     );
 }

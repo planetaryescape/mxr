@@ -226,6 +226,19 @@ test("t on a conversation makes a to-do in your words", async ({ page }) => {
   expect(all.map((todo) => todo.title)).toContain("Send Maya the venue options");
 });
 
+test("1, 2 and 3 pick To do's tabs from any of them", async ({ page }) => {
+  await waitForRunway(page);
+  await openApp(page, "/todo");
+  await expect(page.getByTestId("todo-row").first()).toBeVisible();
+  await page.keyboard.press("2");
+  await expect(page.getByTestId("todo-catchup")).toBeVisible();
+  await page.keyboard.press("3");
+  await expect(page.getByTestId("todo-expired")).toBeVisible();
+  await page.keyboard.press("1");
+  await expect(page.getByTestId("todo-row").first()).toBeVisible();
+  await expect(page).not.toHaveURL(/view=/);
+});
+
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 

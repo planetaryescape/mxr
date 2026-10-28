@@ -338,7 +338,7 @@ Draft JSON includes the generated body, model id, humanizer score summary,
 voice-match metadata when a relationship profile exists, rewrite iteration
 count, and `provenance` (see [See where a draft came from](#see-where-a-draft-came-from)).
 
-In the TUI, open the palette (`:`) → **Summarize Thread**. The summary runs in
+In the TUI, open the palette (`:`) → **Summarize thread**. The summary runs in
 the background and renders above the message body; opening a long uncached
 thread can also start a debounced background summary. In the web reader, the
 **Summary** button or **Summarize thread** in the palette calls the same daemon

@@ -38,12 +38,13 @@ impl super::Store {
             .collect()
     }
 
-    /// Dismiss a hint, keeping the first time; `None` brings it back.
+    /// Dismiss a hint, keeping the first time; `None` brings it back. True
+    /// when this call marked it seen (it was not seen before).
     pub async fn set_hint_seen(
         &self,
         hint_id: &str,
         at: Option<DateTime<Utc>>,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<bool, sqlx::Error> {
         match at {
             Some(at) => sqlx::query(
                 "INSERT INTO hint_seen (hint_id, seen_at) VALUES (?1, ?2)
@@ -53,12 +54,12 @@ impl super::Store {
             .bind(at.timestamp())
             .execute(self.writer())
             .await
-            .map(|_| ()),
+            .map(|done| done.rows_affected() > 0),
             None => sqlx::query("DELETE FROM hint_seen WHERE hint_id = ?")
                 .bind(hint_id)
                 .execute(self.writer())
                 .await
-                .map(|_| ()),
+                .map(|_| false),
         }
     }
 }

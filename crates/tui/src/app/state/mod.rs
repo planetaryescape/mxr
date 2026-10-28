@@ -20,7 +20,10 @@ mod todo;
 mod updates;
 
 pub(in crate::app) use accounts::AccountFormToggleField;
-pub use accounts::{AccountFormMode, AccountFormState, AccountsPageState, AccountsState};
+pub use accounts::{
+    AccountFormMode, AccountFormState, AccountIdentityEditor, AccountsPageState, AccountsState,
+    IdentityField,
+};
 pub use analytics::{
     AnalyticsCacheKey, AnalyticsState, AnalyticsView, ContactsMode, StorageMode, WrappedWindow,
     ANALYTICS_CACHE_TTL,

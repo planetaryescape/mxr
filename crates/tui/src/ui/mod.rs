@@ -1,3 +1,4 @@
+pub mod account_mark;
 pub mod accounts_page;
 pub mod activity_modal;
 pub mod analytics_filter_modal;

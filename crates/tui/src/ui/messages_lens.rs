@@ -9,6 +9,7 @@
 //! narrow terminal shows one pane at a time, the focused one. Pure render;
 //! wiring lives in `app/messages_actions.rs`.
 
+use crate::ui::account_mark::AccountMarks;
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use mxr_protocol::{
     ConversationData, ConversationMessageData, MessageLayoutData, MessagesBandData,
@@ -35,6 +36,7 @@ pub struct MessagesView<'a> {
     pub offset: FixedOffset,
     /// Seconds left on a Got it countdown, when one runs.
     pub ack_seconds_left: Option<u64>,
+    pub account_marks: AccountMarks,
 }
 
 /// "16h", "3d", "40m".
@@ -138,7 +140,9 @@ fn row_line(
     };
     let dot = if row.your_turn { " *" } else { "  " };
     let right = format!("{age}{dot}");
-    let name_width = width.saturating_sub(1 + right.chars().count() + 1);
+    let chip = view.account_marks.row_cell(&row.account_id, theme);
+    let chip_width = view.account_marks.column_width();
+    let name_width = width.saturating_sub(1 + chip_width + right.chars().count() + 1);
     let name_style = if row.your_turn || row.unread {
         Style::default()
             .fg(theme.text_primary)
@@ -146,7 +150,7 @@ fn row_line(
     } else {
         Style::default().fg(theme.text_primary)
     };
-    Line::from(vec![
+    let mut spans = vec![
         Span::raw(marker(selected)),
         Span::styled(
             format!(
@@ -155,8 +159,10 @@ fn row_line(
             ),
             name_style,
         ),
-        Span::styled(right, Style::default().fg(theme.text_muted)),
-    ])
+    ];
+    spans.extend(chip.unwrap_or_default());
+    spans.push(Span::styled(right, Style::default().fg(theme.text_muted)));
+    Line::from(spans)
 }
 
 fn preview_line(

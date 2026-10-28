@@ -1,5 +1,7 @@
 mod account_actions;
 mod account_form_helpers;
+mod account_identity;
+mod account_marks;
 mod actions;
 mod analytics_actions;
 mod assistant_actions;

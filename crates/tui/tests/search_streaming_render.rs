@@ -116,6 +116,7 @@ fn result_list_renders_first_batch_before_query_completes() {
                 preview_scroll: 0,
                 html_images: &mut html_images,
                 now: chrono::Utc::now(),
+                account_marks: &mxr_tui::ui::account_mark::AccountMarks::default(),
             },
             &mxr_tui::theme::Theme::default(),
         );

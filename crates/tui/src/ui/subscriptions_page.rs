@@ -17,6 +17,7 @@ pub struct SubscriptionsPageView<'a> {
     pub now: chrono::DateTime<chrono::Utc>,
     /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
+    pub account_marks: &'a crate::ui::account_mark::AccountMarks,
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, view: &mut SubscriptionsPageView<'_>, theme: &Theme) {
@@ -39,13 +40,20 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &mut SubscriptionsPageView<'_>,
                 .filter(|name| !name.trim().is_empty())
                 .unwrap_or(entry.summary.sender_email.as_str());
             let count = entry.summary.message_count.to_string();
-            let width = chunks[0].width.saturating_sub(4) as usize;
+            let chip = view
+                .account_marks
+                .row_cell(&entry.summary.account_id, theme);
+            let chip_width = view.account_marks.column_width();
+            let width = (chunks[0].width.saturating_sub(4) as usize).saturating_sub(chip_width);
             let name_part = format!(
                 "  {}",
                 truncate(label, width.saturating_sub(count.len() + 1))
             );
             let padding = width.saturating_sub(name_part.len() + count.len());
-            ListItem::new(format!("{}{}{}", name_part, " ".repeat(padding), count))
+            let mut spans = vec![Span::raw(format!("{}{}", name_part, " ".repeat(padding)))];
+            spans.extend(chip.unwrap_or_default());
+            spans.push(Span::raw(count));
+            ListItem::new(Line::from(spans))
         })
         .collect::<Vec<_>>();
 
@@ -68,6 +76,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &mut SubscriptionsPageView<'_>,
         chunks[1],
         view.preview_blocks,
         crate::ui::message_view::DrawOptions {
+            account_marks: view.account_marks,
             context: Vec::new(),
             summary: None,
             scroll_offset: view.message_scroll_offset,

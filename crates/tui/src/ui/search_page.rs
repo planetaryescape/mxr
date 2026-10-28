@@ -22,6 +22,7 @@ pub struct SearchPageView<'a> {
     pub now: chrono::DateTime<chrono::Utc>,
     /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
+    pub account_marks: &'a crate::ui::account_mark::AccountMarks,
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &Theme) {
@@ -35,6 +36,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
         html_images,
         now,
         zone,
+        account_marks,
     } = view;
 
     let chunks = Layout::default()
@@ -114,6 +116,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
                     loading_throbber: None,
                     // Search results are not a triage list: no gists here.
                     row_gists: &crate::app::RowGists::new(),
+                    account_marks,
                 },
                 theme,
             );
@@ -138,6 +141,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: SearchPageView<'_>, theme: &The
             *inner.last().unwrap_or(&chunks[1]),
             preview_messages,
             message_view::DrawOptions {
+                account_marks,
                 context: Vec::new(),
                 summary: None,
                 scroll_offset: preview_scroll,

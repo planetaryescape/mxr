@@ -2707,6 +2707,23 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some((key, color, tag, dry_run)) = app.accounts.pending_identity.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let result = request_account_operation(
+                    &bg,
+                    Request::SetAccountIdentity {
+                        key,
+                        color: Some(color),
+                        tag: Some(tag),
+                        dry_run,
+                    },
+                )
+                .await;
+                AsyncResult::AccountOperation(result)
+            });
+        }
+
         if app.analytics.refresh_pending {
             app.analytics.refresh_pending = false;
             app.analytics.loading = true;
@@ -4229,6 +4246,7 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                         }
                         AsyncResult::AccountOperation(Err(e)) => {
+                            app.finish_identity_write(None);
                             app.accounts.pending_switch = false;
                             app.mailbox.mailbox_loading_message = None;
                             app.accounts.page.operation_in_flight = false;

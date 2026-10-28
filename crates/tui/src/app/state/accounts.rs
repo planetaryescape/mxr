@@ -107,6 +107,38 @@ pub struct AccountsPageState {
     pub form: AccountFormState,
     /// In-flight Outlook device-code session; shown as overlay while user completes browser auth.
     pub active_auth_session: Option<mxr_protocol::AuthSessionData>,
+    /// Colour and tag editor for the selected account (blueprint 33).
+    pub identity_editor: Option<AccountIdentityEditor>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdentityField {
+    Colour,
+    Tag,
+}
+
+/// The identity editor on the Accounts page. A first Enter asks the daemon
+/// for a dry run; the next Enter, with nothing edited, saves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountIdentityEditor {
+    pub account_key: String,
+    pub account_name: String,
+    pub color: mxr_core::AccountColor,
+    pub tag: String,
+    pub field: IdentityField,
+    pub previewed: bool,
+    /// Set while a write is in flight: whether it is the dry run.
+    pub in_flight_dry_run: Option<bool>,
+    /// The daemon's words for the last dry run or refusal.
+    pub message: Option<String>,
+}
+
+impl AccountIdentityEditor {
+    /// Any edit invalidates a dry run, so the next Enter previews again.
+    pub fn changed(&mut self) {
+        self.previewed = false;
+        self.message = None;
+    }
 }
 
 #[derive(Default)]
@@ -125,4 +157,7 @@ pub struct AccountsState {
     /// True when the set-default was triggered from sidebar account switching
     /// (vs the Accounts tab). Used to trigger full state reset on completion.
     pub pending_switch: bool,
+    /// Key, colour, tag and whether this is the dry run, for the runner to
+    /// send as `SetAccountIdentity`.
+    pub pending_identity: Option<(String, mxr_core::AccountColor, String, bool)>,
 }

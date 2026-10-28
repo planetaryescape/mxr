@@ -97,6 +97,7 @@ impl App {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_todo_content(
         frame: &mut Frame,
         area: Rect,
@@ -107,6 +108,7 @@ impl App {
             mxr_core::id::MessageId,
             std::collections::HashMap<String, crate::terminal_images::HtmlImageEntry>,
         >,
+        account_marks: &crate::ui::account_mark::AccountMarks,
         theme: &Theme,
     ) {
         if let Some(reader) = reader {
@@ -123,6 +125,7 @@ impl App {
                     theme,
                     html_images: html_image_assets,
                     now: chrono::Utc::now(),
+                    account_marks,
                 },
             );
         } else {
@@ -184,6 +187,8 @@ impl App {
             .set(false);
         let theme = &self.theme;
         let area = frame.area();
+        // Before the frame borrows the html image cache mutably below.
+        let account_marks = self.account_marks();
 
         // Below the minimum usable geometry the layout collapses into
         // unreadable slivers — show a plain placeholder instead.
@@ -280,6 +285,7 @@ impl App {
                                     preview_blocks: &preview_blocks,
                                     message_scroll_offset: self.mailbox.message_scroll_offset,
                                     html_images: &mut self.html_image_assets,
+                                    account_marks: &account_marks,
                                     now: chrono::Utc::now(),
                                 },
                                 theme,
@@ -295,6 +301,7 @@ impl App {
                                     row_gists: &self.row_gists.gists,
                                     gist_lines: self.row_gists.lines_reserved(),
                                     quiet: self.rail_entry("messages").and_then(|e| e.quiet),
+                                    account_marks: account_marks.clone(),
                                 },
                                 theme,
                             );
@@ -321,6 +328,7 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                     updates_since: self.now_updates_since(),
+                                    account_marks: account_marks.clone(),
                                 },
                                 theme,
                             );
@@ -335,6 +343,7 @@ impl App {
                                     page: &self.mailbox.updates_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
+                                    account_marks: account_marks.clone(),
                                 },
                                 theme,
                             );
@@ -348,6 +357,7 @@ impl App {
                                     page: &self.mailbox.records_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
+                                    account_marks: account_marks.clone(),
                                 },
                                 theme,
                             );
@@ -375,10 +385,12 @@ impl App {
                                     page: &self.mailbox.todo_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
+                                    account_marks: account_marks.clone(),
                                 },
                                 reader,
                                 &mut self.mailbox.message_scroll_offset,
                                 &mut self.html_image_assets,
+                                &account_marks,
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::Owed {
@@ -398,6 +410,7 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     scroll_offset: self.mailbox.scroll_offset,
                                     active_pane: &self.mailbox.active_pane,
+                                    account_marks: account_marks.clone(),
                                 },
                                 theme,
                             );
@@ -424,6 +437,7 @@ impl App {
                                         .as_ref()
                                         .map(|_| &self.mailbox.mailbox_loading_throbber),
                                     row_gists: &self.row_gists.gists,
+                                    account_marks: &account_marks,
                                 },
                                 theme,
                             );
@@ -451,6 +465,7 @@ impl App {
                                     preview_blocks: &preview_blocks,
                                     message_scroll_offset: self.mailbox.message_scroll_offset,
                                     html_images: &mut self.html_image_assets,
+                                    account_marks: &account_marks,
                                     now: chrono::Utc::now(),
                                 },
                                 theme,
@@ -466,6 +481,7 @@ impl App {
                                     row_gists: &self.row_gists.gists,
                                     gist_lines: self.row_gists.lines_reserved(),
                                     quiet: self.rail_entry("messages").and_then(|e| e.quiet),
+                                    account_marks: account_marks.clone(),
                                 },
                                 theme,
                             );
@@ -492,6 +508,7 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
                                     updates_since: self.now_updates_since(),
+                                    account_marks: account_marks.clone(),
                                 },
                                 theme,
                             );
@@ -506,6 +523,7 @@ impl App {
                                     page: &self.mailbox.updates_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
+                                    account_marks: account_marks.clone(),
                                 },
                                 theme,
                             );
@@ -519,6 +537,7 @@ impl App {
                                     page: &self.mailbox.records_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
+                                    account_marks: account_marks.clone(),
                                 },
                                 theme,
                             );
@@ -546,10 +565,12 @@ impl App {
                                     page: &self.mailbox.todo_page,
                                     selected_index: self.mailbox.selected_index,
                                     active_pane: &self.mailbox.active_pane,
+                                    account_marks: account_marks.clone(),
                                 },
                                 reader,
                                 &mut self.mailbox.message_scroll_offset,
                                 &mut self.html_image_assets,
+                                &account_marks,
                                 theme,
                             );
                         } else if self.mailbox.mailbox_view == MailboxView::Owed {
@@ -569,6 +590,7 @@ impl App {
                                     selected_index: self.mailbox.selected_index,
                                     scroll_offset: self.mailbox.scroll_offset,
                                     active_pane: &self.mailbox.active_pane,
+                                    account_marks: account_marks.clone(),
                                 },
                                 theme,
                             );
@@ -602,6 +624,7 @@ impl App {
                                         .as_ref()
                                         .map(|_| &self.mailbox.mailbox_loading_throbber),
                                     row_gists: &self.row_gists.gists,
+                                    account_marks: &account_marks,
                                 },
                                 theme,
                             );
@@ -620,6 +643,7 @@ impl App {
                                     active_pane: &self.mailbox.active_pane,
                                     theme,
                                     html_images: &mut self.html_image_assets,
+                                    account_marks: &account_marks,
                                     now: chrono::Utc::now(),
                                 },
                             );
@@ -642,6 +666,7 @@ impl App {
                                 active_pane: &self.mailbox.active_pane,
                                 theme,
                                 html_images: &mut self.html_image_assets,
+                                account_marks: &account_marks,
                                 now: chrono::Utc::now(),
                             },
                         );
@@ -664,6 +689,7 @@ impl App {
                         preview_messages: &preview_blocks,
                         preview_scroll: self.mailbox.message_scroll_offset,
                         html_images: &mut self.html_image_assets,
+                        account_marks: &account_marks,
                         now: chrono::Utc::now(),
                     },
                     theme,
@@ -689,6 +715,7 @@ impl App {
                     &self.accounts.page,
                     &self.diagnostics.page.sync_statuses,
                     theme,
+                    &account_marks,
                 );
             }
             Screen::Analytics => {
@@ -718,6 +745,7 @@ impl App {
                             active_pane: &self.mailbox.active_pane,
                             theme,
                             html_images: &mut self.html_image_assets,
+                            account_marks: &account_marks,
                             now: chrono::Utc::now(),
                         },
                     );
@@ -805,6 +833,7 @@ impl App {
             self.compose.pending_remind_at_input.as_deref(),
             &time_preview,
             theme,
+            &account_marks,
         );
         if let Some(review) = self
             .compose

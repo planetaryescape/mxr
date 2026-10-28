@@ -23,6 +23,7 @@ pub struct DeskView<'a> {
     /// Person mail in the inbox no lane holds, from the rail: Messages
     /// keeps it, so the title says how many (blueprint 22, Quiet).
     pub quiet: Option<u32>,
+    pub account_marks: crate::ui::account_mark::AccountMarks,
 }
 
 /// Where the "what" column starts: marker (2) + who (20) + gap (2).
@@ -89,7 +90,9 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &DeskView<'_>, theme: &crate::t
                 selected_line = lines.len();
             }
             let gist = view.row_gists.get(&row.thread_id);
-            lines.push(row_line(*kind, row, gist, selected, width, theme));
+            let chip = view.account_marks.row_cell(&row.account_id, theme);
+            let row_width = width.saturating_sub(view.account_marks.column_width());
+            lines.push(row_line(*kind, row, gist, selected, row_width, theme, chip));
             if view.gist_lines {
                 lines.push(gist_line(gist, width, theme));
             }
@@ -168,6 +171,7 @@ fn row_line(
     selected: bool,
     width: usize,
     theme: &crate::theme::Theme,
+    chip: Option<Vec<Span<'static>>>,
 ) -> Line<'static> {
     // Names, subjects and reasons come from mail: strip terminal controls,
     // and keep each row on one line.
@@ -217,8 +221,9 @@ fn row_line(
             format!("{:<what_width$}  ", truncate(&what, what_width)),
             Style::default().fg(theme.text_secondary),
         ),
-        Span::styled(age, age_style),
     ];
+    spans.extend(chip.unwrap_or_default());
+    spans.push(Span::styled(age, age_style));
     if selected {
         for span in &mut spans {
             span.style = span.style.add_modifier(Modifier::REVERSED);
@@ -340,6 +345,7 @@ mod tests {
                     row_gists,
                     gist_lines,
                     quiet: None,
+                    account_marks: crate::ui::account_mark::AccountMarks::default(),
                 },
                 &crate::theme::Theme::default(),
             );

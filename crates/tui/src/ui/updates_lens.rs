@@ -27,6 +27,7 @@ pub struct UpdatesView<'a> {
     /// "Now" for relative and absolute arrival times, passed in so the render
     /// doesn't read the clock.
     pub now: chrono::DateTime<chrono::Utc>,
+    pub account_marks: crate::ui::account_mark::AccountMarks,
 }
 
 /// What follows the fact: a delta, estimate, identity, time and "in To do".
@@ -98,6 +99,7 @@ pub(crate) fn line_row(
     width: usize,
     theme: &crate::theme::Theme,
     now: DateTime<Utc>,
+    chip: Option<Vec<Span<'static>>>,
 ) -> Line<'static> {
     let (mark, mark_style) = match line.section {
         UpdateSectionData::NeedsALook => ("! ", Style::default().fg(theme.warning)),
@@ -120,7 +122,7 @@ pub(crate) fn line_row(
     } else {
         format!("{fact} \u{b7} {extra}")
     };
-    Line::from(vec![
+    let mut spans = vec![
         Span::raw(marker(selected)),
         Span::styled(mark, mark_style),
         Span::styled(
@@ -134,9 +136,11 @@ pub(crate) fn line_row(
             format!("{:<rest$}", truncate(&text, rest)),
             Style::default().fg(theme.text_secondary),
         ),
-        Span::styled(when, Style::default().fg(theme.text_muted)),
-        Span::styled(count, Style::default().fg(theme.text_muted)),
-    ])
+    ];
+    spans.extend(chip.unwrap_or_default());
+    spans.push(Span::styled(when, Style::default().fg(theme.text_muted)));
+    spans.push(Span::styled(count, Style::default().fg(theme.text_muted)));
+    Line::from(spans)
 }
 
 fn plural(n: u32, one: &str, many: &str) -> String {
@@ -228,7 +232,12 @@ fn body_for(
                     body.blank();
                     body.lines.push(section(title, None, width, theme));
                 }
-                body.select(line_row(line, selected, width, theme, view.now), selected);
+                let chip = view.account_marks.row_cell(&line.account_id, theme);
+                let row_width = width.saturating_sub(view.account_marks.column_width());
+                body.select(
+                    line_row(line, selected, row_width, theme, view.now, chip),
+                    selected,
+                );
                 if let Some(suggested) = &line.todo_suggestion {
                     for text in wrap(&one_line(suggested), width.saturating_sub(8)) {
                         body.text(
@@ -687,6 +696,7 @@ pub(crate) mod tests {
                     page,
                     selected_index: 0,
                     active_pane: &ActivePane::MailList,
+                    account_marks: crate::ui::account_mark::AccountMarks::default(),
                 },
                 &theme,
             );

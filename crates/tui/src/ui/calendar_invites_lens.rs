@@ -18,6 +18,7 @@ pub struct CalendarInvitesView<'a> {
     pub selected_index: usize,
     pub scroll_offset: usize,
     pub active_pane: &'a ActivePane,
+    pub account_marks: crate::ui::account_mark::AccountMarks,
 }
 
 pub fn draw(
@@ -55,7 +56,9 @@ pub fn draw(
     let footer_height = 1u16;
     let list_height = inner.height.saturating_sub(footer_height) as usize;
 
+    let chip_gap = Span::raw(" ".repeat(view.account_marks.column_width()));
     let mut lines = vec![Line::from(vec![
+        chip_gap,
         Span::styled("  When             ", Style::default().fg(theme.text_muted)),
         Span::styled(
             "Event                          ",
@@ -98,8 +101,13 @@ pub fn draw(
         } else {
             Style::default().fg(theme.text_primary)
         };
-        let mut spans = vec![
-            Span::raw(marker),
+        let mut spans = vec![Span::raw(marker)];
+        spans.extend(
+            view.account_marks
+                .row_cell(&invite.account_id, theme)
+                .unwrap_or_default(),
+        );
+        spans.extend([
             Span::styled(
                 format!("{:<16} ", truncate(&when, 16)),
                 Style::default().fg(theme.accent),
@@ -110,7 +118,7 @@ pub fn draw(
                 Style::default().fg(theme.text_muted),
             ),
             Span::styled(rsvp, Style::default().fg(rsvp_color)),
-        ];
+        ]);
         if selected {
             for span in &mut spans {
                 span.style = span.style.add_modifier(Modifier::REVERSED);
@@ -238,6 +246,7 @@ mod tests {
                     selected_index: 0,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MailList,
+                    account_marks: crate::ui::account_mark::AccountMarks::default(),
                 },
                 &crate::theme::Theme::default(),
             );
@@ -265,6 +274,7 @@ mod tests {
                     selected_index: 0,
                     scroll_offset: 0,
                     active_pane: &ActivePane::MailList,
+                    account_marks: crate::ui::account_mark::AccountMarks::default(),
                 },
                 &crate::theme::Theme::default(),
             );

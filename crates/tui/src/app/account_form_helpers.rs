@@ -586,6 +586,7 @@ impl App {
         self.accounts.page.status = Some(result.summary.clone());
         self.accounts.page.last_result = Some(result.clone());
         self.accounts.page.form.last_result = Some(result.clone());
+        self.finish_identity_write(Some(&result));
         let auth_ok = result.auth.as_ref().map(|step| step.ok);
         self.accounts.page.form.gmail_authorized =
             auth_ok.unwrap_or(self.accounts.page.form.gmail_authorized);

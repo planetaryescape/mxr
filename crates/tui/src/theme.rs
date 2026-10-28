@@ -1,3 +1,4 @@
+use mxr_core::AccountColor;
 use ratatui::style::{Color, Modifier, Style};
 use serde::Deserialize;
 
@@ -42,6 +43,127 @@ pub struct Theme {
     pub signature_fg: Color,
     pub line_number_fg: Color,
     pub link_fg: Color,
+
+    /// Fills and ink for the account chip (blueprint 33). Only the account
+    /// chip reads these, so no other element may take an account colour.
+    pub account: AccountPalette,
+}
+
+/// Eight account fills in `AccountColor::ALL` order, and the one ink that
+/// sits on all of them. Both come from the web's `--account-*` tokens so the
+/// two clients show the same colour for the same account.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AccountPalette {
+    pub fills: [Color; 8],
+    pub ink: Color,
+    /// The 256-colour pick for each fill, computed once with the palette.
+    picks: [u8; 8],
+}
+
+/// Web dark and midnight. Ink is near-black on these fills.
+const DARK_FILLS: [Color; 8] = [
+    Color::Rgb(0x6c, 0xc0, 0xf0), // sky
+    Color::Rgb(0xe8, 0xa3, 0x3d), // amber
+    Color::Rgb(0x3f, 0xbf, 0x94), // green
+    Color::Rgb(0xe9, 0xdc, 0x5c), // yellow
+    Color::Rgb(0x7a, 0xa6, 0xf5), // blue
+    Color::Rgb(0xf0, 0x8a, 0x5d), // vermilion
+    Color::Rgb(0xd5, 0x8f, 0xc0), // purple
+    Color::Rgb(0xa8, 0xb3, 0xbf), // slate
+];
+const DARK_INK: Color = Color::Rgb(0x0b, 0x12, 0x18);
+
+/// Web light. Fills are deeper so white ink reaches 4.5:1.
+const LIGHT_FILLS: [Color; 8] = [
+    Color::Rgb(0x1f, 0x6f, 0xa8), // sky
+    Color::Rgb(0x8f, 0x5a, 0x00), // amber
+    Color::Rgb(0x00, 0x78, 0x5a), // green
+    Color::Rgb(0x6f, 0x64, 0x00), // yellow
+    Color::Rgb(0x2f, 0x55, 0xb8), // blue
+    Color::Rgb(0xb3, 0x47, 0x1b), // vermilion
+    Color::Rgb(0x9a, 0x4a, 0x84), // purple
+    Color::Rgb(0x56, 0x60, 0x6b), // slate
+];
+const LIGHT_INK: Color = Color::Rgb(0xff, 0xff, 0xff);
+
+impl AccountPalette {
+    pub fn new(fills: [Color; 8], ink: Color) -> Self {
+        Self {
+            fills,
+            ink,
+            picks: distinct_256_picks(&fills),
+        }
+    }
+
+    /// The slot's 256-colour pick. The eight picks are distinct, so a
+    /// palette that maps two fills to one index is never shown.
+    pub fn indexed_fill(&self, color: AccountColor) -> Color {
+        let slot = AccountColor::ALL
+            .iter()
+            .position(|candidate| *candidate == color)
+            .unwrap_or(7);
+        Color::Indexed(self.picks[slot])
+    }
+
+    pub fn indexed_ink(&self) -> Color {
+        Color::Indexed(nearest_256(self.ink))
+    }
+
+    pub fn fill(&self, color: AccountColor) -> Color {
+        let slot = AccountColor::ALL
+            .iter()
+            .position(|candidate| *candidate == color)
+            .unwrap_or(7);
+        self.fills[slot]
+    }
+}
+
+/// The xterm 256-colour index nearest to `color`, from the 6x6x6 cube and
+/// the grey ramp (indices 16 to 255). Non-RGB colours map to black.
+pub fn nearest_256(color: Color) -> u8 {
+    let Color::Rgb(r, g, b) = color else {
+        return 16;
+    };
+    let target = [i32::from(r), i32::from(g), i32::from(b)];
+    (16u8..=255)
+        .min_by_key(|index| squared_distance(indexed_rgb(*index), target))
+        .unwrap_or(16)
+}
+
+/// Each fill's nearest pick, taken in slot order: where two fills share a
+/// nearest index, the later one takes its next-nearest unused index.
+fn distinct_256_picks(fills: &[Color; 8]) -> [u8; 8] {
+    let mut used: Vec<u8> = Vec::with_capacity(8);
+    let mut picks = [16u8; 8];
+    for (slot, fill) in fills.iter().enumerate() {
+        let Color::Rgb(r, g, b) = *fill else {
+            continue;
+        };
+        let target = [i32::from(r), i32::from(g), i32::from(b)];
+        let mut candidates: Vec<u8> = (16u8..=255).collect();
+        candidates.sort_by_key(|index| squared_distance(indexed_rgb(*index), target));
+        let pick = candidates
+            .into_iter()
+            .find(|index| !used.contains(index))
+            .unwrap_or(16);
+        used.push(pick);
+        picks[slot] = pick;
+    }
+    picks
+}
+
+fn indexed_rgb(index: u8) -> [i32; 3] {
+    const LEVELS: [i32; 6] = [0, 95, 135, 175, 215, 255];
+    if index >= 232 {
+        let grey = 8 + 10 * i32::from(index - 232);
+        return [grey, grey, grey];
+    }
+    let cube = usize::from(index - 16);
+    [LEVELS[cube / 36], LEVELS[(cube / 6) % 6], LEVELS[cube % 6]]
+}
+
+fn squared_distance(a: [i32; 3], b: [i32; 3]) -> i32 {
+    a.iter().zip(b).map(|(x, y)| (x - y).pow(2)).sum()
 }
 
 impl Theme {
@@ -86,6 +208,7 @@ impl Theme {
             signature_fg: Color::DarkGray,
             line_number_fg: Color::Rgb(80, 80, 80),
             link_fg: Color::Rgb(96, 165, 250), // blue, underlined in render
+            account: AccountPalette::new(DARK_FILLS, DARK_INK),
         }
     }
 
@@ -113,6 +236,7 @@ impl Theme {
             signature_fg: Color::DarkGray,
             line_number_fg: Color::DarkGray,
             link_fg: Color::Cyan,
+            account: AccountPalette::new(DARK_FILLS, DARK_INK),
         }
     }
 
@@ -146,6 +270,7 @@ impl Theme {
             signature_fg: Color::Rgb(153, 166, 181),
             line_number_fg: Color::Rgb(114, 129, 144),
             link_fg: Color::Rgb(126, 190, 255),
+            account: AccountPalette::new(DARK_FILLS, DARK_INK),
         }
     }
 
@@ -173,6 +298,7 @@ impl Theme {
             signature_fg: Color::Gray,
             line_number_fg: Color::Gray,
             link_fg: Color::Blue,
+            account: AccountPalette::new(LIGHT_FILLS, LIGHT_INK),
         }
     }
 
@@ -200,6 +326,7 @@ impl Theme {
             signature_fg: Color::Rgb(127, 132, 156),
             line_number_fg: Color::Rgb(88, 91, 112),
             link_fg: Color::Rgb(137, 180, 250),
+            account: AccountPalette::new(DARK_FILLS, DARK_INK),
         }
     }
 
@@ -399,8 +526,47 @@ fn parse_named_color(value: &str) -> Option<Color> {
 
 #[cfg(test)]
 mod tests {
-    use super::Theme;
+    use super::{nearest_256, Theme};
+    use mxr_core::AccountColor;
     use ratatui::style::Color;
+
+    fn all_distinct<T: PartialEq + std::fmt::Debug>(values: &[T]) -> bool {
+        values
+            .iter()
+            .enumerate()
+            .all(|(i, value)| values[i + 1..].iter().all(|other| other != value))
+    }
+
+    #[test]
+    fn account_fills_stay_distinct_in_truecolor_and_256_colours() {
+        for palette in [Theme::dark().account, Theme::light().account] {
+            let fills: Vec<Color> = AccountColor::ALL
+                .iter()
+                .map(|color| palette.fill(*color))
+                .collect();
+            assert!(all_distinct(&fills), "truecolor fills collide: {fills:?}");
+
+            let picks: Vec<Color> = AccountColor::ALL
+                .iter()
+                .map(|color| palette.indexed_fill(*color))
+                .collect();
+            assert!(all_distinct(&picks), "256-colour picks collide: {picks:?}");
+        }
+    }
+
+    #[test]
+    fn nearest_256_maps_cube_and_grey_colours_exactly() {
+        assert_eq!(nearest_256(Color::Rgb(0, 0, 0)), 16);
+        assert_eq!(nearest_256(Color::Rgb(255, 255, 255)), 231);
+        assert_eq!(nearest_256(Color::Rgb(128, 128, 128)), 244);
+        assert_eq!(nearest_256(Color::Rgb(255, 0, 0)), 196);
+    }
+
+    #[test]
+    fn account_ink_is_black_on_dark_and_white_on_light() {
+        assert_eq!(Theme::dark().account.indexed_ink(), Color::Indexed(233));
+        assert_eq!(Theme::light().account.indexed_ink(), Color::Indexed(231));
+    }
 
     #[test]
     fn midnight_is_selectable_and_default_remains_terminal_native() {

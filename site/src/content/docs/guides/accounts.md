@@ -26,6 +26,8 @@ Actions:
 - `Enter` / `o`: edit selected account
 - `t`: test selected account
 - `d`: set default account
+- `i`: edit the selected account's colour and tag. The first `Enter` previews
+  the change with the daemon, and the next `Enter` saves it
 - `r`: refresh runtime account inventory
 
 The page shows:
@@ -55,9 +57,10 @@ mxr accounts identity ACCOUNT --color amber --tag W --dry-run
 ## Colour and tag
 
 Every account has a colour and a tag, so mixed lists can say which account a
-row came from. Today the tag appears in CLI mail tables (see the `ACCT` column
-below); the web app and the TUI do not draw it yet, and the Raycast extension
-labels rows with the account's config key. The daemon gives an account its
+row came from. The TUI puts the tag in a coloured chip before the date on each
+email row whenever a list mixes accounts, and names the account in the reader
+header. The CLI shows it in mail tables (see the `ACCT` column below), and the
+Raycast extension labels rows with the account's config key. The daemon gives an account its
 colour and its tag when the account is created, and keeps both.
 
 The tag comes from the account's name: "Work" is `W`, "Planetary Escape" is

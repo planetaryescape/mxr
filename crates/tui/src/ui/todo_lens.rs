@@ -27,6 +27,7 @@ pub struct TodoView<'a> {
     pub now: chrono::DateTime<chrono::Utc>,
     /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
+    pub account_marks: crate::ui::account_mark::AccountMarks,
 }
 
 /// Cells in the runway bar.
@@ -232,6 +233,7 @@ fn row_line(
     dim: bool,
     width: usize,
     theme: &crate::theme::Theme,
+    chip: Option<Vec<Span<'static>>>,
 ) -> Line<'static> {
     let marker = if selected { "\u{258c} " } else { "  " };
     let who = who(todo);
@@ -280,6 +282,7 @@ fn row_line(
             Style::default().fg(if dim { theme.accent_dim } else { theme.accent }),
         ));
     }
+    spans.extend(chip.unwrap_or_default());
     // Overdue is a fact in the row's own words, never red.
     spans.push(Span::styled(when, Style::default().fg(theme.text_muted)));
     if selected {
@@ -330,7 +333,9 @@ impl Body {
             if selected {
                 self.selected_line = self.lines.len();
             }
-            self.push(row_line(todo, selected, dim, width, theme));
+            let chip = view.account_marks.row_cell(&todo.account_id, theme);
+            let width = width.saturating_sub(view.account_marks.column_width());
+            self.push(row_line(todo, selected, dim, width, theme, chip));
             if selected {
                 if let Some(preview) = view
                     .page
@@ -1041,6 +1046,7 @@ pub(crate) mod tests {
                     page,
                     selected_index,
                     active_pane: &ActivePane::MailList,
+                    account_marks: crate::ui::account_mark::AccountMarks::default(),
                 },
                 &crate::theme::Theme::default(),
             );
@@ -1088,6 +1094,7 @@ pub(crate) mod tests {
                             page,
                             selected_index: 39,
                             active_pane: &ActivePane::MailList,
+                            account_marks: crate::ui::account_mark::AccountMarks::default(),
                         },
                         &crate::theme::Theme::default(),
                     );
@@ -1115,6 +1122,7 @@ pub(crate) mod tests {
                     page: &page,
                     selected_index: 39,
                     active_pane: &ActivePane::MailList,
+                    account_marks: crate::ui::account_mark::AccountMarks::default(),
                 },
                 &crate::theme::Theme::default(),
             );
@@ -1199,6 +1207,7 @@ pub(crate) mod tests {
                         page: &page,
                         selected_index: 0,
                         active_pane: &ActivePane::MailList,
+                        account_marks: crate::ui::account_mark::AccountMarks::default(),
                     },
                     &theme,
                 );
@@ -1382,6 +1391,7 @@ pub(crate) mod tests {
                     page,
                     selected_index: 0,
                     active_pane: &ActivePane::MailList,
+                    account_marks: crate::ui::account_mark::AccountMarks::default(),
                 },
                 &crate::theme::Theme::default(),
             );

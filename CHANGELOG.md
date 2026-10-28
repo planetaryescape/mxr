@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.175](https://github.com/planetaryescape/mxr/compare/v0.6.174...v0.6.175) (2026-10-28)
+
+
+### Features
+
+* one set of keys in the web app and the TUI, checked from the key definition alone ([#747](https://github.com/planetaryescape/mxr/issues/747)) ([cb436c4](https://github.com/planetaryescape/mxr/commit/cb436c495b94802098f4695ca2363ea57160b81f))
+
 ## [0.6.174](https://github.com/planetaryescape/mxr/compare/v0.6.173...v0.6.174) (2026-10-28)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.173](https://github.com/planetaryescape/mxr/compare/v0.6.172...v0.6.173) (2026-10-28)
+
+
+### Features
+
+* show what can follow a prefix in the TUI and give the desktop app a menu from the key definition ([#746](https://github.com/planetaryescape/mxr/issues/746)) ([3bb5df2](https://github.com/planetaryescape/mxr/commit/3bb5df25b9b9f9059df9141cf0b26d1b91bb9f1b))
+
+
+### Bug Fixes
+
+* warn before writing an unsanitized bug report ([#748](https://github.com/planetaryescape/mxr/issues/748)) ([a2b4efd](https://github.com/planetaryescape/mxr/commit/a2b4efde5cedd0129dd773195c65fbd0177de308))
+
 ## [0.6.172](https://github.com/planetaryescape/mxr/compare/v0.6.171...v0.6.172) (2026-10-28)
 
 

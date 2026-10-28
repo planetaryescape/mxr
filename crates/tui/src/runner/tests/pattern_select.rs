@@ -544,7 +544,7 @@ fn preview_modal_lists_rows_then_says_how_many_are_left() {
 
     assert!(rendered.contains("User 0 — Subject 0"), "{rendered}");
     assert!(rendered.contains("more (j/k to scroll)"), "{rendered}");
-    assert!(rendered.contains("[Esc] cancel"), "{rendered}");
+    assert!(rendered.contains("[Esc/n/q] cancel"), "{rendered}");
 }
 
 #[test]

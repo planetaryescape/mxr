@@ -265,9 +265,26 @@ export function LetGoAllDialog({
     gcTime: 0,
   });
   const rows = preview.data?.changed ?? [];
+  const commit = () => {
+    onClose();
+    void letGoAll(account, rows);
+  };
   return (
     <AlertDialog open onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent data-testid="let-go-all-dialog">
+      <AlertDialogContent
+        data-testid="let-go-all-dialog"
+        onKeyDown={(event) => {
+          if (event.ctrlKey || event.metaKey || event.altKey) return;
+          // A preview's yes or no, as in the TUI (blueprint 35).
+          if (event.key === "y" && rows.length > 0) {
+            event.preventDefault();
+            commit();
+          } else if (event.key === "n") {
+            event.preventDefault();
+            onClose();
+          }
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>
             {preview.data
@@ -302,15 +319,10 @@ export function LetGoAllDialog({
           </ul>
         ) : null}
         <AlertDialogFooter>
-          {/* Opens on Cancel: a slip to A then Enter must not let go of everything. */}
-          <AlertDialogCancel autoFocus>{rows.length === 0 ? "Close" : "Cancel"}</AlertDialogCancel>
+          <AlertDialogCancel>{rows.length === 0 ? "Close" : "Cancel"}</AlertDialogCancel>
+          {/* A preview's Enter commits what it shows (blueprint 35); u undoes it. */}
           {rows.length > 0 ? (
-            <AlertDialogAction
-              onClick={() => {
-                onClose();
-                void letGoAll(account, rows);
-              }}
-            >
+            <AlertDialogAction autoFocus onClick={commit}>
               Let go of {plural(rows.length, "to-do")}
             </AlertDialogAction>
           ) : null}

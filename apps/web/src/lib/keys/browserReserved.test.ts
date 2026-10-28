@@ -142,12 +142,16 @@ describe("browser-reserved shortcuts", () => {
     const macOnly = getRegistry()
       .bindings()
       .filter((binding) => binding.macOnly);
-    expect(macOnly.map((binding) => binding.chord).toSorted()).toEqual(["Ctrl+f", "Ctrl+p"]);
+    expect(macOnly.map((binding) => `${binding.scope} ${binding.chord}`).toSorted()).toEqual([
+      "global Ctrl+p",
+      "list Ctrl+f",
+      "messages Ctrl+f",
+    ]);
     for (const binding of macOnly) {
       expect(getRegistry().resolve(binding.chord, [binding.scope], false)).toBeUndefined();
     }
-    // list.filter needs a mounted list controller, so only the palette's
-    // alias can be resolved here.
+    // The filters need a mounted controller, so only the palette's alias
+    // can be resolved here.
     expect(getRegistry().resolve("Ctrl+p", ["global"], true)?.action.id).toBe(
       "shell.command-palette",
     );

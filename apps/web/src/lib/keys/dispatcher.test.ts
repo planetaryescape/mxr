@@ -508,6 +508,42 @@ describe("installKeyDispatcher", () => {
     expect(letGo.run).toHaveBeenCalledTimes(1);
   });
 
+  test("a moved modifier chord says where it went, from a text field too", () => {
+    const assistant = runAction("assistant.toggle", "@", {
+      label: "Assistant",
+      movedAliases: [{ chord: "Mod+.", scopes: ["global"] }],
+    });
+    registry.define(assistant.action);
+    const field = document.createElement("input");
+    document.body.append(field);
+
+    press({ key: ".", ctrlKey: true }, field);
+
+    expect(assistant.run).not.toHaveBeenCalled();
+    expect(movedNotices).toEqual(["Assistant is now @"]);
+  });
+
+  test("q closes a dialog as Esc does, but types in a field", () => {
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.innerHTML = "<button>Keep</button><input />";
+    document.body.append(dialog);
+    const escapes: EventTarget[] = [];
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") escapes.push(event.target!);
+    };
+    document.addEventListener("keydown", onKey);
+    try {
+      const button = dialog.querySelector("button")!;
+      expect(press({ key: "q" }, button)).toBe(false);
+      expect(escapes).toEqual([button]);
+      press({ key: "q" }, dialog.querySelector("input")!);
+      expect(escapes).toEqual([button]);
+    } finally {
+      document.removeEventListener("keydown", onKey);
+    }
+  });
+
   test("a retired key whose action has no key left names where to go instead", () => {
     const tab = runAction("nav.tab-mail", "", {
       label: "Mail",

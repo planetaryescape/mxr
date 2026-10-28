@@ -27,6 +27,7 @@ import { PageError } from "@/components/PageParts";
 import { MessageContent } from "@/features/thread/MessageCard";
 import { PrivacyLine } from "@/features/thread/privacy/PrivacyLine";
 import { pickSearch, useSearchParam } from "@/hooks/useSearchParam";
+import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { formatLongDate } from "@/lib/format";
 import { useScopeController } from "@/lib/keys/controllers";
@@ -293,6 +294,15 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     letGo: () => {
       void letGo([item.thread_id]);
       next();
+    },
+    makeTodo: () => {
+      if (refuseWhileDaemonDown("add a to-do")) return;
+      openMailDialog({
+        kind: "todo-make",
+        messageId: item.message_id,
+        suggestion: "",
+        subject: item.title,
+      });
     },
     next,
     original: toggleOriginal,

@@ -289,6 +289,8 @@ impl App {
             (KeyCode::Char('e'), KeyModifiers::NONE) => Some(Action::Archive),
             (KeyCode::Char('m'), KeyModifiers::NONE) => Some(Action::MarkReadAndArchive),
             (KeyCode::Char('#'), _) => Some(Action::Trash),
+            // The web app's Delete and Backspace trash too (with undo).
+            (KeyCode::Delete | KeyCode::Backspace, KeyModifiers::NONE) => Some(Action::Trash),
             (KeyCode::Char('!'), _) => Some(Action::Spam),
             (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
             (KeyCode::Char('s'), KeyModifiers::NONE) => Some(Action::Star),
@@ -491,7 +493,9 @@ impl App {
 
         if self.modals.help_open {
             return match (key.code, key.modifiers) {
-                (KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?' | 'q'), _) => Some(Action::Help),
+                (KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?'), _) => Some(Action::Help),
+                // q closes where nothing is typed; in a filter it types.
+                (KeyCode::Char('q'), _) if self.modals.help_query.is_empty() => Some(Action::Help),
                 (KeyCode::Tab, _) => {
                     self.cycle_help_context();
                     None
@@ -639,12 +643,10 @@ impl App {
                 };
             }
             if self.modals.drafts.confirmation.is_some() {
-                return match key.code {
-                    KeyCode::Char('y') => Some(Action::StoredDraftsModalConfirm),
-                    KeyCode::Esc | KeyCode::Char('n' | 'q') => {
-                        Some(Action::StoredDraftsModalCancelConfirmation)
-                    }
-                    _ => None,
+                return match self.modals.drafts.choice.key(key.code) {
+                    ConfirmKey::Confirm => Some(Action::StoredDraftsModalConfirm),
+                    ConfirmKey::Keep => Some(Action::StoredDraftsModalCancelConfirmation),
+                    ConfirmKey::Moved | ConfirmKey::Ignored => None,
                 };
             }
             return match (key.code, key.modifiers) {
@@ -666,7 +668,7 @@ impl App {
 
         if self.modals.screener.visible {
             return match (key.code, key.modifiers) {
-                (KeyCode::Esc, _) => Some(Action::CloseScreenerModal),
+                (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseScreenerModal),
                 (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::ScreenerModalNext),
                 (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::ScreenerModalPrev),
                 (KeyCode::Char('a'), _) => Some(Action::ScreenerDisposeAllow),
@@ -677,23 +679,20 @@ impl App {
             };
         }
 
-        // Saved-search delete confirm: y/Enter confirms, n/Esc cancels.
-        // Placed before the form check because both can technically
-        // be open when a delete is triggered from the sidebar with no
-        // form open — but the typical lifecycle is: form closed,
-        // delete pending. Either way: confirm wins.
+        // Saved-search delete confirm, which opens on Keep. Placed before
+        // the form check because both can technically be open when a
+        // delete is triggered from the sidebar with no form open — but the
+        // typical lifecycle is: form closed, delete pending. Either way:
+        // confirm wins.
         if self.modals.pending_saved_search_delete_confirm.is_some() {
-            return match (key.code, key.modifiers) {
-                (KeyCode::Char('y') | KeyCode::Enter, _) => {
+            match self.modals.saved_search_delete_choice.key(key.code) {
+                ConfirmKey::Confirm => {
                     self.confirm_pending_saved_search_delete();
-                    None
                 }
-                (KeyCode::Char('n') | KeyCode::Esc, _) => {
-                    self.cancel_pending_saved_search_delete();
-                    None
-                }
-                _ => None,
-            };
+                ConfirmKey::Keep => self.cancel_pending_saved_search_delete(),
+                ConfirmKey::Moved | ConfirmKey::Ignored => {}
+            }
+            return None;
         }
 
         // Saved-search form: routed before command palette so keys
@@ -762,7 +761,7 @@ impl App {
         // Route keys to send confirmation prompt
         if self.compose.viewing_voice_source {
             match key.code {
-                KeyCode::Esc => self.compose.viewing_voice_source = false,
+                KeyCode::Esc | KeyCode::Char('q') => self.compose.viewing_voice_source = false,
                 KeyCode::Down | KeyCode::Char('j') => {
                     self.mailbox.message_scroll_offset =
                         self.mailbox.message_scroll_offset.saturating_add(1);
@@ -1091,14 +1090,9 @@ impl App {
 
         if let Some(confirm) = self.mailbox.sweep_confirm.as_mut() {
             return match (key.code, key.modifiers) {
-                (KeyCode::Enter, _) => {
-                    self.confirm_sweep();
-                    None
-                }
-                // `y` is a one-key yes, so only one sender's bundle takes it.
-                (KeyCode::Char('y'), KeyModifiers::NONE)
-                    if confirm.target.sender_email.is_some() =>
-                {
+                // y is Enter (blueprint 35): both run the highlighted option,
+                // which a whole place's sweep starts on Cancel.
+                (KeyCode::Enter, _) | (KeyCode::Char('y'), KeyModifiers::NONE) => {
                     self.confirm_sweep();
                     None
                 }
@@ -1152,7 +1146,7 @@ impl App {
                 (KeyCode::Char('Y'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenSelected)
                 }
-                (KeyCode::Esc, _) | (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                (KeyCode::Esc, _) | (KeyCode::Char('n' | 'q'), KeyModifiers::NONE) => {
                     self.modals.pending_bulk_confirm = None;
                     self.status_message = Some("Bulk action cancelled".into());
                     None
@@ -1186,7 +1180,8 @@ impl App {
                 (KeyCode::Char('A'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::ConfirmUnsubscribeAndArchiveSender)
                 }
-                (KeyCode::Esc, _) => Some(Action::CancelUnsubscribe),
+                // A yes or no question: n is Esc, and q closes too.
+                (KeyCode::Esc | KeyCode::Char('n' | 'q'), _) => Some(Action::CancelUnsubscribe),
                 _ => None,
             };
         }
@@ -1472,7 +1467,7 @@ impl App {
                         .saturating_sub(1);
                     return None;
                 }
-                (KeyCode::Esc | KeyCode::Char('A'), _) => {
+                (KeyCode::Esc | KeyCode::Char('A' | 'q'), _) => {
                     self.close_attachment_panel();
                     return None;
                 }
@@ -1632,7 +1627,14 @@ impl App {
         // before any single-key binding such as `r` reply can claim it.
         // A mode completes its own sequences from the key definition.
         if self.input.is_pending() && self.mode_key_context().is_none() {
-            return self.contextual_input_action(key);
+            let action = self.contextual_input_action(key);
+            return if self.screen == Screen::Mailbox
+                && self.mailbox.active_pane == ActivePane::Sidebar
+            {
+                self.sidebar_ends(action)
+            } else {
+                action
+            };
         }
 
         if self.screen != Screen::Mailbox {
@@ -1677,6 +1679,22 @@ impl App {
                 }
                 (KeyCode::Char('G'), modifiers) if plain_or_shift(modifiers) => {
                     self.mailbox.message_scroll_offset = u16::MAX;
+                    None
+                }
+                // The keyboard's motion keys and Space page the body, as in
+                // the web reader; Home reaches `g g` below.
+                (KeyCode::End, KeyModifiers::NONE) => {
+                    self.mailbox.message_scroll_offset = u16::MAX;
+                    None
+                }
+                (KeyCode::PageDown | KeyCode::Char(' '), KeyModifiers::NONE) => {
+                    self.mailbox.message_scroll_offset =
+                        self.mailbox.message_scroll_offset.saturating_add(20);
+                    None
+                }
+                (KeyCode::PageUp, KeyModifiers::NONE) => {
+                    self.mailbox.message_scroll_offset =
+                        self.mailbox.message_scroll_offset.saturating_sub(20);
                     None
                 }
                 (KeyCode::Char('H'), modifiers) if plain_or_shift(modifiers) => {
@@ -1751,7 +1769,11 @@ impl App {
                 (KeyCode::Enter | KeyCode::Char('o'), _) => self.sidebar_select(),
                 // l = select label and move to mail list
                 (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE) => self.sidebar_select(),
-                _ => self.contextual_input_action(key),
+                (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
+                _ => {
+                    let action = self.contextual_input_action(key);
+                    self.sidebar_ends(action)
+                }
             },
             ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::CalendarInvites => {
                 self.calendar_invites_key(key)
@@ -2306,19 +2328,20 @@ impl App {
             return self.handle_rule_form_key(key);
         }
 
-        // Rule delete confirm: y/Enter deletes, n/Esc/q keeps the rule.
+        // Rule delete confirm, which opens on Keep: `y`, or `Enter` on
+        // "Delete rule", deletes; n/Esc/q keep the rule.
         if let Some((rule_id, name)) = self.rules.page.delete_confirm.clone() {
-            match key.code {
-                KeyCode::Char('y') | KeyCode::Enter => {
+            match self.rules.page.delete_choice.key(key.code) {
+                ConfirmKey::Confirm => {
                     self.rules.page.delete_confirm = None;
                     self.rules.pending_delete = Some(rule_id);
                     self.rules.page.status = Some(format!("Deleting {name}..."));
                 }
-                KeyCode::Char('n' | 'q') | KeyCode::Esc => {
+                ConfirmKey::Keep => {
                     self.rules.page.delete_confirm = None;
                     self.rules.page.status = Some(format!("Kept {name}"));
                 }
-                _ => {}
+                ConfirmKey::Moved | ConfirmKey::Ignored => {}
             }
             return None;
         }

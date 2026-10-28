@@ -53,3 +53,17 @@ test("a save completing after unmount cannot close a newer dialog", async () => 
   await Promise.resolve();
   expect(close).not.toHaveBeenCalled();
 });
+
+test("a reason's digit picks it at once, and j and k move between reasons", () => {
+  vi.mocked(correctRow).mockResolvedValue(null);
+  const todo = todoFixture();
+  render(<TodoCorrectionDialog todo={todo} onClose={vi.fn<() => void>()} />);
+  const first = screen.getByRole("button", { name: "Not a to-do" });
+  expect(first).toHaveFocus();
+  fireEvent.keyDown(first, { key: "j" });
+  expect(screen.getByRole("button", { name: "Not mine" })).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, { key: "k" });
+  expect(first).toHaveFocus();
+  fireEvent.keyDown(first, { key: "3" });
+  expect(correctRow).toHaveBeenCalledWith(todo, "already_done");
+});

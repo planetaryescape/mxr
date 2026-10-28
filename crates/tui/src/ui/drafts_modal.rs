@@ -27,7 +27,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &DraftsModalState, theme: &The
     frame.render_widget(block, modal_area);
 
     if let Some(operation) = &state.confirmation {
-        draw_confirmation(frame, inner, operation, theme);
+        draw_confirmation(frame, inner, operation, state.choice, theme);
         return;
     }
 
@@ -178,6 +178,7 @@ fn draw_confirmation(
     frame: &mut Frame,
     area: Rect,
     operation: &StoredDraftOperation,
+    choice: crate::app::ConfirmChoice,
     theme: &Theme,
 ) {
     let (heading, explanation, draft, confirm_label) = match operation {
@@ -185,22 +186,22 @@ fn draw_confirmation(
             "Delete this draft?",
             "This permanently removes the local draft and its linked provider draft, if present.",
             draft,
-            "[y] delete",
+            "Delete draft",
         ),
         StoredDraftOperation::CancelSchedule { draft, .. } => (
             "Cancel this scheduled send?",
             "The draft stays in Drafts; it just won't send on its own.",
             draft,
-            "[y] cancel the send",
+            "Cancel the send",
         ),
         StoredDraftOperation::Push { draft, provider } => (
             "Sync this draft with the provider?",
             "The first sync creates a linked draft. Later edits update that same provider draft.",
             draft,
             if provider.eq_ignore_ascii_case("gmail") {
-                "[y] sync with Gmail Drafts"
+                "Sync with Gmail Drafts"
             } else {
-                "[y] sync with provider Drafts"
+                "Sync with provider Drafts"
             },
         ),
     };
@@ -227,13 +228,10 @@ fn draw_confirmation(
         lines.push(Line::from(format!("Sends:   {}", local_time(*send_at))));
     }
     lines.extend([
-        Line::from(""),
         Line::from(explanation),
         Line::from(""),
-        Line::from(vec![
-            Span::styled(confirm_label, Style::default().fg(theme.accent).bold()),
-            Span::raw("   [Esc/n] cancel"),
-        ]),
+        super::confirm_choice::options("Keep it", confirm_label, choice, theme),
+        super::confirm_choice::keys_hint(theme),
     ]);
 
     frame.render_widget(
@@ -376,7 +374,11 @@ mod tests {
         assert!(snapshot.contains("Delete this draft?"));
         assert!(snapshot.contains("Q4 plan"));
         assert!(snapshot.contains(&draft_id.to_string()));
-        assert!(snapshot.contains("[y] delete"));
+        assert!(
+            snapshot.contains("\u{203a} Keep it     Delete draft"),
+            "{snapshot}"
+        );
+        assert!(snapshot.contains("y yes"), "{snapshot}");
     }
 
     #[test]
@@ -398,7 +400,11 @@ mod tests {
         assert!(snapshot.contains("Sync this draft with the provider?"));
         assert!(snapshot.contains("Provider: gmail"));
         assert!(snapshot.contains("Later edits update that same provider draft"));
-        assert!(snapshot.contains("sync with Gmail Drafts"));
+        // Syncing destroys nothing, so it opens on its action.
+        assert!(
+            snapshot.contains("Keep it   \u{203a} Sync with Gmail Drafts"),
+            "{snapshot}"
+        );
     }
 
     fn html_draft(subject: &str, html: &str, text: Option<&str>) -> Draft {

@@ -104,6 +104,17 @@ describe("HelpDialog", () => {
     expect(screen.getByText("No matching shortcuts.")).toBeVisible();
   });
 
+  test("? closes help while the filter is empty and types into it otherwise", () => {
+    const onOpenChange = vi.fn<(open: boolean) => void>();
+    render(<HelpDialog open onOpenChange={onOpenChange} />);
+    filter("arch");
+    fireEvent.keyDown(screen.getByLabelText("Filter shortcuts"), { key: "?" });
+    expect(onOpenChange).not.toHaveBeenCalled();
+    filter("");
+    fireEvent.keyDown(screen.getByLabelText("Filter shortcuts"), { key: "?" });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   test("clears the filter when closed", () => {
     const onOpenChange = vi.fn<(open: boolean) => void>();
     const { rerender } = render(<HelpDialog open onOpenChange={onOpenChange} />);

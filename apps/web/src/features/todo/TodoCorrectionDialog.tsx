@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { KeyChip } from "@/components/KeyChip";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import type { Todo } from "./api";
 import { correctRow } from "./todoVerbs";
@@ -57,7 +58,31 @@ export function TodoCorrectionDialog({ todo, onClose }: { todo: Todo; onClose: (
           <DialogDescription>{todo.title}</DialogDescription>
         </DialogHeader>
         <blockquote className="border-l border-rule pl-3 text-text-2">{todo.why}</blockquote>
-        <div className="grid gap-1">
+        {/* A picker, as in the TUI (blueprint 35): j and k move, Enter runs
+            the focused reason, its digit runs it at once. */}
+        <div
+          className="grid gap-1"
+          onKeyDown={(event) => {
+            if (event.metaKey || event.ctrlKey || event.altKey) return;
+            const picked = REASONS[Number(event.key) - 1];
+            if (picked) {
+              event.preventDefault();
+              void choose(picked[0]);
+              return;
+            }
+            const step =
+              event.key === "j" || event.key === "ArrowDown"
+                ? 1
+                : event.key === "k" || event.key === "ArrowUp"
+                  ? -1
+                  : 0;
+            if (step === 0) return;
+            event.preventDefault();
+            const buttons = [...event.currentTarget.querySelectorAll("button")];
+            const at = buttons.findIndex((button) => button === document.activeElement);
+            buttons[Math.max(0, Math.min(buttons.length - 1, at + step))]?.focus();
+          }}
+        >
           {REASONS.map(([reason, label], index) => (
             <Button
               key={reason}
@@ -65,8 +90,13 @@ export function TodoCorrectionDialog({ todo, onClose }: { todo: Todo; onClose: (
               variant="ghost"
               disabled={saving}
               onClick={() => void choose(reason)}
+              aria-keyshortcuts={String(index + 1)}
+              className="justify-between"
             >
               {label}
+              <span aria-hidden="true">
+                <KeyChip>{String(index + 1)}</KeyChip>
+              </span>
             </Button>
           ))}
         </div>

@@ -1539,6 +1539,26 @@ fn unsubscribe_confirm_archive_populates_pending_action() {
 }
 
 #[test]
+fn unsubscribe_confirm_cancels_on_n_and_q_as_on_esc() {
+    for key in ['n', 'q'] {
+        let mut app = App::new();
+        let env = make_unsubscribe_envelope(
+            AccountId::new(),
+            "news@example.com",
+            UnsubscribeMethod::OneClick {
+                url: "https://example.com/one-click".into(),
+            },
+        );
+        app.mailbox.envelopes = vec![env.clone()];
+        app.mailbox.all_envelopes = vec![env];
+        app.apply(Action::Unsubscribe);
+        assert!(app.modals.pending_unsubscribe_confirm.is_some());
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE));
+        assert_eq!(action, Some(Action::CancelUnsubscribe), "{key}");
+    }
+}
+
+#[test]
 fn search_input_lifecycle() {
     let mut bar = SearchBar::default();
     bar.activate();

@@ -58,6 +58,8 @@ pub struct TodoPromptState {
     pub kind: TodoPromptKind,
     pub input: String,
     pub error: Option<String>,
+    /// The highlighted reason while correcting, from 0.
+    pub selected: usize,
 }
 
 impl TodoPromptState {
@@ -67,6 +69,7 @@ impl TodoPromptState {
             kind,
             input,
             error: None,
+            selected: 0,
         }
     }
 }

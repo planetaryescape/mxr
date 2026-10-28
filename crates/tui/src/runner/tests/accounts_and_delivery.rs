@@ -1132,6 +1132,37 @@ fn stored_drafts_delete_previews_then_commits_the_captured_draft() {
 }
 
 #[test]
+fn the_draft_delete_confirm_opens_on_keep_so_a_bare_enter_deletes_nothing() {
+    let open = || {
+        let mut app = App::new();
+        app.modals.drafts.open_loading();
+        app.modals.drafts.set_drafts(vec![test_draft("First")]);
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('#'), KeyModifiers::SHIFT));
+        app.apply(action.expect("# previews the delete"));
+        app
+    };
+    let mut app = open();
+    let action = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(action, Some(Action::StoredDraftsModalCancelConfirmation));
+    app.apply(action.unwrap());
+    assert!(app.pending_draft_operation.is_none());
+
+    // j lights "Delete draft"; Enter then runs it.
+    let mut app = open();
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)),
+        None
+    );
+    let action = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(action, Some(Action::StoredDraftsModalConfirm));
+    app.apply(action.unwrap());
+    assert!(matches!(
+        app.pending_draft_operation,
+        Some(crate::app::StoredDraftOperation::Delete { .. })
+    ));
+}
+
+#[test]
 fn stored_drafts_cancel_a_scheduled_send_but_keep_the_draft() {
     let mut app = App::new();
     let drafts = vec![test_draft("Not scheduled"), test_draft("Goes out Monday")];

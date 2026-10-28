@@ -36,6 +36,7 @@ impl App {
                     return;
                 };
                 self.modals.pending_saved_search_delete_confirm = Some(search.name);
+                self.modals.saved_search_delete_choice = ConfirmChoice::default();
             }
             _ => unreachable!("action routed to wrong handler"),
         }

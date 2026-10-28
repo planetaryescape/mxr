@@ -51,7 +51,7 @@ impl App {
         // A delete confirm can sit over the history list and answers first.
         let confirming = matches!(
             self.assistant.prompt,
-            Some(AssistantPrompt::ConfirmDelete(_))
+            Some(AssistantPrompt::ConfirmDelete(..))
         );
         if self.assistant.models.is_some() {
             self.assistant_models_key(key);
@@ -369,8 +369,9 @@ impl App {
             return;
         };
         match prompt {
-            AssistantPrompt::ConfirmDelete(delete) => match key.code {
-                KeyCode::Char('y') | KeyCode::Enter => {
+            // It opens on Keep, so a bare Enter deletes nothing.
+            AssistantPrompt::ConfirmDelete(delete, choice) => match choice.key(key.code) {
+                ConfirmKey::Confirm => {
                     let conversation_id = delete.conversation_id.clone();
                     self.assistant.prompt = None;
                     self.assistant.queue(
@@ -381,8 +382,8 @@ impl App {
                         },
                     );
                 }
-                KeyCode::Char('n') | KeyCode::Esc => self.assistant.prompt = None,
-                _ => {}
+                ConfirmKey::Keep => self.assistant.prompt = None,
+                ConfirmKey::Moved | ConfirmKey::Ignored => {}
             },
             AssistantPrompt::RejectReason { call_id, text } => match key.code {
                 KeyCode::Esc => self.assistant.prompt = None,
@@ -619,7 +620,7 @@ impl App {
                     self.assistant.models = None;
                     if matches!(
                         self.assistant.prompt,
-                        Some(AssistantPrompt::ConfirmDelete(_))
+                        Some(AssistantPrompt::ConfirmDelete(..))
                     ) {
                         self.assistant.prompt = None;
                     }
@@ -880,7 +881,10 @@ impl App {
                         .any(|summary| summary.id == delete.conversation_id)
                 });
                 if open || listed {
-                    self.assistant.prompt = Some(AssistantPrompt::ConfirmDelete(delete));
+                    self.assistant.prompt = Some(AssistantPrompt::ConfirmDelete(
+                        delete,
+                        ConfirmChoice::default(),
+                    ));
                 }
             }
             (AssistantCall::Delete, Ok(ResponseData::AssistantDelete { delete })) => {

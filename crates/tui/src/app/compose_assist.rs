@@ -239,7 +239,7 @@ impl App {
         key: crossterm::event::KeyEvent,
     ) -> Option<Action> {
         match (key.code, key.modifiers) {
-            (KeyCode::Esc, _) => self.compose.model_picker = None,
+            (KeyCode::Esc | KeyCode::Char('q'), _) => self.compose.model_picker = None,
             (KeyCode::Up, _) | (KeyCode::Char('k'), KeyModifiers::NONE) => {
                 if let Some(picker) = self.compose.model_picker.as_mut() {
                     picker.selected_index = picker.selected_index.saturating_sub(1);

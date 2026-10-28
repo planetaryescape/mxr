@@ -10,6 +10,7 @@
 
 mod docs;
 mod keys_file;
+mod parity;
 mod places;
 mod remaps;
 
@@ -17,6 +18,7 @@ pub use keys_file::{
     action_keys_problems, edit_keys_toml, is_character_key, new_clashes, tui_key, KeysEdit,
     KeysFile, Remapped, ACTIONS_SECTION, SINGLE_KEYS_SETTING, TUI_REMAP_CONTEXTS,
 };
+pub use parity::{tui_cannot_deliver, TuiPassThrough};
 pub use places::place_title;
 pub use remaps::{ModeRemaps, MODE_SECTIONS};
 use serde::{Deserialize, Serialize};
@@ -138,6 +140,10 @@ pub struct Keymap {
     /// The verbs the status bar offers for each state (D130).
     #[serde(rename = "strip", default, skip_serializing_if = "Vec::is_empty")]
     pub strips: Vec<Strip>,
+    /// Where a TUI key reaches the pane beside the focused one, which the
+    /// web's focus-bound keys don't (`Keymap::client_differences`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tui_pass_through: Vec<TuiPassThrough>,
 }
 
 /// The status bar's verbs for one state, in order. A client drops a member

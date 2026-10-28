@@ -84,11 +84,12 @@ export function History({
         }
         onBareKey((key, keyEvent) => {
           if (confirming) {
-            // Enter on a focused button keeps its own meaning ("Keep" must not delete).
+            // Enter on a focused button keeps its own meaning; with no
+            // option lit, a bare Enter keeps the conversation, as the TUI's
+            // confirm opens on Keep (blueprint 35, "Destroy"). y deletes.
             const onButton = keyEvent.target !== keyEvent.currentTarget;
-            if (key === "y" || (key === "Enter" && !onButton)) {
-              void remove(confirming.conversation_id);
-            } else if (key === "n") setConfirming(null);
+            if (key === "y") void remove(confirming.conversation_id);
+            else if (key === "n" || (key === "Enter" && !onButton)) setConfirming(null);
             else return false;
             return true;
           }

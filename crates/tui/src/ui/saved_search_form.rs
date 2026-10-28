@@ -123,13 +123,14 @@ pub fn draw_delete_confirm(
     frame: &mut Frame,
     area: Rect,
     name: Option<&str>,
+    choice: crate::app::ConfirmChoice,
     theme: &crate::theme::Theme,
 ) {
     let Some(name) = name else {
         return;
     };
 
-    let popup = centered_rect(60, 22, area);
+    let popup = centered_rect(60, 30, area);
     frame.render_widget(Clear, popup);
 
     let block = Block::bordered()
@@ -142,7 +143,11 @@ pub fn draw_delete_confirm(
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
         .split(inner);
 
     frame.render_widget(
@@ -153,9 +158,17 @@ pub fn draw_delete_confirm(
     );
 
     frame.render_widget(
-        Paragraph::new("[y / Enter] confirm   [n / Esc] cancel")
-            .style(Style::default().fg(theme.text_secondary)),
+        Paragraph::new(super::confirm_choice::options(
+            "Keep it",
+            "Delete saved search",
+            choice,
+            theme,
+        )),
         chunks[1],
+    );
+    frame.render_widget(
+        Paragraph::new(super::confirm_choice::keys_hint(theme)),
+        chunks[2],
     );
 }
 
@@ -240,20 +253,36 @@ mod tests {
     #[test]
     fn delete_confirm_renders_name_and_keybindings() {
         let rendered = render_to_string(90, 20, |frame| {
-            draw_delete_confirm(frame, Rect::new(0, 0, 90, 20), Some("Important"), &theme());
+            draw_delete_confirm(
+                frame,
+                Rect::new(0, 0, 90, 20),
+                Some("Important"),
+                crate::app::ConfirmChoice::default(),
+                &theme(),
+            );
         });
         assert!(
             rendered.contains("Delete saved search 'Important'?"),
             "expected confirmation prompt with name; got:\n{rendered}"
         );
-        assert!(rendered.contains("[y"));
-        assert!(rendered.contains("[n"));
+        // It opens on Keep, so a bare Enter deletes nothing.
+        assert!(
+            rendered.contains("\u{203a} Keep it     Delete saved search"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("y yes"), "{rendered}");
     }
 
     #[test]
     fn delete_confirm_no_render_when_name_is_none() {
         let rendered = render_to_string(90, 20, |frame| {
-            draw_delete_confirm(frame, Rect::new(0, 0, 90, 20), None, &theme());
+            draw_delete_confirm(
+                frame,
+                Rect::new(0, 0, 90, 20),
+                None,
+                crate::app::ConfirmChoice::default(),
+                &theme(),
+            );
         });
         assert!(!rendered.contains("Delete saved search"));
     }

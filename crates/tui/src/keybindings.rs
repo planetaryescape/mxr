@@ -394,6 +394,8 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "go_starred" => Some(Action::GoToStarred),
         "go_sent" => Some(Action::GoToSent),
         "go_drafts" => Some(Action::GoToDrafts),
+        "go_trash" => Some(Action::GoToTrash),
+        "go_spam" => Some(Action::GoToSpam),
         "open_desk" => Some(Action::OpenDesk),
         "open_now" => Some(Action::OpenNow),
         "open_messages" => Some(Action::OpenMessages),
@@ -898,8 +900,6 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("L", "open_links"),
     ("/", "search_all_mail"),
     ("Ctrl-f", "mailbox_filter"),
-    ("n", "next_search_result"),
-    ("N", "prev_search_result"),
     ("Enter", "open"),
     ("o", "open"),
     ("q", "quit_view"),
@@ -977,6 +977,9 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
 
 // Message view defaults
 const MV_DEFAULTS: &[(&str, &str)] = &[
+    // The next or previous conversation in the list (blueprint 35's n/N).
+    ("n", "next_search_result"),
+    ("N", "prev_search_result"),
     ("Ctrl-d", "page_down"),
     ("Ctrl-u", "page_up"),
     ("G", "jump_bottom"),
@@ -1021,6 +1024,9 @@ const MV_DEFAULTS: &[(&str, &str)] = &[
 
 // Thread view defaults
 const TV_DEFAULTS: &[(&str, &str)] = &[
+    // The next or previous conversation in the list (blueprint 35's n/N).
+    ("n", "next_search_result"),
+    ("N", "prev_search_result"),
     ("Ctrl-d", "page_down"),
     ("Ctrl-u", "page_up"),
     ("G", "jump_bottom"),

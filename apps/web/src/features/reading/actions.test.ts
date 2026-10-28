@@ -3,12 +3,22 @@
 import { describe, expect, test } from "vitest";
 
 import "@/lib/actions/catalog";
-import { webKeymap } from "@/lib/actions/keymapParity";
 import { getRegistry } from "@/lib/actions/registry";
+
+/** Reading's effective keys: its own scope over the global one. */
+function readingKeys(): Map<string, string> {
+  const keys = new Map<string, string>();
+  for (const scope of ["global", "reading"]) {
+    for (const binding of getRegistry().bindings()) {
+      if (binding.scope === scope && !binding.retired) keys.set(binding.chord, binding.action.id);
+    }
+  }
+  return keys;
+}
 
 describe("Reading's keys", () => {
   test("follow the blueprint's one key map in the edition", () => {
-    const keys = webKeymap("reading");
+    const keys = readingKeys();
     expect(keys.get("Enter")).toBe("reading.read");
     expect(keys.get("L")).toBe("reading.article");
     expect(keys.get("b")).toBe("reading.later");

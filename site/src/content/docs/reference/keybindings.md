@@ -163,6 +163,8 @@ with your `keys.toml` remaps.
   TUI drops it, so a paste never runs as shortcuts. In terminals that support
   the kitty keyboard protocol, `Esc` also acts at once instead of waiting to
   see whether it starts an `Alt` key; every key works without it.
+- `n` and `N` step to the next and previous conversation from the message
+  view, as in the web app; in the list they say `j` and `k` until 0.6.200.
 - Digits count rows only in visual line mode (`V`, `3`, `j` selects 4 rows),
   and `Esc` with a count typed drops the count. Before a multi-message action
   runs, the confirm lists the messages it will touch.
@@ -196,6 +198,7 @@ In the mail list, the reader, the sidebar and every mode.
 | `g m` | Go to Messages |
 | `g u` | Go to Updates |
 | `g e` | Go to Archive |
+| `g w` | Waiting on |
 | `g i`, `g 0` | Go to Inbox |
 | `g s` | Go to Starred |
 | `g t` | Go to Sent |
@@ -206,6 +209,8 @@ In the mail list, the reader, the sidebar and every mode.
 | `g Y` | Activity log |
 | `g L` | Daemon logs |
 | `g C` | Settings |
+| `g #` | Go to Trash |
+| `g !` | Go to Spam |
 | `g q` | Reply later |
 | `g o` | Owed replies |
 | `g v` | Calendar invites |
@@ -240,7 +245,7 @@ In the mail list, the reader, and the Reading and Paper trail lists. Mail verbs 
 | `c` | Compose |
 | `u` | Undo last action |
 | `m` | Mark read and archive |
-| `#` | Move to Trash |
+| `#`, `Delete`, `Backspace` | Move to Trash |
 | `!` | Mark as spam |
 | `I` | Mark read |
 | `U` | Mark unread |
@@ -255,13 +260,12 @@ In the mail list, the reader, and the Reading and Paper trail lists. Mail verbs 
 | `L` | Links in this message |
 | `x` | Select and move down |
 | `V` | Visual line mode |
+| `g f` | Filter this list |
 | `R` | Reader view, or back to plain |
 | `O` | Open original in a new tab |
 | `F` | Full-width reader |
 | `X` | Move to… |
-| `N` | Prev search result |
 | `Tab` | Switch pane |
-| `n` | Next search result |
 
 ### Mail list
 
@@ -274,12 +278,12 @@ Inbox, labels and saved searches.
 | `D` | Unsubscribe… |
 | `p` | Sender profile |
 | `A` | Attachments |
-| `↓`, `j` | Next conversation |
-| `↑`, `k` | Previous conversation |
-| `g g` | First conversation |
-| `G` | Last conversation |
-| `Ctrl+d` | Half page down |
-| `Ctrl+u` | Half page up |
+| `j`, `↓` | Next conversation |
+| `k`, `↑` | Previous conversation |
+| `Home`, `g g` | First conversation |
+| `End`, `G` | Last conversation |
+| `Ctrl+d`, `PageDown` | Half page down |
+| `Ctrl+u`, `PageUp` | Half page up |
 | `→`, `o`, `Enter` | Open conversation |
 | `←`, `h` | Go to sidebar |
 | `Esc` | Clear selection, then close |
@@ -303,12 +307,14 @@ An open conversation.
 | `Ctrl+f` | Filter this list |
 | `↓`, `j` | Scroll down |
 | `↑`, `k` | Scroll up |
-| `Ctrl+d` | Page down |
-| `Ctrl+u` | Page up |
-| `g g` | Top of thread |
-| `G` | End of thread |
+| `Ctrl+d`, `PageDown`, `Space` | Page down |
+| `Ctrl+u`, `PageUp` | Page up |
+| `Home`, `g g` | Top of thread |
+| `End`, `G` | End of thread |
 | `J` | Next message |
 | `K` | Previous message |
+| `n` | Next conversation |
+| `N` | Previous conversation |
 | `←`, `h` | Back to list |
 | `Esc`, `q` | Close conversation |
 | `H` | Formatted (HTML) view, or back to plain |
@@ -322,23 +328,23 @@ Places, labels and saved searches, on the left.
 | Key | Action |
 |-----|--------|
 | `/` | Search mail |
+| `u` | Undo last action |
 | `b` | Not now… |
 | `A` | Attachments |
 | `↓`, `j` | Next item |
 | `↑`, `k` | Previous item |
+| `Home`, `g g` | First item |
+| `End`, `G` | Last item |
 | `Enter`, `→`, `l`, `o` | Open |
 | `{` | Previous section |
 | `}` | Next section |
-| `g g` | First conversation |
-| `G` | Last conversation |
-| `Ctrl+d` | Half page down |
-| `Ctrl+u` | Half page up |
+| `Ctrl+d`, `PageDown` | Half page down |
+| `Ctrl+u`, `PageUp` | Half page up |
 | `x` | Select and move down |
 | `V` | Visual line mode |
 | `Esc` | Clear selection, then close |
-| `Ctrl+f` | Filter this list |
+| `g f`, `Ctrl+f` | Filter this list |
 | `F` | Full-width reader |
-| `N` | Prev search result |
 | `Tab` | Switch pane |
 | `q` | Quit view |
 | `c` | New saved search |
@@ -349,10 +355,10 @@ Newsletters and automated mail, bundled by sender, opened from the sidebar.
 
 | Key | Action |
 |-----|--------|
-| `g g` | First conversation |
-| `G` | Last conversation |
-| `Ctrl+d` | Half page down |
-| `Ctrl+u` | Half page up |
+| `Home`, `g g` | First conversation |
+| `End`, `G` | Last conversation |
+| `Ctrl+d`, `PageDown` | Half page down |
+| `Ctrl+u`, `PageUp` | Half page up |
 | `←`, `h` | Go to sidebar |
 | `Esc` | Clear selection, then close |
 | `↓`, `j` | Next |
@@ -372,12 +378,13 @@ The front page the TUI opens on. Acting on a row does it in that row's own mode.
 | Key | Action |
 |-----|--------|
 | `/` | Search mail |
+| `c` | Compose |
 | `u` | Undo last action |
 | `b` | Not now… |
-| `g g` | First conversation |
-| `G` | Last conversation |
-| `Ctrl+d` | Half page down |
-| `Ctrl+u` | Half page up |
+| `Home`, `g g` | First conversation |
+| `End`, `G` | Last conversation |
+| `Ctrl+d`, `PageDown` | Half page down |
+| `Ctrl+u`, `PageUp` | Half page up |
 | `←`, `h` | Go to sidebar |
 | `↓`, `j` | Next |
 | `↑`, `k` | Previous |
@@ -400,10 +407,10 @@ People as rows with their topics inside. See [Messages](/guides/messages/).
 |-----|--------|
 | `/` | Search mail |
 | `u` | Undo last action |
-| `g g` | First conversation |
-| `G` | Last conversation |
-| `Ctrl+d` | Half page down |
-| `Ctrl+u` | Half page up |
+| `Home`, `g g` | First conversation |
+| `End`, `G` | Last conversation |
+| `Ctrl+d`, `PageDown` | Half page down |
+| `Ctrl+u`, `PageUp` | Half page up |
 | `←`, `h` | Go to sidebar |
 | `↓`, `j` | Next person |
 | `↑`, `k` | Previous person |
@@ -421,7 +428,7 @@ People as rows with their topics inside. See [Messages](/guides/messages/).
 | `p` | Go to the person page |
 | `o` | Show the message as sent |
 | `f` | Cycle Messages views |
-| `Ctrl+f` | Filter the people list: turn, unread, past your pace |
+| `g f`, `Ctrl+f` | Filter the people list: turn, unread, past your pace |
 | `Esc` | Dismiss the hint, or back to the people |
 | `X` | Move to… |
 | `P` | Send everything from this sender to… |
@@ -434,11 +441,12 @@ See [Act on To dos](/guides/todo/).
 | Key | Action |
 |-----|--------|
 | `/` | Search mail |
+| `c` | Compose |
 | `u` | Undo last action |
-| `g g` | First conversation |
-| `G` | Last conversation |
-| `Ctrl+d` | Half page down |
-| `Ctrl+u` | Half page up |
+| `Home`, `g g` | First conversation |
+| `End`, `G` | Last conversation |
+| `Ctrl+d`, `PageDown` | Half page down |
+| `Ctrl+u`, `PageUp` | Half page up |
 | `←`, `h` | Go to sidebar |
 | `↓`, `j` | Next |
 | `↑`, `k` | Previous |
@@ -451,6 +459,7 @@ See [Act on To dos](/guides/todo/).
 | `1` | Runway |
 | `3` | Expired list |
 | `2` | Catch-up |
+| `Esc` | Dismiss the hint |
 | `q` | Quit view |
 
 ### To do: catch-up
@@ -460,11 +469,12 @@ The first run's older undated tasks: keep each one, or let it go to the Expired 
 | Key | Action |
 |-----|--------|
 | `/` | Search mail |
+| `c` | Compose |
 | `u` | Undo last action |
-| `g g` | First conversation |
-| `G` | Last conversation |
-| `Ctrl+d` | Half page down |
-| `Ctrl+u` | Half page up |
+| `Home`, `g g` | First conversation |
+| `End`, `G` | Last conversation |
+| `Ctrl+d`, `PageDown` | Half page down |
+| `Ctrl+u`, `PageUp` | Half page up |
 | `o` | Open the email it came from |
 | `1` | Runway |
 | `3` | Expired list |
@@ -483,10 +493,11 @@ Tasks that expired or were let go.
 | Key | Action |
 |-----|--------|
 | `/` | Search mail |
-| `g g` | First conversation |
-| `G` | Last conversation |
-| `Ctrl+d` | Half page down |
-| `Ctrl+u` | Half page up |
+| `c` | Compose |
+| `Home`, `g g` | First conversation |
+| `End`, `G` | Last conversation |
+| `Ctrl+d`, `PageDown` | Half page down |
+| `Ctrl+u`, `PageUp` | Half page up |
 | `o` | Open the email it came from |
 | `1` | Runway |
 | `3` | Expired list |
@@ -503,11 +514,12 @@ The briefing: the latest digest, one line per source, with what arrived since be
 | Key | Action |
 |-----|--------|
 | `/` | Search mail |
+| `c` | Compose |
 | `u` | Undo last action |
-| `g g` | First conversation |
-| `G` | Last conversation |
-| `Ctrl+d` | Half page down |
-| `Ctrl+u` | Half page up |
+| `Home`, `g g` | First conversation |
+| `End`, `G` | Last conversation |
+| `Ctrl+d`, `PageDown` | Half page down |
+| `Ctrl+u`, `PageUp` | Half page up |
 | `←`, `h` | Go to sidebar |
 | `↓`, `j` | Next |
 | `↑`, `k` | Previous |
@@ -531,12 +543,13 @@ The [edition](/guides/reading/). Mail keys such as archive, star and reply don't
 | Key | Action |
 |-----|--------|
 | `/` | Search mail |
+| `c` | Compose |
 | `u` | Undo last action |
 | `t` | Make a to-do from this |
-| `g g` | First conversation |
-| `G` | Last conversation |
-| `Ctrl+d` | Half page down |
-| `Ctrl+u` | Half page up |
+| `Home`, `g g` | First conversation |
+| `End`, `G` | Last conversation |
+| `Ctrl+d`, `PageDown` | Half page down |
+| `Ctrl+u`, `PageUp` | Half page up |
 | `←`, `h` | Go to sidebar |
 | `↓`, `j` | Next |
 | `↑`, `k` | Previous |
@@ -553,6 +566,7 @@ The [edition](/guides/reading/). Mail keys such as archive, star and reply don't
 | `2` | Later |
 | `3` | Highlights |
 | `O` | Open in Marginalia |
+| `Esc` | Dismiss the hint |
 | `X` | Move to… |
 | `q` | Quit view |
 
@@ -563,10 +577,11 @@ One item from the edition, open.
 | Key | Action |
 |-----|--------|
 | `/` | Search mail |
+| `c` | Compose |
 | `u` | Undo last action |
 | `t` | Make a to-do from this |
-| `g g` | First conversation |
-| `G` | Last conversation |
+| `Home`, `g g` | First conversation |
+| `End`, `G` | Last conversation |
 | `Ctrl+d` | Half page down |
 | `Ctrl+u` | Half page up |
 | `Enter` | Read |
@@ -592,11 +607,12 @@ The records lens, with the answer box focused.
 
 | Key | Action |
 |-----|--------|
+| `c` | Compose |
 | `u` | Undo last action |
-| `g g` | First conversation |
-| `G` | Last conversation |
-| `Ctrl+d` | Half page down |
-| `Ctrl+u` | Half page up |
+| `Home`, `g g` | First conversation |
+| `End`, `G` | Last conversation |
+| `Ctrl+d`, `PageDown` | Half page down |
+| `Ctrl+u`, `PageUp` | Half page up |
 | `←`, `h` | Go to sidebar |
 | `↓`, `j` | Next record |
 | `↑`, `k` | Previous record |
@@ -611,10 +627,10 @@ The records lens, with the answer box focused.
 | `,` | Fix a field… |
 | `X` | Not a record |
 | `t` | Make a to-do from this record |
+| `g f` | Filters… |
 | `Esc` | Close |
 | `q` | Quit view |
 | `→` | Records open card |
-| `g f` | Records next kind |
 
 ### Screener queue
 
@@ -628,7 +644,7 @@ New senders waiting for a decision.
 | `p` | Send to paper trail |
 | `↓`, `j` | Next sender |
 | `↑`, `k` | Previous sender |
-| `Esc` | Close screener modal |
+| `Esc`, `q` | Close screener modal |
 
 ### Calendar invites
 
@@ -651,7 +667,7 @@ The Search screen's results.
 | `u` | Undo last action |
 | `e` | Archive |
 | `m` | Mark read and archive |
-| `#` | Move to Trash |
+| `#`, `Delete`, `Backspace` | Move to Trash |
 | `!` | Mark as spam |
 | `s` | Star or unstar |
 | `I` | Mark read |
@@ -685,7 +701,7 @@ The thread previewed beside the results.
 | `u` | Undo last action |
 | `e` | Archive |
 | `m` | Mark read and archive |
-| `#` | Move to Trash |
+| `#`, `Delete`, `Backspace` | Move to Trash |
 | `!` | Mark as spam |
 | `s` | Star or unstar |
 | `I` | Mark read |
@@ -959,11 +975,11 @@ The proof shown for a draft written in your voice, before it goes into your edit
 
 | Key | Action |
 |-----|--------|
-| `y` | Accept writing proof |
+| `y`, `Enter` | Accept writing proof |
 | `e` | Accept proof and edit |
 | `n` | Revise writing proof |
 | `m` | Try writing proof with another model |
-| `Esc` | Keep my draft |
+| `Esc`, `q` | Keep my draft |
 | `o` | Open next voice example |
 | `←` | Previous writing proof |
 | `→` | Next writing proof |
@@ -983,11 +999,11 @@ not in the generated tables yet. Each one prints its keys in its footer.
 
 | Context | Keys |
 |---------|------|
-| Help | `j` / `k`, `Ctrl-d`, `Ctrl-u`, `o`, `Esc` |
+| Help | `j` / `k`, `Ctrl-d`, `Ctrl-u`, `o`, `Esc`; `?` or `q` closes while nothing is typed in the filter |
 | Command palette | typing, `j` / `k`, `Enter`, `Esc` |
 | Label picker | typing, `j` / `k`, `Enter`, `Esc` |
-| Attachments | `j` / `k`, `Enter` / `o`, `d`, `Esc` |
-| Bulk confirm | `Enter` / `y` confirm, `Esc` / `n` cancel |
+| Attachments | `j` / `k`, `Enter` / `o`, `d`, `Esc` / `q` |
+| Bulk confirm | `Enter` / `y` confirm, `Esc` / `n` / `q` cancel |
 | Not now (`b`) | Later first, then the presets on `1`–`4`, then Custom; `j` / `k` move, `Enter` picks, `Esc` / `q` close |
 | Not now (custom time) | typing (live preview), `Tab` other reading, `Enter` set, `Backspace`, `Esc` back to the list |
 | Move to (`X`, `P`) | `m` `x` `u` `r` `e` move this email, `M` `U` `R` the sender (on a new sender, `D` blocks); `j` / `k` move, `Enter` picks, `Esc` / `q` close |
@@ -997,9 +1013,11 @@ not in the generated tables yet. Each one prints its keys in its footer.
 | Sender profile | `j` / `k` select other sender email, `Enter` / `o` open selected email, `W` who is this sender, `Esc` close |
 | Welcome / setup | `d` demo, `g` Gmail, `i` IMAP, `Enter` open form, `Esc` dismiss |
 | Saved-search form | typing fields, `Tab` / `Shift-Tab` move, `Ctrl-s` save, `Esc` cancel |
-| Saved-search delete | `Enter` / `y` confirm delete, `Esc` / `n` cancel |
+| Saved-search, rule, category, draft and assistant-conversation delete; cancel a scheduled send | Opens on **Keep it**, so a bare `Enter` changes nothing. `y` does what the other option names; `j` / `k` (or the arrows, `Tab`) light it for `Enter`; `Esc` / `n` / `q` keep |
+| Draft sync | Opens on the sync, so `Enter` or `y` syncs; `Esc` / `n` / `q` keep the draft as it is |
+| Correct to-do (`X`) | `j` / `k` move, `Enter` picks, or the reason's digit (`1` Not a to-do, `2` Not mine, `3` Already done, `4` Wrong details); `Esc` / `q` close |
 | Compose send-confirm | `s` send, `d` save as draft, `e` re-edit, `Esc` cancel; on a blocked draft, `O` overrides and sends once (`Ctrl-O` also works) |
-| Unsubscribe confirm | `u` unsubscribe + archive, `U` unsubscribe + trash, `a` archive only, `A` archive all from sender, `Esc` cancel |
+| Unsubscribe confirm | `Enter` / `u` / `U` unsubscribe, `a` / `A` unsubscribe and archive the sender's mail, `Esc` / `n` / `q` cancel |
 | Analytics filter modal | typing fields, `Tab` / `Shift-Tab` move, `Enter` apply, `Esc` cancel |
 | Error modal | `j` / `k`, `Ctrl-d` / `Ctrl-u` scroll, `q` / `x` / `Esc` close |
 
@@ -1009,9 +1027,9 @@ The web app shares the TUI's default mail shortcuts. One dispatcher reads every 
 from the shared action registry (`apps/web/src/lib/actions/`), so these
 tables, the in-app help (`?`), the command palette and **Settings →
 Keybindings** always agree. Where the web deliberately differs from the TUI,
-the note says why, and a test fails if the two clients bind the same key
-to different things without a listed reason. Keys never fire while you
-type in a field or while compose is open, except `⌘K` / `Ctrl+K` and the
+the note says why, and the key definition's check fails if the two clients
+bind a key differently without the definition saying why. Keys never fire
+while you type in a field or while compose is open, except `⌘K` / `Ctrl+K` and the
 assistant's `⌘.` / `Ctrl+.`.
 
 :::note[Keys that moved]
@@ -1029,6 +1047,9 @@ palette; Archive's mark checked (`v`) is in the `,` dialog; To do's details
 sidebar folds a section with `Enter` on its header (was `[` and `]`) and
 jumps between sections with `{` and `}`; and the assistant's history deletes
 with `#` (was `d`). Every mode now takes `g g`, `G`, `Ctrl+d` and `Ctrl+u`.
+
+Until 0.6.200: the Screener decides with its letters, `a` `d` `f` `p`, in
+both clients (the digits `1` to `4` say so).
 :::
 
 <!-- web-keys:start (generated from the action registry; run UPDATE_KEY_DOCS=1 npm test) -->
@@ -1057,7 +1078,7 @@ Work on every page except while typing in a field or compose.
 | `g m` | Go to Messages |  |
 | `g u` | Go to Updates |  |
 | `g e` | Go to Archive |  |
-| `g w` | Waiting on | A lane of the desk lens in the TUI |
+| `g w` | Waiting on | Waiting on lives in Messages in the TUI, so g w opens that |
 | `g i`, `g 0` | Go to Inbox |  |
 | `g s` | Go to Starred |  |
 | `g t` | Go to Sent |  |
@@ -1068,9 +1089,9 @@ Work on every page except while typing in a field or compose.
 | `g Y` | Activity log |  |
 | `g L` | Daemon logs |  |
 | `g C` | Settings | The TUI opens its Accounts screen, where its settings live; Edit config is in its palette |
-| `g n` | Go to Snoozed | Web only |
-| `g #` | Go to Trash | Web only |
-| `g !` | Go to Spam | Web only |
+| `g n` | Go to Snoozed | The TUI has no Snoozed list; snoozed mail comes back to the Inbox when it wakes |
+| `g #` | Go to Trash |  |
+| `g !` | Go to Spam |  |
 | `g q` | Reply later |  |
 | `g o` | Owed replies |  |
 | `g v` | Calendar invites |  |
@@ -1079,7 +1100,7 @@ Work on every page except while typing in a field or compose.
 | `g R` | Rules |  |
 | `g D` | Diagnostics |  |
 | `g P` | Deliveries |  |
-| `g F` | Focus & reply | F in the TUI's reply queue |
+| `g F` | Focus & reply | The TUI has no Focus page; it starts Focus & reply from the reply queue (g q, then F) |
 | `g x` | To do |  |
 
 ### Mail actions
@@ -1127,7 +1148,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `Ctrl+U`, `PageUp` | Half page up |  |
 | `Enter`, `o`, `ArrowRight` | Open conversation |  |
 | `h`, `ArrowLeft` | Go to sidebar |  |
-| `w` | This list's row action | Web only |
+| `w` | This list's row action | The row action of the web's Snoozed and reply-queue pages; the TUI has no Snoozed list and its reply queue is a modal with its own keys |
 | `x` | Select and move down |  |
 | `V` | Visual line mode |  |
 | `* a`, `⌘A / Ctrl+A` | Select all |  |
@@ -1136,7 +1157,7 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `* u` | Select unread |  |
 | `* s` | Select starred |  |
 | `Esc` | Clear selection, then close |  |
-| `g f`, `Ctrl+F` | Filter this list | TUI Ctrl-f; Ctrl+F works on macOS only, where it is not the browser's Find |
+| `g f`, `Ctrl+F` | Filter this list | Ctrl+F works on macOS only, where it is not the browser's Find |
 | `P` | Send everything from this sender to… |  |
 
 ### Reader
@@ -1151,19 +1172,19 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `G`, `End` | End of thread |  |
 | `J` | Next message |  |
 | `K` | Previous message |  |
-| `o` | Expand or collapse message | The TUI shows every message in full, so o does nothing there yet |
-| `;` | Expand or collapse all | Web only |
-| `n` | Next conversation | The TUI steps results with n/N; the web steps conversations |
+| `o` | Expand or collapse message | The TUI shows every message in full, so there is nothing to collapse |
+| `;` | Expand or collapse all | The TUI shows every message in full, so there is nothing to collapse |
+| `n` | Next conversation |  |
 | `N` | Previous conversation |  |
-| `]` | Archive, open next | Web only |
-| `[` | Archive, open previous | Web only |
+| `]` | Archive, open next | The TUI reader sits beside the list, so e archives and n steps on |
+| `[` | Archive, open previous | The TUI reader sits beside the list, so e archives and N steps back |
 | `h`, `ArrowLeft` | Back to list |  |
 | `Esc`, `q` | Close conversation |  |
 | `R` | Reader view, or back to plain |  |
 | `H` | Formatted (HTML) view, or back to plain |  |
 | `M` | Load remote images |  |
 | `S` | Show or hide signatures |  |
-| `Q` | Show or hide quoted text | Web only |
+| `Q` | Show or hide quoted text | The TUI reader has no way to fold quoted text yet |
 | `O` | Open original in a new tab |  |
 | `F` | Full-width reader |  |
 
@@ -1173,8 +1194,8 @@ In the mail list they act on the selection or the row under the cursor; in the r
 |-----|--------|------|
 | `j`, `ArrowDown` | Next item |  |
 | `k`, `ArrowUp` | Previous item |  |
-| `g g` | First item |  |
-| `G` | Last item |  |
+| `g g`, `Home` | First item |  |
+| `G`, `End` | Last item |  |
 | `Enter`, `o`, `l`, `ArrowRight` | Open |  |
 | `{` | Previous section |  |
 | `}` | Next section |  |
@@ -1191,10 +1212,10 @@ On tool and settings pages, focus tabs and filters with `g f`; arrow keys then c
 
 | Key | Action | Note |
 |-----|--------|------|
-| `1`, `a` | Allow sender |  |
-| `2`, `d` | Deny sender |  |
-| `3`, `f` | Send to feed |  |
-| `4`, `p` | Send to paper trail |  |
+| `a` | Allow sender |  |
+| `d` | Deny sender |  |
+| `f` | Send to feed |  |
+| `p` | Send to paper trail |  |
 | `j`, `ArrowDown` | Next sender |  |
 | `k`, `ArrowUp` | Previous sender |  |
 
@@ -1259,7 +1280,7 @@ On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 | `}` | Next topic |  |
 | `p` | Go to the person page |  |
 | `o` | Show the message as sent |  |
-| `g f` | Filter the people list: turn, unread, past your pace | Ctrl+f in the TUI opens the same picker; the web filters with g f because Ctrl+f is the browser's Find |
+| `g f`, `Ctrl+F` | Filter the people list: turn, unread, past your pace | Ctrl+F works on macOS only, where it is not the browser's Find |
 | `f` | Cycle Messages views | Needs attention, All conversations, Your turn, Waiting on them; keeps Unread and Past your pace |
 | `⌘Enter / Ctrl+Enter` | Send, then the next person whose turn it is |  |
 | `Esc` | Dismiss the hint, or back to the people |  |
@@ -1342,7 +1363,7 @@ Tasks that expired or were let go. `E` on To do opens it.
 | `L` | Open the link |  |
 | `y` | Copy the one-time code |  |
 | `o` | Open the email |  |
-| `Space` | Peek at this update under its line |  |
+| `Space` | Peek at this update under its line | The TUI shows each update's details on its line, so there is nothing to peek at |
 | `s` | Pin or unpin this source's latest email |  |
 | `Esc` | Dismiss the hint |  |
 

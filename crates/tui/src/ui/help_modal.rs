@@ -322,18 +322,25 @@ fn overlays_section() -> HelpSection {
     HelpSection {
         title: "Overlays (keys not in the definition yet)".into(),
         entries: vec![
-            ("Help: j/k Ctrl-d/u".into(), "Scroll".into()),
+            (
+                "Help: j/k Ctrl-d/u".into(),
+                "Scroll; ? or q closes with no filter".into(),
+            ),
             ("Label Picker".into(), "Type, j/k, Enter, Esc".into()),
             ("Compose Picker".into(), "Type, Tab, Enter, Esc".into()),
-            ("Attachments".into(), "j/k, Enter/o, d, Esc".into()),
+            ("Attachments".into(), "j/k, Enter/o, d, Esc/q".into()),
             ("Links".into(), "j/k, Enter/o open, y copy, Esc".into()),
             (
                 "Unsubscribe".into(),
-                "Enter unsubscribe, a archive sender, Esc cancel".into(),
+                "Enter unsubscribe, a archive sender, Esc/n/q cancel".into(),
+            ),
+            (
+                "Delete confirms".into(),
+                "Open on Keep: Enter runs the lit one, y deletes, j/k move, Esc/n/q keep".into(),
             ),
             (
                 "Bulk Confirm".into(),
-                "Enter/y confirm, Esc/n cancel".into(),
+                "Enter/y confirm, Esc/n/q cancel".into(),
             ),
         ],
     }
@@ -877,7 +884,7 @@ mod tests {
     fn help_search_fuzzy_matches_descriptions() {
         let state = help_state(UiContext::MailboxList, "ftl");
         let first = search_results(&state).into_iter().next().unwrap();
-        assert_eq!(first.row.shortcut, "Ctrl-f");
+        assert_eq!(first.row.shortcut, "gf");
         assert_eq!(first.row.label, "Filter this list");
     }
 

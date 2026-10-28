@@ -57,7 +57,21 @@ export function LetGoAllDialog({
   const result = preview.data;
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent data-testid="updates-let-go-dialog">
+      <AlertDialogContent
+        data-testid="updates-let-go-dialog"
+        onKeyDown={(event) => {
+          if (event.ctrlKey || event.metaKey || event.altKey) return;
+          // A preview's yes or no, as in the TUI (blueprint 35).
+          if (event.key === "y" && result && result.message_count > 0) {
+            event.preventDefault();
+            onOpenChange(false);
+            onConfirm(result.selection_token);
+          } else if (event.key === "n") {
+            event.preventDefault();
+            onOpenChange(false);
+          }
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>
             {result ? `${result.line.replace(/\.$/, "")}?` : "Counting what to let go…"}
@@ -76,7 +90,9 @@ export function LetGoAllDialog({
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           {result && result.message_count > 0 ? (
+            // A preview's Enter commits what it shows (blueprint 35).
             <AlertDialogAction
+              autoFocus
               data-testid="updates-let-go-confirm"
               onClick={() => {
                 onOpenChange(false);

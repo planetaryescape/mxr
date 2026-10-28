@@ -1,7 +1,7 @@
 //! The TUI keymap as the dispatcher sees it. Every key is pressed into a
 //! fresh `App` in each mail context and the action it returns is recorded
-//! in `docs/reference/tui-keymap.json`. The web app's parity test reads
-//! that file, so the two clients cannot drift apart silently.
+//! in `docs/reference/tui-keymap.json`. `cargo test -p mxr-keymap` holds
+//! the key definition to that file and the clients to each other.
 //!
 //! Regenerate after changing a TUI key: `UPDATE_KEYMAP=1` on this test,
 //! then change the key in `crates/keymap/keymap.toml` to match;
@@ -107,6 +107,10 @@ const INLINE: &[InlineKey] = &[
     inline("reader", "Ctrl+d", "page_down", no_setup, scroll),
     inline("reader", "Ctrl+u", "page_up", scrolled, scroll),
     inline("reader", "G", "jump_bottom", no_setup, scroll),
+    inline("reader", "End", "jump_bottom", no_setup, scroll),
+    inline("reader", "PageDown", "page_down", no_setup, scroll),
+    inline("reader", "Space", "page_down", no_setup, scroll),
+    inline("reader", "PageUp", "page_up", scrolled, scroll),
     inline("reader", "h", "focus_list", no_setup, pane),
     inline("reader", "ArrowLeft", "focus_list", no_setup, pane),
     inline("list", "h", "focus_sidebar", no_setup, pane),
@@ -141,6 +145,22 @@ const INLINE: &[InlineKey] = &[
         on_second_item,
         sidebar_cursor,
     ),
+    inline(
+        "sidebar",
+        "g g",
+        "first_item",
+        on_second_item,
+        sidebar_cursor,
+    ),
+    inline(
+        "sidebar",
+        "Home",
+        "first_item",
+        on_second_item,
+        sidebar_cursor,
+    ),
+    inline("sidebar", "G", "last_item", no_setup, sidebar_cursor),
+    inline("sidebar", "End", "last_item", no_setup, sidebar_cursor),
     inline("sidebar", "{", "prev_section", under_more, sidebar_cursor),
     inline("sidebar", "}", "next_section", no_setup, sidebar_cursor),
 ];
@@ -1059,7 +1079,7 @@ fn tui_keymap_json_matches_the_dispatcher() {
     assert!(
         current == generated,
         "docs/reference/tui-keymap.json is stale; rerun this test with UPDATE_KEYMAP=1 \
-         and check the web parity test (apps/web keymapParity.test.ts)"
+         and run `cargo test -p mxr-keymap`"
     );
 }
 
@@ -1554,6 +1574,51 @@ fn the_palette_names_a_keyed_actions_key_next_time() {
         .visible(std::time::Instant::now())
         .iter()
         .any(|toast| toast.text == "Catch-up. Next time: 2"));
+}
+
+#[test]
+fn n_steps_to_the_next_conversation_from_the_reader_without_a_search() {
+    let mut app = app_in("reader");
+    app.mailbox.envelopes = make_test_envelopes(3);
+    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+    assert!(!app.search.active);
+    let action = press_char(&mut app, 'n').expect("n steps on");
+    app.apply(action);
+    assert_eq!(app.mailbox.selected_index, 1);
+    let action = app
+        .handle_key(KeyEvent::new(KeyCode::Char('N'), KeyModifiers::SHIFT))
+        .expect("N steps back");
+    app.apply(action);
+    assert_eq!(app.mailbox.selected_index, 0);
+}
+
+#[test]
+fn n_in_the_list_says_where_its_action_went_and_runs_nothing() {
+    let mut app = app_in("list");
+    app.mailbox.envelopes = make_test_envelopes(3);
+    assert_eq!(press_char(&mut app, 'n'), None);
+    assert_eq!(app.mailbox.selected_index, 0);
+    assert_eq!(
+        app.status_message.as_deref(),
+        Some("Next search result is now j")
+    );
+}
+
+#[test]
+fn the_screener_modal_closes_on_q() {
+    let mut app = app_in("screener");
+    assert_eq!(press_char(&mut app, 'q'), Some(Action::CloseScreenerModal));
+}
+
+#[test]
+fn q_types_into_a_help_filter_and_closes_help_without_one() {
+    let mut app = app_in("list");
+    app.modals.help_open = true;
+    app.modals.help_query = "arch".into();
+    assert_eq!(press_char(&mut app, 'q'), None);
+    assert_eq!(app.modals.help_query, "archq");
+    app.modals.help_query.clear();
+    assert_eq!(press_char(&mut app, 'q'), Some(Action::Help));
 }
 
 #[test]

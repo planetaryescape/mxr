@@ -441,7 +441,7 @@ describe("ComposeHost never loses typing on the way out", () => {
         metaKey: true,
       });
       expect(await screen.findByText(/only your local recovery file/)).toBeVisible();
-      fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+      fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
       await waitFor(() => expect(screen.queryByLabelText("Subject")).not.toBeInTheDocument());
       expect(api.discardComposeSession).toHaveBeenCalledWith("/tmp/host-recovery-copy-2", 1);
       expect(api.sendComposeSession).not.toHaveBeenCalled();
@@ -1199,7 +1199,7 @@ describe("ComposeHost after a delayed send", () => {
       key: "Backspace",
       metaKey: true,
     });
-    fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Discard draft" }));
 
     await waitFor(() =>
       expect(toasts.error).toHaveBeenCalledWith("Discard failed", {
@@ -1380,7 +1380,7 @@ describe("saved draft discard preview", () => {
       key: "Backspace",
       metaKey: true,
     });
-    fireEvent.click(await screen.findByRole("button", { name: "Discard" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Discard draft" }));
     await waitFor(() =>
       expect(toasts.error).toHaveBeenCalledWith("Discard failed", {
         description: "Draft revision conflict",

@@ -37,6 +37,8 @@ pub struct RulesPageState {
     pub form: RuleFormState,
     /// The rule `#` asked to delete (id, name), waiting for its confirm.
     pub delete_confirm: Option<(String, String)>,
+    /// Which of that confirm's two options is lit.
+    pub delete_choice: super::ConfirmChoice,
 }
 
 impl Default for RulesPageState {
@@ -57,6 +59,7 @@ impl Default for RulesPageState {
                 ..RuleFormState::default()
             },
             delete_confirm: None,
+            delete_choice: super::ConfirmChoice::default(),
         }
     }
 }

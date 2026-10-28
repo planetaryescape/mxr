@@ -9,7 +9,7 @@ expression: snapshot
 "               │Archive 3 selected messages?                                        │               "
 "               │                                                                    │               "
 "               │                                                                    │               "
-"               │[Enter] confirm   [y] confirm   [Esc] cancel                        │               "
+"               │[Enter/y] confirm   [Esc/n/q] cancel                                │               "
 "               │                                                                    │               "
 "               │                                                                    │               "
 "               │                                                                    │               "

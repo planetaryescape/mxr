@@ -133,6 +133,14 @@
             "list",
             "reader",
             "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates",
             "search",
             "search-preview"
           ]
@@ -161,6 +169,7 @@
           "contexts": [
             "list",
             "reader",
+            "sidebar",
             "place",
             "todo",
             "catchup",
@@ -360,7 +369,30 @@
       "keys": [
         "g w"
       ],
-      "note": "A lane of the desk lens in the TUI"
+      "note": "Waiting on lives in Messages in the TUI, so g w opens that",
+      "tui": [
+        {
+          "name": "OpenMessages",
+          "keys": [
+            "g w"
+          ],
+          "contexts": [
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates"
+          ]
+        }
+      ]
     },
     {
       "id": "nav.inbox",
@@ -810,7 +842,10 @@
       "keys": [
         "g n"
       ],
-      "note": "Web only"
+      "note": "The TUI has no Snoozed list; snoozed mail comes back to the Inbox when it wakes",
+      "clients": [
+        "web"
+      ]
     },
     {
       "id": "nav.trash",
@@ -822,7 +857,29 @@
       "keys": [
         "g #"
       ],
-      "note": "Web only"
+      "tui": [
+        {
+          "name": "GoToTrash",
+          "keys": [
+            "g #"
+          ],
+          "contexts": [
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates"
+          ]
+        }
+      ]
     },
     {
       "id": "nav.spam",
@@ -834,7 +891,29 @@
       "keys": [
         "g !"
       ],
-      "note": "Web only"
+      "tui": [
+        {
+          "name": "GoToSpam",
+          "keys": [
+            "g !"
+          ],
+          "contexts": [
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates"
+          ]
+        }
+      ]
     },
     {
       "id": "nav.reply-queue",
@@ -2048,7 +2127,9 @@
         {
           "name": "Trash",
           "keys": [
-            "#"
+            "#",
+            "Delete",
+            "Backspace"
           ],
           "contexts": [
             "list",
@@ -2316,7 +2397,9 @@
       "group": "Mail",
       "scopes": [
         "list",
-        "reader"
+        "reader",
+        "reading",
+        "reading-reader"
       ],
       "keys": [
         "t"
@@ -3071,9 +3154,22 @@
         "sidebar"
       ],
       "keys": [
-        "g g"
+        "g g",
+        "Home"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "inline:first_item",
+          "keys": [
+            "Home",
+            "g g"
+          ],
+          "contexts": [
+            "sidebar"
+          ]
+        }
+      ]
     },
     {
       "id": "sidebar.bottom",
@@ -3083,9 +3179,22 @@
         "sidebar"
       ],
       "keys": [
-        "G"
+        "G",
+        "End"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "inline:last_item",
+          "keys": [
+            "End",
+            "G"
+          ],
+          "contexts": [
+            "sidebar"
+          ]
+        }
+      ]
     },
     {
       "id": "sidebar.open",
@@ -3219,8 +3328,8 @@
         {
           "name": "MoveDown",
           "keys": [
-            "ArrowDown",
-            "j"
+            "j",
+            "ArrowDown"
           ],
           "contexts": [
             "list"
@@ -3245,8 +3354,8 @@
         {
           "name": "MoveUp",
           "keys": [
-            "ArrowUp",
-            "k"
+            "k",
+            "ArrowUp"
           ],
           "contexts": [
             "list"
@@ -3279,11 +3388,11 @@
         {
           "name": "JumpTop",
           "keys": [
+            "Home",
             "g g"
           ],
           "contexts": [
             "list",
-            "sidebar",
             "place",
             "todo",
             "catchup",
@@ -3323,11 +3432,11 @@
         {
           "name": "JumpBottom",
           "keys": [
+            "End",
             "G"
           ],
           "contexts": [
             "list",
-            "sidebar",
             "place",
             "todo",
             "catchup",
@@ -3367,7 +3476,8 @@
         {
           "name": "PageDown",
           "keys": [
-            "Ctrl+d"
+            "Ctrl+d",
+            "PageDown"
           ],
           "contexts": [
             "list",
@@ -3380,8 +3490,16 @@
             "messages",
             "archive",
             "reading",
-            "reading-reader",
             "updates"
+          ]
+        },
+        {
+          "name": "PageDown",
+          "keys": [
+            "Ctrl+d"
+          ],
+          "contexts": [
+            "reading-reader"
           ]
         }
       ]
@@ -3411,7 +3529,8 @@
         {
           "name": "PageUp",
           "keys": [
-            "Ctrl+u"
+            "Ctrl+u",
+            "PageUp"
           ],
           "contexts": [
             "list",
@@ -3424,8 +3543,16 @@
             "messages",
             "archive",
             "reading",
-            "reading-reader",
             "updates"
+          ]
+        },
+        {
+          "name": "PageUp",
+          "keys": [
+            "Ctrl+u"
+          ],
+          "contexts": [
+            "reading-reader"
           ]
         }
       ]
@@ -3585,7 +3712,10 @@
         "w"
       ],
       "hide_in_palette": true,
-      "note": "Web only"
+      "note": "The row action of the web's Snoozed and reply-queue pages; the TUI has no Snoozed list and its reply queue is a modal with its own keys",
+      "clients": [
+        "web"
+      ]
     },
     {
       "id": "list.toggle-select",
@@ -3856,17 +3986,27 @@
       "mac_keys": [
         "Ctrl+f"
       ],
-      "note": "TUI Ctrl-f; Ctrl+F works on macOS only, where it is not the browser's Find",
+      "note": "Ctrl+F works on macOS only, where it is not the browser's Find",
       "tui": [
         {
           "name": "OpenMailboxFilter",
           "keys": [
+            "g f",
             "Ctrl+f"
           ],
           "contexts": [
             "list",
             "reader",
             "sidebar"
+          ]
+        },
+        {
+          "name": "OpenMailboxFilter",
+          "keys": [
+            "g f"
+          ],
+          "contexts": [
+            "place"
           ]
         }
       ]
@@ -3959,7 +4099,9 @@
         {
           "name": "inline:page_down",
           "keys": [
-            "Ctrl+d"
+            "Ctrl+d",
+            "PageDown",
+            "Space"
           ],
           "contexts": [
             "reader"
@@ -3984,7 +4126,8 @@
         {
           "name": "inline:page_up",
           "keys": [
-            "Ctrl+u"
+            "Ctrl+u",
+            "PageUp"
           ],
           "contexts": [
             "reader"
@@ -4008,6 +4151,7 @@
         {
           "name": "JumpTop",
           "keys": [
+            "Home",
             "g g"
           ],
           "contexts": [
@@ -4032,6 +4176,7 @@
         {
           "name": "inline:jump_bottom",
           "keys": [
+            "End",
             "G"
           ],
           "contexts": [
@@ -4097,7 +4242,10 @@
         "o"
       ],
       "hide_in_palette": true,
-      "note": "The TUI shows every message in full, so o does nothing there yet"
+      "note": "The TUI shows every message in full, so there is nothing to collapse",
+      "clients": [
+        "web"
+      ]
     },
     {
       "id": "reader.expand-all",
@@ -4111,7 +4259,10 @@
         ";"
       ],
       "hide_in_palette": true,
-      "note": "Web only"
+      "note": "The TUI shows every message in full, so there is nothing to collapse",
+      "clients": [
+        "web"
+      ]
     },
     {
       "id": "reader.next-thread",
@@ -4125,7 +4276,17 @@
         "n"
       ],
       "hide_in_palette": true,
-      "note": "The TUI steps results with n/N; the web steps conversations"
+      "tui": [
+        {
+          "name": "NextSearchResult",
+          "keys": [
+            "n"
+          ],
+          "contexts": [
+            "reader"
+          ]
+        }
+      ]
     },
     {
       "id": "reader.prev-thread",
@@ -4138,7 +4299,18 @@
       "keys": [
         "N"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "PrevSearchResult",
+          "keys": [
+            "N"
+          ],
+          "contexts": [
+            "reader"
+          ]
+        }
+      ]
     },
     {
       "id": "reader.archive-next",
@@ -4152,7 +4324,10 @@
         "]"
       ],
       "hide_in_palette": true,
-      "note": "Web only"
+      "note": "The TUI reader sits beside the list, so e archives and n steps on",
+      "clients": [
+        "web"
+      ]
     },
     {
       "id": "reader.archive-prev",
@@ -4166,7 +4341,10 @@
         "["
       ],
       "hide_in_palette": true,
-      "note": "Web only"
+      "note": "The TUI reader sits beside the list, so e archives and N steps back",
+      "clients": [
+        "web"
+      ]
     },
     {
       "id": "reader.list",
@@ -4342,7 +4520,10 @@
         "Q"
       ],
       "hide_in_palette": true,
-      "note": "Web only"
+      "note": "The TUI reader has no way to fold quoted text yet",
+      "clients": [
+        "web"
+      ]
     },
     {
       "id": "reader.headers",
@@ -4472,7 +4653,6 @@
         "screener"
       ],
       "keys": [
-        "1",
         "a"
       ],
       "tui": [
@@ -4485,6 +4665,15 @@
             "screener"
           ]
         }
+      ],
+      "moved": [
+        {
+          "key": "1",
+          "contexts": [
+            "screener"
+          ],
+          "until": "0.6.200"
+        }
       ]
     },
     {
@@ -4495,7 +4684,6 @@
         "screener"
       ],
       "keys": [
-        "2",
         "d"
       ],
       "tui": [
@@ -4508,6 +4696,15 @@
             "screener"
           ]
         }
+      ],
+      "moved": [
+        {
+          "key": "2",
+          "contexts": [
+            "screener"
+          ],
+          "until": "0.6.200"
+        }
       ]
     },
     {
@@ -4518,7 +4715,6 @@
         "screener"
       ],
       "keys": [
-        "3",
         "f"
       ],
       "tui": [
@@ -4531,6 +4727,15 @@
             "screener"
           ]
         }
+      ],
+      "moved": [
+        {
+          "key": "3",
+          "contexts": [
+            "screener"
+          ],
+          "until": "0.6.200"
+        }
       ]
     },
     {
@@ -4541,7 +4746,6 @@
         "screener"
       ],
       "keys": [
-        "4",
         "p"
       ],
       "tui": [
@@ -4553,6 +4757,15 @@
           "contexts": [
             "screener"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "4",
+          "contexts": [
+            "screener"
+          ],
+          "until": "0.6.200"
         }
       ]
     },
@@ -4617,7 +4830,10 @@
       "keys": [
         "g F"
       ],
-      "note": "F in the TUI's reply queue"
+      "note": "The TUI has no Focus page; it starts Focus & reply from the reply queue (g q, then F)",
+      "clients": [
+        "web"
+      ]
     },
     {
       "id": "focus.send",
@@ -5336,7 +5552,18 @@
       "keys": [
         "Escape"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "DismissHint",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "todo"
+          ]
+        }
+      ]
     },
     {
       "id": "catchup.down",
@@ -5987,6 +6214,17 @@
       ],
       "keys": [
         "g f"
+      ],
+      "tui": [
+        {
+          "name": "RecordsNextKind",
+          "keys": [
+            "g f"
+          ],
+          "contexts": [
+            "archive"
+          ]
+        }
       ]
     },
     {
@@ -6441,7 +6679,18 @@
       "keys": [
         "Escape"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "DismissHint",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "reading"
+          ]
+        }
+      ]
     },
     {
       "id": "reading.reader-down",
@@ -7383,11 +7632,15 @@
       "keys": [
         "g f"
       ],
-      "note": "Ctrl+f in the TUI opens the same picker; the web filters with g f because Ctrl+f is the browser's Find",
+      "mac_keys": [
+        "Ctrl+f"
+      ],
+      "note": "Ctrl+F works on macOS only, where it is not the browser's Find",
       "tui": [
         {
           "name": "MessagesFilter",
           "keys": [
+            "g f",
             "Ctrl+f"
           ],
           "contexts": [
@@ -7776,6 +8029,10 @@
       ],
       "keys": [
         "Space"
+      ],
+      "note": "The TUI shows each update's details on its line, so there is nothing to peek at",
+      "clients": [
+        "web"
       ]
     },
     {
@@ -8237,6 +8494,7 @@
       "id": "tui.pattern-select-thread",
       "label": "Pattern select thread",
       "group": "TUI",
+      "note": "The web lists conversations, not their messages, so it has no thread pattern",
       "clients": [
         "tui"
       ],
@@ -8301,18 +8559,17 @@
       "clients": [
         "tui"
       ],
-      "tui": [
+      "moved": [
         {
-          "name": "PrevSearchResult",
-          "keys": [
-            "N"
-          ],
+          "key": "N",
           "contexts": [
             "list",
-            "reader",
             "sidebar",
-            "place"
-          ]
+            "place",
+            "invites"
+          ],
+          "until": "0.6.200",
+          "to": "list.up"
         }
       ]
     },
@@ -8320,6 +8577,7 @@
       "id": "tui.switch-pane",
       "label": "Switch pane",
       "group": "TUI",
+      "note": "A browser keeps Tab for focus order; h and l move between panes in both clients",
       "clients": [
         "tui"
       ],
@@ -8345,17 +8603,16 @@
       "clients": [
         "tui"
       ],
-      "tui": [
+      "moved": [
         {
-          "name": "NextSearchResult",
-          "keys": [
-            "n"
-          ],
+          "key": "n",
           "contexts": [
             "list",
-            "reader",
-            "place"
-          ]
+            "place",
+            "invites"
+          ],
+          "until": "0.6.200",
+          "to": "list.down"
         }
       ]
     },
@@ -8363,6 +8620,7 @@
       "id": "tui.quit-view",
       "label": "Quit view",
       "group": "TUI",
+      "note": "q closes the innermost layer and quits at the TUI's root; a browser tab has nothing to quit",
       "clients": [
         "tui"
       ],
@@ -8462,6 +8720,7 @@
       "id": "tui.open-saved-search-form-new",
       "label": "New saved search",
       "group": "TUI",
+      "note": "c makes what a place holds: a saved search from the TUI sidebar; the web saves searches from the Search page, so its c composes",
       "clients": [
         "tui"
       ],
@@ -8544,6 +8803,7 @@
       "id": "tui.close-screener-modal",
       "label": "Close screener modal",
       "group": "TUI",
+      "note": "The TUI's screener is a modal; the web's is a page",
       "clients": [
         "tui"
       ],
@@ -8551,7 +8811,8 @@
         {
           "name": "CloseScreenerModal",
           "keys": [
-            "Escape"
+            "Escape",
+            "q"
           ],
           "contexts": [
             "screener"
@@ -8563,6 +8824,7 @@
       "id": "tui.records-open-card",
       "label": "Records open card",
       "group": "TUI",
+      "note": "The web shows the card beside the ledger; the TUI opens it to the right",
       "clients": [
         "tui"
       ],
@@ -8571,25 +8833,6 @@
           "name": "RecordsOpenCard",
           "keys": [
             "ArrowRight"
-          ],
-          "contexts": [
-            "archive"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "tui.records-next-kind",
-      "label": "Records next kind",
-      "group": "TUI",
-      "clients": [
-        "tui"
-      ],
-      "tui": [
-        {
-          "name": "RecordsNextKind",
-          "keys": [
-            "g f"
           ],
           "contexts": [
             "archive"
@@ -9477,7 +9720,8 @@
         {
           "name": "ComposeProofAccept",
           "keys": [
-            "y"
+            "y",
+            "Enter"
           ],
           "contexts": [
             "compose-assist-proof"
@@ -9553,7 +9797,8 @@
         {
           "name": "ComposeProofKeep",
           "keys": [
-            "Escape"
+            "Escape",
+            "q"
           ],
           "contexts": [
             "compose-assist-proof"
@@ -12536,6 +12781,36 @@
         "screener.feed",
         "screener.paper-trail"
       ]
+    }
+  ],
+  "tui_pass_through": [
+    {
+      "from": [
+        "sidebar",
+        "reader"
+      ],
+      "to": "list",
+      "why": "The TUI's sidebar and reader sit beside the mail list, so list keys reach the list from them"
+    },
+    {
+      "from": [
+        "list",
+        "sidebar"
+      ],
+      "to": "reader",
+      "why": "The TUI's reader is a preview beside the list, so its view keys work from the list and the sidebar"
+    },
+    {
+      "from": [
+        "todo",
+        "now",
+        "messages",
+        "archive",
+        "updates",
+        "reading"
+      ],
+      "to": "list",
+      "why": "The TUI draws a mode in the mail list's pane, so the list's sidebar, pattern and invite keys reach it; the web's modes don't take them yet"
     }
   ]
 }

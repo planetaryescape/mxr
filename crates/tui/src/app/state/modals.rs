@@ -174,6 +174,8 @@ pub struct ModalsState {
     /// `Some(name)` while a delete confirmation is open. Pressing
     /// `y`/`Enter` dispatches the delete; `n`/`Esc` cancels.
     pub pending_saved_search_delete_confirm: Option<String>,
+    /// Which of that confirm's two options is lit.
+    pub saved_search_delete_choice: super::ConfirmChoice,
     /// Queue of semantic-runtime IPC requests waiting to be dispatched.
     /// Populated by palette actions (Enable/Disable/Reindex/Install
     /// Profile); drained one-at-a-time by the lib.rs dispatcher.
@@ -824,6 +826,8 @@ pub struct DraftsModalState {
     pub selected_index: usize,
     pub error: Option<String>,
     pub confirmation: Option<StoredDraftOperation>,
+    /// Which of the confirm's two options is lit.
+    pub choice: super::ConfirmChoice,
 }
 
 impl DraftsModalState {
@@ -884,6 +888,7 @@ impl DraftsModalState {
             return false;
         };
         self.confirmation = Some(StoredDraftOperation::Delete { draft });
+        self.choice = super::ConfirmChoice::default();
         true
     }
 
@@ -897,6 +902,7 @@ impl DraftsModalState {
             return false;
         };
         self.confirmation = Some(StoredDraftOperation::CancelSchedule { draft, send_at });
+        self.choice = super::ConfirmChoice::default();
         true
     }
 
@@ -905,6 +911,8 @@ impl DraftsModalState {
             return false;
         };
         self.confirmation = Some(StoredDraftOperation::Push { draft, provider });
+        // Syncing destroys nothing, so Enter is yes.
+        self.choice = super::ConfirmChoice::on_action();
         true
     }
 

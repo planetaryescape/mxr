@@ -187,7 +187,9 @@ fn long_approvals(state: &AssistantState) -> Vec<&str> {
 pub fn hint_text(state: &AssistantState) -> String {
     match &state.prompt {
         // A delete confirm can sit over the history list.
-        Some(AssistantPrompt::ConfirmDelete(_)) => return "y delete · n keep".into(),
+        Some(AssistantPrompt::ConfirmDelete(..)) => {
+            return "Enter the lit one \u{b7} y delete \u{b7} n keep \u{b7} j/k".into();
+        }
         _ if state.models.is_some() => {
             return "j/k move · Enter use this model · Esc back".into();
         }
@@ -945,7 +947,7 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
             }
         }
     }
-    if let Some(AssistantPrompt::ConfirmDelete(delete)) = &state.prompt {
+    if let Some(AssistantPrompt::ConfirmDelete(delete, choice)) = &state.prompt {
         lines.push(Line::from(Span::styled("─".repeat(width), muted)));
         let warn = Style::default().fg(theme.warning);
         push_wrapped(
@@ -961,6 +963,12 @@ fn card_lines(state: &AssistantState, width: usize, theme: &Theme) -> Vec<Line<'
             warn,
             warn,
         );
+        lines.push(super::confirm_choice::options(
+            "Keep it",
+            "Delete conversation",
+            *choice,
+            theme,
+        ));
     }
     lines
 }
@@ -1537,6 +1545,7 @@ mod tests {
                 dry_run: true,
                 deleted: false,
             },
+            crate::app::ConfirmChoice::default(),
         ));
         insta::assert_snapshot!("assistant_pane_history_delete_confirm", render(&state));
     }

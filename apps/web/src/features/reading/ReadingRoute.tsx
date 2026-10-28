@@ -22,6 +22,7 @@ import { useDelayedPending } from "@/hooks/useDelayedPending";
 import { pickSearch, useSearchParam } from "@/hooks/useSearchParam";
 import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
+import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useLitReason } from "@/state/litReasonStore";
 import { definedShortcut, stripKeys } from "@/lib/actions/definition";
@@ -501,6 +502,17 @@ function Bands({
       void rememberLayout(item.account_id, item.sender_email, true).then(() => read(item.item_key));
     },
     letGoAll: () => view !== "later" && openLetGoAll(edition, setDialog),
+    // `t`: a to-do from the item's email, as in the TUI.
+    makeTodo: () => {
+      const subject = current ? readingMoveSubject(current) : null;
+      if (!subject || refuseWhileDaemonDown("add a to-do")) return;
+      openMailDialog({
+        kind: "todo-make",
+        messageId: subject.messageId,
+        suggestion: "",
+        subject: subject.label,
+      });
+    },
     // `K` stays "move sender to a kind"; only the email moves from here.
     moveToMode: moveCommands(() => (current ? readingMoveSubject(current) : null)).moveToMode,
     openEmail: () => {

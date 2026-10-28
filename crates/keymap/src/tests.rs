@@ -17,6 +17,99 @@ fn the_shipped_definition_is_sound() {
 }
 
 #[test]
+fn the_clients_use_the_same_keys() {
+    let differences = defaults().client_differences();
+    assert!(
+        differences.is_empty(),
+        "the web app and the TUI differ:\n{}",
+        differences.join("\n")
+    );
+}
+
+#[test]
+fn the_key_check_derives_differences_from_the_definition() {
+    let keymap = Keymap::parse(
+        r#"
+        [[action]]
+        id = "palette"
+        label = "Palette"
+        group = "Navigate"
+        keys = ["Mod+k", "Mod+a"]
+        [[action.tui]]
+        name = "OpenCommandPalette"
+        keys = ["Ctrl+k"]
+        contexts = ["list", "reader", "sidebar", "todo", "now", "messages", "archive", "updates", "reading"]
+
+        [[action]]
+        id = "select"
+        label = "Select"
+        group = "Select"
+        scopes = ["list"]
+        keys = ["x"]
+        [[action.tui]]
+        name = "ToggleSelect"
+        keys = ["x"]
+        contexts = ["list", "sidebar"]
+
+        [[action]]
+        id = "compose"
+        label = "Compose"
+        group = "Compose"
+        keys = ["c"]
+
+        [[action]]
+        id = "pane"
+        label = "Switch pane"
+        group = "TUI"
+        clients = ["tui"]
+        [[action.tui]]
+        name = "SwitchPane"
+        keys = ["Tab"]
+        contexts = ["list"]
+        "#,
+    )
+    .expect("the test definition parses");
+    // `Mod+k` is the TUI's `Ctrl+k`; `Mod+a` would be `Ctrl+a`, screen's
+    // prefix. `c` is in the web only, and `Tab`'s action doesn't say why.
+    let differences = keymap.client_differences();
+    assert!(
+        differences.iter().any(|d| d.starts_with("list `c`")),
+        "{differences:?}"
+    );
+    assert!(
+        differences.iter().any(|d| d.starts_with("sidebar `x`")),
+        "{differences:?}"
+    );
+    assert!(differences
+        .contains(&"pane: is in one client only, and has no `note` saying why".to_string()));
+    assert!(
+        !differences
+            .iter()
+            .any(|d| d.contains("`Mod+") || d.contains("`Ctrl+k`")),
+        "{differences:?}"
+    );
+
+    let mut declared = keymap.clone();
+    declared.actions[2].clients = vec![Client::Web];
+    declared.actions[2].note = Some("the TUI composes elsewhere".into());
+    declared.actions[3].note = Some("a browser keeps Tab".into());
+    declared.tui_pass_through.push(TuiPassThrough {
+        from: vec!["sidebar".into()],
+        to: "list".into(),
+        why: "the sidebar sits beside the list".into(),
+    });
+    declared.tui_pass_through.push(TuiPassThrough {
+        from: vec!["reader".into()],
+        to: "list".into(),
+        why: "unused".into(),
+    });
+    assert_eq!(
+        declared.client_differences(),
+        vec!["the TUI pass-through from reader to list explains no key; delete it".to_string()]
+    );
+}
+
+#[test]
 fn compose_proof_keys_are_registered_only_for_the_proof_overlay() {
     let contexts = defaults().tui_keymap();
     let proof = contexts

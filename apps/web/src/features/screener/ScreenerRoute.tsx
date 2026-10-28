@@ -35,17 +35,17 @@ import { useHeldPending } from "@/hooks/useDelayedPending";
 
 type Tab = "queue" | "decisions";
 
-/** The lit row's choice. The number answers beside the TUI's letter (a, d, f, p). */
+/** The lit row's choice, a letter in both clients (blueprint 35, "Pick"). */
 const DECISIONS: {
   disposition: ScreenerDisposition;
   label: string;
   key: string;
   Icon: LucideIcon;
 }[] = [
-  { disposition: "allow", label: "Allow", key: "1", Icon: Check },
-  { disposition: "deny", label: "Deny", key: "2", Icon: Ban },
-  { disposition: "feed", label: "Feed", key: "3", Icon: Rss },
-  { disposition: "paper_trail", label: "Paper trail", key: "4", Icon: Receipt },
+  { disposition: "allow", label: "Allow", key: "a", Icon: Check },
+  { disposition: "deny", label: "Deny", key: "d", Icon: Ban },
+  { disposition: "feed", label: "Feed", key: "f", Icon: Rss },
+  { disposition: "paper_trail", label: "Paper trail", key: "p", Icon: Receipt },
 ];
 
 const DISPOSITION_LABELS: Record<ScreenerDisposition, string> = {

@@ -46,7 +46,8 @@ merely because it appears in `Needs a look`.
 ## Correct ownership or details
 
 Press `X` in the web app or TUI and choose `Not a to-do`, `Not mine`,
-`Already done` or `Wrong details`. Wrong details opens the editor and keeps
+`Already done` or `Wrong details`: `j` and `k` move, `Enter` picks, or press
+the reason's number (`1` to `4`). Wrong details opens the editor and keeps
 the task until you save. The web editor lets you change the title, who, amount,
 due date and kind; changing kind also updates its action and timing. A failed
 save keeps your entered correction available

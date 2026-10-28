@@ -29,9 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { describeChoice, type TimeChoice } from "@/features/time/api";
-import { NaturalTimeInput } from "@/features/time/NaturalTimeInput";
-import { useNaturalTime } from "@/features/time/useNaturalTime";
+import { NotNowDialog } from "@/features/mail-actions/dialogs/NotNowDialog";
 import { plural } from "@/lib/format";
 
 import type { Todo } from "./api";
@@ -45,50 +43,21 @@ import {
 } from "./todoVerbs";
 
 /**
- * `Z`: show the row on your own day. The same natural-time field snooze
- * uses: the daemon reads the words and the dialog shows the exact time
- * before anything is stored. The due date stays as it is.
+ * Not now in To do (`b`): show the row on your own day. The Not-now picker
+ * with its presets and the same natural-time field snooze uses; there is no
+ * untimed Later for a to-do. The due date stays as it is.
  */
 export function TodoScheduleDialog({ todo, onClose }: { todo: Todo; onClose: () => void }) {
-  const time = useNaturalTime({ enabled: true });
-  async function commit(choice: TimeChoice) {
-    onClose();
-    time.reset();
-    await scheduleRow(todo, choice.at, describeChoice(choice));
-  }
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md grid-cols-[minmax(0,1fr)]">
-        <DialogHeader>
-          <DialogTitle>Schedule</DialogTitle>
-          <DialogDescription className="truncate">
-            {todo.title} shows up then. {todo.due_at ? "The due date stays as it is." : ""}
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="flex items-start gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void time.commit(commit);
-          }}
-        >
-          <NaturalTimeInput
-            id="todo-schedule"
-            state={time}
-            onCommit={commit}
-            autoFocus
-            placeholder="mon 9am, fri, in 3d"
-            className="min-w-0 flex-1"
-          />
-          <Button type="submit" size="sm" disabled={!time.canCommit}>
-            Schedule
-          </Button>
-        </form>
-        <DialogFooter className="text-2xs text-muted-foreground sm:justify-start">
-          Undo with u for about a minute afterwards.
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <NotNowDialog
+      picker={{
+        title: "Schedule",
+        description: `${todo.title} shows up then.${todo.due_at ? " The due date stays as it is." : ""}`,
+        timeVerb: "Schedule",
+        at: (at, label) => scheduleRow(todo, at, label),
+      }}
+      onClose={onClose}
+    />
   );
 }
 

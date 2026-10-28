@@ -268,12 +268,13 @@ fn comma_previews_a_fix_before_applying_exactly_it() {
 }
 
 #[test]
-fn capital_t_on_a_conversation_previews_filing_then_files_it() {
+fn pass_to_a_mode_previews_filing_then_files_it() {
     let mut app = App::new();
     app.mailbox.envelopes = make_test_envelopes(2);
     app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
     let message_id = app.mailbox.envelopes[0].id.clone();
-    press_shifted(&mut app, 'T');
+    // From the palette now: `T` merged into `X` (blueprint 35).
+    app.apply(Action::PassToMode);
     let menu = app
         .mailbox
         .records_page

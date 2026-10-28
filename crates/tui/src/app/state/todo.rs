@@ -39,10 +39,6 @@ pub enum TodoListFetch {
 /// What the prompt under the lens is collecting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TodoPromptKind {
-    /// `Z`: when the row should show up, previewed as it is typed.
-    Schedule {
-        todo_id: String,
-    },
     /// `,`: `field=value`, such as `due=fri 9 oct` or `title=Pay rent`.
     Edit {
         todo_id: String,
@@ -61,7 +57,6 @@ pub struct TodoPromptState {
     pub pending: Option<crate::app::MutationId>,
     pub kind: TodoPromptKind,
     pub input: String,
-    pub time: crate::ui::time_preview::TimePreview,
     pub error: Option<String>,
 }
 
@@ -71,7 +66,6 @@ impl TodoPromptState {
             pending: None,
             kind,
             input,
-            time: crate::ui::time_preview::TimePreview::default(),
             error: None,
         }
     }

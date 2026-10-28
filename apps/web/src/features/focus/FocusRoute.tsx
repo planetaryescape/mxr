@@ -69,6 +69,7 @@ export function FocusRoute({ from, lane, at }: { from?: string; lane?: "owed"; a
       kind: "snooze",
       target: targetFromThread(thread),
       onDone: () => focus.markHandled(threadId),
+      onLater: () => focus.markHandled(threadId),
     });
   };
   const focusReply = () =>
@@ -285,7 +286,7 @@ function FocusKeys({
     ["send", "⌘↵", "Send and next"],
     ["skip", "j", "Skip"],
     ["done", "e", "Done, no reply needed"],
-    ["snooze", "Z", "Snooze"],
+    ["snooze", "b", "Not now"],
     ["remind", "w", "Send, remind if no reply"],
     ["draft", "d", "Draft in your voice"],
   ] as const;

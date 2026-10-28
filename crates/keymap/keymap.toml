@@ -976,17 +976,26 @@ name = "MoveToLabel"
 keys = ["v"]
 contexts = ["list", "reader", "place"]
 
+# Not now (D173): one picker, "Later (no time)" first, then times. Later
+# is the untimed reply later; a time snoozes.
 [[action]]
 id = "mail.snooze"
-label = "Snooze…"
+label = "Not now…"
+short_label = "Not now"
+description = "Later with no time, or snooze until a time"
 group = "Mail"
-scopes = ["list", "reader"]
-keys = ["Z"]
+scopes = ["list", "reader", "now"]
+keys = ["b"]
 
 [[action.tui]]
 name = "Snooze"
-keys = ["Z"]
+keys = ["b"]
+contexts = ["list", "reader", "sidebar", "place", "now"]
+
+[[action.moved]]
+key = "Z"
 contexts = ["list", "reader", "place"]
+until = "0.6.197"
 
 [[action]]
 id = "mail.unsubscribe"
@@ -1000,17 +1009,13 @@ name = "Unsubscribe"
 keys = ["D"]
 contexts = ["list", "reader"]
 
+# Reply later at a typed time; `b` (Not now) holds the untimed one.
 [[action]]
 id = "mail.reply-later"
 label = "Reply later…"
 group = "Mail"
 scopes = ["list", "reader"]
-keys = ["b"]
-
-[[action.tui]]
-name = "FlagReplyLater"
-keys = ["b"]
-contexts = ["list", "reader", "sidebar", "place"]
+palette_only = true
 
 [[action]]
 id = "mail.make-todo"
@@ -1033,12 +1038,13 @@ short_label = "Pass to"
 description = "File it in Archive as a record, after a preview of the card"
 group = "Mail"
 scopes = ["list", "reader"]
-keys = ["T"]
+palette_only = true
 
-[[action.tui]]
-name = "PassToMode"
-keys = ["T"]
+[[action.moved]]
+key = "T"
 contexts = ["list", "reader", "place"]
+until = "0.6.197"
+to = "modes.move"
 
 [[action]]
 id = "mail.reply"
@@ -1102,17 +1108,20 @@ name = "OpenThreadBriefing"
 keys = ["B"]
 contexts = ["list", "reader", "place"]
 
+# On the person page (`p`) and in the palette.
 [[action]]
 id = "mail.whois"
 label = "Who is this sender?"
+short_label = "Who is this"
 group = "Mail"
 scopes = ["list", "reader"]
-keys = ["W"]
+palette_only = true
 
-[[action.tui]]
-name = "OpenWhoisOnFocusedSender"
-keys = ["W"]
+[[action.moved]]
+key = "W"
 contexts = ["list", "reader", "place"]
+until = "0.6.197"
+to = "mail.sender-profile"
 
 [[action]]
 id = "mail.sender-profile"
@@ -2145,10 +2154,16 @@ note = "e on the desk in the TUI"
 
 [[action]]
 id = "focus.snooze"
-label = "Snooze…"
+label = "Not now…"
+short_label = "Not now"
 group = "Compose"
 scopes = ["focus"]
-keys = ["Z"]
+keys = ["b"]
+
+[[action.moved]]
+key = "Z"
+contexts = ["focus"]
+until = "0.6.197"
 
 [[action]]
 id = "focus.remind"
@@ -2387,16 +2402,21 @@ until = "0.6.180"
 
 [[action]]
 id = "todo.schedule"
-label = "Schedule…"
+label = "Not now: schedule…"
 short_label = "Schedule"
 group = "Triage"
 scopes = ["todo"]
-keys = ["Z"]
+keys = ["b"]
 
 [[action.tui]]
 name = "TodoSchedule"
-keys = ["Z"]
+keys = ["b"]
 contexts = ["todo"]
+
+[[action.moved]]
+key = "Z"
+contexts = ["todo"]
+until = "0.6.197"
 
 [[action]]
 id = "todo.edit"
@@ -2910,7 +2930,7 @@ contexts = ["reading", "reading-reader"]
 
 [[action]]
 id = "reading.later"
-label = "Save for later"
+label = "Not now: later or snooze…"
 short_label = "Later"
 group = "Read"
 scopes = ["reading"]
@@ -3085,7 +3105,7 @@ keys = ["I"]
 
 [[action]]
 id = "reading.reader-later"
-label = "Save for later"
+label = "Not now: later or snooze…"
 short_label = "Later"
 group = "Read"
 scopes = ["reading-reader"]
@@ -3315,34 +3335,58 @@ contexts = ["now"]
 [[action]]
 id = "now.sender-1"
 label = "New sender: keep in Messages"
-short_label = "Messages"
+short_label = "New sender"
 group = "Triage"
 scopes = ["now"]
-keys = ["1"]
+hide_in_palette = true
+
+[[action.moved]]
+key = "1"
+contexts = ["now"]
+until = "0.6.197"
+to = "modes.move"
 
 [[action]]
 id = "now.sender-2"
 label = "New sender: keep in Updates"
-short_label = "Updates"
+short_label = "New sender"
 group = "Triage"
 scopes = ["now"]
-keys = ["2"]
+hide_in_palette = true
+
+[[action.moved]]
+key = "2"
+contexts = ["now"]
+until = "0.6.197"
+to = "modes.move"
 
 [[action]]
 id = "now.sender-3"
 label = "New sender: keep in Reading"
-short_label = "Reading"
+short_label = "New sender"
 group = "Triage"
 scopes = ["now"]
-keys = ["3"]
+hide_in_palette = true
+
+[[action.moved]]
+key = "3"
+contexts = ["now"]
+until = "0.6.197"
+to = "modes.move"
 
 [[action]]
 id = "now.sender-4"
 label = "New sender: block"
-short_label = "Block"
+short_label = "New sender"
 group = "Triage"
 scopes = ["now"]
-keys = ["4"]
+hide_in_palette = true
+
+[[action.moved]]
+key = "4"
+contexts = ["now"]
+until = "0.6.197"
+to = "modes.move"
 
 [[action]]
 id = "messages.down"
@@ -3453,14 +3497,14 @@ contexts = ["messages"]
 
 [[action]]
 id = "messages.reply-later"
-label = "Reply later…"
-short_label = "Reply later"
+label = "Not now: reply later…"
+short_label = "Not now"
 group = "Triage"
 scopes = ["messages"]
 keys = ["b"]
 
 [[action.tui]]
-name = "FlagReplyLater"
+name = "Snooze"
 keys = ["b"]
 contexts = ["messages"]
 
@@ -3620,34 +3664,58 @@ contexts = ["messages"]
 [[action]]
 id = "messages.sender-1"
 label = "New sender: keep in Messages"
-short_label = "Messages"
+short_label = "New sender"
 group = "Triage"
 scopes = ["messages"]
-keys = ["1"]
+hide_in_palette = true
+
+[[action.moved]]
+key = "1"
+contexts = ["messages"]
+until = "0.6.197"
+to = "modes.move"
 
 [[action]]
 id = "messages.sender-2"
 label = "New sender: keep in Updates"
-short_label = "Updates"
+short_label = "New sender"
 group = "Triage"
 scopes = ["messages"]
-keys = ["2"]
+hide_in_palette = true
+
+[[action.moved]]
+key = "2"
+contexts = ["messages"]
+until = "0.6.197"
+to = "modes.move"
 
 [[action]]
 id = "messages.sender-3"
 label = "New sender: keep in Reading"
-short_label = "Reading"
+short_label = "New sender"
 group = "Triage"
 scopes = ["messages"]
-keys = ["3"]
+hide_in_palette = true
+
+[[action.moved]]
+key = "3"
+contexts = ["messages"]
+until = "0.6.197"
+to = "modes.move"
 
 [[action]]
 id = "messages.sender-4"
 label = "New sender: block"
-short_label = "Block"
+short_label = "New sender"
 group = "Triage"
 scopes = ["messages"]
-keys = ["4"]
+hide_in_palette = true
+
+[[action.moved]]
+key = "4"
+contexts = ["messages"]
+until = "0.6.197"
+to = "modes.move"
 
 [[action]]
 id = "updates.down"
@@ -3860,6 +3928,26 @@ keys = ["X"]
 name = "OpenMoveMenu"
 keys = ["X"]
 contexts = ["list", "reader", "place", "now", "messages", "reading", "reading-reader", "updates"]
+
+[[action.moved]]
+key = "m"
+contexts = ["not-sure"]
+until = "0.6.197"
+
+[[action.moved]]
+key = "x"
+contexts = ["not-sure"]
+until = "0.6.197"
+
+[[action.moved]]
+key = "r"
+contexts = ["not-sure"]
+until = "0.6.197"
+
+[[action.moved]]
+key = "e"
+contexts = ["not-sure"]
+until = "0.6.197"
 
 [[action]]
 id = "modes.move-sender"

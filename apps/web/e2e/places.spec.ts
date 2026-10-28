@@ -61,7 +61,7 @@ test("moving a sender from Reading to People takes it to the desk, and u brings 
     await page.keyboard.press("P");
     const menu = page.getByTestId("sender-kind-dialog");
     await expect(menu).toBeVisible();
-    await menu.press("p");
+    await menu.press("m");
     await expect(issue).toHaveCount(0);
     await expect(page.locator("[data-sonner-toast]").first()).toContainText("to People");
 

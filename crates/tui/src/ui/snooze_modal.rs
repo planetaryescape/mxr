@@ -1,5 +1,8 @@
+//! The `b` picker, Not now (D173): "Later (no time)" first where there is
+//! one, then the snooze presets on digits, then a typed time.
+
 use super::centered_rect;
-use crate::app::{snooze_presets, SnoozePanelState, SnoozePreset};
+use crate::app::{snooze_presets, NotNowTarget, SnoozePanelState, SnoozePreset};
 use mxr_config::SnoozeConfig;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -9,15 +12,64 @@ use ratatui::widgets::*;
 /// it without re-hardcoding the string.
 pub const CUSTOM_ROW_LABEL: &str = "Custom… (e.g. tomorrow 9am, in 2h)";
 
-/// Length of the preset list including the trailing custom-input row.
-/// `selected_index == presets_len()` is the custom row; everything below
-/// is a regular preset.
-pub fn rows_count() -> usize {
-    snooze_presets().len() + 1
+/// One row of the picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotNowRow {
+    Later,
+    Preset(SnoozePreset),
+    Custom,
 }
 
-pub fn custom_row_index() -> usize {
-    snooze_presets().len()
+/// The rows for a target, in order: Later (when it has one), the presets,
+/// then Custom.
+pub struct NotNowRows {
+    later: bool,
+}
+
+impl NotNowRows {
+    pub fn of(target: &NotNowTarget) -> Self {
+        Self {
+            later: target.later_label().is_some(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        usize::from(self.later) + snooze_presets().len() + 1
+    }
+
+    pub fn is_empty(&self) -> bool {
+        false
+    }
+
+    pub fn row(&self, index: usize) -> NotNowRow {
+        let presets = snooze_presets();
+        let index = if self.later {
+            match index.checked_sub(1) {
+                None => return NotNowRow::Later,
+                Some(index) => index,
+            }
+        } else {
+            index
+        };
+        presets
+            .get(index)
+            .copied()
+            .map_or(NotNowRow::Custom, NotNowRow::Preset)
+    }
+}
+
+/// Rows for a panel; a panel opened without a target (tests, a stale
+/// state) behaves as mail.
+fn rows_of(panel: &SnoozePanelState) -> NotNowRows {
+    panel
+        .target
+        .as_ref()
+        .map_or(NotNowRows { later: false }, NotNowRows::of)
+}
+
+/// How many rows the open panel has, for the cursor's wrap.
+pub fn rows_count(panel: &SnoozePanelState) -> usize {
+    rows_of(panel).len()
 }
 
 pub fn draw(
@@ -34,8 +86,12 @@ pub fn draw(
     let popup = centered_rect(50, 60, area);
     frame.render_widget(Clear, popup);
 
+    let title = panel
+        .target
+        .as_ref()
+        .map_or(" Not now ", NotNowTarget::title);
     let block = Block::bordered()
-        .title(" Snooze ")
+        .title(title)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.warning))
         .style(Style::default().bg(theme.modal_bg));
@@ -52,28 +108,41 @@ pub fn draw(
         .constraints([Constraint::Min(4), Constraint::Length(2)])
         .split(inner);
 
-    let mut items: Vec<ListItem> = snooze_presets()
-        .iter()
-        .enumerate()
-        .map(|(index, preset)| {
-            let label = format_preset(*preset, config);
+    let rows = rows_of(panel);
+    let later_label = panel.target.as_ref().and_then(NotNowTarget::later_label);
+    let mut preset_number = 0;
+    let items: Vec<ListItem> = (0..rows.len())
+        .map(|index| {
+            // Each row prints its key: Enter on the highlighted row, a
+            // digit on each preset.
+            let (key, label, muted) = match rows.row(index) {
+                NotNowRow::Later => (
+                    "\u{21b5}".to_string(),
+                    later_label.unwrap_or("Later").to_string(),
+                    false,
+                ),
+                NotNowRow::Preset(preset) => {
+                    preset_number += 1;
+                    (
+                        preset_number.to_string(),
+                        format_preset(preset, config),
+                        false,
+                    )
+                }
+                NotNowRow::Custom => (" ".to_string(), CUSTOM_ROW_LABEL.to_string(), true),
+            };
             let style = if index == panel.selected_index {
                 theme.highlight_style()
+            } else if muted {
+                Style::default().fg(theme.text_secondary)
             } else {
                 Style::default()
             };
-            ListItem::new(label).style(style)
+            ListItem::new(format!(" {key}  {label}")).style(style)
         })
         .collect();
-    let custom_idx = custom_row_index();
-    let custom_style = if custom_idx == panel.selected_index {
-        theme.highlight_style()
-    } else {
-        Style::default().fg(theme.text_secondary)
-    };
-    items.push(ListItem::new(CUSTOM_ROW_LABEL).style(custom_style));
 
-    let total = rows_count();
+    let total = rows.len();
     let list_height = chunks[0].height as usize;
     frame.render_widget(List::new(items), chunks[0]);
 
@@ -90,8 +159,11 @@ pub fn draw(
     }
 
     frame.render_widget(
-        Paragraph::new("Enter snooze  j/k move  Esc cancel")
-            .style(Style::default().fg(theme.text_secondary)),
+        Paragraph::new(format!(
+            "Enter pick  1-{} a time  j/k move  Esc cancel",
+            snooze_presets().len()
+        ))
+        .style(Style::default().fg(theme.text_secondary)),
         chunks[1],
     );
 }
@@ -115,7 +187,7 @@ fn draw_custom_input(
         .split(inner);
 
     frame.render_widget(
-        Paragraph::new("Type a custom snooze time:").style(Style::default().fg(theme.text_primary)),
+        Paragraph::new("Type a custom time:").style(Style::default().fg(theme.text_primary)),
         chunks[0],
     );
     let prompt = format!(" › {input}_");
@@ -153,7 +225,7 @@ fn draw_custom_input(
         );
     }
     frame.render_widget(
-        Paragraph::new("Enter snooze  Tab other reading  Esc back to presets")
+        Paragraph::new("Enter set  Tab other reading  Esc back to the list")
             .style(Style::default().fg(theme.text_secondary)),
         chunks[4],
     );
@@ -168,12 +240,51 @@ mod tests {
     use super::*;
     use mxr_test_support::render_to_string;
 
+    fn custom_row_index() -> usize {
+        snooze_presets().len()
+    }
+
     #[test]
-    fn rows_count_includes_custom_entry() {
-        // The list rows = N presets + 1 "Custom…" trailer. The contract
-        // matters because input.rs uses `rows_count()` for cursor wrap.
-        assert_eq!(rows_count(), snooze_presets().len() + 1);
-        assert_eq!(custom_row_index(), snooze_presets().len());
+    fn later_comes_first_then_the_presets_then_custom() {
+        let mail = NotNowRows::of(&NotNowTarget::Mail {
+            message_id: mxr_core::id::MessageId::new(),
+        });
+        assert_eq!(mail.len(), snooze_presets().len() + 2);
+        assert_eq!(mail.row(0), NotNowRow::Later);
+        assert_eq!(mail.row(1), NotNowRow::Preset(snooze_presets()[0]));
+        assert_eq!(mail.row(mail.len() - 1), NotNowRow::Custom);
+        // A to-do has no untimed later: the presets start at the top.
+        let todo = NotNowRows::of(&NotNowTarget::Todo {
+            todo_id: "t1".into(),
+        });
+        assert_eq!(todo.len(), snooze_presets().len() + 1);
+        assert_eq!(todo.row(0), NotNowRow::Preset(snooze_presets()[0]));
+    }
+
+    #[test]
+    fn each_row_prints_its_key() {
+        let panel = SnoozePanelState {
+            visible: true,
+            target: Some(NotNowTarget::Mail {
+                message_id: mxr_core::id::MessageId::new(),
+            }),
+            ..Default::default()
+        };
+        let snapshot = render_to_string(80, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 80, 24),
+                &panel,
+                &SnoozeConfig::default(),
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(snapshot.contains("Not now"), "{snapshot}");
+        assert!(
+            snapshot.contains("\u{21b5}  Later (no time): reply later"),
+            "{snapshot}"
+        );
+        assert!(snapshot.contains(" 1  "), "{snapshot}");
     }
 
     #[test]

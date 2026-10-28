@@ -1,18 +1,16 @@
 /*
- * Keys 1 to 4 on a lit new sender (Now and Messages): keep them in Messages,
- * Updates or Reading, or block them. Each is a scoped command that the page
- * registers only while a new sender's row is lit; everywhere else the
- * digits fall through to their global meaning (see `newSenderCommands`).
+ * A new sender's old digit answers (Now and Messages). Each action keeps its
+ * id with no key, so pressing 1 to 4 says the answers moved to the `X`
+ * picker (`[[action.moved]]` in crates/keymap/keymap.toml) until 0.6.197.
+ * The page answers through `X` and `P` now, so no command is registered.
  */
 
 import type { ActionBehavior, ActionScope } from "@/lib/actions/types";
 
-import { SENDER_CHOICES } from "./NewSenderChips";
-
 export function newSenderActions(
   scope: Extract<ActionScope, "now" | "messages">,
 ): ActionBehavior[] {
-  return SENDER_CHOICES.map(({ slot }) => ({
+  return [1, 2, 3, 4].map((slot) => ({
     id: `${scope}.sender-${slot}`,
     command: `senderChoice${slot}`,
   }));

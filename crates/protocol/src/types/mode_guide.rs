@@ -306,7 +306,7 @@ const MESSAGES_KEYS: &[(&str, &str)] = &[
     ("messages.got-it", "got it"),
     ("messages.done", "done here"),
     ("messages.to-do", "make it a to-do"),
-    ("messages.reply-later", "reply later"),
+    ("messages.reply-later", "not now"),
     ("messages.pin", "pin"),
     ("messages.new-topic", "new topic"),
     ("messages.prev-topic", "previous topic"),

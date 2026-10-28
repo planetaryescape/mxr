@@ -1,18 +1,32 @@
-//! Sorting shows its work in the TUI (D119): `X` moves one email to a
-//! mode, `K` sets the sender's mode, Now's Not-sure questions take one key,
-//! "Always for this sender?" follows a move, and Enter on the arrivals line
-//! lists the emails behind it. Every move is `MoveMessage`, so the daemon
-//! stores the correction and `u` undoes it exactly (`UndoMove`).
+//! Sorting shows its work in the TUI (D119): `X` takes an email out of its
+//! mode through one picker (a lowercase letter moves the email, a capital
+//! its sender), `P` opens the sender's half of it, Now's Not-sure questions
+//! and new senders answer through the same picker, "Always for this
+//! sender?" follows a move, and Enter on the arrivals line lists the emails
+//! behind it. Every move is `MoveMessage`, so the daemon stores the
+//! correction and `u` undoes it exactly (`UndoMove`); a new sender's answer
+//! is `SetSenderKind`, as its digits used to send.
 
 use super::input::plain_or_shift;
 use super::*;
 use crate::app::state::{
-    ArrivalsListFetch, ArrivalsListState, MoveMenu, NowRow, SenderAsk, UpdatesRow,
+    ArrivalsListFetch, ArrivalsListState, MoveMenu, MoveOption, NowRow, SenderAsk, UpdatesRow,
 };
 use mxr_protocol::{
     ArrivalBucketData, ArrivalItemData, ArrivalListData, ArrivalsData, ModeKindData,
-    MoveOutcomeData,
+    MoveOutcomeData, SenderKindData,
 };
+
+/// A new sender's answer in the move menu: the capital of the mode's `g`
+/// letter, and `D` for Block (chapter 22's screen-out letter).
+pub(crate) const fn new_sender_key(kind: SenderKindData) -> char {
+    match kind {
+        SenderKindData::People => 'M',
+        SenderKindData::PaperTrail => 'U',
+        SenderKindData::Reading => 'R',
+        SenderKindData::ScreenedOut => 'D',
+    }
+}
 
 /// The move menu's keys: the mode's `g` letter. Shift on m, u and r sets
 /// the sender's mode instead.
@@ -64,7 +78,7 @@ impl App {
             Action::OpenMoveMenu => self.open_move_menu(false),
             Action::OpenSenderMoveMenu => self.open_sender_move_menu(),
             Action::MoveEmailTo { mode, sender } => self.move_from_menu(mode, sender),
-            Action::NowAnswerNotSure(mode) => self.answer_not_sure(mode),
+            Action::AnswerNewSender(kind) => self.answer_new_sender_from_menu(kind),
             Action::AnswerAlwaysForSender(yes) => self.answer_always_for_sender(yes),
             Action::OpenArrivals => self.open_arrivals_list(None),
             Action::ArrivalsNextBucket => {
@@ -186,17 +200,39 @@ impl App {
             );
             return;
         };
-        let not_sure =
-            self.now_list_focused() && matches!(self.selected_now_row(), Some(NowRow::NotSure(_)));
-        self.mailbox.trust.move_menu = Some(MoveMenu {
+        let row = self
+            .now_list_focused()
+            .then(|| self.selected_now_row())
+            .flatten();
+        let current = match row {
+            Some(NowRow::NotSure(question)) => Some(question.mode),
+            _ => None,
+        };
+        let new_sender = match row {
+            Some(NowRow::Person(person)) => person.new_sender.clone(),
+            _ => None,
+        };
+        let mut menu = MoveMenu {
             message_id,
             display,
             sender_only,
-            not_sure,
-        });
+            not_sure: current.is_some(),
+            current,
+            new_sender,
+            selected: 0,
+        };
+        // Keeping a Not-sure email where it is answers too: start there.
+        if let Some(current) = current {
+            menu.selected = menu
+                .options()
+                .iter()
+                .position(|option| *option == MoveOption::Email(current))
+                .unwrap_or(0);
+        }
+        self.mailbox.trust.move_menu = Some(menu);
     }
 
-    /// `K`: answers a move's "Always for this sender?" while it shows,
+    /// `P`: answers a move's "Always for this sender?" while it shows,
     /// else opens the menu for the sender's mode.
     fn open_sender_move_menu(&mut self) {
         if let Some(ask) = self.mailbox.trust.sender_ask.take() {
@@ -226,18 +262,32 @@ impl App {
         self.queue_move(menu.message_id, mode, sender, menu.not_sure);
     }
 
-    /// One key on a Not-sure question: where it goes, stored as the answer.
-    fn answer_not_sure(&mut self, mode: ModeKindData) {
-        let Some(NowRow::NotSure(question)) = self.selected_now_row() else {
+    /// A new sender's answer from the menu: the sender's kind, remembered
+    /// for their future mail (what keys 1 to 4 sent).
+    fn answer_new_sender_from_menu(&mut self, kind: SenderKindData) {
+        let Some(menu) = self.mailbox.trust.move_menu.take() else {
             return;
         };
-        let message_id = question.message_id.clone();
-        self.mailbox.now_page.remove_not_sure(&message_id);
-        self.clamp_now_selection();
-        if sender_mode(mode) {
-            self.ask_always_for_sender(message_id.clone(), mode);
-        }
-        self.queue_move(message_id, mode, false, true);
+        let Some(question) = menu.new_sender else {
+            return;
+        };
+        let Some(answer) = question.choices.iter().find(|choice| choice.kind == kind) else {
+            return;
+        };
+        let status = format!(
+            "{} goes to {} from now on",
+            crate::ui::sanitize::one_line(&question.sender_email),
+            answer.label
+        );
+        self.queue_mutation(
+            Request::SetSenderKind {
+                account_id: question.account_id.clone(),
+                sender_email: question.sender_email.clone(),
+                kind: Some(kind),
+            },
+            MutationEffect::ModeDone(status),
+            "Saving...".into(),
+        );
     }
 
     /// Asked once, in the status line, after a Not-sure answer.
@@ -296,7 +346,7 @@ impl App {
     }
 
     /// A move landed: remember its sender question while it shows, and
-    /// teach `X` and `K` on the first one.
+    /// teach `X` and `P` on the first one.
     pub(crate) fn after_move(&mut self, outcome: &MoveOutcomeData, not_sure: bool) {
         if outcome.ask_sender.is_some() && !not_sure {
             self.mailbox.trust.sender_ask = Some(SenderAsk {
@@ -453,36 +503,59 @@ impl App {
         self.refetch_arrivals_list();
     }
 
-    /// Keys while the move menu is open: one per mode, Shift for the
-    /// sender, Esc closes. Everything else is swallowed.
+    /// Keys while the move menu is open (D168): each option's letter picks
+    /// it, `j`/`k` move the highlight and Enter runs it, Esc or `q` closes.
+    /// Everything else is swallowed.
     pub(super) fn move_menu_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
-        let menu = self.mailbox.trust.move_menu.as_ref()?;
-        let sender_only = menu.sender_only;
-        match key.code {
-            KeyCode::Esc => {
+        let menu = self.mailbox.trust.move_menu.as_mut()?;
+        let options = menu.options();
+        let chosen = match key.code {
+            KeyCode::Esc | KeyCode::Char('q') if key.modifiers == KeyModifiers::NONE => {
                 self.mailbox.trust.move_menu = None;
-                None
+                return None;
             }
+            KeyCode::Down | KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
+                menu.selected = (menu.selected + 1) % options.len().max(1);
+                return None;
+            }
+            KeyCode::Up | KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
+                menu.selected = menu
+                    .selected
+                    .checked_sub(1)
+                    .unwrap_or_else(|| options.len().saturating_sub(1));
+                return None;
+            }
+            KeyCode::Enter => *options.get(menu.selected)?,
             KeyCode::Char(c) if plain_or_shift(key.modifiers) => {
-                let shifted = c.is_ascii_uppercase();
-                let lower = c.to_ascii_lowercase();
-                let (_, mode) = MOVE_CHOICES.iter().find(|(letter, _)| *letter == lower)?;
-                if (shifted || sender_only) && !sender_mode(*mode) {
-                    return None;
-                }
-                Some(Action::MoveEmailTo {
-                    mode: *mode,
-                    sender: shifted,
-                })
+                // The sender's menu takes its letters in either case.
+                let c = if menu.sender_only {
+                    c.to_ascii_uppercase()
+                } else {
+                    c
+                };
+                *options.iter().find(|option| option.key() == c)?
             }
-            _ => None,
-        }
+            _ => return None,
+        };
+        Some(match chosen {
+            MoveOption::Email(mode) => Action::MoveEmailTo {
+                mode,
+                sender: false,
+            },
+            MoveOption::Sender(mode) => Action::MoveEmailTo { mode, sender: true },
+            MoveOption::NewSender(kind) => Action::AnswerNewSender(kind),
+        })
     }
 
     /// Keys while the arrivals list is open over Now.
     pub(super) fn arrivals_list_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let plain = key.modifiers == KeyModifiers::NONE;
         let shifted = plain_or_shift(key.modifiers);
+        // The sender menu moved to `P` (blueprint 35).
+        if key.code == KeyCode::Char('K') && shifted {
+            self.announce_moved("arrivals", "K");
+            return None;
+        }
         let list = self.mailbox.trust.arrivals_list.as_mut()?;
         let count = list.list.as_ref().map_or(0, |list| list.items.len());
         match key.code {
@@ -497,7 +570,7 @@ impl App {
                 None
             }
             KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
-            KeyCode::Char('K') if shifted => Some(Action::OpenSenderMoveMenu),
+            KeyCode::Char('P') if shifted => Some(Action::OpenSenderMoveMenu),
             KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),
             KeyCode::Enter | KeyCode::Char('o') => {
                 let message_id = list.selected_item()?.message_id.clone();
@@ -510,8 +583,9 @@ impl App {
         }
     }
 
-    /// y or n while "Always for this sender? y/n" waits. Any other key
-    /// drops the question and does what it always does.
+    /// y or n while "Always for this sender? y/n" waits; Enter is y and Esc
+    /// is n (D168). Any other key drops the question and does what it
+    /// always does.
     pub(super) fn sender_ask_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let asking = self
             .mailbox
@@ -523,7 +597,9 @@ impl App {
             return None;
         }
         match (key.code, key.modifiers) {
-            (KeyCode::Char('y'), KeyModifiers::NONE) => Some(Action::AnswerAlwaysForSender(true)),
+            (KeyCode::Char('y'), KeyModifiers::NONE) | (KeyCode::Enter, _) => {
+                Some(Action::AnswerAlwaysForSender(true))
+            }
             (KeyCode::Char('n'), KeyModifiers::NONE) | (KeyCode::Esc, _) => {
                 Some(Action::AnswerAlwaysForSender(false))
             }

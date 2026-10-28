@@ -2201,26 +2201,42 @@
     },
     {
       "id": "mail.snooze",
-      "label": "Snooze…",
+      "label": "Not now…",
+      "short_label": "Not now",
+      "description": "Later with no time, or snooze until a time",
       "group": "Mail",
       "scopes": [
         "list",
-        "reader"
+        "reader",
+        "now"
       ],
       "keys": [
-        "Z"
+        "b"
       ],
       "tui": [
         {
           "name": "Snooze",
           "keys": [
-            "Z"
+            "b"
           ],
           "contexts": [
             "list",
             "reader",
-            "place"
+            "sidebar",
+            "place",
+            "now"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "Z",
+          "contexts": [
+            "list",
+            "reader",
+            "place"
+          ],
+          "until": "0.6.197"
         }
       ]
     },
@@ -2256,23 +2272,7 @@
         "list",
         "reader"
       ],
-      "keys": [
-        "b"
-      ],
-      "tui": [
-        {
-          "name": "FlagReplyLater",
-          "keys": [
-            "b"
-          ],
-          "contexts": [
-            "list",
-            "reader",
-            "sidebar",
-            "place"
-          ]
-        }
-      ]
+      "palette_only": true
     },
     {
       "id": "mail.make-todo",
@@ -2313,20 +2313,17 @@
         "list",
         "reader"
       ],
-      "keys": [
-        "T"
-      ],
-      "tui": [
+      "palette_only": true,
+      "moved": [
         {
-          "name": "PassToMode",
-          "keys": [
-            "T"
-          ],
+          "key": "T",
           "contexts": [
             "list",
             "reader",
             "place"
-          ]
+          ],
+          "until": "0.6.197",
+          "to": "modes.move"
         }
       ]
     },
@@ -2455,25 +2452,23 @@
     {
       "id": "mail.whois",
       "label": "Who is this sender?",
+      "short_label": "Who is this",
       "group": "Mail",
       "scopes": [
         "list",
         "reader"
       ],
-      "keys": [
-        "W"
-      ],
-      "tui": [
+      "palette_only": true,
+      "moved": [
         {
-          "name": "OpenWhoisOnFocusedSender",
-          "keys": [
-            "W"
-          ],
+          "key": "W",
           "contexts": [
             "list",
             "reader",
             "place"
-          ]
+          ],
+          "until": "0.6.197",
+          "to": "mail.sender-profile"
         }
       ]
     },
@@ -4500,13 +4495,23 @@
     },
     {
       "id": "focus.snooze",
-      "label": "Snooze…",
+      "label": "Not now…",
+      "short_label": "Not now",
       "group": "Compose",
       "scopes": [
         "focus"
       ],
       "keys": [
-        "Z"
+        "b"
+      ],
+      "moved": [
+        {
+          "key": "Z",
+          "contexts": [
+            "focus"
+          ],
+          "until": "0.6.197"
+        }
       ]
     },
     {
@@ -4919,24 +4924,33 @@
     },
     {
       "id": "todo.schedule",
-      "label": "Schedule…",
+      "label": "Not now: schedule…",
       "short_label": "Schedule",
       "group": "Triage",
       "scopes": [
         "todo"
       ],
       "keys": [
-        "Z"
+        "b"
       ],
       "tui": [
         {
           "name": "TodoSchedule",
           "keys": [
-            "Z"
+            "b"
           ],
           "contexts": [
             "todo"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "Z",
+          "contexts": [
+            "todo"
+          ],
+          "until": "0.6.197"
         }
       ]
     },
@@ -5846,7 +5860,7 @@
     },
     {
       "id": "reading.later",
-      "label": "Save for later",
+      "label": "Not now: later or snooze…",
       "short_label": "Later",
       "group": "Read",
       "scopes": [
@@ -6156,7 +6170,7 @@
     },
     {
       "id": "reading.reader-later",
-      "label": "Save for later",
+      "label": "Not now: later or snooze…",
       "short_label": "Later",
       "group": "Read",
       "scopes": [
@@ -6548,49 +6562,81 @@
     {
       "id": "now.sender-1",
       "label": "New sender: keep in Messages",
-      "short_label": "Messages",
+      "short_label": "New sender",
       "group": "Triage",
       "scopes": [
         "now"
       ],
-      "keys": [
-        "1"
+      "hide_in_palette": true,
+      "moved": [
+        {
+          "key": "1",
+          "contexts": [
+            "now"
+          ],
+          "until": "0.6.197",
+          "to": "modes.move"
+        }
       ]
     },
     {
       "id": "now.sender-2",
       "label": "New sender: keep in Updates",
-      "short_label": "Updates",
+      "short_label": "New sender",
       "group": "Triage",
       "scopes": [
         "now"
       ],
-      "keys": [
-        "2"
+      "hide_in_palette": true,
+      "moved": [
+        {
+          "key": "2",
+          "contexts": [
+            "now"
+          ],
+          "until": "0.6.197",
+          "to": "modes.move"
+        }
       ]
     },
     {
       "id": "now.sender-3",
       "label": "New sender: keep in Reading",
-      "short_label": "Reading",
+      "short_label": "New sender",
       "group": "Triage",
       "scopes": [
         "now"
       ],
-      "keys": [
-        "3"
+      "hide_in_palette": true,
+      "moved": [
+        {
+          "key": "3",
+          "contexts": [
+            "now"
+          ],
+          "until": "0.6.197",
+          "to": "modes.move"
+        }
       ]
     },
     {
       "id": "now.sender-4",
       "label": "New sender: block",
-      "short_label": "Block",
+      "short_label": "New sender",
       "group": "Triage",
       "scopes": [
         "now"
       ],
-      "keys": [
-        "4"
+      "hide_in_palette": true,
+      "moved": [
+        {
+          "key": "4",
+          "contexts": [
+            "now"
+          ],
+          "until": "0.6.197",
+          "to": "modes.move"
+        }
       ]
     },
     {
@@ -6785,8 +6831,8 @@
     },
     {
       "id": "messages.reply-later",
-      "label": "Reply later…",
-      "short_label": "Reply later",
+      "label": "Not now: reply later…",
+      "short_label": "Not now",
       "group": "Triage",
       "scopes": [
         "messages"
@@ -6796,7 +6842,7 @@
       ],
       "tui": [
         {
-          "name": "FlagReplyLater",
+          "name": "Snooze",
           "keys": [
             "b"
           ],
@@ -7075,49 +7121,81 @@
     {
       "id": "messages.sender-1",
       "label": "New sender: keep in Messages",
-      "short_label": "Messages",
+      "short_label": "New sender",
       "group": "Triage",
       "scopes": [
         "messages"
       ],
-      "keys": [
-        "1"
+      "hide_in_palette": true,
+      "moved": [
+        {
+          "key": "1",
+          "contexts": [
+            "messages"
+          ],
+          "until": "0.6.197",
+          "to": "modes.move"
+        }
       ]
     },
     {
       "id": "messages.sender-2",
       "label": "New sender: keep in Updates",
-      "short_label": "Updates",
+      "short_label": "New sender",
       "group": "Triage",
       "scopes": [
         "messages"
       ],
-      "keys": [
-        "2"
+      "hide_in_palette": true,
+      "moved": [
+        {
+          "key": "2",
+          "contexts": [
+            "messages"
+          ],
+          "until": "0.6.197",
+          "to": "modes.move"
+        }
       ]
     },
     {
       "id": "messages.sender-3",
       "label": "New sender: keep in Reading",
-      "short_label": "Reading",
+      "short_label": "New sender",
       "group": "Triage",
       "scopes": [
         "messages"
       ],
-      "keys": [
-        "3"
+      "hide_in_palette": true,
+      "moved": [
+        {
+          "key": "3",
+          "contexts": [
+            "messages"
+          ],
+          "until": "0.6.197",
+          "to": "modes.move"
+        }
       ]
     },
     {
       "id": "messages.sender-4",
       "label": "New sender: block",
-      "short_label": "Block",
+      "short_label": "New sender",
       "group": "Triage",
       "scopes": [
         "messages"
       ],
-      "keys": [
-        "4"
+      "hide_in_palette": true,
+      "moved": [
+        {
+          "key": "4",
+          "contexts": [
+            "messages"
+          ],
+          "until": "0.6.197",
+          "to": "modes.move"
+        }
       ]
     },
     {
@@ -7496,6 +7574,36 @@
             "reading-reader",
             "updates"
           ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "m",
+          "contexts": [
+            "not-sure"
+          ],
+          "until": "0.6.197"
+        },
+        {
+          "key": "x",
+          "contexts": [
+            "not-sure"
+          ],
+          "until": "0.6.197"
+        },
+        {
+          "key": "r",
+          "contexts": [
+            "not-sure"
+          ],
+          "until": "0.6.197"
+        },
+        {
+          "key": "e",
+          "contexts": [
+            "not-sure"
+          ],
+          "until": "0.6.197"
         }
       ]
     },

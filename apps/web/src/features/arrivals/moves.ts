@@ -1,5 +1,5 @@
 /*
- * Moving mail between modes (D119): `X` moves one email, `K` sends
+ * Moving mail between modes (D119): `X` moves one email, `P` sends
  * everything from its sender. The daemon stores each as a correction and
  * tells every client (`ModesChanged`); this file runs the request, shows
  * the toast with Undo and "Always for this sender?", and keeps `u` on the
@@ -15,11 +15,12 @@ import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import { invalidateMailQueries } from "@/features/mail-actions/mailQueryInvalidation";
 import { claimUndo } from "@/features/mail-actions/mailUndo";
 import { toneFor } from "@/features/mail-actions/verbFeedback";
+import type { ScreenerQuestion } from "@/features/modes/membership";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { useUndo } from "@/state/undoStore";
 
 import { moveMessage, undoMove, type MoveRequest } from "./api";
-import type { MoveOutcome } from "./types";
+import type { ModeId, MoveOutcome } from "./types";
 import { hintSeen, markHintSeen } from "./useTrustHint";
 
 /** What a picker moves: one email, named for the dialog's title. */
@@ -29,9 +30,19 @@ export interface MoveSubject {
   label: string;
   /** Who sent it, for the sender picker's title. */
   senderLabel?: string;
+  /**
+   * The Not-sure question this email is: the picker answers it, starting on
+   * where it is now. `answer` sends the move as that answer.
+   */
+  notSure?: { mode: ModeId; answer: (mode: ModeId, sender: boolean) => void };
+  /**
+   * A first-time sender's question on this row: the picker's capitals (or
+   * `P`'s picker) answer it with the sender's kind, as its digits did.
+   */
+  newSender?: { question: ScreenerQuestion; label: string };
 }
 
-/** Open the destination picker: this email (`X`) or its sender (`K`). */
+/** Open the destination picker: this email (`X`) or its sender (`P`). */
 export function openMovePicker(subject: MoveSubject, sender = false): void {
   if (refuseWhileDaemonDown(sender ? "move the sender" : "move it")) return;
   openMailDialog({ kind: "move-to-mode", subject, sender });
@@ -51,8 +62,8 @@ export const useSenderAsk = create<SenderAskState>((set) => ({
 const toastId = (outcome: MoveOutcome) => `move-${outcome.message_id}`;
 
 /**
- * `K` while a move's toast asks: answer it for that email's sender. False
- * when no toast is asking, so `K` opens the sender picker instead.
+ * `P` while a move's toast asks: answer it for that email's sender. False
+ * when no toast is asking, so `P` opens the sender picker instead.
  */
 export function answerPendingSenderAsk(): boolean {
   const pending = useSenderAsk.getState().pending;

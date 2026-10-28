@@ -18,9 +18,10 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &SenderProfileModalState, them
 
     let title = match &state.email {
         Some(email) => {
-            format!(" Sender · {email} · 1/2/3 tabs · j/k select · Enter open · Esc close ")
+            format!(" Sender · {email} · 1/2/3 tabs · j/k select · Enter open · W who is this · Esc close ")
         }
-        None => " Sender · 1/2/3 tabs · j/k select · Enter open · Esc close ".to_string(),
+        None => " Sender · 1/2/3 tabs · j/k select · Enter open · W who is this · Esc close "
+            .to_string(),
     };
     let block = Block::default()
         .title(title)

@@ -340,8 +340,8 @@ for motion), implement the command in the view's controller, done.
   (`marksForView`), because each view and Marginalia number paragraphs
   differently; any other highlight marks its first match.
 - The article is fetched only on `L` or the Article tab, or on `M` for a digest link whose article isn't saved (Marginalia needs it first), after the toast
-  names the site; `b` on a link saves it and then fetches it so it reads
-  offline.
+  names the site; Later in `b`'s Not-now picker saves a link and then fetches
+  it so it reads offline.
 - Scopes `reading` and `reading-reader` in `lib/actions`; swipe right is
   Later and left is let go on phones.
 

@@ -327,7 +327,7 @@ test("HTML body renders inside a sandboxed iframe", async ({ page }) => {
 
   await expect(lightReader.getByRole("button", { name: /^to Planetary Escape/ })).toBeVisible();
   // The toolbar keeps the frequent verbs; the rest are in More.
-  for (const name of ["Archive (e)", "Snooze (Z)", "More actions"]) {
+  for (const name of ["Archive (e)", "Not now (b)", "More actions"]) {
     await expect(lightReader.getByRole("button", { name, exact: true })).toBeVisible();
   }
   await expect(lightReader.getByRole("button", { name: "Reply…" })).toBeVisible();

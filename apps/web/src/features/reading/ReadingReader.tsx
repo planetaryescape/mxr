@@ -19,6 +19,8 @@ import { ReaderToolbar, ToolButton } from "@/components/ToolButton";
 import { Received } from "@/components/When";
 import { Button } from "@/components/ui/button";
 import { fetchThread } from "@/features/mailbox/api";
+import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
+import { READING_LATER, readingNotNow } from "@/features/mail-actions/notNow";
 import { BridgeRequestError } from "@/api/client";
 import { PageError } from "@/components/PageParts";
 import { MessageContent } from "@/features/thread/MessageCard";
@@ -236,13 +238,25 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     issue: () => {
       setView("issue");
     },
+    // Not now (`b`): Later first, then a time that snoozes the issue's email.
     later: () =>
-      void putOnLater(
-        item.item_key,
-        item.url
-          ? { domain: item.domain, tracked: item.tracked, cached: Boolean(article) }
-          : undefined,
-      ),
+      openMailDialog({
+        kind: "not-now",
+        picker: readingNotNow({
+          messageId: item.message_id,
+          title: item.title,
+          later: {
+            ...READING_LATER,
+            run: () =>
+              putOnLater(
+                item.item_key,
+                item.url
+                  ? { domain: item.domain, tracked: item.tracked, cached: Boolean(article) }
+                  : undefined,
+              ),
+          },
+        }),
+      }),
     letGo: () => {
       void letGo([item.thread_id]);
       next();

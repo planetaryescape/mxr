@@ -142,11 +142,11 @@ test("g F works through the queue: send and next, skip, snooze, then a calm fini
   await expect(heading(page)).toHaveText(three[2]!.subject);
   await expect(progress).toContainText("2 of 3");
 
-  // Snooze with a typed time.
+  // Not now, snoozed to a typed time.
   await reply(page).locator(".cm-content").click();
   await page.keyboard.press("Tab");
-  await page.keyboard.press("Z");
-  const snooze = page.getByRole("dialog", { name: "Snooze until…" });
+  await page.keyboard.press("b");
+  const snooze = page.getByRole("dialog", { name: "Not now" });
   await snooze.getByLabel("Or type a time").fill("tomorrow 9am");
   await expect(snooze.getByRole("status")).toContainText("09:00");
   await snooze.getByLabel("Or type a time").press("Enter");

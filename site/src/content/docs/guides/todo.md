@@ -132,7 +132,8 @@ mxr todo snooze TODO_ID "in 3d"
 ```
 
 Scheduling changes when the task appears; it leaves the due date intact.
-On the web, press `Z` to schedule the selected task. Use
+In the TUI and on the web, press `b` (Not now) and pick a time to schedule
+the selected task. Use
 `mxr todo snooze TODO_ID --clear --dry-run` to preview returning to the date
 mxr calculated, then repeat without `--dry-run` to apply it.
 

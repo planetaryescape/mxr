@@ -2,8 +2,9 @@
  * Archive's keys, as in the TUI's records lens and blueprint 22's key
  * table. The mounted Archive registers what each command does
  * (`useScopeController`); the reader keeps its own keys while it has
- * focus. `g e` opens Archive from anywhere, and `T` on a conversation
- * (in verbActions) files it.
+ * focus. `g e` opens Archive from anywhere; `X` then `e` on a
+ * conversation files it, and Pass to a mode in the palette previews the
+ * card first.
  */
 
 import { BadgeCheck, Copy, Download, FileText, Filter, Mail, PenLine, X } from "lucide-react";

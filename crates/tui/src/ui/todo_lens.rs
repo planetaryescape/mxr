@@ -826,7 +826,7 @@ fn draw_catchup_preview(
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
-/// The `Z`, `,` and `t` prompt. Drawn over any screen: `t` works from
+/// The `,` and `t` prompt. Drawn over any screen: `t` works from
 /// the mail list and the reader too.
 pub fn draw_prompt(
     frame: &mut Frame,
@@ -838,11 +838,6 @@ pub fn draw_prompt(
         return;
     };
     let (title, lead, hint) = match prompt.kind {
-        TodoPromptKind::Schedule { .. } => (
-            " Schedule ",
-            "When should it show up? The due date stays as it is.",
-            "Type a time: mon 9am \u{b7} in 3d \u{b7} fri",
-        ),
         TodoPromptKind::Correct { .. } => (
             " Correct to-do ",
             "1 Not a to-do · 2 Not mine · 3 Already done · 4 Wrong details",
@@ -890,10 +885,6 @@ pub fn draw_prompt(
     );
     let (lines, style) = if let Some(error) = &prompt.error {
         (vec![error.clone()], Style::default().fg(theme.error))
-    } else if matches!(prompt.kind, TodoPromptKind::Schedule { .. })
-        && !prompt.input.trim().is_empty()
-    {
-        (prompt.time.lines(), Style::default().fg(theme.text_primary))
     } else {
         (
             vec![hint.to_string()],
@@ -1170,7 +1161,7 @@ pub(crate) mod tests {
         assert!(rendered.contains("3 expired since you last looked \u{b7} E open the list"));
         // The footer says where Enter goes before it's pressed.
         assert!(rendered.contains("link goes to camden.gov.uk \u{b7} Here because"));
-        assert!(rendered.contains("\u{21b5} Open email to pay  e tick off  Z schedule"));
+        assert!(rendered.contains("\u{21b5} Open email to pay  e tick off  b schedule"));
         assert!(!rendered.contains('\u{2014}'), "no em dashes");
     }
 

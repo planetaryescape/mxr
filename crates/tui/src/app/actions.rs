@@ -185,7 +185,7 @@ impl App {
             Action::OpenMoveMenu
             | Action::OpenSenderMoveMenu
             | Action::MoveEmailTo { .. }
-            | Action::NowAnswerNotSure(_)
+            | Action::AnswerNewSender(_)
             | Action::AnswerAlwaysForSender(_)
             | Action::OpenArrivals
             | Action::ArrivalsNextBucket
@@ -196,8 +196,7 @@ impl App {
             | Action::NowOpen
             | Action::NowDone
             | Action::NowOpenEmail
-            | Action::NowLetGoDigest
-            | Action::NowAnswerSender(_) => self.apply_now_action(action),
+            | Action::NowLetGoDigest => self.apply_now_action(action),
             Action::MessagesOpen
             | Action::MessagesAck
             | Action::MessagesCancelAck

@@ -658,12 +658,21 @@ impl App {
             Action::CloseBriefingModal => {
                 self.modals.briefing.close();
             }
+            // From the person page (`p` then `W`) or the palette.
             Action::OpenWhoisOnFocusedSender => {
-                let Some(env) = self.context_envelope() else {
+                let profile = self
+                    .modals
+                    .sender_profile
+                    .visible
+                    .then(|| self.modals.sender_profile.email.clone())
+                    .flatten();
+                let Some(query) =
+                    profile.or_else(|| self.context_envelope().map(|env| env.from.email.clone()))
+                else {
                     self.status_message = Some("No message selected".into());
                     return;
                 };
-                let query = env.from.email.clone();
+                self.modals.sender_profile.close();
                 self.modals.whois.open_loading(query.clone());
                 self.pending_whois_query = Some(query);
                 self.status_message = Some("Loading whois...".into());

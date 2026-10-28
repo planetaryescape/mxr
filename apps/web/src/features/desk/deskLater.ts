@@ -25,7 +25,11 @@ export type DeferKind = Schemas["DeferKindData"];
 
 /** The toast for what the daemon set: it names the time exactly. */
 export function deferredMessage(kinds: readonly DeferKind[], choice: TimeChoice): string {
-  const when = describeChoice(choice);
+  return deferredMessageAt(kinds, describeChoice(choice));
+}
+
+/** The same, for a time already put in words (a Not-now preset). */
+function deferredMessageAt(kinds: readonly DeferKind[], when: string): string {
   return kinds.length > 0 && kinds.every((kind) => kind === "waiting")
     ? `Back ${when} if nobody replies`
     : `Reply later: back ${when}`;
@@ -48,7 +52,16 @@ export function deskLaneOf(threadId: string): DeskLaneKind | undefined {
 }
 
 /** Set the time. Resolves true when every conversation took it. */
-export async function deferThreads(threadIds: string[], choice: TimeChoice): Promise<boolean> {
+export function deferThreads(threadIds: string[], choice: TimeChoice): Promise<boolean> {
+  return deferThreadsAt(threadIds, choice.at, describeChoice(choice));
+}
+
+/** Set the time from the instant shown and its words (a typed time or a preset). */
+export async function deferThreadsAt(
+  threadIds: string[],
+  until: string,
+  when: string,
+): Promise<boolean> {
   const unique = [...new Set(threadIds)];
   if (unique.length === 0) return false;
   // Off the desk while the request runs (the hidden set Done uses).
@@ -58,7 +71,7 @@ export async function deferThreads(threadIds: string[], choice: TimeChoice): Pro
   try {
     const result = await apiFetch<ThreadsDeferred>("/api/v1/mail/desk/later", {
       method: "POST",
-      body: { thread_ids: unique, until: choice.at },
+      body: { thread_ids: unique, until },
     });
     const set = result.items.flatMap((item) => (item.error || !item.kind ? [] : [item.kind]));
     const failed = result.items.filter((item) => item.error);
@@ -68,7 +81,7 @@ export async function deferThreads(threadIds: string[], choice: TimeChoice): Pro
       claim.settle(
         offerUndo(
           "reply-later-at",
-          deferredMessage(set, choice),
+          deferredMessageAt(set, when),
           `desk-later-${mutationId ?? unique.join(",")}`,
           reverse,
           claim.run,

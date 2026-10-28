@@ -118,9 +118,6 @@ pub enum Action {
     NowOpenEmail,
     /// `A` on Now: preview letting go of the Updates card, or confirm it.
     NowLetGoDigest,
-    /// A digit on a new sender's row: answer its one question with that
-    /// choice (`SetSenderKind`).
-    NowAnswerSender(usize),
     /// Open Updates (`g u`): the twice-daily briefing by source
     /// (`Request::GetUpdatesDigest`).
     OpenUpdates,
@@ -159,8 +156,9 @@ pub enum Action {
         mode: mxr_protocol::ModeKindData,
         sender: bool,
     },
-    /// m, x, u, r or e on a Not-sure question on Now: where it goes.
-    NowAnswerNotSure(mxr_protocol::ModeKindData),
+    /// A capital in the move menu on a new sender's row: answer its one
+    /// question with that kind (`SetSenderKind`).
+    AnswerNewSender(mxr_protocol::SenderKindData),
     /// y or n to "Always for this sender?" after a Not-sure answer.
     AnswerAlwaysForSender(bool),
     /// Enter on Now's arrivals line: the emails behind it.

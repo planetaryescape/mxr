@@ -301,7 +301,6 @@ impl App {
             (KeyCode::Char('D'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::Unsubscribe)
             }
-            (KeyCode::Char('Z'), modifiers) if plain_or_shift(modifiers) => Some(Action::Snooze),
             (KeyCode::Char('O'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenInBrowser)
             }
@@ -316,17 +315,9 @@ impl App {
             }
             (KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => Some(Action::OpenLinks),
             (KeyCode::Char('t'), KeyModifiers::NONE) => Some(Action::CreateTodoFromMessage),
-            (KeyCode::Char('T'), modifiers) if plain_or_shift(modifiers) => {
-                Some(Action::PassToMode)
-            }
             // Slice 5.1 (C2.6): B opens the thread briefing modal.
             (KeyCode::Char('B'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::OpenThreadBriefing)
-            }
-            // Slice 6.1 (C2.9): W opens the whois modal for the
-            // focused sender. (`?` is reserved for the help modal.)
-            (KeyCode::Char('W'), modifiers) if plain_or_shift(modifiers) => {
-                Some(Action::OpenWhoisOnFocusedSender)
             }
             // Same keys as the web app. Reading and Paper trail take `p`
             // for pin before these mail keys are consulted.
@@ -615,6 +606,10 @@ impl App {
                 (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::SenderProfileNextMessage),
                 (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::SenderProfilePrevMessage),
                 (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::OpenSenderProfileMessage),
+                // Whois lives on the person page (blueprint 35).
+                (KeyCode::Char('W'), modifiers) if plain_or_shift(modifiers) => {
+                    Some(Action::OpenWhoisOnFocusedSender)
+                }
                 _ => None,
             };
         }
@@ -1131,15 +1126,17 @@ impl App {
 
         if self.mailbox.sender_kind_menu.is_some() {
             return match (key.code, key.modifiers) {
-                (KeyCode::Char(c), KeyModifiers::NONE) => {
+                (KeyCode::Esc, _) | (KeyCode::Char('q'), KeyModifiers::NONE) => {
+                    self.mailbox.sender_kind_menu = None;
+                    None
+                }
+                // A sender's menu: either case picks.
+                (KeyCode::Char(c), modifiers) if plain_or_shift(modifiers) => {
+                    let c = c.to_ascii_lowercase();
                     crate::ui::place_lens::SENDER_KIND_CHOICES
                         .iter()
                         .find(|(choice, _, _)| *choice == c)
                         .map(|(_, kind, _)| Action::SetSenderKind(*kind))
-                }
-                (KeyCode::Esc, _) => {
-                    self.mailbox.sender_kind_menu = None;
-                    None
                 }
                 _ => None,
             };
@@ -1253,11 +1250,16 @@ impl App {
                     _ => return None,
                 }
             }
-            let total = crate::ui::snooze_modal::rows_count();
+            let total = crate::ui::snooze_modal::rows_count(&self.modals.snooze_panel);
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, _) => return Some(Action::Snooze),
-                (KeyCode::Esc, _) => {
-                    self.modals.snooze_panel.visible = false;
+                (KeyCode::Esc | KeyCode::Char('q'), _) => {
+                    self.close_not_now();
+                    return None;
+                }
+                // A digit picks the Nth time at once (D166).
+                (KeyCode::Char(digit @ '1'..='9'), KeyModifiers::NONE) => {
+                    self.not_now_preset(digit as usize - '0' as usize);
                     return None;
                 }
                 (KeyCode::Char('j') | KeyCode::Down, _) => {

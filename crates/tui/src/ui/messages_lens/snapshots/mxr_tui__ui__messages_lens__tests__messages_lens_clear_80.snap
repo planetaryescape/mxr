@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/messages_lens/tests.rs
+assertion_line: 411
 expression: rendered
 ---
 "╭ Messages ─ Conversations that need your attention. Reply or mark done. ──────╮"
@@ -35,4 +36,4 @@ expression: rendered
 "│                                                                              │"
 "╰──────────────────────────────────────────────────────────────────────────────╯"
 "                                                                                "
-" f cycle views  r reply  . got it  e done here  t make it a to-do  b reply lat… "
+" f cycle views  r reply  . got it  e done here  t make it a to-do  b not now  … "

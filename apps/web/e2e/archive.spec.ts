@@ -230,12 +230,16 @@ test("X takes a record out of Archive without touching the email, and u brings i
   await expect(page.getByTestId("record-row").filter({ hasText: "Apple" })).toHaveCount(1);
 });
 
-test("T on a conversation previews its record card before filing it in Archive", async ({
+test("Pass to a mode previews a conversation's record card before filing it in Archive", async ({
   page,
 }) => {
   await openList(page, "/m/inbox");
   await mailList(page).focus();
-  await page.keyboard.press("T");
+  // `T` moved into the X picker (blueprint 35); the preview stays in the palette.
+  await page.keyboard.press(":");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("combobox").fill("Pass to a mode");
+  await palette.getByRole("option", { name: /^Pass to a mode/ }).click();
   const dialog = page.getByTestId("pass-to-mode-dialog");
   await expect(dialog).toContainText("Archive: file it as a record.");
   await expect(dialog.getByTestId("file-preview")).toBeVisible();

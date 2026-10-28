@@ -2085,7 +2085,9 @@ fn command_palette_includes_major_mail_actions() {
     assert!(labels.contains(&"Archive".to_string()));
     assert!(labels.contains(&"Delete".to_string()));
     assert!(labels.contains(&"Apply Label".to_string()));
-    assert!(labels.contains(&"Snooze".to_string()));
+    assert!(labels.contains(&"Not Now (later or snooze)".to_string()));
+    assert!(labels.contains(&"Who Is This Sender".to_string()));
+    assert!(labels.contains(&"Pass To A Mode (file in Archive)".to_string()));
     assert!(labels.contains(&"Clear Selection".to_string()));
     assert!(labels.contains(&"Open Accounts Page".to_string()));
     assert!(labels.contains(&"New IMAP/SMTP Account".to_string()));
@@ -2133,6 +2135,8 @@ fn snooze_action_opens_modal_then_queues_request() {
 
     app.apply(Action::Snooze);
     assert!(app.modals.snooze_panel.visible);
+    // Row 0 is Later (no time); the first time is under it.
+    app.modals.snooze_panel.selected_index = 1;
 
     app.apply(Action::Snooze);
     assert!(!app.modals.snooze_panel.visible);
@@ -2147,6 +2151,22 @@ fn snooze_action_opens_modal_then_queues_request() {
         }
         other => panic!("expected snooze request, got {other:?}"),
     }
+}
+
+#[test]
+fn not_now_later_is_the_untimed_reply_later() {
+    let mut app = App::new();
+    app.mailbox.envelopes = make_test_envelopes(1);
+    app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+
+    app.apply(Action::Snooze);
+    assert_eq!(app.modals.snooze_panel.selected_index, 0);
+    app.apply(Action::Snooze);
+    assert!(!app.modals.snooze_panel.visible);
+    assert!(matches!(
+        app.pending_mutation_queue[0].request,
+        Request::SetReplyLater { flag: true, .. }
+    ));
 }
 
 #[test]

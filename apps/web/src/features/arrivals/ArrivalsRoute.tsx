@@ -20,7 +20,7 @@ import type { ArrivalBucket, ArrivalItem } from "./types";
 /**
  * The emails behind one count of Now's arrivals line, newest first, in
  * the line's own window: exactly as many rows as the count. Each row says
- * where it went and why, and `X` / `K` move it or its sender.
+ * where it went and why, and `X` / `P` move it or its sender.
  */
 export function ArrivalsRoute({
   bucket,
@@ -48,7 +48,7 @@ export function ArrivalsRoute({
         title={list.data ? listTitle(list.data.total, bucket, list.data.since) : "Arrivals"}
         purpose={
           <>
-            Newest first. <KeyChip>X</KeyChip> moves an email, <KeyChip>K</KeyChip> everything from
+            Newest first. <KeyChip>X</KeyChip> moves an email, <KeyChip>P</KeyChip> everything from
             its sender.
           </>
         }
@@ -81,7 +81,7 @@ function ArrivalRows({ items, total }: { items: ArrivalItem[]; total: number }) 
     if (row && listRef.current?.contains(document.activeElement)) row.focus();
   }, [at]);
 
-  // The page's keys (j, k, Enter, X, K) come from the key definition, so
+  // The page's keys (j, k, Enter, X, P) come from the key definition, so
   // the global keys keep working beside them and `u` undoes an `X` move.
   useShortcutScope("arrivals");
   useScopeController("arrivals", {

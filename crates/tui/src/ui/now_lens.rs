@@ -250,15 +250,21 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
             let selected = index == view.selected_index;
             body.select(person_line(person, selected, width, theme), selected);
             if let Some(question) = &person.new_sender {
+                // Answered through `X`: a capital per answer (blueprint 35).
                 let choices = question
                     .choices
                     .iter()
-                    .enumerate()
-                    .map(|(i, choice)| format!("{} {}", i + 1, choice.label))
+                    .map(|choice| {
+                        format!(
+                            "{} {}",
+                            crate::app::new_sender_key(choice.kind),
+                            one_line(&choice.label)
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join("  ");
                 for line in wrap(
-                    &format!("{}  {choices}", one_line(&question.question)),
+                    &format!("{}  X then {choices}", one_line(&question.question)),
                     width.saturating_sub(6),
                 ) {
                     body.text(format!("  {line}"), Style::default().fg(theme.accent));
@@ -412,11 +418,13 @@ fn arrivals_lines(
     if let Some(ask) = &arrivals.not_sure_line {
         body.text(one_line(ask), Style::default().fg(theme.text_secondary));
     }
+    // Answered through `X` (blueprint 35): its letters, after the X.
     let choices = crate::app::MOVE_CHOICES
         .iter()
         .map(|(key, mode)| format!("{key} {}", mode.name()))
         .collect::<Vec<_>>()
         .join("  ");
+    let choices = format!("X then {choices}");
     for question in &arrivals.not_sure {
         let selected = *index == view.selected_index;
         body.select(
@@ -430,7 +438,9 @@ fn arrivals_lines(
             selected,
         );
         if selected {
-            body.text(format!("  {choices}"), Style::default().fg(theme.accent));
+            for line in wrap(&choices, width.saturating_sub(6)) {
+                body.text(format!("  {line}"), Style::default().fg(theme.accent));
+            }
         }
         *index += 1;
     }

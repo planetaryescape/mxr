@@ -37,9 +37,65 @@ pub const WARN_STATUS_TTL: Duration = Duration::from_secs(5);
 
 pub use mxr_config::snooze::{SnoozeOption as SnoozePreset, SNOOZE_PRESETS};
 
+/// What `b` (Not now, D173) acts on, and so what its rows do. The ids are
+/// copied when the picker opens, so a refresh underneath can't retarget it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NotNowTarget {
+    /// An email in a mail list, the reader or Now: Later is the untimed
+    /// reply later; a time snoozes it.
+    Mail { message_id: MessageId },
+    /// A conversation in Messages or on the desk: Later is the untimed
+    /// reply later; a time takes it off until then (`DeferThreads`). On
+    /// Waiting on there is no Later, because it needs a time.
+    Conversation {
+        thread_id: ThreadId,
+        message_id: MessageId,
+        waiting: bool,
+    },
+    /// A Reading item: Later saves it (or takes it off); a time snoozes
+    /// the issue it came in.
+    Reading {
+        item_key: String,
+        message_id: MessageId,
+        on_later: bool,
+        link: bool,
+        domain: Option<String>,
+    },
+    /// A to-do: a time schedules it. A to-do has no untimed later.
+    Todo { todo_id: String },
+}
+
+impl NotNowTarget {
+    /// The first row's words, when this target has one.
+    pub fn later_label(&self) -> Option<&'static str> {
+        match self {
+            Self::Mail { .. } => Some("Later (no time): reply later"),
+            Self::Conversation { waiting: false, .. } => Some("Later (no time): reply later"),
+            Self::Conversation { waiting: true, .. } | Self::Todo { .. } => None,
+            Self::Reading {
+                on_later: false, ..
+            } => Some("Later (no time): save for later"),
+            Self::Reading { on_later: true, .. } => Some("Take it off Later"),
+        }
+    }
+
+    /// What a time does, for the picker's title.
+    pub fn title(&self) -> &'static str {
+        match self {
+            Self::Todo { .. } => " Not now: schedule ",
+            Self::Conversation { waiting: true, .. } => " Not now: bring back if nobody replies ",
+            _ => " Not now ",
+        }
+    }
+}
+
+/// The `b` picker: Later first (where there is one), then the snooze
+/// presets on digits, then a typed time.
 #[derive(Debug, Clone, Default)]
 pub struct SnoozePanelState {
     pub visible: bool,
+    /// What the picker acts on; `None` only while it is closed.
+    pub target: Option<NotNowTarget>,
     pub selected_index: usize,
     /// `Some(buffer)` while the user is typing a custom-time expression
     /// in the panel. `None` means the preset list is the active surface.

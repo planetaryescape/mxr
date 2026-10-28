@@ -153,7 +153,10 @@ test("b on a digest link puts it on Later and names the site it saves the articl
   const link = page.getByTestId("reading-link").filter({ hasText: "WAL checkpoints" }).first();
   await link.click({ position: { x: 2, y: 2 } });
   await expect(link).toHaveAttribute("aria-current", "true");
+  // Not now opens on Later; Enter keeps it.
   await page.keyboard.press("b");
+  await expect(page.getByTestId("not-now-later")).toBeFocused();
+  await page.keyboard.press("Enter");
   await expect(
     page.locator("[data-sonner-toast]").filter({ hasText: "Saved to Later" }),
   ).toBeVisible();
@@ -370,6 +373,8 @@ test.describe("hints", () => {
     const hint = page.getByTestId("band-fading").locator("[data-hint='reading.fading']");
     await expect(hint).toContainText("b keeps one on Later");
     await page.keyboard.press("b");
+    await expect(page.getByTestId("not-now-later")).toBeFocused();
+    await page.keyboard.press("Enter");
     await expect(hint).toHaveCount(0);
     await expect.poll(() => hintSeen(page, "reading.fading")).toBe(true);
     await page.keyboard.press("u");

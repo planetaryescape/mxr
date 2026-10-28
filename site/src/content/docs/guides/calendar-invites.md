@@ -177,7 +177,7 @@ use the CLI, TUI, or web.
   `Enter`/`o` to open the underlying
   message, `h` back to the sidebar. An RSVP sends after a short window;
   press `u` to undo before it goes out. The row's status refreshes once it
-  lands. See [keybindings](/reference/keybindings/#calendar-invites-lens).
+  lands. See [keybindings](/reference/keybindings/#calendar-invites).
 - **Web:** the **Calendar invites** entry in the sidebar opens `/invites` —
   the same list with inline Accept / Tentative / Decline buttons (and a
   "with comment" option in the row menu). See

@@ -1,0 +1,45 @@
+//! What help and the keybindings page call each place a key can live.
+
+/// The title of a TUI context or screen, as help and the keybindings page
+/// head its keys. `None` for a place with no keys of its own.
+pub fn place_title(place: &str) -> Option<&'static str> {
+    Some(match place {
+        "list" => "Mail list",
+        "reader" => "Reader",
+        "sidebar" => "Sidebar",
+        "place" => "Reading and Paper trail lists",
+        "screener" => "Screener queue",
+        "now" => "Now",
+        "messages" => "Messages",
+        "todo" => "To do",
+        "catchup" => "To do: catch-up",
+        "expired" => "To do: Expired",
+        "updates" => "Updates",
+        "reading" => "Reading",
+        "reading-reader" => "Reading: the issue",
+        "archive" => "Archive",
+        "invites" => "Calendar invites",
+        "search" => "Search results",
+        "search-preview" => "Search preview",
+        "search-editor" => "Search query",
+        "rules" => "Rules",
+        "rules-form" => "Rule form",
+        "accounts" => "Accounts",
+        "accounts-form" => "Account form",
+        "diagnostics" => "Diagnostics",
+        "analytics" => "Analytics",
+        "analytics-storage" => "Analytics: Storage",
+        "analytics-stale" => "Analytics: Stale threads",
+        "analytics-contacts" => "Analytics: Contacts",
+        "analytics-response-time" => "Analytics: Response time",
+        "analytics-subscriptions" => "Analytics: Subscriptions",
+        "analytics-wrapped" => "Analytics: Wrapped",
+        "deliveries" => "Deliveries",
+        "assistant" => "Assistant pane",
+        "assistant-input" => "Assistant: message box",
+        "assistant-approval" => "Assistant: a change waiting for approval",
+        "assistant-question" => "Assistant: a question waiting for an answer",
+        "compose-assist-proof" => "Writing proof",
+        _ => return None,
+    })
+}

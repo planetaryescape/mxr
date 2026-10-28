@@ -64,7 +64,7 @@ keys = ["c"]
 [[action.tui]]
 name = "Compose"
 keys = ["c"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "mail.undo"
@@ -80,7 +80,7 @@ note = "z also undoes, for Gmail muscle memory"
 [[action.tui]]
 name = "UndoLastMutation"
 keys = ["u"]
-contexts = ["list", "reader", "place", "todo", "catchup", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "place", "todo", "catchup", "now", "messages", "archive", "reading", "reading-reader", "updates", "search", "search-preview"]
 
 # Now and the modes, in rail order. g + letter, as in the TUI.
 [[action]]
@@ -888,7 +888,7 @@ keys = ["e"]
 [[action.tui]]
 name = "Archive"
 keys = ["e"]
-contexts = ["list", "reader"]
+contexts = ["list", "reader", "search", "search-preview"]
 
 [[action]]
 id = "mail.read-archive"
@@ -901,7 +901,7 @@ note = "Same as the TUI; read/unread are I and U"
 [[action.tui]]
 name = "MarkReadAndArchive"
 keys = ["m"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "mail.trash"
@@ -913,7 +913,7 @@ keys = ["#", "Delete", "Backspace"]
 [[action.tui]]
 name = "Trash"
 keys = ["#"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "mail.spam"
@@ -925,7 +925,7 @@ keys = ["!"]
 [[action.tui]]
 name = "Spam"
 keys = ["!"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "mail.star"
@@ -937,7 +937,7 @@ keys = ["s"]
 [[action.tui]]
 name = "Star"
 keys = ["s"]
-contexts = ["list", "reader"]
+contexts = ["list", "reader", "search", "search-preview"]
 
 [[action]]
 id = "mail.mark-read"
@@ -949,7 +949,7 @@ keys = ["I"]
 [[action.tui]]
 name = "MarkRead"
 keys = ["I"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "mail.mark-unread"
@@ -961,7 +961,7 @@ keys = ["U"]
 [[action.tui]]
 name = "MarkUnread"
 keys = ["U"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "mail.label"
@@ -973,7 +973,7 @@ keys = ["l"]
 [[action.tui]]
 name = "ApplyLabel"
 keys = ["l"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "mail.move"
@@ -985,7 +985,7 @@ keys = ["v"]
 [[action.tui]]
 name = "MoveToLabel"
 keys = ["v"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 # Not now (D173): one picker, "Later (no time)" first, then times. Later
 # is the untimed reply later; a time snoozes.
@@ -1018,7 +1018,7 @@ keys = ["D"]
 [[action.tui]]
 name = "Unsubscribe"
 keys = ["D"]
-contexts = ["list", "reader"]
+contexts = ["list", "reader", "search", "search-preview"]
 
 # Reply later at a typed time; `b` (Not now) holds the untimed one.
 [[action]]
@@ -1045,7 +1045,7 @@ keys = ["t"]
 [[action.tui]]
 name = "CreateTodoFromMessage"
 keys = ["t"]
-contexts = ["list", "reader", "place", "reading", "reading-reader"]
+contexts = ["list", "reader", "place", "reading", "reading-reader", "search", "search-preview"]
 
 [[action]]
 id = "mail.pass-to-mode"
@@ -1077,7 +1077,7 @@ keys = ["r"]
 [[action.tui]]
 name = "Reply"
 keys = ["r"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "mail.reply-all"
@@ -1091,7 +1091,7 @@ keys = ["a"]
 [[action.tui]]
 name = "ReplyAll"
 keys = ["a"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "mail.forward"
@@ -1103,7 +1103,7 @@ keys = ["f"]
 [[action.tui]]
 name = "Forward"
 keys = ["f"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "mail.export"
@@ -1132,7 +1132,7 @@ keys = ["B"]
 [[action.tui]]
 name = "OpenThreadBriefing"
 keys = ["B"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 # On the person page (`p`) and in the palette.
 [[action]]
@@ -1164,7 +1164,7 @@ keys = ["p"]
 [[action.tui]]
 name = "OpenSenderView"
 keys = ["p"]
-contexts = ["list", "reader"]
+contexts = ["list", "reader", "search", "search-preview"]
 
 [[action]]
 id = "mail.links"
@@ -1176,7 +1176,7 @@ keys = ["L"]
 [[action.tui]]
 name = "OpenLinks"
 keys = ["L"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "mail.attachments"
@@ -1985,7 +1985,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "ToggleReaderMode"
 keys = ["R"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 [[action]]
 id = "reader.view-html"
@@ -2032,7 +2032,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "ToggleSignature"
 keys = ["S"]
-contexts = ["list", "reader"]
+contexts = ["list", "reader", "search", "search-preview"]
 
 [[action]]
 id = "reader.quotes"
@@ -2067,7 +2067,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "OpenInBrowser"
 keys = ["O"]
-contexts = ["list", "reader", "place"]
+contexts = ["list", "reader", "place", "search", "search-preview"]
 
 
 # The TUI reader's o opened the original, as O does; o is the email itself now.
@@ -5334,3 +5334,1549 @@ clients = ["tui"]
 name = "ComposeProofScrollBottom"
 keys = ["End"]
 contexts = ["compose-assist-proof"]
+
+# Tool screens, Search and the assistant pane (TUI). Their handlers read
+# keys themselves; these entries are what help and the keybindings page
+# show, and a TUI runner test (`screen_keys_are_what_the_definition_says`)
+# fails when a handler and this list disagree. `inline:` names act in place.
+# They stay out of the palette, which can't yet tell a screen's keys from
+# another screen's; the palette-only entries above name these actions.
+
+[[action]]
+id = "tui.screen.back"
+label = "Back to the mailbox"
+group = "Navigate"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenMailboxScreen"
+keys = ["Escape"]
+contexts = ["rules", "accounts", "diagnostics", "analytics", "analytics-wrapped", "search"]
+
+[[action]]
+id = "tui.screen.down"
+label = "Next row"
+group = "Navigate"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:move_down"
+keys = ["j", "ArrowDown"]
+contexts = ["rules", "accounts", "analytics", "deliveries", "search"]
+
+[[action]]
+id = "tui.screen.up"
+label = "Previous row"
+group = "Navigate"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:move_up"
+keys = ["k", "ArrowUp"]
+contexts = ["rules", "accounts", "analytics", "deliveries", "search"]
+
+[[action]]
+id = "tui.rules.new"
+label = "New rule"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenRuleFormNew"
+keys = ["c"]
+contexts = ["rules"]
+
+[[action]]
+id = "tui.rules.edit"
+label = "Edit rule"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenRuleFormEdit"
+keys = ["E"]
+contexts = ["rules"]
+
+[[action]]
+id = "tui.rules.toggle"
+label = "Turn rule on or off"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleRuleEnabled"
+keys = ["e"]
+contexts = ["rules"]
+
+[[action]]
+id = "tui.rules.overview"
+label = "Refresh the rule's overview"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "RefreshRules"
+keys = ["Enter", "o"]
+contexts = ["rules"]
+
+[[action]]
+id = "tui.rules.dry-run"
+label = "Dry run: what the rule would change"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ShowRuleDryRun"
+keys = ["D"]
+contexts = ["rules"]
+
+[[action.tui]]
+name = "ShowRuleDryRun"
+keys = ["Ctrl+d"]
+contexts = ["rules-form"]
+
+[[action]]
+id = "tui.rules.dry-run-next"
+label = "Next page of the dry run"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:dry_run_next_page"
+keys = ["PageDown"]
+contexts = ["rules"]
+
+[[action]]
+id = "tui.rules.dry-run-previous"
+label = "Previous page of the dry run"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:dry_run_previous_page"
+keys = ["PageUp"]
+contexts = ["rules"]
+
+[[action]]
+id = "tui.rules.apply"
+label = "Apply the sorting preview"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ApplyRuleTreatment"
+keys = ["A"]
+contexts = ["rules"]
+
+[[action]]
+id = "tui.rules.history"
+label = "Rule history"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ShowRuleHistory"
+keys = ["H"]
+contexts = ["rules"]
+
+[[action]]
+id = "tui.rules.delete"
+label = "Delete rule (asks first)"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "DeleteRule"
+keys = ["#"]
+contexts = ["rules"]
+
+[[action]]
+id = "tui.rules-form.save"
+label = "Save the rule"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "SaveRuleForm"
+keys = ["Ctrl+s", "Enter"]
+contexts = ["rules-form"]
+
+[[action]]
+id = "tui.rules-form.next-field"
+label = "Next field"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:next_field"
+keys = ["Tab"]
+contexts = ["rules-form"]
+
+[[action]]
+id = "tui.rules-form.previous-field"
+label = "Previous field"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:previous_field"
+keys = ["Shift+Tab"]
+contexts = ["rules-form"]
+
+[[action]]
+id = "tui.rules-form.close"
+label = "Close the form"
+group = "Rules"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:close_form"
+keys = ["Escape"]
+contexts = ["rules-form"]
+
+[[action]]
+id = "tui.accounts.new"
+label = "Add account"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenAccountFormNew"
+keys = ["c"]
+contexts = ["accounts"]
+
+[[action]]
+id = "tui.accounts.edit"
+label = "Edit account"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:edit_account"
+keys = ["Enter", "o"]
+contexts = ["accounts"]
+
+[[action]]
+id = "tui.accounts.test"
+label = "Test account"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "TestAccountForm"
+keys = ["t"]
+contexts = ["accounts", "accounts-form"]
+
+[[action]]
+id = "tui.accounts.default"
+label = "Make it the default account"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "SetDefaultAccount"
+keys = ["d"]
+contexts = ["accounts"]
+
+[[action]]
+id = "tui.accounts.repair"
+label = "Refresh accounts, or repair the selected one when it is unhealthy"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "RefreshAccounts"
+keys = ["r"]
+contexts = ["accounts"]
+
+[[action]]
+id = "tui.accounts.refresh"
+label = "Refresh accounts"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "RefreshAccounts"
+keys = ["R"]
+contexts = ["accounts"]
+
+[[action]]
+id = "tui.accounts.details"
+label = "Details of the last test"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:result_details"
+keys = ["O"]
+contexts = ["accounts"]
+
+[[action.tui]]
+name = "inline:result_details"
+keys = ["o"]
+contexts = ["accounts-form"]
+
+[[action]]
+id = "tui.accounts-form.close"
+label = "Close the form (a new account keeps its draft)"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:close_form"
+keys = ["Escape"]
+contexts = ["accounts-form"]
+
+[[action]]
+id = "tui.accounts-form.next-field"
+label = "Next field"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:next_field"
+keys = ["j", "ArrowDown", "Tab"]
+contexts = ["accounts-form"]
+
+[[action]]
+id = "tui.accounts-form.previous-field"
+label = "Previous field"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:previous_field"
+keys = ["k", "ArrowUp", "Shift+Tab"]
+contexts = ["accounts-form"]
+
+[[action]]
+id = "tui.accounts-form.next-kind"
+label = "Next account type"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:next_kind"
+keys = ["l", "ArrowRight"]
+contexts = ["accounts-form"]
+
+[[action]]
+id = "tui.accounts-form.previous-kind"
+label = "Previous account type"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:previous_kind"
+keys = ["h", "ArrowLeft"]
+contexts = ["accounts-form"]
+
+[[action]]
+id = "tui.accounts-form.edit-field"
+label = "Edit or toggle the field"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:edit_field"
+keys = ["Enter", "i", "Space"]
+contexts = ["accounts-form"]
+
+[[action]]
+id = "tui.accounts-form.reauthorize"
+label = "Sign in to Gmail again"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ReauthorizeAccountForm"
+keys = ["r"]
+contexts = ["accounts-form"]
+
+[[action]]
+id = "tui.accounts-form.save"
+label = "Save the account"
+group = "Accounts"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "SaveAccountForm"
+keys = ["s"]
+contexts = ["accounts-form"]
+
+[[action]]
+id = "tui.diagnostics.next-pane"
+label = "Next section"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:next_pane"
+keys = ["j", "ArrowDown", "Tab", "ArrowRight"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.previous-pane"
+label = "Previous section"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:previous_pane"
+keys = ["k", "ArrowUp", "Shift+Tab", "ArrowLeft"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.scroll-down"
+label = "Scroll the section down"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:scroll_down"
+keys = ["Ctrl+d", "PageDown"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.scroll-up"
+label = "Scroll the section up"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:scroll_up"
+keys = ["Ctrl+u", "PageUp"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.fullscreen"
+label = "Full screen for the section, or back"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:toggle_fullscreen"
+keys = ["Enter", "o"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.search"
+label = "Search the events, logs or activity section"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:search_pane"
+keys = ["/"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.details"
+label = "Details of the section"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenDiagnosticsPaneDetails"
+keys = ["d"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.refresh"
+label = "Refresh diagnostics"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "RefreshDiagnostics"
+keys = ["r"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.bug-report"
+label = "Generate a bug report"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "GenerateBugReport"
+keys = ["b"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.config"
+label = "Edit config"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "EditConfig"
+keys = ["c"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.logs"
+label = "Open logs"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenLogs"
+keys = ["L"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.preview-activation"
+label = "Preview activating the restored archive"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "PreviewRecoveryActivation"
+keys = ["a"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.activate"
+label = "Activate the restored archive"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ConfirmRecoveryActivation"
+keys = ["A"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.preview-draft"
+label = "Preview the recovered draft"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "PreviewRecoveredDraft"
+keys = ["p"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.restore-draft"
+label = "Restore the recovered draft"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ConfirmRecoveredDraft"
+keys = ["P"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.next-draft"
+label = "Next recovered draft"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "NextRecoveredDraft"
+keys = ["]"]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.diagnostics.previous-draft"
+label = "Previous recovered draft"
+group = "Diagnostics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "PreviousRecoveredDraft"
+keys = ["["]
+contexts = ["diagnostics"]
+
+[[action]]
+id = "tui.analytics.next-view"
+label = "Next view"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "NextAnalyticsView"
+keys = ["Tab"]
+contexts = ["analytics", "analytics-wrapped"]
+
+[[action]]
+id = "tui.analytics.previous-view"
+label = "Previous view"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "PrevAnalyticsView"
+keys = ["Shift+Tab"]
+contexts = ["analytics", "analytics-wrapped"]
+
+[[action]]
+id = "tui.analytics.refresh"
+label = "Refresh the view"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "RefreshAnalytics"
+keys = ["r"]
+contexts = ["analytics", "analytics-wrapped"]
+
+[[action]]
+id = "tui.analytics.filter"
+label = "Filter: every CLI flag for the view"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenAnalyticsFilterModal"
+keys = ["f"]
+contexts = ["analytics", "analytics-wrapped"]
+
+[[action]]
+id = "tui.analytics.drill-down"
+label = "Drill down: a sender to a search, a thread to the conversation"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "AnalyticsRowDrillDown"
+keys = ["Enter"]
+contexts = ["analytics", "analytics-wrapped"]
+
+[[action]]
+id = "tui.analytics.storage-mode"
+label = "Breakdown or largest messages"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "CycleStorageMode"
+keys = ["m"]
+contexts = ["analytics-storage"]
+
+[[action]]
+id = "tui.analytics.storage-group"
+label = "Group the breakdown by sender, type or label"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "CycleStorageGroupBy"
+keys = ["b"]
+contexts = ["analytics-storage"]
+
+[[action]]
+id = "tui.analytics.stale-perspective"
+label = "Mine or theirs"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleStalePerspective"
+keys = ["p"]
+contexts = ["analytics-stale"]
+
+[[action]]
+id = "tui.analytics.stale-older-less"
+label = "Older than: 7 days less"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "AdjustStaleOlderThanDays(-7)"
+keys = ["["]
+contexts = ["analytics-stale"]
+
+[[action]]
+id = "tui.analytics.stale-older-more"
+label = "Older than: 7 days more"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "AdjustStaleOlderThanDays(7)"
+keys = ["]"]
+contexts = ["analytics-stale"]
+
+[[action]]
+id = "tui.analytics.stale-within-less"
+label = "Within: 30 days less"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "AdjustStaleWithinDays(-30)"
+keys = ["{"]
+contexts = ["analytics-stale"]
+
+[[action]]
+id = "tui.analytics.stale-within-more"
+label = "Within: 30 days more"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "AdjustStaleWithinDays(30)"
+keys = ["}"]
+contexts = ["analytics-stale"]
+
+[[action]]
+id = "tui.analytics.contacts-mode"
+label = "Asymmetry, decay or refresh"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "CycleContactsMode"
+keys = ["m"]
+contexts = ["analytics-contacts"]
+
+[[action]]
+id = "tui.analytics.contacts-refresh"
+label = "Rebuild the contacts table"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "RefreshContacts"
+keys = ["R"]
+contexts = ["analytics-contacts"]
+
+[[action]]
+id = "tui.analytics.response-direction"
+label = "Clock or business hours"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleResponseTimeDirection"
+keys = ["d"]
+contexts = ["analytics-response-time"]
+
+[[action]]
+id = "tui.analytics.subscriptions-rank"
+label = "Rank by volume or open rate"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleSubscriptionsRank"
+keys = ["o"]
+contexts = ["analytics-subscriptions"]
+
+[[action]]
+id = "tui.analytics.unsubscribe"
+label = "Unsubscribe from the selected sender (asks first)"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "AnalyticsUnsubscribe"
+keys = ["u"]
+contexts = ["analytics-subscriptions"]
+
+[[action]]
+id = "tui.analytics.wrapped-left"
+label = "Tile to the left"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:tile_left"
+keys = ["h", "ArrowLeft"]
+contexts = ["analytics-wrapped"]
+
+[[action]]
+id = "tui.analytics.wrapped-right"
+label = "Tile to the right"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:tile_right"
+keys = ["l", "ArrowRight"]
+contexts = ["analytics-wrapped"]
+
+[[action]]
+id = "tui.analytics.wrapped-down"
+label = "Tile below"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:tile_down"
+keys = ["j", "ArrowDown"]
+contexts = ["analytics-wrapped"]
+
+[[action]]
+id = "tui.analytics.wrapped-up"
+label = "Tile above"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:tile_up"
+keys = ["k", "ArrowUp"]
+contexts = ["analytics-wrapped"]
+
+[[action]]
+id = "tui.analytics.wrapped-year-back"
+label = "A year back"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "StepWrappedYear(-1)"
+keys = ["y"]
+contexts = ["analytics-wrapped"]
+
+[[action]]
+id = "tui.analytics.wrapped-year-forward"
+label = "A year forward"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "StepWrappedYear(1)"
+keys = ["Y"]
+contexts = ["analytics-wrapped"]
+
+[[action]]
+id = "tui.analytics.wrapped-window"
+label = "Year to date, a year, or the last days"
+group = "Analytics"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "CycleWrappedWindow"
+keys = ["t"]
+contexts = ["analytics-wrapped"]
+
+[[action]]
+id = "tui.deliveries.open"
+label = "Open the source email in a split preview"
+group = "Deliveries"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:open_source"
+keys = ["Enter", "o", "ArrowRight"]
+contexts = ["deliveries"]
+
+[[action]]
+id = "tui.deliveries.close"
+label = "Close the preview"
+group = "Deliveries"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:close_preview"
+keys = ["Escape"]
+contexts = ["deliveries"]
+
+[[action]]
+id = "tui.deliveries.scroll-down"
+label = "Scroll the open email down"
+group = "Deliveries"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:scroll_down"
+keys = ["Ctrl+d"]
+contexts = ["deliveries"]
+
+[[action]]
+id = "tui.deliveries.scroll-up"
+label = "Scroll the open email up"
+group = "Deliveries"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:scroll_up"
+keys = ["Ctrl+u"]
+contexts = ["deliveries"]
+
+[[action]]
+id = "tui.deliveries.resolve"
+label = "Resolve: mark it delivered"
+group = "Deliveries"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:resolve"
+keys = ["r"]
+contexts = ["deliveries"]
+
+[[action]]
+id = "tui.deliveries.dismiss"
+label = "Dismiss a false positive"
+group = "Deliveries"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:dismiss"
+keys = ["d"]
+contexts = ["deliveries"]
+
+[[action]]
+id = "tui.deliveries.filter"
+label = "Active, delivered or all"
+group = "Deliveries"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:cycle_filter"
+keys = ["D"]
+contexts = ["deliveries"]
+
+[[action]]
+id = "tui.deliveries.refresh"
+label = "Refresh the list"
+group = "Deliveries"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:refresh"
+keys = ["R"]
+contexts = ["deliveries"]
+
+[[action]]
+id = "tui.search.edit"
+label = "Edit the query"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:edit_query"
+keys = ["/"]
+contexts = ["search", "search-preview"]
+
+[[action]]
+id = "tui.search.open"
+label = "Open the result in the preview"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenSelected"
+keys = ["Enter", "o", "ArrowRight"]
+contexts = ["search"]
+
+[[action]]
+id = "tui.search.run"
+label = "Run the search"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "SubmitSearch"
+keys = ["Enter"]
+contexts = ["search-editor"]
+
+[[action]]
+id = "tui.search.stop-editing"
+label = "Stop editing the query"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:stop_editing"
+keys = ["Escape"]
+contexts = ["search-editor"]
+
+[[action]]
+id = "tui.search-preview.results"
+label = "Back to the results"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:focus_results"
+keys = ["h", "ArrowLeft", "Escape"]
+contexts = ["search-preview"]
+
+[[action]]
+id = "tui.search-preview.down"
+label = "Next message in the thread"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:next_message"
+keys = ["j", "ArrowDown"]
+contexts = ["search-preview"]
+
+[[action]]
+id = "tui.search-preview.up"
+label = "Previous message in the thread"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:previous_message"
+keys = ["k", "ArrowUp"]
+contexts = ["search-preview"]
+
+[[action]]
+id = "tui.search-preview.page-down"
+label = "Scroll the message down"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:page_down"
+keys = ["Ctrl+d"]
+contexts = ["search-preview"]
+
+[[action]]
+id = "tui.search-preview.page-up"
+label = "Scroll the message up"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:page_up"
+keys = ["Ctrl+u"]
+contexts = ["search-preview"]
+
+[[action]]
+id = "tui.search-preview.bottom"
+label = "End of the message"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:jump_bottom"
+keys = ["G"]
+contexts = ["search-preview"]
+
+[[action]]
+id = "tui.search-preview.html"
+label = "Original HTML"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleHtmlView"
+keys = ["H"]
+contexts = ["search-preview"]
+
+[[action]]
+id = "tui.search-preview.images"
+label = "Remote images"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleRemoteContent"
+keys = ["M"]
+contexts = ["search-preview"]
+
+[[action]]
+id = "tui.assistant.away"
+label = "Give the keys back to the screen"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:focus_away"
+keys = ["Escape"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.write"
+label = "Write a message"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:focus_input"
+keys = ["i", "Enter"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.hide"
+label = "Hide the assistant"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleAssistant"
+keys = ["@"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.screen.palette"
+label = "Command palette"
+group = "Navigate"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenCommandPalette"
+keys = ["Ctrl+k", "Ctrl+p"]
+contexts = ["assistant", "assistant-input"]
+
+[[action.tui]]
+name = "OpenCommandPalette"
+keys = ["Ctrl+k"]
+contexts = ["accounts-form"]
+
+[[action]]
+id = "tui.assistant.stop"
+label = "Stop the running turn"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:stop_turn"
+keys = ["Ctrl+c"]
+contexts = ["assistant", "assistant-input"]
+
+[[action]]
+id = "tui.assistant.scroll-down"
+label = "Scroll down"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:scroll_down"
+keys = ["j", "ArrowDown"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.scroll-up"
+label = "Scroll up"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:scroll_up"
+keys = ["k", "ArrowUp"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.page-down"
+label = "Page down"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:page_down"
+keys = ["Ctrl+d", "PageDown"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.page-up"
+label = "Page up"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:page_up"
+keys = ["Ctrl+u", "PageUp"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.latest"
+label = "Latest message"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:latest"
+keys = ["G"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.steps"
+label = "Open or fold the steps"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:toggle_steps"
+keys = ["e"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.link"
+label = "Open the reply's link by number"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:open_link"
+keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.new"
+label = "New conversation"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "NewAssistantConversation"
+keys = ["N"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.history"
+label = "Past conversations"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenAssistantConversations"
+keys = ["L"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.models"
+label = "Choose the model"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenAssistantModels"
+keys = ["M"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.trust"
+label = "Auto-approve reversible changes in this conversation"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "ToggleAssistantTrust"
+keys = ["T"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.delete"
+label = "Delete the conversation (shows what goes first)"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "DeleteAssistantConversation"
+keys = ["#"]
+contexts = ["assistant"]
+
+[[action]]
+id = "tui.assistant.send"
+label = "Send"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:send"
+keys = ["Enter"]
+contexts = ["assistant-input"]
+
+[[action]]
+id = "tui.assistant.newline"
+label = "New line"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:newline"
+keys = ["Alt+Enter", "Ctrl+j"]
+contexts = ["assistant-input"]
+
+[[action]]
+id = "tui.assistant.pane-keys"
+label = "To the pane keys"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:focus_pane"
+keys = ["Escape"]
+contexts = ["assistant-input"]
+
+[[action]]
+id = "tui.assistant.approve"
+label = "Approve the waiting change"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:approve"
+keys = ["y"]
+contexts = ["assistant-approval"]
+
+[[action]]
+id = "tui.assistant.reject"
+label = "Reject it, with a reason"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:reject"
+keys = ["n"]
+contexts = ["assistant-approval"]
+
+[[action]]
+id = "tui.assistant.exact-call"
+label = "Show or hide its exact call"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:exact_call"
+keys = ["x"]
+contexts = ["assistant-approval"]
+
+[[action]]
+id = "tui.assistant.all-messages"
+label = "Show all or fewer of its messages"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:all_messages"
+keys = ["a"]
+contexts = ["assistant-approval"]
+
+[[action]]
+id = "tui.assistant.choose"
+label = "Choose an answer by number"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:choose"
+keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+contexts = ["assistant-question"]
+
+[[action]]
+id = "tui.assistant.own-answer"
+label = "Write your own answer"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:own_answer"
+keys = ["o"]
+contexts = ["assistant-question"]
+
+[[action]]
+id = "tui.assistant.next-question"
+label = "Next question"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:next_question"
+keys = ["Tab"]
+contexts = ["assistant-question"]
+
+[[action]]
+id = "tui.assistant.previous-question"
+label = "Previous question"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:previous_question"
+keys = ["Shift+Tab"]
+contexts = ["assistant-question"]
+
+[[action]]
+id = "tui.assistant.answer"
+label = "Answer"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:answer"
+keys = ["Enter"]
+contexts = ["assistant-question"]
+
+[[action]]
+id = "tui.assistant.skip"
+label = "Skip the question"
+group = "Assistant"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:skip"
+keys = ["s", "Escape"]
+contexts = ["assistant-question"]
+
+[[action]]
+id = "tui.invites.open"
+label = "Open the invite's email"
+group = "Mail"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenMessageView"
+keys = ["Enter", "o", "ArrowRight"]
+contexts = ["invites"]
+
+[[action]]
+id = "tui.invites.search"
+label = "Search mail"
+group = "Search"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "OpenGlobalSearch"
+keys = ["/"]
+contexts = ["invites"]
+
+[[action]]
+id = "tui.invites.undo"
+label = "Undo the RSVP while it can still be stopped"
+group = "Mail"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "UndoLastMutation"
+keys = ["u"]
+contexts = ["invites"]
+
+[[action]]
+id = "tui.invites.sidebar"
+label = "Go to sidebar"
+group = "Navigate"
+clients = ["tui"]
+hide_in_palette = true
+
+[[action.tui]]
+name = "inline:focus_sidebar"
+keys = ["h", "ArrowLeft"]
+contexts = ["invites"]

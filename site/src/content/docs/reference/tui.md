@@ -80,7 +80,7 @@ continue in its mode. `gm` opens [Messages](/guides/messages/), `gx` opens
 
 `mxr desk` remains available from the CLI for the full You owe, Due,
 Waiting on and New from people lanes. See the
-[keyboard reference](/reference/keybindings/#go-to) for navigation keys.
+[keyboard reference](/reference/keybindings/#everywhere-in-mail) for navigation keys.
 
 ## Updates
 
@@ -166,7 +166,7 @@ mxr summarize THREAD_ID
 - Preview pane on the right
 - Live search against the full local index
 - `Ctrl-f` is separate and only filters the current mailbox
-- `Enter`, `o`, or `l` opens the selected result in preview
+- `Enter`, `o` or `→` opens the selected result in preview
 - `Esc` moves preview -> results -> mailbox
 
 ## Rules screen

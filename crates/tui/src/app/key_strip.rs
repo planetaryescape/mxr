@@ -137,54 +137,21 @@ impl App {
 }
 
 impl App {
-    /// The mode's name and every key its context binds, with the person's
-    /// remaps, for the help modal. `None` outside a mode, or while help is
-    /// filtered to another context.
-    pub(crate) fn mode_help_keys(&self) -> Option<(&'static str, Vec<(String, String)>)> {
+    /// The key definition's places help lists keys for: where keys are
+    /// going while help tracks focus. Empty while help is filtered to
+    /// another context, so help lists that context's places.
+    pub(crate) fn help_key_places(&self) -> Vec<&'static str> {
         if self.modals.help_context_filter.is_some() {
-            return None;
+            return Vec::new();
         }
-        let context = self.mode_key_context()?;
-        let remaps = &self.keybindings.modes;
-        let entries = mxr_keymap::defaults()
-            .actions
-            .iter()
-            .filter_map(|action| {
-                let mut keys: Vec<String> = remaps
-                    .keys_for(context, &action.id)
-                    .into_iter()
-                    .map(key_display)
-                    .collect();
-                if keys.is_empty() {
-                    keys = action
-                        .tui
-                        .iter()
-                        .filter(|binding| binding.contexts.includes(context))
-                        .flat_map(|binding| &binding.keys)
-                        .filter(|key| remaps.lookup(context, key).is_none())
-                        .map(|key| key_display(key))
-                        .collect();
-                }
-                keys.dedup();
-                (!keys.is_empty()).then(|| (keys.join(" / "), action.label.clone()))
-            })
-            .collect();
-        Some((mode_title(context), entries))
-    }
-}
-
-fn mode_title(context: &str) -> &'static str {
-    match context {
-        "now" => "Now",
-        "messages" => "Messages",
-        "todo" => "To do",
-        "catchup" => "To do catch-up",
-        "expired" => "To do: Expired",
-        "updates" => "Updates",
-        "reading" => "Reading",
-        "reading-reader" => "Reading: the issue",
-        "archive" => "Archive",
-        _ => "Mode",
+        // The invites lens reads its own keys; the list's don't apply there.
+        if self.screen == Screen::Mailbox
+            && self.mailbox.active_pane == ActivePane::MailList
+            && self.mailbox.mailbox_view == MailboxView::CalendarInvites
+        {
+            return vec!["invites"];
+        }
+        self.key_place().into_iter().collect()
     }
 }
 

@@ -8,8 +8,11 @@
 //! must equal [`Keymap::tui_keymap`], and the web registry must equal the
 //! generated `apps/web/src/lib/actions/keymap.generated.json`.
 
+mod docs;
+mod places;
 mod remaps;
 
+pub use places::place_title;
 pub use remaps::{ModeRemaps, MODE_SECTIONS};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -39,8 +42,10 @@ pub const TUI_CONTEXTS: [&str; 14] = [
 
 /// TUI screens and overlays, and web rows, that read keys outside the
 /// mail-context probe. A moved key there is announced by name from the
-/// handler (`App::announce_moved`).
-pub const SCREEN_CONTEXTS: [&str; 10] = [
+/// handler (`App::announce_moved`). The tool screens, Search and the
+/// assistant pane list their keys here too, for help and the docs; a TUI
+/// runner test holds them to what each handler does.
+pub const SCREEN_CONTEXTS: [&str; 27] = [
     "accounts",
     "assistant",
     "categories",
@@ -51,6 +56,23 @@ pub const SCREEN_CONTEXTS: [&str; 10] = [
     "saved-searches",
     "todo-microsoft",
     "compose-assist-proof",
+    "accounts-form",
+    "rules-form",
+    "diagnostics",
+    "analytics",
+    "analytics-storage",
+    "analytics-stale",
+    "analytics-contacts",
+    "analytics-response-time",
+    "analytics-subscriptions",
+    "analytics-wrapped",
+    "deliveries",
+    "search",
+    "search-preview",
+    "search-editor",
+    "assistant-input",
+    "assistant-approval",
+    "assistant-question",
 ];
 
 /// The web app's shortcut scopes (`ActionScope` in `apps/web`).

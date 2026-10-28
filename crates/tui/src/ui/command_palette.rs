@@ -395,7 +395,7 @@ fn effective_keys(
 
 /// A definition key as the TUI spells keys elsewhere (help, the hint bar):
 /// `g R` → `gR`, `Ctrl+d` → `Ctrl-d`, `Escape` → `Esc`.
-fn shown_key(key: &str) -> String {
+pub(crate) fn shown_key(key: &str) -> String {
     key.split(' ')
         .map(|chord| match chord {
             "Escape" => "Esc".to_string(),

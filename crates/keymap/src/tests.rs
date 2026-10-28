@@ -119,6 +119,65 @@ fn the_raycast_data_is_generated_from_the_definition() {
     );
 }
 
+/// The page whose TUI tables are generated from the definition.
+const KEYBINDINGS_DOC: &str = "site/src/content/docs/reference/keybindings.md";
+const TUI_DOC_START: &str = "<!-- tui-keys:start (generated from crates/keymap/keymap.toml; run UPDATE_KEYMAP=1 cargo test -p mxr-keymap) -->";
+const TUI_DOC_END: &str = "<!-- tui-keys:end -->";
+
+#[test]
+fn the_tui_keybindings_tables_are_generated_from_the_definition() {
+    let path = repo_file(KEYBINDINGS_DOC);
+    let doc = std::fs::read_to_string(&path).expect("keybindings.md is readable");
+    // A missing marker means the generated block was deleted from the page.
+    let start = doc
+        .find(TUI_DOC_START)
+        .expect("keybindings.md has the TUI start marker");
+    let end = doc
+        .find(TUI_DOC_END)
+        .expect("keybindings.md has the TUI end marker");
+    let current = doc[start + TUI_DOC_START.len()..end].trim();
+    let fresh = defaults().tui_reference_markdown();
+    if std::env::var_os("UPDATE_KEYMAP").is_some() && current != fresh {
+        let updated = format!(
+            "{}\n\n{fresh}\n\n{}",
+            &doc[..start + TUI_DOC_START.len()],
+            &doc[end..]
+        );
+        std::fs::write(&path, updated).expect("write keybindings.md");
+        return;
+    }
+    assert!(
+        current == fresh,
+        "{KEYBINDINGS_DOC}'s TUI tables are stale; run `UPDATE_KEYMAP=1 cargo test -p mxr-keymap`"
+    );
+}
+
+/// A place with keys of its own gets a table on the page, so a new screen
+/// can't go unpublished.
+#[test]
+fn every_place_with_tui_keys_has_a_table() {
+    let keymap = defaults();
+    let missing: Vec<&str> = TUI_CONTEXTS
+        .iter()
+        .chain(SCREEN_CONTEXTS.iter())
+        .copied()
+        .filter(|place| {
+            keymap
+                .actions
+                .iter()
+                .flat_map(|a| &a.tui)
+                .any(|binding| !binding.keys.is_empty() && binding.contexts.includes(place))
+        })
+        .filter(|place| {
+            !crate::docs::PLACES
+                .iter()
+                .any(|(listed, _)| listed == place)
+                || place_title(place).is_none()
+        })
+        .collect();
+    assert!(missing.is_empty(), "no table or title for {missing:?}");
+}
+
 #[test]
 fn raycast_keys_are_cmd_and_the_web_letter_unless_the_definition_says() {
     let keymap = defaults();

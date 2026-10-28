@@ -88,6 +88,7 @@ impl KeybindingConfig {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn primary_key_display(
         &self,
         context: ViewContext,

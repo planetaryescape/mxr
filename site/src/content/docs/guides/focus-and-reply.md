@@ -181,7 +181,7 @@ auto-responder does not. For the command line (`mxr send --remind-after`,
 ## In the TUI
 
 Open the reply queue, then start **Focus & reply** from it (both keys are in
-the [keybindings reference](/reference/keybindings/#go-to)). The TUI
+the [keybindings reference](/reference/keybindings/#everywhere-in-mail)). The TUI
 run differs from the web app's:
 
 - It works through the reply-later queue only, not the You owe lane.

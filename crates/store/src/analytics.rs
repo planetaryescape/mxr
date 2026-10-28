@@ -19,19 +19,21 @@ pub struct AccountDirectionChanges {
     pub to_inbound: u32,
 }
 
-/// The rows an owned set changes: inbound from an owned sender, or outbound
-/// from one that is not. Unknown rows belong to `reclassify_unknown_directions`.
-/// Rows are `(id, from_email, direction)`.
+/// The rows an owned set changes: rows whose stored direction disagrees with
+/// `MessageDirection::for_message`. Unknown rows belong to
+/// `reclassify_unknown_directions`. Rows are `(id, from_email, direction, flags)`.
+/// A provider-sent row is never demoted, whatever its From.
 fn direction_flips(
-    rows: &[(String, String, String)],
+    rows: &[(String, String, String, i64)],
     owned: &OwnedAddresses,
 ) -> Vec<(String, MessageDirection)> {
     rows.iter()
-        .filter_map(|(id, from_email, direction)| {
-            let owned_sender = owned.contains(from_email);
-            match direction.as_str() {
-                "inbound" if owned_sender => Some((id.clone(), MessageDirection::Outbound)),
-                "outbound" if !owned_sender => Some((id.clone(), MessageDirection::Inbound)),
+        .filter_map(|(id, from_email, direction, flags)| {
+            let flags = MessageFlags::from_bits_truncate(*flags as u32);
+            let target = MessageDirection::for_message(owned.contains(from_email), flags);
+            match (direction.as_str(), target) {
+                ("inbound", MessageDirection::Outbound)
+                | ("outbound", MessageDirection::Inbound) => Some((id.clone(), target)),
                 _ => None,
             }
         })
@@ -39,16 +41,16 @@ fn direction_flips(
 }
 
 /// The rows of one account whose direction is known, as `(id, from_email,
-/// direction)`. Both the preview and the real change read them here.
+/// direction, flags)`. Both the preview and the real change read them here.
 async fn account_direction_rows<'e, E>(
     executor: E,
     account_id: &AccountId,
-) -> Result<Vec<(String, String, String)>, sqlx::Error>
+) -> Result<Vec<(String, String, String, i64)>, sqlx::Error>
 where
     E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
 {
     sqlx::query_as(
-        r#"SELECT id, from_email, direction
+        r#"SELECT id, from_email, direction, flags
            FROM messages
            WHERE account_id = ? AND direction != 'unknown'"#,
     )
@@ -76,8 +78,9 @@ impl super::Store {
     /// returns the counts a real run would apply, and writes nothing. Its
     /// callers are the address commands' dry run and the real change.
     ///
-    /// With `apply: true`, inbound rows from an owned sender become outbound and
-    /// outbound rows from an unowned one become inbound. Their reply pairs move
+    /// With `apply: true`, inbound rows from an owned sender or filed as sent
+    /// become outbound, and outbound rows from an unowned sender that the
+    /// provider did not file as sent become inbound. Their reply pairs move
     /// with them. It all runs in one writer transaction, so sync cannot write between the
     /// read and the flip. Arrivals are not touched: they record what arrived
     /// when it arrived, and their corrections stay as they were.
@@ -125,24 +128,22 @@ impl super::Store {
         is_account_address: impl Fn(&AccountId, &str) -> bool,
     ) -> Result<u32, sqlx::Error> {
         let started_at = Instant::now();
-        let rows: Vec<(String, String, String)> = sqlx::query_as(
-            r#"SELECT id, account_id, from_email
+        let rows: Vec<(String, String, String, i64)> = sqlx::query_as(
+            r#"SELECT id, account_id, from_email, flags
                FROM messages
                WHERE direction = 'unknown'"#,
         )
         .fetch_all(self.reader())
         .await?;
         let mut updated = 0u32;
-        for (id, account_id, from_email) in rows {
+        for (id, account_id, from_email, flags) in rows {
             let account_id: AccountId = decode_id(&account_id)?;
-            let new_direction = if is_account_address(&account_id, &from_email) {
-                "outbound"
-            } else {
-                "inbound"
-            };
+            let flags = MessageFlags::from_bits_truncate(flags as u32);
+            let new_direction =
+                MessageDirection::for_message(is_account_address(&account_id, &from_email), flags);
             sqlx::query!(
                 "UPDATE messages SET direction = ? WHERE id = ?",
-                new_direction,
+                new_direction.as_db_str(),
                 id,
             )
             .execute(self.writer())

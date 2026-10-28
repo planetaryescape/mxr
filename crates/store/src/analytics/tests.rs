@@ -123,6 +123,142 @@ async fn reclassify_account_directions_follows_the_owned_set() {
     assert_eq!((again.to_outbound, again.to_inbound), (0, 0));
 }
 
+/// Like `insert_message`, with the provider's flags set on the envelope.
+async fn insert_message_with_flags(
+    store: &crate::Store,
+    account: &AccountId,
+    provider_id: &str,
+    from: &str,
+    direction: Option<MessageDirection>,
+    flags: MessageFlags,
+) -> MessageId {
+    let mut envelope = TestEnvelopeBuilder::new()
+        .account_id(account.clone())
+        .build();
+    envelope.provider_id = provider_id.into();
+    envelope.from = Address {
+        name: None,
+        email: from.into(),
+    };
+    envelope.flags = flags;
+    match direction {
+        Some(direction) => store
+            .upsert_envelope_with_direction(&envelope, direction)
+            .await
+            .unwrap(),
+        None => store.upsert_envelope(&envelope).await.unwrap(),
+    };
+    envelope.id
+}
+
+#[tokio::test]
+async fn reclassify_account_directions_counts_provider_sent_mail_as_outbound() {
+    // Gmail send-as aliases are not registered, so From is not owned. The
+    // provider filed these under SENT, so they stay outbound and the repair
+    // flips the ones an earlier reconcile wrongly made inbound.
+    let store = crate::Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+    let owned = OwnedAddresses::new(Some("me@example.com"), []);
+
+    let sent_as_alias_inbound = insert_message_with_flags(
+        &store,
+        &account.id,
+        "sent-inbound",
+        "alias@send-as.example",
+        Some(MessageDirection::Inbound),
+        MessageFlags::SENT,
+    )
+    .await;
+    let sent_as_alias_outbound = insert_message_with_flags(
+        &store,
+        &account.id,
+        "sent-outbound",
+        "alias@send-as.example",
+        Some(MessageDirection::Outbound),
+        MessageFlags::SENT,
+    )
+    .await;
+    let unflagged_outbound = insert_message(
+        &store,
+        &account.id,
+        "old-out",
+        "old@example.com",
+        Some(MessageDirection::Outbound),
+    )
+    .await;
+    let unflagged_inbound = insert_message(
+        &store,
+        &account.id,
+        "bob-in",
+        "bob@example.com",
+        Some(MessageDirection::Inbound),
+    )
+    .await;
+
+    let previewed = store
+        .reclassify_account_directions(&account.id, &owned, false)
+        .await
+        .unwrap();
+    assert_eq!(previewed.to_outbound, 1);
+    assert_eq!(previewed.to_inbound, 1);
+    assert_eq!(
+        direction_of(&store, &sent_as_alias_inbound).await,
+        "inbound"
+    );
+
+    let applied = store
+        .reclassify_account_directions(&account.id, &owned, true)
+        .await
+        .unwrap();
+    assert_eq!(applied, previewed);
+    assert_eq!(
+        direction_of(&store, &sent_as_alias_inbound).await,
+        "outbound"
+    );
+    assert_eq!(
+        direction_of(&store, &sent_as_alias_outbound).await,
+        "outbound"
+    );
+    assert_eq!(direction_of(&store, &unflagged_outbound).await, "inbound");
+    assert_eq!(direction_of(&store, &unflagged_inbound).await, "inbound");
+}
+
+#[tokio::test]
+async fn reclassify_unknown_directions_counts_provider_sent_mail_as_outbound() {
+    let store = crate::Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let sent_unknown = insert_message_with_flags(
+        &store,
+        &account.id,
+        "sent-unknown",
+        "alias@send-as.example",
+        None,
+        MessageFlags::SENT,
+    )
+    .await;
+    let received_unknown = insert_message_with_flags(
+        &store,
+        &account.id,
+        "received-unknown",
+        "bob@example.com",
+        None,
+        MessageFlags::empty(),
+    )
+    .await;
+
+    let updated = store
+        .reclassify_unknown_directions(|_, _| false)
+        .await
+        .unwrap();
+
+    assert_eq!(updated, 2);
+    assert_eq!(direction_of(&store, &sent_unknown).await, "outbound");
+    assert_eq!(direction_of(&store, &received_unknown).await, "inbound");
+}
+
 #[tokio::test]
 async fn reclassify_account_directions_moves_reply_pairs_with_the_reply() {
     let store = crate::Store::in_memory().await.unwrap();

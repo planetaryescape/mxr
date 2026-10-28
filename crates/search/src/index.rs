@@ -423,6 +423,8 @@ impl SearchIndex {
         }
         for attachment in &body.attachments {
             doc.add_text(s.attachment_filenames, attachment.filename.to_lowercase());
+            // MIME types are words prose can match ("spreadsheet" for an .xlsx).
+            doc.add_text(s.attachment_filenames, attachment.mime_type.to_lowercase());
         }
         if let Some(list_id) = body.metadata.list_id.as_deref() {
             doc.add_text(s.list_id, list_id);
@@ -920,6 +922,32 @@ mod reader_text_tests {
         let (index, id) = index_one(Some("plain tablewordbeta"), Some(PANICKING_HTML));
         assert_eq!(search_ids(&index, "body:tablewordbeta"), vec![id]);
         assert_eq!(index.clean_fallbacks.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn script_words_match_no_prose_path_but_has_filters_still_read_raw_html() {
+        let html = r#"<p>Watch</p><script>var zzscriptword = 1;</script><a href="https://youtube.com/x">clip</a>"#;
+        let (index, id) = index_one(None, Some(html));
+
+        // Bare-word search, the string search, and the any-words path that
+        // Archive Ask uses for prose.
+        assert!(search_ids(&index, "zzscriptword").is_empty());
+        assert!(index
+            .search("zzscriptword", 10, 0, SortOrder::Relevance)
+            .unwrap()
+            .results
+            .is_empty());
+        let schema = MxrSchema::build();
+        let any_words = QueryBuilder::new(&schema)
+            .build_any_words("zzscriptword")
+            .unwrap();
+        assert!(index
+            .search_ast(any_words, 10, 0, SortOrder::Relevance)
+            .unwrap()
+            .results
+            .is_empty());
+
+        assert_eq!(search_ids(&index, "has:youtube"), vec![id]);
     }
 
     #[test]

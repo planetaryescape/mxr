@@ -38,3 +38,7 @@ Display call sites that reach the built-in converter with HTML bodies, not fixed
 - Daemon handlers that clean bodies for LLM or assistant features: `crates/daemon/src/handler/promises.rs:98`, `updates.rs:109`, `todos.rs:926`, `thread_gist.rs:534`, `todo_resolution.rs:130`, `safety_llm.rs:95`, `commitments_extract.rs:67`, `decisions_extract.rs:97`, `briefing.rs:78`, `archive_ask.rs:103`
 
 Fix direction: catch the panic in `mxr_reader::clean` itself and return the same fallback text the index uses, or pin html2text to a version that checks the arithmetic. The first covers every caller at once.
+
+## Bare words no longer match list ids
+
+A bare word used to match a message's `List-Id` through `content_hints`, which prose search read. That field now holds raw markup and is only read by `has:` filters, so a bare word no longer matches a list id. `list:` filters still search the list-id field. Fix direction: index list-id words into a prose field, if bare-word matching of list ids is wanted.

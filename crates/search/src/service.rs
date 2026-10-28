@@ -227,9 +227,15 @@ impl SearchServiceHandle {
     }
 
     /// Marks the index incomplete without a rebuild running, for an index found
-    /// stale or short at startup. A rebuild that finishes clears it.
+    /// stale at startup. A rebuild that finishes clears it.
     pub fn mark_incomplete(&self) {
         self.incomplete.store(true, Ordering::Release);
+    }
+
+    /// Clears an incomplete mark when no rebuild is needed after all, such as
+    /// when sync has filled the gap a short index had.
+    pub fn clear_incomplete(&self) {
+        self.incomplete.store(false, Ordering::Release);
     }
 
     /// Bodies indexed from their fallback text since the last call, because

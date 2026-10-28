@@ -104,7 +104,7 @@ export interface ShellResponse {
 
 /** Present only when the daemon answered from SQLite because its index was down. */
 export interface SearchDegraded {
-  reason: "index_stopped" | "index_rebuilding" | "index_incomplete";
+  reason: "index_stopped" | "index_rebuilding";
   searched_fields: string[];
   /** The one line to show above the results, as the daemon words it. */
   notice: string;

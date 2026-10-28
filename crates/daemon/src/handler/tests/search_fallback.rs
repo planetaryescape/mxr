@@ -290,10 +290,11 @@ async fn a_failed_rebuild_keeps_search_limited_until_a_later_rebuild_finishes() 
     ));
     let failed = page(send(&state, search_request("invoice", None, 10, 0)).await);
     assert_eq!(failed.ids, vec![wanted.id.as_str()]);
-    assert_eq!(
-        failed.degraded.map(|degraded| degraded.reason),
-        Some(SearchDegradedReason::IndexIncomplete)
-    );
+    let failed_degraded = failed.degraded.expect("limited answer carries degraded");
+    assert_eq!(failed_degraded.reason, SearchDegradedReason::IndexStopped);
+    assert!(failed_degraded
+        .notice()
+        .contains("the last index rebuild failed"));
 
     crate::reindex::reindex(&state.search, &state.store, |_| {})
         .await

@@ -242,7 +242,6 @@ pub(super) async fn limited_search(
         match reason {
             SearchDegradedReason::IndexStopped => "stopped",
             SearchDegradedReason::IndexRebuilding => "rebuilding",
-            SearchDegradedReason::IndexIncomplete => "last rebuild failed",
         },
         SearchDegraded::new(reason).searched_fields.join(", "),
     )];

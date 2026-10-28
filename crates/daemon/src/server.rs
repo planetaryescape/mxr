@@ -1994,6 +1994,7 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
     let total_messages = state.store.count_all_messages().await.unwrap_or_default();
     let stale_content = state.lexical_content_stale.get();
     if total_messages == 0 && stale_content.is_none() {
+        state.search.clear_incomplete();
         return Ok(());
     }
 
@@ -2042,6 +2043,10 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
         if let Some(index_path) = stale_content {
             mxr_search::record_lexical_content_version(index_path)?;
         }
+    } else {
+        // Sync may have filled a gap a short index had. Nothing needs rebuilding,
+        // so the index is complete.
+        state.search.clear_incomplete();
     }
 
     // The count check above cannot see a stale entry, only a missing one.
@@ -2149,7 +2154,7 @@ mod tests {
     use super::{
         classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_ping,
         daemon_responds_to_status, is_index_lock_error, request_shutdown_to,
-        spawn_startup_maintenance,
+        run_startup_maintenance, spawn_startup_maintenance,
     };
     use crate::{handler::handle_request, state::AppState};
     use chrono::Utc;
@@ -3283,5 +3288,29 @@ mod tests {
 
         server.await.expect("join shutdown ack server");
         let _ = std::fs::remove_file(&socket_path);
+    }
+
+    #[tokio::test]
+    async fn a_short_index_that_sync_fills_before_maintenance_ends_ready() {
+        let state = Arc::new(AppState::in_memory().await.expect("state"));
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+        // Startup found the index short and flagged it, then sync filled the gap
+        // before startup maintenance ran, so maintenance has no rebuild to do.
+        state.search.mark_incomplete();
+        assert_eq!(
+            state.search.availability(),
+            mxr_search::IndexAvailability::Incomplete
+        );
+
+        run_startup_maintenance(state.clone()).await.unwrap();
+
+        assert!(matches!(
+            state.search.availability(),
+            mxr_search::IndexAvailability::Ready { .. }
+        ));
     }
 }

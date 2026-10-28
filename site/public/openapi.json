@@ -40779,6 +40779,13 @@
           "searched_fields"
         ],
         "properties": {
+          "notice_override": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A notice the daemon wrote for this reply, shown in place of the one\nbuilt from `reason`. Clients older than this field ignore it and show\nthe generic notice for `reason`."
+          },
           "reason": {
             "$ref": "#/components/schemas/SearchDegradedReason"
           },
@@ -40795,8 +40802,7 @@
         "type": "string",
         "enum": [
           "index_stopped",
-          "index_rebuilding",
-          "index_incomplete"
+          "index_rebuilding"
         ]
       },
       "SearchExplain": {

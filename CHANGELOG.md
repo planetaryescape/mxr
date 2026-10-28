@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.181](https://github.com/planetaryescape/mxr/compare/v0.6.180...v0.6.181) (2026-10-28)
+
+
+### Bug Fixes
+
+* keep malformed email HTML from crashing the reader ([#767](https://github.com/planetaryescape/mxr/issues/767)) ([4fe5d04](https://github.com/planetaryescape/mxr/commit/4fe5d04eeafb9e49bc65099ad606045e5cbc2e12))
+* take the newest 1,000 matches for --search bulk commands and say when more match ([#765](https://github.com/planetaryescape/mxr/issues/765)) ([6627f32](https://github.com/planetaryescape/mxr/commit/6627f32cf8699faf36cab015aab86d291d5664c5))
+
 ## [0.6.180](https://github.com/planetaryescape/mxr/compare/v0.6.179...v0.6.180) (2026-10-28)
 
 

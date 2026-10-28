@@ -40,7 +40,7 @@ ALLOW = {
     "mxr-rules": {"mxr-core"},
     "mxr-safety": {"mxr-core", "mxr-outbound", "mxr-reader", "mxr-relationship"},
     "mxr-store": {"mxr-core"},
-    "mxr-search": {"mxr-core"},
+    "mxr-search": {"mxr-core", "mxr-reader"},
     "mxr-semantic": {"mxr-core", "mxr-config", "mxr-reader", "mxr-store"},
     "mxr-sync": {"mxr-core", "mxr-store", "mxr-search"},
     "mxr-provider-fake": {"mxr-core"},

@@ -64,9 +64,7 @@ impl CliError {
 
     /// The typed failure at any level of an error chain, if there is one.
     pub fn find(error: &anyhow::Error) -> Option<&Self> {
-        error
-            .chain()
-            .find_map(|cause| cause.downcast_ref::<Self>())
+        error.chain().find_map(|cause| cause.downcast_ref::<Self>())
     }
 
     /// The one-line stderr record for `--format json` and `jsonl`.

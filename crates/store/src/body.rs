@@ -24,6 +24,38 @@ pub(crate) fn evidence_from_row(
     Ok(evidence)
 }
 
+fn attachment_meta_from_row(r: &sqlx::sqlite::SqliteRow) -> Result<AttachmentMeta, sqlx::Error> {
+    Ok(AttachmentMeta {
+        id: decode_id(r.try_get::<&str, _>("id")?)?,
+        message_id: decode_id(r.try_get::<&str, _>("message_id")?)?,
+        filename: r.try_get("filename")?,
+        mime_type: r.try_get("mime_type")?,
+        disposition: decode_attachment_disposition(r.try_get::<&str, _>("disposition")?)?,
+        content_id: r.try_get("content_id")?,
+        content_location: r.try_get("content_location")?,
+        size_bytes: r.try_get::<i64, _>("size_bytes")? as u64,
+        local_path: r
+            .try_get::<Option<String>, _>("local_path")?
+            .map(std::path::PathBuf::from),
+        provider_id: r.try_get("provider_id")?,
+    })
+}
+
+fn message_body_from_row(
+    row: &sqlx::sqlite::SqliteRow,
+    attachments: Vec<AttachmentMeta>,
+) -> Result<MessageBody, sqlx::Error> {
+    let metadata_json: String = row.try_get("metadata_json")?;
+    Ok(MessageBody {
+        message_id: decode_id(row.try_get::<&str, _>("message_id")?)?,
+        text_plain: row.try_get("text_plain")?,
+        text_html: row.try_get("text_html")?,
+        attachments,
+        fetched_at: decode_timestamp(row.try_get("fetched_at")?)?,
+        metadata: decode_json(&metadata_json)?,
+    })
+}
+
 impl super::Store {
     /// Body text for a bounded set of trusted message IDs. Previews need no
     /// attachment metadata or parsed message headers; missing bodies stay absent.
@@ -94,37 +126,66 @@ impl super::Store {
             attachments_rows.len(),
         );
 
-        let attachments: Vec<AttachmentMeta> = attachments_rows
-            .into_iter()
-            .map(|r| {
-                Ok(AttachmentMeta {
-                    id: decode_id(r.try_get::<&str, _>("id")?)?,
-                    message_id: decode_id(r.try_get::<&str, _>("message_id")?)?,
-                    filename: r.try_get("filename")?,
-                    mime_type: r.try_get("mime_type")?,
-                    disposition: decode_attachment_disposition(
-                        r.try_get::<&str, _>("disposition")?,
-                    )?,
-                    content_id: r.try_get("content_id")?,
-                    content_location: r.try_get("content_location")?,
-                    size_bytes: r.try_get::<i64, _>("size_bytes")? as u64,
-                    local_path: r
-                        .try_get::<Option<String>, _>("local_path")?
-                        .map(std::path::PathBuf::from),
-                    provider_id: r.try_get("provider_id")?,
-                })
-            })
-            .collect::<Result<_, sqlx::Error>>()?;
+        let attachments = attachments_rows
+            .iter()
+            .map(attachment_meta_from_row)
+            .collect::<Result<Vec<_>, sqlx::Error>>()?;
+        Ok(Some(message_body_from_row(&row, attachments)?))
+    }
 
-        let metadata_json: String = row.try_get("metadata_json")?;
-        Ok(Some(MessageBody {
-            message_id: decode_id(row.try_get::<&str, _>("message_id")?)?,
-            text_plain: row.try_get("text_plain")?,
-            text_html: row.try_get("text_html")?,
-            attachments,
-            fetched_at: decode_timestamp(row.try_get("fetched_at")?)?,
-            metadata: decode_json(&metadata_json)?,
-        }))
+    /// Full bodies, with attachment metadata, for a bounded set of messages.
+    /// Two queries for the whole set, where `get_body` is two per message.
+    /// Messages without a stored body are absent from the map.
+    pub async fn bodies_for_messages(
+        &self,
+        ids: &[MessageId],
+    ) -> Result<std::collections::HashMap<MessageId, MessageBody>, sqlx::Error> {
+        if ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let wanted = encode_json(&ids)?;
+        let started_at = std::time::Instant::now();
+        let body_rows = sqlx::query(
+            "SELECT b.message_id, b.text_plain, b.text_html, b.fetched_at, b.metadata_json
+             FROM json_each(?1) wanted
+             JOIN bodies b ON b.message_id = wanted.value",
+        )
+        .bind(&wanted)
+        .fetch_all(self.reader())
+        .await?;
+        trace_query("body.bodies_for_messages", started_at, body_rows.len());
+
+        let attachment_rows = sqlx::query(
+            "SELECT a.id, a.message_id, a.filename, a.mime_type, a.disposition, a.content_id,
+                    a.content_location, a.size_bytes, a.local_path, a.provider_id
+             FROM json_each(?1) wanted
+             JOIN attachments a ON a.message_id = wanted.value",
+        )
+        .bind(&wanted)
+        .fetch_all(self.reader())
+        .await?;
+
+        let mut attachments: std::collections::HashMap<MessageId, Vec<AttachmentMeta>> =
+            std::collections::HashMap::new();
+        for row in &attachment_rows {
+            let meta = attachment_meta_from_row(row)?;
+            attachments
+                .entry(meta.message_id.clone())
+                .or_default()
+                .push(meta);
+        }
+
+        body_rows
+            .iter()
+            .map(|row| {
+                let message_id: MessageId = decode_id(row.try_get::<&str, _>("message_id")?)?;
+                let body = message_body_from_row(
+                    row,
+                    attachments.remove(&message_id).unwrap_or_default(),
+                )?;
+                Ok((message_id, body))
+            })
+            .collect()
     }
 
     pub async fn insert_body(&self, body: &MessageBody) -> Result<(), sqlx::Error> {

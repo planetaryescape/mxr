@@ -4597,3 +4597,124 @@ async fn draft_revision_survives_restart_and_sql_cas_accepts_only_one_editor() {
         .unwrap());
     assert!(store.get_draft(&current.id).await.unwrap().is_some());
 }
+
+#[tokio::test]
+async fn reindex_keyset_pages_visit_every_row_once_across_ties_and_mid_scan_inserts() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    // One shared date makes every row a tie. Ordering by id must still
+    // place each row on exactly one page.
+    let shared_date = chrono::Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
+    let mut originals = Vec::new();
+    for i in 0..10 {
+        let mut env = test_envelope(&account.id);
+        env.provider_id = format!("keyset-{i}");
+        env.date = shared_date;
+        store.upsert_envelope(&env).await.unwrap();
+        originals.push(env.id);
+    }
+
+    let mut seen = Vec::new();
+    let first = store.list_envelopes_for_reindex(None, 3).await.unwrap();
+    assert_eq!(first.len(), 3);
+    seen.extend(first.iter().map(|env| env.id.clone()));
+    let cursor = first.last().unwrap().id.clone();
+
+    // Inserted between pages: one id above the cursor, which this scan
+    // reaches, and one below it, which this scan has already passed.
+    let mut above = test_envelope(&account.id);
+    above.provider_id = "above".to_string();
+    above.id = MessageId::from_uuid(uuid::Uuid::from_u128(u128::MAX));
+    store.upsert_envelope(&above).await.unwrap();
+    let mut below = test_envelope(&account.id);
+    below.provider_id = "below".to_string();
+    below.id = MessageId::from_uuid(uuid::Uuid::from_u128(0));
+    store.upsert_envelope(&below).await.unwrap();
+    assert!(above.id.as_uuid() > cursor.as_uuid() && below.id.as_uuid() < cursor.as_uuid());
+
+    let mut after = Some(cursor);
+    loop {
+        let page = store
+            .list_envelopes_for_reindex(after.as_ref(), 3)
+            .await
+            .unwrap();
+        let Some(last) = page.last() else { break };
+        after = Some(last.id.clone());
+        seen.extend(page.iter().map(|env| env.id.clone()));
+    }
+
+    let unique: std::collections::HashSet<_> = seen.iter().collect();
+    assert_eq!(unique.len(), seen.len(), "a row appeared on two pages");
+    for id in &originals {
+        assert_eq!(seen.iter().filter(|seen_id| *seen_id == id).count(), 1);
+    }
+    assert_eq!(seen.iter().filter(|id| **id == above.id).count(), 1);
+    // A row behind the cursor is missed by this scan. The live index write
+    // for that row already covers it.
+    assert!(!seen.contains(&below.id));
+    assert_eq!(seen.len(), originals.len() + 1);
+}
+
+#[tokio::test]
+async fn bodies_for_messages_matches_get_body_and_skips_messages_without_a_body() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    store.insert_account(&account).await.unwrap();
+
+    let mut with_body = test_envelope(&account.id);
+    with_body.provider_id = "with-body".to_string();
+    let mut without_body = test_envelope(&account.id);
+    without_body.provider_id = "without-body".to_string();
+    store.upsert_envelope(&with_body).await.unwrap();
+    store.upsert_envelope(&without_body).await.unwrap();
+
+    let body = MessageBody {
+        message_id: with_body.id.clone(),
+        text_plain: Some("Batched body".to_string()),
+        text_html: None,
+        attachments: vec![AttachmentMeta {
+            id: AttachmentId::new(),
+            message_id: with_body.id.clone(),
+            filename: "notes.txt".to_string(),
+            mime_type: "text/plain".to_string(),
+            disposition: AttachmentDisposition::Attachment,
+            content_id: None,
+            content_location: None,
+            size_bytes: 12,
+            local_path: None,
+            provider_id: "att-2".to_string(),
+        }],
+        fetched_at: chrono::Utc::now(),
+        metadata: MessageMetadata::default(),
+    };
+    store.insert_body(&body).await.unwrap();
+
+    let batched = store
+        .bodies_for_messages(&[with_body.id.clone(), without_body.id.clone()])
+        .await
+        .unwrap();
+    assert_eq!(batched.len(), 1);
+    assert!(!batched.contains_key(&without_body.id));
+
+    let single = store.get_body(&with_body.id).await.unwrap().unwrap();
+    let batched = batched.get(&with_body.id).unwrap();
+    assert_eq!(batched.text_plain, single.text_plain);
+    assert_eq!(batched.text_html, single.text_html);
+    assert_eq!(batched.fetched_at, single.fetched_at);
+    assert_eq!(batched.attachments.len(), 1);
+    assert_eq!(batched.attachments[0].id, single.attachments[0].id);
+    assert_eq!(
+        batched.attachments[0].filename,
+        single.attachments[0].filename
+    );
+    assert_eq!(
+        batched.attachments[0].disposition,
+        single.attachments[0].disposition
+    );
+    assert_eq!(
+        batched.attachments[0].size_bytes,
+        single.attachments[0].size_bytes
+    );
+}

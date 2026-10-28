@@ -163,6 +163,7 @@ pub fn draw(
             Line::from("Enter edit selected account"),
             Line::from("t test account"),
             Line::from("d set default"),
+            Line::from("i colour and tag"),
             Line::from("c edit config"),
         ]
     } else {
@@ -214,9 +215,9 @@ pub fn draw(
     let mut footer_hint = if state.accounts.is_empty() {
         "c:new account  Esc:mailbox".to_string()
     } else if selected_unhealthy {
-        "j/k:select  Enter:edit  c:new  t:test  d:default  r:repair  R:refresh".to_string()
+        "j/k:select  Enter:edit  c:new  t:test  d:default  i:colour  r:repair  R:refresh".to_string()
     } else {
-        "j/k:select  Enter:edit  c:new  t:test  d:default  r:refresh".to_string()
+        "j/k:select  Enter:edit  c:new  t:test  d:default  i:colour  r:refresh".to_string()
     };
     if account_result_has_details(state.last_result.as_ref()) {
         footer_hint.push_str("  O:details");

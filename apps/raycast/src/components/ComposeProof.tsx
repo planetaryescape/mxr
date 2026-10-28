@@ -13,6 +13,7 @@ import { useState } from "react";
 import type { ComposeAssistProposal, ComposeModelChoice } from "../bridge/types";
 import { message } from "./previewed";
 import { escapeProofText, proposalMarkdown } from "./proofMarkdown";
+import { useWebBase, web } from "./web";
 
 interface Props {
   proposal: ComposeAssistProposal;
@@ -88,6 +89,7 @@ export function ComposeProof({
   }
 
   const provenance = proposal.provenance;
+  const webBase = useWebBase();
   const changed = proposal.yours_changed.map((index) => index + 1);
   const styleMarks = proposal.style_marks ?? [];
   const styleScore = proposal.style_score ?? 100;
@@ -112,6 +114,19 @@ export function ComposeProof({
                 : "None"
             }
           />
+          {webBase &&
+            provenance.voice_examples?.map((source, index) => (
+              <Detail.Metadata.Link
+                key={source.message_id}
+                title={`Voice example ${index + 1}`}
+                target={`${webBase}${web.sourceMessage(source)}`}
+                text={
+                  source.from_me
+                    ? `Your email to ${source.person_name ?? source.person}`
+                    : (source.person_name ?? source.person)
+                }
+              />
+            ))}
           <Detail.Metadata.Separator />
           <Detail.Metadata.Label
             title="Your words"

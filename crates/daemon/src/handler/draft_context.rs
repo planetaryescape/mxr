@@ -4,6 +4,7 @@
 //! `DraftSuggestion` (humanizer pass, voice-match score, inferred fields).
 //! The prompt itself is built by `draft_prompt` from `draft_voice`.
 
+use super::draft_compose::DraftRewritePolicy;
 use super::draft_provenance::DraftPolicy;
 use super::{relationship_profile, HandlerResult};
 use crate::state::AppState;
@@ -29,6 +30,11 @@ pub(crate) const ASSEMBLED_MESSAGE_BUDGET_CHARS: usize = 28_000;
 pub(crate) struct DraftContext {
     /// Baseline stylometry for post-hoc voice-match scoring.
     pub baseline: Option<(StylometryMetrics, u32)>,
+    /// Relationship summary from the same loaded contact profile.
+    pub background: Option<String>,
+    /// The context includes a stored profile derived from sent or received mail.
+    pub history_used: bool,
+    pub style_used: bool,
     /// Effective register used for the draft (inferred, unless overridden).
     pub inferred_register: VoiceRegisterData,
     /// Effective length used for the draft (inferred, unless overridden).
@@ -48,17 +54,22 @@ pub(crate) async fn build_relationship_block(
     purpose: &str,
     register_override: Option<VoiceRegisterData>,
     length_override: Option<DraftLengthHintData>,
+    allow_history: bool,
 ) -> DraftContext {
     let mut baseline: Option<(StylometryMetrics, u32)> = None;
     let mut primary_style: Option<ContactStyleData> = None;
     let mut matched_email: Option<String> = None;
+    let mut background = None;
 
-    for email in for_emails.iter().take(3) {
+    for email in for_emails.iter().take(if allow_history { 3 } else { 0 }) {
         let Ok(Some(profile)) =
             relationship_profile::load_relationship_profile(state, account_id, email).await
         else {
             continue;
         };
+        if background.is_none() {
+            background = profile.summary.as_ref().map(|summary| summary.text.clone());
+        }
         if let Some(style) = &profile.style {
             primary_style = Some(style.clone());
             matched_email = Some(email.clone());
@@ -74,12 +85,16 @@ pub(crate) async fn build_relationship_block(
         }
     }
 
-    let user_voice = state
-        .store
-        .get_user_voice_profile(account_id)
-        .await
-        .ok()
-        .flatten();
+    let user_voice = if allow_history {
+        state
+            .store
+            .get_user_voice_profile(account_id)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
     let uv_formality = user_voice.as_ref().map(|p| p.formality_score);
     let uv_avg = user_voice.as_ref().map(|p| p.avg_sentence_len);
 
@@ -120,6 +135,9 @@ pub(crate) async fn build_relationship_block(
 
     DraftContext {
         baseline,
+        history_used: matched_email.is_some() || user_voice.is_some() || background.is_some(),
+        style_used: primary_style.is_some() || user_voice.is_some(),
+        background,
         inferred_register,
         inferred_length,
         context_note,
@@ -293,9 +311,13 @@ pub(crate) async fn finish_draft_suggestion(
     inferred_register: VoiceRegisterData,
     inferred_length: DraftLengthHintData,
     context_note: Option<String>,
+    rewrite_policy: DraftRewritePolicy,
 ) -> HandlerResult {
-    let (body, humanizer, rewrite_iterations) = if state.config_snapshot().humanizer.apply_to_drafts
-    {
+    let (body, humanizer, rewrite_iterations) = if match rewrite_policy {
+        DraftRewritePolicy::Configured => state.config_snapshot().humanizer.apply_to_drafts,
+        DraftRewritePolicy::Disabled => false,
+        DraftRewritePolicy::Enabled => true,
+    } {
         let rewrite = DraftPolicy::pin(state, LlmFeature::HumanizeRewrite);
         if provenance.history_used && !rewrite.share_history {
             if super::humanizer::rewrite_due(state, &body) {

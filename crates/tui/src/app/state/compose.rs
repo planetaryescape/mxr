@@ -54,6 +54,7 @@ pub struct ComposeAssistReview {
     pub current_index: usize,
     pub note_input: Option<String>,
     pub proof_scroll_offset: u16,
+    pub voice_source_index: usize,
     pub request_pending: bool,
 }
 
@@ -80,6 +81,7 @@ impl ComposeAssistReview {
         if index < self.proposals.len() {
             self.current_index = index;
             self.proof_scroll_offset = 0;
+            self.voice_source_index = 0;
         }
     }
 
@@ -92,6 +94,7 @@ impl ComposeAssistReview {
         self.proposal_models.push(model);
         self.current_index = self.proposals.len().saturating_sub(1);
         self.note_input = None;
+        self.voice_source_index = 0;
         self.proof_scroll_offset = 0;
         self.request_pending = false;
     }
@@ -198,6 +201,8 @@ pub struct ComposeState {
     pub pending_compose: Option<ComposeAction>,
     pub pending_send_confirm: Option<PendingSend>,
     pub assist_review: Option<ComposeAssistReview>,
+    pub viewing_voice_source: bool,
+    pub voice_source_request_id: u64,
     pub assist_request_id: u64,
     pub assist_after_editor: bool,
     pub model_picker: Option<ComposeModelPicker>,

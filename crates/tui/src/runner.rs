@@ -2564,6 +2564,10 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         if let Some(message_id) = app.mailbox.pending_invite_open.take() {
+            let voice_request = app
+                .compose
+                .viewing_voice_source
+                .then_some(app.compose.voice_source_request_id);
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, Request::GetEnvelope { message_id }).await;
@@ -2575,7 +2579,10 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response to GetEnvelope".into())),
                 };
-                AsyncResult::InviteEnvelopeOpened(result)
+                match voice_request {
+                    Some(id) => AsyncResult::VoiceSourceOpened(id, result),
+                    None => AsyncResult::InviteEnvelopeOpened(result),
+                }
             });
         }
 
@@ -4752,6 +4759,22 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::TodoEnvelopeOpened(Err(e), _) => {
                             app.status_message = Some(format!("Open email failed: {e}"));
                         }
+                        AsyncResult::VoiceSourceOpened(id, result) => {
+                            if !app.compose.viewing_voice_source || app.compose.assist_review.is_none() || id != app.compose.voice_source_request_id {
+                                continue;
+                            }
+                            match result {
+                                Ok(envelope) => {
+                                    app.screen = crate::app::Screen::Mailbox;
+                                    app.open_invite_envelope(envelope);
+                                    app.status_message = Some("Esc returns to the writing proof".into());
+                                }
+                                Err(e) => {
+                                    app.compose.viewing_voice_source = false;
+                                    app.status_message = Some(format!("Open voice example failed: {e}"));
+                                }
+                            }
+                        }
                         AsyncResult::InviteEnvelopeOpened(Ok(envelope)) => {
                             app.open_invite_envelope(envelope);
                         }
@@ -4905,6 +4928,7 @@ pub async fn run() -> anyhow::Result<()> {
                                             current_index: 0,
                                             note_input: None,
                                             proof_scroll_offset: 0,
+                                            voice_source_index: 0,
                                             request_pending: false,
                                         });
                                     }

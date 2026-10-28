@@ -757,6 +757,29 @@ impl App {
         }
 
         // Route keys to send confirmation prompt
+        if self.compose.viewing_voice_source {
+            match key.code {
+                KeyCode::Esc => self.compose.viewing_voice_source = false,
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.mailbox.message_scroll_offset =
+                        self.mailbox.message_scroll_offset.saturating_add(1);
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.mailbox.message_scroll_offset =
+                        self.mailbox.message_scroll_offset.saturating_sub(1);
+                }
+                KeyCode::PageDown => {
+                    self.mailbox.message_scroll_offset =
+                        self.mailbox.message_scroll_offset.saturating_add(10);
+                }
+                KeyCode::PageUp => {
+                    self.mailbox.message_scroll_offset =
+                        self.mailbox.message_scroll_offset.saturating_sub(10);
+                }
+                _ => {}
+            }
+            return None;
+        }
         if self.compose.assist_review.is_some() {
             return self.handle_compose_assist_key(key);
         }

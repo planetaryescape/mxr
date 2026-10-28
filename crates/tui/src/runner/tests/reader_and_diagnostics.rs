@@ -1397,6 +1397,7 @@ fn proof_revision_keeps_the_original_body_and_names_the_displayed_proposal() {
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
+        voice_source_index: 0,
         request_pending: false,
     });
 
@@ -1472,6 +1473,7 @@ fn proof_accept_calls_apply_then_reloads_the_draft_for_safety_review() {
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
+        voice_source_index: 0,
         request_pending: false,
     });
 
@@ -1535,6 +1537,7 @@ fn proof_with_gaps_can_be_accepted_and_send_safety_is_rechecked() {
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
+        voice_source_index: 0,
         request_pending: false,
     });
 
@@ -1570,6 +1573,7 @@ fn proof_with_gaps_accept_edit_reopens_the_draft_editor() {
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
+        voice_source_index: 0,
         request_pending: false,
     });
     app.handle_key(crossterm::event::KeyEvent::new(
@@ -1601,6 +1605,7 @@ fn proof_history_selects_revision_and_escape_keeps_original_review() {
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
+        voice_source_index: 0,
         request_pending: false,
     });
 
@@ -1659,6 +1664,7 @@ fn proof_history_selects_revision_and_escape_keeps_original_review() {
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
+        voice_source_index: 0,
         request_pending: true,
     });
     canceled
@@ -1697,6 +1703,7 @@ fn proof_scroll_keys_reach_long_text_and_reset_on_version_change() {
         current_index: 0,
         note_input: None,
         proof_scroll_offset: 0,
+        voice_source_index: 0,
         request_pending: false,
     });
 
@@ -1753,6 +1760,69 @@ fn proof_scroll_keys_reach_long_text_and_reset_on_version_change() {
     let review = app.compose.assist_review.as_ref().unwrap();
     assert_eq!(review.current_index, 1);
     assert_eq!(review.proof_scroll_offset, 0);
+}
+
+#[test]
+fn proof_open_source_cycles_through_the_exact_voice_examples() {
+    let mut app = App::new();
+    let first = MessageId::new();
+    let second = MessageId::new();
+    let mut proposal = test_compose_proposal();
+    proposal.provenance.voice_examples = [first.clone(), second.clone()]
+        .into_iter()
+        .map(|message_id| mxr_protocol::DraftSourceData {
+            message_id,
+            thread_id: ThreadId::new(),
+            date: chrono::Utc::now(),
+            from_me: true,
+            person: "sender@example.com".into(),
+            person_name: None,
+        })
+        .collect();
+    app.compose.assist_review = Some(crate::app::ComposeAssistReview {
+        pending: test_pending_send("/tmp/mxr-proof.md"),
+        proposals: vec![proposal],
+        proposal_models: vec![None],
+        current_index: 0,
+        note_input: None,
+        proof_scroll_offset: 0,
+        voice_source_index: 0,
+        request_pending: false,
+    });
+
+    let key = crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('o'),
+        crossterm::event::KeyModifiers::NONE,
+    );
+    app.handle_key(key);
+    assert_eq!(app.mailbox.pending_invite_open, Some(first));
+    assert!(app.compose.viewing_voice_source);
+    let source_view = render_to_string(120, 40, |frame| app.draw(frame));
+    assert!(
+        !source_view.contains("Voice examples:"),
+        "proof must not cover the source reader"
+    );
+    app.mailbox.pending_invite_open = None;
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Down,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    assert_eq!(app.mailbox.message_scroll_offset, 1);
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Esc,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    assert!(!app.compose.viewing_voice_source);
+    assert!(app.compose.assist_review.is_some());
+    app.handle_key(key);
+    assert_eq!(app.mailbox.pending_invite_open, Some(second));
+    let review = app.compose.assist_review.as_mut().unwrap();
+    review.select_version(0);
+    assert_eq!(review.voice_source_index, 0);
+    review.voice_source_index = 1;
+    let proposal = review.proposal().unwrap().clone();
+    review.push_proposal(proposal, None);
+    assert_eq!(review.voice_source_index, 0);
 }
 
 fn test_pending_send(path: &str) -> PendingSend {

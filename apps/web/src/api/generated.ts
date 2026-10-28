@@ -11962,9 +11962,14 @@ export interface components {
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
-                  cmd: "DraftEval";
+                  cmd: "DraftEvalWithPolicy";
                   /** Format: int32 */
                   limit: number;
+                  /**
+                   * @description Also run the configured humanizer rewrite model for each replay.
+                   *     Kept off by default so `--set mine` measures the drafting model.
+                   */
+                  rewrite?: boolean;
               }
             | {
                   /** @enum {string} */

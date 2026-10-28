@@ -27,6 +27,7 @@ fn compose_proof_keys_are_registered_only_for_the_proof_overlay() {
         ("e", "ComposeProofAcceptEdit"),
         ("n", "ComposeProofRevise"),
         ("Escape", "ComposeProofKeep"),
+        ("o", "ComposeProofOpenSource"),
         ("ArrowLeft", "ComposeProofPrevious"),
         ("ArrowRight", "ComposeProofNext"),
         ("ArrowUp", "ComposeProofScrollUp"),

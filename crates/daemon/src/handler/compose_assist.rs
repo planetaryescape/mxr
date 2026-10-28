@@ -12,7 +12,7 @@
 use super::compose_proposals::StoredProposal;
 use super::diagnostics_impl::emit_operation_event;
 use super::draft_compose::{
-    complete_with_retry, max_tokens_for_words, prompt_budget_chars, target_words, voice_inputs,
+    complete_with_retry, max_tokens_for_words, prompt_budget_chars, target_words,
     MAX_INSTRUCTION_BYTES,
 };
 use super::draft_prompt::{self, DraftMode, Help, PromptInput, Turn};
@@ -28,7 +28,7 @@ use mxr_core::types::{Address, Draft, DraftContent, Envelope};
 use mxr_llm::LlmFeature;
 use mxr_protocol::{
     AssistActionData, AssistAdjustData, ClientKind, ComposeProposalData, DaemonEvent,
-    DraftTargetData, ResponseData, TextRangeData,
+    DraftSourceData, DraftTargetData, ResponseData, TextRangeData, VoiceRegisterData,
 };
 
 /// The operation name on each progress event, so a client can tell this
@@ -202,22 +202,64 @@ pub(super) async fn compose_assist(
     if let Some(person) = &gathered.counterparty {
         draft_context::ensure_contact_fresh(state, account_id, &person.email).await;
     }
-    let (background, material) = voice_inputs(
+    let snapshot = draft_voice::snapshot(
         state,
         account_id,
-        &policy,
         gathered.counterparty.as_ref(),
         gathered.thread_id.as_ref(),
         None,
+        draft_voice::VoiceSnapshotOptions {
+            share_history: share,
+            purpose: instruction,
+            register: request
+                .adjust
+                .more_formal
+                .then_some(VoiceRegisterData::Formal),
+            length_hint: None,
+        },
     )
     .await;
-    // Style rates are local evidence: use them in the deterministic check,
-    // never in the prompt or provenance sent to a cloud model.
-    let pattern_rates =
-        draft_voice::pattern_rates(state, account_id, gathered.thread_id.as_ref(), None).await;
+    let material = snapshot.material;
+    let context = share.then_some(snapshot.context);
+    let background = context
+        .as_ref()
+        .and_then(|context| context.background.clone());
+    let tone = if request.adjust.more_formal {
+        Some(VoiceRegisterData::Formal)
+    } else {
+        context
+            .as_ref()
+            .filter(|context| context.style_used)
+            .map(|context| context.inferred_register)
+    };
+    let mut habits = material.habits.clone();
+    if let Some(words) = material.median_words {
+        habits.push(format!("I usually write about {words} words."));
+    }
+    if let Some(context) = context.as_ref().filter(|context| context.style_used) {
+        habits.push(format!(
+            "My usual register is {}.",
+            draft_context::register_label(context.inferred_register)
+        ));
+        habits.push(format!(
+            "My usual email length is {}.",
+            draft_context::length_label(context.inferred_length)
+        ));
+    }
 
     let typed_words = u32::try_from(request.text.split_whitespace().count()).unwrap_or(u32::MAX);
-    let words = plan::target_words(target_words(None, &material), resolved.action, typed_words);
+    let inferred_length = context
+        .as_ref()
+        .filter(|context| context.style_used)
+        .map(|context| context.inferred_length);
+    let mut words = plan::target_words(
+        target_words(inferred_length, &material),
+        resolved.action,
+        typed_words,
+    );
+    if request.adjust.shorter {
+        words = (words / 2).max(10);
+    }
     let max_tokens = max_tokens_for_words(words);
     let budget_chars = prompt_budget_chars(policy.llm.context_window(), max_tokens);
     let today = draft_voice::today();
@@ -225,11 +267,11 @@ pub(super) async fn compose_assist(
         mode: gathered.mode,
         me: &me,
         today: &today,
-        habits: &material.habits,
+        habits: &habits,
         examples: &material.examples,
         background: background.as_deref(),
         turns: &gathered.turns,
-        tone: None,
+        tone,
         target_words: words,
         instruction,
         subject: &gathered.subject,
@@ -281,7 +323,7 @@ pub(super) async fn compose_assist(
             output: &cleaned,
             known: &known,
         },
-        &pattern_rates,
+        &snapshot.pattern_rates,
     );
     if config.humanizer.auto_fix && checked.style_score < 100 && checked.yours_changed.is_empty() {
         if let Some(repaired) = super::compose_style_repair::repair_style_sentences(
@@ -292,7 +334,7 @@ pub(super) async fn compose_assist(
                 action: resolved.action,
                 selection: resolved.selection.clone(),
                 known: &known,
-                rates: &pattern_rates,
+                rates: &snapshot.pattern_rates,
                 max_tokens: max_tokens.min(512),
             },
         )
@@ -309,21 +351,19 @@ pub(super) async fn compose_assist(
     grounded_figures.retain(|figure| !unknown_figures.contains(figure));
 
     // Only the examples that fit the prompt shaped the proposal.
-    let examples_used = &material.examples[..prompt.examples_used];
+    let voice_sources = used_voice_sources(&material.examples, prompt.examples_used);
     let history_used = revised
         .as_ref()
         .is_some_and(|stored| stored.proposal.provenance.history_used)
         || typed_from_history
-        || !examples_used.is_empty()
+        || !voice_sources.is_empty()
         || !material.habits.is_empty()
-        || prompt.background_used;
+        || prompt.background_used
+        || context.as_ref().is_some_and(|context| context.history_used);
     let provenance = policy.provenance(
         &model,
         history_used,
-        examples_used
-            .iter()
-            .map(|example| example.source.clone())
-            .collect(),
+        voice_sources,
         prompt
             .turns_kept
             .iter()
@@ -358,6 +398,18 @@ pub(super) async fn compose_assist(
         proposal: proposal.clone(),
     });
     Ok(ResponseData::ComposeProposal { proposal })
+}
+
+/// Cite only the examples the prompt renderer kept, preserving their order.
+fn used_voice_sources(
+    examples: &[draft_prompt::VoiceExample],
+    used: usize,
+) -> Vec<DraftSourceData> {
+    examples
+        .iter()
+        .take(used)
+        .map(|example| example.source.clone())
+        .collect()
 }
 
 /// What the activity log learns: which action ran, on what model and how much
@@ -571,4 +623,48 @@ pub(super) async fn apply(
         draft_id: draft_id.clone(),
         text_hash: check::text_hash(&stored.proposal.text),
     })
+}
+
+#[cfg(test)]
+mod voice_source_tests {
+    use super::*;
+    use chrono::Utc;
+    use mxr_core::id::MessageId;
+
+    #[test]
+    fn provenance_cites_only_the_budgeted_voice_example_prefix() {
+        let examples: Vec<_> = (0..3)
+            .map(|_| {
+                let source = DraftSourceData {
+                    message_id: MessageId::new(),
+                    thread_id: ThreadId::new(),
+                    date: Utc::now(),
+                    from_me: true,
+                    person: "alice@example.com".into(),
+                    person_name: Some("Alice".into()),
+                };
+                draft_prompt::VoiceExample {
+                    to: "Alice <alice@example.com>".into(),
+                    their_message: None,
+                    my_email: "A real example.".into(),
+                    source,
+                }
+            })
+            .collect();
+        let expected: Vec<_> = examples[..2]
+            .iter()
+            .map(|example| example.source.message_id.clone())
+            .collect();
+
+        let cited = used_voice_sources(&examples, 2);
+
+        assert_eq!(
+            cited
+                .iter()
+                .map(|source| source.message_id.clone())
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert_eq!(used_voice_sources(&examples, 0).len(), 0);
+    }
 }

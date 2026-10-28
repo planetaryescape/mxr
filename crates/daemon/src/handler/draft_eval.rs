@@ -26,6 +26,7 @@ pub(super) async fn draft_eval(
     state: &AppState,
     account_id: Option<&AccountId>,
     limit: u32,
+    rewrite: bool,
 ) -> HandlerResult {
     let account_id = match account_id {
         Some(id) => id.clone(),
@@ -51,7 +52,7 @@ pub(super) async fn draft_eval(
         if !(3..=350).contains(&words) {
             continue;
         }
-        cases.push(replay(state, &account_id, &sample, actual, &mut model).await);
+        cases.push(replay(state, &account_id, &sample, actual, &mut model, rewrite).await);
     }
     let summary = summarise(&cases, model);
     Ok(ResponseData::DraftEval { cases, summary })
@@ -63,6 +64,7 @@ async fn replay(
     sample: &MyReplySample,
     actual: String,
     model: &mut String,
+    rewrite: bool,
 ) -> DraftEvalCaseData {
     let mut case = DraftEvalCaseData {
         reply_message_id: sample.reply_message_id.clone(),
@@ -112,6 +114,11 @@ async fn replay(
         register: None,
         length_hint: None,
         before: Some(sample.replied_at),
+        rewrite_policy: if rewrite {
+            super::draft_compose::DraftRewritePolicy::Enabled
+        } else {
+            super::draft_compose::DraftRewritePolicy::Disabled
+        },
     };
     let result = draft_in_thread(
         state,
@@ -194,16 +201,19 @@ mod tests {
     use crate::test_fixtures::TestEnvelopeBuilder;
     use mxr_core::types::{MessageBody, MessageDirection, MessageMetadata};
     use mxr_llm::{CompletionRequest, CompletionResponse, LlmCapabilities, LlmError, LlmProvider};
+    use mxr_store::{ContactRelationshipSummaryRecord, ContactStyleRecord, UserVoiceProfileRecord};
     use std::sync::{Arc, Mutex};
 
     #[derive(Default)]
     struct Recorder {
         prompts: Mutex<Vec<String>>,
+        calls: Mutex<usize>,
     }
 
     #[async_trait::async_trait]
     impl LlmProvider for Recorder {
         async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+            *self.calls.lock().unwrap() += 1;
             if req.messages[0].content.contains("ghostwriting") {
                 self.prompts
                     .lock()
@@ -211,7 +221,7 @@ mod tests {
                     .push(req.messages[1].content.clone());
             }
             Ok(CompletionResponse {
-                content: "hey, 2pm friday works\ns".into(),
+                content: "Moreover, delve into the fast-paced landscape. This robust framework serves as a testament. Additionally, it is crucial to highlight the pivotal role it plays.\ns".into(),
                 model: "test-llm".into(),
                 finish_reason: Some("stop".into()),
             })
@@ -231,7 +241,10 @@ mod tests {
     async fn replays_a_reply_without_showing_the_model_that_reply() {
         let state = AppState::in_memory().await.unwrap();
         let mut config = state.config_snapshot();
-        config.humanizer.apply_to_drafts = false;
+        config.humanizer.apply_to_drafts = true;
+        config.humanizer.enabled = true;
+        config.humanizer.auto_fix = true;
+        config.humanizer.score_threshold = 100;
         state.set_config_for_test(config).await;
         let llm = Arc::new(Recorder::default());
         state.llm.replace(llm.clone());
@@ -291,8 +304,60 @@ mod tests {
                 .unwrap();
         }
         state.store.try_create_reply_pair(&reply).await.unwrap();
+        let computed_after_reply = chrono::Utc::now();
+        state
+            .store
+            .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
+                account_id: account_id.clone(),
+                email: "alice@example.com".into(),
+                text: "PRIVATE-AFTER-CUTOFF-SUMMARY".into(),
+                model: "test-model".into(),
+                known_topics: Vec::new(),
+                computed_at: computed_after_reply,
+                source_hash: "after-reply".into(),
+                last_error: None,
+            })
+            .await
+            .unwrap();
+        state
+            .store
+            .upsert_contact_style(&ContactStyleRecord {
+                account_id: account_id.clone(),
+                email: "alice@example.com".into(),
+                formality_score: 0.95,
+                formality_score_theirs: 0.95,
+                avg_sentence_len: 40.0,
+                avg_sentence_len_theirs: 40.0,
+                msg_count_used: 30,
+                msg_count_used_theirs: 20,
+                metrics_json: "{}".into(),
+                metrics_json_theirs: "{}".into(),
+                computed_at: computed_after_reply,
+                source_hash: "after-reply".into(),
+                drift_detected: false,
+                drift_reason: None,
+                drift_detected_at: None,
+            })
+            .await
+            .unwrap();
+        state
+            .store
+            .upsert_user_voice_profile(&UserVoiceProfileRecord {
+                account_id: account_id.clone(),
+                formality_score: 0.95,
+                avg_sentence_len: 40.0,
+                msg_count_used: 100,
+                metrics_json: "{}".into(),
+                register_modes: Vec::new(),
+                computed_at: computed_after_reply,
+                source_hash: "after-reply".into(),
+            })
+            .await
+            .unwrap();
 
-        let response = draft_eval(&state, Some(&account_id), 5).await.unwrap();
+        let response = draft_eval(&state, Some(&account_id), 5, false)
+            .await
+            .unwrap();
         let ResponseData::DraftEval { cases, summary } = response else {
             panic!("expected an eval report");
         };
@@ -300,7 +365,7 @@ mod tests {
         let case = &cases[0];
         assert!(case.error.is_none(), "{case:?}");
         assert!(case.actual.contains("SECRET-ACTUAL-REPLY"));
-        assert_eq!(case.draft, "hey, 2pm friday works\ns");
+        assert_eq!(case.draft, "Moreover, delve into the fast-paced landscape. This robust framework serves as a testament. Additionally, it is crucial to highlight the pivotal role it plays.\ns");
         assert!(case.sign_off_match, "both sign off 's'");
         assert!(
             case.invented_numbers.is_empty(),
@@ -309,19 +374,41 @@ mod tests {
         );
         assert_eq!(summary.cases, 1);
 
-        let prompts = llm.prompts.lock().unwrap();
-        assert_eq!(prompts.len(), 1);
-        assert!(prompts[0].contains("Can you do Friday at 2pm?"));
+        {
+            let prompts = llm.prompts.lock().unwrap();
+            assert_eq!(prompts.len(), 1);
+            assert!(prompts[0].contains("Can you do Friday at 2pm?"));
+            assert!(
+                !prompts[0].contains("SECRET-ACTUAL-REPLY"),
+                "the replayed reply leaked into its own prompt"
+            );
+            assert!(!prompts[0].contains("PRIVATE-AFTER-CUTOFF-SUMMARY"));
+            assert!(!prompts[0].contains("My usual register is formal."));
+            assert!(!prompts[0].contains("My usual email length is long."));
+        }
+        assert_eq!(
+            *llm.calls.lock().unwrap(),
+            1,
+            "replay does not rewrite by default"
+        );
+
+        assert!(super::super::humanizer::rewrite_due(
+            &state,
+            "Moreover, delve into the fast-paced landscape. This robust framework serves as a testament. Additionally, it is crucial to highlight the pivotal role it plays.\ns"
+        ));
+        draft_eval(&state, Some(&account_id), 5, true)
+            .await
+            .unwrap();
         assert!(
-            !prompts[0].contains("SECRET-ACTUAL-REPLY"),
-            "the replayed reply leaked into its own prompt"
+            *llm.calls.lock().unwrap() > 2,
+            "--rewrite enables the configured rewrite pass"
         );
     }
 
     #[tokio::test]
     async fn replaying_my_replies_with_no_account_is_a_clear_error() {
         let state = AppState::in_memory_without_accounts().await.unwrap();
-        let error = draft_eval(&state, None, 5).await.unwrap_err();
+        let error = draft_eval(&state, None, 5, false).await.unwrap_err();
         assert!(
             error.to_string().contains("No account is set up"),
             "{error}"

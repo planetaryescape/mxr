@@ -156,6 +156,30 @@ impl App {
                     }
                     None
                 }
+                Some("ComposeProofOpenSource") => {
+                    if let Some(review) = self.compose.assist_review.as_mut() {
+                        if let Some(proposal) = review.proposal() {
+                            let sources = &proposal.provenance.voice_examples;
+                            if sources.is_empty() {
+                                self.status_message = Some("No voice examples were used".into());
+                            } else {
+                                let index = review.voice_source_index % sources.len();
+                                let source = &sources[index];
+                                self.mailbox.pending_invite_open = Some(source.message_id.clone());
+                                self.compose.viewing_voice_source = true;
+                                self.compose.voice_source_request_id =
+                                    self.compose.voice_source_request_id.wrapping_add(1);
+                                self.status_message = Some(format!(
+                                    "Opening voice example {} of {}…",
+                                    index + 1,
+                                    sources.len()
+                                ));
+                                review.voice_source_index = (index + 1) % sources.len();
+                            }
+                        }
+                    }
+                    None
+                }
                 Some("ComposeProofPrevious" | "ComposeProofNext") => {
                     if let Some(review) = self.compose.assist_review.as_mut() {
                         let last = review.proposals.len().saturating_sub(1);
@@ -314,6 +338,7 @@ fn proof_action_for_key(key: crossterm::event::KeyEvent) -> Option<&'static str>
         "ComposeProofRevise" => Some("ComposeProofRevise"),
         "ComposeProofModel" => Some("ComposeProofModel"),
         "ComposeProofKeep" => Some("ComposeProofKeep"),
+        "ComposeProofOpenSource" => Some("ComposeProofOpenSource"),
         "ComposeProofPrevious" => Some("ComposeProofPrevious"),
         "ComposeProofNext" => Some("ComposeProofNext"),
         "ComposeProofScrollUp" => Some("ComposeProofScrollUp"),

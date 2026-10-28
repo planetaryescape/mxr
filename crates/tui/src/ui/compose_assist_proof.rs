@@ -159,6 +159,19 @@ fn draw_with_color_mode(
         Style::default().fg(theme.text_muted),
     )));
     lines.push(Line::from(Span::styled(
+        format!(
+            "Voice examples: {}",
+            proposal.provenance.voice_examples.len()
+        ),
+        Style::default().fg(theme.text_muted),
+    )));
+    for source_line in proposal.provenance.source_lines() {
+        lines.push(Line::from(Span::styled(
+            source_line,
+            Style::default().fg(theme.text_muted),
+        )));
+    }
+    lines.push(Line::from(Span::styled(
         format!("Style {}/100", proposal.style_score),
         Style::default().fg(theme.text_muted),
     )));
@@ -170,10 +183,11 @@ fn draw_with_color_mode(
     }
     lines.push(Line::from(Span::styled(
         format!(
-            "{} another model · {} revise · {} keep · {} previous · {} next · {}/{} scroll · {}/{} page · {}/{} top/end",
+            "{} another model · {} revise · {} keep · {} open next voice example · {} previous · {} next · {}/{} scroll · {}/{} page · {}/{} top/end",
             key("ComposeProofModel"),
             key("ComposeProofRevise"),
             key("ComposeProofKeep"),
+            key("ComposeProofOpenSource"),
             key("ComposeProofPrevious"),
             key("ComposeProofNext"),
             key("ComposeProofScrollUp"),

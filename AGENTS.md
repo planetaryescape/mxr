@@ -32,3 +32,7 @@ Use `agent-work status` and `agent-work cancel <id>` for your own job; never kil
 Cargo/rustc or test daemons globally to free a slot. Build persistent daemons in
 the queue, then launch the binary outside it. Setup and limits:
 `~/.dotfiles/docs/agent-work.md`.
+Cargo never deletes old artifacts, and a bloated `target-cli` slows every
+compile. `agent-work` cleans a target directory over 50 GiB before the day's
+first build in it. When you finish work, remove the worktree (its
+`target-cli` goes with it); in the main checkout, run `agent-work sweep`.

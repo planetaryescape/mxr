@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.182](https://github.com/planetaryescape/mxr/compare/v0.6.181...v0.6.182) (2026-10-28)
+
+
+### Bug Fixes
+
+* index the text the reader shows, not raw HTML ([#771](https://github.com/planetaryescape/mxr/issues/771)) ([2a70c2f](https://github.com/planetaryescape/mxr/commit/2a70c2f9ea35801c39892ac2e72a5fcfe2efc74d))
+* retire the key moves announced until 0.6.180 ([#770](https://github.com/planetaryescape/mxr/issues/770)) ([cc4acbe](https://github.com/planetaryescape/mxr/commit/cc4acbe6d5c1de6e0855e65b0b29ac18cbcc3b7b))
+
 ## [0.6.181](https://github.com/planetaryescape/mxr/compare/v0.6.180...v0.6.181) (2026-10-28)
 
 

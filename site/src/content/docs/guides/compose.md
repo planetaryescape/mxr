@@ -210,6 +210,14 @@ Home/End move farther. A proof can include gaps: the warning style marks those
 ranges, and send safety blocks sending until you fill them in the editor.
 Acceptance applies through the daemon and reruns send safety.
 
+Inspect your account voice profile with `mxr voice --format json`. To rebuild
+that local derived profile from sent mail, run `mxr voice rebuild`. Rebuilding
+has no dry-run option and sends no mail. Subsequent drafts can use the rebuilt
+profile when there is no contact-specific style; explicit adjustments still win.
+A relationship summary alone does not establish your usual register or length.
+Cloud prompts receive these private voice inputs only when history sharing is
+allowed. The local style-rate comparison stays on the daemon.
+
 The provenance line counts the voice examples actually included in the prompt.
 In web and Raycast, open a listed source to read that email. In the TUI proof,
 press `o` to read the next voice example, scroll with arrows or PageUp/PageDown,

@@ -285,9 +285,12 @@ The backend now gathers examples, habits, relationship stylometry and local
 style-check rates from one per-operation voice snapshot. Up to five examples
 that survive prompt budgeting are the same examples returned in provenance;
 their bodies stay out of provenance so clients can open the source messages.
-Fresh contact stylometry supplies the usual register and word count, falling
-back to the rebuilt account voice profile. A rebuild therefore affects the
-next prompt. Explicit adjustments take precedence. Cloud drafting without
+Stored contact style supplies inferred register and length, falling back to
+the rebuilt account voice profile. Without either, a relationship summary
+does not become style evidence: measured sample length or the default target
+is used instead. A rebuild can affect subsequent prompts that use the account
+fallback; it does not override contact-specific style or explicit adjustments.
+Cloud drafting without
 history opt-in gets no history examples, summaries, profile-derived habits,
 counts or source IDs; style rates remain local to checks.
 
@@ -803,7 +806,7 @@ catalogue are built inside the first rung that needs them.
 | C2 | pick which model drafts, with a default in Settings | `[llm.compose] model`, `llm.models`, `ModelChoiceData.sees`, `model` on the request, the picker in all clients, old keys warn | shipped in v0.6.163 |
 | C3 | get drafts that follow humanizer 3.1 and your own habits | the catalogue, `PatternRates`, the style block, the voice-relative check, sentence repair, style marks, the invented-fact check | shipped in v0.6.165; style is advisory and the recorded corpus has no pass/fail style threshold |
 | C4 | reply inline under the message, with one recipients line and one Send | the compose screen above on web and desktop; sheet for new messages; `⋯` for the rest | shipped in v0.6.167 |
-| C5 | see which of your emails shaped a draft, and have a voice rebuild change your drafts | shared voice snapshot, prompt/check alignment, exact source provenance, clickable source readers in web/TUI/Raycast, and `--set mine` replay contract | candidate implementation; installed journey and release pending |
+| C5 | see which of your emails shaped a draft, and have a voice rebuild change your drafts | shared voice snapshot, prompt/check alignment, exact source provenance, clickable source readers in web/TUI/Raycast, and `--set mine` replay contract | released in v0.6.170; installed voice journey not yet recorded |
 
 `--set mine` applies its answer-time cutoff to message evidence and omits stored
 relationship profiles, whose derived rows do not retain a cutoff-safe source

@@ -491,7 +491,7 @@ impl App {
             Action::ActivityTogglePause => {
                 self.pending_activity_pause_toggle = true;
             }
-            Action::ReplyQueueModalFocus => self.start_focus_run(),
+            Action::ReplyQueueModalFocus => self.focus_from_reply_queue(),
             Action::ReplyQueueModalReply => {
                 let Some(env) = self.modals.reply_queue.selected().cloned() else {
                     self.status_message = Some("Reply queue is empty".into());

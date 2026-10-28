@@ -461,8 +461,8 @@ You owe lane in full: people you have written to waiting on you, most
 overdue first; the others who wrote to you are in Messages and the page says how
 many), invites and subscriptions. On the reply queue each row has a
 **Done** button that takes it out of the queue. [Focus & reply](/guides/focus-and-reply/)
-which works through owed replies and the reply queue one conversation at a
-time.
+(`g F`, in the TUI too) works through owed replies and the reply queue one
+conversation at a time.
 
 **Snoozed** lists snoozed mail soonest to wake first, one row per
 conversation. **Wake now** wakes every snoozed message in

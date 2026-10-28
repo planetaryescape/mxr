@@ -38,7 +38,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -72,7 +73,8 @@
             "messages",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -107,7 +109,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -142,7 +145,8 @@
             "reading-reader",
             "updates",
             "search",
-            "search-preview"
+            "search-preview",
+            "focus"
           ]
         }
       ]
@@ -181,7 +185,17 @@
             "updates",
             "search",
             "search-preview",
-            "arrivals-list"
+            "arrivals-list",
+            "focus"
+          ]
+        },
+        {
+          "name": "UndoLastMutation",
+          "keys": [
+            "z"
+          ],
+          "contexts": [
+            "focus"
           ]
         }
       ],
@@ -217,7 +231,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -252,7 +267,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -287,7 +303,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -344,7 +361,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -390,7 +408,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -425,7 +444,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         },
         {
@@ -446,7 +466,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -480,7 +501,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -514,7 +536,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -549,7 +572,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -605,7 +629,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -640,7 +665,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -674,7 +700,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -708,7 +735,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -764,7 +792,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -799,7 +828,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -862,7 +892,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -896,7 +927,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -930,7 +962,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -964,7 +997,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -998,7 +1032,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1032,7 +1067,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -1076,7 +1112,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1126,7 +1163,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -1235,7 +1273,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -1313,7 +1352,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -1402,7 +1442,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ],
@@ -1459,7 +1500,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1494,7 +1536,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1529,7 +1572,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1564,7 +1608,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1599,7 +1644,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1634,7 +1680,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1669,7 +1716,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1704,7 +1752,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -1739,7 +1788,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -4812,9 +4862,29 @@
       "keys": [
         "g F"
       ],
-      "note": "The TUI has no Focus page; it starts Focus & reply from the reply queue (g q, then F)",
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "OpenFocus",
+          "keys": [
+            "g F"
+          ],
+          "contexts": [
+            "list",
+            "reader",
+            "sidebar",
+            "place",
+            "todo",
+            "catchup",
+            "expired",
+            "now",
+            "messages",
+            "archive",
+            "reading",
+            "reading-reader",
+            "updates",
+            "focus"
+          ]
+        }
       ]
     },
     {
@@ -4841,6 +4911,17 @@
         "j"
       ],
       "note": "Goes to the end of the queue",
+      "tui": [
+        {
+          "name": "FocusSkip",
+          "keys": [
+            "j"
+          ],
+          "contexts": [
+            "focus"
+          ]
+        }
+      ],
       "moved": [
         {
           "key": "s",
@@ -4861,7 +4942,17 @@
       "keys": [
         "e"
       ],
-      "note": "e on the desk in the TUI"
+      "tui": [
+        {
+          "name": "FocusDone",
+          "keys": [
+            "e"
+          ],
+          "contexts": [
+            "focus"
+          ]
+        }
+      ]
     },
     {
       "id": "focus.snooze",
@@ -4873,6 +4964,17 @@
       ],
       "keys": [
         "b"
+      ],
+      "tui": [
+        {
+          "name": "Snooze",
+          "keys": [
+            "b"
+          ],
+          "contexts": [
+            "focus"
+          ]
+        }
       ],
       "moved": [
         {
@@ -4892,8 +4994,24 @@
       "scopes": [
         "focus"
       ],
-      "keys": [
-        "w"
+      "palette_only": true,
+      "tui": [
+        {
+          "name": "FocusRemind",
+          "keys": [],
+          "contexts": [
+            "focus"
+          ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "w",
+          "contexts": [
+            "focus"
+          ],
+          "until": "0.6.206"
+        }
       ]
     },
     {
@@ -4906,11 +5024,23 @@
       ],
       "keys": [
         "d"
+      ],
+      "tui": [
+        {
+          "name": "FocusDraft",
+          "keys": [
+            "d"
+          ],
+          "contexts": [
+            "focus"
+          ]
+        }
       ]
     },
     {
       "id": "focus.reply",
       "label": "Back to the reply",
+      "short_label": "Reply",
       "group": "Compose",
       "scopes": [
         "focus"
@@ -4918,7 +5048,18 @@
       "keys": [
         "r"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "FocusReply",
+          "keys": [
+            "r"
+          ],
+          "contexts": [
+            "focus"
+          ]
+        }
+      ]
     },
     {
       "id": "focus.leave",
@@ -4928,9 +5069,23 @@
         "focus"
       ],
       "keys": [
-        "Escape"
+        "Escape",
+        "q"
       ],
-      "hide_in_palette": true
+      "hide_in_palette": true,
+      "tui": [
+        {
+          "name": "FocusLeave",
+          "keys": [
+            "Escape",
+            "q"
+          ],
+          "contexts": [
+            "focus"
+          ]
+        }
+      ],
+      "raycast_key": ""
     },
     {
       "id": "place.down",
@@ -5191,7 +5346,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -8488,7 +8644,8 @@
             "archive",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "focus"
           ]
         }
       ]
@@ -15696,6 +15853,17 @@
         "todo.catchup-let-go",
         "todo.catchup-let-go-all",
         "todo.catchup-back"
+      ]
+    },
+    {
+      "id": "focus",
+      "actions": [
+        "focus.reply",
+        "focus.skip",
+        "focus.done",
+        "focus.snooze",
+        "focus.draft",
+        "focus.leave"
       ]
     },
     {

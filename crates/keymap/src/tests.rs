@@ -38,7 +38,7 @@ fn the_key_check_derives_differences_from_the_definition() {
         [[action.tui]]
         name = "OpenCommandPalette"
         keys = ["Ctrl+k"]
-        contexts = ["list", "reader", "sidebar", "todo", "now", "messages", "archive", "updates", "reading"]
+        contexts = ["list", "reader", "sidebar", "todo", "now", "messages", "archive", "updates", "reading", "focus"]
 
         [[action]]
         id = "select"

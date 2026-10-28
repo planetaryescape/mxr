@@ -332,6 +332,8 @@ impl App {
                                 },
                                 theme,
                             );
+                        } else if self.mailbox.mailbox_view == MailboxView::Focus {
+                            ui::focus_lens::draw(frame, chunks[1], &self.focus_view(), theme);
                         } else if self.mailbox.mailbox_view == MailboxView::People {
                             ui::messages_lens::draw(frame, chunks[1], &self.messages_view(), theme);
                         } else if self.mailbox.mailbox_view == MailboxView::Updates {
@@ -513,6 +515,8 @@ impl App {
                                 },
                                 theme,
                             );
+                        } else if self.mailbox.mailbox_view == MailboxView::Focus {
+                            ui::focus_lens::draw(frame, chunks[1], &self.focus_view(), theme);
                         } else if self.mailbox.mailbox_view == MailboxView::People {
                             ui::messages_lens::draw(frame, chunks[1], &self.messages_view(), theme);
                         } else if self.mailbox.mailbox_view == MailboxView::Updates {

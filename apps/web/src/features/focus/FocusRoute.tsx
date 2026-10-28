@@ -287,7 +287,8 @@ function FocusKeys({
     ["skip", "j", "Skip"],
     ["done", "e", "Done, no reply needed"],
     ["snooze", "b", "Not now"],
-    ["remind", "w", "Send, remind if no reply"],
+    // Palette-only: w is Wake.
+    ["remind", null, "Send, remind if no reply"],
     ["draft", "d", "Draft in your voice"],
   ] as const;
   return (
@@ -304,7 +305,7 @@ function FocusKeys({
           onClick={() => run(command)}
           className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-2xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
         >
-          <KeyChip className="h-4 px-1">{key}</KeyChip>
+          {key ? <KeyChip className="h-4 px-1">{key}</KeyChip> : null}
           {label}
         </button>
       ))}

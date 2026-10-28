@@ -62,6 +62,9 @@ pub enum MailboxView {
     /// one row each, with the selected person's page beside them.
     /// (`Messages` above is the plain mail list.)
     People,
+    /// Focus & reply (`Request::GetDesk` and `Request::ListReplyQueue`):
+    /// everyone you owe a reply, one conversation at a time.
+    Focus,
     /// Snoozed (`Request::ListSnoozed`): snoozed mail as a mail list, waking
     /// soonest first, where `w` wakes the lit conversation.
     Snoozed,
@@ -663,6 +666,7 @@ pub struct MailboxState {
     /// Reading (`GetReadingEdition`): the edition, the reader and its guide.
     pub reading_page: super::ReadingPageState,
     pub updates_page: super::UpdatesPageState,
+    pub focus_page: super::FocusPageState,
     /// The rail (`GetRail`): badges, counts and which modes are early.
     pub rail: Option<mxr_protocol::RailData>,
     pub pending_rail_refresh: bool,
@@ -785,6 +789,7 @@ impl MailboxState {
             messages_page: super::MessagesPageState::default(),
             reading_page: super::ReadingPageState::default(),
             updates_page: super::UpdatesPageState::default(),
+            focus_page: super::FocusPageState::default(),
             rail: None,
             pending_rail_refresh: false,
             place_page: PlacePageState::default(),

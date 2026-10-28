@@ -30,7 +30,7 @@ pub const DEFAULT_KEYMAP: &str = include_str!("../keymap.toml");
 
 /// The mail contexts the TUI's keymap probe covers. A TUI binding with
 /// `contexts = "all"` is live in every one of them.
-pub const TUI_CONTEXTS: [&str; 14] = [
+pub const TUI_CONTEXTS: [&str; 15] = [
     "list",
     "reader",
     "sidebar",
@@ -45,6 +45,7 @@ pub const TUI_CONTEXTS: [&str; 14] = [
     "reading",
     "reading-reader",
     "updates",
+    "focus",
 ];
 
 /// TUI screens and overlays, and web rows, that read keys outside the

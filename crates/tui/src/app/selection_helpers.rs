@@ -139,6 +139,7 @@ impl App {
                 | MutationEffect::StatusOnly(_)
                 | MutationEffect::NextTime(_)
                 | MutationEffect::RefreshPlaces(_)
+                | MutationEffect::FocusRestore { .. }
                 | MutationEffect::SenderMoved(_)
                 | MutationEffect::Todo(_)
                 | MutationEffect::Records(_)

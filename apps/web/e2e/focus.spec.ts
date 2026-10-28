@@ -191,10 +191,12 @@ test("undo inside the countdown restores the reply and puts the conversation bac
   await expect(heading(page)).toHaveText(three[0]!.subject);
   await expect(reply(page).locator(".cm-content")).toContainText("Undo me please");
 
-  // w: send with a reminder if nobody replies, with the time in words.
-  await reply(page).locator(".cm-content").click();
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("w");
+  // Send with a reminder if nobody replies, with the time in words. It has
+  // no key (w is Wake): the button under the reply.
+  await page
+    .getByRole("toolbar", { name: "Move through the queue" })
+    .getByRole("button", { name: "Send, remind if no reply" })
+    .click();
   const remind = page.getByRole("dialog", { name: "Send and remind me" });
   await expect(remind).toBeVisible();
   await remind.getByLabel("Or type a time").fill("in 3 days");

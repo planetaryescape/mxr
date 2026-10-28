@@ -135,6 +135,8 @@ impl App {
                         MailboxView::Reading => {
                             self.apply(Action::ReadingRead);
                         }
+                        // One conversation, already on screen.
+                        MailboxView::Focus => {}
                     }
                 }
             }

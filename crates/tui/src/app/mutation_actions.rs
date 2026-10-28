@@ -156,9 +156,12 @@ impl App {
                     // messages reappear; the status reads "Undoing..." until
                     // the daemon acknowledges.
                     let status = undo.undoing_label();
+                    let focus_effect = self.focus_undo_effect(&undo.verb_past);
                     match undo.action {
                         UndoAction::Mutations(mutation_ids) => {
-                            let effect = if self.mailbox.mailbox_view == MailboxView::Updates {
+                            let effect = if let Some(effect) = focus_effect {
+                                effect
+                            } else if self.mailbox.mailbox_view == MailboxView::Updates {
                                 MutationEffect::RefreshUpdates(String::new())
                             } else if self.mailbox.mailbox_view == MailboxView::Reading {
                                 // Brings back a removed highlight or an old

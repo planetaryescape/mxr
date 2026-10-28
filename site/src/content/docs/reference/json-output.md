@@ -352,7 +352,8 @@ More than 1,000 messages match; only the newest 1,000 are selected. Narrow the s
 
 `mxr unsubscribe <address>` reports it per address: the address's entry in
 `addresses` carries `capped`, and the top level carries it when any address
-does. The request it sends still comes from the newest message.
+does. With `--format jsonl`, each dry-run line of a capped address carries
+`capped`. The request it sends still comes from the newest message.
 
 ## Mutation result
 

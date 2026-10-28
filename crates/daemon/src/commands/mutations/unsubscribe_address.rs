@@ -102,6 +102,9 @@ struct PreviewLine<'a> {
     dry_run: bool,
     #[serde(flatten)]
     record: &'a MutationPreviewRecord,
+    /// Set on the lines of an address whose search was cut by the cap.
+    #[serde(flatten)]
+    capped: Option<CappedFields>,
 }
 
 pub(super) async fn unsubscribe_by_address(
@@ -473,15 +476,11 @@ fn print_preview(plans: &[AddressPlan], format: Option<OutputFormat>) -> anyhow:
         }
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&output)?),
         OutputFormat::Jsonl => {
-            for record in &output.messages {
-                println!(
-                    "{}",
-                    serde_json::to_string(&PreviewLine {
-                        action: "unsubscribe",
-                        dry_run: true,
-                        record,
-                    })?
-                );
+            // The lines carry `capped`, and the notice goes to stderr as well,
+            // as for the formats that cannot carry a field at all.
+            announce_caps(plans, &mut std::io::stderr())?;
+            for line in preview_jsonl_lines(plans)? {
+                println!("{line}");
             }
         }
         OutputFormat::Csv => {
@@ -507,6 +506,24 @@ fn print_preview(plans: &[AddressPlan], format: Option<OutputFormat>) -> anyhow:
         }
     }
     Ok(())
+}
+
+/// One line per matched message, each carrying `capped` when its address's
+/// search was cut by the cap.
+fn preview_jsonl_lines(plans: &[AddressPlan]) -> anyhow::Result<Vec<String>> {
+    let mut lines = Vec::new();
+    for plan in plans {
+        let capped = plan.selection.capped.map(|capped| capped.fields());
+        for record in &preview_records(&plan.selection, true) {
+            lines.push(serde_json::to_string(&PreviewLine {
+                action: "unsubscribe",
+                dry_run: true,
+                record,
+                capped,
+            })?);
+        }
+    }
+    Ok(lines)
 }
 
 fn print_run(plans: &[AddressPlan], format: Option<OutputFormat>) -> anyhow::Result<()> {
@@ -693,6 +710,35 @@ mod tests {
         assert_eq!(json["capped"], true);
         assert_eq!(json["addresses"][0]["capped"], true);
         assert!(json.get("matched_total").is_none());
+    }
+
+    #[tokio::test]
+    async fn dry_run_jsonl_lines_of_a_capped_address_carry_capped() {
+        let daemon = FakeBulkDaemon::start(1_523);
+        let mut client = daemon.client().await;
+        let plans = plan_addresses(&mut client, &[ALICE.to_owned()], None, None)
+            .await
+            .unwrap();
+
+        let lines = preview_jsonl_lines(&plans).unwrap();
+
+        assert_eq!(lines.len(), 1_000);
+        for line in [&lines[0], &lines[999]] {
+            let value: serde_json::Value = serde_json::from_str(line).unwrap();
+            assert_eq!(value["capped"], true, "{line}");
+            assert_eq!(value["action"], "unsubscribe");
+            assert!(value.get("message_id").is_some());
+        }
+
+        let daemon = FakeBulkDaemon::start(3);
+        let mut client = daemon.client().await;
+        let plans = plan_addresses(&mut client, &[ALICE.to_owned()], None, None)
+            .await
+            .unwrap();
+        for line in preview_jsonl_lines(&plans).unwrap() {
+            let value: serde_json::Value = serde_json::from_str(&line).unwrap();
+            assert!(value.get("capped").is_none(), "{line}");
+        }
     }
 
     #[tokio::test]

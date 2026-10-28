@@ -165,6 +165,9 @@ pub(crate) struct MailboxSelection {
     pub(crate) lens_label: String,
     pub(crate) counts: serde_json::Value,
     pub(crate) envelopes: Vec<Envelope>,
+    /// Set when the daemon answered a search-backed lens from SQLite because
+    /// its index was down; the page shows the notice.
+    pub(crate) degraded: Option<mxr_protocol::SearchDegraded>,
 }
 
 /// The two lines of chrome the shell shows about sync: a short label and a
@@ -602,6 +605,7 @@ pub(crate) async fn load_mailbox_selection(
                 lens_label: "Inbox".to_string(),
                 counts: mailbox_counts(chrome, &envelopes),
                 envelopes,
+                degraded: None,
             })
         }
         MailboxLensKind::AllMail => {
@@ -622,6 +626,7 @@ pub(crate) async fn load_mailbox_selection(
                 lens_label: "All Mail".to_string(),
                 counts,
                 envelopes,
+                degraded: None,
             })
         }
         MailboxLensKind::Label => {
@@ -653,6 +658,7 @@ pub(crate) async fn load_mailbox_selection(
                     },
                 ),
                 envelopes,
+                degraded: None,
             })
         }
         MailboxLensKind::Category => {
@@ -689,13 +695,15 @@ pub(crate) async fn load_mailbox_selection(
                 lens_label: category.name.clone(),
                 counts: json!({ "unread": category.unread_count, "total": total }),
                 envelopes,
+                degraded: None,
             })
         }
         MailboxLensKind::SavedSearch => {
             let name = lens.saved_search.as_deref().ok_or_else(|| {
                 BridgeError::BadRequest("saved search lens missing saved_search".into())
             })?;
-            let envelopes = run_saved_search(socket_path, name, account_id, limit).await?;
+            let (envelopes, degraded) =
+                run_saved_search(socket_path, name, account_id, limit).await?;
             Ok(MailboxSelection {
                 lens_label: chrome
                     .searches
@@ -704,6 +712,7 @@ pub(crate) async fn load_mailbox_selection(
                     .map_or_else(|| name.to_string(), |search| search.name.clone()),
                 counts: derived_counts(&envelopes),
                 envelopes,
+                degraded,
             })
         }
         MailboxLensKind::Subscription => {
@@ -712,7 +721,7 @@ pub(crate) async fn load_mailbox_selection(
                 // supports offset, so this lens paginates (unlike the saved-search
                 // and subscription-overview lenses, whose IPC variants take no
                 // offset).
-                let envelopes =
+                let (envelopes, degraded) =
                     search_envelopes(socket_path, sender_email, account_id, limit, offset).await?;
                 return Ok(MailboxSelection {
                     lens_label: chrome
@@ -723,6 +732,7 @@ pub(crate) async fn load_mailbox_selection(
                         .unwrap_or_else(|| sender_email.to_string()),
                     counts: derived_counts(&envelopes),
                     envelopes,
+                    degraded,
                 });
             }
 
@@ -744,6 +754,7 @@ pub(crate) async fn load_mailbox_selection(
                     "total": chrome.subscriptions.len(),
                 }),
                 envelopes,
+                degraded: None,
             })
         }
     }

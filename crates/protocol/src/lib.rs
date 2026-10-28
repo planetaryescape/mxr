@@ -27,11 +27,13 @@
 mod archive;
 mod codec;
 mod remote;
+mod search_degraded;
 mod types;
 
 pub use archive::*;
 pub use codec::IpcCodec;
 pub use remote::*;
+pub use search_degraded::*;
 pub use types::*;
 
 /// Wire revision of the IPC protocol. Bumped when a client needs a daemon
@@ -1175,6 +1177,7 @@ mod tests {
                     has_more: false,
                     next_offset: None,
                     explain: None,
+                    degraded: None,
                 },
                 IpcCategory::CoreMail,
             ),

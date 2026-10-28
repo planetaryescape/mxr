@@ -45,6 +45,8 @@ pub struct SearchPageState {
     /// `None` takes the daemon's `[search] default_sort`.
     pub sort: Option<SortOrder>,
     pub has_more: bool,
+    /// Set while the list on screen came from the daemon's SQLite fallback.
+    pub degraded: Option<mxr_protocol::SearchDegraded>,
     pub loading_more: bool,
     pub total_count: Option<u32>,
     pub count_pending: bool,
@@ -77,6 +79,7 @@ impl Default for SearchPageState {
             mode: SearchMode::Lexical,
             sort: None,
             has_more: false,
+            degraded: None,
             loading_more: false,
             total_count: None,
             count_pending: false,

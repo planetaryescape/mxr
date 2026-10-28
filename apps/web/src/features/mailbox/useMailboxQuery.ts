@@ -84,6 +84,7 @@ export function mergeMailboxPages(
       has_more: last.mailbox.has_more,
       next_offset: last.mailbox.next_offset,
       groups,
+      degraded: pages.find((page) => page.mailbox.degraded)?.mailbox.degraded,
     },
   };
 }

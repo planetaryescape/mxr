@@ -106,6 +106,7 @@ const SHELL: ShellResponse = {
   },
 };
 
+let mailboxBody: MailboxResponse;
 let daemonDown: boolean;
 let holdProbe: boolean;
 let releaseProbe: (() => void) | null;
@@ -161,6 +162,7 @@ async function waitForPausedColdQueries(): Promise<void> {
 }
 
 beforeEach(() => {
+  mailboxBody = EMPTY_MAILBOX;
   daemonDown = true;
   holdProbe = true;
   releaseProbe = null;
@@ -187,7 +189,7 @@ beforeEach(() => {
       }
       if (daemonDown) return daemonConnectError();
       if (path === "/api/v1/client/shell") return apiResponse(SHELL);
-      if (path === "/api/v1/mail/mailbox") return apiResponse(EMPTY_MAILBOX);
+      if (path === "/api/v1/mail/mailbox") return apiResponse(mailboxBody);
       throw new Error(`Unexpected request ${path}`);
     }),
   );
@@ -270,6 +272,35 @@ describe("cold mailbox connection state", () => {
     expect(screen.getByText("Cached message stays readable")).toBeVisible();
     expect(screen.queryByText("mxr isn't running")).not.toBeInTheDocument();
     expect(screen.queryByText("Inbox zero")).not.toBeInTheDocument();
+  });
+
+  test("a list answered from the limited search says so above the rows", async () => {
+    const notice =
+      "Search is limited while the index is unavailable: subject, sender and preview only. Restart the daemon or run `mxr doctor --reindex`.";
+    mailboxBody = {
+      mailbox: {
+        ...EMPTY_MAILBOX.mailbox,
+        degraded: {
+          reason: "index_stopped",
+          searched_fields: ["subject", "sender", "preview"],
+          notice,
+        },
+      },
+    };
+    daemonDown = false;
+
+    renderInbox();
+
+    expect(await screen.findByText(notice, {}, { timeout: 5_000 })).toBeVisible();
+  });
+
+  test("a list answered by the index shows no limited-search line", async () => {
+    daemonDown = false;
+
+    renderInbox();
+
+    expect(await screen.findByText("Inbox zero", {}, { timeout: 5_000 })).toBeVisible();
+    expect(screen.queryByText(/Search is limited/)).toBeNull();
   });
 
   test.each([

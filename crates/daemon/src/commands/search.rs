@@ -79,7 +79,7 @@ pub async fn run(
         .await?;
 
     let fmt = resolve_format(format);
-    let (results, total, has_more, next_offset, explain_payload, page_limit) =
+    let (results, total, has_more, next_offset, explain_payload, page_limit, degraded) =
         crate::commands::expect_response(resp, |r| match r {
             Response::Ok {
                 data:
@@ -90,6 +90,7 @@ pub async fn run(
                         next_offset,
                         explain: explain_payload,
                         limit: page_limit,
+                        degraded,
                     },
             } => Some((
                 results,
@@ -98,9 +99,15 @@ pub async fn run(
                 next_offset,
                 explain_payload,
                 page_limit,
+                degraded,
             )),
             _ => None,
         })?;
+    // On stderr in every format, so stdout stays results and nothing that
+    // pipes it has to know. JSON carries the same fact as a field.
+    if let Some(degraded) = &degraded {
+        eprintln!("{}", degraded.notice());
+    }
     // An older daemon omits the page size; the requested fallback is then the
     // closest thing to the size it used.
     let limit = page_limit.or(limit).unwrap_or(FALLBACK_SEARCH_LIMIT);
@@ -126,7 +133,7 @@ pub async fn run(
 
     match fmt {
         OutputFormat::Json => {
-            let payload = serde_json::json!({
+            let mut payload = serde_json::json!({
                 "results": json_items,
                 "paging": {
                     "limit": limit,
@@ -137,22 +144,24 @@ pub async fn run(
                 },
                 "explain": if explain { explain_payload } else { None },
             });
+            if let Some(degraded) = &degraded {
+                payload["degraded"] = serde_json::to_value(degraded)?;
+            }
             println!("{}", serde_json::to_string_pretty(&payload)?);
         }
         OutputFormat::Jsonl => {
             println!("{}", jsonl(&json_items)?);
             eprintln!(
                 "{}",
-                serde_json::to_string(&serde_json::json!({
-                    "paging": {
-                        "limit": limit,
-                        "offset": offset,
-                        "total": total,
-                        "has_more": has_more,
-                        "next_offset": next_offset,
-                    },
-                    "explain": explain_payload,
-                }))?
+                serde_json::to_string(&paging_trailer(
+                    limit,
+                    offset,
+                    total,
+                    has_more,
+                    next_offset,
+                    &explain_payload,
+                    degraded.as_ref(),
+                )?)?
             );
         }
         OutputFormat::Csv => {
@@ -184,16 +193,15 @@ pub async fn run(
             println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
             eprintln!(
                 "{}",
-                serde_json::to_string(&serde_json::json!({
-                    "paging": {
-                        "limit": limit,
-                        "offset": offset,
-                        "total": total,
-                        "has_more": has_more,
-                        "next_offset": next_offset,
-                    },
-                    "explain": explain_payload,
-                }))?
+                serde_json::to_string(&paging_trailer(
+                    limit,
+                    offset,
+                    total,
+                    has_more,
+                    next_offset,
+                    &explain_payload,
+                    degraded.as_ref(),
+                )?)?
             );
         }
         OutputFormat::Ids => {
@@ -250,6 +258,33 @@ pub async fn run(
         }
     }
     Ok(())
+}
+
+/// The stderr trailer of the line-oriented formats. `degraded` is present
+/// only when SQLite answered, so a healthy reply is unchanged.
+fn paging_trailer(
+    limit: u32,
+    offset: u32,
+    total: u32,
+    has_more: bool,
+    next_offset: Option<u32>,
+    explain: &Option<SearchExplain>,
+    degraded: Option<&mxr_protocol::SearchDegraded>,
+) -> anyhow::Result<serde_json::Value> {
+    let mut trailer = serde_json::json!({
+        "paging": {
+            "limit": limit,
+            "offset": offset,
+            "total": total,
+            "has_more": has_more,
+            "next_offset": next_offset,
+        },
+        "explain": explain,
+    });
+    if let Some(degraded) = degraded {
+        trailer["degraded"] = serde_json::to_value(degraded)?;
+    }
+    Ok(trailer)
 }
 
 pub(crate) fn render_aggregation(

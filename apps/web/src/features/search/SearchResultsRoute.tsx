@@ -155,27 +155,37 @@ export function SearchResultsRoute() {
     (row) => row.enabled !== false || isRestoredProfile(recoveryStatus.data),
   );
 
+  // Any page counts: once one page was limited, the list is not the full answer.
+  const degraded = results.data?.pages.find((page) => page.degraded)?.degraded;
+
   const toolbar = (
-    <SearchToolbar
-      q={q}
-      draft={draft}
-      setDraft={setDraft}
-      inputRef={inputRef}
-      mode={mode}
-      sort={sort}
-      scope={scope}
-      verdict={verdict}
-      groupBy={groupBy}
-      account={account}
-      realAccounts={realAccounts}
-      facetGroups={facets.data?.groups}
-      update={update}
-      filtersOpen={filtersOpen}
-      filterFocusRequest={filterFocusRequest}
-      onFiltersToggle={() => setFiltersOpen((open) => !open)}
-      onSaveClick={() => setSaveOpen(true)}
-      onManageClick={() => setManageOpen(true)}
-    />
+    <>
+      <SearchToolbar
+        q={q}
+        draft={draft}
+        setDraft={setDraft}
+        inputRef={inputRef}
+        mode={mode}
+        sort={sort}
+        scope={scope}
+        verdict={verdict}
+        groupBy={groupBy}
+        account={account}
+        realAccounts={realAccounts}
+        facetGroups={facets.data?.groups}
+        update={update}
+        filtersOpen={filtersOpen}
+        filterFocusRequest={filterFocusRequest}
+        onFiltersToggle={() => setFiltersOpen((open) => !open)}
+        onSaveClick={() => setSaveOpen(true)}
+        onManageClick={() => setManageOpen(true)}
+      />
+      {degraded ? (
+        <p role="status" className="type-meta mt-2 text-text-2">
+          {degraded.notice}
+        </p>
+      ) : null}
+    </>
   );
 
   return (

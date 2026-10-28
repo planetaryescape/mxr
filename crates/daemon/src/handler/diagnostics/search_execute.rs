@@ -1,4 +1,5 @@
 use super::label_resolve::{build_label_name_index, resolve_label_names};
+use super::search_fallback::{limited_search, needs_full_index, SearchError};
 use super::search_filter::{
     ast_contains_owed_reply, exclude_trash_and_spam_by_default, has_negated_semantic_terms,
     matches_structured_filters, semantic_query_plan,
@@ -14,18 +15,26 @@ use std::str::FromStr;
 
 use super::{paginate_results, sort_results};
 use crate::handler::should_fallback_to_tantivy;
-use mxr_protocol::SearchExplain;
+use mxr_protocol::{SearchDegradedReason, SearchExplain};
+use mxr_search::IndexAvailability;
 
 #[derive(Clone)]
-struct SearchExecutionOptions {
-    limit: usize,
-    offset: usize,
-    account_id: Option<AccountId>,
-    mode: SearchMode,
-    sort: SortOrder,
-    explain: bool,
+pub(super) struct SearchExecutionOptions {
+    pub(super) limit: usize,
+    pub(super) offset: usize,
+    pub(super) account_id: Option<AccountId>,
+    pub(super) mode: SearchMode,
+    pub(super) sort: SortOrder,
+    pub(super) explain: bool,
 }
 
+/// How many times a search is rerun when the index starts or finishes a
+/// rebuild under it, before it is answered from SQLite instead.
+const MAX_INDEX_ATTEMPTS: usize = 3;
+
+/// Runs a search that has no limited form: counts and grouping. With the
+/// lexical index unavailable it fails with the actionable text instead of a
+/// bare "worker stopped".
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_search(
     state: &AppState,
@@ -36,7 +45,7 @@ pub(super) async fn execute_search(
     mode: SearchMode,
     sort: SortOrder,
     explain: bool,
-) -> Result<SearchExecution, String> {
+) -> Result<SearchExecution, SearchError> {
     let options = SearchExecutionOptions {
         limit,
         offset,
@@ -45,6 +54,87 @@ pub(super) async fn execute_search(
         sort,
         explain,
     };
+    run_search(state, query, &options, false).await
+}
+
+/// Runs a search that may be answered from SQLite when the lexical index is
+/// unavailable. The reply carries `degraded` when it was.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn execute_search_or_fallback(
+    state: &AppState,
+    query: &str,
+    limit: usize,
+    offset: usize,
+    account_id: Option<&AccountId>,
+    mode: SearchMode,
+    sort: SortOrder,
+    explain: bool,
+) -> Result<SearchExecution, SearchError> {
+    let options = SearchExecutionOptions {
+        limit,
+        offset,
+        account_id: account_id.cloned(),
+        mode,
+        sort,
+        explain,
+    };
+    run_search(state, query, &options, true).await
+}
+
+/// Decides, once per page, whether the index or SQLite answers it.
+///
+/// A page is never part index, part SQLite: the index's availability is read
+/// before the query and checked again after it, and a query that straddled a
+/// stop or a rebuild is thrown away and answered whole from the other side.
+async fn run_search(
+    state: &AppState,
+    query: &str,
+    options: &SearchExecutionOptions,
+    limited_ok: bool,
+) -> Result<SearchExecution, SearchError> {
+    for _ in 0..MAX_INDEX_ATTEMPTS {
+        let reason = match state.search.availability() {
+            IndexAvailability::Ready { epoch } => {
+                let attempt = execute_search_indexed(state, query, options).await;
+                if state.search.still_ready(epoch) {
+                    return attempt.map_err(SearchError::from);
+                }
+                continue;
+            }
+            IndexAvailability::Stopped => SearchDegradedReason::IndexStopped,
+            IndexAvailability::Rebuilding => SearchDegradedReason::IndexRebuilding,
+        };
+        return answer_without_index(state, query, options, reason, limited_ok).await;
+    }
+    answer_without_index(
+        state,
+        query,
+        options,
+        SearchDegradedReason::IndexRebuilding,
+        limited_ok,
+    )
+    .await
+}
+
+async fn answer_without_index(
+    state: &AppState,
+    query: &str,
+    options: &SearchExecutionOptions,
+    reason: SearchDegradedReason,
+    limited_ok: bool,
+) -> Result<SearchExecution, SearchError> {
+    if limited_ok {
+        limited_search(state, query, options, reason).await
+    } else {
+        Err(needs_full_index(reason, "Counting and grouping matches"))
+    }
+}
+
+async fn execute_search_indexed(
+    state: &AppState,
+    query: &str,
+    options: &SearchExecutionOptions,
+) -> Result<SearchExecution, String> {
     let (mut execution, needs_owed_filter) = match parse_query(query) {
         Ok(ast) => {
             // Resolve user-typed label display names (e.g.
@@ -57,7 +147,7 @@ pub(super) async fn execute_search(
             let ast = exclude_trash_and_spam_by_default(resolve_label_names(ast, &label_index));
             let needs_owed_filter = ast_contains_owed_reply(&ast);
             (
-                execute_search_ast(state, query, &ast, &options).await?,
+                execute_search_ast(state, query, &ast, options).await?,
                 needs_owed_filter,
             )
         }
@@ -69,7 +159,7 @@ pub(super) async fn execute_search(
                     options.account_id.as_ref(),
                     options.limit,
                     options.offset,
-                    options.sort,
+                    options.sort.clone(),
                 )
                 .await?;
                 let explain = options.explain.then(|| SearchExplain {
@@ -94,6 +184,7 @@ pub(super) async fn execute_search(
                     next_offset: page.next_offset,
                     executed_mode: SearchMode::Lexical,
                     explain,
+                    degraded: None,
                 };
                 (execution, false)
             } else {

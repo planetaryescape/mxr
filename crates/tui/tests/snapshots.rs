@@ -368,6 +368,7 @@ fn search_page_snapshot() {
         mode: mxr_core::SearchMode::Lexical,
         sort: None,
         has_more: false,
+        degraded: None,
         loading_more: false,
         total_count: Some(1),
         count_pending: false,

@@ -24,6 +24,9 @@ pub async fn reindex(
     store: &Store,
     mut progress: impl FnMut(ReindexProgress),
 ) -> Result<u32, MxrError> {
+    // Searches answer from SQLite while the index is wiped and refilled,
+    // instead of from the part of it that exists so far.
+    let _rebuilding = search.begin_rebuild();
     let total = store
         .count_all_messages()
         .await

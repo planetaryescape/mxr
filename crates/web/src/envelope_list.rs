@@ -2,7 +2,7 @@ use super::chrome::{MessageGroupView, MessageLabelView, MessageRowView};
 use super::*;
 use chrono::{Datelike, Local};
 use mxr_core::{Label, LabelKind, MessageFlags, SavedSearch};
-use mxr_protocol::SearchResultItem;
+use mxr_protocol::{SearchDegraded, SearchResultItem};
 use std::collections::{HashMap, HashSet};
 
 pub(crate) async fn list_envelopes(
@@ -75,7 +75,7 @@ pub(crate) async fn run_saved_search(
     name: &str,
     account_id: Option<&AccountId>,
     limit: u32,
-) -> Result<Vec<Envelope>, BridgeError> {
+) -> Result<(Vec<Envelope>, Option<SearchDegraded>), BridgeError> {
     match ipc_request(
         socket_path,
         Request::RunSavedSearch {
@@ -86,9 +86,12 @@ pub(crate) async fn run_saved_search(
     )
     .await?
     {
-        ResponseData::SearchResults { results, .. } => {
-            search_result_envelopes(socket_path, &results).await
-        }
+        ResponseData::SearchResults {
+            results, degraded, ..
+        } => Ok((
+            search_result_envelopes(socket_path, &results).await?,
+            degraded,
+        )),
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }
@@ -99,7 +102,7 @@ pub(crate) async fn search_envelopes(
     account_id: Option<&AccountId>,
     limit: u32,
     offset: u32,
-) -> Result<Vec<Envelope>, BridgeError> {
+) -> Result<(Vec<Envelope>, Option<SearchDegraded>), BridgeError> {
     match ipc_request(
         socket_path,
         Request::Search {
@@ -115,9 +118,12 @@ pub(crate) async fn search_envelopes(
     )
     .await?
     {
-        ResponseData::SearchResults { results, .. } => {
-            search_result_envelopes(socket_path, &results).await
-        }
+        ResponseData::SearchResults {
+            results, degraded, ..
+        } => Ok((
+            search_result_envelopes(socket_path, &results).await?,
+            degraded,
+        )),
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }

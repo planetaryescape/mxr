@@ -157,6 +157,18 @@ mxr semantic status
 mxr doctor --semantic-status
 ```
 
+## When the index is unavailable
+
+If the search index is down (the daemon's index worker has stopped, or the index is being rebuilt), `mxr search`, the TUI and the web app still answer plain words, `subject:` and `from:` from your local database. They say so:
+
+```text
+Search is limited while the index is unavailable: subject, sender and preview only. Restart the daemon or run `mxr doctor --reindex`.
+```
+
+On the command line the line goes to stderr, so piped results are unchanged, and `--format json` adds a `degraded` field. Limited results are newest first and do not look inside message bodies. Words match the subject, the sender's name and the preview; `from:` matches the whole address; `in:anywhere` still works and includes Trash and Spam.
+
+A query that uses anything else (`is:`, `has:`, `label:`, dates, `to:`, `OR`, `-term`) is refused with the same message, naming the part that cannot run, instead of returning a looser answer. Counts, grouping and `--search` selections for archive, label and other changes are refused too. Restart the daemon (`mxr daemon --restart`) and full search comes back.
+
 ## TUI flow
 
 1. Press `/` in Mailbox to jump into Search.

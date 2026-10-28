@@ -17,6 +17,7 @@ impl App {
             scores,
             triage_verdicts,
             has_more,
+            degraded,
         } = results;
         let selected_row_message_id = (!append && self.search.page.result_selected)
             .then(|| self.selected_search_envelope().map(|env| env.id.clone()))
@@ -62,6 +63,13 @@ impl App {
         }
 
         self.search.page.has_more = has_more;
+        // Once any page was limited the line stays, so a list that mixes
+        // limited and full pages is not presented as complete.
+        self.search.page.degraded = if append {
+            degraded.or_else(|| self.search.page.degraded.take())
+        } else {
+            degraded
+        };
         self.search.page.loading_more = false;
         self.search.page.ui_status = SearchUiStatus::Loaded;
         self.mailbox.pending_commitment_counts_refresh = true;
@@ -148,6 +156,7 @@ impl App {
         self.search.page.results.clear();
         self.search.page.scores.clear();
         self.search.page.has_more = false;
+        self.search.page.degraded = None;
         self.search.page.loading_more = false;
         self.search.page.total_count = None;
         self.search.page.count_pending = false;
@@ -170,6 +179,7 @@ impl App {
         self.search.page.results.clear();
         self.search.page.scores.clear();
         self.search.page.has_more = false;
+        self.search.page.degraded = None;
         self.search.page.loading_more = matches!(
             status,
             SearchUiStatus::Searching | SearchUiStatus::LoadingMore

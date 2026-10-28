@@ -1957,6 +1957,99 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
     );
 }
 
+#[tokio::test]
+async fn mailbox_endpoint_carries_the_limited_search_notice_for_a_saved_search() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let mut expected = sample_envelope();
+    expected.subject = "Quarterly invoice".into();
+    let labels = sample_labels(&expected.account_id);
+    let saved_search = sample_saved_search(expected.account_id.clone());
+    let saved_name = saved_search.name.clone();
+    let degraded =
+        mxr_protocol::SearchDegraded::new(mxr_protocol::SearchDegradedReason::IndexStopped);
+    let notice = degraded.notice();
+    let result = SearchResultItem {
+        message_id: expected.id.clone(),
+        account_id: expected.account_id.clone(),
+        thread_id: expected.thread_id.clone(),
+        score: 0.0,
+        mode: mxr_core::types::SearchMode::Lexical,
+    };
+    let message_ids = vec![expected.id.clone()];
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::ListLabels { .. } => Some(Response::Ok {
+                data: ResponseData::Labels {
+                    labels: labels.clone(),
+                },
+            }),
+            Request::ListCategories { .. } => Some(Response::Ok {
+                data: ResponseData::Categories {
+                    categories: Vec::new(),
+                },
+            }),
+            Request::ListSavedSearches => Some(Response::Ok {
+                data: ResponseData::SavedSearches {
+                    searches: vec![saved_search.clone()],
+                },
+            }),
+            Request::ListSubscriptions { .. } => Some(Response::Ok {
+                data: ResponseData::Subscriptions {
+                    subscriptions: Vec::new(),
+                },
+            }),
+            Request::RunSavedSearch { .. } => Some(Response::Ok {
+                data: ResponseData::SearchResults {
+                    limit: None,
+                    results: vec![result.clone()],
+                    total: 1,
+                    has_more: false,
+                    next_offset: None,
+                    explain: None,
+                    degraded: Some(degraded.clone()),
+                },
+            }),
+            Request::ListEnvelopesByIds {
+                message_ids: requested,
+            } if requested == message_ids => Some(Response::Ok {
+                data: ResponseData::Envelopes {
+                    envelopes: vec![expected.clone()],
+                },
+            }),
+            _ => None,
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = test_http_client()
+        .get(format!(
+            "http://{addr}/mailbox?lens_kind=saved_search&saved_search={saved_name}&view=messages"
+        ))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["mailbox"]["degraded"]["reason"], "index_stopped");
+    assert_eq!(json["mailbox"]["degraded"]["notice"], notice);
+    assert_eq!(
+        json["mailbox"]["groups"][0]["rows"][0]["subject"],
+        "Quarterly invoice"
+    );
+}
+
 /// With no account chosen, the system mailboxes list every account's mail and
 /// their counts add up; with an account, the request carries no role.
 #[tokio::test]
@@ -2603,6 +2696,7 @@ async fn search_endpoint_proxies_results() {
                     has_more: false,
                     next_offset: None,
                     explain: None,
+                    degraded: None,
                 },
             }),
             Request::ListEnvelopesByIds {
@@ -2644,6 +2738,81 @@ async fn search_endpoint_proxies_results() {
     assert_eq!(json["groups"][0]["rows"][0]["id"], message_id);
     assert_eq!(json["groups"][0]["rows"][0]["subject"], "Mailroom");
     assert!(json["explain"].is_null());
+    assert!(
+        json.get("degraded").is_none(),
+        "an index answer must not mention the limited search"
+    );
+}
+
+#[tokio::test]
+async fn search_endpoint_carries_the_limited_search_notice() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let envelope = sample_envelope();
+    let result = SearchResultItem {
+        message_id: envelope.id.clone(),
+        account_id: envelope.account_id.clone(),
+        thread_id: envelope.thread_id.clone(),
+        score: 0.0,
+        mode: mxr_core::types::SearchMode::Lexical,
+    };
+    let message_ids = vec![result.message_id.clone()];
+    let degraded =
+        mxr_protocol::SearchDegraded::new(mxr_protocol::SearchDegradedReason::IndexStopped);
+    let notice = degraded.notice();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::Search { .. } => Some(Response::Ok {
+                data: ResponseData::SearchResults {
+                    limit: None,
+                    results: vec![result.clone()],
+                    total: 1,
+                    has_more: false,
+                    next_offset: None,
+                    explain: None,
+                    degraded: Some(degraded.clone()),
+                },
+            }),
+            Request::ListEnvelopesByIds {
+                message_ids: requested,
+            } if requested == message_ids => Some(Response::Ok {
+                data: ResponseData::Envelopes {
+                    envelopes: vec![envelope.clone()],
+                },
+            }),
+            Request::ListLabels { .. } => Some(Response::Ok {
+                data: ResponseData::Labels { labels: Vec::new() },
+            }),
+            _ => None,
+        },
+        None,
+    )
+    .await;
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+
+    let response = test_http_client()
+        .get(format!("http://{addr}/search?q=mailroom"))
+        .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    let json: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(json["degraded"]["reason"], "index_stopped");
+    assert_eq!(
+        json["degraded"]["searched_fields"],
+        serde_json::json!(["subject", "sender", "preview"])
+    );
+    assert_eq!(json["degraded"]["notice"], notice);
+    assert_eq!(json["groups"][0]["rows"][0]["subject"], "Mailroom");
 }
 
 #[test]
@@ -2815,6 +2984,7 @@ async fn search_endpoint_supports_mode_sort_and_explain() {
                     has_more: false,
                     next_offset: None,
                     explain: Some(explain.clone()),
+                    degraded: None,
                 },
             }),
             Request::ListEnvelopesByIds { message_ids } if message_ids == requested_ids => {
@@ -2912,6 +3082,7 @@ async fn search_endpoint_dedupes_threads_by_thread_id() {
                     has_more: false,
                     next_offset: None,
                     explain: None,
+                    degraded: None,
                 },
             }),
             Request::ListEnvelopesByIds { message_ids } if message_ids == requested_ids => {
@@ -2993,6 +3164,7 @@ async fn search_endpoint_returns_attachment_rows_for_attachment_scope() {
                     has_more: false,
                     next_offset: None,
                     explain: None,
+                    degraded: None,
                 },
             }),
             Request::ListEnvelopesByIds { message_ids } if message_ids == requested_ids => {
@@ -5368,6 +5540,7 @@ async fn account_param_scopes_search_triage_groups_and_mailbox() {
                         has_more: false,
                         total: 0,
                         next_offset: None,
+                        degraded: None,
                     }
                 }
                 Request::TriageSearch { account_id, .. } => {
@@ -6397,6 +6570,7 @@ async fn mailbox_and_search_rows_carry_labels() {
                     has_more: false,
                     total: 2,
                     next_offset: None,
+                    degraded: None,
                 },
                 Request::ListEnvelopesByIds { .. } => ResponseData::Envelopes {
                     envelopes: envelopes.clone(),

@@ -505,6 +505,8 @@ expression: summary
     "ScreenerQueueEntryData",
     "SearchAggregationGroupBy",
     "SearchAggregationRow",
+    "SearchDegraded",
+    "SearchDegradedReason",
     "SearchExplain",
     "SearchExplainResult",
     "SearchMode",

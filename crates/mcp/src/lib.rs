@@ -976,7 +976,7 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_search",
-        description = "Search local mail and return result metadata/snippets without full message bodies. Plain words match subject, sender name and address, snippet and body: to find someone by name, use their name as a plain word (quinn weekly). Operators: from:, to: and cc: take a whole email address (from:alice@example.com); a bare name or domain after them matches nothing. Also subject:WORD, \"exact phrase\", is:unread, is:starred, has:attachment, label:NAME, after:YYYY-MM-DD, before:YYYY-MM-DD."
+        description = "Search local mail and return result metadata/snippets without full message bodies. Plain words match subject, sender name and address, snippet and body: to find someone by name, use their name as a plain word (quinn weekly). Operators: from:, to: and cc: take a whole email address (from:alice@example.com); a bare name or domain after them matches nothing. Also subject:WORD, \"exact phrase\", is:unread, is:starred, has:attachment, label:NAME, after:YYYY-MM-DD, before:YYYY-MM-DD. A degraded field in the reply means the lexical index was unavailable and only subject, sender and preview were searched."
     )]
     pub async fn search(
         &self,
@@ -3160,6 +3160,7 @@ mod tests {
                     has_more: false,
                     next_offset: None,
                     explain: None,
+                    degraded: None,
                 },
                 Request::ListEnvelopesByIds { message_ids } => {
                     assert_eq!(message_ids, vec![self.message_id.clone()]);

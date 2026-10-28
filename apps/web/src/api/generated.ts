@@ -13295,6 +13295,7 @@ export interface components {
                   skipped: number;
               }
             | {
+                  degraded?: components["schemas"]["SearchDegraded"] | null;
                   explain?: components["schemas"]["SearchExplain"] | null;
                   has_more?: boolean;
                   /** @enum {string} */
@@ -14747,6 +14748,17 @@ export interface components {
             /** Format: int32 */
             unread: number;
         };
+        /**
+         * @description Set on a search reply that came from the SQLite fallback instead of the
+         *     lexical index. Absent on a reply from the index.
+         */
+        SearchDegraded: {
+            reason: components["schemas"]["SearchDegradedReason"];
+            /** @description The parts of a message the limited search looked at. */
+            searched_fields: string[];
+        };
+        /** @enum {string} */
+        SearchDegradedReason: "index_stopped" | "index_rebuilding";
         SearchExplain: {
             /** Format: int32 */
             dense_candidates: number;

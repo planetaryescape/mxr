@@ -82,6 +82,7 @@ fn result_list_renders_first_batch_before_query_completes() {
         // has_more = true is the daemon's signal that more results
         // are still on the wire.
         has_more: true,
+        degraded: None,
         loading_more: true,
         total_count: None,
         count_pending: true,

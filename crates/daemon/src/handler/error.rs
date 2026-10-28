@@ -17,6 +17,11 @@ pub(crate) enum HandlerError {
     /// string-sniffed into `Internal`.
     #[error("{0}")]
     InvalidRequest(String),
+    /// The lexical index is down and the request has no limited form, or its
+    /// query uses parts the limited search cannot honour. The message already
+    /// says what to do.
+    #[error("{0}")]
+    SearchIndexUnavailable(String),
     #[error("Classification pending: this email is still sorting")]
     ClassificationPending,
     #[error("Draft revision conflict: expected {expected:?}, current {current:?}; unsent edits were not saved")]
@@ -110,6 +115,13 @@ impl HandlerError {
             },
             Self::UnsubscribeAttempt { message, code, kind, retryable } => Response::Error {
                 message, kind, code: code.into(), retryable, details: None,
+            },
+            Self::SearchIndexUnavailable(message) => Response::Error {
+                message,
+                kind: IpcErrorKind::Unsupported,
+                code: "search_index_unavailable".into(),
+                retryable: false,
+                details: None,
             },
             Self::InvalidRequest(message) => {
                 Response::error_kinded(message, IpcErrorKind::InvalidRequest)

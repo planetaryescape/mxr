@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.179](https://github.com/planetaryescape/mxr/compare/v0.6.178...v0.6.179) (2026-10-28)
+
+
+### Features
+
+* Snoozed, wake and the Updates peek in the TUI, with w as wake in both clients ([#760](https://github.com/planetaryescape/mxr/issues/760)) ([6116283](https://github.com/planetaryescape/mxr/commit/6116283f464b2b0ae6a395b0bf1b271fbe09f120))
+
 ## [0.6.178](https://github.com/planetaryescape/mxr/compare/v0.6.177...v0.6.178) (2026-10-28)
 
 

@@ -39,6 +39,7 @@ import { useScopeController } from "@/lib/keys/controllers";
 
 import {
   refreshMessages,
+  LOADING_MESSAGES,
   setPinned,
   useMessagesQuery,
   rememberTopicPage,
@@ -48,7 +49,13 @@ import {
   type PersonPage,
 } from "./api";
 import { focusFilterBar, MessagesFilterBar } from "./MessagesFilterBar";
-import { filterOf, isFiltered, searchOf, type FilterSearch, type MessagesFilter } from "./filters";
+import {
+  cycleMessagesFilter,
+  filterOf,
+  searchOf,
+  type FilterSearch,
+  type MessagesFilter,
+} from "./filters";
 import { MessagesList } from "./MessagesList";
 import {
   afterDone,
@@ -68,7 +75,11 @@ import { listMotions } from "@/features/modes/listMotions";
 
 /** List and person page share the screen from Tailwind's md up. */
 const MESSAGES_SPLIT_QUERY = "(min-width: 768px)";
-const PEOPLE_PANE_SIZE = { defaultSize: "22rem", minSize: "16rem", maxSize: "40rem" };
+const PEOPLE_PANE_SIZE = {
+  defaultSize: "22rem",
+  minSize: "16rem",
+  maxSize: "40rem",
+};
 
 /** How long an arrival is marked; the glow itself is the scene duration. */
 const ARRIVAL_MS = 2_000;
@@ -95,9 +106,41 @@ export function MessagesRoute({
   /** From /messages/$threadId: open the row holding this conversation. */
   threadId?: string;
 }) {
+  const navigate = useNavigate();
   const messages = useMessagesQuery(filterOf(search));
+  // The view shortcut belongs to the route, not its result. It remains live
+  // while a different view is loading, or the queue is empty or unavailable.
+  useShortcutScope("messages-filters");
+  useScopeController("messages-filters", {
+    cycleFilter: () => {
+      const person =
+        search.person ??
+        (threadId && messages.data ? rowForThread(messages.data, threadId)?.id : undefined);
+      const nextSearch = (previous: MessagesSearch): MessagesSearch => ({
+        person: previous.person ?? person,
+        topic: previous.topic ?? threadId,
+        ...searchOf(cycleMessagesFilter(filterOf(previous))),
+      });
+      // Keep an unresolved thread link until its person can be found.
+      if (threadId && !person) {
+        void navigate({
+          to: "/messages/$threadId",
+          params: { threadId },
+          search: nextSearch,
+          replace: true,
+        });
+        return;
+      }
+      void navigate({
+        to: "/messages",
+        search: nextSearch,
+        replace: true,
+      });
+    },
+  });
   const guide = useModeGuide("messages");
-  const phase = useDelayedPending(messages.isLoading);
+  const loading = messages.isLoading || messages.data?.generated_at === "";
+  const phase = useDelayedPending(loading, undefined, 0);
   return (
     <section
       aria-label="Messages"
@@ -105,12 +148,7 @@ export function MessagesRoute({
       tabIndex={-1}
       className="flex min-h-0 min-w-0 flex-1 flex-col bg-background outline-none"
     >
-      {phase !== "ready" ? (
-        <>
-          <MessagesHeader search={search} guide={guide.data} />
-          <PageSkeleton framed lead="avatar" shown={phase === "skeleton"} />
-        </>
-      ) : messages.isError ? (
+      {messages.isError ? (
         <>
           <MessagesHeader search={search} guide={guide.data} />
           <PageError
@@ -120,26 +158,36 @@ export function MessagesRoute({
             onRetry={() => void messages.refetch()}
           />
         </>
-      ) : messages.data ? (
+      ) : (
         <MessagesBody
-          data={messages.data}
-          stale={messages.isPlaceholderData}
+          data={messages.data ?? LOADING_MESSAGES}
+          stale={loading || messages.isPlaceholderData}
+          loading={loading}
+          skeleton={phase === "skeleton"}
           guide={guide.data}
           search={search}
           threadId={threadId}
         />
-      ) : null}
+      )}
     </section>
   );
 }
 
-function MessagesHeader({ search, guide }: { search: MessagesSearch; guide?: ModeGuide }) {
+function MessagesHeader({
+  search,
+  guide,
+  header,
+}: {
+  search: MessagesSearch;
+  guide?: ModeGuide;
+  header?: string;
+}) {
   const waiting = search.turn === "theirs";
   return (
     <PageFrame
       title={waiting ? "Waiting on" : "Messages"}
       // Waiting on is its own page: Messages' header line describes the other turn.
-      purpose={waiting ? "People you're waiting to hear from." : guide?.header}
+      purpose={waiting ? "People you're waiting to hear from." : header || guide?.header}
     />
   );
 }
@@ -153,6 +201,8 @@ function firstThread(row: MessagesRow | undefined): string {
 function MessagesBody({
   data,
   stale,
+  loading,
+  skeleton,
   guide,
   search,
   threadId,
@@ -160,6 +210,8 @@ function MessagesBody({
   data: MessagesData;
   /** The list is the previous filter's or account's answer, still loading. */
   stale: boolean;
+  loading: boolean;
+  skeleton: boolean;
   guide?: ModeGuide;
   search: MessagesSearch;
   threadId?: string;
@@ -249,7 +301,11 @@ function MessagesBody({
     (id: string, options: { topic?: string; open?: boolean } = {}) => {
       void navigate({
         to: "/messages",
-        search: { ...searchOf(filterOf(search)), person: id, topic: options.topic },
+        search: {
+          ...searchOf(filterOf(search)),
+          person: id,
+          topic: options.topic,
+        },
         replace: true,
       });
       if (options.open) setPageOpen(true);
@@ -259,14 +315,14 @@ function MessagesBody({
   // A conversation Messages doesn't hold (archived, a newsletter) opens
   // where every email can: All Mail.
   useEffect(() => {
-    if (threadId && !linked) {
+    if (!stale && threadId && !linked) {
       void navigate({
         to: "/m/$mailbox/$threadId",
         params: { mailbox: "archive", threadId },
         replace: true,
       });
     }
-  }, [linked, navigate, threadId]);
+  }, [linked, navigate, stale, threadId]);
 
   // A person opened without a topic shows their default one: name it in
   // the URL, so a copied link opens that topic even after the default moves.
@@ -309,12 +365,17 @@ function MessagesBody({
 
   // A sync can close the displayed topic without removing the person. Move
   // only a topic that was open here: deliberately browsing history stays put.
-  const previousTopic = useRef<{ person: string | null; topic: string | null; open: boolean }>({
+  const previousTopic = useRef<{
+    person: string | null;
+    topic: string | null;
+    open: boolean;
+  }>({
     person: null,
     topic: null,
     open: false,
   });
   useEffect(() => {
+    if (loading) return;
     if (settled.size === 0) return;
     const stillPresent = new Set(
       allRows.flatMap((row) =>
@@ -328,8 +389,9 @@ function MessagesBody({
         return next.size === prev.size ? prev : next;
       });
     }
-  }, [allRows, settled]);
+  }, [allRows, loading, settled]);
   useEffect(() => {
+    if (loading) return;
     const previous = previousTopic.current;
     const open = topic !== null && stillOpen.has(topic);
     previousTopic.current = { person: selectedId, topic, open };
@@ -347,19 +409,11 @@ function MessagesBody({
     const next = stillOpen.values().next().value;
     if (next) select(selectedId, { topic: next });
     else clearSelection();
-  }, [clearSelection, excludedDone, select, selected, selectedId, stillOpen, topic]);
+  }, [clearSelection, excludedDone, loading, select, selected, selectedId, stillOpen, topic]);
 
   // A row that leaves the list some other way (sync, another client) takes
   // the page with it to its neighbour.
   const rowIds = useMemo(() => rows.map((row) => row.id), [rows]);
-  useAdvanceOnRemoval({
-    ids: rowIds,
-    selectedId: search.person ?? null,
-    isPresent: (id) => allRowIds.has(id),
-    presenceSource: allRowIds,
-    onAdvance: (id) => advanceTo(id),
-    onEmpty: clearSelection,
-  });
   const listRef = useRef<HTMLDivElement>(null);
   // A callback ref into state, not a ref object: React attaches a parent's ref after its
   // children's layout effects, so the bands would mount without their scroller, and with
@@ -421,7 +475,12 @@ function MessagesBody({
   const openReply = useCallback(
     (all: boolean) => {
       if (!conversation) return;
-      const intent = replyIntent(conversation.composer.reply_to_message_id, all ? "all" : "single");
+      const intent = {
+        ...replyIntent(conversation.composer.reply_to_message_id, all ? "all" : "single"),
+        contextThreadId: conversation.thread_id,
+        contextTitle: conversation.subject,
+        quiet: true,
+      };
       replyKeys.current.add(intent.key);
       setPageOpen(true);
       useComposeUi.getState().openCompose(intent, "inline");
@@ -430,7 +489,11 @@ function MessagesBody({
   );
 
   // Where the page is now, read when an undo lands (after any later move).
-  const here = useRef({ mounted: true, person: search.person, topic: search.topic });
+  const here = useRef({
+    mounted: true,
+    person: search.person,
+    topic: search.topic,
+  });
   here.current.person = search.person;
   here.current.topic = search.topic;
   useEffect(() => {
@@ -511,7 +574,10 @@ function MessagesBody({
                 if (useUiPrefs.getState().accountScope !== account) {
                   useUiPrefs.getState().setAccountScope(account);
                 }
-                void navigate({ to: "/messages", search: { person: from, topic: thread } });
+                void navigate({
+                  to: "/messages",
+                  search: { person: from, topic: thread },
+                });
               },
             },
           });
@@ -635,11 +701,16 @@ function MessagesBody({
     open: () => selectedId && select(selectedId, { open: true }),
     personPage: () => {
       setPageOpen(true);
-      document
-        .querySelector<HTMLElement>(
-          '[data-testid="person-page"] [data-testid="topic"][aria-current="true"]',
-        )
-        ?.focus();
+      requestAnimationFrame(() => {
+        const personPage = document.querySelector<HTMLElement>('[data-testid="person-page"]');
+        const currentTopic = personPage?.querySelector<HTMLElement>(
+          '[data-testid="topic"][aria-current="true"]',
+        );
+        const topicTrigger = personPage?.querySelector<HTMLElement>(
+          '[data-testid="topics-trigger"]',
+        );
+        (currentTopic ?? topicTrigger)?.focus();
+      });
     },
     reply: () => openReply(replyAll),
     replyAll: () => openReply(true),
@@ -707,7 +778,9 @@ function MessagesBody({
   const yourTurnSplit = data.your_turn_split;
   const yourTurnPeople = (yourTurnSplit?.write_with ?? 0) + (yourTurnSplit?.others ?? 0);
   const hasWork = narrowed ? yourTurnPeople > 0 : data.your_turn.length > 0 || !empty;
-  const finished = useLowTide("messages", search.turn === "theirs", hasWork, { daily: true });
+  const finished = useLowTide("messages", loading || search.turn === "theirs", hasWork, {
+    daily: true,
+  });
   const emptyState = data.empty_state ? (
     <PageEmpty
       framed={allRows.length === 0}
@@ -726,22 +799,19 @@ function MessagesBody({
       }
     />
   ) : null;
-  // No rows at all: the empty state is the page, not a line in a narrow column beside a blank pane.
-  // A filter keeps the list's tree, so the filter line keeps its place (and
-  // focus) when it narrows to nothing; only an unfiltered empty view is the page.
-  if (empty && allRows.length === 0 && !isFiltered(filter)) {
-    return (
-      <>
-        <MessagesHeader search={search} guide={guide} />
-        {filterBar}
-        <div data-testid="messages-empty" className="min-h-0 flex-1 overflow-y-auto">
-          {emptyState}
-        </div>
-      </>
-    );
-  }
+  // Loading, empty and populated lists share the same pane/header/filter
+  // geometry. Swapping the whole page reset focus and shifted the splitter.
   return (
     <FramePanesContext.Provider value={frames}>
+      <SelectionAdvance
+        key={JSON.stringify(filter)}
+        ids={rowIds}
+        ready={!stale}
+        selectedId={search.person ?? null}
+        present={allRowIds}
+        onAdvance={advanceTo}
+        onEmpty={clearSelection}
+      />
       <ResizablePanelGroup className="min-h-0 flex-1" {...pane.groupProps}>
         <ResizablePanel
           id="messages-people"
@@ -750,28 +820,39 @@ function MessagesBody({
           className="flex min-h-0 flex-col"
           elementRef={listRef}
         >
-          <MessagesHeader search={search} guide={guide} />
+          <MessagesHeader search={search} guide={guide} header={data.header} />
           {filterBar}
-          <div ref={setScroller} className="min-h-0 flex-1 overflow-y-auto pb-6">
+          <div
+            ref={setScroller}
+            aria-busy={loading}
+            className="min-h-0 flex-1 overflow-y-auto pb-6"
+          >
             {empty && emptyState ? (
               <div data-testid="messages-empty" className="mx-5 mt-6">
                 {emptyState}
               </div>
             ) : null}
-            <MessagesList
-              data={data}
-              selectedId={selectedId}
-              via={via.current}
-              quietOpen={quietOpen}
-              onToggleQuiet={() => setQuietOpen((open) => !open)}
-              scroller={scroller}
-              onSelect={onSelectRow}
-              onReply={onReplyRow}
-              onDone={onDoneRow}
-              memberships={memberships}
-              hidden={excludedDone}
-              arrival={arrival}
-            />
+            {loading ? (
+              <div className="pt-2">
+                <div aria-hidden className="mx-5 mb-1 mt-3 h-4" />
+                <PageSkeleton framed lead="avatar" shown={skeleton} />
+              </div>
+            ) : (
+              <MessagesList
+                data={data}
+                selectedId={selectedId}
+                via={via.current}
+                quietOpen={quietOpen}
+                onToggleQuiet={() => setQuietOpen((open) => !open)}
+                scroller={scroller}
+                onSelect={onSelectRow}
+                onReply={onReplyRow}
+                onDone={onDoneRow}
+                memberships={memberships}
+                hidden={excludedDone}
+                arrival={arrival}
+              />
+            )}
           </div>
         </ResizablePanel>
         {split ? <ResizableHandle aria-label="Resize people list" {...pane.handleProps} /> : null}
@@ -841,4 +922,33 @@ function MessagesBody({
       </ResizablePanelGroup>
     </FramePanesContext.Provider>
   );
+}
+
+/** Changing a view is not a sync removing its selected conversation. Only
+ * reset removal bookkeeping, never the pane or its keyboard/filter state. */
+function SelectionAdvance({
+  ids,
+  ready,
+  selectedId,
+  present,
+  onAdvance,
+  onEmpty,
+}: {
+  ids: readonly string[];
+  ready: boolean;
+  selectedId: string | null;
+  present: ReadonlySet<string>;
+  onAdvance: (id: string) => void;
+  onEmpty: () => void;
+}) {
+  useAdvanceOnRemoval({
+    ids,
+    ready,
+    selectedId,
+    isPresent: (id) => present.has(id),
+    presenceSource: present,
+    onAdvance,
+    onEmpty,
+  });
+  return null;
 }

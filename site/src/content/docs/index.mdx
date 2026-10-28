@@ -1,20 +1,32 @@
 ---
-title: "Talk to your whole inbox."
-description: "Connect Gmail, Outlook, and IMAP accounts to one local mailbox. Send through Gmail, Outlook, or any SMTP server."
+title: "Put your whole mail history to work."
+description: "A local mail runtime for you and your agents. Keep synced mail on your computer for your tools and mxr's clients."
 template: splash
 hero:
   title: |
-    Talk to your
-    <span class="hero-accent">whole inbox.</span>
-  tagline: "mxr keeps your email history on your computer, indexed and in sync. Search across all your accounts, run analytics on your full history, or ask your agent to find a thread and draft the reply in your voice."
+    Put your whole mail
+    <span class="hero-accent">history to work.</span>
+  image:
+    html: '<p class="hero-category">A local mail runtime for you and your agents</p>'
+  tagline: "mxr keeps a synced mailbox on your computer. Search your history, analyse it with a script, or let your agent work with it. You, your tools and mxr's own clients all use the same local mailbox."
   actions:
-    - text: Get started
-      link: /getting-started/install/
+    - text: Try it with demo mail
+      link: /getting-started/quick-start/#1-try-the-demo-inbox
       variant: primary
-    - text: Try the demo
-      link: /getting-started/quick-start/
+    - text: Use it with your agent
+      link: /getting-started/agent-quick-start/
       variant: secondary
+    - text: See how people use mxr
+      link: /guides/your-day/
+      variant: minimal
 ---
+
+<div class="hero-install" aria-label="Install one-liner">
+  <span class="hero-install-prompt">$</span>
+  <code class="hero-install-cmd" id="install-cmd" tabindex="0">brew install planetaryescape/mxr/mxr</code>
+  <button class="hero-install-copy" type="button" data-copy-target="install-cmd" aria-label="Copy install command">copy</button>
+  <span class="hero-install-alt">Other install methods <a href="/getting-started/install/">available</a></span>
+</div>
 
 <div class="hero-providers" aria-label="Mail provider support">
   <div class="hero-provider-row">
@@ -29,13 +41,6 @@ hero:
     <span class="hero-provider-key">extend</span>
     <a href="/reference/adapters/">Build another provider adapter →</a>
   </div>
-</div>
-
-<div class="hero-install" aria-label="Install one-liner">
-  <span class="hero-install-prompt">$</span>
-  <code class="hero-install-cmd" id="install-cmd" tabindex="0">brew install planetaryescape/mxr/mxr</code>
-  <button class="hero-install-copy" type="button" data-copy-target="install-cmd" aria-label="Copy install command">copy</button>
-  <span class="hero-install-alt">cargo and binary methods <a href="#install">below</a></span>
 </div>
 
 <div class="hero-cast" aria-label="mxr demos in the CLI, TUI, and an AI agent" aria-roledescription="carousel">
@@ -60,9 +65,9 @@ hero:
   <div class="hero-cast-panes">
     <div class="hero-cast-pane pane-cli">
       <video class="hero-cast-video" loop muted playsinline preload="none" poster="/mxr-demo-poster.jpg" data-src="/mxr-demo.webm" aria-label="mxr CLI demo recording" aria-describedby="cast-cli-desc">
-        <img src="/mxr-demo-poster.jpg" alt="mxr CLI: instant full-text search across thousands of messages, piping JSON output to jq/sort/uniq to rank senders, and subscriptions by open rate" />
+        <img src="/mxr-demo-poster.jpg" alt="mxr CLI: search a synthetic mailbox, pipe JSON output to jq, and inspect subscription candidates ranked by current READ state" />
       </video>
-      <p id="cast-cli-desc" class="sr-only">A terminal session. mxr search returns matches from thousands of messages, the JSON output goes through jq to rank senders by volume, and mxr subscriptions lists newsletters by how often they get opened.</p>
+      <p id="cast-cli-desc" class="sr-only">A terminal session using a seeded synthetic mailbox. mxr searches mail, pipes JSON through jq, and lists subscription candidates whose counts use messages currently marked READ, not tracked opens.</p>
     </div>
     <div class="hero-cast-pane pane-tui">
       <video class="hero-cast-video" loop muted playsinline preload="none" data-poster="/mxr-tui-poster.jpg" data-src="/mxr-tui.webm" aria-label="mxr TUI demo recording" aria-describedby="cast-tui-desc">
@@ -77,54 +82,51 @@ hero:
       <p id="cast-agent-desc" class="sr-only">An AI agent works the same inbox. It writes mxr search and jq pipelines to find the senders behind phishing attempts, then says which ones to be careful with.</p>
     </div>
   </div>
-  <div class="hero-cast-cap">Use mxr from the TUI, the CLI, or your agent. <a href="/examples/">See examples →</a></div>
+  <div class="hero-cast-cap">Use mxr from the TUI, CLI, or your agent. Subscription counts use current READ flags, not tracked opens. <a href="/examples/">See examples →</a></div>
+</div>
+
+<div class="home-runtime" aria-label="How mxr fits with mail connectors and other clients">
+  <p>A connector may be all you need to use Gmail inside your agent. Choose mxr when you also want the synced mailbox on your computer, available to your own tools and to clients you can use yourself.</p>
+  <p>The daemon handles sync, local storage, search and mail operations. A new client can reuse that work instead of rebuilding the mail engine. The web app, TUI, CLI and agent interfaces use the same local mailbox.</p>
 </div>
 
 <div class="landing-section tryit-section">
 
-## try it
+## try it with synthetic mail
 
-<p>These commands work after <code>mxr demo</code> or after you connect an account.</p>
+<p>Install mxr, then start the isolated demo mailbox. It uses synthetic mail and a separate profile.</p>
 
 ```bash wrap
-# search your whole mailbox from the local index
-mxr search "from:supplier@example.com has:attachment after:2019"
+# start the isolated synthetic mailbox
+mxr demo
 
-# rank newsletters by how little you read them, then leave
+# inspect subscription candidates from the local demo mailbox
 mxr subscriptions --rank --format json
-mxr unsubscribe newsletter@example.com --dry-run
-
-# what needs you: replies owed, promises due, threads waiting
-mxr desk
-
-# give an agent structured results
-mxr search "from:sarah@example.com after:2026-04-23" --format json | jq '.results[0]'
 ```
 
-<p class="tryit-contract">Most reads can return JSON. Core mail mutations support <code>{`--dry-run`}</code>, so scripts and agents can show their work before changing your mailbox. <a href="/examples/">Browse more examples →</a></p>
+<p class="tryit-contract">The subscription result ranks a limited candidate set. Its <code>opened_count</code> is the number of messages currently marked READ, not a count of tracked opens. <a href="/getting-started/quick-start/#1-try-the-demo-inbox">Follow the demo steps</a> or <a href="/guides/for-agents/">use mxr from your agent</a>.</p>
 
 </div>
 
 <div class="landing-section offline-section" data-folio="01">
 
-## read and search without a connection
+## work locally with synced mail
 
 <div class="spread">
   <div class="narrative">
     <h3>Your synced mail stays available.</h3>
-    <p>Open mxr on a plane with the wifi off. Read a thread, search the archive, and write the replies you owe. Opening a message is a SQLite read, and a draft saves straight to disk. When you reconnect, mxr pulls in new mail and you can send the drafts you wrote offline.</p>
-    <p>Years of messages and labels stay indexed locally. Attachment names, types, and sizes are part of the local record. mxr downloads an attachment into its cache when you open it, except the PDFs of receipts, orders, bookings and bills <a href="/guides/archive/">Archive</a> files, which it fetches ahead of time within a 512 MB budget so they open offline too.</p>
+    <p>Mail that has synced into mxr's local store stays readable and searchable from this machine. Drafts save locally. Sync, sending, and provider-backed changes still need the provider connection; the initial sync can take time.</p>
+    <p>Attachment names, types, and sizes are part of the local record. mxr downloads attachment contents when you open them; only downloaded files are available locally. <a href="/guides/archive/">Archive</a> can prefetch selected record PDFs under its configured budget.</p>
   </div>
 
-  <div class="terminal-log" aria-label="Example session: reading and drafting on a plane, sending on landing">
+  <div class="terminal-log" aria-label="Illustrative local mail workflow, not captured output">
     <div class="log-prompt"><span class="log-cmd-prompt">~</span><span class="log-cmd-prompt"> $</span> mxr</div>
-    <div class="log-line"><span class="log-time">19:42</span><span class="log-glyph log-read">●</span> opened, 47 unread, 11 threads</div>
-    <div class="log-line"><span class="log-time">20:03</span><span class="log-glyph log-read">●</span> searched: supplier contract, 4 hits <span class="log-meta">(local index)</span></div>
-    <div class="log-line"><span class="log-time">20:18</span><span class="log-glyph log-write">↑</span> drafted 3 replies <span class="log-meta">(saved locally)</span></div>
-    <div class="log-line"><span class="log-time">21:14</span><span class="log-glyph log-write">●</span> drafted: <span class="log-file">announcement-q3.md</span> <span class="log-meta">(saved locally)</span></div>
-    <div class="log-divider">◈ wifi reconnected, syncing</div>
-    <div class="log-line"><span class="log-time">21:30</span><span class="log-glyph log-success">✓</span> new mail pulled and indexed</div>
-    <div class="log-line"><span class="log-time">21:31</span><span class="log-glyph log-success">✓</span> sent the 3 replies <span class="log-meta">(mxr send)</span></div>
+    <div class="log-line"><span class="log-glyph log-read">●</span> read a message already synced locally</div>
+    <div class="log-line"><span class="log-glyph log-read">●</span> searched the local index</div>
+    <div class="log-line"><span class="log-glyph log-write">↑</span> saved a draft locally</div>
+    <div class="log-divider">◈ provider connection available</div>
+    <div class="log-line"><span class="log-glyph log-success">✓</span> sync new mail or send a reviewed draft</div>
+    <p class="log-meta">Illustrative sequence, not observed command output.</p>
   </div>
 </div>
 
@@ -132,44 +134,46 @@ mxr search "from:sarah@example.com after:2026-04-23" --format json | jq '.result
 
 <div class="landing-section search-section" data-folio="02">
 
-## search your full history on disk
+## search synced history on disk
 
 <div class="search-event">
   <span class="search-prompt">$</span>
   <span><span class="search-cmd">mxr search </span><span class="search-string">{`"from:supplier@example.com subject:contract has:attachment after:2019"`}</span></span>
 </div>
 
+<p class="search-illustration">Synthetic illustration; not a captured search result.</p>
+
 <div class="search-results">
   <div class="search-row">
     <span class="search-date">2024-08-12</span>
     <span class="search-from">Supplier Co.</span>
     <span class="search-subject">Contract revision v3, sign by Friday</span>
-    <span class="search-attach">📎</span>
+    <span class="search-attach">PDF</span>
   </div>
   <div class="search-row">
     <span class="search-date">2023-03-04</span>
     <span class="search-from">Supplier Co.</span>
     <span class="search-subject">2023 framework agreement (signed PDF)</span>
-    <span class="search-attach">📎</span>
+    <span class="search-attach">PDF</span>
   </div>
   <div class="search-row">
     <span class="search-date">2019-11-22</span>
     <span class="search-from">contracts@supplier</span>
     <span class="search-subject">Contract terms · initial draft</span>
-    <span class="search-attach">📎</span>
+    <span class="search-attach">PDF</span>
   </div>
   <div class="search-row">
     <span class="search-date">2019-09-08</span>
     <span class="search-from">Supplier Co.</span>
     <span class="search-subject">Onboarding contract for review</span>
-    <span class="search-attach">📎</span>
+    <span class="search-attach">PDF</span>
   </div>
 </div>
 
 <div class="search-coda">
   <p>Find a 2019 contract by the supplier's name. Pull every receipt from a vendor. List the apology email you sent in March. mxr indexes subject, body, sender, and attachment filenames with <a href="https://github.com/quickwit-oss/tantivy">Tantivy</a>. Lexical search runs against the index on your disk, without a provider round trip or provider rate limit. Optional local embeddings add hybrid and semantic search.</p>
 
-  <p>The same local record makes mailbox analytics cheap to run: storage by sender or attachment type, response times, stale threads, subscription activity, and a year-in-review.</p>
+  <p>The same local record supports mailbox summaries such as storage by sender or attachment type, response times, stale threads, READ-state subscription counts, and a year-in-review.</p>
 
 ```bash wrap
 mxr storage --by label --limit 20
@@ -213,7 +217,9 @@ mxr reclassify MESSAGE_ID reading
 
 ## let your agent use the same inbox
 
-<p>Search and mail reads stay on your computer. Once your mail is synced, a hosted model call is the only network wait in this workflow. The agent can use the CLI or the first-party MCP server to search, read, draft, summarize, export, and preview changes.</p>
+<p>Local search and cached-mail reads use state on your computer. Sync, sends, provider-backed changes, uncached attachment downloads, remote articles, and configured model endpoints can still use the network. An external agent supplies its own model; mxr-native model features and the built-in assistant use separate settings. Returned mail sent to a hosted agent model leaves through that service. Agents can use the CLI or first-party MCP server, whose available operations and daemon authority differ.</p>
+
+<p class="search-illustration">Illustrative prompts and outcomes, not an observed agent run.</p>
 
 <div class="agent-conversation">
   <div class="agent-turn">
@@ -224,7 +230,7 @@ mxr reclassify MESSAGE_ID reading
       <code>{`mxr sender sarah@example.com --format json`}</code>
       <code>{`mxr draft-assist <thread-id> "short reply in my usual tone"`}</code>
     </div>
-    <div class="agent-result">Relationship context and recent threads loaded ◈<span class="agent-ok">draft created, nothing sent.</span></div>
+    <div class="agent-result">Relationship context and recent threads loaded ◈<span class="agent-ok">reply suggestion returned; save it as a draft for review in another client.</span></div>
   </div>
 
   <div class="agent-turn">
@@ -233,16 +239,16 @@ mxr reclassify MESSAGE_ID reading
     <div class="agent-runs">
       <code>{`mxr search "from:ci@github.com after:2026-04-30" --format json | jq -r '.results[] | [.message_id, .subject] | @tsv'`}</code>
       <code>{`git log --since=1.week --pretty='%H %s'`}</code>
-      <code>{`mxr search "from:ci@github.com after:2026-04-30 subject:upload" --format ids | mxr archive --yes`}</code>
+      <code>{`mxr search "from:ci@github.com after:2026-04-30 subject:upload" --format ids | mxr archive --dry-run`}</code>
     </div>
-    <div class="agent-result">23 failures, 18 from the upload suite that a later commit fixed ◈<span class="agent-ok">18 archived, 5 left for review.</span></div>
+    <div class="agent-result">Review the matching messages before deciding what to archive.</div>
   </div>
 </div>
 
-<p>The CLI, MCP server, web bridge, and TUI all call the same daemon. Most read commands can return JSON. Core mail mutations support <code>{`--dry-run`}</code>, and MCP mutation and send tools require <code>{`confirm=true`}</code>. <a href="/guides/automation-contract/">See the automation contract →</a></p>
+<p>The CLI, MCP server, web bridge, and TUI call the same daemon operations where supported. Read commands can return structured output; preview support varies by command. Identified MCP and agent requests use their configured profile gates. Ordinary CLI requests use CLI origin, including when a shell-capable agent runs them. <a href="/guides/automation-contract/">See the automation contract →</a></p>
 
 <div class="agent-json-peek">
-  <div class="agent-json-label">◈ what your agent sees</div>
+  <div class="agent-json-label">◈ example search output shape</div>
 
 ```bash wrap
 mxr search "from:sarah@example.com after:2026-04-23" \
@@ -251,13 +257,12 @@ mxr search "from:sarah@example.com after:2026-04-23" \
 
 ```json wrap
 {
-  "message_id": "019706f4-9b6e-7c31-8a3f-2a1c4de50b91",
-  "from": "Sarah Chen <sarah@example.com>",
-  "subject": "1:1 prep, Friday",
-  "date": "2026-04-30T15:42:11+00:00",
+  "message_id": "MESSAGE_ID",
+  "from": "sender@example.com",
+  "subject": "Subject from the message",
+  "date": "TIMESTAMP_FROM_THE_MESSAGE",
   "read": false,
-  "starred": false,
-  "score": 12.4
+  "starred": false
 }
 ```
 
@@ -307,7 +312,7 @@ mxr search "from:sarah@example.com after:2026-04-23" \
 
 ## one mailbox, several interfaces
 
-<p>The daemon owns sync, storage, search, rules, and provider connections. The TUI, CLI, web app, MCP server, and agent skill use the same mail and the same permissions.</p>
+<p>The daemon owns sync, storage, search, rules, and provider connections. The TUI, CLI, web app, MCP server, and agent skill can use the same daemon-backed mail state. Client paths differ in which operations they expose and what authority they receive.</p>
 
 <div class="surface-stack">
   <div class="surface-block">
@@ -352,7 +357,7 @@ would archive 142 messages.`}</code></pre>
       <div class="surface-tag">◈ typed tools</div>
     </div>
     <div class="surface-body">
-      <p>Run <code>mxr mcp serve</code> for typed MCP tools, or give a shell-capable agent the mxr skill. Both use daemon-enforced account scopes and safety gates.</p>
+      <p>Run <code>mxr mcp serve</code> for typed MCP tools, or give a shell-capable agent the mxr skill. Identified MCP requests can use an MCP profile; CLI requests use the CLI origin and do not inherit an agent profile just because an agent runs them.</p>
       <pre class="surface-snippet" tabindex="0"><code>mxr mcp serve</code></pre>
     </div>
   </div>

@@ -1,3 +1,5 @@
-The agent uses mxr like any other shell tool. The CLI returns JSON, so it can write the mxr query or jq pipeline it needs for the question I asked.
+This recorded agent excerpt combines an mxr JSON search with jq to select message details from a synthetic inbox.
+
+The capture shows GPT-5.5; its date and mxr version are not identified. It demonstrates shell composition, not measured time savings or model accuracy.
 
 https://mxr.sh/

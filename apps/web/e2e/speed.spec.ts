@@ -4,6 +4,7 @@ import { mailList, mailRows, openList, reader, threadMessages } from "./helpers/
 import { stubBulkPeople } from "./helpers/bulkPeople";
 import { openApp } from "./helpers/state";
 import { KEY_TO_PAINT_P95_MS, installKeyToPaintProbe, measureKey, p95 } from "./helpers/speed";
+import { freshWaitingConversations } from "./helpers/waiting-request";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -45,24 +46,29 @@ for (const path of ["/desk", "/m/inbox"]) {
   test(`keydown to paint stays under budget on ${path} for j, k, s${path === "/desk" ? ", and e" : ""}`, async ({
     page,
   }) => {
-    await openList(page, path);
-    const presses = Math.min(PRESSES, (await mailRows(page).count()) - 1);
-    const minPresses = path === "/desk" ? 4 : MIN_PRESSES;
-    expect(presses).toBeGreaterThanOrEqual(minPresses);
-    await installKeyToPaintProbe(page);
-    await holdMutations(page);
+    const waiting = path === "/desk" ? await freshWaitingConversations(page, 4) : null;
+    try {
+      await openList(page, path);
+      const presses = Math.min(PRESSES, (await mailRows(page).count()) - 1);
+      const minPresses = path === "/desk" ? 4 : MIN_PRESSES;
+      expect(presses).toBeGreaterThanOrEqual(minPresses);
+      await installKeyToPaintProbe(page);
+      await holdMutations(page);
 
-    const samples: KeyPaintSamples = {
-      j: await measureKey(page, "j", presses, { change: "cursor-moves" }),
-      k: await measureKey(page, "k", presses, { change: "cursor-moves" }),
-      s: await measureKey(page, "s", presses, { change: "star-toggles" }),
-    };
-    // Inbox Archive now opens a reviewed native confirmation and waits for the durable outcome.
-    if (path === "/desk")
-      samples.e = await measureKey(page, "e", presses, { change: "row-leaves" });
-    const result = report(path, samples);
+      const samples: KeyPaintSamples = {
+        j: await measureKey(page, "j", presses, { change: "cursor-moves" }),
+        k: await measureKey(page, "k", presses, { change: "cursor-moves" }),
+        s: await measureKey(page, "s", presses, { change: "star-toggles" }),
+      };
+      // Inbox Archive now opens a reviewed native confirmation and waits for the durable outcome.
+      if (path === "/desk")
+        samples.e = await measureKey(page, "e", presses, { change: "row-leaves" });
+      const result = report(path, samples);
 
-    for (const value of Object.values(result)) expect(value).toBeLessThan(KEY_TO_PAINT_P95_MS);
+      for (const value of Object.values(result)) expect(value).toBeLessThan(KEY_TO_PAINT_P95_MS);
+    } finally {
+      await waiting?.finish();
+    }
   });
 }
 

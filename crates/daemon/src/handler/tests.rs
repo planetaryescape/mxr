@@ -700,25 +700,35 @@ fn rules_form_maps_link_filters_to_link_density() {
 }
 
 mod account_scope;
+mod approved_send_recovery;
 mod archive_recovery;
 mod arrivals;
 mod arrivals_report;
+mod ask_assessments;
+mod ask_deadlines;
+mod asks_delivery;
+mod asks_projection_replay;
+mod assessment_authority;
 mod assistant;
 mod assistant_models;
 mod body_and_invites;
 mod categories;
 mod category_rules;
 mod classify_eval;
+mod classify_eval_diagnostics;
 mod classify_eval_floor;
 mod classify_eval_full;
 mod codes;
 mod commitment_dates;
+mod commitments_authority;
+mod compose_assist;
 mod compose_eval;
 mod deferral;
 mod desk;
 mod desk_done;
 mod draft_attachment_resources;
 mod draft_revisions;
+mod forwarding;
 mod freshness;
 mod html_drafts;
 mod legacy_transport;
@@ -735,11 +745,14 @@ mod owed;
 mod owned_addresses;
 mod places;
 mod platform_and_export;
+mod projection_diagnostics;
 mod reading;
 mod record_subscriptions;
 mod records;
+mod reply_semantics;
 mod routing_and_search;
 mod send_outcomes;
+mod sent_assessments;
 mod stars;
 mod thread_gists;
 mod thread_previews;
@@ -769,3 +782,12 @@ async fn dispatch_future_stays_well_inside_a_worker_stack() {
 
 mod rule_treatment;
 mod rule_trust;
+
+mod asks_task_identity;
+mod promise_closed_history;
+mod promise_currencies;
+mod promise_lifecycle;
+mod promise_ordering;
+mod promise_projection;
+mod promise_recipients;
+mod promise_timing;

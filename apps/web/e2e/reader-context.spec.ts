@@ -125,7 +125,11 @@ test("the ask lands without moving the messages and is marked in the message", a
     await route.abort();
   });
   const newestId = await stubNewestBody(page);
-  await stubModel(page, newestId, 1_200);
+  await page.route("**/api/v1/mail/modes/membership?thread_id=*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    await route.continue();
+  });
+  await stubModel(page, newestId, 2_400);
   await openFirstConversation(page);
 
   const slot = page.getByTestId("thread-gist");
@@ -165,7 +169,7 @@ test("the ask lands without moving the messages and is marked in the message", a
 
   // With a model, the reply field offers the composer's draft in your voice.
   await page.getByRole("button", { name: "Draft in your voice" }).click();
-  await expect(composer(page).getByLabel("What should this say?")).toBeVisible();
+  await expect(composer(page).getByRole("textbox", { name: "Draft instruction" })).toBeVisible();
   await composer(page).getByRole("button", { name: "Close composer (saves draft)" }).click();
 });
 

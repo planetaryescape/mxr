@@ -5,11 +5,22 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Internal: the composer's check stage, graders for AI drafts"
+description = "Internal: the composer, how writing help is asked for (plan) and how its proposals are checked"
 publish = false
 
 [lints]
 workspace = true
 
 [dependencies]
+base16ct = { workspace = true }
 mxr-humanizer = { workspace = true }
+mxr-llm = { workspace = true }
+mxr-compose = { workspace = true }
+mxr-protocol = { workspace = true }
+sha2 = { workspace = true }
+similar = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }
+mxr-core = { workspace = true }

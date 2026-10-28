@@ -188,12 +188,12 @@ mxr/
 │   │                             # Depends on: core, store, search
 │   │
 │   ├── compose/                  # $EDITOR workflow, frontmatter parsing, draft UX
-│   │                             # Draft management, context block generation.
+│   │                             # Draft management, context blocks, body regions shared by clients.
 │   │                             # Depends on: core, outbound
 │   │
 │   ├── composer/                 # The composer's check stage: graders that say whether
 │   │                             # a draft did what its case required. Pure: plain text in.
-│   │                             # Depends on: humanizer
+│   │                             # Depends on: compose, humanizer
 │   │
 │   ├── reader/                   # Reader mode: HTML→text, signature stripping,
 │   │                             # quote collapsing, boilerplate removal.
@@ -213,7 +213,7 @@ mxr/
 │   │
 │   ├── safety/                   # Local reply/composition safety checks
 │   │                             # Pure checks over caller-provided message/reply context.
-│   │                             # Depends on: core, reader, relationship
+│   │                             # Depends on: core, reader, relationship, outbound
 │   │
 │   ├── protocol/                 # IPC types: Request, Response, Command enums
 │   │                             # Shared between daemon and all clients.
@@ -277,7 +277,7 @@ These are strict. Violations should be caught in code review:
 6. **`llm` owns LLM provider clients and prompt/result DTOs.** It deliberately depends on no internal crates; higher layers pass plain data into it.
 6a. **`assistant` owns the in-app assistant's loop, approval gate and prompt.** It depends only on `llm`. Mail reaches it only through the `ToolHost`, `ChatModel` and `TurnSink` traits the daemon implements (with the MCP tools run in-process), so it can't bypass the daemon's dispatch, safety policy or activity log.
 7. **`relationship` owns relationship analytics and recipient intelligence.** It may depend on `core`, `store`, `reader`, and `llm`. It must not depend on protocol, daemon, clients, sync, search, semantic, or provider crates.
-8. **`safety` owns local reply/composition safety checks.** It may depend on `core`, `reader`, and `relationship`. It must not depend on store, protocol, daemon, clients, sync, search, semantic, or provider crates.
+8. **`safety` owns local reply/composition safety checks.** It may depend on `core`, `reader`, `relationship`, and `outbound` (to check a draft as it will be rendered and sent). It must not depend on store, protocol, daemon, clients, sync, search, semantic, or provider crates.
 9. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
 10. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
 11. **`tui` and `web` are clients.** They may depend on `core`, `protocol`, and client-local utility crates such as `config`, `compose`, `reader`, and `mail-parse`, but they must not depend on daemon, store, search, sync, semantic, or provider crates.
@@ -310,3 +310,18 @@ These are strict. Violations should be caught in code review:
 | Error handling | `thiserror` + `anyhow` | `thiserror` for typed errors in libraries, `anyhow` for application-level error propagation. |
 | Logging/tracing | `tracing` + `tracing-subscriber` | Structured logging with span support. Better than `log` for async daemon debugging. |
 | HTML to text | `html2text` | Built-in fallback for HTML→plain text conversion. Users can override with external tool (w3m, lynx). |
+
+## Stored home assessments keep projections consistent
+
+The daemon's `handler/assessments.rs` owns canonical home resolution. Core owns
+`MailAssessment`; store persists current and retained policy versions with
+message/account deletion cascades. Arrivals retain immutable first placement
+and first-seen history. Projections apply live inbox, snooze, done and expiry
+state over the stored home.
+
+Input fingerprints include complete thread observations and actual cached body
+and predecessor text values. A SQLite input revision rejects publication if an
+observed input changes during resolution. Assessment writes do not advance that
+revision. Startup and ingest initialize historical mail in bounded pages;
+projection loaders reconcile the threads they need. Evaluation and fallback
+reports only read stored answers and never initialize them.

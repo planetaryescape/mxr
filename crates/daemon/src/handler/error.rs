@@ -17,6 +17,8 @@ pub(crate) enum HandlerError {
     /// string-sniffed into `Internal`.
     #[error("{0}")]
     InvalidRequest(String),
+    #[error("Classification pending: this email is still sorting")]
+    ClassificationPending,
     #[error("Draft revision conflict: expected {expected:?}, current {current:?}; unsent edits were not saved")]
     DraftConflict {
         expected: Option<i64>,
@@ -35,7 +37,11 @@ pub(crate) enum HandlerError {
     #[error("Path-backed drafts cannot be used remotely; recreate this draft using portable attachment uploads on the client")]
     PortableDraft,
     #[error("Send outcome requires recovery; query the original operation before another attempt")]
-    SendOutcome(Box<mxr_core::DraftSendOutcome>),
+    SendOutcome {
+        outcome: Box<mxr_core::DraftSendOutcome>,
+        /// Immediate local repair guidance; never retained or exposed remotely.
+        diagnostic: Option<String>,
+    },
     /// Already sanitized at authenticated remote admission.
     #[error("Remote operation was refused")]
     RemoteResponse(Box<Response>),
@@ -67,15 +73,22 @@ impl HandlerError {
     /// substring classifier in `Response::error`.
     pub(crate) fn into_response(self) -> Response {
         match self {
+            Self::ClassificationPending => Response::Error {
+                message: self.to_string(), kind: IpcErrorKind::InvalidRequest,
+                code: "classification_pending".into(), retryable: true, details: None,
+            },
             Self::RemoteResponse(response) => *response,
             Self::PortableDraft => Response::Error {
                 message: self.to_string(), kind: IpcErrorKind::InvalidRequest,
                 code: "remote_path_backed_draft".into(), retryable: false, details: None,
             },
-            Self::SendOutcome(outcome) => Response::Error {
-                message: match outcome.state {
-                    mxr_core::SendOutcomeState::Unknown => "Send acceptance is uncertain; query the original operation and do not resend".into(),
-                    _ => "Provider did not accept this operation; review before starting a new send operation".into(),
+            Self::SendOutcome { outcome, diagnostic } => Response::Error {
+                message: {
+                    let guidance = match outcome.state {
+                        mxr_core::SendOutcomeState::Unknown => "Send acceptance is uncertain; query the original operation and do not resend",
+                        _ => "Provider did not accept this operation; review before starting a new send operation",
+                    };
+                    diagnostic.map_or_else(|| guidance.into(), |error| format!("{guidance}: {error}"))
                 },
                 kind: IpcErrorKind::InvalidRequest,
                 code: match outcome.state { mxr_core::SendOutcomeState::Unknown => "send_outcome_unknown", _ => "send_not_accepted" }.into(),

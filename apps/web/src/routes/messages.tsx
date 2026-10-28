@@ -3,7 +3,7 @@ import { createFileRoute, useParams } from "@tanstack/react-router";
 import { MessagesRoute, type MessagesSearch } from "@/features/messages/MessagesRoute";
 import { optionalEnum, optionalFlag, optionalString } from "@/lib/searchParams";
 
-const TURNS = ["mine", "theirs"] as const;
+const TURNS = ["all", "mine", "theirs"] as const;
 
 /** Messages: people you talk with, one row each (blueprint 22, phase 3). */
 export const Route = createFileRoute("/messages")({

@@ -371,6 +371,9 @@ fn format_platform_response(data: &ResponseData) -> String {
             outcome: Some(outcome),
         } => {
             let state = match outcome.state {
+                mxr_core::SendOutcomeState::Waiting => {
+                    "Waiting for the mail provider; approved send retries automatically. Do not resend."
+                }
                 mxr_core::SendOutcomeState::Accepted => {
                     "Provider accepted this send. Do not resend."
                 }
@@ -380,15 +383,21 @@ fn format_platform_response(data: &ResponseData) -> String {
                 }
             };
             format!(
-                "{state}\n\nOperation: {}\nAccount: {}\nReviewed revision: {}\n\nOpen the command palette and choose Check last send outcome to query this retained outcome again.",
+                "{state}\n\nOperation: {}\nAccount: {}\nReviewed revision: {}\nRecovery: {}\n\nOpen the command palette and choose Check last send outcome to query this retained outcome again.",
                 outcome.identity.operation_id,
                 outcome.account_id,
-                outcome.identity.expected_revision
+                outcome.identity.expected_revision,
+                outcome.recovery.as_ref().map(|status| serde_json::to_string(status).unwrap_or_default()).unwrap_or_default()
             )
         }
         ResponseData::SendOutcome { outcome: None } => {
             "No submission outcome recorded for this operation.".into()
         }
+        ResponseData::SendRecoveryPreview { outcome, recoverable, reason, evidence_sha256 } => format!(
+            "Recovery preview for {}\nRecoverable: {recoverable}\nReason: {reason}\nEvidence: {}\n\nNo mail was sent. {}",
+            outcome.identity.operation_id, evidence_sha256.as_deref().unwrap_or("none"),
+            if *recoverable { "Choose Resume previewed approved send in the command palette to retain this same operation for automatic retry." } else { "The unknown operation remains protected. Do not create a duplicate draft or send identity." }
+        ),
         ResponseData::Ack => "Done.".into(),
         other => serde_json::to_string_pretty(other).unwrap_or_else(|_| format!("{other:?}")),
     }
@@ -1694,6 +1703,7 @@ pub async fn run() -> anyhow::Result<()> {
                 }
                 .await;
                 AsyncResult::PlatformModalLoaded {
+                    send_recovery_preview: None,
                     compose: None,
                     title: "Archive preview".into(),
                     result,
@@ -1705,6 +1715,15 @@ pub async fn run() -> anyhow::Result<()> {
         for pending in platform_dispatch {
             let bg = bg.clone();
             let title = pending.title.clone();
+            let compose_assist = pending.compose_assist.clone();
+            let compose_model = match &pending.request {
+                Request::ComposeAssist { model, .. } => model.clone(),
+                _ => None,
+            };
+            let compose_assist_request_id = pending.compose_assist_request_id.unwrap_or_default();
+            let compose_model_picker = pending.compose_model_picker.clone();
+            let compose_assist_accept = pending.compose_assist_accept.clone();
+            let compose_assist_reopen_editor = pending.compose_assist_reopen_editor;
             let result_tx_inner = result_tx.clone();
             let _ = submit_task(&queued, async move {
                 let mut pending = pending;
@@ -1729,15 +1748,120 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                         }
                     }
-                    let resp = ipc_call(&bg, pending.request).await;
-                    match resp {
-                        Ok(Response::Ok { data }) => Ok(format_platform_response(&data)),
-                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                        Err(e) => Err(e),
-                    }
+                    ipc_call(&bg, pending.request).await
                 }
                 .await;
+                if let Some((pending, purpose)) = compose_model_picker {
+                    let result = match result {
+                        Ok(Response::Ok {
+                            data: ResponseData::ComposeModels { models },
+                        }) => Ok(models),
+                        Ok(Response::Ok { .. }) => Err(MxrError::Ipc(
+                            "The daemon returned no compose model catalogue".into(),
+                        )),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(error) => Err(error),
+                    };
+                    return AsyncResult::ComposeModelsLoaded {
+                        pending,
+                        purpose,
+                        result,
+                    };
+                }
+                if let Some(compose) = compose_assist {
+                    let proposal = match result {
+                        Ok(Response::Ok {
+                            data: ResponseData::ComposeProposal { proposal },
+                        }) => Ok(proposal),
+                        Ok(Response::Ok { .. }) => Err(MxrError::Ipc(
+                            "The daemon returned no writing proposal".into(),
+                        )),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(error) => Err(error),
+                    };
+                    return AsyncResult::ComposeAssistLoaded {
+                        pending: compose,
+                        model: compose_model,
+                        request_id: compose_assist_request_id,
+                        result: proposal,
+                    };
+                }
+                if let Some(compose) = compose_assist_accept {
+                    let accepted = match result {
+                        Ok(Response::Ok {
+                            data: ResponseData::Draft { draft },
+                        }) => {
+                            let context = mxr_protocol::DraftSafetyContextData {
+                                mode: mxr_protocol::DraftSafetyModeData::Check,
+                                reply_all: matches!(
+                                    compose.intent,
+                                    mxr_core::DraftIntent::ReplyAll
+                                ),
+                                original_message_id: None,
+                                thread_id: compose
+                                    .fm
+                                    .thread_id
+                                    .as_ref()
+                                    .and_then(|id| id.parse().ok()),
+                                allow_llm: true,
+                                proposed_send_at: Some(chrono::Utc::now()),
+                            };
+                            let safety = match ipc_call(
+                                &bg,
+                                Request::CheckDraftSafety {
+                                    draft: draft.clone(),
+                                    context,
+                                },
+                            )
+                            .await
+                            {
+                                Ok(Response::Ok {
+                                    data: ResponseData::DraftSafetyReportResponse { report },
+                                }) => Ok(report),
+                                Ok(Response::Ok { .. }) => Err(MxrError::Ipc(
+                                    "The daemon returned no safety report for the accepted draft"
+                                        .into(),
+                                )),
+                                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                                Err(error) => Err(error),
+                            };
+                            Ok((draft, safety))
+                        }
+                        Ok(Response::Ok { .. }) => Err(MxrError::Ipc(
+                            "The daemon returned no accepted draft".into(),
+                        )),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(error) => Err(error),
+                    };
+                    return AsyncResult::ComposeAssistAccepted {
+                        pending: compose,
+                        request_id: compose_assist_request_id,
+                        reopen_editor: compose_assist_reopen_editor,
+                        result: accepted,
+                    };
+                }
+                let send_recovery_preview = match &result {
+                    Ok(Response::Ok {
+                        data:
+                            ResponseData::SendRecoveryPreview {
+                                outcome,
+                                recoverable: true,
+                                evidence_sha256: Some(evidence),
+                                ..
+                            },
+                    }) => Some((
+                        outcome.account_id.clone(),
+                        outcome.identity.operation_id.clone(),
+                        evidence.clone(),
+                    )),
+                    _ => None,
+                };
+                let result = result.and_then(|response| match response {
+                    Response::Ok { data } => Ok(format_platform_response(&data)),
+                    Response::Error { message, .. } => Err(MxrError::Ipc(message)),
+                });
                 AsyncResult::PlatformModalLoaded {
+                    send_recovery_preview,
                     compose,
                     title,
                     result,
@@ -2945,6 +3069,7 @@ pub async fn run() -> anyhow::Result<()> {
                             "Send {}: {}",
                             outcome.identity.operation_id,
                             match outcome.state {
+                                mxr_core::SendOutcomeState::Waiting => "waiting for provider; retry is automatic",
                                 mxr_core::SendOutcomeState::Accepted => "provider accepted",
                                 mxr_core::SendOutcomeState::Unknown =>
                                     "acceptance uncertain; do not resend",
@@ -4299,6 +4424,7 @@ pub async fn run() -> anyhow::Result<()> {
                             handle_compose_editor_status(&mut app, &data, status, &bg).await;
                         }
                         AsyncResult::ComposeReady(Err(e)) => {
+                            app.compose.assist_after_editor = false;
                             app.status_message = Some(format!("Compose error: {e}"));
                         }
                         AsyncResult::DraftEditReady(Ok(data)) => {
@@ -4742,7 +4868,8 @@ pub async fn run() -> anyhow::Result<()> {
                                 format!("The daemon returned: {e}"),
                             );
                         }
-                        AsyncResult::PlatformModalLoaded { compose, title, mut result } => {
+                        AsyncResult::PlatformModalLoaded { compose, title, mut result, send_recovery_preview } => {
+                            if send_recovery_preview.is_some() { app.compose.send_recovery_preview = send_recovery_preview; }
                             if let Some(pending) = compose {
                                 let pending = *pending;
                                 result = result.map(|body| format!("{body}\n\nQuery scheduled delivery with draft:{} for account {}", pending.draft_id(), pending.account_id));
@@ -4752,6 +4879,153 @@ pub async fn run() -> anyhow::Result<()> {
                             match result {
                                 Ok(body) => app.modals.platform.set_body(body),
                                 Err(e) => app.modals.platform.set_error(e.to_string()),
+                            }
+                        }
+                        AsyncResult::ComposeAssistLoaded { pending, model, request_id, result } => {
+                            let current_matches = app.compose.pending_send_confirm.as_ref()
+                                .is_some_and(|current| current.draft_path == pending.draft_path);
+                            if !current_matches
+                                || !app.modals.platform.visible
+                                || app.compose.assist_request_id != request_id
+                            {
+                                continue;
+                            }
+                            app.modals.platform.close();
+                            match result {
+                                Ok(proposal) => {
+                                    if let Some(review) = app.compose.assist_review.as_mut().filter(|review| {
+                                        review.pending.draft_path == pending.draft_path
+                                    }) {
+                                        review.push_proposal(proposal, model);
+                                    } else {
+                                        app.compose.assist_review = Some(app::ComposeAssistReview {
+                                            pending: *pending,
+                                            proposals: vec![proposal],
+                                            proposal_models: vec![model],
+                                            current_index: 0,
+                                            note_input: None,
+                                            proof_scroll_offset: 0,
+                                            request_pending: false,
+                                        });
+                                    }
+                                }
+                                Err(error) => {
+                                    if let Some(review) = app.compose.assist_review.as_mut() {
+                                        review.request_pending = false;
+                                    }
+                                    app.report_error("Writing proof failed", error.to_string());
+                                }
+                            }
+                        }
+                        AsyncResult::ComposeModelsLoaded { pending, purpose, result } => {
+                            if !app.modals.platform.visible
+                                || app.modals.platform.title != "Choose a writing model"
+                            {
+                                continue;
+                            }
+                            app.modals.platform.close();
+                            let still_owned = match purpose {
+                                app::ComposeModelPickerPurpose::InitialDraft => app
+                                    .compose
+                                    .pending_send_confirm
+                                    .as_ref()
+                                    .is_some_and(|current| {
+                                        current.draft_path == pending.draft_path
+                                    }),
+                                app::ComposeModelPickerPurpose::RetryProof => app
+                                    .compose
+                                    .assist_review
+                                    .as_ref()
+                                    .is_some_and(|review| {
+                                        review.pending.draft_path == pending.draft_path
+                                            && !review.request_pending
+                                    }),
+                            };
+                            if !still_owned {
+                                continue;
+                            }
+                            match result {
+                                Ok(choices) => {
+                                    app.compose.model_picker = Some(app::ComposeModelPicker {
+                                        choices,
+                                        selected_index: 0,
+                                        pending,
+                                        purpose,
+                                    });
+                                }
+                                Err(error) => app.report_error(
+                                    "Compose models unavailable",
+                                    error.to_string(),
+                                ),
+                            }
+                        }
+                        AsyncResult::ComposeAssistAccepted { pending, request_id, reopen_editor, result } => {
+                            if app.compose.assist_request_id != request_id {
+                                continue;
+                            }
+                            app.modals.platform.close();
+                            match result {
+                                Ok((draft, safety)) => {
+                                    let Some(body) = draft.content.markdown_source().map(str::to_owned) else {
+                                        app.report_error("Accepted draft cannot be edited", "The stored draft is not Markdown.");
+                                        continue;
+                                    };
+                                    let mut pending_send = *pending;
+                                    pending_send.body = body;
+                                    pending_send.draft_revision = draft.revision;
+                                    pending_send.mode = app::PendingSendMode::SendOrSave;
+                                    match safety {
+                                        Ok(report) => {
+                                            pending_send.override_token = report.issues.iter().find_map(|issue| issue.override_token.clone());
+                                            pending_send.safety_report = Some(report);
+                                            pending_send.safety_check_failed = None;
+                                        }
+                                        Err(error) => {
+                                            pending_send.override_token = None;
+                                            pending_send.safety_report = None;
+                                            pending_send.safety_check_failed = Some(error.to_string());
+                                        }
+                                    }
+                                    let content = match mxr_compose::draft_codec::draft_to_compose_file(&draft, &pending_send.fm.from) {
+                                        Ok(content) => content,
+                                        Err(error) => {
+                                            app.compose.pending_send_confirm = Some(pending_send);
+                                            app.report_error("Accepted draft cannot be reopened", error.to_string());
+                                            continue;
+                                        }
+                                    };
+                                    if let Err(error) = std::fs::write(&pending_send.draft_path, content) {
+                                        app.compose.pending_send_confirm = Some(pending_send);
+                                        app.report_error("Accepted draft file could not be updated", error.to_string());
+                                        continue;
+                                    }
+                                    #[cfg(not(test))]
+                                    if let Err(error) = crate::send_recovery_state::retain_reviewed_compose(
+                                        &draft.account_id,
+                                        &draft.id,
+                                        &mxr_core::SendIdentity::for_draft(&draft),
+                                        &pending_send.draft_path,
+                                    ) {
+                                        app.compose.pending_send_confirm = Some(pending_send);
+                                        app.report_error("Accepted draft could not be tracked", error.to_string());
+                                        continue;
+                                    }
+                                    if reopen_editor {
+                                        app.compose.pending_send_confirm = None;
+                                        app.compose.pending_compose = Some(app::ComposeAction::EditDraft {
+                                            path: pending_send.draft_path,
+                                            account_id: pending_send.account_id,
+                                        });
+                                    } else {
+                                        app.compose.pending_send_confirm = Some(pending_send);
+                                    }
+                                }
+                                Err(error) => app.report_error(
+                                    "Could not confirm the accepted draft",
+                                    format!(
+                                        "The change may already be saved. Reopen the draft to check its current text before continuing. {error}"
+                                    ),
+                                ),
                             }
                         }
                         AsyncResult::AnalyticsResult { view, result } => {
@@ -5595,6 +5869,17 @@ fn spawn_records_fetches(
 pub(crate) fn todo_undo(change: &mxr_protocol::TodoChangeData) -> Option<app::PendingUndo> {
     if change.dry_run || change.changed.is_empty() {
         return None;
+    }
+    if let Some(token) = &change.correction_undo {
+        return Some(app::PendingUndo {
+            action: app::UndoAction::TodoCorrection {
+                todo_id: change.changed.first()?.id.clone(),
+                correction_id: token.clone(),
+            },
+            verb_past: "Corrected".into(),
+            count: 1,
+            applied_at: std::time::Instant::now(),
+        });
     }
     let ids: Vec<String> = change.changed.iter().map(|todo| todo.id.clone()).collect();
     let (action, verb_past) = match change.action.as_str() {

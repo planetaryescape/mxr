@@ -128,7 +128,13 @@ describe("labels", () => {
     ).toBe("your turn · 16h");
   });
 
-  test("[ and ] step through topics without wrapping", () => {
+  test("quiet topics keep recency without repeating the quiet state", () => {
+    expect(topicStateLabel(topic("t", { state: "quiet" }), NOW)).toBe("1d");
+    expect(topicStateLabel(topic("t", { state: "waiting" }), NOW)).toBe("waiting · 1d");
+    expect(topicStateLabel(topic("t", { state: "done" }), NOW)).toBe("done here · 1d");
+  });
+
+  test("{ and } step through topics without wrapping", () => {
     const topics = [topic("a"), topic("b"), topic("c")];
     expect(stepTopic(topics, "b", 1)?.thread_id).toBe("c");
     expect(stepTopic(topics, "c", 1)?.thread_id).toBe("c");

@@ -232,7 +232,7 @@ impl RuntimeTasks {
 /// through `DemoLlmProvider` instead. That short-circuits all outbound LLM
 /// traffic so a demo runs fully offline and can never spend the user's
 /// real-account API key by accident, even if `[llm]` is configured.
-fn build_llm_provider(
+pub(crate) fn build_llm_provider(
     config: &mxr_config::EffectiveLlmConfig,
     health: &mxr_llm::RouteHealth,
 ) -> Arc<dyn mxr_llm::LlmProvider> {
@@ -506,6 +506,10 @@ pub(crate) struct WrappedCacheKey {
 /// current data.
 pub(crate) const WRAPPED_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 
+/// How many events the daemon's broadcast channel holds for a slow client
+/// before it drops the oldest and tells that client to resync.
+pub(crate) const EVENT_CHANNEL_CAPACITY: usize = 256;
+
 pub struct AppState {
     pub(crate) restore_pending: std::sync::atomic::AtomicBool,
     pub store: Arc<Store>,
@@ -537,6 +541,8 @@ pub struct AppState {
     pub(crate) purge_previews: crate::handler::mutations::PurgePreviews,
     pub(crate) category_rule_previews: crate::handler::category_rules::CategoryRulePreviews,
     pub(crate) category_previews: crate::handler::categories::CategoryPreviews,
+    /// Writing-help proposals waiting to be accepted (`ComposeAssist`).
+    pub(crate) compose_proposals: crate::handler::compose_proposals::ComposeProposals,
     pub(crate) sweep_gate: crate::handler::places::SweepGate,
     /// Conversations waiting for a list-row gist (`GetThreadGists`).
     pub(crate) gist_queue: crate::handler::thread_gists::GistQueue,
@@ -585,6 +591,8 @@ pub struct AppState {
     wrapped_generation: std::sync::atomic::AtomicU64,
     /// Ready-made Now, rail and mode views; see `handler::mode_cache`.
     pub(crate) mode_cache: crate::handler::mode_cache::ModeCache,
+    /// Decoded thread facts, checked against source clocks on every access.
+    pub(crate) history_cache: crate::handler::messages::HistoryCache,
     /// Set on the first successful sync after daemon start when the
     /// one-shot heavy analytics repair (reply_pairs backfill from
     /// existing messages) has run. Subsequent syncs only run the
@@ -597,6 +605,7 @@ pub struct AppState {
     /// can publish a new Tantivy reader generation.
     lexical_search_warmed: std::sync::atomic::AtomicBool,
     config: RwLock<mxr_config::MxrConfig>,
+    pub(crate) assessment_config_gate: tokio::sync::RwLock<()>,
     shutdown_tx: watch::Sender<bool>,
     /// Bumped by [`AppState::reload_accounts_from_disk`] after the provider
     /// runtime is rebuilt. Long-lived loops that hold a provider (the IDLE
@@ -811,6 +820,16 @@ impl AppState {
         let index_path = data_dir.join("search_index");
 
         let store = Arc::new(Store::new(&db_path).await?);
+        let context = crate::handler::assessments::context_key(
+            config.messages.large_thread_recipients,
+            mxr_store::asks_context_token().ok().as_deref(),
+        );
+        store.sync_assessment_context(&context).await?;
+        // Cached auth authority belongs to the loaded receiver configuration.
+        // Invalidate before IPC opens, rather than waiting for the first loop tick.
+        store
+            .sync_receiver_authority(&config.todo.trusted_authentication_services)
+            .await?;
         std::fs::create_dir_all(&index_path)?;
         let pending = store.restore_pending().await?;
         if pending {
@@ -867,7 +886,7 @@ impl AppState {
                 HashSet::new()
             }
         };
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
@@ -892,6 +911,7 @@ impl AppState {
             purge_previews: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
+            compose_proposals: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
             assistant: Default::default(),
@@ -915,10 +935,12 @@ impl AppState {
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             wrapped_generation: std::sync::atomic::AtomicU64::new(0),
             mode_cache: Default::default(),
+            history_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
+            assessment_config_gate: tokio::sync::RwLock::new(()),
             shutdown_tx,
             reload_tx,
             runtime_tasks,
@@ -2037,6 +2059,15 @@ impl AppState {
             .await
             .map_err(|e| e.to_string())?;
         apply_llm_config_to_runtime(&self.llm, &config.llm);
+        let _assessment_config = self.assessment_config_gate.write().await;
+        if self.config.read().todo.trusted_authentication_services
+            != config.todo.trusted_authentication_services
+        {
+            self.store
+                .sync_receiver_authority(&config.todo.trusted_authentication_services)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
         *self.config.write() = config.clone();
         Ok(config)
     }
@@ -2048,6 +2079,16 @@ impl AppState {
             .await
             .expect("apply semantic config");
         apply_llm_config_to_runtime(&self.llm, &config.llm);
+        let _ = crate::handler::assessments::BEFORE_AUTHORITY_WRITE.try_with(|observe| observe());
+        let _assessment_config = self.assessment_config_gate.write().await;
+        if self.config.read().todo.trusted_authentication_services
+            != config.todo.trusted_authentication_services
+        {
+            self.store
+                .sync_receiver_authority(&config.todo.trusted_authentication_services)
+                .await
+                .expect("invalidate receiver authority");
+        }
         *self.config.write() = config;
     }
 
@@ -2246,6 +2287,15 @@ impl AppState {
             .await
             .map_err(|e| e.to_string())?;
         apply_llm_config_to_runtime(&self.llm, &config.llm);
+        let _assessment_config = self.assessment_config_gate.write().await;
+        if self.config.read().todo.trusted_authentication_services
+            != config.todo.trusted_authentication_services
+        {
+            self.store
+                .sync_receiver_authority(&config.todo.trusted_authentication_services)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
         *self.config.write() = config;
         crate::loops::spawn_sync_loops(self.clone());
         Ok(())
@@ -2316,7 +2366,7 @@ impl AppState {
             send_providers.insert(account_id.clone(), send_provider.clone());
         }
 
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
@@ -2340,6 +2390,7 @@ impl AppState {
             purge_previews: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
+            compose_proposals: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
             assistant: Default::default(),
@@ -2363,10 +2414,12 @@ impl AppState {
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             wrapped_generation: std::sync::atomic::AtomicU64::new(0),
             mode_cache: Default::default(),
+            history_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
+            assessment_config_gate: tokio::sync::RwLock::new(()),
             shutdown_tx,
             reload_tx,
             runtime_tasks,
@@ -2411,7 +2464,7 @@ impl AppState {
             ContactsRefreshHandle::start(store.clone(), background_db.clone());
         runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
@@ -2435,6 +2488,7 @@ impl AppState {
             purge_previews: Default::default(),
             category_rule_previews: Default::default(),
             category_previews: Default::default(),
+            compose_proposals: Default::default(),
             sweep_gate: Default::default(),
             gist_queue: Default::default(),
             assistant: Default::default(),
@@ -2458,10 +2512,12 @@ impl AppState {
             wrapped_cache: ParkingMutex::new(HashMap::new()),
             wrapped_generation: std::sync::atomic::AtomicU64::new(0),
             mode_cache: Default::default(),
+            history_cache: Default::default(),
             reply_context_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
+            assessment_config_gate: tokio::sync::RwLock::new(()),
             shutdown_tx,
             reload_tx,
             runtime_tasks,
@@ -2531,7 +2587,7 @@ impl AppState {
         providers.insert(account_id.clone(), provider.clone());
         send_providers.insert(account_id, fake.clone() as Arc<dyn MailSendProvider>);
 
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (shutdown_tx, _) = watch::channel(false);
         let (reload_tx, _) = watch::channel(0u64);
         let admin_blocking = Arc::new(Semaphore::new(2));
@@ -2556,6 +2612,7 @@ impl AppState {
                 purge_previews: Default::default(),
                 category_rule_previews: Default::default(),
                 category_previews: Default::default(),
+                compose_proposals: Default::default(),
                 sweep_gate: Default::default(),
                 gist_queue: Default::default(),
                 assistant: Default::default(),
@@ -2579,10 +2636,12 @@ impl AppState {
                 wrapped_cache: ParkingMutex::new(HashMap::new()),
                 wrapped_generation: std::sync::atomic::AtomicU64::new(0),
                 mode_cache: Default::default(),
+                history_cache: Default::default(),
                 reply_context_cache: ParkingMutex::new(HashMap::new()),
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
                 lexical_search_warmed: std::sync::atomic::AtomicBool::new(false),
                 config: RwLock::new(config),
+                assessment_config_gate: tokio::sync::RwLock::new(()),
                 shutdown_tx,
                 reload_tx,
                 runtime_tasks,

@@ -82,7 +82,9 @@ open a moment; Mark as Unread (⌘⇧U) puts it back. Reply (⌘R), Reply All
 
 ## Copy a one-time code
 
-Copy Latest Code copies the code from your newest sign-in, verification or
+Copy Latest Code syncs all enabled mail accounts and waits for the refresh
+before looking for a code. If refresh fails or takes too long, it reports that
+and leaves the clipboard unchanged. It copies the code from your newest sign-in, verification or
 two-factor email that is still in its window, and says whose it is:
 "Copied 482913 from Google (accounts.google.com)". The host is where the
 mail came from, so a borrowed brand shows. It opens no window, so give it
@@ -93,8 +95,7 @@ not keep it.
 mxr finds codes by rules, the same way as `mxr code`; see
 [Updates](/guides/updates/#copy-a-one-time-code) for what counts. An
 Updates line with a code shows it and offers Copy Code first, and reading
-a sign-in email offers Copy Code while the code still works. Copying
-codes needs mxr 0.6.138 or later.
+a sign-in email offers Copy Code while the code still works. Keep mxr up to date so this command can refresh mail before reading codes.
 
 ## Search and filter by account
 
@@ -126,9 +127,19 @@ on the toast, instead of being reported as done.
 ## Reply
 
 Reply opens a form with the recipients and subject filled in and an empty
-body, as the web composer does. Draft in My Voice (in the ⌘K action panel) adds a suggested
-reply written in your style above what you have typed; nothing is sent until
-you send it.
+body, as the web composer does. Draft for Me (in the ⌘K action panel) opens a
+model submenu, then sends the text region in the form, with the exact reply or reply-all intent, to
+mxr's writing help. It opens a proof showing additions in bold, removals
+struck through and unanswered details in inline code. The metadata says which
+model ran, whether it used your writing history, which voice samples it used,
+which of your sentences changed and what details remain open. Your form text
+stays as written until you accept. Accept replaces only that text region and
+keeps a signature or forwarded message below it; Retry (⌘R) repeats the same
+text and action, **Try Again with Another Model** retries with another
+catalogue model,
+Revise with Note applies a note to the shown proof, and
+Escape keeps your text. Gaps block sending and cannot be overridden. If the
+form changes while a proof is being prepared, that proof cannot be accepted.
 
 Send Reply runs the same pre-send safety check the daemon enforces on every
 send:

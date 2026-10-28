@@ -345,6 +345,42 @@ for motion), implement the command in the view's controller, done.
 - Scopes `reading` and `reading-reader` in `lib/actions`; swipe right is
   Later and left is let go on phones.
 
+## Messages: identities, history and reply audiences
+
+Open `/messages`, choose a person, then use the topic selector to choose a
+conversation. `features/messages/api.ts` reads the people list from
+`/api/v1/mail/people` and the selected page from `/api/v1/mail/people/page`.
+
+Keep these address sources distinct:
+
+- `PersonIdentity` discloses the addresses linked to a person.
+- `Conversation` discloses the original From address of each message.
+- `ConversationPeople` lists addresses recorded across the selected thread.
+  This is history, not a fixed roster or the audience of the next reply.
+- `MessageInfoDialog` shows one message's recorded From/To/Cc/Bcc roles.
+
+People and Message info load the existing thread endpoint on demand and share
+the `["thread", threadId]` query. The web serializer in `chrome.rs` omits empty
+recipient vectors. For this response, omitted To/Cc means none were recorded;
+omitted Bcc means it was not recorded in this copy. Neither an empty nor an
+omitted Bcc list establishes that no blind copies were delivered. Test the
+omitted wire fields as well as explicit empty arrays.
+
+Choose Reply or Reply all to inspect the compact audience summary. Reply
+preparation goes through the daemon's `PrepareReply`; shared rules in
+`reply_recipients.rs` handle Reply-To and owned addresses. After preparation,
+`ComposeEditorPanel` reads To/Cc/Bcc, From and account from the editable draft.
+Do not derive that summary from the person row or thread-wide People list.
+Messages gives the draft a thread-specific inline slot; `ComposeHost` docks it
+under its source subject when that slot disappears. Returning to the source
+conversation must preserve edited recipients and text.
+
+Got it displays the daemon's planned text, To and From during its countdown.
+Ordinary quiet topics show recency alone; the separate Quiet people band
+remains. A quiet topic is not proof that the user read it or that no reply is
+needed. The [Messages guide](../site/src/content/docs/guides/messages.md) owns
+the user workflow.
+
 ## Reading a conversation
 
 - Read messages collapse to one line; the newest and every unread message start
@@ -470,11 +506,19 @@ validators (`lib/searchParams.ts`) instead of zod. Budget: 70 kB gzipped.
 
 ## Testing
 
-- Vitest + Testing Library (`npm test`, about 350 tests). Tests assert
+- Vitest + Testing Library (`npm test`). Tests assert
   what the user sees or what reaches the network, using real `QueryClient`
   cache shapes; they mock modules with `vi.mock` (no MSW).
 - Playwright (`npm run e2e`) runs journeys against a real daemon with the
-  FakeProvider demo dataset (`scripts/e2e-server.mjs`). CI runs the whole suite.
+  FakeProvider demo dataset (`scripts/e2e-server.mjs`). Ready PRs run
+  `npm run e2e:engine`, a core subset; web changes on main and manual runs use
+  the full Chromium suite. A green subset does not validate every permanent
+  feature spec. Run affected journeys explicitly when changing a UI contract:
+
+  ```sh
+  cd apps/web
+  npm run e2e -- e2e/draft-provenance.spec.ts e2e/teaching.spec.ts e2e/wide-layout.spec.ts
+  ```
 - WebKit: the desktop shell renders with Safari's engine (WKWebView), so the
   suite also runs on Playwright's WebKit. The project is opt-in:
   `npm run e2e:webkit` runs the whole suite and `npm run e2e:webkit:engine`

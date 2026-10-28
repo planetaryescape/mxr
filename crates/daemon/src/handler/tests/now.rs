@@ -39,7 +39,7 @@ async fn mail(
     } else {
         ME
     };
-    let mut envelope = fx.message(thread, from, to, age, None).await;
+    let mut envelope = fx.attention_message(thread, from, to, age, None).await;
     envelope.subject = subject.to_string();
     let direction = if from == ME {
         MessageDirection::Outbound
@@ -53,8 +53,10 @@ async fn mail(
 /// You wrote to `who`; they replied, so it's your turn.
 async fn owed(fx: &Fixture, who: &str) -> Envelope {
     let thread = ThreadId::new();
-    let mine = fx.message(&thread, ME, who, Duration::days(3), None).await;
-    fx.message(
+    let mine = fx
+        .attention_message(&thread, ME, who, Duration::days(3), None)
+        .await;
+    fx.attention_message(
         &thread,
         who,
         ME,
@@ -487,7 +489,7 @@ async fn someone_you_have_written_to_is_never_asked_about() {
     // You wrote to Leo last week in one thread; today he starts another.
     let earlier = ThreadId::new();
     let mut mine = fx
-        .message(
+        .attention_message(
             &earlier,
             ME,
             "leo@workbench.example",

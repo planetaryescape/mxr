@@ -209,6 +209,7 @@ impl App {
             | Action::MessagesPersonPage
             | Action::MessagesAsSent
             | Action::MessagesFilter
+            | Action::MessagesCycleFilter
             | Action::MessagesBack => self.apply_messages_action(action),
             Action::OpenUpdates
             | Action::UpdatesOpen
@@ -230,6 +231,8 @@ impl App {
             | Action::CheckArchiveOperation(_)
             | Action::SubmitArchiveOperation(_)
             | Action::CheckLastSendOutcome
+            | Action::PreviewLastSendRecovery
+            | Action::ResumePreviewedSend
             | Action::ReopenLastSendDraft
             | Action::OpenDiagnosticsScreen
             | Action::OpenAccountsScreen

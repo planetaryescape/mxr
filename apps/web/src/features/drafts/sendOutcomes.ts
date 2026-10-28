@@ -9,8 +9,14 @@ export interface SendReference {
 }
 export interface SendOutcome {
   identity: { operation_id: string; expected_revision: number };
-  state: "unknown" | "accepted" | "not_accepted";
+  state: "unknown" | "accepted" | "not_accepted" | "waiting";
   local_message_id: string | null;
+  recovery?: {
+    retry_at: string | null;
+    attempts: number;
+    phase: string;
+    reason: string | null;
+  } | null;
 }
 const STORAGE_KEY = "mxr-reviewed-sends";
 function isReference(value: unknown): value is SendReference {
@@ -62,9 +68,38 @@ export function fetchSendOutcome(
   );
 }
 
+export function recoverSendOutcome(
+  reference: SendReference,
+  evidenceSha256?: string,
+): Promise<{
+  outcome: SendOutcome;
+  recoverable?: boolean;
+  reason?: string;
+  evidence_sha256?: string | null;
+}> {
+  if (!reference.binding)
+    return Promise.reject(new Error("Recovery requires the original workspace owner"));
+  assertWorkspaceBinding(reference.binding);
+  return apiFetch(
+    `/api/v1/mail/send-outcomes/${encodeURIComponent(reference.operationId)}/recover?account_id=${encodeURIComponent(reference.accountId)}`,
+    {
+      method: "POST",
+      binding: reference.binding,
+      body: {
+        dry_run: evidenceSha256 === undefined,
+        expected_evidence_sha256: evidenceSha256 ?? null,
+      },
+    },
+  );
+}
+
 /** Called only by a deliberate Send press. Unknown acceptance never mints an attempt. */
 export function operationAfterReview(defaultOperation: string, prior: SendOutcome | null): string {
   if (!prior) return defaultOperation;
+  if (prior.state === "waiting")
+    throw new Error(
+      "This approved send is waiting for the provider and will retry automatically. Do not resend.",
+    );
   if (prior.state === "unknown")
     throw new Error("Acceptance is uncertain. Check the send outcome; do not resend.");
   if (prior.state === "accepted") throw new Error("Provider already accepted this send.");

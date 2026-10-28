@@ -50,6 +50,17 @@ pub struct Address {
     pub email: String,
 }
 
+/// Choose the first external To recipient, then Cc, within the sending account.
+pub fn first_non_owned_recipient<'a>(
+    to: &'a [Address],
+    cc: &'a [Address],
+    is_owner: impl Fn(&str) -> bool,
+) -> Option<&'a Address> {
+    to.iter()
+        .chain(cc)
+        .find(|address| !is_owner(&address.email))
+}
+
 // -- Account ------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1719,8 +1730,27 @@ pub struct DraftAttachment {
     pub account_id: AccountId,
     pub filename: String,
     pub mime_type: String,
+    /// Original Content-ID of a related forwarded MIME part.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_id: Option<String>,
     pub length_bytes: u64,
+    /// Original MIME location for related parts whose HTML uses a relative URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_location: Option<String>,
     pub sha256: String,
+}
+
+/// Immutable original content prepared by the daemon for a forward. The editor
+/// edits only the introduction; original HTML and attachment bytes stay intact.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ForwardSource {
+    pub draft_id: DraftId,
+    pub account_id: AccountId,
+    pub message_id: MessageId,
+    #[cfg_attr(feature = "openapi", schema(value_type = DraftContentSchema))]
+    pub content: DraftContent,
+    pub attachments: Vec<DraftAttachment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1823,6 +1853,12 @@ pub enum DraftSafetyIssueCode {
     AnswerCoverage,
     CommitmentCandidate,
     SendTimeNote,
+    /// A `[[?: …]]` gap from writing help is still in the draft. A client that
+    /// predates this code cannot decode a safety report that holds it and gets
+    /// an error instead of a send, which fails safe: nothing is sent. Nothing
+    /// else in the protocol gives a response enum an unknown-value fallback, so
+    /// this one does not either.
+    UnfilledGap,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -2791,6 +2827,31 @@ pub enum SendOutcomeState {
     Unknown,
     Accepted,
     NotAccepted,
+    Waiting,
+}
+
+/// The last boundary for which the adapter has positive evidence.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SendSubmissionPhase {
+    Preparation,
+    Cooldown,
+    Authentication,
+    ThreadResolution,
+    Dispatch,
+    ProviderResponse,
+    Accepted,
+}
+
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendRecoveryStatus {
+    pub phase: SendSubmissionPhase,
+    pub retry_at: Option<DateTime<Utc>>,
+    pub attempts: u32,
+    /// Stable diagnostic code; never message bodies, addresses or credentials.
+    pub reason: Option<String>,
 }
 /// Durable evidence independent of a live draft or a local Sent message.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -2803,4 +2864,6 @@ pub struct DraftSendOutcome {
     pub local_message_id: Option<MessageId>,
     pub provider_message_id: Option<String>,
     pub rfc2822_message_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<SendRecoveryStatus>,
 }

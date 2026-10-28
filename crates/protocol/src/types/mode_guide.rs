@@ -226,7 +226,7 @@ const TODO_KEYS: &[(&str, &str)] = &[
     ("todo.done", "tick off"),
     ("todo.schedule", "schedule"),
     ("todo.edit", "edit"),
-    ("todo.dismiss", "not a to-do"),
+    ("todo.dismiss", "correct to-do"),
     ("todo.open-email", "open the email"),
     ("mail.undo", "undo"),
     ("todo.catchup", "catch up"),
@@ -299,6 +299,7 @@ pub const NOW_GUIDE: ModeGuideCopy = ModeGuideCopy {
 
 /// Messages' keys, in the order help lists them.
 const MESSAGES_KEYS: &[(&str, &str)] = &[
+    ("messages.cycle-filter", "cycle views"),
     ("messages.open", "open the person"),
     ("messages.reply", "reply"),
     ("messages.reply-all", "reply all"),

@@ -1,6 +1,10 @@
 # 37. What an email asks of you
 
-Status: proposal, 2026-10-22, not built. Source baseline: `origin/main` at `a4bf49248` (v0.6.142). This chapter specifies the third of blueprint 32's five questions, "What does it ask of you?": the judge, its facts, its models, its measurement and its rungs. It refines [32](32-classifier.md) and the To do enters and leaves rules of [22](22-email-modes.md#to-do-shows-instructions-on-a-runway-not-emails-with-flags). It rests on D174 to D185. The research is in [what-it-asks/literature.md](../research/what-it-asks/literature.md), [what-it-asks/industry.md](../research/what-it-asks/industry.md) and [what-it-asks/methods.md](../research/what-it-asks/methods.md).
+Status: R2c shipped in v0.6.163; later rungs remain proposals. The
+[implementation contract](../implementation/r2c-asks/README.md) records the
+shipped boundary; the [To do guide](https://mxr.sh/guides/todo/) describes the
+user workflow. The design and measurements below retain their original
+2026-10-22 context. Original source baseline: `origin/main` at `a4bf49248` (v0.6.142). This chapter specifies the third of blueprint 32's five questions, "What does it ask of you?": the judge, its facts, its models, its measurement and its rungs. It refines [32](32-classifier.md) and the To do enters and leaves rules of [22](22-email-modes.md#to-do-shows-instructions-on-a-runway-not-emails-with-flags). It rests on D174 to D185. The research is in [what-it-asks/literature.md](../research/what-it-asks/literature.md), [what-it-asks/industry.md](../research/what-it-asks/industry.md) and [what-it-asks/methods.md](../research/what-it-asks/methods.md).
 
 BK asked for this to be designed properly, not patched: "I do't want quick fixes, I need you to do some comprehensive research on how to do this right and how to improve the classifier so taht it's done right not just monkey patched onto it" (2026-10-22). He also said a model need not be local: "if this is a task that needs more intelligence then we can suggest that maybe this needs a cloud model or something" (2026-10-22).
 
@@ -269,6 +273,10 @@ They extend 32's ladder with letters (D184). R1c runs before R2, and the rest af
 **Done when:** `mxr classify eval --set quick|full` reports per-kind precision and recall and field accuracy, with today's baseline recorded in 32. CI fails on a regression in any kind. The surface-only baseline fails the twins.
 
 **Left out:** any change to detection.
+
+R2 stores home assessments while keeping the existing
+asks detectors and To do/Archive aspects. The unit-level asks changes below
+remain the next separate rung; R2 does not raise their measured baseline.
 
 ### R2c: Every to-do is something an email asks you, with whose move it is
 

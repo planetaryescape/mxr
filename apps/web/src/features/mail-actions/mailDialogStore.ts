@@ -56,6 +56,7 @@ export type MailDialog =
   | { kind: "todo-schedule"; todo: Todo }
   /** To do: correct a row's fields (`,`). */
   | { kind: "todo-edit"; todo: Todo }
+  | { kind: "todo-correct"; todo: Todo }
   /** Make a to-do from a conversation (`t`). */
   | { kind: "todo-make"; messageId: string; suggestion: string; subject?: string }
   /** Archive: fix or confirm a record's fields (`,`). */

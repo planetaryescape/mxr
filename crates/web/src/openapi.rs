@@ -5,10 +5,10 @@
 //! endpoints instead of a schema-only OpenAPI document.
 
 use crate::request_types::{
-    ComposeSessionPathRequest, ComposeSessionResponse, ComposeSessionRestoreRequest,
-    ComposeSessionScheduleRequest, ComposeSessionSendRequest, ComposeSessionStartRequest,
-    ComposeSessionUpdateRequest, DiscardedComposeResponse, DraftConflictResponse,
-    SavedDraftResponse, ScheduledComposeResponse,
+    ComposeSessionAudienceRequest, ComposeSessionPathRequest, ComposeSessionResponse,
+    ComposeSessionRestoreRequest, ComposeSessionScheduleRequest, ComposeSessionSendRequest,
+    ComposeSessionStartRequest, ComposeSessionUpdateRequest, DiscardedComposeResponse,
+    DraftConflictResponse, SavedDraftResponse, ScheduledComposeResponse,
 };
 use mxr_protocol::{DaemonEvent, MutationCommand, Request, Response, ResponseData};
 use utoipa::{
@@ -60,10 +60,10 @@ use utoipa::{
         snippets_set, snippets_delete, sender_profile, contacts_autocomplete, screener_queue,
         screener_decisions_list, screener_decisions_set,
         screener_decisions_clear, thread_summarize, mail_draft_compose,
-        mail_draft_refine, mail_humanizer_score, mail_humanizer_rewrite,
+        mail_draft_refine, mail_compose_models, mail_compose_assist, mail_compose_apply, mail_humanizer_score, mail_humanizer_rewrite,
         mail_relationship_profile, mail_relationship_rebuild, mail_commitments_list,
         mail_commitments_resolve, mail_thread_briefing, mail_contacts_briefing, mail_contacts_expert,
-        compose_session_start, compose_session_refresh, compose_session_restore,
+        compose_session_start, compose_session_refresh, compose_session_restore, compose_session_audience,
         compose_session_update, compose_session_send, compose_session_safety_check,
         compose_session_collaborators, compose_session_save, compose_session_schedule,
         compose_session_attachment, compose_session_discard, rules_list, rule_detail, rule_form,
@@ -83,7 +83,7 @@ use utoipa::{
         analytics_refresh_contacts, analytics_rebuild,
         mail_message_body, mail_message_html_images, mail_message_inline_image, mail_message_raw_headers,
         mail_message_set_flags, mail_export_search, mail_drafts_orphaned_list,
-        mail_drafts_save_local, mail_drafts_reset_orphan, mail_drafts_send_stored, mail_send_outcome,
+        mail_drafts_save_local, mail_drafts_reset_orphan, mail_drafts_send_stored, mail_send_outcome, mail_recover_send_outcome,
         mail_drafts_delete_stored, mail_signatures_list, mail_signatures_upsert,
         mail_signature_defaults_list, mail_signature_default_set,
         mail_signature_default_clear, mail_signature_resolve, mail_signatures_delete,
@@ -95,10 +95,10 @@ use utoipa::{
         compose_session_promises, mail_commitments_record,
         mail_place_list, mail_place_sweep, mail_message_kind, mail_messages_pin,
         mail_sender_kind, mail_todos_runway, mail_todos_create, mail_todos_in_state,
-        mail_todo_get, mail_todos_state, mail_todo_resolve, mail_todo_schedule, mail_todo_edit,
+        mail_todo_get, mail_todos_state, mail_todo_correct, mail_todo_undo_correction, mail_todo_resolve, mail_todo_schedule, mail_todo_edit,
         mail_microsoft_todo_status, mail_microsoft_todo_link, mail_microsoft_todo_sync,
         mail_todos_catchup_get, mail_todos_catchup_set, mail_mode_guide, mail_hint_seen,
-        mail_now, mail_rail, mail_codes, mail_freshness, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done,
+        mail_classify_report, mail_now, mail_rail, mail_codes, mail_freshness, mail_mode_membership_get, mail_mode_membership_post, mail_mode_done,
         mail_people, mail_people_page, mail_people_ack, mail_people_merge, mail_people_split,
         mail_people_merge_suggestions,
         mail_records_ledger, mail_records_answer, mail_records_subscriptions, mail_record_get, mail_record_field,
@@ -134,6 +134,8 @@ use utoipa::{
         ThreadGistsBody,
         SenderKindBody,
         crate::todo_routes::TodoStateBody,
+        crate::todo_routes::TodoCorrectionBody,
+        crate::todo_routes::TodoCorrectionUndoBody,
         crate::todo_routes::TodoResolutionBody,
         crate::todo_routes::TodoScheduleBody,
         crate::todo_routes::TodoEditBody,
@@ -377,6 +379,17 @@ fn categories_list() {}
 fn categories_messages() {}
 
 #[utoipa::path(
+    get,
+    path = "/api/v1/mail/compose/models",
+    summary = "List models available to compose under the compose route and privacy policy",
+    responses(
+        (status = 200, description = "Compose model choices, locality and availability", body = crate::compose_assist_routes::ComposeModelsResponse),
+        (status = 401, description = "Missing or invalid bridge token")
+    )
+)]
+#[allow(dead_code)]
+fn mail_compose_models() {}
+#[utoipa::path(
     post,
     path = "/api/v1/mail/categories/memberships",
     summary = "Read category assignments for selected messages",
@@ -519,6 +532,32 @@ endpoint!(delete screener_decisions_clear "/api/v1/mail/screener/decisions", "Cl
 endpoint!(post thread_summarize "/api/v1/mail/threads/{thread_id}/summarize", "Summarize a thread");
 endpoint!(post mail_draft_compose "/api/v1/mail/drafts/compose", "Generate an LLM draft (new message or reply)");
 endpoint!(post mail_draft_refine "/api/v1/mail/drafts/refine", "Refine draft text with LLM");
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/compose/assist",
+    summary = "Writing help for the text in a compose box: write it, finish it, polish it or edit a selection. Returns a proposal and changes nothing",
+    request_body = crate::compose_assist_routes::ComposeAssistBody,
+    responses(
+        (status = 200, description = "A proposal: the whole proposed text, the word diff from yours, the gaps left, and which of your sentences changed", body = crate::compose_assist_routes::ComposeAssistResponse),
+        (status = 401, description = "Missing or invalid bridge token"),
+        (status = 422, description = "Nothing to finish, a selection off a character boundary, text too long, or a privacy setting that stops the model")
+    )
+)]
+#[allow(dead_code)]
+fn mail_compose_assist() {}
+#[utoipa::path(
+    post,
+    path = "/api/v1/mail/compose/apply",
+    summary = "Write an accepted proposal into a stored draft's text region; refused if that text changed since the proposal",
+    request_body = crate::compose_assist_routes::ComposeApplyBody,
+    responses(
+        (status = 200, description = "The draft now holds the proposal", body = crate::compose_assist_routes::ComposeApplyResponse),
+        (status = 401, description = "Missing or invalid bridge token"),
+        (status = 422, description = "The proposal expired, belongs to another draft, or the draft's text changed")
+    )
+)]
+#[allow(dead_code)]
+fn mail_compose_apply() {}
 endpoint!(post mail_humanizer_score "/api/v1/mail/humanizer/score", "Score draft for human-like voice");
 endpoint!(post mail_humanizer_rewrite "/api/v1/mail/humanizer/rewrite", "Rewrite draft toward target voice");
 endpoint!(get mail_relationship_profile "/api/v1/mail/relationship", "Relationship profile for a contact");
@@ -984,6 +1023,17 @@ fn mail_corrections() {}
 fn mail_codes() {}
 
 #[utoipa::path(
+    get, path = "/api/v1/mail/classify/report",
+    summary = "Stored fallback clusters and pending assessment counts; local and read-only",
+    params(("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
+        ("limit" = Option<u32>, Query, description = "Emails examined; default 1000, maximum 10000")),
+    responses((status = 200, description = "The ClassifyReport variant", body = ResponseData),
+        (status = 401, description = "Missing or invalid bridge token"))
+)]
+#[allow(dead_code)]
+fn mail_classify_report() {}
+
+#[utoipa::path(
     get,
     path = "/api/v1/mail/now",
     summary = "Now: People, Due soon, one Updates card and an evening Reading pick, at most three items each",
@@ -1074,10 +1124,10 @@ fn mail_mode_done() {}
 #[utoipa::path(
     get,
     path = "/api/v1/mail/people",
-    summary = "Messages: people you talk with in four bands (Your turn, Pinned, Recent, Quiet), each row with its topics and what they asked",
+    summary = "Messages: conversations needing attention by default; explicit All conversations includes history",
     params(
         ("account" = Option<String>, Query, description = "Account id; omitted covers every account"),
-        ("turn" = Option<String>, Query, description = "`mine` or `theirs`: only rows where it is that side's turn"),
+        ("turn" = Option<String>, Query, description = "Omit for Needs attention; `all` includes conversation history; `mine` or `theirs` selects a side's turn"),
         ("unread" = Option<bool>, Query, description = "`true`: only rows with unread mail from them. Counts in the response are unchanged"),
         ("pace" = Option<bool>, Query, description = "`true`: only rows where your turn has run past your usual pace. Counts in the response are unchanged"),
         ("limit" = Option<u32>, Query, description = "Rows in Recent and Quiet (default 50); totals count all"),
@@ -1818,6 +1868,9 @@ fn mail_sender_kind() {}
 #[utoipa::path(post, path = "/api/v1/mail/compose/session", request_body = ComposeSessionStartRequest, responses((status = 200, description = "Compose session result", body = ComposeSessionResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid compose session", body = DraftConflictResponse)))]
 #[allow(dead_code)]
 fn compose_session_start() {}
+#[utoipa::path(post, path = "/api/v1/mail/compose/session/audience", request_body = ComposeSessionAudienceRequest, responses((status = 200, description = "Reply audience preview or updated compose session", body = ComposeSessionResponse), (status = 400, description = "Invalid draft identity or unsupported compose content", body = DraftConflictResponse), (status = 401, description = "Missing or invalid bridge token"), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid compose session", body = DraftConflictResponse)))]
+#[allow(dead_code)]
+fn compose_session_audience() {}
 #[utoipa::path(post, path = "/api/v1/mail/compose/session/refresh", request_body = ComposeSessionPathRequest, responses((status = 200, description = "Compose session result", body = ComposeSessionResponse), (status = 409, description = "Stale draft revision; preserve unsent text", body = DraftConflictResponse), (status = 422, description = "Invalid compose session", body = DraftConflictResponse)))]
 #[allow(dead_code)]
 fn compose_session_refresh() {}
@@ -1938,6 +1991,10 @@ endpoint!(post mail_drafts_reset_orphan "/api/v1/mail/drafts/{draft_id}/reset-or
 #[utoipa::path(get, path = "/api/v1/mail/send-outcomes/{operation_id}", params(("operation_id" = String, Path), ("account_id" = String, Query, description = "Owning account ID")), responses((status = 200, description = "Durable send outcome", body = ResponseData), (status = 401, description = "Missing bridge token")))]
 #[allow(dead_code)]
 fn mail_send_outcome() {}
+
+#[utoipa::path(post, path = "/api/v1/mail/send-outcomes/{operation_id}/recover", params(("operation_id" = String, Path), ("account_id" = String, Query)), request_body = crate::routes_v6::RecoverSendBody, responses((status = 200, description = "Evidence-bound recovery preview or resumed original operation", body = ResponseData)))]
+#[allow(dead_code)]
+fn mail_recover_send_outcome() {}
 #[utoipa::path(post, path = "/api/v1/mail/drafts/{draft_id}/send-stored", params(("draft_id" = String, Path), ("operation_id" = String, Query, description = "Retained reviewed send operation"), ("expected_revision" = i64, Query, description = "Reviewed draft revision"), ("managed_attachments_reviewed" = Option<bool>, Query, description = "True only after reviewing current managed attachment metadata; defaults false")), responses((status = 200, description = "Send receipt or outcome", body = ResponseData), (status = 401, description = "Missing bridge token")))]
 #[allow(dead_code)]
 fn mail_drafts_send_stored() {}
@@ -2038,3 +2095,10 @@ fn archive_query() {}
 
 endpoint!(post rule_categories "/api/v1/platform/rules/categories", "Preview or apply complete category-rule reconciliation");
 endpoint!(get category_why "/api/v1/mail/categories/why", "Explain category membership and rule provenance");
+
+#[utoipa::path(post, path = "/api/v1/mail/todos/{todo_id}/correct", summary = "Correct ownership, task status or details with safe undo", params(("todo_id" = String, Path)), request_body = crate::todo_routes::TodoCorrectionBody, responses((status = 200, description = "The `TodoChange` variant", body = ResponseData)))]
+#[allow(dead_code)]
+fn mail_todo_correct() {}
+#[utoipa::path(post, path = "/api/v1/mail/todos/{todo_id}/correction/undo", summary = "Undo a correction unless the row has changed", params(("todo_id" = String, Path)), request_body = crate::todo_routes::TodoCorrectionUndoBody, responses((status = 200, description = "The `TodoChange` variant", body = ResponseData)))]
+#[allow(dead_code)]
+fn mail_todo_undo_correction() {}

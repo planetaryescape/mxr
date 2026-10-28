@@ -330,6 +330,8 @@ jobs:
       && needs.release-smoke.result == 'success'
       && (needs.build-binaries.result == 'success'
         || (needs.plan.outputs.has_artifacts != 'true' && needs.build-binaries.result == 'skipped'))
+      && (needs.desktop.result == 'success'
+        || (needs.plan.outputs.has_artifacts != 'true' && needs.desktop.result == 'skipped'))
     steps:
       - uses: actions/checkout@v7
         with:

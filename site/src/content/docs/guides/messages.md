@@ -1,16 +1,17 @@
 ---
 title: Messages
-description: People you talk with, one row each, with your conversations inside as topics. Reply, say got it, or mark done here.
+description: Conversations that need your attention. Reply, say got it, or mark done; open All conversations for history.
 ---
 
-Messages shows people, not emails. Each row is a person you're in
-conversation with, merged across their addresses, and your conversations
-with them sit inside the row as topics. A group conversation, where two or
-more other people took part, is its own row. The quoted line under a name
-is what they asked you.
+Messages shows conversations that need your attention, grouped by person.
+The default includes unanswered directed requests and due reminders you
+explicitly set. Only actionable topics appear in each person's row. A group
+conversation is its own row. The quoted line under a name is what they
+asked you.
 
 ```bash
-mxr messages            # the bands
+mxr messages            # needs attention
+mxr messages list --turn all  # All conversations, including history
 mxr messages list --turn mine
 mxr messages list --unread --past-pace
 mxr messages person samir@launchpad.example
@@ -23,39 +24,68 @@ The web app starts with the conversation list and no conversation open.
 Choose a person or group to read it. A link to a specific conversation opens
 that conversation directly. Opening Messages from navigation returns to the list.
 
-## Four bands, closest people first
+Possible personal mail with no deciding rule stays in Messages, marked **Not
+sure**, with the reason “No rule decided; Messages for now”. Inspect the stored
+answer with `mxr why MESSAGE_ID --format json`, or measure fallback clusters
+with `mxr classify report --format json`. A stored Messages home does not undo
+a snooze or a done mark. The stored-assessment details require changes made after
+`v0.6.158`; that release does not include them.
+
+## Needs attention by default
+
+Inbox membership, unread status, recency and pinning do not create a reason
+to act. Replying, acknowledging, marking done or archiving clears resolved
+work from the default list. Sent copies do not keep it there. A later FYI
+or acknowledgement does not create a new turn; a new directed request can.
+Reply later and follow-up reminders bring a conversation back when due,
+including an archived conversation.
+
+When nothing needs you, Messages stays clear. It does not fill the space
+with old conversations or suggestions to reconnect.
+
+Choose **All conversations** to browse history, including archived and
+sent-only conversations. `mxr messages person EMAIL` also retains that
+person's topics. Clearing filters returns to Needs attention. The rail,
+Now and the Messages header count attention, not history.
+
+## Bands in All conversations
 
 | Band | Who is in it | Order |
 |---|---|---|
 | Your turn | A directed request to you is unanswered, or your reply-later timer has returned | Closest first, then whoever has waited longest past your usual pace with them |
-| Pinned | Up to nine people you pinned with `s` | Most recent first, with a dot when it's your turn |
-| Recent | Everyone else you've talked with in the last 30 days | Most recent first; "You: ..." when you wrote last |
+| Pinned | Up to nine people you pinned with `s`; only actionable people in the default view | Most recent first, with a dot when it's your turn |
+| Recent | Other recent conversations, or conversations where you wrote last | Most recent first; "You: ..." when you wrote last |
 | Quiet | Done here, or a turn nobody took | Collapsed; a new message brings them back |
 
 Closeness comes from your own history with them, counted on your machine:
 how often you've written to each other, how recently, and for how long.
-Your turn uses the same rule as Now's People, so the two always agree: Now's
+Needs attention uses the same rule as Now's People, so the two always agree: Now's
 headline, the Messages count in the rail and the Your turn rows are the same
 number, which `your_turn_split` in `mxr messages --format json` divides into
 people you write with and others who wrote to you. The Waiting on view
-(`turn=theirs`) is empty with "Nobody you're waiting to hear from."
+(`turn=theirs`) is an explicit view; merely waiting for someone else is not
+a reason to add them to the default queue.
 
 A turn nobody took goes quiet after three times your usual interval with
 that person, or a week when there's no history, and never stays longer
-than 30 days. Nothing in Messages expires; it only goes quiet.
+than 30 days. Quiet conversations remain available in All conversations
+and on person pages.
 
 ## Filter the list
 
-The list can show only some rows. A turn choice (All, Your turn, Waiting on
-them) sits beside two toggles: Unread keeps people with a message from them
+Choose Needs attention, All conversations, Your turn or Waiting on them.
+Press `f` to cycle through those four views, wrapping back to Needs attention.
+The web filter bar shows the key beside **Cycle views**, which also works as a
+button. Cycling keeps the Unread and Past your pace toggles as they are.
+Two toggles narrow the selected view: Unread keeps people with a message from them
 you haven't read, and Past your pace keeps the people whose turn has run
 longer than your usual reply time with them. The toggles and the turn
 choice combine, so Your turn with Unread shows only the unread people you
 owe a reply.
 
-The filter changes which rows show, never the counts. The header, the rail
-and Now still count everyone, and the filter line says how many rows it
-kept ("Showing 2 of 9") with Clear filters beside it while a filter is on.
+The view and toggles change which rows show, never the attention counts.
+The filter line separates the visible rows from attention
+("29 shown · 2 need attention"), with Clear filters beside it.
 An empty filtered list says why: "No unread messages from people." and what
 is still waiting in Your turn.
 
@@ -63,16 +93,16 @@ is still waiting in Your turn.
 |---|---|
 | Web app | The filter line above the list. `g f` moves focus to it |
 | TUI | `Ctrl-f` opens a picker; `Enter` picks or toggles, `Esc` closes. The status bar names the filters on |
-| Raycast | `⌘F` opens a Filter menu. The choice is remembered for that command |
-| CLI | `mxr messages list --turn mine --unread --past-pace`; `--format json` echoes the filter and reports `matched` |
+| Raycast | `⌘F` opens a Filter menu. Reopening the command starts with Needs attention |
+| CLI | `mxr messages list --turn all` opens history; `--unread` and `--past-pace` narrow the view; `--format json` echoes the filter and reports `matched` |
 
 In the CLI, `--turn mine` and `--turn theirs` pick Your turn and Waiting on
-them. The table says what it kept:
+them. `--turn all` includes history. The table says what it kept:
 
 ```text
 $ mxr messages list --unread --past-pace
-People you talk with, one row each. Reply or mark done.
-Filtered: Unread · Past your pace · 1 of 782 rows
+Conversations that need your attention. Reply or mark done.
+View: Unread · Past your pace · 1 shown · 9 need attention
 
 YOUR TURN
   DP   Samir Patel                 16h  close · usually 47m
@@ -97,12 +127,14 @@ still takes precedence. Reply headers or positive local thread correspondence
 can establish that a human answered, even when its body is uncached or HTML-only.
 Missing plain text cannot create automatic
 reply debt, but it does not erase your explicit Reply later choice.
+A promise someone makes to you can sit alongside a question you need to answer.
+That question stays in Your turn. Reply later still controls when it returns.
 Bare greetings such as "Hi," and "Good morning," do not name another
 recipient, including inline "Hi, could you confirm ...". A greeting naming
 someone mxr cannot match to an owned recipient remains uncertain: it does
 not silently register that name as yours.
 
-Possible personal mail stays accessible in Recent or Quiet without claiming
+Possible personal mail stays accessible in All conversations' Recent or Quiet without claiming
 someone is waiting for you. Automatic Your turn requires a directed request:
 currently English requests such as "Could you confirm ..." in cached plain
 text, with you in To. A group
@@ -137,8 +169,27 @@ The 10-recipient line is `messages.large_thread_recipients` in
 ## What a conversation shows
 
 Opening a person shows how you know them ("You've written 48 times since
-2023. Last: Tuesday."), every topic with them, group threads as "with
-Ruth: Pricing copy", and the selected topic as a conversation.
+2023. Last: Tuesday.") and opens the selected topic as a conversation. The
+compact conversation control names the selected subject and shows whether it
+is direct or a group; open it to switch topics. Group topics name their other
+participants, and the `{` and `}` keys step through topics.
+
+In the web app, choose a person's name to inspect and copy their linked email
+addresses. Choose a message's sender name to see the original From address;
+it can differ from the addresses linked to that person. Choose `Message info`
+on a message to inspect its recorded From, To, Cc and available Bcc addresses.
+An omitted or empty To or Cc list says that none were recorded. An omitted or
+empty Bcc list says it was not recorded in this copy, which cannot confirm that
+nobody was hidden. If the message details cannot be loaded, the app reports that
+or offers a retry. Long address lists scroll within the dialog. Escape closes
+the address panel or message info and returns focus to its trigger.
+Choose `People` below the topic selector to inspect and copy addresses
+that appear as senders or recorded To, Cc or available Bcc recipients in this
+thread. It expands across the reading area and scrolls internally for a long
+list. This is historical context: message audiences can differ. `Message info`
+remains the source for the recorded roles on an individual message. People
+stays closed until you open it and reports an error with a retry if the thread
+cannot be loaded.
 
 Read the conversation directly. mxr removes repeated trailing history,
 signatures and footers when it can identify them. Quoted questions beside
@@ -150,28 +201,38 @@ When something was removed, the message says `trimmed: quote, sig` (or
 sent. A reply containing only repeated quoted text says `(only quoted text)`.
 The CLI, TUI, web app and MCP use the same extracted text.
 
-Short messages read like chat. Longer letters lead with the paragraph
-containing the request when one is identified; otherwise they show the
-opening paragraph, including the next paragraph if the first is only a
-greeting. Choose `Read all N paragraphs` to expand the letter, then
-`Show less` to collapse it. Retained inline or forwarded context is shown
-in full.
+Short messages read like chat. The latest message opens in full at its start.
+Older long letters lead with the paragraph containing the request when one is identified;
+otherwise they show the opening paragraph, including the next paragraph if
+the first is only a greeting. Choose `Read all N paragraphs` to expand an
+older letter, then `Show less` to collapse it. Retained inline or forwarded
+context is shown in full.
 
 If mxr has only a provider preview, it labels that text as incomplete.
 Choose `Check the original` to try loading the full message. If it is still
 unavailable, mxr says so. HTML shown as sent follows your global or saved
 sender [mail appearance choice](/guides/web-app/#the-reader).
 
-The reply box sits at the bottom, already addressed ("Reply to Samir ·
-Contract renewal"), with reply all on by default in a group.
+Choose `Reply` or `Reply all` above the footer to set the next reply mode. When
+writing opens, the compact header shows the actual To recipients, populated Cc
+and Bcc fields, From address and sending account from the draft. An empty To
+field offers an add-recipient action. Choose `Edit` to open the existing fields
+and `Done` to fold them again; edits stay in the draft and appear in the compact
+header immediately. The reply uses the selected message's prepared recipients,
+including its Reply-To when present. If you switch topics, the reply docks with
+its source subject in the title and returns to that topic.
+
+Topic labels show the state and recency for your turn, waiting and done topics.
+Quiet topics show only recency; the separate Quiet band for people remains.
 
 ## Got it
 
 `.` replies with a short acknowledgement in your own words for that
 person, such as "Hi Samir,\n\nGot it, thanks.\n\nCheers,\nAlex". The
 greeting and sign-off are the ones you actually use with them, read from
-your sent mail; no model writes it. It shows the exact text and counts
-down for five seconds before sending, and `u` cancels it.
+your sent mail; no model writes it. It shows the exact text, To address and
+From address from its preview plan, then counts down for five seconds before
+sending. Press `u` to cancel it.
 
 ```bash
 mxr messages ack THREAD_ID --dry-run   # the exact text, nothing sent
@@ -210,6 +271,7 @@ emoji reaction. Because it sends mail on one key, mxr guards it:
 | `p` | The person's page |
 | `o` | The message as sent |
 | `g f` (web) or `Ctrl-f` (TUI) | Filter the list |
+| `f` | Cycle views: Needs attention, All conversations, Your turn, Waiting on them |
 | `u` | Undo |
 | `?` | What this mode is for, and its keys |
 

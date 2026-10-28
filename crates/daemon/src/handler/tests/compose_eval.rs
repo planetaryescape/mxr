@@ -34,10 +34,8 @@ fn prompts_report() -> String {
         }
         let typed = match case.draft {
             DraftState::Empty => "nothing typed",
-            DraftState::Typed(_) => "typed text not sent: request has no field",
-            DraftState::Selection { .. } => {
-                "typed text and selection not sent: request has no field"
-            }
+            DraftState::Typed(_) => "typed text sent: finish",
+            DraftState::Selection { .. } => "typed text and selection sent: edit selection",
         };
         let near = case
             .twin_of
@@ -77,14 +75,14 @@ fn grade_report() -> String {
     };
     writeln!(
         out,
-        "{:<28} {:<30} {:<6} {:<8} {:<6} {:<9} {:<7} {:<10} {:<5}",
-        "case", "output", "kept", "answers", "gaps", "invented", "length", "leftovers", "style"
+        "{:<28} {:<30} {:<6} {:<8} {:<6} {:<9} {:<7} {:<10} style score: marks",
+        "case", "output", "kept", "answers", "gaps", "invented", "length", "leftovers"
     )
     .unwrap_or_default();
     for (case, name, report) in &rows {
         writeln!(
             out,
-            "{:<28} {:<30} {:<6} {:<8} {:<6} {:<9} {:<7} {:<10} {:<5}",
+            "{:<28} {:<30} {:<6} {:<8} {:<6} {:<9} {:<7} {:<10} {}",
             case.id,
             name,
             verdict(report, Check::Kept),
@@ -93,7 +91,15 @@ fn grade_report() -> String {
             verdict(report, Check::Invented),
             verdict(report, Check::Length),
             verdict(report, Check::Leftovers),
-            report.style.score,
+            if report.style.patterns.is_empty() {
+                report.style.score.to_string()
+            } else {
+                format!(
+                    "{}: {}",
+                    report.style.score,
+                    report.style.patterns.join(", ")
+                )
+            },
         )
         .unwrap_or_default();
     }
@@ -183,6 +189,27 @@ fn every_good_output_passes_and_every_defect_fails_the_check_it_names() {
         }
     }
     assert!(defects >= 5, "only {defects} defects recorded");
+}
+
+#[test]
+fn offline_grader_names_style_marks_and_still_rejects_invented_amounts() {
+    let case = compose::cases()
+        .next()
+        .expect("the labelled corpus is populated");
+    let marked = "Additionally, the review is ready.";
+    let plain = "The review is ready.";
+    let marked_report = grade(case, marked, marked);
+    let plain_report = grade(case, plain, plain);
+    assert!(marked_report.style.score < plain_report.style.score);
+    assert!(marked_report
+        .style
+        .patterns
+        .iter()
+        .any(|name| name == "Overused AI words"));
+
+    let invented = "The total is $777.";
+    let invented_report = grade(case, invented, invented);
+    assert_eq!(invented_report.passed(Check::Invented), Some(false));
 }
 
 /// Answers every draft the same way, and keeps what it was asked.

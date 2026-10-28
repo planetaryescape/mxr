@@ -55,6 +55,7 @@ export interface UiPrefsState {
   contrast: ContrastPref;
   sidebarCollapsed: boolean;
   composeEditor: ComposeEditor;
+  composeEditorByDraft: Record<string, ComposeEditor>;
   emailHtmlTheme: EmailHtmlTheme;
   emailHtmlSenderOverrides: EmailHtmlSenderOverride[];
   readerLayout: ReaderLayout;
@@ -90,6 +91,7 @@ export interface UiPrefsState {
   setContrast: (contrast: ContrastPref) => void;
   setSidebarCollapsed: (b: boolean) => void;
   setComposeEditor: (e: ComposeEditor) => void;
+  setComposeEditorForDraft: (draftKey: string, e: ComposeEditor) => void;
   setEmailHtmlTheme: (theme: EmailHtmlTheme) => void;
   setEmailHtmlThemeForSender: (sender: string, theme: ExplicitEmailHtmlTheme) => void;
   forgetEmailHtmlThemeForSender: (sender: string) => void;
@@ -113,6 +115,7 @@ export const useUiPrefs = create<UiPrefsState>()(
       // Locked product decision (docs/web-app.md): CodeMirror + vim is the
       // default. Only the default changes; a persisted choice is kept as is.
       composeEditor: "codemirror-vim",
+      composeEditorByDraft: {},
       emailHtmlTheme: "auto",
       emailHtmlSenderOverrides: [],
       readerLayout: "split",
@@ -164,6 +167,10 @@ export const useUiPrefs = create<UiPrefsState>()(
       setContrast: (contrast) => set({ contrast }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       setComposeEditor: (composeEditor) => set({ composeEditor }),
+      setComposeEditorForDraft: (draftKey, composeEditor) =>
+        set((state) => ({
+          composeEditorByDraft: { ...state.composeEditorByDraft, [draftKey]: composeEditor },
+        })),
       setEmailHtmlTheme: (emailHtmlTheme) => set({ emailHtmlTheme }),
       setEmailHtmlThemeForSender: (sender, theme) =>
         set((state) => {
@@ -296,8 +303,20 @@ function mergeUiPrefs(persisted: unknown, current: UiPrefsState): UiPrefsState {
       ? state.emailHtmlTheme
       : current.emailHtmlTheme,
     emailHtmlSenderOverrides: readEmailHtmlSenderOverrides(state.emailHtmlSenderOverrides),
+    composeEditorByDraft: readComposeEditorByDraft(state.composeEditorByDraft),
     readingDisplay: readReadingDisplay(state.readingDisplay),
   };
+}
+
+function readComposeEditorByDraft(
+  value: Record<string, ComposeEditor> | undefined,
+): Record<string, ComposeEditor> {
+  if (!value || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key, editor]) => key.length > 0 && (editor === "codemirror-vim" || editor === "tiptap"),
+    ),
+  );
 }
 
 function isContrastPref(value: unknown): value is ContrastPref {

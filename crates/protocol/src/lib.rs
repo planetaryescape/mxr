@@ -38,7 +38,7 @@ pub use types::*;
 /// capability that older protocol versions cannot provide; additive fields
 /// stay decodable across versions via serde defaults. New enum variants require
 /// a bump because older peers reject unknown variants.
-pub const IPC_PROTOCOL_VERSION: u32 = 24;
+pub const IPC_PROTOCOL_VERSION: u32 = 26;
 
 #[cfg(test)]
 mod tests {
@@ -646,6 +646,8 @@ mod tests {
                         enabled: true,
                         base_url: "http://localhost:11434/v1".into(),
                         model: "qwen2.5:3b-instruct".into(),
+                        compose_model: None,
+                        models: Some(vec![]),
                         api_key_env: String::new(),
                         context_window: 8192,
                         request_timeout_secs: 120,
@@ -881,6 +883,23 @@ mod tests {
                 Request::PrepareReply {
                     message_id: MessageId::new(),
                     reply_all: true,
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
+                Request::EnsureReplyDraft {
+                    message_id: MessageId::new(),
+                    reply_all: true,
+                    dry_run: true,
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
+                Request::SetReplyDraftAudience {
+                    draft_id: DraftId::new(),
+                    reply_all: false,
+                    expected_revision: 7,
+                    dry_run: false,
                 },
                 IpcCategory::CoreMail,
             ),
@@ -1136,6 +1155,8 @@ mod tests {
                         enabled: false,
                         base_url: "http://localhost:11434/v1".into(),
                         model: "qwen2.5:3b-instruct".into(),
+                        compose_model: None,
+                        models: Some(vec![]),
                         api_key_env: String::new(),
                         context_window: 8192,
                         request_timeout_secs: 120,
@@ -1424,6 +1445,7 @@ mod tests {
             (
                 ResponseData::ForwardContext {
                     context: ForwardContext {
+                        source: None,
                         account_id: AccountId::new(),
                         subject: "Fwd: x".into(),
                         from: "a@example.com".into(),
@@ -2475,5 +2497,163 @@ mod tests {
             },
         }
         assert!(serde_json::from_value::<PreQuickRequest>(wire).is_err());
+    }
+
+    /// Writing help is a command of its own: a daemon that predates it fails
+    /// to decode it, so it never drafts over what the user typed.
+    #[test]
+    fn compose_assist_is_a_command_older_daemons_reject() {
+        let wire = serde_json::to_value(Request::ComposeAssist {
+            draft: DraftTargetData::Reply {
+                message_id: MessageId::new(),
+                all: false,
+            },
+            text: "Thursday works.".into(),
+            selection: None,
+            action: None,
+            instruction: None,
+            adjust: AssistAdjustData::default(),
+            model: None,
+            revise: None,
+        })
+        .unwrap();
+        assert_eq!(wire["cmd"], "ComposeAssist");
+        assert!(wire.get("revise").is_none(), "absent stays off the wire");
+        assert_eq!(wire["draft"]["kind"], "reply");
+        #[derive(serde::Deserialize)]
+        #[serde(tag = "cmd")]
+        #[expect(dead_code, reason = "only that the command fails to decode is checked")]
+        enum PreAssistRequest {
+            DraftCompose { instruction: String },
+        }
+        assert!(serde_json::from_value::<PreAssistRequest>(wire).is_err());
+    }
+
+    /// Only `draft` and `text` are required, so a client can ask with the least.
+    #[test]
+    fn compose_assist_optional_fields_default() {
+        let message_id = MessageId::new();
+        let wire = serde_json::json!({
+            "cmd": "ComposeAssist",
+            "draft": {"kind": "reply", "message_id": message_id, "all": true},
+            "text": "",
+        });
+        let Request::ComposeAssist {
+            selection,
+            action,
+            instruction,
+            adjust,
+            ..
+        } = serde_json::from_value(wire).unwrap()
+        else {
+            panic!("expected ComposeAssist");
+        };
+        assert!(selection.is_none() && action.is_none() && instruction.is_none());
+        assert_eq!(adjust, AssistAdjustData::default());
+    }
+
+    #[test]
+    fn compose_assist_model_is_optional_and_per_request() {
+        let mut wire = serde_json::to_value(Request::ComposeAssist {
+            draft: DraftTargetData::Reply {
+                message_id: MessageId::new(),
+                all: false,
+            },
+            text: String::new(),
+            selection: None,
+            action: None,
+            instruction: None,
+            adjust: AssistAdjustData::default(),
+            model: Some("gpt-6-luna".into()),
+            revise: None,
+        })
+        .unwrap();
+        assert_eq!(wire["model"], "gpt-6-luna");
+        wire.as_object_mut().unwrap().remove("model");
+        let Request::ComposeAssist { model, .. } = serde_json::from_value(wire).unwrap() else {
+            panic!("expected ComposeAssist");
+        };
+        assert_eq!(model, None);
+    }
+
+    /// `revise` joined the request after it shipped. A request without it decodes
+    /// as a first request, and a daemon that predates the field ignores it (the
+    /// request is not tagged `deny_unknown_fields`) and answers a plain assist
+    /// from `text`.
+    #[test]
+    fn revise_is_optional_and_an_older_daemon_ignores_it() {
+        let message_id = MessageId::new();
+        let mut wire = serde_json::json!({
+            "cmd": "ComposeAssist",
+            "draft": {"kind": "reply", "message_id": message_id, "all": false},
+            "text": "Thursday works.",
+        });
+        let Request::ComposeAssist { revise, .. } = serde_json::from_value(wire.clone()).unwrap()
+        else {
+            panic!("expected ComposeAssist");
+        };
+        assert_eq!(revise, None);
+
+        wire["revise"] = serde_json::json!("proposal-1");
+        let Request::ComposeAssist { revise, .. } = serde_json::from_value(wire.clone()).unwrap()
+        else {
+            panic!("expected ComposeAssist");
+        };
+        assert_eq!(revise.as_deref(), Some("proposal-1"));
+
+        // The request as the daemon before `revise` read it.
+        #[derive(serde::Deserialize)]
+        #[serde(tag = "cmd")]
+        enum BeforeRevise {
+            ComposeAssist {
+                #[serde(default)]
+                instruction: Option<String>,
+                text: String,
+            },
+        }
+        let BeforeRevise::ComposeAssist { text, instruction } =
+            serde_json::from_value(wire).unwrap();
+        assert_eq!(text, "Thursday works.");
+        assert_eq!(instruction, None);
+    }
+
+    /// Request and response shapes the clients mirror; a change here is a
+    /// protocol change.
+    #[test]
+    fn compose_assist_wire_shapes_are_snake_case() {
+        let draft_id = DraftId::new();
+        let apply = serde_json::to_value(Request::ApplyComposeProposal {
+            proposal_id: "p1".into(),
+            draft_id: draft_id.clone(),
+        })
+        .unwrap();
+        assert_eq!(apply["cmd"], "ApplyComposeProposal");
+        assert_eq!(apply["proposal_id"], "p1");
+        assert_eq!(
+            serde_json::to_value(AssistActionData::EditSelection).unwrap(),
+            "edit_selection"
+        );
+        assert_eq!(
+            serde_json::to_value(TextChangeData {
+                kind: TextChangeKindData::Added,
+                text: "x".into()
+            })
+            .unwrap(),
+            serde_json::json!({"kind": "added", "text": "x"})
+        );
+        let applied = serde_json::to_value(ResponseData::ComposeApplied {
+            draft_id,
+            text_hash: "ab".into(),
+        })
+        .unwrap();
+        assert_eq!(applied["kind"], "ComposeApplied");
+    }
+    #[test]
+    fn model_choices_from_an_older_daemon_have_unknown_context() {
+        let choice: ModelChoiceData = serde_json::from_value(serde_json::json!({
+            "id": "local-model", "label": "Local model", "cloud": false, "available": true
+        }))
+        .expect("older model choice decodes");
+        assert_eq!(choice.sees, "unknown");
     }
 }

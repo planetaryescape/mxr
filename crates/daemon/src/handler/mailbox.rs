@@ -108,15 +108,8 @@ pub(super) async fn list_envelopes(
         .map(|account| account.id)
         .collect::<HashSet<_>>();
     envelopes.retain(|envelope| visible_accounts.contains(&envelope.account_id));
-    for envelope in &mut envelopes {
-        if let Ok(labels) = state
-            .store
-            .list_labels_by_account(&envelope.account_id)
-            .await
-        {
-            let _ = populate_envelope_label_provider_ids(state, envelope, &labels).await;
-        }
-    }
+    // Store reads already hydrate provider label IDs in the envelope query.
+    // Repeating two label queries per row cost 10,000 round trips on a TUI page.
 
     tracing::debug!(
         count = envelopes.len(),
@@ -130,16 +123,7 @@ pub(super) async fn list_envelopes_by_ids(
     state: &AppState,
     message_ids: &[MessageId],
 ) -> HandlerResult {
-    let mut envelopes = state.store.list_envelopes_by_ids(message_ids).await?;
-    for envelope in &mut envelopes {
-        if let Ok(labels) = state
-            .store
-            .list_labels_by_account(&envelope.account_id)
-            .await
-        {
-            let _ = populate_envelope_label_provider_ids(state, envelope, &labels).await;
-        }
-    }
+    let envelopes = state.store.list_envelopes_by_ids(message_ids).await?;
     Ok(ResponseData::Envelopes { envelopes })
 }
 
@@ -1415,16 +1399,11 @@ pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> Handle
         .get_thread(thread_id)
         .await?
         .ok_or_else(|| "Thread not found".to_string())?;
-    let mut messages = state
+    let messages = state
         .store
         .get_thread_envelopes(thread_id)
         .await
         .unwrap_or_default();
-    if let Ok(labels) = state.store.list_labels_by_account(&thread.account_id).await {
-        for message in &mut messages {
-            let _ = populate_envelope_label_provider_ids(state, message, &labels).await;
-        }
-    }
     let summary = super::summarize::valid_cached_summary(&state.store, thread_id, &messages).await;
     Ok(ResponseData::Thread {
         thread,

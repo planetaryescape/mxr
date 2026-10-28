@@ -11,6 +11,7 @@ mod arrival_routes;
 mod assistant_routes;
 mod chime_routes;
 mod chrome;
+mod compose_assist_routes;
 mod envelope_list;
 mod freshness_routes;
 mod insight_routes;
@@ -151,6 +152,7 @@ struct AppState {
     compose_files: std::sync::Arc<
         tokio::sync::Mutex<HashMap<PathBuf, std::sync::Arc<tokio::sync::Mutex<()>>>>,
     >,
+    active_compose_sessions: std::sync::Arc<tokio::sync::Mutex<HashMap<String, PathBuf>>>,
 }
 
 impl AppState {
@@ -158,6 +160,7 @@ impl AppState {
         Self {
             config,
             compose_files: Default::default(),
+            active_compose_sessions: Default::default(),
         }
     }
 
@@ -726,7 +729,160 @@ async fn start_compose_session(
     Json(request): Json<ComposeSessionStartRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    if matches!(
+        &request.kind,
+        ComposeSessionKindRequest::Reply | ComposeSessionKindRequest::ReplyAll
+    ) {
+        let message_id = request
+            .message_id
+            .as_deref()
+            .ok_or_else(|| BridgeError::BadRequest("compose reply missing message_id".into()))?;
+        let envelope = envelope_for_message(&state.config.socket_path, message_id).await?;
+        let response = ipc_request(
+            &state.config.socket_path,
+            Request::EnsureReplyDraft {
+                message_id: envelope.id,
+                reply_all: matches!(&request.kind, ComposeSessionKindRequest::ReplyAll),
+                dry_run: false,
+            },
+        )
+        .await?;
+        let draft = match response {
+            ResponseData::Draft { draft } => draft,
+            _ => return Err(BridgeError::UnexpectedResponse),
+        };
+        let mut session = match restore_saved_draft_session(&state, draft.id).await? {
+            RestoredComposeSession::Editable(session) => session,
+            RestoredComposeSession::HtmlNotEditable { preview_html } => {
+                return Ok(Json(
+                    json!({ "htmlNotEditable": true, "previewHtml": preview_html }),
+                ));
+            }
+        };
+        // The stored draft owns the current reply mode. Opening it from a
+        // different message or with a different requested mode must not flip it.
+        session["kind"] = json!(match draft.intent {
+            mxr_core::DraftIntent::Reply => "reply",
+            mxr_core::DraftIntent::ReplyAll => "reply_all",
+            _ => "new",
+        });
+        return Ok(Json(json!({ "session": session })));
+    }
     let session = create_compose_session(&state.config.socket_path, request).await?;
+    Ok(Json(json!({ "session": session })))
+}
+
+async fn set_compose_audience(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<ComposeSessionAudienceRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let path = Path::new(&request.draft_path);
+    let _compose_guard = state.lock_compose_file(path).await?;
+    workspace_owner::require_sidecar(path).await?;
+    require_canonical_compose(path).await?;
+    let metadata = read_draft_session_metadata(path).await?.ok_or_else(|| {
+        BridgeError::BadRequest("compose session is missing its draft identity".into())
+    })?;
+    let draft_id = parse_draft_id(&request.draft_id)?;
+    if metadata.id != draft_id || metadata.revision != Some(request.expected_revision) {
+        return Err(BridgeError::DraftConflict {
+            message: "Draft changed in another editor; preserve your unsent text".into(),
+            details: Some(
+                json!({ "expected_revision": request.expected_revision, "current_revision": metadata.revision }),
+            ),
+        });
+    }
+    let original = read_compose_file(path).await?;
+    let (existing, body) = parse_compose_content(&original)?;
+    let canonical_before = match ipc_request(
+        &state.config.socket_path,
+        Request::GetDraft {
+            draft_id: draft_id.clone(),
+        },
+    )
+    .await?
+    {
+        ResponseData::Draft { draft } => draft,
+        _ => return Err(BridgeError::UnexpectedResponse),
+    };
+    if canonical_before.revision != Some(request.expected_revision) {
+        return Err(BridgeError::DraftConflict {
+            message: "Draft changed in another editor; preserve your unsent text".into(),
+            details: Some(json!({
+                "expected_revision": request.expected_revision,
+                "current_revision": canonical_before.revision,
+            })),
+        });
+    }
+    match &canonical_before.content {
+        mxr_core::DraftContent::Markdown { source } if source == &body => {}
+        mxr_core::DraftContent::Markdown { .. } => {
+            return Err(BridgeError::DraftConflict {
+                message: "This compose file is older than the saved draft; preserve your unsent text before changing the audience".into(),
+                details: Some(json!({ "expected_revision": request.expected_revision })),
+            });
+        }
+        mxr_core::DraftContent::Html { .. } => {
+            return Err(BridgeError::BadRequest(
+                "HTML drafts cannot be edited in the markdown composer".into(),
+            ));
+        }
+    }
+    let response = ipc_request(
+        &state.config.socket_path,
+        Request::SetReplyDraftAudience {
+            draft_id,
+            reply_all: request.reply_all,
+            expected_revision: request.expected_revision,
+            dry_run: request.dry_run,
+        },
+    )
+    .await?;
+    let draft = match response {
+        ResponseData::Draft { draft } => draft,
+        _ => return Err(BridgeError::UnexpectedResponse),
+    };
+    let account = account_summary(&state.config.socket_path, &draft.account_id).await?;
+    let mut frontmatter = mxr_compose::draft_codec::frontmatter_from_draft(&draft, &account.email);
+    frontmatter.attach = existing.attach;
+    frontmatter.signature = existing.signature;
+    let context = extract_compose_context(&original);
+    let rendered = render_compose_file(&frontmatter, &body, context.as_deref())
+        .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    if request.dry_run {
+        let mut session = compose_session_from_snapshot(path, &rendered, Some(&draft))?;
+        session["accountId"] = json!(account.account_id);
+        session["kind"] = json!(match draft.intent {
+            mxr_core::DraftIntent::Reply => "reply",
+            mxr_core::DraftIntent::ReplyAll => "reply_all",
+            _ => "new",
+        });
+        return Ok(Json(json!({ "session": session })));
+    }
+    if let Err(error) = async {
+        replace_compose_file(path, rendered.clone()).await?;
+        write_draft_session_metadata(path, &draft).await
+    }
+    .await
+    {
+        // The canonical CAS already succeeded. The recovery copy must carry
+        // that new revision while retaining the exact pre-operation body.
+        let recovery = preserve_compose_snapshot(path, &original, &draft).await;
+        if let Err(failure) = replace_compose_file(path, original).await {
+            tracing::warn!(error = %failure, "could not restore compose file after audience update failure");
+        }
+        return Err(error.with_compose_evidence(Some(&draft), recovery.ok()));
+    }
+    let mut session = compose_session_from_snapshot(path, &rendered, Some(&draft))?;
+    session["accountId"] = json!(account.account_id);
+    session["kind"] = json!(match draft.intent {
+        mxr_core::DraftIntent::Reply => "reply",
+        mxr_core::DraftIntent::ReplyAll => "reply_all",
+        _ => "new",
+    });
     Ok(Json(json!({ "session": session })))
 }
 
@@ -775,11 +931,7 @@ async fn restore_compose_session(
     Json(request): Json<ComposeSessionRestoreRequest>,
 ) -> Result<Response, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    let restored = restore_saved_draft_session(
-        &state.config.socket_path,
-        parse_draft_id(&request.draft_id)?,
-    )
-    .await?;
+    let restored = restore_saved_draft_session(&state, parse_draft_id(&request.draft_id)?).await?;
     Ok(match restored {
         RestoredComposeSession::Editable(session) => {
             Json(json!({ "session": session })).into_response()
@@ -842,7 +994,11 @@ async fn update_compose_session(
     };
     let (existing_frontmatter, file_body) = parse_compose_content(&content)?;
     let body = request.body.unwrap_or(file_body);
-    let context = extract_compose_context(&content);
+    let context = if existing_frontmatter.forward_source.is_some() {
+        None
+    } else {
+        extract_compose_context(&content)
+    };
     let updated = ComposeFrontmatter {
         to: request.to,
         cc: request.cc,
@@ -855,6 +1011,7 @@ async fn update_compose_session(
         thread_id: extract_thread_id(&content)?,
         attach: request.attach,
         signature: existing_frontmatter.signature,
+        forward_source: existing_frontmatter.forward_source,
     };
     let rendered = render_compose_file(&updated, &body, context.as_deref())
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
@@ -1057,6 +1214,15 @@ async fn send_compose_session(
                 "bridge compose send completed"
             );
             match response {
+                ResponseData::SendOutcome {
+                    outcome: Some(outcome),
+                } if outcome.state == mxr_core::SendOutcomeState::Waiting => {
+                    return Ok(Json(json!({
+                        "ok": true, "operation_id": operation_id, "state": "waiting",
+                        "draft_id": draft_id, "outcome": outcome,
+                        "retry_at": outcome.recovery.as_ref().and_then(|status| status.retry_at),
+                    })));
+                }
                 ResponseData::SendReceipt {
                     local_message_id, ..
                 } => Some(local_message_id),
@@ -1557,7 +1723,11 @@ async fn upload_compose_attachment(
             if !frontmatter.attach.contains(&resource_reference) {
                 frontmatter.attach.push(resource_reference);
             }
-            let context = extract_compose_context(&raw);
+            let context = if frontmatter.forward_source.is_some() {
+                None
+            } else {
+                extract_compose_context(&raw)
+            };
             let rendered = render_compose_file(&frontmatter, &body, context.as_deref())
                 .map_err(|error| BridgeError::Ipc(error.to_string()))?;
             // A token without matching sidecar metadata blocks saves; write it before metadata so a crash cannot silently detach bytes.
@@ -2732,6 +2902,7 @@ async fn create_compose_session(
                 ComposeKind::Forward {
                     subject: context.subject,
                     original_context: context.forwarded_content,
+                    source: Some(context.source.ok_or_else(|| BridgeError::BadRequest("Daemon cannot prepare complete forwards; upgrade and restart the daemon".into()))?),
                 },
                 envelope.account_id,
                 None,
@@ -3051,20 +3222,30 @@ fn compose_session_from_snapshot(
     metadata: Option<&Draft>,
 ) -> Result<serde_json::Value, BridgeError> {
     let (frontmatter, body) = parse_compose_content(raw_content)?;
-    let rendered = render_markdown(&body);
+    let preview_html = if let Some(source) = &frontmatter.forward_source {
+        match mxr_compose::forward::content(source, &body)
+            .map_err(|error| BridgeError::InvalidDraft(error.to_string()))?
+        {
+            DraftContent::Html { html, .. } => html,
+            DraftContent::Markdown { source } => render_markdown(&source).html,
+        }
+    } else {
+        render_markdown(&body).html
+    };
     let issues = validate_draft(&frontmatter, &body)
         .into_iter()
         .map(compose_issue_view)
         .collect::<Vec<_>>();
     Ok(json!({
         "draftId": metadata.as_ref().map(|draft| draft.id.clone()),
+        "draftIntent": metadata.as_ref().map(|draft| draft.intent),
         "revision": metadata.as_ref().and_then(|draft| draft.revision),
         "accountId": metadata.as_ref().map(|draft| draft.account_id.clone()),
         "draftPath": path.display().to_string(),
         "rawContent": raw_content,
         "frontmatter": frontmatter,
         "bodyMarkdown": body,
-        "previewHtml": rendered.html,
+        "previewHtml": preview_html,
         "issues": issues,
     }))
 }
@@ -3219,7 +3400,7 @@ async fn compose_draft_from_snapshot(
         ));
     }
     let now = Utc::now();
-    Ok(Draft {
+    let mut draft = Draft {
         revision: None,
         // A restored session supplies the id so the draft updates in place;
         // a new compose mints one.
@@ -3239,10 +3420,10 @@ async fn compose_draft_from_snapshot(
         to: parse_address_list(&frontmatter.to),
         cc: parse_address_list(&frontmatter.cc),
         bcc: parse_address_list(&frontmatter.bcc),
-        subject: frontmatter.subject,
+        subject: frontmatter.subject.clone(),
         content: DraftContent::markdown(body),
         managed_attachments: None,
-        attachments: frontmatter.attach.into_iter().map(PathBuf::from).collect(),
+        attachments: frontmatter.attach.iter().map(PathBuf::from).collect(),
         inline_assets: Vec::new(),
         // Rebuild the iTIP REPLY payload for an invite-with-comment session so
         // the outbound builder emits the ATTENDEE part and the daemon updates
@@ -3250,7 +3431,10 @@ async fn compose_draft_from_snapshot(
         inline_calendar_reply: read_invite_reply_sidecar(Path::new(draft_path)).await?,
         created_at: now,
         updated_at: now,
-    })
+    };
+    mxr_compose::forward::apply(&mut draft, &frontmatter)
+        .map_err(|error| BridgeError::InvalidDraft(error.to_string()))?;
+    Ok(draft)
 }
 
 /// Outcome of asking the bridge to open a saved draft in the browser composer.
@@ -3265,9 +3449,10 @@ enum RestoredComposeSession {
 }
 
 async fn restore_saved_draft_session(
-    socket_path: &Path,
+    state: &AppState,
     draft_id: DraftId,
 ) -> Result<RestoredComposeSession, BridgeError> {
+    let socket_path = &state.config.socket_path;
     let draft = saved_draft(socket_path, &draft_id).await?;
     // Decide up front, before creating any scratch file: refusing later would
     // leave an orphaned compose file behind on every attempt to open an HTML
@@ -3289,6 +3474,27 @@ async fn restore_saved_draft_session(
         ));
     }
     let account = account_summary(socket_path, &draft.account_id).await?;
+    let owner = workspace_owner::captured();
+    let owner_key =
+        serde_json::to_string(&owner).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let session_key = format!("{}:{owner_key}", draft.id);
+    let mut active_sessions = state.active_compose_sessions.lock().await;
+    if let Some(active_path) = active_sessions.get(&session_key).cloned() {
+        if tokio::fs::try_exists(&active_path).await.unwrap_or(false) {
+            workspace_owner::require_sidecar(&active_path).await?;
+            if let Some(active_draft) = read_draft_session_metadata(&active_path).await? {
+                if active_draft.id == draft.id && active_draft.revision == draft.revision {
+                    let mut session = load_compose_session(&active_path).await?;
+                    session["accountId"] = json!(account.account_id);
+                    session["draftIntent"] = json!(active_draft.intent);
+                    session["kind"] = json!("new");
+                    session["editorCommand"] = json!(resolved_editor_command());
+                    return Ok(RestoredComposeSession::Editable(session));
+                }
+            }
+        }
+        active_sessions.remove(&session_key);
+    }
     let (draft_path, cursor_line) = mxr_compose::create_draft_file_async(
         ComposeKind::New {
             to: String::new(),
@@ -3305,10 +3511,15 @@ async fn restore_saved_draft_session(
     write_compose_file(&draft_path, rendered).await?;
 
     write_draft_session_metadata(&draft_path, &draft).await?;
+    active_sessions.insert(session_key, draft_path.clone());
     let mut session = load_compose_session(&draft_path).await?;
     session["cursorLine"] = json!(cursor_line);
     session["accountId"] = json!(account.account_id);
     session["kind"] = json!("new");
+    // `kind` stays `new` for the flows that read it; what the draft is (a reply,
+    // a forward) rides beside it, so a client can ask for help with the stored
+    // draft instead of a new message that carries mail's subject.
+    session["draftIntent"] = json!(draft.intent);
     session["editorCommand"] = json!(resolved_editor_command());
     Ok(RestoredComposeSession::Editable(session))
 }

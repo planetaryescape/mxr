@@ -18,13 +18,273 @@ const RUTH: &str = "ruth@keystone.example";
 const MAYA: &str = "maya@orbit.example";
 const JON: &str = "jon@northstar.example";
 
+#[tokio::test]
+async fn text_only_list_previews_keep_complete_non_inline_attachments_on_conversation_detail() {
+    use mxr_core::{AttachmentDisposition, AttachmentId, AttachmentMeta};
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Contract",
+        Duration::days(1),
+    )
+    .await;
+    let incoming = mail(
+        &fx,
+        &thread,
+        ("Samir", SAMIR),
+        &[ME],
+        &[],
+        "Re: Contract",
+        Duration::hours(1),
+    )
+    .await;
+    let file = AttachmentId::new();
+    let attachment = |id, name: &str, disposition| AttachmentMeta {
+        id,
+        message_id: incoming.id.clone(),
+        filename: name.into(),
+        mime_type: "application/pdf".into(),
+        disposition,
+        content_id: None,
+        content_location: None,
+        size_bytes: 512,
+        local_path: None,
+        provider_id: name.into(),
+    };
+    fx.state
+        .store
+        .insert_body(&MessageBody {
+            message_id: incoming.id.clone(),
+            text_plain: Some("Here is the revised contract.".into()),
+            text_html: None,
+            attachments: vec![
+                attachment(
+                    file.clone(),
+                    "contract.pdf",
+                    AttachmentDisposition::Attachment,
+                ),
+                attachment(
+                    AttachmentId::new(),
+                    "signature.png",
+                    AttachmentDisposition::Inline,
+                ),
+            ],
+            fetched_at: Utc::now(),
+            metadata: MessageMetadata::default(),
+        })
+        .await
+        .unwrap();
+    let messages = list(&fx).await;
+    let row = rows(&messages)
+        .into_iter()
+        .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+        .unwrap();
+    assert_eq!(
+        row.preview.as_ref().unwrap().text,
+        "Here is the revised contract."
+    );
+    let page = person(&fx, SAMIR, Some(&thread)).await;
+    let conversation = page.conversation.unwrap();
+    let message = conversation
+        .messages
+        .iter()
+        .find(|m| m.message_id == incoming.id)
+        .unwrap();
+    assert_eq!(message.attachments.len(), 1);
+    assert_eq!(message.attachments[0].attachment_id, file);
+    assert_eq!(message.attachments[0].filename, "contract.pdf");
+    assert_eq!(message.attachments[0].size_bytes, 512);
+}
+
+async fn history_at(fx: &Fixture, now: chrono::DateTime<Utc>) -> MessagesData {
+    crate::handler::messages::messages_at(&fx.state, None, history_filter(), 50, now)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn persisted_thread_facts_match_rebuilding_and_read_edits_retire_them() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let mut incoming = mail(
+        &fx,
+        &thread,
+        ("Samir Patel", SAMIR),
+        &[ME],
+        &[],
+        "Old conversation",
+        Duration::days(400),
+    )
+    .await;
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Re: Old conversation",
+        Duration::days(399),
+    )
+    .await;
+    fx.state.store.refresh_contacts().await.unwrap();
+    let now = Utc::now();
+    // The first pass may materialize missing facets. A second observes their
+    // committed tokens and persists facts; no mode-response cache is involved.
+    history_at(&fx, now).await;
+    let expected = history_at(&fx, now).await;
+    let saved: i64 = sqlx::query_scalar("SELECT count(*) FROM conversation_summaries")
+        .fetch_one(fx.state.store.reader())
+        .await
+        .unwrap();
+    assert!(saved > 0);
+    let cached = history_at(&fx, now).await;
+    assert_eq!(
+        serde_json::to_value(&expected).unwrap(),
+        serde_json::to_value(&cached).unwrap()
+    );
+    let row = rows(&cached)
+        .into_iter()
+        .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+        .unwrap();
+    assert!(row.unread);
+    assert_eq!(row.title, "Samir Patel");
+    assert_eq!(row.topics[0].message_count, 2);
+
+    incoming.flags |= mxr_core::MessageFlags::READ;
+    fx.store_envelope(&incoming, MessageDirection::Inbound)
+        .await;
+    let changed = history_at(&fx, now).await;
+    assert!(
+        !rows(&changed)
+            .into_iter()
+            .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+            .unwrap()
+            .unread
+    );
+    sqlx::query("DELETE FROM conversation_summaries")
+        .execute(fx.state.store.writer())
+        .await
+        .unwrap();
+    fx.state.history_cache.clear();
+    let rebuilt = history_at(&fx, now).await;
+    assert_eq!(
+        serde_json::to_value(changed).unwrap(),
+        serde_json::to_value(rebuilt).unwrap()
+    );
+}
+
+#[tokio::test]
+async fn persisted_history_rekeys_live_people_links_without_rebuilding_thread_facts() {
+    let fx = Fixture::new().await;
+    for email in [SAMIR, "samir.p@home.example"] {
+        mail(
+            &fx,
+            &ThreadId::new(),
+            ("Me", ME),
+            &[email],
+            &[],
+            "Hello",
+            Duration::days(400),
+        )
+        .await;
+    }
+    let now = Utc::now();
+    history_at(&fx, now).await;
+    history_at(&fx, now).await;
+    let before: Vec<(String, String)> = sqlx::query_as(
+        "SELECT thread_id, summary_json FROM conversation_summaries ORDER BY thread_id",
+    )
+    .fetch_all(fx.state.store.reader())
+    .await
+    .unwrap();
+    request(
+        &fx,
+        Request::MergePeople {
+            account_id: fx.account.clone(),
+            into: SAMIR.into(),
+            addresses: vec!["samir.p@home.example".into()],
+            dry_run: false,
+        },
+    )
+    .await;
+    let merged = history_at(&fx, now).await;
+    let row = rows(&merged)
+        .into_iter()
+        .find(|r| r.person.as_ref().is_some_and(|p| p.id == SAMIR))
+        .unwrap();
+    assert_eq!(row.topics.len(), 2);
+    let after: Vec<(String, String)> = sqlx::query_as(
+        "SELECT thread_id, summary_json FROM conversation_summaries ORDER BY thread_id",
+    )
+    .fetch_all(fx.state.store.reader())
+    .await
+    .unwrap();
+    assert_eq!(
+        before, after,
+        "people links are applied live, not persisted into thread geometry"
+    );
+}
+
+#[tokio::test]
+async fn a_cached_history_synopsis_expires_when_a_future_date_becomes_eligible() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Earlier subject",
+        Duration::days(400),
+    )
+    .await;
+    let future = mail(
+        &fx,
+        &thread,
+        ("Me", ME),
+        &[SAMIR],
+        &[],
+        "Future subject",
+        Duration::days(-3),
+    )
+    .await;
+    let now = Utc::now();
+    history_at(&fx, now).await;
+    let before = history_at(&fx, now).await;
+    let old = rows(&before)
+        .into_iter()
+        .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+        .unwrap();
+    assert_eq!(old.topics[0].subject, "Earlier subject");
+    let after = history_at(&fx, future.date - Duration::days(1)).await;
+    let new = rows(&after)
+        .into_iter()
+        .find(|r| r.topics.iter().any(|t| t.thread_id == thread))
+        .unwrap();
+    assert_eq!(new.topics[0].subject, "Future subject");
+}
+
+fn history_filter() -> MessagesFilterData {
+    MessagesFilterData {
+        turn: Some(MessagesTurnData::All),
+        ..Default::default()
+    }
+}
+
+/// The expanded view used to exercise grouping and history presentation.
 async fn list(fx: &Fixture) -> MessagesData {
     match request(
         fx,
         Request::ListMessages {
             account_id: None,
             turn: None,
-            filter: Default::default(),
+            filter: history_filter(),
             limit: 50,
         },
     )
@@ -80,6 +340,16 @@ async fn mail(
         MessageDirection::Inbound
     };
     fx.store_envelope(&envelope, direction).await;
+    if direction == MessageDirection::Inbound {
+        // These journeys owe a conversation reply; action requests have separate fixtures.
+        body(
+            fx,
+            &envelope.id,
+            Some("Could you reply with your availability?"),
+            None,
+        )
+        .await;
+    }
     envelope
 }
 
@@ -105,6 +375,208 @@ fn rows(messages: &MessagesData) -> Vec<&mxr_protocol::MessagesRowData> {
         .chain(&messages.recent)
         .chain(&messages.quiet)
         .collect()
+}
+
+#[tokio::test]
+async fn default_is_attention_only_and_all_conversations_keeps_history() {
+    let fx = Fixture::new().await;
+    let actionable = ThreadId::new();
+    let history = ThreadId::new();
+    let sent_only = ThreadId::new();
+    let fyi = ThreadId::new();
+    let older = ThreadId::new();
+    fx.message(&older, RUTH, ME, Duration::days(900), None)
+        .await;
+    let ask = fx
+        .attention_message(&actionable, SAMIR, ME, Duration::hours(1), None)
+        .await;
+    let old = fx
+        .message(&history, SAMIR, ME, Duration::days(2), None)
+        .await;
+    fx.message(
+        &history,
+        ME,
+        SAMIR,
+        Duration::days(1),
+        old.message_id_header.as_deref(),
+    )
+    .await;
+    fx.state
+        .store
+        .set_message_labels(&old.id, &[], mxr_core::EventSource::User)
+        .await
+        .unwrap();
+    fx.message(&sent_only, ME, JON, Duration::days(1), None)
+        .await;
+    let notice = fx.message(&fyi, RUTH, ME, Duration::hours(2), None).await;
+    body(
+        &fx,
+        &notice.id,
+        Some("Thanks for the update. No action needed."),
+        None,
+    )
+    .await;
+
+    let attention = filtered(&fx, None, Default::default()).await;
+    assert_eq!(attention.your_turn.len(), 1);
+    assert_eq!(
+        attention.your_turn[0].topics.len(),
+        1,
+        "history must not leak into an actionable person's row"
+    );
+    assert_eq!(attention.your_turn[0].topics[0].thread_id, actionable);
+    assert!(
+        attention.recent.is_empty() && attention.quiet.is_empty() && attention.pinned.is_empty()
+    );
+    assert!(attention.lapsed.is_empty());
+    assert_eq!(attention.row_count, 1);
+    assert_eq!(attention.thread_count, 1);
+    assert_eq!(attention.matched, 1);
+
+    let all = filtered(
+        &fx,
+        None,
+        MessagesFilterData {
+            turn: Some(MessagesTurnData::All),
+            ..Default::default()
+        },
+    )
+    .await;
+    let ids: Vec<_> = rows(&all)
+        .into_iter()
+        .flat_map(|r| &r.topics)
+        .map(|t| t.thread_id.clone())
+        .collect();
+    for thread in [&actionable, &history, &sent_only, &fyi, &older] {
+        assert!(ids.contains(thread), "All conversations lost {thread}");
+    }
+    assert_eq!(
+        all.row_count, attention.row_count,
+        "history must not inflate attention counts"
+    );
+    assert_eq!(all.thread_count, attention.thread_count);
+    assert_eq!(all.matched, 3);
+    assert_eq!(person(&fx, SAMIR, Some(&history)).await.topics.len(), 2);
+
+    let ResponseData::MutationResult { result } = request(
+        &fx,
+        Request::mutation(mxr_protocol::MutationCommand::Archive {
+            message_ids: vec![ask.id],
+        }),
+    )
+    .await
+    else {
+        panic!("expected archive result")
+    };
+    assert_eq!(result.succeeded, 1);
+    let clear = filtered(&fx, None, Default::default()).await;
+    assert!(shown_ids(&clear).is_empty());
+    assert_eq!(clear.row_count, 0);
+    assert_eq!(
+        clear.empty_state.as_deref(),
+        Some(mxr_protocol::messages_copy::CLEAR)
+    );
+    assert!(clear.lapsed.is_empty());
+
+    let thanks = fx
+        .message(&history, SAMIR, ME, Duration::zero(), None)
+        .await;
+    body(&fx, &thanks.id, Some("Thanks, that is everything."), None).await;
+    assert!(
+        shown_ids(&filtered(&fx, None, Default::default()).await).is_empty(),
+        "an FYI does not resurrect resolved attention"
+    );
+    let fresh = fx
+        .attention_message(&history, SAMIR, ME, Duration::zero(), None)
+        .await;
+    fx.state
+        .store
+        .set_read(&fresh.id, true, mxr_core::EventSource::User)
+        .await
+        .unwrap();
+    let back = filtered(&fx, None, Default::default()).await;
+    assert_eq!(
+        back.your_turn[0].topics[0].thread_id, history,
+        "a new request brings it back even after reading"
+    );
+}
+
+#[tokio::test]
+async fn idle_pins_do_not_fill_an_empty_attention_queue() {
+    let fx = Fixture::new().await;
+    waiting_on(&fx, SAMIR, false, Duration::hours(1)).await;
+    pin(&fx, SAMIR).await;
+    let attention = filtered(&fx, None, Default::default()).await;
+    assert!(shown_ids(&attention).is_empty());
+    assert!(attention.lapsed.is_empty());
+    assert_eq!(attention.row_count, 0);
+    assert_eq!(pinned_ids(&list(&fx).await), person_ids(&[SAMIR]));
+}
+
+#[tokio::test]
+async fn due_follow_up_on_archived_mail_is_attention_in_messages_now_and_rail() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let received = fx
+        .message(&thread, SAMIR, ME, Duration::days(400), None)
+        .await;
+    let sent = fx
+        .message(
+            &thread,
+            ME,
+            SAMIR,
+            Duration::days(399),
+            received.message_id_header.as_deref(),
+        )
+        .await;
+    fx.state
+        .store
+        .set_message_labels(&received.id, &[], mxr_core::EventSource::User)
+        .await
+        .unwrap();
+    assert!(shown_ids(&filtered(&fx, None, Default::default()).await).is_empty());
+    fx.state
+        .store
+        .set_auto_reminder(
+            &sent.id,
+            &fx.account,
+            Utc::now() - Duration::minutes(1),
+            sent.date,
+        )
+        .await
+        .unwrap();
+    let attention = filtered(&fx, None, Default::default()).await;
+    assert_eq!(attention.your_turn.len(), 1);
+    assert_eq!(attention.your_turn[0].topics[0].thread_id, thread);
+    assert!(attention.your_turn[0]
+        .why
+        .contains("no reply by the time you set"));
+    assert_eq!(attention.row_count, 1);
+    // Window/history preloading must still add the desk's returned threads
+    // outside the recent window, and never relabel a due turn as waiting.
+    let all = filtered(&fx, Some(MessagesTurnData::All), Default::default()).await;
+    assert_eq!(all.your_turn[0].topics[0].thread_id, thread);
+    assert_eq!(all.your_turn[0].topics[0].state, TopicStateData::YourTurn);
+    let waiting = filtered(&fx, Some(MessagesTurnData::Theirs), Default::default()).await;
+    assert!(shown_ids(&waiting).is_empty());
+    assert_eq!(waiting.row_count, 1);
+    let ResponseData::Now { now } = request(&fx, Request::GetNow { account_id: None }).await else {
+        panic!("expected Now")
+    };
+    assert_eq!(now.people.total, 1);
+    assert_eq!(now.people.rows[0].row.thread_id, thread);
+    let ResponseData::Rail { rail } = request(&fx, Request::GetRail { account_id: None }).await
+    else {
+        panic!("expected rail")
+    };
+    assert_eq!(
+        rail.entries
+            .iter()
+            .find(|entry| entry.id == "messages")
+            .unwrap()
+            .count,
+        Some(1)
+    );
 }
 
 #[tokio::test]
@@ -285,8 +757,15 @@ async fn your_turn_goes_quiet_after_a_week_without_a_cadence() {
     .await;
     let messages = list(&fx).await;
     assert!(messages.your_turn.is_empty());
+    assert!(
+        messages.empty_state.is_none(),
+        "history is still visible in All"
+    );
     assert_eq!(
-        messages.empty_state.as_deref(),
+        filtered(&fx, None, Default::default())
+            .await
+            .empty_state
+            .as_deref(),
         Some(mxr_protocol::messages_copy::CLEAR)
     );
     let leo = messages
@@ -1434,11 +1913,14 @@ async fn each_filter_alone_and_combined_keeps_its_rows_and_not_the_counts() {
         turn: None,
     };
 
-    let all = filtered(&fx, None, MessagesFilterData::default()).await;
+    let all = filtered(&fx, None, history_filter()).await;
     assert_eq!(shown_ids(&all), everyone);
-    assert_eq!(all.row_count, 3);
-    assert_eq!(all.matched, 3, "no filter matches what row_count counts");
-    assert_eq!(all.filter, MessagesFilterData::default());
+    assert_eq!(all.row_count, 2, "only attention is counted in the header");
+    assert_eq!(
+        all.matched, 3,
+        "history includes the person waiting on them"
+    );
+    assert_eq!(all.filter, history_filter());
 
     // Each filter below is read after the plain list, so a cache hit on
     // the plain key would show up as unfiltered rows here.
@@ -1594,6 +2076,11 @@ fn each_filter_is_its_own_mode_cache_entry() {
     let plain = view(Default::default(), None);
     assert_ne!(
         plain,
+        view(history_filter(), None),
+        "history must not share attention's cache entry"
+    );
+    assert_ne!(
+        plain,
         view(
             MessagesFilterData {
                 unread: true,
@@ -1626,6 +2113,70 @@ fn each_filter_is_its_own_mode_cache_entry() {
         ),
         view(Default::default(), Some(MessagesTurnData::Mine)),
         "the legacy top-level turn and the filter's turn are the same view"
+    );
+}
+
+#[tokio::test]
+async fn attention_filters_reuse_a_complete_fresh_snapshot_without_changing_the_answer() {
+    let fx = Fixture::new().await;
+    seed_filter_rows(&fx).await;
+    pin(&fx, MAYA).await;
+    pin(&fx, SAMIR).await;
+    crate::handler::assessments::reconcile_account(&fx.state, &fx.account)
+        .await
+        .unwrap();
+    let base = filtered(&fx, None, Default::default()).await;
+    for turn in [None, Some(MessagesTurnData::Mine)] {
+        for (unread, past_pace) in [(false, false), (true, false), (false, true), (true, true)] {
+            let filter = MessagesFilterData {
+                turn,
+                unread,
+                past_pace,
+            };
+            let cached = filtered(&fx, None, filter).await;
+            assert_eq!(
+                cached.generated_at, base.generated_at,
+                "a new attention filter must not rebuild the mailbox"
+            );
+            let direct = crate::handler::messages::messages_at(
+                &fx.state,
+                None,
+                filter,
+                50,
+                base.generated_at,
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                serde_json::to_value(cached).unwrap(),
+                serde_json::to_value(direct).unwrap()
+            );
+        }
+    }
+    let fresh_thread = ThreadId::new();
+    mail(
+        &fx,
+        &fresh_thread,
+        ("Ruth", RUTH),
+        &[ME],
+        &[],
+        "New question",
+        Duration::minutes(1),
+    )
+    .await;
+    let changed = filtered(
+        &fx,
+        None,
+        MessagesFilterData {
+            unread: true,
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_ne!(changed.generated_at, base.generated_at);
+    assert!(
+        shown_ids(&changed).contains(&format!("person:{RUTH}")),
+        "a store change must invalidate the source before deriving a filtered answer"
     );
 }
 
@@ -1690,20 +2241,20 @@ async fn a_pinned_unread_person_past_the_cap_shows_under_unread() {
     }
     ids.sort();
 
-    let all = filtered(&fx, None, MessagesFilterData::default()).await;
+    let all = filtered(&fx, None, history_filter()).await;
     assert_eq!(
         pinned_ids(&all),
         ids[..9].to_vec(),
         "unfiltered Pinned keeps nine"
     );
-    assert_eq!(all.row_count, 9);
+    assert_eq!(all.row_count, 0, "idle pins do not create attention");
 
     let unread = filtered(
         &fx,
         None,
         MessagesFilterData {
             unread: true,
-            ..Default::default()
+            ..history_filter()
         },
     )
     .await;
@@ -1719,7 +2270,7 @@ async fn a_pinned_unread_person_past_the_cap_shows_under_unread() {
         unread.empty_state.is_none(),
         "a matching row is not an empty view"
     );
-    assert_eq!(unread.row_count, 9, "header counts ignore the filter");
+    assert_eq!(unread.row_count, 0, "header counts ignore history");
 }
 
 #[tokio::test]
@@ -1750,14 +2301,14 @@ async fn one_correspondent_in_two_accounts_is_two_rows_and_matched_counts_both()
     there.message_id_header = Some(format!("<{}@other>", there.id));
     fx.store_envelope(&there, MessageDirection::Outbound).await;
 
-    let all = filtered(&fx, None, MessagesFilterData::default()).await;
+    let all = filtered(&fx, None, history_filter()).await;
     let maya_rows = all
         .recent
         .iter()
         .filter(|row| row.id == format!("person:{maya}"))
         .count();
     assert_eq!(maya_rows, 2, "one row per account");
-    assert_eq!(all.row_count, 2);
+    assert_eq!(all.row_count, 0, "sent-only history is not attention");
     assert_eq!(
         all.matched, 2,
         "no filter matches every row, once per account"

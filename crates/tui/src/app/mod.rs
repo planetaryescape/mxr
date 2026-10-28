@@ -7,6 +7,7 @@ mod attachment_helpers;
 mod body_helpers;
 pub(crate) mod bulk_preview;
 mod compose_actions;
+mod compose_assist;
 mod compose_helpers;
 mod diagnostics_actions;
 mod draw;
@@ -245,6 +246,10 @@ pub enum UndoAction {
     /// (`SetTodoState` undo).
     Todos(Vec<String>),
     /// An evidence-backed resolution accepted for one task.
+    TodoCorrection {
+        todo_id: String,
+        correction_id: String,
+    },
     TodoResolution {
         todo_id: String,
         suggestion_id: String,

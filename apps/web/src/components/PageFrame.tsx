@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { usePublishPageTitle } from "@/state/pageTitleStore";
+import { choiceIndex } from "@/lib/keys/choiceNavigation";
+import { KeyChip } from "@/components/KeyChip";
 
 /** One entry in a page's ⋯ menu. */
 export interface PageAction {
@@ -62,6 +64,8 @@ export interface PageFrameProps {
   overflow?: readonly PageAction[];
   /** Underline tabs for the sections of this page. */
   tabs?: ReactNode;
+  /** The shortcut that focuses this page's controls, when available. */
+  tabsShortcut?: string;
   /** When this page's data was last true, in meta type. */
   freshness?: ReactNode;
   /** The column the header shares with the content under it. */
@@ -100,6 +104,7 @@ export function PageFrame({
   primary,
   overflow,
   tabs,
+  tabsShortcut,
   freshness,
   width = "list",
   wrapTitle: wrapWanted = false,
@@ -184,7 +189,38 @@ export function PageFrame({
         </div>
         {tabs ? (
           <div className="mt-auto flex h-8 shrink-0 items-end justify-between gap-4">
-            <div className="min-w-0 flex-1 overflow-x-auto">{tabs}</div>
+            <div
+              className="min-w-0 flex-1 overflow-x-auto"
+              onKeyDown={(event) => {
+                if (
+                  event.defaultPrevented ||
+                  event.altKey ||
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  event.shiftKey
+                )
+                  return;
+                if (!(event.target instanceof Element)) return;
+                const current = event.target.closest<HTMLAnchorElement>("a[href]");
+                if (!current) return;
+                const links = [
+                  ...event.currentTarget.querySelectorAll<HTMLAnchorElement>("a[href]"),
+                ];
+                const next = choiceIndex(event.key, links.indexOf(current), links.length);
+                if (next === null) return;
+                event.preventDefault();
+                links[next]?.focus();
+              }}
+            >
+              {tabs}
+            </div>
+            <span
+              className="shrink-0 pb-1"
+              title="Arrow keys move between tabs; Home and End jump to the first and last. Enter opens a focused link."
+            >
+              {tabsShortcut ? <KeyChip className="mr-1">{tabsShortcut}</KeyChip> : null}
+              <KeyChip>← →</KeyChip>
+            </span>
             {freshness ? (
               <div className="type-meta hidden shrink-0 pb-2 text-text-3 sm:block">{freshness}</div>
             ) : null}

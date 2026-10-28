@@ -42,7 +42,9 @@ mod leak_guard;
 mod twins;
 mod twins_asks;
 
-pub use asks::{locale_of, sender_kind, Amount, AskKind, Direction, Due, Item, SenderKind};
+pub use asks::{
+    locale_of, sender_kind, Amount, AskKind, AskProvenance, Direction, Due, Item, SenderKind,
+};
 
 use super::{curated_head_len, curated_seed_messages, demo_thread_id, DemoCuts};
 use chrono::{DateTime, TimeZone, Utc};
@@ -56,7 +58,7 @@ pub(crate) use bulk::{render as render_bulk, thread_len as bulk_thread_len};
 /// Version of the questions an [`Expect`] and its [`Item`]s answer. Version 2
 /// replaces the to-do yes or no with the expected items of the email and
 /// whether a reply is owed.
-pub const LABEL_SCHEMA_VERSION: u32 = 2;
+pub const LABEL_SCHEMA_VERSION: u32 = 3;
 
 /// The mailbox owner of the seeded personal demo account.
 pub const SELF_EMAIL: &str = "alex@demo.mxr.local";

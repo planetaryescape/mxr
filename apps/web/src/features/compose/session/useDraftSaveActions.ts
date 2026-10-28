@@ -120,7 +120,14 @@ export function useDraftSaveActions({
             "Your edits changed during the retry and remain preserved. Open the saved draft to continue.",
           );
         const next = {
-          ...draftFromSession({ ...saved, binding: current.binding }, current.accountId),
+          ...draftFromSession(
+            {
+              ...saved,
+              binding: current.binding,
+              draftIntent: saved.draftIntent ?? current.draftIntent,
+            },
+            current.accountId,
+          ),
           preservedRecoveryPath: current.draftPath,
         };
         if (next.binding) rememberComposeBinding(next.draftPath, next.binding);
@@ -215,7 +222,10 @@ export function useDraftSaveActions({
           "Your text changed while opening the draft. Save it before opening another version.",
         );
       const next = {
-        ...draftFromSession(response.session, current.accountId),
+        ...draftFromSession(
+          { ...response.session, draftIntent: response.session.draftIntent ?? current.draftIntent },
+          current.accountId,
+        ),
         preservedRecoveryPath: current.recoverySourcePath
           ? current.draftPath
           : current.preservedRecoveryPath,
@@ -259,7 +269,10 @@ export function useDraftSaveActions({
         );
       if (!response.session.recoverySourcePath || response.session.draftId !== current.draftId)
         throw new Error("The preserved session belongs to another draft");
-      const next = draftFromSession(response.session, current.accountId);
+      const next = draftFromSession(
+        { ...response.session, draftIntent: response.session.draftIntent ?? current.draftIntent },
+        current.accountId,
+      );
       draftRef.current = next;
       lastSavedFingerprintRef.current = null;
       setDraft(next);

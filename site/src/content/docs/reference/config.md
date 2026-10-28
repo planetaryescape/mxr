@@ -639,8 +639,12 @@ context_window = 8192
 request_timeout_secs = 120
 background_request_timeout_secs = 45
 allow_cloud_relationship_data = false
-# The assistant's model picker. Left out, or empty, these five are offered.
-assistant_models = ["gemma4:latest", "gpt-6-luna", "gpt-5.6-terra", "claude-haiku-5-5", "claude-sonnet-5-5"]
+# Shared catalogue for the assistant and compose pickers.
+models = ["gemma4:latest", "gpt-6-luna", "gpt-5.6-terra", "claude-haiku-5-5", "claude-sonnet-5-5"]
+
+[llm.compose]
+# Omit to inherit llm.model. A per-draft choice never changes this default.
+model = "gemma4:latest"
 ```
 
 The API key is read from `api_key_env` at runtime and is never persisted
@@ -649,12 +653,17 @@ is sent — correct for Ollama and LM Studio.
 
 `request_timeout_secs` bounds a request you started. `background_request_timeout_secs`
 (default 45) bounds the daemon's own background work, such as relationship
-summaries and commitment extraction, so a dead endpoint can't hold a background
+summaries, so a dead endpoint can't hold a background
 worker for the full foreground wait.
 
-`assistant_models` lists the model ids the [assistant's picker](/guides/assistant/#pick-the-model)
-offers. A pick is written to `[llm.overrides.assistant] model`, not here. Saving
-LLM settings in the web app keeps this list as you wrote it.
+`models` lists the model ids the assistant and compose pickers offer. The old
+`assistant_models` key still loads and is saved as `models`. Compose uses
+`[llm.compose] model` as the default for each new draft; omit it to inherit
+`llm.model`. `mxr config set llm.compose.model <id>` sets it, and
+`mxr config get llm.compose.model` reads it. Use `mxr config set
+llm.compose.model <id> --dry-run` to preview the same catalogue-checked change
+without writing it. Legacy drafting overrides keep working when this setting
+is absent and warn that `[llm.compose] model` is the replacement.
 
 `gist_concurrency` (default 1, at most 8) sets how many list-row gists the
 daemon writes at once in the background. A local model does best one at a
@@ -930,3 +939,22 @@ Help, the command palette and mail-pane hints show the effective bindings for th
 - Runtime account inventory is not identical to config entries.
 - Gmail browser-auth accounts may exist at runtime without being editable config-backed entries.
 - IMAP/SMTP entries are the main editable config-backed account type.
+
+### Receiver authentication for structured To do fields
+
+`todo.trusted_authentication_services` maps exact account IDs to trusted receiver
+`authserv-id` values and defaults to `{}`. Edit it with `mxr config edit` and
+restart the daemon. For example:
+
+```toml
+[todo.trusted_authentication_services]
+"ACCOUNT_ID" = ["mx.example.net"]
+```
+
+This setting asserts that the account’s receiving server strips forged
+`Authentication-Results` headers claiming its configured IDs. Configure it only
+after the server administrator confirms that boundary. Sender names, sender
+domains, raw pass strings and `Received` headers do not establish trust. The
+first matching receiver report must contain an aligned DKIM or SPF pass before
+mxr uses structured bill fields. Other accounts remain unknown. This changes
+field provenance, never the existing Open email payment action.

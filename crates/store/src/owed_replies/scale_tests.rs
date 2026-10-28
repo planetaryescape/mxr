@@ -351,8 +351,16 @@ async fn owed_query_plan_uses_the_owed_index_without_scans() {
     .map(|row| row.get::<String, _>("detail"))
     .collect();
 
+    assert!(
+        ["idx_messages_owed", "idx_messages_conversation_inputs"]
+            .iter()
+            .any(|index| plan.iter().any(|detail| detail
+                == &format!(
+                    "SEARCH messages USING COVERING INDEX {index} (account_id=? AND direction=?)"
+                ))),
+        "the initial grouping must use a covering account/direction index: {plan:#?}"
+    );
     for step in [
-        "SEARCH messages USING COVERING INDEX idx_messages_owed (account_id=? AND direction=?)",
         "SEARCH m USING COVERING INDEX idx_messages_owed (account_id=? AND direction=? AND thread_id=? AND date=?)",
         "SEARCH outbound USING COVERING INDEX idx_messages_owed (account_id=? AND direction=? AND thread_id=? AND date>?)",
         "SEARCH contacts USING INDEX sqlite_autoindex_contacts_1 (account_id=? AND email=?) LEFT-JOIN",

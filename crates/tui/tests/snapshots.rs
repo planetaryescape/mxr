@@ -248,6 +248,7 @@ fn label_picker_snapshot() {
 #[test]
 fn send_confirm_snapshot() {
     let pending = PendingSend {
+        draft_revision: None,
         account_id: AccountId::new(),
         fm: ComposeFrontmatter {
             to: "bob@example.com".into(),
@@ -261,6 +262,7 @@ fn send_confirm_snapshot() {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "Hello".into(),
         draft_path: "/tmp/draft.md".into(),
@@ -287,7 +289,7 @@ fn send_confirm_snapshot() {
     });
     assert!(snapshot.contains("Send this draft?"));
     assert!(snapshot.contains("Subject: Snapshot draft"));
-    assert!(snapshot.contains("[r] refine"));
+    assert!(snapshot.contains("[r] draft for me"));
     insta::assert_snapshot!("send_confirm_snapshot", snapshot);
 }
 

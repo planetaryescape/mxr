@@ -7,9 +7,11 @@
 )]
 
 pub mod attachments;
+pub mod body_regions;
 pub mod draft_codec;
 pub mod editor;
 pub mod email;
+pub mod forward;
 pub mod frontmatter;
 pub mod parse;
 pub mod private_tmp;
@@ -39,8 +41,9 @@ pub enum ComposeKind {
     },
     Forward {
         subject: String,
-        /// Reader-mode-cleaned original message for context block.
+        /// Plain-text view of the original, including its forwarding headers.
         original_context: String,
+        source: Option<mxr_core::ForwardSource>,
     },
 }
 
@@ -76,9 +79,17 @@ pub fn seed_frontmatter_with_signature(
     from: &str,
     signature: Option<&ComposeSignature>,
 ) -> Result<ComposeFrontmatter, ComposeError> {
-    let (_path, _cursor, content) = build_draft_file(kind, from, signature)?;
-    let (frontmatter, _body) = frontmatter::parse_compose_file(&content)?;
+    let (frontmatter, _body) = seed_compose_with_signature(kind, from, signature)?;
     Ok(frontmatter)
+}
+
+pub fn seed_compose_with_signature(
+    kind: ComposeKind,
+    from: &str,
+    signature: Option<&ComposeSignature>,
+) -> Result<(ComposeFrontmatter, String), ComposeError> {
+    let (_path, _cursor, content) = build_draft_file(kind, from, signature)?;
+    frontmatter::parse_compose_file(&content)
 }
 
 pub async fn create_draft_file_async(
@@ -178,15 +189,24 @@ fn build_draft_file(
         ComposeKind::Forward {
             subject,
             original_context,
+            source,
         } => {
             let fm = ComposeFrontmatter {
                 subject: prefix_subject(SubjectMarker::Forward, &subject),
                 from: from.to_string(),
                 intent: mxr_core::DraftIntent::Forward,
+                attach: source
+                    .as_ref()
+                    .map_or_else(Vec::new, forward::resource_references),
+                forward_source: source,
                 ..Default::default()
             };
-            let body = "---------- Forwarded message ----------".to_string();
-            (fm, body, Some(original_context))
+            let body = if original_context.starts_with(body_regions::FORWARD_HEADER) {
+                original_context
+            } else {
+                format!("{}\n{original_context}", body_regions::FORWARD_HEADER)
+            };
+            (fm, body, None)
         }
     };
 
@@ -477,6 +497,7 @@ mod tests {
             ComposeKind::Forward {
                 subject: "Important doc".into(),
                 original_context: "The original message content.".into(),
+                source: None,
             },
             "me@example.com",
         )
@@ -486,7 +507,10 @@ mod tests {
         assert_eq!(fm.subject, "Fwd: Important doc");
         assert_eq!(fm.intent, mxr_core::DraftIntent::Forward);
         assert!(body.contains("Forwarded message"));
-        assert!(!body.contains("original message content"));
+        assert!(
+            body.contains("The original message content."),
+            "forward must retain the original in the saved/sent body, got {body:?}"
+        );
         std::fs::remove_file(path).ok();
     }
 
@@ -564,6 +588,7 @@ mod tests {
             thread_id: None,
             attach: Vec::new(),
             signature: None,
+            forward_source: None,
         };
         let issues = validate_draft(&fm, "body");
         assert_eq!(
@@ -586,6 +611,7 @@ mod tests {
             thread_id: None,
             attach: Vec::new(),
             signature: None,
+            forward_source: None,
         };
         let issues = validate_draft_for_save(&fm, "body");
         assert!(issues.is_empty());
@@ -605,6 +631,7 @@ mod tests {
             thread_id: None,
             attach: Vec::new(),
             signature: None,
+            forward_source: None,
         };
         let issues = validate_draft(&fm, "body");
         assert_eq!(
@@ -627,6 +654,7 @@ mod tests {
             thread_id: None,
             attach: Vec::new(),
             signature: None,
+            forward_source: None,
         };
         let issues = validate_draft(&fm, "body");
         assert_eq!(issue_messages(&issues), vec!["Warning: Subject is empty"]);
@@ -665,6 +693,7 @@ mod tests {
             thread_id: None,
             attach: Vec::new(),
             signature: None,
+            forward_source: None,
         };
         let issues = validate_draft(&fm, "Hello there!");
         assert!(issues.is_empty());
@@ -684,6 +713,7 @@ mod tests {
             thread_id: None,
             attach: Vec::new(),
             signature: None,
+            forward_source: None,
         };
         let issues = validate_draft_for_save(&fm, "Hello there!");
         assert_eq!(issue_messages(&issues), vec!["Warning: Subject is empty"]);
@@ -703,6 +733,7 @@ mod tests {
             thread_id: None,
             attach: Vec::new(),
             signature: None,
+            forward_source: None,
         };
         let issues = validate_draft_for_save(&fm, "Hello there!");
         assert_eq!(
@@ -728,6 +759,7 @@ mod tests {
             thread_id: None,
             attach: Vec::new(),
             signature: None,
+            forward_source: None,
         };
         let issues = validate_draft(&fm, "Hi {first_name}, see {date} and {first_name}.");
 

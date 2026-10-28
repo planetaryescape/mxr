@@ -1558,6 +1558,10 @@ pub enum Command {
         /// Has no effect on a real send.
         #[arg(long, requires = "check")]
         no_llm: bool,
+        // Boxed: the assist flags would otherwise make `Compose` the largest
+        // variant by far.
+        #[command(subcommand)]
+        action: Option<Box<ComposeAction>>,
     },
     /// Reply to a message
     Reply {
@@ -1715,6 +1719,14 @@ pub enum Command {
     },
     /// Inspect a send operation after disconnect, including after draft cleanup.
     SendOutcome {
+        /// Preview or resume a legacy false-unknown using matched daemon log evidence.
+        #[arg(long)]
+        recover_known_not_submitted: bool,
+        #[arg(long, requires = "recover_known_not_submitted")]
+        dry_run: bool,
+        /// Evidence fingerprint returned by the recovery preview.
+        #[arg(long, requires = "recover_known_not_submitted")]
+        expected_evidence_sha256: Option<String>,
         /// Original workspace JSON retained with the send review.
         #[arg(long)]
         expected_workspace: Option<String>,
@@ -2306,6 +2318,31 @@ pub enum DemoAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum DraftsAction {
+    /// Ensure one canonical local reply draft exists for the message's conversation.
+    Reply {
+        message_id: String,
+        #[arg(long, conflicts_with = "single")]
+        all: bool,
+        #[arg(long, conflicts_with = "all")]
+        single: bool,
+        /// Preview the selected or newly prepared draft without saving it.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Change a saved reply between reply and reply-all while preserving its content.
+    #[command(group = clap::ArgGroup::new("audience").required(true).args(["all", "single"]))]
+    Audience {
+        draft_id: String,
+        #[arg(long, conflicts_with = "single")]
+        all: bool,
+        #[arg(long, conflicts_with = "all")]
+        single: bool,
+        #[arg(long, required = true)]
+        expected_revision: i64,
+        /// Preview the exact recipient selection without saving it.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Upload client-local files as immutable resources and attach to a saved draft.
     Attach {
         draft_id: String,
@@ -2364,6 +2401,11 @@ pub enum DraftsAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ClassifyAction {
+    /// Count stored fallback decisions, grouped by home, sender kind and rule.
+    Report {
+        #[arg(long, default_value_t = 1000)]
+        limit: u32,
+    },
     /// Grade the mail already in this mailbox against labelled scenarios:
     /// how often today's rules agree on who sent it, which mode it goes to
     /// and whether it makes a record; for what an email asks of you,
@@ -2375,6 +2417,9 @@ pub enum ClassifyAction {
         /// Which labelled set to grade against.
         #[arg(long, value_enum, default_value_t = ClassifySetArg::Quick)]
         set: ClassifySetArg,
+        /// Compare homes with a policy version actually retained in this mailbox.
+        #[arg(long)]
+        compare: Option<String>,
     },
 }
 
@@ -2394,6 +2439,109 @@ pub enum ClassifySetArg {
     /// labelled demo mail and all of the generated mail, with held-out
     /// phrasings reported on their own line. Takes up to a minute.
     Full,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ComposeAction {
+    /// List models available to compose under compose routing and privacy policy.
+    Models {
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Ask for writing help and read the proposal. Nothing in the draft changes
+    /// until you accept it with `mxr compose apply`.
+    ///
+    /// With nothing typed the model writes the message; with text it finishes
+    /// it, keeping your sentences and adding what the message still needs
+    /// (greeting, sign-off, an answer to each question you haven't covered);
+    /// with a selection it rewrites only that part. Anything only you can
+    /// decide comes back as a `[[?: ...]]` gap, and a draft with a gap can't be
+    /// sent. Calls your LLM once; takes as long as the model does.
+    Assist(Box<ComposeAssistArgs>),
+    /// Write an accepted proposal into a stored draft. Refused if the draft's
+    /// text has changed since the proposal was made. Signature and forward
+    /// header stay as they are.
+    Apply {
+        /// Proposal id from `mxr compose assist`; proposals last 30 minutes.
+        proposal_id: String,
+        /// The stored draft to write into.
+        #[arg(long, value_name = "DRAFT_ID")]
+        draft: String,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+}
+
+#[derive(Debug, Clone, clap::Args)]
+#[command(group = clap::ArgGroup::new("target").required(true).multiple(false))]
+#[command(group = clap::ArgGroup::new("action").multiple(false))]
+pub struct ComposeAssistArgs {
+    /// Help with a stored draft. Its text is used unless `--text` is given.
+    #[arg(long, value_name = "DRAFT_ID", group = "target")]
+    pub draft: Option<String>,
+    /// Help with a reply to this message.
+    #[arg(long = "reply-to", value_name = "MESSAGE_ID", group = "target")]
+    pub reply_to: Option<String>,
+    /// With `--reply-to`: the reply goes to everyone.
+    #[arg(long, requires = "reply_to")]
+    pub all: bool,
+    /// Help with a note forwarding this message; needs `--to`.
+    #[arg(long, value_name = "MESSAGE_ID", group = "target", requires = "to")]
+    pub forward: Option<String>,
+    /// Help with a new message; needs `--account`, `--to` and `--subject`.
+    #[arg(long = "new", group = "target", requires_all = ["account", "to", "subject"])]
+    pub new_message: bool,
+    /// With `--new`: the account to write from (name, email or id).
+    #[arg(long, requires = "new_message")]
+    pub account: Option<String>,
+    /// With `--forward` or `--new`: who it goes to (comma-separated or repeated).
+    #[arg(long, value_delimiter = ',')]
+    pub to: Vec<String>,
+    /// With `--new`: the subject line.
+    #[arg(long, requires = "new_message")]
+    pub subject: Option<String>,
+    /// The text you have typed so far: a file path, or `-` for stdin. Only your
+    /// own text, with no signature or forward header. Empty or absent means
+    /// nothing typed (except with `--draft`, which reads the stored draft).
+    #[arg(long, value_name = "PATH")]
+    pub text: Option<String>,
+    /// Work on part of the text only, as byte offsets `START..END` that fall
+    /// between whole characters.
+    #[arg(long, value_name = "START..END")]
+    pub select: Option<String>,
+    /// Write the whole message, ignoring any text.
+    #[arg(long, group = "action")]
+    pub write: bool,
+    /// Keep what is typed and add what the message still needs.
+    #[arg(long, group = "action")]
+    pub finish: bool,
+    /// Fix and tighten what is typed without adding to it.
+    #[arg(long, group = "action")]
+    pub polish: bool,
+    /// What you want said or changed, in your words.
+    #[arg(long, value_name = "TEXT")]
+    pub instruction: Option<String>,
+    /// Use one configured model for this draft only.
+    #[arg(long, value_name = "MODEL_ID")]
+    pub model: Option<String>,
+    /// Revise an earlier proposal: the instruction is applied to it. Your own
+    /// text stays what `--text` (or the stored draft) says.
+    #[arg(long, value_name = "PROPOSAL_ID")]
+    pub revise: Option<String>,
+    /// Make it shorter.
+    #[arg(long)]
+    pub shorter: bool,
+    /// Make it warmer.
+    #[arg(long)]
+    pub warmer: bool,
+    /// Make it more formal.
+    #[arg(long = "formal")]
+    pub more_formal: bool,
+    /// Fix typos, spelling and grammar only.
+    #[arg(long)]
+    pub proofread: bool,
+    #[arg(long)]
+    pub format: Option<OutputFormat>,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -2487,6 +2635,14 @@ Each row is one thing to do, written as what to do rather than the email's subje
 
 With no subcommand, prints the runway: Now, Coming up by week, Later, Whenever and Done this week.";
 
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum TodoCorrectionArg {
+    NotATodo,
+    NotMine,
+    AlreadyDone,
+    WrongDetails,
+}
+
 #[derive(Debug, Clone, Subcommand)]
 pub enum TodoAction {
     /// Link tasks with the optional ms-todo CLI and keep shared fields in sync.
@@ -2540,6 +2696,23 @@ pub enum TodoAction {
     Dismiss {
         #[arg(value_name = "TODO_ID", required = true)]
         todo_ids: Vec<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Record one of four durable correction reasons.
+    Correct {
+        todo_id: String,
+        #[arg(value_enum)]
+        reason: TodoCorrectionArg,
+        #[arg(value_name = "FIELD=VALUE")]
+        edits: Vec<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Undo a correction using its returned token, preserving newer edits.
+    UndoCorrection {
+        todo_id: String,
+        correction_id: String,
         #[arg(long)]
         dry_run: bool,
     },
@@ -2688,12 +2861,14 @@ const NOW_LONG_ABOUT: &str = "The few things that need you now, from every mode.
 
 Four sections in a fixed order, at most three items each: People (whose turn it is, from Messages), Due soon (To do's Now band, by act-by), one Updates card, and one thing to read after 17:00. Each section says how many more are in its mode. `mxr desk` still lists every lane in full.";
 
-const MESSAGES_LONG_ABOUT: &str = "People you talk with, one row each. Reply or mark done.
+const MESSAGES_LONG_ABOUT: &str = "Conversations that need your attention, one row per person. Reply or mark done.
 
-Four bands: Your turn (their latest message to you is unanswered; closest people first, then whoever has waited longest past your usual pace), Pinned, Recent and Quiet. Each row is a person, merged across their addresses, with your conversations inside as topics; a group thread is its own row. A thread you were only copied on goes to Updates. The preview is what they asked, from the conversation's gist when one is cached, else what they wrote last.";
+By default, only actionable topics appear: unanswered directed requests and due reminders you explicitly set. Recent, unread, pinned, archived and sent-only mail do not qualify just because they exist. Use `mxr messages list --turn all` for All conversations, including history in Recent and Quiet; `messages person EMAIL` also retains that person's history. Each row is a person, merged across their addresses; a group thread is its own row. The preview is what they asked, from the conversation's gist when one is cached, else their latest new text.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum MessagesTurnArg {
+    /// All conversations, including archived and sent-only history.
+    All,
     /// Your turn.
     Mine,
     /// Waiting on them.
@@ -2702,9 +2877,9 @@ pub enum MessagesTurnArg {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum MessagesAction {
-    /// The bands (the default).
+    /// Conversations needing attention (the default), or an explicit history view.
     List {
-        /// Only rows where it is this side's turn.
+        /// Explicit view: all conversations, your turn, or waiting on them.
         #[arg(long, value_enum)]
         turn: Option<MessagesTurnArg>,
         /// Only rows with a message from them you haven't read.

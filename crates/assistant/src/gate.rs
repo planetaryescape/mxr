@@ -62,6 +62,7 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_category_rule", Rule::PreviewToken),
     ("mxr_category_undo", Rule::Always),
     ("mxr_category_why", Rule::Read),
+    ("mxr_classify_report", Rule::Read),
     ("mxr_copy_draft_to_provider", Rule::Confirm),
     ("mxr_corrections", Rule::Read),
     ("mxr_delete_draft", Rule::Confirm),
@@ -99,6 +100,7 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_records_ask", Rule::Read),
     ("mxr_records_export_preview", Rule::Read),
     ("mxr_records_subscriptions", Rule::Read),
+    ("mxr_recover_send_outcome", Rule::DryRun),
     ("mxr_recovery_activate", Rule::Confirm),
     ("mxr_recovery_prepare_draft", Rule::Confirm),
     ("mxr_recovery_status", Rule::Read),
@@ -121,16 +123,19 @@ const RULES: &[(&str, Rule)] = &[
     ("mxr_thread_context", Rule::Read),
     ("mxr_thread_gists", Rule::Read),
     ("mxr_thread_previews", Rule::Read),
+    ("mxr_todo_correct", Rule::Confirm),
     ("mxr_todo_get", Rule::Read),
     ("mxr_todo_list", Rule::Read),
     // Confirmed links and syncs can write to an external service.
     ("mxr_todo_microsoft", Rule::Confirm),
     ("mxr_todo_resolve", Rule::Confirm),
     ("mxr_todo_set_state", Rule::Confirm),
+    ("mxr_todo_undo_correction", Rule::Confirm),
     // Replaces the user's draft content.
     ("mxr_update_draft", Rule::Always),
     ("mxr_updates_digest", Rule::Read),
     ("mxr_updates_let_go_preview", Rule::Read),
+    ("mxr_why", Rule::Read),
     ("mxr_workspace", Rule::Read),
 ];
 
@@ -262,6 +267,8 @@ mod tests {
     #[test]
     fn reads_run_and_unknown_tools_wait() {
         assert_eq!(classify("mxr_search", &json!({"query": "x"})), Gate::Run);
+        assert_eq!(classify("mxr_classify_report", &json!({})), Gate::Run);
+        assert_eq!(classify("mxr_why", &json!({"message_id": "a"})), Gate::Run);
         assert_eq!(
             classify("mxr_new_thing", &json!({})),
             Gate::Approve { preview: None }
@@ -305,6 +312,42 @@ mod tests {
                     }
                 );
                 assert!(!auto_approvable("mxr_todo_microsoft", &committing));
+            }
+        }
+    }
+
+    #[test]
+    fn todo_corrections_preview_but_commits_and_malformed_confirmation_wait() {
+        for tool in ["mxr_todo_correct", "mxr_todo_undo_correction"] {
+            let arguments = json!({
+                "todo_id": "todo_1", "reason": "wrong_details",
+                "edits": [{"field": "title", "value": "Updated task"}],
+                "correction_id": "exact-change",
+            });
+            for preview in [
+                arguments.clone(),
+                with(&arguments, "confirm", json!(false)),
+                with(&arguments, "confirm", Value::Null),
+            ] {
+                assert_eq!(classify(tool, &preview), Gate::Run);
+                assert!(!auto_approvable(tool, &preview));
+            }
+            for confirm in [
+                json!(true),
+                json!("true"),
+                json!("false"),
+                json!(0),
+                json!([]),
+                json!({}),
+            ] {
+                let committing = with(&arguments, "confirm", confirm);
+                assert_eq!(
+                    classify(tool, &committing),
+                    Gate::Approve {
+                        preview: Some((tool.into(), with(&arguments, "confirm", json!(false)))),
+                    }
+                );
+                assert!(!auto_approvable(tool, &committing));
             }
         }
     }
@@ -417,5 +460,42 @@ mod tests {
             classify("mxr_update_draft", &json!({})),
             Gate::Approve { preview: None }
         ));
+    }
+
+    #[test]
+    fn send_recovery_previews_run_but_resuming_always_requires_approval() {
+        let tool = "mxr_recover_send_outcome";
+        let arguments = json!({
+            "account_id": "synthetic-account",
+            "operation_id": "original-operation",
+            "expected_workspace": {"workspace_id": "original", "recovery_generation": "generation"},
+            "expected_evidence_sha256": "reviewed-evidence",
+        });
+        let preview = json!({
+            "account_id": "synthetic-account",
+            "operation_id": "original-operation",
+            "expected_workspace": {"workspace_id": "original", "recovery_generation": "generation"},
+            "expected_evidence_sha256": "reviewed-evidence",
+            "dry_run": true,
+        });
+        assert_eq!(classify(tool, &preview), Gate::Run);
+        assert!(!auto_approvable(tool, &preview));
+        for committing in [
+            arguments.clone(),
+            with(&arguments, "dry_run", json!(false)),
+            with(&arguments, "dry_run", Value::Null),
+            with(&arguments, "dry_run", json!("true")),
+            with(&arguments, "dry_run", json!(1)),
+            with(&arguments, "dry_run", json!([])),
+            with(&arguments, "dry_run", json!({})),
+        ] {
+            assert_eq!(
+                classify(tool, &committing),
+                Gate::Approve {
+                    preview: Some((tool.into(), preview.clone())),
+                }
+            );
+            assert!(!auto_approvable(tool, &committing));
+        }
     }
 }

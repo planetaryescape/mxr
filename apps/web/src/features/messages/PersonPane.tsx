@@ -1,8 +1,15 @@
-import { ArrowLeft, Check, ListTodo, MessageSquareReply, ThumbsUp } from "lucide-react";
-import { useState } from "react";
+import {
+  ArrowLeft,
+  Check,
+  ListTodo,
+  MessageSquareReply,
+  Reply,
+  ReplyAll,
+  ThumbsUp,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { ArrivalGlow } from "@/components/ArrivalGlow";
 import { KeyChip } from "@/components/KeyChip";
 import { ModeFrame } from "@/components/ModeFrame";
 import { PageFrame } from "@/components/PageFrame";
@@ -14,8 +21,11 @@ import { cn } from "@/lib/utils";
 
 import { mergePeople, refreshMessages, type MergeSuggestion, type PersonPage } from "./api";
 import { ConversationView } from "./Conversation";
+import { ConversationPeople } from "./ConversationPeople";
 import { GotItBar } from "./GotItBar";
-import { topicLabel, topicStateLabel, type Arrival } from "./messagesView";
+import { type Arrival } from "./messagesView";
+import { PersonIdentity } from "./PersonIdentity";
+import { TopicSwitcher } from "./TopicSwitcher";
 import type { PendingAck } from "./useGotIt";
 
 export interface PersonPaneProps {
@@ -59,8 +69,35 @@ export function PersonPane(props: PersonPaneProps) {
   const row = page.row;
   const conversation = page.conversation ?? null;
   const selected = conversation?.thread_id ?? props.topic;
-  const replying = useComposeUi((s) => s.intent !== null && s.surface === "inline");
+  const replying = useComposeUi(
+    (s) =>
+      Boolean(conversation && s.intent?.contextThreadId === conversation.thread_id) &&
+      s.surface === "inline",
+  );
+  const composeOpenForConversation = useComposeUi((s) =>
+    Boolean(conversation && s.intent?.contextThreadId === conversation.thread_id),
+  );
   const modes = useThreadModes(conversation?.thread_id).data;
+  const readingArea = useRef<HTMLDivElement>(null);
+  const scrolledThread = useRef<string | null>(null);
+  useEffect(() => {
+    const threadId = conversation?.thread_id;
+    if (!threadId || props.loading || scrolledThread.current === threadId) return;
+    if (replying) {
+      scrolledThread.current = threadId;
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      const area = readingArea.current;
+      const latest = area?.querySelector<HTMLElement>('[data-latest="true"]');
+      if (!area || !latest) return;
+      const areaTop = area.getBoundingClientRect().top;
+      const latestTop = latest.getBoundingClientRect().top;
+      area.scrollTop = Math.max(0, area.scrollTop + latestTop - areaTop);
+      scrolledThread.current = threadId;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [conversation?.thread_id, props.loading, replying]);
   return (
     <section
       aria-label={row.title}
@@ -84,6 +121,7 @@ export function PersonPane(props: PersonPaneProps) {
           </button>
         }
         title={row.title}
+        titleContent={<PersonIdentity row={row} interactive={!props.loading} />}
         purpose={page.relationship_line}
         freshness={<span data-testid="person-header-line">{page.header_line}</span>}
       />
@@ -101,61 +139,26 @@ export function PersonPane(props: PersonPaneProps) {
           ))}
         </ModeFrame>
       ) : null}
-      <nav aria-label="Topics" className="shrink-0 border-b border-border">
-        <ModeFrame width="reader" className="px-3 py-2">
-          <p className="type-eyebrow px-2 pb-1 text-text-3">Topics</p>
-          <ul data-testid="topics" className="flex max-h-[28vh] flex-col gap-0.5 overflow-y-auto">
-            {page.topics.map((topic) => {
-              const active = topic.thread_id === selected;
-              const leaving = props.hidden.has(topic.thread_id);
-              // A topic arrival marks that topic; a person arrival, the one open.
-              const arrived = props.arrival
-                ? (props.arrival.thread ?? selected) === topic.thread_id
-                : false;
-              return (
-                <li
-                  key={topic.thread_id}
-                  data-leaving={leaving ? "true" : undefined}
-                  className={cn(leaving && "todo-fold pointer-events-none opacity-60")}
-                >
-                  <button
-                    type="button"
-                    data-testid="topic"
-                    aria-current={active ? "true" : undefined}
-                    onClick={() => props.onTopic(topic.thread_id)}
-                    className={cn(
-                      "type-body relative flex w-full items-baseline gap-3 px-2 py-1 text-left",
-                      active ? "bg-ink-lamp text-text-1" : "text-text-2 hover:text-text-1",
-                    )}
-                  >
-                    {active ? (
-                      <span aria-hidden className="absolute inset-y-0 left-0 w-[2px] bg-signal" />
-                    ) : null}
-                    {arrived ? <ArrivalGlow key={props.arrival?.key} /> : null}
-                    <span className="min-w-0 flex-1 truncate">
-                      {topic.state === "your_turn" ? (
-                        <span
-                          aria-hidden
-                          data-testid="topic-turn"
-                          className="mr-2 inline-block size-1.5 bg-cue align-middle"
-                        />
-                      ) : null}
-                      {topicLabel(topic)}
-                    </span>
-                    <span className="type-meta shrink-0 text-text-3">{topicStateLabel(topic)}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          <p className="type-meta hidden px-2 pt-1 text-text-3 md:block">
-            <KeyChip className="h-4 px-1">[</KeyChip> <KeyChip className="h-4 px-1">]</KeyChip> step
-            through topics
-          </p>
-          {props.topicsHint ? <div className="px-2">{props.topicsHint}</div> : null}
+      <TopicSwitcher
+        topics={page.topics}
+        selected={selected}
+        hidden={props.hidden}
+        arrival={props.arrival}
+        onTopic={props.onTopic}
+        hint={props.topicsHint}
+      />
+      {conversation && !props.loading ? (
+        <ModeFrame width="reader" className="shrink-0">
+          <ConversationPeople
+            key={conversation.thread_id}
+            threadId={conversation.thread_id}
+            trailing={<ModeMarks modes={otherModes(modes, "messages")} />}
+          />
         </ModeFrame>
-      </nav>
+      ) : null}
       <div
+        ref={readingArea}
+        data-testid="conversation-reading-area"
         aria-busy={props.loading || undefined}
         className={cn(
           "min-h-0 flex-1 overflow-y-auto transition-opacity duration-fast",
@@ -164,31 +167,25 @@ export function PersonPane(props: PersonPaneProps) {
       >
         <ModeFrame width="reader">
           {conversation ? (
-            <>
-              <div className="mx-3 mt-3 flex items-center justify-between gap-3 px-2 py-1">
-                <h3
-                  data-testid="conversation-subject"
-                  className="type-heading relative min-w-0 truncate text-text-1"
-                >
-                  {props.arrival &&
-                  (props.arrival.thread ?? conversation.thread_id) === conversation.thread_id ? (
-                    <ArrivalGlow key={props.arrival.key} />
-                  ) : null}
-                  {conversation.subject}
-                </h3>
-                <ModeMarks modes={otherModes(modes, "messages")} />
-              </div>
-              <ConversationView
-                conversation={conversation}
-                asSent={props.asSent}
-                onToggleAsSent={props.onToggleAsSent}
-              />
-            </>
+            <ConversationView
+              key={props.topic ?? conversation.thread_id}
+              conversation={conversation}
+              asSent={props.asSent}
+              onToggleAsSent={props.onToggleAsSent}
+              disclosuresEnabled={!props.loading}
+            />
           ) : (
             <p className="px-5 py-6 text-sm text-muted-foreground">No conversation to show.</p>
           )}
           {/* ComposeHost portals the reply here, as it does in the reader. */}
-          <div id="inline-composer-slot" className="px-4 pb-4 empty:hidden" />
+          <div
+            id={
+              conversation
+                ? `inline-composer-slot-${conversation.thread_id}`
+                : "inline-composer-slot"
+            }
+            className="px-4 pb-4 empty:hidden"
+          />
         </ModeFrame>
       </div>
       {conversation ? (
@@ -211,15 +208,30 @@ export function PersonPane(props: PersonPaneProps) {
             ) : null}
             {props.gotItHint ? <div className="px-4 pt-2">{props.gotItHint}</div> : null}
             <div className="flex flex-wrap items-center gap-x-1 gap-y-1 px-3 pb-3 pt-2 text-xs">
-              <label className="mr-2 inline-flex items-center gap-1.5 px-1 text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={props.replyAll}
-                  onChange={(event) => props.onReplyAllChange(event.target.checked)}
-                  className="accent-primary"
-                />
-                Reply all
-              </label>
+              {!composeOpenForConversation ? (
+                <div
+                  role="group"
+                  aria-label="Reply mode"
+                  className="mr-2 inline-flex items-center gap-1"
+                >
+                  <button
+                    type="button"
+                    aria-pressed={!props.replyAll}
+                    onClick={() => props.onReplyAllChange(false)}
+                    className="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-text-2 hover:bg-ink-lamp aria-pressed:bg-ink-lamp aria-pressed:text-text-1"
+                  >
+                    <Reply className="size-3.5" aria-hidden /> Reply
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={props.replyAll}
+                    onClick={() => props.onReplyAllChange(true)}
+                    className="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-text-2 hover:bg-ink-lamp aria-pressed:bg-ink-lamp aria-pressed:text-text-1"
+                  >
+                    <ReplyAll className="size-3.5" aria-hidden /> Reply all
+                  </button>
+                </div>
+              ) : null}
               <FooterButton
                 testId="got-it"
                 onClick={props.onGotIt}

@@ -5,7 +5,7 @@
 
 use super::*;
 use crate::test_fixtures::*;
-use chrono::TimeZone;
+use chrono::{Duration, TimeZone};
 use mxr_core::*;
 
 fn test_envelope(account_id: &AccountId) -> Envelope {
@@ -289,6 +289,131 @@ async fn a_commitments_date_source_round_trips_and_only_words_and_user_dates_act
         assert_eq!(stored.actionable_by_when(), acts.then_some(due), "{id}");
         assert_eq!(stored.date_unverified(), !acts, "{id}");
     }
+}
+
+#[tokio::test]
+async fn desk_due_commitments_keep_exact_boundaries_provenance_and_active_evidence_rules() {
+    let store = Store::in_memory().await.unwrap();
+    let account = test_account();
+    let other = test_account();
+    store.insert_account(&account).await.unwrap();
+    store.insert_account(&other).await.unwrap();
+    let floor = Utc.with_ymd_and_hms(2026, 10, 1, 8, 0, 0).unwrap();
+    let horizon = floor + Duration::days(7);
+    for (name, date, source, direction, status) in [
+        (
+            "floor",
+            Some(floor),
+            Some(ByWhenSource::Words),
+            CommitmentDirection::Yours,
+            CommitmentStatus::Open,
+        ),
+        (
+            "horizon",
+            Some(horizon),
+            Some(ByWhenSource::User),
+            CommitmentDirection::Yours,
+            CommitmentStatus::Open,
+        ),
+        (
+            "too_old",
+            Some(floor - Duration::seconds(1)),
+            Some(ByWhenSource::Words),
+            CommitmentDirection::Yours,
+            CommitmentStatus::Open,
+        ),
+        (
+            "too_new",
+            Some(horizon + Duration::seconds(1)),
+            Some(ByWhenSource::Words),
+            CommitmentDirection::Yours,
+            CommitmentStatus::Open,
+        ),
+        (
+            "model",
+            Some(floor),
+            Some(ByWhenSource::ModelDate),
+            CommitmentDirection::Yours,
+            CommitmentStatus::Open,
+        ),
+        (
+            "unverified",
+            Some(floor),
+            None,
+            CommitmentDirection::Yours,
+            CommitmentStatus::Open,
+        ),
+        (
+            "undated",
+            None,
+            Some(ByWhenSource::Words),
+            CommitmentDirection::Yours,
+            CommitmentStatus::Open,
+        ),
+        (
+            "theirs",
+            Some(floor),
+            Some(ByWhenSource::Words),
+            CommitmentDirection::Theirs,
+            CommitmentStatus::Open,
+        ),
+        (
+            "resolved",
+            Some(floor),
+            Some(ByWhenSource::Words),
+            CommitmentDirection::Yours,
+            CommitmentStatus::Resolved,
+        ),
+        (
+            "expired",
+            Some(floor),
+            Some(ByWhenSource::Words),
+            CommitmentDirection::Yours,
+            CommitmentStatus::Expired,
+        ),
+        (
+            "retired_evidence",
+            Some(floor),
+            Some(ByWhenSource::Words),
+            CommitmentDirection::Yours,
+            CommitmentStatus::Open,
+        ),
+    ] {
+        let mut record = commitment_fixture(&store, &account, date, source, name).await;
+        record.what = name.into();
+        record.direction = direction;
+        record.status = status;
+        if name != "retired_evidence" {
+            record.id = format!("{}::promise::{name}", record.evidence_msg_id);
+        }
+        store.upsert_contact_commitment(&record).await.unwrap();
+    }
+    let mut foreign = commitment_fixture(
+        &store,
+        &other,
+        Some(floor),
+        Some(ByWhenSource::User),
+        "foreign",
+    )
+    .await;
+    foreign.what = "foreign".into();
+    store.upsert_contact_commitment(&foreign).await.unwrap();
+    let mut due = store
+        .desk_due_commitments(&account.id, floor, horizon)
+        .await
+        .unwrap();
+    due.sort_by(|a, b| a.what.cmp(&b.what));
+    assert_eq!(
+        due.iter()
+            .map(|record| record.what.as_str())
+            .collect::<Vec<_>>(),
+        ["floor", "horizon"]
+    );
+    assert!(store
+        .desk_due_commitments(&account.id, horizon, floor)
+        .await
+        .unwrap()
+        .is_empty());
 }
 
 #[tokio::test]

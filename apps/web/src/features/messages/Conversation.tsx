@@ -8,6 +8,8 @@ import { fetchThread } from "@/features/mailbox/api";
 import { MessageBody } from "@/features/thread/MessageBody";
 import { emailHtmlThemeForSender, useUiPrefs } from "@/state/uiPrefsStore";
 
+import { AddressDisclosure } from "./AddressDisclosure";
+import { MessageInfoDialog } from "./MessageInfoDialog";
 import type { Conversation as ConversationData, ConversationMessage } from "./api";
 import { letterLead, paragraphBlocks, splitAsk } from "./messagesView";
 
@@ -22,11 +24,14 @@ export function ConversationView({
   conversation,
   asSent,
   onToggleAsSent,
+  disclosuresEnabled = true,
 }: {
   conversation: ConversationData;
   /** The message shown as sent, if any. */
   asSent: string | null;
   onToggleAsSent: (messageId: string) => void;
+  /** False while the selected page is placeholder data for another topic/account. */
+  disclosuresEnabled?: boolean;
 }) {
   return (
     <ol data-testid="conversation" className="flex flex-col px-5 py-2">
@@ -35,12 +40,14 @@ export function ConversationView({
           {conversation.earlier_count} earlier messages
         </li>
       ) : null}
-      {conversation.messages.map((message) => (
+      {conversation.messages.map((message, index) => (
         <MessageItem
-          key={message.message_id}
+          key={`${conversation.thread_id}:${message.message_id}`}
           message={message}
+          latest={index === conversation.messages.length - 1}
           threadId={conversation.thread_id}
           asSent={asSent === message.message_id}
+          disclosuresEnabled={disclosuresEnabled}
           onToggleAsSent={() => onToggleAsSent(message.message_id)}
         />
       ))}
@@ -55,30 +62,54 @@ function who(message: ConversationMessage): string {
 
 function MessageItem({
   message,
+  latest,
   threadId,
   asSent,
+  disclosuresEnabled,
   onToggleAsSent,
 }: {
   message: ConversationMessage;
+  latest: boolean;
   threadId: string;
   asSent: boolean;
+  disclosuresEnabled: boolean;
   onToggleAsSent: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
   const bodyId = useId();
   const { lead, hidden } = letterLead(message);
+  const expanded = expandedOverride ?? latest;
   const shown = expanded || hidden === 0 ? message.text : lead;
   const mine = message.from_me;
   return (
     <li
       data-testid="conversation-message"
+      data-latest={latest ? "true" : undefined}
       data-layout={message.layout}
       data-from-me={mine ? "true" : "false"}
       className="flex flex-col items-start border-t border-rule-soft py-4 first:border-t-0"
     >
-      <p className="type-meta mb-1.5 text-text-3">
-        <span className="text-text-2">{who(message)}</span> · <Received value={message.date} />
-      </p>
+      <div
+        data-testid="message-meta"
+        className="type-meta mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-text-3"
+      >
+        <span className="text-text-2">
+          {disclosuresEnabled ? (
+            <AddressDisclosure
+              trigger={who(message)}
+              label={`Show original sender address for ${message.from.name ?? who(message)} at ${message.date}`}
+              heading="Original sender"
+              name={message.from.name}
+              address={message.from.email}
+            />
+          ) : (
+            who(message)
+          )}
+        </span>
+        <span aria-hidden>·</span>
+        <Received value={message.date} />
+        {disclosuresEnabled ? <MessageInfoDialog threadId={threadId} message={message} /> : null}
+      </div>
       {asSent ? (
         <AsSent
           threadId={threadId}
@@ -132,7 +163,7 @@ function MessageItem({
             type="button"
             aria-controls={bodyId}
             aria-expanded={expanded}
-            onClick={() => setExpanded((open) => !open)}
+            onClick={() => setExpandedOverride(!expanded)}
             className="hover:text-text-1 hover:underline"
           >
             {expanded ? "Show less" : `Read all ${message.paragraphs} paragraphs`}

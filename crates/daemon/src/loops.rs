@@ -1241,6 +1241,12 @@ pub(crate) async fn post_sync_classification(
 
     // Where each new arrival went (D119). Last, so a delivery or a record
     // found above is placed as one.
+    if let Err(error) =
+        crate::handler::assessments::reconcile_messages(state, account_id, upserted_message_ids)
+            .await
+    {
+        tracing::warn!(account = %account_id, %error, "assessment reconciliation pending after sync");
+    }
     if let Err(error) = crate::handler::arrivals::place_pending(state, account_id).await {
         tracing::warn!(account = %account_id, %error, "placing arrivals failed");
     }
@@ -2210,6 +2216,9 @@ pub async fn process_due_scheduled_sends(
             match crate::handler::send_stored_draft_reviewed_locked(state, &draft_id, &identity)
                 .await
             {
+                Ok(mxr_protocol::ResponseData::SendOutcome {
+                    outcome: Some(outcome),
+                }) if outcome.state == mxr_core::SendOutcomeState::Waiting => "waiting",
                 Ok(_) => {
                     tracing::debug!(draft_id = %draft_id, "scheduled-send: sent");
                     "sent"
@@ -2269,6 +2278,11 @@ pub async fn scheduled_sends_loop(state: Arc<AppState>, mut shutdown_rx: watch::
             Ok(0) => {}
             Ok(n) => tracing::debug!(fired = n, "scheduled-sends loop fired"),
             Err(e) => tracing::warn!("Scheduled-sends loop error: {e}"),
+        }
+        if let Err(error) =
+            crate::handler::send_recovery::process_due(&state, chrono::Utc::now()).await
+        {
+            tracing::warn!(%error, "Approved-send recovery loop failed");
         }
     }
 }
@@ -2559,6 +2573,9 @@ pub async fn todo_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bo
         // Read Updates' mail into facts once after start, so the first
         // digest (and Now's card) doesn't pay for a mailbox of them.
         if !updates_warm {
+            if let Err(error) = crate::handler::messages::warm_history(&state).await {
+                tracing::warn!(%error, "could not warm conversation facts");
+            }
             updates_warm = crate::handler::updates::warm(&state).await;
         }
         wait = match crate::handler::todos::tick(&state, chrono::Utc::now(), &mut fingerprints)

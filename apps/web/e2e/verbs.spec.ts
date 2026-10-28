@@ -251,6 +251,11 @@ function todoVerb(verb: Verb, key: string, title = "Fix payment for Spotify"): J
   return async (page) => {
     await todoRow(page, title);
     await page.keyboard.press(key);
+    if (verb === "todo-dismiss") {
+      const dialog = page.getByRole("dialog", { name: "Correct this to-do" });
+      await expect(dialog).toContainText(title);
+      await dialog.getByRole("button", { name: "Not a to-do", exact: true }).click();
+    }
     await expectToast(page, verb);
     await expect(page.getByTestId("todo-row").filter({ hasText: title })).toHaveCount(0);
     await page.keyboard.press("u");

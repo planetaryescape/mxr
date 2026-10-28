@@ -1389,7 +1389,9 @@ pub(crate) fn record_to_envelope(record: EnvelopeRecord<'_>) -> Result<Envelope,
     })
 }
 
-fn sqlite_row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Result<Envelope, sqlx::Error> {
+pub(crate) fn sqlite_row_to_envelope(
+    row: &sqlx::sqlite::SqliteRow,
+) -> Result<Envelope, sqlx::Error> {
     let id = row.get::<String, _>("id");
     let account_id = row.get::<String, _>("account_id");
     let provider_id = row.get::<String, _>("provider_id");

@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.156"
+    "version": "0.6.167"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -1768,6 +1768,50 @@
         }
       }
     },
+    "/api/v1/mail/classify/report": {
+      "get": {
+        "tags": [],
+        "summary": "Stored fallback clusters and pending assessment counts; local and read-only",
+        "operationId": "mail_classify_report",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "query",
+            "description": "Account id; omitted covers every account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Emails examined; default 1000, maximum 10000",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The ClassifyReport variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/codes": {
       "get": {
         "tags": [],
@@ -1872,6 +1916,98 @@
         }
       }
     },
+    "/api/v1/mail/compose/apply": {
+      "post": {
+        "tags": [],
+        "summary": "Write an accepted proposal into a stored draft's text region; refused if that text changed since the proposal",
+        "operationId": "mail_compose_apply",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeApplyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The draft now holds the proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeApplyResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "The proposal expired, belongs to another draft, or the draft's text changed"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/compose/assist": {
+      "post": {
+        "tags": [],
+        "summary": "Writing help for the text in a compose box: write it, finish it, polish it or edit a selection. Returns a proposal and changes nothing",
+        "operationId": "mail_compose_assist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeAssistBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A proposal: the whole proposed text, the word diff from yours, the gaps left, and which of your sentences changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeAssistResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "422": {
+            "description": "Nothing to finish, a selection off a character boundary, text too long, or a privacy setting that stops the model"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/compose/models": {
+      "get": {
+        "tags": [],
+        "summary": "List models available to compose under the compose route and privacy policy",
+        "operationId": "mail_compose_models",
+        "responses": {
+          "200": {
+            "description": "Compose model choices, locality and availability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeModelsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/mail/compose/session": {
       "post": {
         "tags": [],
@@ -1950,6 +2086,67 @@
           },
           "422": {
             "description": "Invalid declaration, chunk, integrity or unsupported daemon"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/compose/session/audience": {
+      "post": {
+        "tags": [],
+        "operationId": "compose_session_audience",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComposeSessionAudienceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Reply audience preview or updated compose session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposeSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid draft identity or unsupported compose content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          },
+          "409": {
+            "description": "Stale draft revision; preserve unsent text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid compose session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftConflictResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -3831,7 +4028,7 @@
     "/api/v1/mail/people": {
       "get": {
         "tags": [],
-        "summary": "Messages: people you talk with in four bands (Your turn, Pinned, Recent, Quiet), each row with its topics and what they asked",
+        "summary": "Messages: conversations needing attention by default; explicit All conversations includes history",
         "operationId": "mail_people",
         "parameters": [
           {
@@ -3846,7 +4043,7 @@
           {
             "name": "turn",
             "in": "query",
-            "description": "`mine` or `theirs`: only rows where it is that side's turn",
+            "description": "Omit for Needs attention; `all` includes conversation history; `mine` or `theirs` selects a side's turn",
             "required": false,
             "schema": {
               "type": "string"
@@ -5640,6 +5837,52 @@
         }
       }
     },
+    "/api/v1/mail/send-outcomes/{operation_id}/recover": {
+      "post": {
+        "tags": [],
+        "operationId": "mail_recover_send_outcome",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverSendBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Evidence-bound recovery preview or resumed original operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/mail/send-time": {
       "get": {
         "tags": [],
@@ -6415,6 +6658,84 @@
           },
           "401": {
             "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/todos/{todo_id}/correct": {
+      "post": {
+        "tags": [],
+        "summary": "Correct ownership, task status or details with safe undo",
+        "operationId": "mail_todo_correct",
+        "parameters": [
+          {
+            "name": "todo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoCorrectionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `TodoChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mail/todos/{todo_id}/correction/undo": {
+      "post": {
+        "tags": [],
+        "summary": "Undo a correction unless the row has changed",
+        "operationId": "mail_todo_undo_correction",
+        "parameters": [
+          {
+            "name": "todo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TodoCorrectionUndoBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The `TodoChange` variant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseData"
+                }
+              }
+            }
           }
         }
       }
@@ -8669,6 +8990,37 @@
           }
         }
       },
+      "Act": {
+        "type": "string",
+        "enum": [
+          "request",
+          "commitment",
+          "obligation",
+          "offer",
+          "question",
+          "information",
+          "pleasantry"
+        ]
+      },
+      "ActionKind": {
+        "type": "string",
+        "enum": [
+          "pay",
+          "fix_payment",
+          "sign",
+          "verify",
+          "reply",
+          "send",
+          "provide",
+          "upload",
+          "book",
+          "attend",
+          "renew_or_cancel",
+          "register",
+          "contact",
+          "other"
+        ]
+      },
       "ActivityCursor": {
         "type": "object",
         "required": [
@@ -8856,6 +9208,16 @@
           "ephemeral",
           "standard",
           "important"
+        ]
+      },
+      "Actor": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "correspondent",
+          "third_party",
+          "everyone",
+          "nobody"
         ]
       },
       "Address": {
@@ -9240,6 +9602,7 @@
           "archive",
           "screened_out",
           "spam",
+          "trash",
           "sorting"
         ]
       },
@@ -9473,6 +9836,17 @@
             },
             "description": "To do and Archive, shown as \"also\" and never added."
           },
+          "classification_report": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ClassifyReportData",
+                "description": "Bounded stored fallback clusters, in the existing sorting disclosure."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "clear_line": {
             "type": [
               "string",
@@ -9552,6 +9926,381 @@
           "until": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "AskAmount": {
+        "type": "object",
+        "required": [
+          "zone",
+          "span",
+          "minor",
+          "currency"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "minor": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "span": {
+            "$ref": "#/components/schemas/AskSpan"
+          },
+          "zone": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AskAnswer": {
+        "type": "string",
+        "enum": [
+          "asks_you",
+          "asks_you_to_reply",
+          "you_promised",
+          "you_asked_them",
+          "they_promised_you",
+          "nothing",
+          "not_sure"
+        ]
+      },
+      "AskDate": {
+        "type": "object",
+        "required": [
+          "zone",
+          "span",
+          "at",
+          "checked"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "checked": {
+            "type": "boolean"
+          },
+          "span": {
+            "$ref": "#/components/schemas/AskSpan"
+          },
+          "zone": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AskReference": {
+        "type": "object",
+        "required": [
+          "zone",
+          "span",
+          "kind",
+          "value"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "span": {
+            "$ref": "#/components/schemas/AskSpan"
+          },
+          "value": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AskSpan": {
+        "type": "object",
+        "description": "UTF-8 byte offsets into the unmodified zone text; end is exclusive.",
+        "required": [
+          "start",
+          "end"
+        ],
+        "properties": {
+          "end": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AskState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "done",
+          "failed",
+          "cancelled",
+          "conditional",
+          "hypothetical"
+        ]
+      },
+      "AskSummary": {
+        "type": "object",
+        "description": "Bounded mode projection of the persisted answer. Full zones stay in the\nlocal assessment; the message, zone and byte span identify the evidence.",
+        "required": [
+          "message_id",
+          "policy_version",
+          "input_fingerprint",
+          "pending_body",
+          "units",
+          "more_units"
+        ],
+        "properties": {
+          "input_fingerprint": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "more_units": {
+            "type": "boolean"
+          },
+          "pending_body": {
+            "type": "boolean"
+          },
+          "policy_version": {
+            "type": "string"
+          },
+          "units": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AskUnitSummary"
+            }
+          }
+        }
+      },
+      "AskTags": {
+        "type": "object",
+        "required": [
+          "act",
+          "actor",
+          "state",
+          "action"
+        ],
+        "properties": {
+          "act": {
+            "$ref": "#/components/schemas/Act"
+          },
+          "action": {
+            "$ref": "#/components/schemas/ActionKind"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "amount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "due": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "reference": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "state": {
+            "$ref": "#/components/schemas/AskState"
+          }
+        }
+      },
+      "AskUnitSummary": {
+        "type": "object",
+        "required": [
+          "unit",
+          "zone",
+          "span",
+          "answer"
+        ],
+        "properties": {
+          "amount": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AskAmount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "answer": {
+            "$ref": "#/components/schemas/AskAnswer"
+          },
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "due": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AskDate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exact source text, or absent when too long for a mode response."
+          },
+          "reference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AskReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "span": {
+            "$ref": "#/components/schemas/AskSpan"
+          },
+          "tags": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AskTags"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unit": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "zone": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AssessmentClaim": {
+        "type": "object",
+        "required": [
+          "rule",
+          "reason",
+          "source",
+          "evidence"
+        ],
+        "properties": {
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      },
+      "AssessmentFacts": {
+        "type": "object",
+        "description": "Canonical observations useful for finding missing classifier distinctions.",
+        "required": [
+          "sender_shape",
+          "has_list_id",
+          "has_unsubscribe",
+          "auto_generated",
+          "bulk",
+          "templated_sender",
+          "written_to",
+          "body_cached",
+          "recipients",
+          "addressed"
+        ],
+        "properties": {
+          "addressed": {
+            "type": "boolean"
+          },
+          "auto_generated": {
+            "type": "boolean"
+          },
+          "body_cached": {
+            "type": "boolean"
+          },
+          "bulk": {
+            "type": "boolean"
+          },
+          "has_list_id": {
+            "type": "boolean"
+          },
+          "has_unsubscribe": {
+            "type": "boolean"
+          },
+          "recipients": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sender_shape": {
+            "type": "string"
+          },
+          "templated_sender": {
+            "type": "boolean"
+          },
+          "written_to": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AssistActionData": {
+        "type": "string",
+        "description": "What the writing help does with the text. A request without one lets the\ndaemon choose from what is typed.",
+        "enum": [
+          "write",
+          "finish",
+          "polish",
+          "edit_selection"
+        ]
+      },
+      "AssistAdjustData": {
+        "type": "object",
+        "description": "One-line adjustments the user ticked, each a single instruction to the model.",
+        "properties": {
+          "more_formal": {
+            "type": "boolean"
+          },
+          "proofread": {
+            "type": "boolean"
+          },
+          "shorter": {
+            "type": "boolean"
+          },
+          "warmer": {
+            "type": "boolean"
           }
         }
       },
@@ -10159,41 +10908,6 @@
           }
         }
       },
-      "AssistantModelChoiceData": {
-        "type": "object",
-        "description": "One model the assistant can run on.",
-        "required": [
-          "id",
-          "label",
-          "cloud",
-          "available"
-        ],
-        "properties": {
-          "available": {
-            "type": "boolean",
-            "description": "Whether it can be picked now."
-          },
-          "cloud": {
-            "type": "boolean",
-            "description": "True when conversations with it go to a provider off this machine."
-          },
-          "id": {
-            "type": "string",
-            "description": "The model id, as `set` takes it."
-          },
-          "label": {
-            "type": "string",
-            "description": "What a person calls it (\"Claude Haiku 5.5\")."
-          },
-          "unavailable_reason": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Why it can't be picked, with the command that fixes it when there is\none. Set exactly when `available` is false."
-          }
-        }
-      },
       "AssistantModelsData": {
         "type": "object",
         "description": "The models the assistant can be set to, and the one it uses now.",
@@ -10204,7 +10918,7 @@
           "choices": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/AssistantModelChoiceData"
+              "$ref": "#/components/schemas/ModelChoiceData"
             }
           },
           "current": {
@@ -11715,6 +12429,62 @@
           }
         }
       },
+      "ClassifyComparisonData": {
+        "type": "object",
+        "required": [
+          "current_version",
+          "requested_version",
+          "available_versions",
+          "available",
+          "pending_assessments",
+          "compared",
+          "missing_previous_assessments",
+          "changes",
+          "truncated"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "available_versions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClassifyHomeChangeData"
+            }
+          },
+          "compared": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "current_version": {
+            "type": "string"
+          },
+          "missing_previous_assessments": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "pending_assessments": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Missing or stale current assessments excluded from comparison.",
+            "minimum": 0
+          },
+          "requested_version": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
       "ClassifyEvalAskKindData": {
         "type": "object",
         "description": "Precision and recall for one kind of ask.",
@@ -12135,7 +12905,7 @@
           "placed_live": {
             "type": "integer",
             "format": "int32",
-            "description": "Present emails with no arrivals row (history older than 30 days when\nthe account first synced), whose home was worked out live by the same\nrules.",
+            "description": "Legacy field, always zero: historical mail also reads stored assessments.",
             "minimum": 0
           },
           "present": {
@@ -12192,6 +12962,119 @@
             "format": "int32",
             "description": "Pairs with both members present.",
             "minimum": 0
+          }
+        }
+      },
+      "ClassifyFallbackClusterData": {
+        "type": "object",
+        "required": [
+          "facts",
+          "home",
+          "who",
+          "rule",
+          "count",
+          "examples"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageId"
+            }
+          },
+          "facts": {
+            "$ref": "#/components/schemas/AssessmentFacts"
+          },
+          "home": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "who": {
+            "type": "string"
+          }
+        }
+      },
+      "ClassifyHomeChangeData": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "previous_home",
+          "current_home",
+          "deciding_reason"
+        ],
+        "properties": {
+          "current_home": {
+            "type": "string"
+          },
+          "deciding_reason": {
+            "type": "string"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "previous_home": {
+            "type": "string"
+          }
+        }
+      },
+      "ClassifyReportData": {
+        "type": "object",
+        "description": "A bounded local picture of stored home decisions. It never creates assessments.",
+        "required": [
+          "policy_version",
+          "examined",
+          "missing",
+          "stale",
+          "pending_body",
+          "fallback",
+          "truncated",
+          "clusters"
+        ],
+        "properties": {
+          "clusters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClassifyFallbackClusterData"
+            }
+          },
+          "examined": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "fallback": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "missing": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "pending_body": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "policy_version": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Stored rows whose observed inputs changed; awaiting reconciliation.",
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean"
           }
         }
       },
@@ -12322,6 +13205,115 @@
           "expired"
         ]
       },
+      "ComposeApplyBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/compose/apply`.",
+        "required": [
+          "proposal_id",
+          "draft_id"
+        ],
+        "properties": {
+          "draft_id": {
+            "type": "string"
+          },
+          "proposal_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ComposeApplyResponse": {
+        "type": "object",
+        "description": "Answer to `POST /api/v1/mail/compose/apply`.",
+        "required": [
+          "draft_id",
+          "text_hash"
+        ],
+        "properties": {
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "text_hash": {
+            "type": "string",
+            "description": "Hex SHA-256 of the draft's new text region."
+          }
+        }
+      },
+      "ComposeAssistBody": {
+        "type": "object",
+        "description": "Body of `POST /api/v1/mail/compose/assist`: the fields of the daemon's\n`ComposeAssist` request.",
+        "required": [
+          "draft",
+          "text"
+        ],
+        "properties": {
+          "action": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AssistActionData",
+                "description": "Absent: the daemon picks write, finish or edit from the text."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "adjust": {
+            "$ref": "#/components/schemas/AssistAdjustData"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/DraftTargetData",
+            "description": "What the help is for: a stored draft, a reply, a forward or a new message."
+          },
+          "instruction": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional configured model for this draft only."
+          },
+          "revise": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id of the proposal on screen, when revising it: the model is shown\nthat proposal and the instruction is applied to it. `text` stays the\nuser's own text."
+          },
+          "selection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TextRangeData",
+                "description": "A byte range of `text` on character boundaries; the rest is kept as it is."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "The text region of the compose box, without signature or forward header.\nEmpty when nothing is typed."
+          }
+        }
+      },
+      "ComposeAssistResponse": {
+        "type": "object",
+        "description": "Answer to `POST /api/v1/mail/compose/assist`.",
+        "required": [
+          "proposal"
+        ],
+        "properties": {
+          "proposal": {
+            "$ref": "#/components/schemas/ComposeProposalData",
+            "description": "Never touches the draft; accept it by applying `text` or `compose/apply`."
+          }
+        }
+      },
       "ComposeAttachmentChunkResponse": {
         "type": "object",
         "required": [
@@ -12416,6 +13408,17 @@
           "cc": {
             "type": "string"
           },
+          "forward_source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ForwardSource",
+                "description": "Prepared original content and daemon-owned resources for a forward."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "from": {
             "type": "string"
           },
@@ -12467,6 +13470,92 @@
           },
           "severity": {
             "type": "string"
+          }
+        }
+      },
+      "ComposeModelsResponse": {
+        "type": "object",
+        "description": "The models available to the compose writer under its own policy.",
+        "required": [
+          "models"
+        ],
+        "properties": {
+          "models": {
+            "$ref": "#/components/schemas/AssistantModelsData"
+          }
+        }
+      },
+      "ComposeProposalData": {
+        "type": "object",
+        "description": "What the writing help proposes. Nothing changes the draft until the user\naccepts it with `ApplyComposeProposal`.",
+        "required": [
+          "proposal_id",
+          "action",
+          "base",
+          "text",
+          "changes",
+          "gaps",
+          "provenance",
+          "yours_changed",
+          "composer_version"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/AssistActionData"
+          },
+          "base": {
+            "type": "string",
+            "description": "Hex SHA-256 of the request text with trailing blank space ignored: the\ntext region the proposal was written against. Applying refuses when the\ndraft's text region no longer hashes to it."
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TextChangeData"
+            }
+          },
+          "composer_version": {
+            "type": "string",
+            "description": "Version of the rules that checked this proposal."
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GapData"
+            }
+          },
+          "proposal_id": {
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/DraftProvenanceData",
+            "description": "Always filled: the model that answered, where it ran and what it read."
+          },
+          "style_marks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComposeStyleMarkData"
+            },
+            "description": "Additive fields: older peers can ignore or omit them."
+          },
+          "style_score": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "style_version": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "yours_changed": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Positions, from zero, of the user's sentences that the proposal changed\nor dropped. Sentences are the request text split at `.`, `!`, `?` and\nline breaks, with empty ones skipped; case and spacing do not count as a\nchange."
           }
         }
       },
@@ -12530,6 +13619,33 @@
           }
         }
       },
+      "ComposeSessionAudienceRequest": {
+        "type": "object",
+        "required": [
+          "draft_path",
+          "draft_id",
+          "reply_all",
+          "expected_revision"
+        ],
+        "properties": {
+          "draft_id": {
+            "type": "string"
+          },
+          "draft_path": {
+            "type": "string"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reply_all": {
+            "type": "boolean"
+          }
+        }
+      },
       "ComposeSessionData": {
         "type": "object",
         "required": [
@@ -12561,6 +13677,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "draftIntent": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DraftIntent",
+                "description": "Stored intent when reopening a saved draft."
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "draftPath": {
@@ -12852,6 +13979,40 @@
           },
           "to": {
             "type": "string"
+          }
+        }
+      },
+      "ComposeStyleMarkData": {
+        "type": "object",
+        "description": "A deterministic style tell in proposal text. Ranges are UTF-8 byte offsets.",
+        "required": [
+          "pattern",
+          "name",
+          "start",
+          "end",
+          "context"
+        ],
+        "properties": {
+          "context": {
+            "type": "string"
+          },
+          "end": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "start": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -15093,6 +16254,20 @@
           "account_id": {
             "$ref": "#/components/schemas/AccountId"
           },
+          "content_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Original Content-ID of a related forwarded MIME part."
+          },
+          "content_location": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Original MIME location for related parts whose HTML uses a relative URL."
+          },
           "draft_id": {
             "$ref": "#/components/schemas/DraftId"
           },
@@ -15725,7 +16900,8 @@
           "tone_mismatch",
           "answer_coverage",
           "commitment_candidate",
-          "send_time_note"
+          "send_time_note",
+          "unfilled_gap"
         ]
       },
       "DraftSafetyModeData": {
@@ -15815,6 +16991,16 @@
               "null"
             ]
           },
+          "recovery": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SendRecoveryStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "rfc2822_message_id": {
             "type": [
               "string",
@@ -15862,6 +17048,105 @@
             "$ref": "#/components/schemas/ThreadId"
           }
         }
+      },
+      "DraftTargetData": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "draft_id",
+              "kind"
+            ],
+            "properties": {
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "stored"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_id",
+              "all",
+              "kind"
+            ],
+            "properties": {
+              "all": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reply"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message_id",
+              "to",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "forward"
+                ]
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "to": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Address"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "account_id",
+              "to",
+              "subject",
+              "kind"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "new"
+                ]
+              },
+              "subject": {
+                "type": "string"
+              },
+              "to": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Address"
+                }
+              }
+            }
+          }
+        ],
+        "description": "The draft a writing request is about. A stored draft is read from the\ndatabase; the other targets name the thing that does not exist yet, so a\nclient can ask for help before the first save."
       },
       "EntityCandidateData": {
         "type": "object",
@@ -16275,8 +17560,49 @@
           "from": {
             "type": "string"
           },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ForwardSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "subject": {
             "type": "string"
+          }
+        }
+      },
+      "ForwardSource": {
+        "type": "object",
+        "description": "Immutable original content prepared by the daemon for a forward. The editor\nedits only the introduction; original HTML and attachment bytes stay intact.",
+        "required": [
+          "draft_id",
+          "account_id",
+          "message_id",
+          "content",
+          "attachments"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftAttachment"
+            }
+          },
+          "content": {
+            "$ref": "#/components/schemas/DraftContentSchema"
+          },
+          "draft_id": {
+            "$ref": "#/components/schemas/DraftId"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
           }
         }
       },
@@ -16331,6 +17657,31 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "GapData": {
+        "type": "object",
+        "description": "A place the model could not fill, written `[[?: label]]` in the text.",
+        "required": [
+          "label",
+          "start",
+          "end"
+        ],
+        "properties": {
+          "end": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "label": {
+            "type": "string"
+          },
+          "start": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Byte range of the whole marker in the proposal text.",
+            "minimum": 0
           }
         }
       },
@@ -16797,6 +18148,7 @@
         "type": "string",
         "description": "Which rule decided a message's kind, most decisive first. `Decision`\nmeans the user moved the sender; everything else is automatic.",
         "enum": [
+          "fallback",
           "decision",
           "delivery",
           "invite",
@@ -16961,6 +18313,12 @@
           "base_url": {
             "type": "string"
           },
+          "compose_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "context_window": {
             "type": "integer",
             "format": "int32",
@@ -16971,6 +18329,15 @@
           },
           "model": {
             "type": "string"
+          },
+          "models": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
           },
           "overrides": {
             "oneOf": [
@@ -17522,6 +18889,67 @@
           }
         }
       },
+      "MailAssessment": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "account_id",
+          "policy_version",
+          "home",
+          "facts",
+          "who",
+          "deciding",
+          "overridden",
+          "fallback",
+          "pending_body",
+          "input_fingerprint"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "deciding": {
+            "$ref": "#/components/schemas/AssessmentClaim"
+          },
+          "facts": {
+            "$ref": "#/components/schemas/AssessmentFacts"
+          },
+          "fallback": {
+            "type": "boolean"
+          },
+          "home": {
+            "type": "string"
+          },
+          "input_fingerprint": {
+            "type": "string",
+            "description": "Digest of the canonical observed inputs, never mail content."
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "not_sure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "overridden": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentClaim"
+            }
+          },
+          "pending_body": {
+            "type": "boolean"
+          },
+          "policy_version": {
+            "type": "string"
+          },
+          "who": {
+            "type": "string"
+          }
+        }
+      },
       "MailKindData": {
         "type": "object",
         "description": "A message's kind with the reason it was given.",
@@ -17989,7 +19417,7 @@
               "string",
               "null"
             ],
-            "description": "Set when Your turn is empty: the clear line or the never-had-any\nline."
+            "description": "Set when the selected view is empty, with view-specific copy."
           },
           "filter": {
             "$ref": "#/components/schemas/MessagesFilterData",
@@ -18001,14 +19429,14 @@
           },
           "header": {
             "type": "string",
-            "description": "`messages_copy::HEADER`."
+            "description": "The selected view's header (attention or conversation history)."
           },
           "lapsed": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MessagesLapsedData"
             },
-            "description": "Up to three people whose usual pace lapsed, under the clear line."
+            "description": "Legacy field, left empty: clear attention is never filled with idle people."
           },
           "matched": {
             "type": "integer",
@@ -18054,13 +19482,13 @@
           "row_count": {
             "type": "integer",
             "format": "int32",
-            "description": "People and groups in Messages, every band, unfiltered.",
+            "description": "People and groups needing attention, before toggles or list limits.",
             "minimum": 0
           },
           "thread_count": {
             "type": "integer",
             "format": "int32",
-            "description": "Conversations behind them.",
+            "description": "Conversations needing attention, before toggles or list limits.",
             "minimum": 0
           },
           "your_turn": {
@@ -18087,7 +19515,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/MessagesTurnData",
-                "description": "Only rows where it is this side's turn; `None` keeps every turn."
+                "description": "The explicit view; `None` selects only topics needing attention."
               },
               {
                 "type": "null"
@@ -18280,7 +19708,7 @@
           },
           "your_turn": {
             "type": "boolean",
-            "description": "Their latest message to you is unanswered on some topic."
+            "description": "A topic needs attention: an unanswered request or due explicit return."
           }
         }
       },
@@ -18353,8 +19781,9 @@
       },
       "MessagesTurnData": {
         "type": "string",
-        "description": "Only rows where it is this side's turn.",
+        "description": "An explicit Messages view. Omission selects Needs attention.",
         "enum": [
+          "all",
           "mine",
           "theirs"
         ]
@@ -18872,6 +20301,45 @@
               "type": "string"
             },
             "description": "To do: the open rows holding the thread."
+          }
+        }
+      },
+      "ModelChoiceData": {
+        "type": "object",
+        "description": "One model a client can choose.",
+        "required": [
+          "id",
+          "label",
+          "cloud",
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether it can be picked now."
+          },
+          "cloud": {
+            "type": "boolean",
+            "description": "True when conversations with it go to a provider off this machine."
+          },
+          "id": {
+            "type": "string",
+            "description": "The model id, as `set` takes it."
+          },
+          "label": {
+            "type": "string",
+            "description": "What a person calls it (\"Claude Haiku 5.5\")."
+          },
+          "sees": {
+            "type": "string",
+            "description": "The context sent with this choice: the current conversation alone, or\nthe conversation and the user's past mail."
+          },
+          "unavailable_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it can't be picked, with the command that fixes it when there is\none. Set exactly when `available` is false."
           }
         }
       },
@@ -23364,6 +24832,23 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "RecoverSendBody": {
+        "type": "object",
+        "required": [
+          "dry_run"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "expected_evidence_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -28714,6 +30199,96 @@
           },
           {
             "type": "object",
+            "description": "Writing help for the text in a draft's body region: write it, finish\nwhat is typed, polish it or edit a selection. Returns a proposal; the\ndraft is not changed until `ApplyComposeProposal`. A separate command\nfrom `DraftCompose`, so a daemon that predates it rejects it as unknown\ninstead of drafting over the typed text.",
+            "required": [
+              "draft",
+              "text",
+              "cmd"
+            ],
+            "properties": {
+              "action": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AssistActionData"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "adjust": {
+                "$ref": "#/components/schemas/AssistAdjustData"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ComposeAssist"
+                ]
+              },
+              "draft": {
+                "$ref": "#/components/schemas/DraftTargetData"
+              },
+              "instruction": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "A catalogue model for this draft only. Does not change the\npersistent compose default."
+              },
+              "revise": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The id of a proposal to revise. The model is shown that proposal's\ntext and the instruction is applied to it; `text` stays the user's\nown text, which the check and the diff still run against. Absent on\na first request."
+              },
+              "selection": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TextRangeData"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "text": {
+                "type": "string",
+                "description": "The user's text region only: no signature, no forward header."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Accept a proposal: write its text into the stored draft's text region,\nkeeping the signature and forward header, if that region still hashes\nto the proposal's `base`.",
+            "required": [
+              "proposal_id",
+              "draft_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ApplyComposeProposal"
+                ]
+              },
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "proposal_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Replay the user's most recent replies: draft each one from what was\nknown just before they replied, and compare with what they sent.\nCalls the configured LLM once per case; nothing is saved or sent.",
             "required": [
               "limit",
@@ -28760,7 +30335,73 @@
           },
           {
             "type": "object",
-            "description": "Measure today's classifier against labelled scenarios in the stored\nmail: who sent it, which mode it went to, and whether it made a\nto-do or a record. Local; nothing is changed or sent.",
+            "description": "Read stored fallback decisions only. The limit is capped at 10,000.",
+            "required": [
+              "limit",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ClassifyReport"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Compare only versions actually retained in this mailbox.",
+            "required": [
+              "policy_version",
+              "limit",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ClassifyCompare"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "policy_version": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Measure today's classifier against labelled scenarios in stored mail:\nsender, home, asks and records. Local; nothing is changed or sent.",
             "required": [
               "cmd"
             ],
@@ -28802,6 +30443,63 @@
               },
               "message_id": {
                 "$ref": "#/components/schemas/MessageId"
+              },
+              "reply_all": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Create or return the canonical unsent reply draft for this conversation.",
+            "required": [
+              "message_id",
+              "reply_all",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "EnsureReplyDraft"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "message_id": {
+                "$ref": "#/components/schemas/MessageId"
+              },
+              "reply_all": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Change the audience of an existing reply without replacing its content.",
+            "required": [
+              "draft_id",
+              "reply_all",
+              "expected_revision",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetReplyDraftAudience"
+                ]
+              },
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
               },
               "reply_all": {
                 "type": "boolean"
@@ -28875,6 +30573,39 @@
                 "type": "string",
                 "enum": [
                   "GetSendOutcome"
+                ]
+              },
+              "operation_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Resume a historical false-unknown only from matched local gate evidence.",
+            "required": [
+              "account_id",
+              "operation_id",
+              "dry_run",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RecoverSendOutcome"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "expected_evidence_sha256": {
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "operation_id": {
@@ -30351,6 +32082,69 @@
                 "items": {
                   "type": "string"
                 }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Four distinct user corrections. Wrong details requires edits and does\nnot change the row until saved. Quotes are immutable source evidence.",
+            "required": [
+              "todo_id",
+              "reason",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "CorrectTodo"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "edits": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TodoEditData"
+                }
+              },
+              "reason": {
+                "$ref": "#/components/schemas/TodoCorrectionData"
+              },
+              "time_zone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "todo_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "todo_id",
+              "correction_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UndoTodoCorrection"
+                ]
+              },
+              "correction_id": {
+                "type": "string"
+              },
+              "dry_run": {
+                "type": "boolean"
+              },
+              "todo_id": {
+                "type": "string"
               }
             }
           },
@@ -31858,6 +33652,21 @@
                 "type": "string",
                 "enum": [
                   "GetAssistantModels"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The models available to compose under its own routing and privacy policy.\nReturns `ResponseData::ComposeModels`.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetComposeModels"
                 ]
               }
             }
@@ -34214,6 +36023,48 @@
           },
           {
             "type": "object",
+            "description": "Returned by `Request::ComposeAssist`.",
+            "required": [
+              "proposal",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ComposeProposal"
+                ]
+              },
+              "proposal": {
+                "$ref": "#/components/schemas/ComposeProposalData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::ApplyComposeProposal`: the stored draft now holds\nthe proposal; `text_hash` is the hex SHA-256 of its new text region.",
+            "required": [
+              "draft_id",
+              "text_hash",
+              "kind"
+            ],
+            "properties": {
+              "draft_id": {
+                "$ref": "#/components/schemas/DraftId"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ComposeApplied"
+                ]
+              },
+              "text_hash": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Returned by `Request::DraftEvalQuick`: the labelled synthetic corpus\nonly, never the user's mail.",
             "required": [
               "cases",
@@ -34241,6 +36092,42 @@
           {
             "type": "object",
             "description": "Returned by `Request::ClassifyEval`. Mismatches are sorted by\nscenario, then provider id, then question.",
+            "required": [
+              "report",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ClassifyReport"
+                ]
+              },
+              "report": {
+                "$ref": "#/components/schemas/ClassifyReportData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "comparison",
+              "kind"
+            ],
+            "properties": {
+              "comparison": {
+                "$ref": "#/components/schemas/ClassifyComparisonData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ClassifyCompare"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "summary",
               "mismatches",
@@ -35412,6 +37299,38 @@
                     "type": "null"
                   }
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "outcome",
+              "recoverable",
+              "reason",
+              "kind"
+            ],
+            "properties": {
+              "evidence_sha256": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SendRecoveryPreview"
+                ]
+              },
+              "outcome": {
+                "$ref": "#/components/schemas/DraftSendOutcome"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "recoverable": {
+                "type": "boolean"
               }
             }
           },
@@ -37206,6 +39125,25 @@
           },
           {
             "type": "object",
+            "description": "Returned by `Request::GetComposeModels`.",
+            "required": [
+              "models",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ComposeModels"
+                ]
+              },
+              "models": {
+                "$ref": "#/components/schemas/AssistantModelsData"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Returned by `Request::SetAssistantModel`.",
             "required": [
               "change",
@@ -37432,6 +39370,17 @@
             "properties": {
               "account_id": {
                 "$ref": "#/components/schemas/AccountId"
+              },
+              "assessment": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/MailAssessment",
+                    "description": "The exact stored home decision; absent for outbound context mail."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "kind": {
                 "type": "string",
@@ -38786,7 +40735,52 @@
         "enum": [
           "unknown",
           "accepted",
-          "not_accepted"
+          "not_accepted",
+          "waiting"
+        ]
+      },
+      "SendRecoveryStatus": {
+        "type": "object",
+        "required": [
+          "phase",
+          "attempts"
+        ],
+        "properties": {
+          "attempts": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "phase": {
+            "$ref": "#/components/schemas/SendSubmissionPhase"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable diagnostic code; never message bodies, addresses or credentials."
+          },
+          "retry_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "SendSubmissionPhase": {
+        "type": "string",
+        "description": "The last boundary for which the adapter has positive evidence.",
+        "enum": [
+          "preparation",
+          "cooldown",
+          "authentication",
+          "thread_resolution",
+          "dispatch",
+          "provider_response",
+          "accepted"
         ]
       },
       "SendTimeConfidenceData": {
@@ -39829,6 +41823,30 @@
           }
         }
       },
+      "TextChangeData": {
+        "type": "object",
+        "description": "One run of a word-level diff from the user's text to the proposal.",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TextChangeKindData"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "TextChangeKindData": {
+        "type": "string",
+        "enum": [
+          "kept",
+          "added",
+          "removed"
+        ]
+      },
       "TextPlainFormat": {
         "oneOf": [
           {
@@ -39857,6 +41875,26 @@
             }
           }
         ]
+      },
+      "TextRangeData": {
+        "type": "object",
+        "description": "A byte range into the request's `text`; both ends fall on char boundaries.",
+        "required": [
+          "start",
+          "end"
+        ],
+        "properties": {
+          "end": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "start": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
       },
       "Thread": {
         "type": "object",
@@ -40275,6 +42313,31 @@
         "properties": {
           "account_id": {
             "$ref": "#/components/schemas/AccountId"
+          },
+          "asks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AskSummary"
+            },
+            "description": "The independently versioned asks facet includes sent mail as well as received mail."
+          },
+          "asks_more": {
+            "type": "boolean",
+            "description": "Additional stored asks can be inspected through their source messages."
+          },
+          "asks_pending": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageId"
+            },
+            "description": "Missing or invalidated asks are pending; readers never invent a replacement."
+          },
+          "assessments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MailAssessment"
+            },
+            "description": "The stored answers behind this thread's memberships; live marks stay separate."
           },
           "done_in": {
             "type": "array",
@@ -40849,6 +42912,13 @@
             },
             "description": "The rows as they are (or would be) after the change."
           },
+          "correction_undo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque token for one-step correction undo; never inferred by a client."
+          },
           "dry_run": {
             "type": "boolean"
           },
@@ -40862,6 +42932,55 @@
               "type": "string"
             },
             "description": "Ids that matched but were not in a state this change applies to."
+          }
+        }
+      },
+      "TodoCorrectionBody": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "edits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoEditData"
+            }
+          },
+          "reason": {
+            "$ref": "#/components/schemas/TodoCorrectionData"
+          },
+          "time_zone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TodoCorrectionData": {
+        "type": "string",
+        "enum": [
+          "not_a_todo",
+          "not_mine",
+          "already_done",
+          "wrong_details"
+        ]
+      },
+      "TodoCorrectionUndoBody": {
+        "type": "object",
+        "required": [
+          "correction_id"
+        ],
+        "properties": {
+          "correction_id": {
+            "type": "string"
+          },
+          "dry_run": {
+            "type": "boolean"
           }
         }
       },
@@ -41494,6 +43613,13 @@
             },
             "description": "Dated, showing up after 30 days."
           },
+          "might_need_you": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoUncertainData"
+            },
+            "description": "Eligible ask uncertainty only; collapsed by clients and never a Now task."
+          },
           "next_surface": {
             "oneOf": [
               {
@@ -41583,6 +43709,25 @@
           "dismissed",
           "expired"
         ]
+      },
+      "TodoUncertainData": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "subject",
+          "asks"
+        ],
+        "properties": {
+          "asks": {
+            "$ref": "#/components/schemas/AskSummary"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
       },
       "TodoWeekData": {
         "type": "object",

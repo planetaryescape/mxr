@@ -81,6 +81,7 @@ pub fn draw_arrivals_list(
         |bucket| match (bucket.mode(), bucket) {
             (Some(mode), _) => format!("Arrived in {}", mode.name()),
             (None, mxr_protocol::ArrivalBucketData::Spam) => "In Spam".to_string(),
+            (None, mxr_protocol::ArrivalBucketData::Trash) => "In Trash".to_string(),
             (None, mxr_protocol::ArrivalBucketData::ScreenedOut) => "Screened out".to_string(),
             (None, _) => "Still sorting".to_string(),
         },

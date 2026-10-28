@@ -398,6 +398,7 @@ async fn unchanged_editor_result_disables_send_actions() {
     std::fs::write(&temp, content).unwrap();
 
     let pending = pending_send_from_edited_draft(&ComposeReadyData {
+        draft_revision: None,
         account_id: AccountId::new(),
         intent: mxr_core::DraftIntent::New,
         draft_path: temp.clone(),
@@ -417,6 +418,7 @@ async fn unchanged_editor_result_disables_send_actions() {
 fn send_key_is_ignored_for_unchanged_draft_confirmation() {
     let mut app = App::new();
     app.compose.pending_send_confirm = Some(PendingSend {
+        draft_revision: None,
         account_id: AccountId::new(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: "a@example.com".into(),
@@ -430,6 +432,7 @@ fn send_key_is_ignored_for_unchanged_draft_confirmation() {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "Body".into(),
         draft_path: std::path::PathBuf::from("/tmp/draft.md"),
@@ -463,6 +466,7 @@ fn send_key_uses_pending_compose_account() {
     app.mailbox.envelopes = make_test_envelopes(1);
     app.mailbox.envelopes[0].account_id = other_account_id;
     app.compose.pending_send_confirm = Some(PendingSend {
+        draft_revision: None,
         account_id: pending_account_id.clone(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: "a@example.com".into(),
@@ -476,6 +480,7 @@ fn send_key_uses_pending_compose_account() {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "Body".into(),
         draft_path: std::path::PathBuf::from("/tmp/draft.md"),
@@ -508,6 +513,7 @@ fn send_at_prompt_saves_draft_then_schedules_send() {
     let mut app = App::new();
     let pending_account_id = AccountId::new();
     app.compose.pending_send_confirm = Some(PendingSend {
+        draft_revision: None,
         account_id: pending_account_id.clone(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: "a@example.com".into(),
@@ -521,6 +527,7 @@ fn send_at_prompt_saves_draft_then_schedules_send() {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "Body".into(),
         draft_path: std::path::PathBuf::from("/tmp/scheduled-draft.md"),
@@ -576,6 +583,7 @@ fn remind_prompt_sends_draft_with_pending_reminder_time() {
     let mut app = App::new();
     let pending_account_id = AccountId::new();
     app.compose.pending_send_confirm = Some(PendingSend {
+        draft_revision: None,
         account_id: pending_account_id.clone(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: "a@example.com".into(),
@@ -589,6 +597,7 @@ fn remind_prompt_sends_draft_with_pending_reminder_time() {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "Body".into(),
         draft_path: std::path::PathBuf::from("/tmp/reminder-draft.md"),
@@ -1296,6 +1305,7 @@ async fn blank_recipient_draft_opens_draft_only_confirmation() {
     std::fs::write(&temp, content).unwrap();
 
     let pending = pending_send_from_edited_draft(&ComposeReadyData {
+        draft_revision: None,
         account_id: AccountId::new(),
         intent: mxr_core::DraftIntent::New,
         draft_path: temp.clone(),
@@ -1315,6 +1325,7 @@ async fn blank_recipient_draft_opens_draft_only_confirmation() {
 fn send_key_is_ignored_for_missing_recipient_draft_confirmation() {
     let mut app = App::new();
     app.compose.pending_send_confirm = Some(PendingSend {
+        draft_revision: None,
         account_id: AccountId::new(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: String::new(),
@@ -1328,6 +1339,7 @@ fn send_key_is_ignored_for_missing_recipient_draft_confirmation() {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "Body".into(),
         draft_path: std::path::PathBuf::from("/tmp/draft.md"),
@@ -1358,6 +1370,7 @@ fn save_key_saves_missing_recipient_draft_to_server() {
     let mut app = App::new();
     app.mailbox.all_envelopes = make_test_envelopes(1);
     app.compose.pending_send_confirm = Some(PendingSend {
+        draft_revision: None,
         account_id: AccountId::new(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: String::new(),
@@ -1371,6 +1384,7 @@ fn save_key_saves_missing_recipient_draft_to_server() {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "Body".into(),
         draft_path: std::path::PathBuf::from("/tmp/draft.md"),
@@ -1407,6 +1421,7 @@ fn edit_key_reopens_missing_recipient_draft() {
     let mut app = App::new();
     let account_id = AccountId::new();
     app.compose.pending_send_confirm = Some(PendingSend {
+        draft_revision: None,
         account_id: account_id.clone(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: String::new(),
@@ -1420,6 +1435,7 @@ fn edit_key_reopens_missing_recipient_draft() {
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "Body".into(),
         draft_path: temp.clone(),
@@ -1449,6 +1465,7 @@ fn edit_key_reopens_missing_recipient_draft() {
 
 fn missing_recipient_confirm(draft_path: std::path::PathBuf, account_id: AccountId) -> PendingSend {
     PendingSend {
+        draft_revision: None,
         account_id,
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: String::new(),
@@ -1462,6 +1479,7 @@ fn missing_recipient_confirm(draft_path: std::path::PathBuf, account_id: Account
             thread_id: None,
             attach: vec![],
             signature: None,
+            forward_source: None,
         },
         body: "Body".into(),
         draft_path,

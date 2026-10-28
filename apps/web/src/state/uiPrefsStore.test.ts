@@ -29,6 +29,18 @@ describe("compose editor preference", () => {
     await useUiPrefs.persist.rehydrate();
     expect(useUiPrefs.getState().composeEditor).toBe("tiptap");
   });
+
+  test("a draft can keep its editor without changing the Settings default", () => {
+    const previous = useUiPrefs.getState().composeEditor;
+    try {
+      useUiPrefs.getState().setComposeEditorForDraft("reply:m1", "tiptap");
+      expect(useUiPrefs.getState().composeEditor).toBe(previous);
+      expect(useUiPrefs.getState().composeEditorByDraft["reply:m1"]).toBe("tiptap");
+      expect(useUiPrefs.getState().composeEditorByDraft["reply:m2"]).toBeUndefined();
+    } finally {
+      useUiPrefs.setState({ composeEditor: previous, composeEditorByDraft: {} });
+    }
+  });
 });
 
 describe("theme preference", () => {

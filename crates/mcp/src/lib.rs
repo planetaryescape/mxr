@@ -156,6 +156,36 @@ impl MxrMcpServer {
         }
     }
 
+    /// The message a reply to this thread answers: the newest one somebody
+    /// else sent, else the newest message.
+    async fn reply_target(&self, thread_id: &str) -> Result<MessageId, ErrorData> {
+        let response = self
+            .requester
+            .request(Request::GetThread {
+                thread_id: parse_id(thread_id)?,
+            })
+            .await
+            .map_err(mcp_error)?;
+        let Response::Ok {
+            data: ResponseData::Thread { messages, .. },
+        } = response
+        else {
+            return response_to_json(response).and_then(|_| {
+                Err(ErrorData::internal_error(
+                    "daemon did not return the thread".to_string(),
+                    None,
+                ))
+            });
+        };
+        messages
+            .iter()
+            .filter(|message| !message.flags.contains(mxr_core::MessageFlags::SENT))
+            .max_by_key(|message| message.date)
+            .or_else(|| messages.iter().max_by_key(|message| message.date))
+            .map(|message| message.id.clone())
+            .ok_or_else(|| ErrorData::invalid_params("that thread has no messages", None))
+    }
+
     async fn daemon_json(&self, request: Request) -> Result<McpJson<Value>, ErrorData> {
         let response = self.requester.request(request).await.map_err(mcp_error)?;
         response_to_json(response).map(McpJson)
@@ -1155,6 +1185,20 @@ impl MxrMcpServer {
     }
 
     #[tool(
+        name = "mxr_why",
+        description = "Read an email's stored home, deciding claim, evidence, overridden claims and uncertainty. Local only; no full body is returned."
+    )]
+    pub async fn why(
+        &self,
+        Parameters(input): Parameters<WhyInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::GetMessageKind {
+            message_id: parse_id::<MessageId>(&input.message_id)?,
+        })
+        .await
+    }
+
+    #[tool(
         name = "mxr_read_thread",
         description = "Read a thread summary/envelopes. This does not return full bodies."
     )]
@@ -1367,6 +1411,54 @@ impl MxrMcpServer {
     }
 
     #[tool(
+        name = "mxr_todo_correct",
+        description = "Record not_a_todo, not_mine, already_done, or saved wrong_details edits. Defaults to preview. The returned correction_undo token safely undoes this exact change."
+    )]
+    pub async fn todo_correct(
+        &self,
+        Parameters(input): Parameters<todo::TodoCorrectionInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let reason = match input.reason.as_str() {
+            "not_a_todo" => mxr_protocol::TodoCorrectionData::NotATodo,
+            "not_mine" => mxr_protocol::TodoCorrectionData::NotMine,
+            "already_done" => mxr_protocol::TodoCorrectionData::AlreadyDone,
+            "wrong_details" => mxr_protocol::TodoCorrectionData::WrongDetails,
+            _ => return Err(ErrorData::invalid_params("Unknown correction reason", None)),
+        };
+        self.daemon_json(Request::CorrectTodo {
+            time_zone: None,
+            todo_id: input.todo_id,
+            reason,
+            edits: input
+                .edits
+                .into_iter()
+                .map(|e| mxr_protocol::TodoEditData {
+                    field: e.field,
+                    value: e.value,
+                })
+                .collect(),
+            dry_run: !input.confirm,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_todo_undo_correction",
+        description = "Undo one exact correction token. Defaults to preview; rejects changes made after the correction."
+    )]
+    pub async fn todo_undo_correction(
+        &self,
+        Parameters(input): Parameters<todo::TodoCorrectionUndoInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::UndoTodoCorrection {
+            todo_id: input.todo_id,
+            correction_id: input.correction_id,
+            dry_run: !input.confirm,
+        })
+        .await
+    }
+
+    #[tool(
         name = "mxr_todo_resolve",
         description = "Review an evidenced later email for one to-do. Without confirm=true returns a read-only preview; confirm the named accept, dismiss or undo action to apply it."
     )]
@@ -1422,6 +1514,21 @@ impl MxrMcpServer {
             filter,
             attachments_dir: None,
             dry_run: true,
+        })
+        .await
+    }
+
+    #[tool(
+        name = "mxr_classify_report",
+        description = "Count stored fallback classifications by home, sender kind and deciding rule. Bounded, account scoped, read-only; never creates or repairs assessments."
+    )]
+    pub async fn classify_report(
+        &self,
+        Parameters(input): Parameters<ArrivalsInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        self.daemon_json(Request::ClassifyReport {
+            account_id: parse_optional_id(input.account_id)?,
+            limit: 1000,
         })
         .await
     }
@@ -1718,20 +1825,28 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_draft_assist",
-        description = "Generate a draft reply suggestion for a thread through the daemon LLM/draft-assist workflow. It is never sent automatically."
+        description = "Writing help for a reply to a thread, through the daemon's compose pipeline. With no `text` it writes the reply from the conversation and your instruction; with `text` (what the user has typed so far) it finishes it, keeping their sentences and adding what the reply still needs. Unknowns come back as [[?: ...]] gaps and a draft with a gap can't be sent. Returns a proposal and changes nothing; it is never sent automatically."
     )]
     pub async fn draft_assist(
         &self,
         Parameters(input): Parameters<DraftAssistInput>,
     ) -> Result<McpJson<Value>, ErrorData> {
-        self.daemon_json(Request::DraftCompose {
-            account_id: None,
-            to: None,
-            instruction: input.instruction,
-            source_message_id: None,
-            thread_id: Some(parse_id(&input.thread_id)?),
-            register: None,
-            length_hint: None,
+        let message_id = match input.message_id {
+            Some(message_id) => parse_id(&message_id)?,
+            None => self.reply_target(&input.thread_id).await?,
+        };
+        self.daemon_json(Request::ComposeAssist {
+            draft: mxr_protocol::DraftTargetData::Reply {
+                message_id,
+                all: false,
+            },
+            text: input.text.unwrap_or_default(),
+            selection: None,
+            action: None,
+            instruction: Some(input.instruction),
+            adjust: mxr_protocol::AssistAdjustData::default(),
+            model: input.model,
+            revise: input.revise,
         })
         .await
     }
@@ -1978,7 +2093,7 @@ impl MxrMcpServer {
 
     #[tool(
         name = "mxr_messages",
-        description = "Messages: people the user talks with, one row each, in four bands (your_turn, pinned, recent, quiet). Each row is a person merged across their addresses (or a group thread), with its topics (threads), whose turn it is, the user's usual pace, and a preview: the verbatim ask from a cached gist, else the latest new text (quotes and signature removed). turn: 'mine' or 'theirs'. unread: only rows with unread mail from them. past_pace: only rows where your turn has run past the usual pace. Filters narrow the rows; counts stay unfiltered. Read-only."
+        description = "Messages defaults to conversations needing attention: unanswered directed requests and due explicit reminders. Only actionable topics appear in each person's row (or a group thread). Omit turn for Needs attention; turn: 'all' explicitly includes archived and sent-only conversation history, 'mine' is your turn, 'theirs' is waiting on them. unread and past_pace narrow the selected view. Counts describe attention, not stored history. Read-only."
     )]
     pub async fn messages(
         &self,
@@ -2166,6 +2281,27 @@ impl MxrMcpServer {
         )
         .await
     }
+
+    #[tool(
+        name = "mxr_recover_send_outcome",
+        description = "Preview historical Gmail cooldown evidence, or resume the SAME approved operation with its preview evidence fingerprint. Never override genuine uncertainty; preview first."
+    )]
+    pub async fn recover_send_outcome(
+        &self,
+        Parameters(input): Parameters<RecoverSendOutcomeInput>,
+    ) -> Result<McpJson<Value>, ErrorData> {
+        let owner = retained_owner(input.expected_workspace, &Value::Null)?;
+        self.daemon_json_owned(
+            Request::RecoverSendOutcome {
+                account_id: parse_id(&input.account_id)?,
+                operation_id: input.operation_id,
+                dry_run: input.dry_run,
+                expected_evidence_sha256: input.expected_evidence_sha256,
+            },
+            owner,
+        )
+        .await
+    }
 }
 
 pub async fn serve_stdio() -> anyhow::Result<()> {
@@ -2323,6 +2459,11 @@ pub struct AttachmentChunkInput {
 pub struct ReadMessageInput {
     pub message_id: String,
     pub include_body: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WhyInput {
+    pub message_id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -2575,7 +2716,7 @@ pub struct CorrectionsInput {
 pub struct MessagesInput {
     #[serde(default)]
     pub account_id: Option<String>,
-    /// Only rows where it is this side's turn: mine or theirs.
+    /// Omit for Needs attention; all includes history, mine/theirs select a side.
     #[serde(default)]
     pub turn: Option<TurnInput>,
     /// Only rows with unread mail from them.
@@ -2592,6 +2733,7 @@ pub struct MessagesInput {
 #[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnInput {
+    All,
     Mine,
     Theirs,
 }
@@ -2614,6 +2756,7 @@ fn messages_request(input: MessagesInput) -> Result<Request, ErrorData> {
 impl From<TurnInput> for mxr_protocol::MessagesTurnData {
     fn from(turn: TurnInput) -> Self {
         match turn {
+            TurnInput::All => Self::All,
             TurnInput::Mine => Self::Mine,
             TurnInput::Theirs => Self::Theirs,
         }
@@ -2667,7 +2810,18 @@ pub struct UpdatesLetGoPreviewInput {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DraftAssistInput {
     pub thread_id: String,
+    /// Reply to this message of the thread; default is the newest one somebody
+    /// else sent.
+    pub message_id: Option<String>,
     pub instruction: String,
+    /// What the user has typed of the reply so far, signature excluded. Omit
+    /// to have the reply written from scratch.
+    pub text: Option<String>,
+    /// The id of an earlier proposal to revise: the instruction is applied to
+    /// that proposal. `text` stays the user's own text.
+    pub revise: Option<String>,
+    /// Configured model to use for this draft only.
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -2731,6 +2885,15 @@ pub struct SendOutcomeInput {
     pub expected_workspace: Option<serde_json::Value>,
     pub account_id: String,
     pub operation_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RecoverSendOutcomeInput {
+    pub account_id: String,
+    pub operation_id: String,
+    pub expected_workspace: Option<serde_json::Value>,
+    pub dry_run: bool,
+    pub expected_evidence_sha256: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -2800,6 +2963,12 @@ mod tests {
             panic!("expected a ListMessages request");
         };
         assert_eq!(filter, mxr_protocol::MessagesFilterData::default());
+
+        let input: MessagesInput = serde_json::from_value(json!({ "turn": "all" })).unwrap();
+        let Ok(Request::ListMessages { filter, .. }) = messages_request(input) else {
+            panic!("expected a ListMessages request");
+        };
+        assert_eq!(filter.turn, Some(mxr_protocol::MessagesTurnData::All));
     }
 
     #[test]
@@ -3044,6 +3213,128 @@ mod tests {
         assert_eq!(item["flags"], "READ");
         assert_eq!(item["has_attachments"], false);
         assert_eq!(item["message_id"], json!(message_id));
+    }
+
+    #[tokio::test]
+    async fn draft_assist_asks_for_a_proposal_with_what_the_user_typed() {
+        let requester = Arc::new(FakeRequester::default());
+        let server = MxrMcpServer::from_requester(requester.clone());
+        let message_id = MessageId::new();
+        server
+            .draft_assist(Parameters(DraftAssistInput {
+                thread_id: ThreadId::new().as_str(),
+                message_id: Some(message_id.as_str()),
+                instruction: "mention the invoice".into(),
+                text: Some("Thursday works.".into()),
+                revise: Some("proposal-7".into()),
+                model: Some("gpt-6-luna".into()),
+            }))
+            .await
+            .expect("draft assist");
+        let requests = requester.requests.lock().expect("requests lock");
+        let [Request::ComposeAssist {
+            draft:
+                mxr_protocol::DraftTargetData::Reply {
+                    message_id: target,
+                    all,
+                },
+            text,
+            action,
+            instruction,
+            model,
+            revise,
+            ..
+        }] = requests.as_slice()
+        else {
+            unreachable!("expected one ComposeAssist, got {requests:?}");
+        };
+        assert_eq!(target, &message_id);
+        assert!(!all);
+        assert_eq!(text, "Thursday works.");
+        assert!(
+            action.is_none(),
+            "the daemon picks the action from the text"
+        );
+        assert_eq!(instruction.as_deref(), Some("mention the invoice"));
+        assert_eq!(model.as_deref(), Some("gpt-6-luna"));
+        assert_eq!(revise.as_deref(), Some("proposal-7"));
+    }
+
+    #[tokio::test]
+    async fn draft_assist_without_text_writes_the_reply_to_the_threads_newest_inbound_message() {
+        #[derive(Debug)]
+        struct ThreadRequester {
+            older: MessageId,
+            newest_inbound: MessageId,
+            my_reply: MessageId,
+            asked: Mutex<Vec<Request>>,
+        }
+        #[async_trait]
+        impl DaemonRequester for ThreadRequester {
+            async fn request(&self, request: Request) -> anyhow::Result<Response> {
+                self.asked.lock().expect("asked lock").push(request.clone());
+                let envelope = |id: &MessageId, date: &str, flags: &str| {
+                    serde_json::from_value(json!({
+                        "id": id, "account_id": AccountId::new(), "provider_id": "p",
+                        "thread_id": ThreadId::new(), "message_id_header": null,
+                        "in_reply_to": null, "references": [],
+                        "from": {"name": null, "email": "a@b.c"},
+                        "to": [], "cc": [], "bcc": [], "subject": "s",
+                        "date": date, "flags": flags, "snippet": "",
+                        "has_attachments": false, "size_bytes": 1, "unsubscribe": "None",
+                    }))
+                    .expect("fixture envelope")
+                };
+                let data = match request {
+                    Request::GetThread { .. } => ResponseData::Thread {
+                        thread: serde_json::from_value(json!({
+                            "id": ThreadId::new(), "account_id": AccountId::new(),
+                            "subject": "s", "participants": [], "message_count": 3,
+                            "unread_count": 0, "latest_date": "2026-10-03T09:00:00Z",
+                            "snippet": "",
+                        }))
+                        .expect("fixture thread"),
+                        messages: vec![
+                            envelope(&self.older, "2026-10-01T09:00:00Z", "READ"),
+                            envelope(&self.newest_inbound, "2026-10-02T09:00:00Z", "READ"),
+                            envelope(&self.my_reply, "2026-10-03T09:00:00Z", "READ | SENT"),
+                        ],
+                        summary: None,
+                    },
+                    _ => ResponseData::Pong,
+                };
+                Ok(Response::Ok { data })
+            }
+        }
+        let requester = Arc::new(ThreadRequester {
+            older: MessageId::new(),
+            newest_inbound: MessageId::new(),
+            my_reply: MessageId::new(),
+            asked: Mutex::default(),
+        });
+        let server = MxrMcpServer::from_requester(requester.clone());
+        server
+            .draft_assist(Parameters(DraftAssistInput {
+                thread_id: ThreadId::new().as_str(),
+                message_id: None,
+                instruction: "decline politely".into(),
+                text: None,
+                revise: None,
+                model: None,
+            }))
+            .await
+            .expect("draft assist");
+        let asked = requester.asked.lock().expect("asked lock");
+        let Some(Request::ComposeAssist {
+            draft: mxr_protocol::DraftTargetData::Reply { message_id, .. },
+            text,
+            ..
+        }) = asked.last()
+        else {
+            unreachable!("expected ComposeAssist last, got {asked:?}");
+        };
+        assert_eq!(message_id, &requester.newest_inbound, "not my own reply");
+        assert!(text.is_empty(), "nothing typed means write");
     }
 
     #[tokio::test]

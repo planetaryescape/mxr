@@ -1,0 +1,27 @@
+# The final discovery and recording changes are live
+
+Verified 23 October 2026. [PR #697](https://github.com/planetaryescape/mxr/pull/697) merged at 21:38:40 UTC as `a9b1346f763e7f43a1ece10f50c63b74140f0f12`. Its tree `d597df64d751b6e440638ee8bfff78a2054f5bb8` exactly matches reviewed head `6a759c8f2a9de47d9c012a29abeb4f2adfeb7ce0`. The existing admin authority was used with BK as sole author and a footer-free squash body. GitHub is the server-side committer.
+
+Existing Vercel project `mxr-mail` reports READY production deployment `dpl_J55WdAWXYuNPtbvmxZWhma1hd97u`, [deployment](https://mxr-mail-e9nne3xji-planetaryescape.vercel.app), at that SHA, aliased to `mxr.sh` and `www.mxr.sh`. Build logs ran from 21:38:44.979 to deployment completion at 21:41:29.229 UTC, about 2 minutes 44 seconds. A bounded 45-second wait initially ended while building. No redeploy or hosting settings change was needed. Prior rung-4 deployment `dpl_9FiyNp3EVVLEhh9SMMEADbi1FWzY` remains a recovery reference; use the existing project for a promotion or reviewed forward fix.
+
+## The public entry paths reach the same runtime
+
+Root refreshed the actual [homepage](https://mxr.sh/) and opened it in Dia. The approved category and headline, local mailbox ownership, daemon reuse and install command are present. Its agent CTA reached the existing-agent tutorial with demo setup, draft-only authority, closed send configuration and a human Drafts handoff. Its human CTA reached Your day, with Now and all five modes. The Examples chooser reached the account-scoped recipe with explicit candidate limits, READ-state and old-fixture boundaries.
+
+All 81 authored routes returned 200. All 80 non-home routes appear in sidebar navigation. The public check found no broken targets among 1,822 authored internal route/anchor occurrences or 46 curated machine-readable links. The final first-sync qualification appears in both Markdown and the full corpus. Canonical metadata points to mxr.sh. Privacy, Terms, robots, sitemap, social PNG, homepage Markdown and generated subscription reference returned 200; an unknown route returned 404. The preview also checked both retained meta-refresh redirects, 208 sitemap locations without internal planning/research paths, and the useful Back to docs recovery link. Footer links retain Privacy, Terms, Security and privacy, and GitHub.
+
+The public gallery has 14 recordings with controls, posters and readable notes. Native Enter opened a recording's notes. The selected first video played to 0.252156 seconds with readyState 4 and no media error, then was paused. The incomplete analytics capture is absent from the gallery; all 15 original media pairs remain. [Media evidence](rung5-media-implementation.md) records frame/tape inspection and the no-audio checks. A montage is described as edited recordings, and READ state is distinguished from actual opens.
+
+## Checks passed on the final source
+
+Docs Build, Secret Scan and Release Gate Scripts passed on `6a759c8f`. The CI log records the locked install with zero reported vulnerabilities, unchanged audit policy, 10 script tests, 265 OpenAPI paths, 209 pages and 205 Markdown siblings. CI generated the OpenAPI artifact; this is not full endpoint conformance. Six protected Rust checks were docs-only skips. The source-verified `--wait` review finding was fixed and resolved; both review bots acknowledged it. The generic docstring warning did not identify a changed executable function requiring documentation. No additional independent review was required under BK's waiver.
+
+The release-please workflow succeeded on merged main. Latest published binary release remains v0.6.159 at `e98f499f8bf9072077a693e3e72d23528fe24fa2`; `crates/`, Cargo manifests/lock and `apps/web` match that tag at the website merge. No binary release or manual tag was created for website-only work.
+
+Actual browser viewport/document widths were 1280px. Earlier 390px dark/light checks used compiled CSS and static captures; interactive phone rendering remains unobserved. S2 and S3 are separate synthetic v0.6.156 observations, and S3 is deterministic MCP replay with the actual web client. A live Codex-host/model run, three-person comprehension study and conversion improvement remain unobserved. No real mail was accessed.
+
+## The final stage retains its source and evidence
+
+Final-stage committed parent was recorded at 20:55:40 UTC, the initial reviewed root candidate at 21:19:41, the narrow review correction at 21:34:33 and merge at 21:38:40. Parent to merge was 43 minutes; merge to production completion was about 3 minutes. These are wall-clock checkpoints, not measurements of agent labor or BK attention. The largest observed execution delay in final CI was OpenAPI generation, about 95 seconds before the 5-second Astro build; local memory pressure also prevented a root combined build from starting. Remote CI and preview supplied the final combined verification.
+
+All known owned preview PIDs are stopped, and there is no active child or owned queue job. Root dependencies/build output remain 460736/48432 KiB; final discovery worker 460740/48436 KiB; media worker 460736/48440 KiB. Worktrees, caches, fixtures, source, original media and private QA are retained without deletion authorization. PR #697 is linked and unwatched. The internal closeout changes only these completion records; its site and runtime trees must stay equal to this deployed source.

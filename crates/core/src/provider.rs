@@ -167,6 +167,22 @@ pub trait MailSendProvider: Send + Sync {
             .map_err(SendFailure::Unknown)
     }
 
+    /// Positive evidence of provider acceptance only. An empty search is not
+    /// evidence of rejection and must never authorize resubmission.
+    async fn reconcile_send(
+        &self,
+        _rfc2822_message_id: &str,
+        _from: &Address,
+    ) -> Result<Option<SendReceipt>> {
+        Ok(None)
+    }
+
+    /// Recognize only an old, adapter-specific local cooldown diagnostic that
+    /// proves dispatch never started. Generic rate limits/timeouts are not proof.
+    fn legacy_cooldown_retry_after_secs(&self, _diagnostic: &str) -> Option<u64> {
+        None
+    }
+
     async fn send_calendar_reply(
         &self,
         _reply: &CalendarReplyMessage,
@@ -227,6 +243,21 @@ pub trait MailSendProvider: Send + Sync {
 pub enum SendFailure {
     NotAccepted(MxrError),
     Unknown(MxrError),
+    NotSubmitted {
+        phase: crate::SendSubmissionPhase,
+        retry_after_secs: Option<u64>,
+        error: MxrError,
+    },
+}
+
+impl SendFailure {
+    pub fn into_error(self) -> MxrError {
+        match self {
+            Self::NotAccepted(error) | Self::Unknown(error) | Self::NotSubmitted { error, .. } => {
+                error
+            }
+        }
+    }
 }
 
 #[derive(Debug)]

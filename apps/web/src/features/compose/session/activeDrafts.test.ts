@@ -23,6 +23,7 @@ function draft(): ComposeDraftState {
     rawContent: "",
     issues: [],
     kind: "new",
+    draftIntent: "forward",
     binding: {
       target: "http://127.0.0.1:7777",
       workspace: { workspace_id: "owner-a", recovery_generation: "generation-a" },
@@ -47,6 +48,7 @@ test("reload retains actual private text and original owner without contacting a
   expect(rememberActiveDraft(intent.key, original)).toBe(true);
   const loaded = await loadInitialComposeSession(intent);
   expect(loaded.session.bodyMarkdown).toBe(original.bodyMarkdown);
+  expect(loaded.session.draftIntent).toBe("forward");
   expect(loaded.session.binding).toEqual(original.binding);
   expect(loaded.session.frontmatter.attach).toEqual(original.frontmatter.attach);
   expect(loaded.retainedSnapshot).toBe(true);
@@ -79,6 +81,65 @@ test("storage failure reports unsuccessful retention without erasing editor text
   });
   expect(rememberActiveDraft(intent.key, original)).toBe(false);
   expect(original.bodyMarkdown).toBe("private unsent edits\n\n");
+});
+
+test("reply entry from another message resumes the matching canonical draft and its unsaved text", async () => {
+  const local = { ...draft(), draftIntent: "reply_all" as const };
+  observeWorkspace(local.binding!);
+  rememberActiveDraft("compose:reply:message-a", local);
+  api.startComposeSession.mockResolvedValueOnce({
+    session: {
+      ...local,
+      draftPath: "/private/new-bridge-session.md",
+      bodyMarkdown: "older canonical body",
+      previewHtml: "",
+      binding: local.binding,
+      kind: "reply",
+    },
+  });
+
+  const loaded = await loadInitialComposeSession({
+    key: "compose:reply:message-b",
+    title: "Reply",
+    kind: "reply",
+    messageId: "message-b",
+  });
+
+  expect(api.startComposeSession).toHaveBeenCalledOnce();
+  expect(loaded.session.draftPath).toBe(local.draftPath);
+  expect(loaded.session.draftId).toBe(local.draftId);
+  expect(loaded.session.draftIntent).toBe("reply_all");
+  expect(loaded.session.bodyMarkdown).toBe(local.bodyMarkdown);
+  expect(loaded.retainedSnapshot).toBe(true);
+});
+
+test("canonical reply journal lookup does not cross workspace owners", async () => {
+  const local = draft();
+  observeWorkspace(local.binding!);
+  rememberActiveDraft("compose:reply:message-a", local);
+  observeWorkspace({
+    target: local.binding!.target,
+    workspace: { workspace_id: "owner-b", recovery_generation: "generation-b" },
+  });
+  api.startComposeSession.mockResolvedValueOnce({
+    session: {
+      ...local,
+      draftPath: "/private/fresh.md",
+      bodyMarkdown: "canonical",
+      previewHtml: "",
+    },
+  });
+
+  const loaded = await loadInitialComposeSession({
+    key: "compose:reply:message-b",
+    title: "Reply",
+    kind: "reply",
+    messageId: "message-b",
+  });
+
+  expect(loaded.session.draftPath).toBe("/private/fresh.md");
+  expect(loaded.session.bodyMarkdown).toBe("canonical");
+  expect(loaded.retainedSnapshot).not.toBe(true);
 });
 
 test("another owner's explicit reopen retains A and selects its private snapshot on return", async () => {
@@ -179,4 +240,16 @@ test("same-count different server attachment selection cannot replace retained p
   expect(reopened.session.bodyMarkdown).toBe(current.bodyMarkdown);
   expect(reopened.session.revision).toBe(current.revision);
   expect(reopened.retainedSnapshot).toBe(true);
+});
+
+test("returning to an earlier message uses the latest canonical journal text", async () => {
+  const first = { ...draft(), draftIntent: "reply" as const };
+  const second = { ...first, revision: 3, bodyMarkdown: "latest text from message B" };
+  const a = { key: "compose:reply:A", title: "Reply", kind: "reply" as const, messageId: "A" };
+  rememberActiveDraft(a.key, first);
+  rememberActiveDraft("compose:reply:B", first);
+  rememberActiveDraft("compose:reply:B", second);
+  const reopened = await loadInitialComposeSession(a);
+  expect(reopened.session.bodyMarkdown).toBe(second.bodyMarkdown);
+  expect(reopened.session.revision).toBe(3);
 });

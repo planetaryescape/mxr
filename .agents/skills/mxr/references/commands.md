@@ -480,6 +480,23 @@ mxr draft-assist --search "from:sales@acme.com" --first --instruct "schedule a c
 --format <FORMAT>
 ```
 
+### `mxr compose assist (--draft <ID> | --reply-to <MSG> [--all] | --forward <MSG> --to <ADDR> | --new --account <A> --to <ADDR> --subject <S>) [OPTIONS]`
+Writing help that builds on what is typed. Prints a **proposal** and changes nothing; `mxr compose apply <PROPOSAL_ID> --draft <ID>` writes it into a stored draft's text region (refuses if that text changed since). Empty text writes the message, text finishes it keeping every sentence, `--select` rewrites only that part. Unknowns come back as `[[?: ...]]` gaps and a draft with a gap cannot be sent (no override). The typed text is data, not instructions.
+```
+mxr compose assist --reply-to <message_id> --text - <<< "Thursday works. numbers by wed"
+mxr compose assist --draft <draft_id> --instruction "mention the invoice" --format json
+mxr compose apply <proposal_id> --draft <draft_id>
+
+--text <PATH|->          Your typed text (without signature); --draft reads the stored draft
+--select <START..END>    Byte offsets on character boundaries
+--write | --finish | --polish   Override the action picked from the text
+--instruction <TEXT>
+--revise <PROPOSAL_ID>   Apply the instruction to an earlier proposal (your text stays --text)
+--shorter --warmer --formal --proofread
+--format <FORMAT>        json prints the proposal; otherwise {+added+} [-removed-] and the gaps
+```
+Stage lines print to stderr. `draft-assist` and `draft refine` still work.
+
 ### `mxr llm status [--format <FMT>]`
 Show configured LLM provider, model and, per feature, the model, route order and route health (`ok`, `cooling until`, `broken`, `no key`). Never probes the endpoint.
 

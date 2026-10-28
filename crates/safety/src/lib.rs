@@ -1,11 +1,12 @@
 //! Deterministic pre-send safety checks for mxr drafts.
 //!
-//! Six checks per `docs/reference/ai-email.md`:
+//! Seven checks per `docs/reference/ai-email.md`:
 //! - missing attachment regex (`attachment`)
 //! - PII / secrets detector (`pii`)
 //! - reply-all heuristic (`reply_all`)
 //! - recipient history / domain checks (`recipients`)
 //! - tone mismatch using `mxr-relationship` stylometry (`tone`)
+//! - an unfilled `[[?: …]]` gap from writing help (`gaps`)
 //!
 //! Answer-coverage is LLM-backed and lives in `answer_coverage` (Slice 1.4).
 //!
@@ -15,6 +16,7 @@
 pub mod attachment;
 pub mod commitments;
 pub mod config;
+pub mod gaps;
 pub mod pii;
 pub mod recipients;
 pub mod reply_all;
@@ -88,6 +90,7 @@ pub fn check_draft_deterministic(
 ) -> DraftSafetyReport {
     let mut issues = Vec::new();
     issues.extend(attachment::check(draft));
+    issues.extend(gaps::check(draft));
     issues.extend(pii::check(draft));
     if ctx.mode_reply_all {
         issues.extend(reply_all::check(draft, ctx));

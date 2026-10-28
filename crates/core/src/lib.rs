@@ -36,6 +36,8 @@
 )]
 
 pub mod account_identity;
+pub mod asks;
+pub mod assessment;
 pub mod error;
 pub mod i18n;
 pub mod id;

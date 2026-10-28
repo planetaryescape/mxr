@@ -15,18 +15,25 @@ mod admin;
 mod archive_ask;
 mod archive_recovery;
 pub(crate) mod arrivals;
+mod ask_assessments;
+mod asks_upgrade;
+pub(crate) mod assessments;
 mod assistant;
 mod auth_sessions;
 mod briefing;
 pub(crate) mod categories;
 pub(crate) mod category_rules;
+mod classifier_report;
 mod classify_eval;
 mod classify_eval_asks;
 mod codes;
 mod commitments;
 mod commitments_extract;
+pub(crate) mod compose_assist;
 mod compose_corpus;
 pub(crate) mod compose_eval;
+pub(crate) mod compose_proposals;
+mod compose_style_repair;
 mod conversation_shape;
 mod decisions_extract;
 pub(crate) mod deferral;
@@ -49,16 +56,18 @@ mod draft_refine;
 mod draft_voice;
 mod error;
 mod expert;
+mod forward;
 mod freshness;
 mod gist_kind;
 mod gist_numbers;
 mod helpers;
+mod home_projection;
 mod humanizer;
 mod keymap;
 mod llm_routes;
 mod mail_kind;
 mod mailbox;
-mod messages;
+pub(crate) mod messages;
 mod messages_ack;
 mod messages_text;
 mod messages_view;
@@ -92,6 +101,7 @@ mod runtime;
 mod safety_llm;
 mod safety_timing;
 mod screener;
+pub(crate) mod send_recovery;
 mod sender_view;
 mod signatures;
 mod snippets;
@@ -419,6 +429,7 @@ pub fn request_lane(req: &Request) -> IpcLane {
         | Request::CheckDraftSafety { .. }
         | Request::DraftCompose { .. }
         | Request::DraftRefine { .. }
+        | Request::ComposeAssist { .. }
         | Request::DraftEval { .. }
         | Request::DraftEvalQuick
         | Request::ExtractDraftCommitments { .. }
@@ -1683,6 +1694,28 @@ async fn dispatch(
             action,
             dry_run,
         } => todos::set_state(state, todo_ids, *action, *dry_run).await,
+        Request::CorrectTodo {
+            todo_id,
+            reason,
+            time_zone,
+            edits,
+            dry_run,
+        } => {
+            todos::correct(
+                state,
+                todo_id,
+                *reason,
+                edits,
+                time_zone.as_deref(),
+                *dry_run,
+            )
+            .await
+        }
+        Request::UndoTodoCorrection {
+            todo_id,
+            correction_id,
+            dry_run,
+        } => todos::undo_correction(state, todo_id, correction_id, *dry_run).await,
         Request::ResolveTodoSuggestion {
             todo_id,
             suggestion_id,
@@ -1909,6 +1942,7 @@ async fn dispatch(
         }
         Request::GetAssistantAvailability
         | Request::GetAssistantModels
+        | Request::GetComposeModels
         | Request::SetAssistantModel { .. }
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }
@@ -2108,7 +2142,46 @@ async fn dispatch(
         Request::DraftEval { account_id, limit } => {
             draft_eval::draft_eval(state, account_id.as_ref(), *limit).await
         }
+        Request::ComposeAssist {
+            draft,
+            text,
+            selection,
+            action,
+            instruction,
+            adjust,
+            model,
+            revise,
+        } => {
+            // Boxed: the gather, write and check stages hold a lot of state.
+            Box::pin(compose_assist::compose_assist(
+                state,
+                source,
+                compose_assist::AssistRequest {
+                    draft,
+                    text,
+                    selection: *selection,
+                    action: *action,
+                    instruction: instruction.as_deref(),
+                    adjust: *adjust,
+                    model: model.as_deref(),
+                    revise: revise.as_deref(),
+                },
+            ))
+            .await
+        }
+        Request::ApplyComposeProposal {
+            proposal_id,
+            draft_id,
+        } => compose_assist::apply(state, proposal_id, draft_id).await,
         Request::DraftEvalQuick => compose_eval::quick(state).await,
+        Request::ClassifyReport { account_id, limit } => {
+            classifier_report::report(state, account_id.as_ref(), *limit).await
+        }
+        Request::ClassifyCompare {
+            account_id,
+            policy_version,
+            limit,
+        } => classifier_report::compare(state, account_id.as_ref(), policy_version, *limit).await,
         Request::ClassifyEval { account_id, set } => {
             classify_eval::classify_eval(state, account_id.as_ref(), *set).await
         }
@@ -2121,6 +2194,26 @@ async fn dispatch(
             message_id,
             reply_all,
         } => mutations::prepare_reply(state, message_id, *reply_all).await,
+        Request::EnsureReplyDraft {
+            message_id,
+            reply_all,
+            dry_run,
+        } => mutations::ensure_reply_draft(state, message_id, *reply_all, *dry_run).await,
+        Request::SetReplyDraftAudience {
+            draft_id,
+            reply_all,
+            expected_revision,
+            dry_run,
+        } => {
+            mutations::set_reply_draft_audience(
+                state,
+                draft_id,
+                *reply_all,
+                *expected_revision,
+                *dry_run,
+            )
+            .await
+        }
         Request::PrepareForward { message_id } => {
             mutations::prepare_forward(state, message_id).await
         }
@@ -2162,6 +2255,21 @@ async fn dispatch(
             account_id,
             operation_id,
         } => mutations::get_send_outcome(state, account_id, operation_id).await,
+        Request::RecoverSendOutcome {
+            account_id,
+            operation_id,
+            dry_run,
+            expected_evidence_sha256,
+        } => {
+            send_recovery::recover_legacy(
+                state,
+                account_id,
+                operation_id,
+                *dry_run,
+                expected_evidence_sha256.as_deref(),
+            )
+            .await
+        }
         Request::CheckDraftSafety { draft, context } => {
             mutations::check_draft_safety_request(state, draft, context).await
         }
@@ -2533,6 +2641,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetArrivals { .. }
         | Request::ListArrivals { .. }
         | Request::GetArrivalModes { .. }
+        | Request::ClassifyReport { .. }
+        | Request::ClassifyCompare { .. }
         | Request::ClassifyEval { .. }
         | Request::ListCorrections { .. }
         | Request::GetRail { .. }
@@ -2554,6 +2664,7 @@ fn classify_request(req: &Request) -> RequestClass {
         // classified on its own when it runs.
         | Request::GetAssistantAvailability
         | Request::GetAssistantModels
+        | Request::GetComposeModels
         | Request::SetAssistantModel { dry_run: true, .. }
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }
@@ -2583,9 +2694,12 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::TriageSearch { .. }
         | Request::DraftCompose { .. }
         | Request::DraftRefine { .. }
+        | Request::ComposeAssist { .. }
         | Request::DraftEval { .. }
         | Request::DraftEvalQuick
         | Request::PrepareReply { .. }
+        | Request::EnsureReplyDraft { dry_run: true, .. }
+        | Request::SetReplyDraftAudience { dry_run: true, .. }
         | Request::PrepareForward { .. }
         | Request::ResolveSendFrom { .. }
         | Request::ListOwedReplies { .. }
@@ -2612,6 +2726,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ListScheduledSends { .. }
         | Request::ListOrphanedDrafts
         | Request::GetSendOutcome { .. }
+        | Request::RecoverSendOutcome { dry_run: true, .. }
         | Request::GetDraft { .. }
         | Request::ExportThread { .. }
         | Request::ExportSearch { .. }
@@ -2632,6 +2747,9 @@ fn classify_request(req: &Request) -> RequestClass {
         // optional linked provider resource) ---
         Request::SaveDraft { .. }
         | Request::UpdateDraft { .. }
+        | Request::EnsureReplyDraft { dry_run: false, .. }
+        | Request::SetReplyDraftAudience { dry_run: false, .. }
+        | Request::ApplyComposeProposal { .. }
         | Request::DeleteDraft { .. }
         | Request::BeginDraftAttachment { .. }
         | Request::WriteDraftAttachmentChunk { .. }
@@ -2640,6 +2758,7 @@ fn classify_request(req: &Request) -> RequestClass {
         // --- Send: transmits mail to a provider ---
         Request::SendDraft { .. }
         | Request::SendStoredDraft { .. }
+        | Request::RecoverSendOutcome { dry_run: false, .. }
         | Request::ScheduleSend { .. }
         | Request::RespondInvite { dry_run: false, .. }
         | Request::AckMessage { dry_run: false, .. }
@@ -2768,6 +2887,8 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::ResolveCommitment { .. }
         | Request::RecordPromise { .. }
         | Request::SetTodoState { .. }
+        | Request::CorrectTodo { .. }
+        | Request::UndoTodoCorrection { .. }
         | Request::ResolveTodoSuggestion { .. }
         | Request::ScheduleTodo { .. }
         | Request::UpdateTodo { .. }
@@ -3025,10 +3146,16 @@ fn request_kind(req: &Request) -> &'static str {
         Request::TriageSearch { .. } => "triage_search",
         Request::DraftCompose { .. } => "draft_compose",
         Request::DraftRefine { .. } => "draft_refine",
+        Request::ComposeAssist { .. } => "compose_assist",
+        Request::ApplyComposeProposal { .. } => "apply_compose_proposal",
         Request::DraftEval { .. } => "draft_eval",
         Request::DraftEvalQuick => "draft_eval_quick",
+        Request::ClassifyReport { .. } => "classify_report",
+        Request::ClassifyCompare { .. } => "classify_compare",
         Request::ClassifyEval { .. } => "classify_eval",
         Request::PrepareReply { .. } => "prepare_reply",
+        Request::EnsureReplyDraft { .. } => "ensure_reply_draft",
+        Request::SetReplyDraftAudience { .. } => "set_reply_draft_audience",
         Request::PrepareForward { .. } => "prepare_forward",
         Request::SendDraft { .. } => "send_draft",
         Request::SaveDraft { .. } => "save_draft",
@@ -3066,6 +3193,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListTodos { .. } => "list_todos",
         Request::GetTodo { .. } => "get_todo",
         Request::SetTodoState { .. } => "set_todo_state",
+        Request::CorrectTodo { .. } => "correct_todo",
+        Request::UndoTodoCorrection { .. } => "undo_todo_correction",
         Request::ResolveTodoSuggestion { .. } => "resolve_todo_suggestion",
         Request::GetNow { .. } => "get_now",
         Request::GetArrivals { .. } => "get_arrivals",
@@ -3100,6 +3229,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::SyncMarginaliaHighlights { .. } => "sync_marginalia_highlights",
         Request::GetAssistantAvailability => "get_assistant_availability",
         Request::GetAssistantModels => "get_assistant_models",
+        Request::GetComposeModels => "get_compose_models",
         Request::SetAssistantModel { .. } => "set_assistant_model",
         Request::AssistantSend { .. } => "assistant_send",
         Request::AssistantDecide { .. } => "assistant_decide",
@@ -3140,6 +3270,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListCadenceDrift { .. } => "list_cadence_drift",
         Request::DeleteDraft { .. } => "delete_draft",
         Request::GetSendOutcome { .. } => "get_send_outcome",
+        Request::RecoverSendOutcome { .. } => "recover_send_outcome",
         Request::GetDraft { .. } => "get_draft",
         Request::UpdateDraft { .. } => "update_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",
@@ -3261,8 +3392,14 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::SplitPerson { account_id, .. }
         | Request::SetReadingSource { account_id, .. } => Some(account_id),
         Request::DraftCompose { account_id, .. } => account_id.as_ref(),
+        Request::ComposeAssist {
+            draft: mxr_protocol::DraftTargetData::New { account_id, .. },
+            ..
+        } => Some(account_id),
         Request::DraftEval { account_id, .. } => account_id.as_ref(),
-        Request::ClassifyEval { account_id, .. } => account_id.as_ref(),
+        Request::ClassifyReport { account_id, .. }
+        | Request::ClassifyCompare { account_id, .. }
+        | Request::ClassifyEval { account_id, .. } => account_id.as_ref(),
         Request::SetSignatureDefault { account_id, .. }
         | Request::ClearSignatureDefault { account_id, .. }
         | Request::ResolveSignature { account_id, .. } => account_id.as_ref(),
@@ -4678,6 +4815,7 @@ fn is_assistant_request(req: &Request) -> bool {
         req,
         Request::GetAssistantAvailability
             | Request::GetAssistantModels
+            | Request::GetComposeModels
             | Request::SetAssistantModel { .. }
             | Request::AssistantSend { .. }
             | Request::AssistantDecide { .. }

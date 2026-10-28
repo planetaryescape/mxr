@@ -242,7 +242,7 @@ draws them. Done here previews with `dry_run: true` and returns one
 | `POST` | `/mail/messages/{message_id}/move` | Move one email to a mode, or with `sender` set the sender's mode (`{mode, sender?, dry_run?, source?}`; `source: "not_sure"` answers Now's question); returns the `correction_id` undo takes |
 | `POST` | `/mail/moves/{correction_id}/undo` | Put a move back exactly as it was; undoing twice changes nothing |
 | `GET` | `/mail/corrections` | Every move, sender mode and Not-sure answer, newest first (`?account=&limit=50`) |
-| `GET` | `/mail/people` | Messages: people in four bands with their topics (`?turn=mine\|theirs&unread=true&pace=true&limit=&account=`; `unread` and `pace` keep only unread rows and rows past your usual pace, and the counts stay unfiltered) |
+| `GET` | `/mail/people` | Messages defaults to actionable topics only. `?turn=all` explicitly includes history; `mine` and `theirs` select a side's turn. `unread=true`, `pace=true`, `limit=` and `account=` narrow the selected view. `row_count` and `thread_count` describe attention; `matched` counts the selected view's rows |
 | `GET` | `/mail/people/page` | A person's page with the selected topic as new text (`?person=&topic=`) |
 | `POST` | `/mail/people/ack` | Got it: `{thread_id}` previews (dry run by default) and returns a `preview_token`; a send needs `dry_run: false`, the token (within a minute) and the previewed `expect_text`, and is refused if anything changed or it was already acknowledged |
 | `POST` | `/mail/people/merge` | Merge addresses into one person by hand (`dry_run` previews) |
@@ -441,6 +441,8 @@ emails from sender" and deep-link directly into the matching thread.
 | `POST` | `/mail/threads/draft-assist` | `{thread_id, instruction}` → suggested reply body plus model/humanizer/voice metadata |
 | `POST` | `/mail/drafts/new` | Start an LLM-backed draft from a prompt |
 | `POST` | `/mail/drafts/refine` | Refine draft body with model knobs |
+| `POST` | `/mail/compose/assist` | `{draft, text, selection?, action?, instruction?, adjust?, revise?}` → `{proposal}`: writing help for the text in a compose box. `draft` is `{kind: "stored", draft_id}`, `{kind: "reply", message_id, all}`, `{kind: "forward", message_id, to}` or `{kind: "new", account_id, to, subject}`. `revise` is the id of the proposal on screen: the model is shown it and the instruction is applied to it, while `text` stays the user's own text. Changes nothing |
+| `POST` | `/mail/compose/apply` | `{proposal_id, draft_id}` → `{draft_id, text_hash}`: write a proposal into a stored draft's text region; 422 if that text changed since the proposal |
 | `POST` | `/mail/humanizer/score` | Score text against your voice profile |
 | `POST` | `/mail/humanizer/rewrite` | Rewrite toward human-like / on-voice output |
 
@@ -482,6 +484,7 @@ the events stream and refetch the conversation.
 | `POST` | `/mail/drafts/{draft_id}/reset-orphan` | Legacy orphan check; cannot prove rejection or clear a retained send outcome |
 | `POST` | `/mail/drafts/{draft_id}/send-stored?expected_revision=REVISION&operation_id=OPERATION_ID` | Send a stored draft with its reviewed revision and operation ID |
 | `GET` | `/mail/send-outcomes/{operation_id}?account_id=ACCOUNT_ID` | Query a retained send outcome |
+| `POST` | `/mail/send-outcomes/{operation_id}/recover?account_id=ACCOUNT_ID` | Preview legacy cooldown evidence with `{dry_run:true}`; confirm the same evidence using `{dry_run:false,expected_evidence_sha256:"..."}` |
 | `DELETE` | `/mail/drafts/{draft_id}/stored` | Delete stored draft and its linked provider draft |
 
 The stored-send query parameters `expected_revision` and `operation_id` are
@@ -491,6 +494,14 @@ draft alias `draft:DRAFT_ID` when the schedule operation ID is not known. The
 legacy orphan endpoint does not reset or erase accepted or unknown outcome
 evidence; a draft still marked Sending is refused because elapsed time cannot
 prove non-acceptance.
+
+Outcomes include `waiting`, `accepted`, `not_accepted` and `unknown`. Optional
+`recovery` contains `phase`, `attempts`, `retry_at` and `reason`. A waiting send
+retries automatically with its retained identity; an unknown send is only
+reconciled against positive provider evidence. The recovery POST requires the
+original workspace binding and never treats a missing Sent search result as
+permission to resend. See [crash-safe drafts](/guides/crash-safe-drafts/) for
+the preview/confirmation flow and its limits.
 
 ### Signatures
 

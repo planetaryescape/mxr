@@ -113,13 +113,13 @@ or directly into a mutation (`mxr trash`, `mxr archive`).
 
 ### Subscriptions
 
-The list-sender ROI table. Aliased as `mxr unsub`.
+The list of eligible subscription senders. Aliased as `mxr unsub`.
 
 ```bash
-mxr subscriptions                   # plain list, latest message per sender
-mxr subscriptions --rank            # ranked: lowest open-rate first,
-                                    # ties broken by archived-unread DESC
-mxr unsub --rank --format json      # same; pipeable
+mxr subscriptions                   # plain list of sender buckets
+mxr subscriptions --rank            # rank the returned set by READ rate,
+                                    # then archived-unread count
+mxr subscriptions --rank --format json --account work --limit 200
 ```
 
 Use JSON output when you are judging engagement:
@@ -132,16 +132,17 @@ mxr subscriptions --rank --format json \
       opened_count,
       replied_count,
       archived_unread_count,
-      open_rate: (if .message_count == 0 then 0 else (.opened_count / .message_count) end)
+      read_rate: (if .message_count == 0 then 0 else (.opened_count / .message_count) end)
     }'
 ```
 
-What you get: one row per subscription sender, with the same sender order as
-`--rank` and an explicit `open_rate` you can sort, filter, or review.
+What you get: one row per returned subscription sender, with the same order
+as `--rank` and a `read_rate` derived from local READ flags.
 
 Each row carries `opened_count`, `replied_count`, `archived_unread_count`,
-and `message_count`. The rank is **open-rate ASC, archived-unread DESC** —
-the noisiest lists float to the top. `opened_count` is not a tracking-pixel
+and `message_count`. The rank is **READ-rate ASC, archived-unread DESC**.
+The command selects a bounded set before ranking it; it does not rank every
+eligible sender in the mailbox. `opened_count` is not a tracking-pixel
 open or a distinct-open counter; it is the number of messages in that sender
 bucket whose local `READ` flag is set. It can equal `message_count` when every
 message from that sender is already read locally, including reads synced from
@@ -250,8 +251,10 @@ The narrative output covers seven slices:
   the "8 years later" pathological pairs don't claim the title).
 - **Storage** — total bytes in window, top mimetype, single
   heaviest message.
-- **Newsletters** — unique lists, top list with open rate, share of
-  inbound that came from a list.
+- **Newsletters** — unique lists, the highest-volume list with its
+  current READ-state share, and the share of inbound mail from a list.
+  The field `opened_count` counts messages currently marked READ in
+  the selected window; it does not track distinct opens or reading history.
 - **Superlatives** — longest thread, most-ghosted counterparty
   (≥10 inbound, 0 outbound).
 

@@ -12,10 +12,17 @@ impl super::Store {
             .bind(operation_id)
             .fetch_optional(self.reader())
             .await?;
+        let recovery = self.get_send_recovery_status(operation_id).await?;
         row.map(|row| {
             let state = match row.get::<String, _>("state").as_str() {
                 "accepted" => SendOutcomeState::Accepted,
                 "not_accepted" => SendOutcomeState::NotAccepted,
+                _ if recovery
+                    .as_ref()
+                    .is_some_and(|(status, _)| status == "waiting") =>
+                {
+                    SendOutcomeState::Waiting
+                }
                 _ => SendOutcomeState::Unknown,
             };
             Ok((
@@ -33,6 +40,7 @@ impl super::Store {
                         .transpose()?,
                     provider_message_id: row.get("provider_message_id"),
                     rfc2822_message_id: row.get("rfc2822_message_id"),
+                    recovery: recovery.map(|(_, recovery)| recovery),
                 },
                 row.get("command_hash"),
             ))
@@ -69,8 +77,8 @@ impl super::Store {
         if changed == 0 {
             return Ok(false);
         }
-        sqlx::query("INSERT INTO draft_send_outcomes (operation_id,draft_id,account_id,reviewed_revision,command_hash,state,updated_at) VALUES (?,?,?,?,?,'unknown',unixepoch())")
-            .bind(&identity.operation_id).bind(draft_id.as_str()).bind(account_id.as_str()).bind(identity.expected_revision).bind(command_hash).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO draft_send_outcomes (operation_id,draft_id,account_id,reviewed_revision,command_hash,state,rfc2822_message_id,updated_at) VALUES (?,?,?,?,?,'unknown',(SELECT message_id_header FROM drafts WHERE id=?),unixepoch())")
+            .bind(&identity.operation_id).bind(draft_id.as_str()).bind(account_id.as_str()).bind(identity.expected_revision).bind(command_hash).bind(draft_id.as_str()).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(true)
     }
@@ -85,6 +93,11 @@ impl super::Store {
             .bind(&receipt.provider_message_id).bind(&receipt.rfc2822_message_id).bind(&identity.operation_id).execute(&mut *tx).await?;
         sqlx::query("UPDATE drafts SET status = 'sent', status_updated_at = unixepoch() WHERE id = (SELECT draft_id FROM draft_send_outcomes WHERE operation_id = ? AND state = 'accepted')")
             .bind(&identity.operation_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE approved_sends SET status='accepted',phase='\"accepted\"',retry_at=NULL,reason=NULL,accepted_at=COALESCE(accepted_at,?),updated_at=unixepoch() WHERE operation_id=?")
+            .bind(receipt.sent_at.timestamp()).bind(&identity.operation_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE scheduled_send_attempts SET outcome='sent' WHERE outcome='waiting' AND draft_id=(SELECT draft_id FROM draft_send_outcomes WHERE operation_id=? AND state='accepted')").bind(&identity.operation_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE approved_send_attempts SET phase='\"accepted\"',outcome='accepted',recorded_at=unixepoch() WHERE operation_id=? AND attempt=(SELECT attempts FROM approved_sends WHERE operation_id=?)")
+            .bind(&identity.operation_id).bind(&identity.operation_id).execute(&mut *tx).await?;
         tx.commit().await
     }
 
@@ -92,6 +105,8 @@ impl super::Store {
         let mut tx = self.writer().begin().await?;
         sqlx::query("UPDATE draft_send_outcomes SET state = 'not_accepted', updated_at = unixepoch() WHERE operation_id = ? AND state = 'unknown'").bind(&identity.operation_id).execute(&mut *tx).await?;
         sqlx::query("UPDATE drafts SET status = 'draft', status_updated_at = unixepoch() WHERE id = (SELECT draft_id FROM draft_send_outcomes WHERE operation_id = ? AND state = 'not_accepted')").bind(&identity.operation_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE approved_sends SET status='failed',retry_at=NULL,updated_at=unixepoch() WHERE operation_id=? AND status!='accepted'").bind(&identity.operation_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE scheduled_send_attempts SET outcome='failed' WHERE outcome='waiting' AND draft_id=(SELECT draft_id FROM draft_send_outcomes WHERE operation_id=? AND state='not_accepted')").bind(&identity.operation_id).execute(&mut *tx).await?;
         tx.commit().await
     }
 

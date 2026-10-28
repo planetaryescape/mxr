@@ -326,6 +326,24 @@ mod tests {
         }
 
         let facts = context(get_thread_context(&state, &here).await.unwrap());
+        assert!(
+            state
+                .store
+                .list_contact_commitments(&account_id, None, Some(CommitmentStatus::Open))
+                .await
+                .unwrap()
+                .is_empty(),
+            "retained context history is not active work"
+        );
+        assert!(
+            state
+                .store
+                .list_todos_in_state(Some(&account_id), mxr_store::TodoState::Open, 100)
+                .await
+                .unwrap()
+                .is_empty(),
+            "retained context history does not create tasks"
+        );
         let person = facts.counterparty.expect("maya is the counterparty");
         assert_eq!(person.email, "maya@example.com");
         assert_eq!(person.display_name.as_deref(), Some("Maya Ortiz"));
@@ -404,6 +422,24 @@ mod tests {
         }
 
         let facts = context(get_thread_context(&state, &here).await.unwrap());
+        assert!(
+            state
+                .store
+                .list_contact_commitments(&account_id, None, Some(CommitmentStatus::Open))
+                .await
+                .unwrap()
+                .is_empty(),
+            "retained context history is not active work"
+        );
+        assert!(
+            state
+                .store
+                .list_todos_in_state(Some(&account_id), mxr_store::TodoState::Open, 100)
+                .await
+                .unwrap()
+                .is_empty(),
+            "retained context history does not create tasks"
+        );
         assert_eq!(facts.counterparty.unwrap().email, "bob@example.com");
         let mut owners: Vec<_> = facts
             .promises
@@ -428,12 +464,13 @@ mod tests {
         let state = AppState::in_memory().await.unwrap();
         let account_id = state.default_account_id();
         let here = ThreadId::new();
+        let asked_at = at(3);
         let mut asked = TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
             .thread_id(here.clone())
             .provider_id("case-ask")
             .sender_address("Maya", "Maya@Example.com")
-            .date(at(3))
+            .date(asked_at)
             .build();
         asked.message_id_header = Some("<case-ask@x>".into());
         state
@@ -447,7 +484,7 @@ mod tests {
             .provider_id("case-answer")
             .sender_address("Me", "me@example.com")
             .recipient_address(Some("Maya"), "Maya@Example.com")
-            .date(at(3) + chrono::Duration::hours(2))
+            .date(asked_at + chrono::Duration::hours(2))
             .build();
         answered.in_reply_to = Some("<case-ask@x>".into());
         state
@@ -458,6 +495,24 @@ mod tests {
         assert!(state.store.try_create_reply_pair(&answered).await.unwrap());
 
         let facts = context(get_thread_context(&state, &here).await.unwrap());
+        assert!(
+            state
+                .store
+                .list_contact_commitments(&account_id, None, Some(CommitmentStatus::Open))
+                .await
+                .unwrap()
+                .is_empty(),
+            "retained context history is not active work"
+        );
+        assert!(
+            state
+                .store
+                .list_todos_in_state(Some(&account_id), mxr_store::TodoState::Open, 100)
+                .await
+                .unwrap()
+                .is_empty(),
+            "retained context history does not create tasks"
+        );
         let person = facts.counterparty.unwrap();
         assert_eq!(person.email, "maya@example.com");
         assert_eq!(person.your_reply_samples, 1);
@@ -492,6 +547,24 @@ mod tests {
         .await;
 
         let facts = context(get_thread_context(&state, &here).await.unwrap());
+        assert!(
+            state
+                .store
+                .list_contact_commitments(&account_id, None, Some(CommitmentStatus::Open))
+                .await
+                .unwrap()
+                .is_empty(),
+            "retained context history is not active work"
+        );
+        assert!(
+            state
+                .store
+                .list_todos_in_state(Some(&account_id), mxr_store::TodoState::Open, 100)
+                .await
+                .unwrap()
+                .is_empty(),
+            "retained context history does not create tasks"
+        );
         assert_eq!(facts.owed_reply, None);
         let person = facts.counterparty.unwrap();
         assert_eq!(person.email, "theo@example.com");
@@ -519,6 +592,24 @@ mod tests {
             .unwrap();
 
         let facts = context(get_thread_context(&state, &here).await.unwrap());
+        assert!(
+            state
+                .store
+                .list_contact_commitments(&account_id, None, Some(CommitmentStatus::Open))
+                .await
+                .unwrap()
+                .is_empty(),
+            "retained context history is not active work"
+        );
+        assert!(
+            state
+                .store
+                .list_todos_in_state(Some(&account_id), mxr_store::TodoState::Open, 100)
+                .await
+                .unwrap()
+                .is_empty(),
+            "retained context history does not create tasks"
+        );
         assert_eq!(facts.owed_reply, None);
         assert!(facts.counterparty.unwrap().bulk_sender);
     }

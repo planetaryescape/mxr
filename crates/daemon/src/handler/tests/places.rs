@@ -4,6 +4,7 @@ use mxr_core::id::{LabelId, MessageId, ThreadId};
 use mxr_core::types::{
     Address, Envelope, EventSource, Label, LabelKind, MessageDirection, MessageFlags,
 };
+use mxr_protocol::KindRuleData;
 
 const ME: &str = "user@example.com";
 const NEWSLETTER: &str = "editor@weekly.example";
@@ -289,8 +290,8 @@ async fn places_bundle_mail_by_sender_and_say_why() {
     let shop = &paper[0];
     assert_eq!(shop.sender_email, ROBOT);
     assert_eq!(shop.message_count, 3);
-    assert_eq!(shop.kind.rule, KindRuleData::AutomatedAddress);
-    assert_eq!(shop.kind.reason, "automated sender, has List-Unsubscribe");
+    assert_eq!(shop.kind.rule, KindRuleData::Fallback);
+    assert_eq!(shop.kind.reason, "No rule decided; Updates for now");
 }
 
 #[tokio::test]
@@ -354,7 +355,10 @@ async fn correcting_a_sender_moves_its_mail_and_future_mail_follows() {
         .send(Request::ListMessages {
             account_id: None,
             turn: None,
-            filter: Default::default(),
+            filter: mxr_protocol::MessagesFilterData {
+                turn: Some(mxr_protocol::MessagesTurnData::All),
+                ..Default::default()
+            },
             limit: 50,
         })
         .await

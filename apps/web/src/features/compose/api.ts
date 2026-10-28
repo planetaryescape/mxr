@@ -53,6 +53,9 @@ export type ComposeAttachmentUploadResponse =
 
 export type ComposeKind = "new" | "reply" | "reply_all" | "forward";
 
+/** Stored draft intent added by the restore route beside its editable `kind`. */
+export type ComposeDraftIntent = components["schemas"]["DraftIntent"];
+
 /** Calendar invite response carried by an `invite_reply` compose session. */
 export type InviteReplyAction = "accept" | "tentative" | "decline";
 
@@ -84,6 +87,26 @@ export async function restoreComposeSession(
     "/api/v1/mail/compose/session/restore",
     { draft_id: draftId },
     original ?? (await captureWorkspaceBinding()),
+  );
+}
+
+export function setComposeAudience(input: {
+  draftPath: string;
+  draftId: string;
+  replyAll: boolean;
+  expectedRevision: number;
+  dryRun: boolean;
+}): Promise<ComposeSessionResponse> {
+  return ownedSession(
+    "/api/v1/mail/compose/session/audience",
+    {
+      draft_path: input.draftPath,
+      draft_id: input.draftId,
+      reply_all: input.replyAll,
+      expected_revision: input.expectedRevision,
+      dry_run: input.dryRun,
+    },
+    requireComposeBinding(input.draftPath),
   );
 }
 
@@ -141,7 +164,8 @@ export async function fetchContactsAutocomplete(
 
 export interface ComposeSendResponse {
   operation_id?: string;
-  state?: "accepted";
+  state?: "accepted" | "waiting";
+  retry_at?: string | null;
   ok: boolean;
   draft_id?: string;
   /** Local id of the message just sent (the daemon's send receipt). Needed

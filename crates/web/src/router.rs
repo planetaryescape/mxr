@@ -154,6 +154,7 @@ fn mail_router() -> Router<AppState> {
         .route("/compose/session", post(start_compose_session))
         .route("/compose/session/refresh", post(refresh_compose_session))
         .route("/compose/session/restore", post(restore_compose_session))
+        .route("/compose/session/audience", post(set_compose_audience))
         .route("/compose/session/update", post(update_compose_session))
         .route("/compose/session/send", post(send_compose_session))
         .route(
@@ -230,14 +231,16 @@ pub fn app(config: WebServerConfig) -> Router {
         .nest("/admin", routes_v6::extend_admin(admin_router()))
         .nest(
             "/mail",
-            assistant_routes::extend_mail(arrival_routes::extend_mail(
-                updates_routes::extend_mail(reading_routes::extend_mail(
-                    record_routes::extend_mail(messages_routes::extend_mail(
-                        mode_routes::extend_mail(todo_routes::extend_mail(
-                            place_routes::extend_mail(promise_routes::extend_mail(
-                                thread_context_routes::extend_mail(time_routes::extend_mail(
-                                    insight_routes::extend_mail(freshness_routes::extend_mail(
-                                        routes_v6::extend_mail(mail_router()),
+            compose_assist_routes::extend_mail(assistant_routes::extend_mail(
+                arrival_routes::extend_mail(updates_routes::extend_mail(
+                    reading_routes::extend_mail(record_routes::extend_mail(
+                        messages_routes::extend_mail(mode_routes::extend_mail(
+                            todo_routes::extend_mail(place_routes::extend_mail(
+                                promise_routes::extend_mail(thread_context_routes::extend_mail(
+                                    time_routes::extend_mail(insight_routes::extend_mail(
+                                        freshness_routes::extend_mail(routes_v6::extend_mail(
+                                            mail_router(),
+                                        )),
                                     )),
                                 )),
                             )),

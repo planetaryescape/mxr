@@ -16,6 +16,9 @@ Options:
 
           [default: quick]
 
+      --compare <COMPARE>
+          Compare homes with a policy version actually retained in this mailbox
+
       --account <ACCOUNT>
           Limit to one account; the default covers every account
 

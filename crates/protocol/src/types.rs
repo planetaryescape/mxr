@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 mod arrivals;
 mod assistant;
 mod classify;
+mod compose_assist;
 mod desk;
 mod draft_provenance;
 mod freshness;
@@ -29,6 +30,7 @@ mod updates;
 pub use arrivals::*;
 pub use assistant::*;
 pub use classify::*;
+pub use compose_assist::*;
 pub use desk::*;
 pub use draft_provenance::*;
 pub use freshness::*;
@@ -283,6 +285,10 @@ pub struct LlmConfigData {
     pub enabled: bool,
     pub base_url: String,
     pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compose_model: Option<String>,
+    #[serde(default)]
+    pub models: Option<Vec<String>>,
     pub api_key_env: String,
     pub context_window: u32,
     pub request_timeout_secs: u64,
@@ -1568,6 +1574,41 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         body: Option<String>,
     },
+    /// Writing help for the text in a draft's body region: write it, finish
+    /// what is typed, polish it or edit a selection. Returns a proposal; the
+    /// draft is not changed until `ApplyComposeProposal`. A separate command
+    /// from `DraftCompose`, so a daemon that predates it rejects it as unknown
+    /// instead of drafting over the typed text.
+    ComposeAssist {
+        draft: DraftTargetData,
+        /// The user's text region only: no signature, no forward header.
+        text: String,
+        #[serde(default)]
+        selection: Option<TextRangeData>,
+        #[serde(default)]
+        action: Option<AssistActionData>,
+        #[serde(default)]
+        instruction: Option<String>,
+        #[serde(default)]
+        adjust: AssistAdjustData,
+        /// A catalogue model for this draft only. Does not change the
+        /// persistent compose default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        /// The id of a proposal to revise. The model is shown that proposal's
+        /// text and the instruction is applied to it; `text` stays the user's
+        /// own text, which the check and the diff still run against. Absent on
+        /// a first request.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        revise: Option<String>,
+    },
+    /// Accept a proposal: write its text into the stored draft's text region,
+    /// keeping the signature and forward header, if that region still hashes
+    /// to the proposal's `base`.
+    ApplyComposeProposal {
+        proposal_id: String,
+        draft_id: DraftId,
+    },
     /// Replay the user's most recent replies: draft each one from what was
     /// known just before they replied, and compare with what they sent.
     /// Calls the configured LLM once per case; nothing is saved or sent.
@@ -1582,9 +1623,19 @@ pub enum Request {
     /// it rejects the unknown command, instead of ignoring a field and
     /// replaying the user's own mail.
     DraftEvalQuick,
-    /// Measure today's classifier against labelled scenarios in the stored
-    /// mail: who sent it, which mode it went to, and whether it made a
-    /// to-do or a record. Local; nothing is changed or sent.
+    /// Read stored fallback decisions only. The limit is capped at 10,000.
+    ClassifyReport {
+        account_id: Option<AccountId>,
+        limit: u32,
+    },
+    /// Compare only versions actually retained in this mailbox.
+    ClassifyCompare {
+        account_id: Option<AccountId>,
+        policy_version: String,
+        limit: u32,
+    },
+    /// Measure today's classifier against labelled scenarios in stored mail:
+    /// sender, home, asks and records. Local; nothing is changed or sent.
     ClassifyEval {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,
@@ -1594,6 +1645,21 @@ pub enum Request {
     PrepareReply {
         message_id: MessageId,
         reply_all: bool,
+    },
+    /// Create or return the canonical unsent reply draft for this conversation.
+    EnsureReplyDraft {
+        message_id: MessageId,
+        reply_all: bool,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Change the audience of an existing reply without replacing its content.
+    SetReplyDraftAudience {
+        draft_id: DraftId,
+        reply_all: bool,
+        expected_revision: i64,
+        #[serde(default)]
+        dry_run: bool,
     },
     PrepareForward {
         message_id: MessageId,
@@ -1608,6 +1674,14 @@ pub enum Request {
     GetSendOutcome {
         account_id: AccountId,
         operation_id: String,
+    },
+    /// Resume a historical false-unknown only from matched local gate evidence.
+    RecoverSendOutcome {
+        account_id: AccountId,
+        operation_id: String,
+        dry_run: bool,
+        #[serde(default)]
+        expected_evidence_sha256: Option<String>,
     },
     SaveDraft {
         draft: Draft,
@@ -2036,6 +2110,24 @@ pub enum Request {
     SetTodoState {
         todo_ids: Vec<String>,
         action: TodoStateActionData,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    /// Four distinct user corrections. Wrong details requires edits and does
+    /// not change the row until saved. Quotes are immutable source evidence.
+    CorrectTodo {
+        todo_id: String,
+        reason: TodoCorrectionData,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        time_zone: Option<String>,
+        #[serde(default)]
+        edits: Vec<TodoEditData>,
+        #[serde(default)]
+        dry_run: bool,
+    },
+    UndoTodoCorrection {
+        todo_id: String,
+        correction_id: String,
         #[serde(default)]
         dry_run: bool,
     },
@@ -2578,6 +2670,9 @@ pub enum Request {
     /// The models the assistant can be set to and the one it uses now.
     /// Returns `ResponseData::AssistantModels`.
     GetAssistantModels,
+    /// The models available to compose under its own routing and privacy policy.
+    /// Returns `ResponseData::ComposeModels`.
+    GetComposeModels,
     /// Set the model the assistant's next turn uses, for every conversation.
     /// Refused for a model that isn't in the list, has no key, or would send
     /// mail off this machine without `llm.allow_cloud_relationship_data`.
@@ -2824,10 +2919,13 @@ impl Request {
             Self::PreviewDraft { .. }
                 | Self::SaveDraft { .. }
                 | Self::UpdateDraft { .. }
+                | Self::EnsureReplyDraft { .. }
+                | Self::SetReplyDraftAudience { .. }
                 | Self::SaveDraftToServer { .. }
                 | Self::DeleteDraft { .. }
                 | Self::GetDraft { .. }
                 | Self::GetSendOutcome { .. }
+                | Self::RecoverSendOutcome { .. }
                 | Self::SuggestCollaborators { .. }
                 | Self::ExtractDraftCommitments { .. }
                 | Self::CheckDraftSafety { .. }
@@ -2968,13 +3066,20 @@ impl Request {
             | Self::TriageSearch { .. }
             | Self::DraftCompose { .. }
             | Self::DraftRefine { .. }
+            | Self::ComposeAssist { .. }
+            | Self::ApplyComposeProposal { .. }
             | Self::DraftEval { .. }
             | Self::DraftEvalQuick
+            | Self::ClassifyReport { .. }
+            | Self::ClassifyCompare { .. }
             | Self::ClassifyEval { .. }
             | Self::PrepareReply { .. }
+            | Self::EnsureReplyDraft { .. }
+            | Self::SetReplyDraftAudience { .. }
             | Self::PrepareForward { .. }
             | Self::SendDraft { .. }
             | Self::GetSendOutcome { .. }
+            | Self::RecoverSendOutcome { .. }
             | Self::SaveDraft { .. }
             | Self::SendStoredDraft { .. }
             | Self::CheckDraftSafety { .. }
@@ -3012,6 +3117,8 @@ impl Request {
             | Self::ListTodos { .. }
             | Self::GetTodo { .. }
             | Self::SetTodoState { .. }
+            | Self::CorrectTodo { .. }
+            | Self::UndoTodoCorrection { .. }
             | Self::ResolveTodoSuggestion { .. }
             | Self::ScheduleTodo { .. }
             | Self::UpdateTodo { .. }
@@ -3062,6 +3169,7 @@ impl Request {
             | Self::SyncMarginaliaHighlights { .. }
             | Self::GetAssistantAvailability
             | Self::GetAssistantModels
+            | Self::GetComposeModels
             | Self::SetAssistantModel { .. }
             | Self::AssistantSend { .. }
             | Self::AssistantDecide { .. }
@@ -3252,6 +3360,8 @@ pub struct ForwardContext {
     pub subject: String,
     pub from: String,
     pub forwarded_content: String,
+    #[serde(default)]
+    pub source: Option<mxr_core::ForwardSource>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -3797,6 +3907,16 @@ pub enum ResponseData {
         cases: Vec<DraftEvalCaseData>,
         summary: DraftEvalSummaryData,
     },
+    /// Returned by `Request::ComposeAssist`.
+    ComposeProposal {
+        proposal: ComposeProposalData,
+    },
+    /// Returned by `Request::ApplyComposeProposal`: the stored draft now holds
+    /// the proposal; `text_hash` is the hex SHA-256 of its new text region.
+    ComposeApplied {
+        draft_id: DraftId,
+        text_hash: String,
+    },
     /// Returned by `Request::DraftEvalQuick`: the labelled synthetic corpus
     /// only, never the user's mail.
     DraftEvalQuick {
@@ -3805,6 +3925,12 @@ pub enum ResponseData {
     },
     /// Returned by `Request::ClassifyEval`. Mismatches are sorted by
     /// scenario, then provider id, then question.
+    ClassifyReport {
+        report: ClassifyReportData,
+    },
+    ClassifyCompare {
+        comparison: ClassifyComparisonData,
+    },
     ClassifyEval {
         summary: ClassifyEvalSummaryData,
         mismatches: Vec<ClassifyEvalMismatchData>,
@@ -4029,6 +4155,12 @@ pub enum ResponseData {
     /// Durable result of `Request::GetSendOutcome`.
     SendOutcome {
         outcome: Option<mxr_core::DraftSendOutcome>,
+    },
+    SendRecoveryPreview {
+        outcome: mxr_core::DraftSendOutcome,
+        recoverable: bool,
+        reason: String,
+        evidence_sha256: Option<String>,
     },
     /// Returned by `Request::ExtractDraftCommitments`.
     DraftCommitments {
@@ -4414,6 +4546,10 @@ pub enum ResponseData {
     AssistantModels {
         models: AssistantModelsData,
     },
+    /// Returned by `Request::GetComposeModels`.
+    ComposeModels {
+        models: AssistantModelsData,
+    },
     /// Returned by `Request::SetAssistantModel`.
     AssistantModelChange {
         change: AssistantModelChangeData,
@@ -4461,6 +4597,9 @@ pub enum ResponseData {
     },
     /// Returned by `Request::GetMessageKind`.
     MessageKind {
+        /// The exact stored home decision; absent for outbound context mail.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        assessment: Option<mxr_core::assessment::MailAssessment>,
         account_id: AccountId,
         message_id: MessageId,
         sender_email: String,
@@ -4626,8 +4765,12 @@ impl ResponseData {
             | Self::ThreadSummary { .. }
             | Self::TriageResults { .. }
             | Self::DraftSuggestion { .. }
+            | Self::ComposeProposal { .. }
+            | Self::ComposeApplied { .. }
             | Self::DraftEval { .. }
             | Self::DraftEvalQuick { .. }
+            | Self::ClassifyReport { .. }
+            | Self::ClassifyCompare { .. }
             | Self::ClassifyEval { .. }
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }
@@ -4640,6 +4783,7 @@ impl ResponseData {
             | Self::Job { .. }
             | Self::UnsubscribePurgeResult { .. }
             | Self::SendOutcome { .. }
+            | Self::SendRecoveryPreview { .. }
             | Self::SendReceipt { .. }
             | Self::ResolvedSendFrom { .. }
             | Self::DraftSafetyReportResponse { .. }
@@ -4712,6 +4856,7 @@ impl ResponseData {
             | Self::MarginaliaSync { .. }
             | Self::AssistantAvailability { .. }
             | Self::AssistantModels { .. }
+            | Self::ComposeModels { .. }
             | Self::AssistantModelChange { .. }
             | Self::AssistantConversation { .. }
             | Self::AssistantConversations { .. }

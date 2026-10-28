@@ -41,6 +41,13 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
         MessageDeletionRule::ClearedWithMessages,
     ),
     ("thread_summaries", MessageDeletionRule::ClearedWithMessages),
+    // SQLite's conversation_message_delete trigger clears both projections
+    // inside the same message deletion transaction, including raw SQL deletes.
+    ("conversation_summaries", MessageDeletionRule::ClearedWithMessages),
+    ("conversation_candidate_sets", MessageDeletionRule::ClearedWithMessages),
+    ("conversation_view_inputs", MessageDeletionRule::KeptNoText(
+        "thread view generations reject late synopsis writes; last-message and account deletion clear them",
+    )),
     ("decision_log", MessageDeletionRule::ClearedWithMessages),
     (
         "contact_commitments",
@@ -57,6 +64,12 @@ pub(crate) const MESSAGE_DELETION_RULES: &[(&str, MessageDeletionRule)] = &[
     ),
     ("desk_dismissals", MessageDeletionRule::ClearedWithMessages),
     ("mode_done", MessageDeletionRule::ClearedWithMessages),
+    (
+        "assessment_thread_inputs",
+        MessageDeletionRule::KeptNoText(
+            "thread generations survive deletion so an in-flight assessment cannot commit old inputs; account deletion cascades",
+        ),
+    ),
     ("event_log", MessageDeletionRule::ClearedWithMessages),
     ("unsubscribe_receipts", MessageDeletionRule::ClearedWithMessages),
     // Cleared for every person a delete touches, and with its contact.

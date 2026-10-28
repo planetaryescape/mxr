@@ -37,6 +37,7 @@ export const messagesActions: ActionBehavior[] = [
   { id: "messages.person-page", command: "personPage" },
   { id: "messages.as-sent", command: "asSent" },
   { id: "messages.filter", command: "filter", icon: Filter },
+  { id: "messages.cycle-filter", command: "cycleFilter", icon: Filter },
   { id: "messages.send-next", command: "sendNext" },
   { id: "messages.escape", command: "escape" },
   // Last, so the status strip (first five live keys) keeps the page's own verbs.

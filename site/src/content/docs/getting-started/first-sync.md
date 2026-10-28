@@ -3,13 +3,17 @@ title: First sync
 description: From installed binary to a working local mailbox.
 ---
 
-## Open the TUI
+## Choose a client
 
 ```bash
 mxr
 ```
 
-`mxr` auto-starts the daemon on first run. No separate process to manage.
+`mxr` starts the daemon automatically. Use the TUI, web app, CLI or an
+[existing agent](/getting-started/agent-quick-start/); clients connected
+to the same runtime use its shared mailbox. Start the human workflow on
+[Now](/guides/now/), then follow [Your day](/guides/your-day/) through the
+five modes.
 
 ## Trigger sync
 
@@ -22,7 +26,11 @@ mxr sync --status                         # check progress at any time
 mxr status --watch                        # live daemon status
 ```
 
-`--wait` prints a progress line on stderr as the count moves (`personal: 3,000/50,000 — Stored 3000 messages`) and exits non-zero if the sync it started failed. Its `--wait-timeout-secs` (default 60) bounds only the wait: a first backfill usually needs more than a minute, and the sync keeps running either way.
+`--wait` prints sync progress on stderr and reports detected sync failures with a non-zero exit. Failure detection depends on reading status before starting the sync; if that read fails, a later sync failure can be missed. Check `mxr sync --status` for the account's last error.
+
+Search can use only mail already synced while the backfill continues. Message bodies are stored with their envelopes; file attachments may be fetched later when you open or save them. Reaching idle ends the current sync pass for the selected account, not sync for every account or attachment caching.
+
+`--wait-timeout-secs` (default 60) bounds only the wait, not the sync. If the wait expires, check status later; the sync continues.
 
 <details>
 <summary>For developers: run the daemon in the foreground</summary>
@@ -66,19 +74,13 @@ mxr semantic status
 mxr doctor --semantic-status
 ```
 
-## What to expect in the TUI
+## Continue with the TUI
 
-- Left sidebar: lenses (Desk, Reading, Paper trail and the queues), system labels, user labels, saved searches
-- Center list: threads by default
-- Right pane: preview or thread view
-- First-run walkthrough after account setup, plus `o` from Help to reopen it later
-- `g` then a capital: open a tool: `gR` Rules, `gC` Accounts and settings, `gD` Diagnostics, `gA` Analytics, `gP` Deliveries (`gi` returns to the Mailbox)
-- `g` then a letter: go to a place, such as the [desk](/guides/now/) or [Reading and Paper trail](/guides/reading-and-paper-trail/); the [keybindings reference](/reference/keybindings/#go-to) lists them
-- `:` or `Ctrl-k`: command palette
-- `?`: full help modal
-- `/`: full-index Search
-- `Ctrl-f`: filter only the current mailbox
-- **Edit Config** in the palette: open `config.toml` in `$EDITOR`
+The TUI opens the mailbox; its sidebar also links to [Now and the five
+modes](/reference/tui/#now-and-the-modes). Use the [TUI reference](/reference/tui/)
+for current screens and keybindings. The mailbox view remains useful for
+arrival-order work; [Your day](/guides/your-day/) describes the mode-based
+human workflow.
 
 ## If something looks wrong
 

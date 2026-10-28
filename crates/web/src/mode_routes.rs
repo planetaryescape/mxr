@@ -257,8 +257,36 @@ async fn set_hint_seen(
     passthrough(response)
 }
 
+#[derive(Debug, Deserialize)]
+struct ClassifyReportQuery {
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default, alias = "account_id")]
+    account: Option<String>,
+    #[serde(default)]
+    limit: Option<u32>,
+}
+async fn classify_report(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ClassifyReportQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::ClassifyReport {
+            account_id: parse_optional_account(query.account.as_deref())?,
+            limit: query.limit.unwrap_or(1000),
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
 pub(crate) fn extend_mail(router: Router<AppState>) -> Router<AppState> {
     router
+        .route("/classify/report", get(classify_report))
         .route("/now", get(get_now))
         .route("/rail", get(get_rail))
         .route("/codes", get(get_codes))

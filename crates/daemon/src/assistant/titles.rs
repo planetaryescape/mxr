@@ -657,6 +657,8 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
             "letting go of Updates",
         ),
         "mxr_arrivals" => v("Checking", "Checked", "check", "what arrived"),
+        "mxr_classify_report" => v("Checking", "Checked", "check", "your sorting report"),
+        "mxr_why" => v("Checking", "Checked", "check", "why this email is here"),
         "mxr_arrivals_list" => {
             let rest = match text(arguments, "bucket").as_deref() {
                 Some("messages") => "arrivals in Messages".to_string(),
@@ -864,6 +866,20 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
             v("Listing", "Listed", "list", &format!("your {state} to-dos"))
         }
         "mxr_todo_get" => v("Opening", "Opened", "open", "a to-do"),
+        "mxr_todo_correct" => {
+            if run {
+                v("Correcting", "Corrected", "correct", "a to-do")
+            } else {
+                preview_of("Correcting", "a to-do")
+            }
+        }
+        "mxr_todo_undo_correction" => {
+            if run {
+                v("Undoing", "Undid", "undo", "a to-do correction")
+            } else {
+                preview_of("Undoing", "a to-do correction")
+            }
+        }
         "mxr_todo_microsoft" => match arguments.get("action").and_then(Value::as_str) {
             Some("link") if run => v("Linking", "Linked", "link", "a to-do with Microsoft To Do"),
             Some("link") => v(
@@ -1102,6 +1118,18 @@ fn phrases(tool: &str, arguments: &Value, context: Context<'_>) -> Option<Phrase
             }
         }
         "mxr_send_outcome" => v("Checking", "Checked", "check", "whether a send went out"),
+        "mxr_recover_send_outcome" => {
+            if dry {
+                v("Checking", "Checked", "check", "send recovery evidence")
+            } else {
+                v(
+                    "Resuming",
+                    "Resumed",
+                    "resume",
+                    "the original approved send",
+                )
+            }
+        }
 
         // Recovery
         "mxr_recovery_status" => v("Checking", "Checked", "check", "profile recovery"),
@@ -1432,6 +1460,26 @@ mod tests {
     }
 
     #[test]
+    fn send_recovery_titles_never_claim_that_the_message_was_sent() {
+        let tool = "mxr_recover_send_outcome";
+        assert_eq!(
+            titles(tool, &json!({"dry_run": true}), State::Done).done,
+            "Checked send recovery evidence"
+        );
+        for outcome in ["waiting", "unknown", "accepted"] {
+            let result = json!({"outcome": {"state": outcome}}).to_string();
+            let title = step_title(
+                tool,
+                &json!({"dry_run": false}),
+                State::Done,
+                Context::default(),
+                Some(&result),
+            );
+            assert_eq!(title.done, "Ran: resume the original approved send");
+        }
+    }
+
+    #[test]
     fn microsoft_task_titles_distinguish_previews_without_claiming_external_success() {
         let tool = "mxr_todo_microsoft";
         assert_eq!(
@@ -1484,6 +1532,69 @@ mod tests {
                 .done,
                 format!("Ran: {action_title}")
             );
+        }
+    }
+
+    #[test]
+    fn todo_correction_titles_preview_and_never_invent_success_or_echo_edits() {
+        for (tool, action, preview) in [
+            (
+                "mxr_todo_correct",
+                "correct a to-do",
+                "Checked what correcting a to-do would change",
+            ),
+            (
+                "mxr_todo_undo_correction",
+                "undo a to-do correction",
+                "Checked what undoing a to-do correction would change",
+            ),
+        ] {
+            for reason in ["not_a_todo", "not_mine", "already_done", "wrong_details"] {
+                let args = json!({
+                    "todo_id": HOSTILE, "reason": reason, "correction_id": HOSTILE,
+                    "edits": [{"field": "title", "value": HOSTILE}],
+                });
+                for confirm in [None, Some(json!(false)), Some(Value::Null)] {
+                    let mut preview_args = args.clone();
+                    if let Some(confirm) = confirm {
+                        preview_args["confirm"] = confirm;
+                    }
+                    assert_eq!(titles(tool, &preview_args, State::Done).done, preview);
+                }
+                let mut committing = args;
+                committing["confirm"] = json!(true);
+                assert_eq!(change_title(tool, &committing, None), capitalised(action));
+                assert_eq!(
+                    titles(tool, &committing, State::Waiting).done,
+                    format!("Waiting for you: {action}")
+                );
+                for result in [
+                    "{}",
+                    r#"{"change":{"dry_run":false,"changed":[{"id":"t1"}],"correction_undo":"token"}}"#,
+                ] {
+                    let title = step_title(
+                        tool,
+                        &committing,
+                        State::Approved,
+                        Context::default(),
+                        Some(result),
+                    );
+                    assert_eq!(title.done, format!("Ran: {action}"));
+                    assert_clean(&title.running);
+                    assert_clean(&title.done);
+                }
+                let title = step_title(
+                    tool,
+                    &committing,
+                    State::Done,
+                    Context::default(),
+                    Some(r#"{"error":"hostile details"}"#),
+                );
+                assert_eq!(
+                    title.done,
+                    format!("Couldn't {action}: mxr reported an error")
+                );
+            }
         }
     }
 
@@ -1662,6 +1773,7 @@ mod tests {
     fn todo_change(dry_run: bool, changed: usize, unchanged: &[&str]) -> String {
         let data = mxr_protocol::ResponseData::TodoChange {
             change: mxr_protocol::TodoChangeData {
+                correction_undo: None,
                 dry_run,
                 action: "done".into(),
                 changed: Vec::new(),

@@ -8,7 +8,7 @@
 //! length they asked for (`draft_voice` gathers, `draft_prompt` builds,
 //! `draft_output` cleans). Never auto-sends.
 
-use super::draft_prompt::{self, DraftMode, Me, PromptInput};
+use super::draft_prompt::{self, DraftMode, Help, Me, PromptInput};
 use super::draft_provenance::DraftPolicy;
 use super::draft_voice::{self, Counterparty, VoiceMaterial};
 use super::{draft_context, draft_output, relationship_profile, HandlerResult};
@@ -246,29 +246,18 @@ async fn draft_with(
     // The user's other mail only reaches a cloud model with their opt-in.
     let policy = DraftPolicy::pin(state, feature);
     let share = policy.share_history;
-    let background = match contact_emails.first().filter(|_| share) {
-        Some(email) => relationship_profile::load_relationship_profile(state, account_id, email)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|profile| profile.summary.map(|summary| summary.text)),
-        None => None,
-    };
-    let material = if share {
-        draft_voice::voice_material(
-            state,
-            account_id,
-            counterparty.as_ref(),
-            thread_id,
-            request.before,
-        )
-        .await
-    } else {
-        VoiceMaterial::none()
-    };
+    let (background, material) = voice_inputs(
+        state,
+        account_id,
+        &policy,
+        counterparty.as_ref(),
+        thread_id,
+        request.before,
+    )
+    .await;
     let target_words = target_words(request.length_hint, &material);
     let max_tokens = max_tokens_for_words(target_words);
-    let budget_chars = prompt_budget_chars(state.llm.capabilities().context_window, max_tokens);
+    let budget_chars = prompt_budget_chars(policy.llm.context_window(), max_tokens);
     let today = draft_voice::today();
     let prompt = draft_prompt::build(&PromptInput {
         mode,
@@ -281,6 +270,8 @@ async fn draft_with(
         tone: request.register,
         target_words,
         instruction: request.instruction,
+        subject: "",
+        help: Help::write(),
         budget_chars,
     });
     tracing::debug!(
@@ -330,6 +321,35 @@ async fn draft_with(
     .await
 }
 
+/// The relationship summary and the voice material (examples and habits) a
+/// prompt may carry. Both are empty unless the policy lets the user's other
+/// mail reach this model.
+pub(crate) async fn voice_inputs(
+    state: &AppState,
+    account_id: &AccountId,
+    policy: &DraftPolicy,
+    counterparty: Option<&Counterparty>,
+    thread_id: Option<&ThreadId>,
+    before: Option<DateTime<Utc>>,
+) -> (Option<String>, VoiceMaterial) {
+    if !policy.share_history {
+        return (None, VoiceMaterial::none());
+    }
+    let background = match counterparty {
+        Some(person) => {
+            relationship_profile::load_relationship_profile(state, account_id, &person.email)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|profile| profile.summary.map(|summary| summary.text))
+        }
+        None => None,
+    };
+    let material =
+        draft_voice::voice_material(state, account_id, counterparty, thread_id, before).await;
+    (background, material)
+}
+
 pub(crate) const CLOUD_NOTE: &str = "Your LLM is a cloud endpoint, so this draft saw only the \
 conversation, not your other emails. Set llm.allow_cloud_relationship_data = true to draft in your voice.";
 
@@ -354,7 +374,7 @@ pub(crate) fn max_tokens_for_words(words: u32) -> u32 {
 
 /// The prompt must leave room for the answer inside the model's context
 /// window (about three characters per token for English mail).
-fn prompt_budget_chars(context_window: u32, max_tokens: u32) -> usize {
+pub(crate) fn prompt_budget_chars(context_window: u32, max_tokens: u32) -> usize {
     let tokens = context_window
         .saturating_sub(max_tokens)
         .saturating_sub(200) as usize;

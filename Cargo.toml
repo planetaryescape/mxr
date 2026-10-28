@@ -92,6 +92,10 @@ name = "compose_html_cli"
 path = "crates/daemon/tests/compose_html_cli.rs"
 
 [[test]]
+name = "forward_cli"
+path = "crates/daemon/tests/forward_cli.rs"
+
+[[test]]
 name = "scheduled_sends_cli"
 path = "crates/daemon/tests/scheduled_sends_cli.rs"
 
@@ -183,7 +187,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.6.156"
+version = "0.6.167"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.94"
@@ -283,7 +287,7 @@ serde_bytes = "0.11"
 sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "uuid", "chrono", "migrate"] }
 
 # Search
-tantivy = "0.26"
+tantivy = "0.27"
 
 # TUI
 ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
@@ -300,6 +304,8 @@ chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"
 bitflags = { version = "2", features = ["serde"] }
 sha2 = "0.11"
+# Word-level diffs for writing-help proposals (already in the lockfile via insta).
+similar = "2"
 base16ct = { version = "1.0", features = ["alloc"] }
 
 # Error handling
@@ -353,11 +359,14 @@ security-framework = { version = "3", features = ["OSX_10_15"] }
 security-framework-sys = "2"
 base64 = "0.23"
 mail-parser = "0.11"
+# Upstream0.2 requires its mail_parser adapter even with defaults off; verifier stays off.
+msg-auth-status = { version = "0.2.0", default-features = false, features = ["std", "mail_parser"] }
 # Charset decoding for provider body parts that arrive in their original
 # (non-UTF-8) encoding. Same crate mail-parser already pulls in transitively.
 encoding_rs = "0.8"
 icalendar = { version = "0.17.10", default-features = true }
 url = "2"
+percent-encoding = "2"
 scraper = "0.27"
 # scraper's tree type, for removing quote markers before HTML becomes text.
 ego-tree = "0.11"
@@ -495,6 +504,7 @@ tracing-subscriber = { workspace = true }
 tui-textarea = { package = "tui-textarea-2", version = "0.10.2" }
 unicode-width = { workspace = true }
 url = { workspace = true }
+percent-encoding = { workspace = true }
 open = { workspace = true }
 uuid = { workspace = true }
 scraper = { workspace = true }
@@ -508,6 +518,7 @@ nix = { version = "0.30", features = ["signal", "process"] }
 inquire = "0.9.4"
 
 [dev-dependencies]
+mxr-provider-gmail = { workspace = true, features = ["test-util"] }
 assert_cmd = { workspace = true }
 criterion = "0.5"
 insta = { workspace = true }

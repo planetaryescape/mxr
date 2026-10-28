@@ -118,6 +118,8 @@ pub fn remote_send_allowed(request: &crate::Request) -> bool {
         crate::Request::ListAccounts
             | crate::Request::GetArchiveWorkspace
             | crate::Request::PrepareReply { .. }
+            | crate::Request::EnsureReplyDraft { .. }
+            | crate::Request::SetReplyDraftAudience { .. }
             | crate::Request::ResolveSignature { .. }
             | crate::Request::ResolveSendFrom { .. }
             | crate::Request::ListSnippets
@@ -135,6 +137,7 @@ pub fn remote_send_allowed(request: &crate::Request) -> bool {
             | crate::Request::SendDraft { .. }
             | crate::Request::SendStoredDraft { .. }
             | crate::Request::GetSendOutcome { .. }
+            | crate::Request::RecoverSendOutcome { .. }
     )
 }
 
@@ -164,6 +167,21 @@ mod tests {
             account_id: None,
             mode: None,
         }));
+        let reply_preview = crate::Request::EnsureReplyDraft {
+            message_id: mxr_core::MessageId::new(),
+            reply_all: false,
+            dry_run: true,
+        };
+        assert!(!remote_read_allowed(&reply_preview));
+        assert!(remote_send_allowed(&reply_preview));
+        assert!(remote_send_allowed(
+            &crate::Request::SetReplyDraftAudience {
+                draft_id: mxr_core::DraftId::new(),
+                reply_all: true,
+                expected_revision: 1,
+                dry_run: true,
+            }
+        ));
     }
     #[test]
     fn credentials_redact_and_forged_context_fails() {

@@ -1,5 +1,138 @@
 # Changelog
 
+## [0.6.167](https://github.com/planetaryescape/mxr/compare/v0.6.166...v0.6.167) (2026-10-27)
+
+
+### Features
+
+* keep replies inline and resume conversation drafts ([b2ea14e](https://github.com/planetaryescape/mxr/commit/b2ea14e8b9a8f4d342cb38af247b409d5109e5bb))
+
+## [0.6.166](https://github.com/planetaryescape/mxr/compare/v0.6.165...v0.6.166) (2026-10-26)
+
+
+### Bug Fixes
+
+* restore responsive mail views and keyboard navigation ([#722](https://github.com/planetaryescape/mxr/issues/722)) ([2d0d4fe](https://github.com/planetaryescape/mxr/commit/2d0d4fe39adda36cd9cd84841ffc132cf8512c7f))
+
+## [0.6.165](https://github.com/planetaryescape/mxr/compare/v0.6.164...v0.6.165) (2026-10-26)
+
+
+### Features
+
+* check compose style against the writer’s habits ([3f111fb](https://github.com/planetaryescape/mxr/commit/3f111fb79440068663286de804909e918467ab48))
+
+
+### Bug Fixes
+
+* preserve forwarded content and retain approved sends through cooldowns ([#717](https://github.com/planetaryescape/mxr/issues/717)) ([0d132b3](https://github.com/planetaryescape/mxr/commit/0d132b378e874016b09df0b7203c21a62f29497a))
+
+
+### Documentation
+
+* align stored asks guides with shipped behavior ([#719](https://github.com/planetaryescape/mxr/issues/719)) ([bd11232](https://github.com/planetaryescape/mxr/commit/bd11232427941c634da57a0c22d3d866f3634af1))
+
+## [0.6.164](https://github.com/planetaryescape/mxr/compare/v0.6.163...v0.6.164) (2026-10-26)
+
+
+### Bug Fixes
+
+* make Messages an attention-only queue ([#715](https://github.com/planetaryescape/mxr/issues/715)) ([814b053](https://github.com/planetaryescape/mxr/commit/814b053b120d48034e61c82e14bedf4f6c638d0f))
+
+
+### Documentation
+
+* record R2c release acceptance ([3e4dd28](https://github.com/planetaryescape/mxr/commit/3e4dd283aee803e25e8a7a1d354c5b91ea7decb1))
+
+## [0.6.163](https://github.com/planetaryescape/mxr/compare/v0.6.162...v0.6.163) (2026-10-26)
+
+
+### Features
+
+* choose a compose model per draft ([106c05b](https://github.com/planetaryescape/mxr/commit/106c05b361b0f77d2dc483ec54701023d1eb4065))
+* unify stored asks and to-do corrections ([fc3e514](https://github.com/planetaryescape/mxr/commit/fc3e514f4281f0c96efc232d67066e2d62b65baf))
+
+
+### Bug Fixes
+
+* refresh mail before copying the latest code ([ce1d2de](https://github.com/planetaryescape/mxr/commit/ce1d2dee4c65d41e02dda0764e203b37b138dc18))
+
+
+### Documentation
+
+* clarify Messages audience and verification boundaries ([#713](https://github.com/planetaryescape/mxr/issues/713)) ([69d5b83](https://github.com/planetaryescape/mxr/commit/69d5b833e7a62a90422d74a45108684e7d7a3311))
+
+## [0.6.162](https://github.com/planetaryescape/mxr/compare/v0.6.161...v0.6.162) (2026-10-25)
+
+
+### Features
+
+* make Messages conversations audience-aware ([#698](https://github.com/planetaryescape/mxr/issues/698)) ([2c18587](https://github.com/planetaryescape/mxr/commit/2c185877802e8bd37c954be3cf14c85b66ddc3d0))
+
+
+### Bug Fixes
+
+* preserve draft revision after accepting writing help ([0dc65d0](https://github.com/planetaryescape/mxr/commit/0dc65d096c40f17c6b502c2ff835a9dbdc757814))
+
+## [0.6.161](https://github.com/planetaryescape/mxr/compare/v0.6.160...v0.6.161) (2026-10-25)
+
+
+### Features
+
+* review writing proposals in TUI and Raycast ([64be20a](https://github.com/planetaryescape/mxr/commit/64be20ae34d5a28cb3d9ac0b8f578df3cd2cc757))
+
+
+### Documentation
+
+* close archived Messages done regression ([#705](https://github.com/planetaryescape/mxr/issues/705)) ([f9d316d](https://github.com/planetaryescape/mxr/commit/f9d316de44c4081d2a5f314c54763525d5884d83))
+
+## [0.6.160](https://github.com/planetaryescape/mxr/compare/v0.6.159...v0.6.160) (2026-10-23)
+
+
+### Bug Fixes
+
+* allow done on archived Messages topics ([#703](https://github.com/planetaryescape/mxr/issues/703)) ([5213b49](https://github.com/planetaryescape/mxr/commit/5213b493b7e7be40584b7f0bdf8d6a76158cc458))
+
+
+### Documentation
+
+* align discovery and synthetic recordings with mxr runtime ([a9b1346](https://github.com/planetaryescape/mxr/commit/a9b1346f763e7f43a1ece10f50c63b74140f0f12))
+* connect the five mail jobs to the shared runtime ([16b1ada](https://github.com/planetaryescape/mxr/commit/16b1adaed540bd0fdd9e2d447ecd6f6711abcf60))
+* explain local workflows and daemon authority ([cd08cfe](https://github.com/planetaryescape/mxr/commit/cd08cfe5eb72b0959bc623ad15439bbf09cbe2c3))
+* reconcile runtime knowledge and example semantics ([#701](https://github.com/planetaryescape/mxr/issues/701)) ([544da53](https://github.com/planetaryescape/mxr/commit/544da5355fbaa11a7cf64e0fecbd844ca119623a))
+* record completed runtime website rollout ([b3c2f3b](https://github.com/planetaryescape/mxr/commit/b3c2f3b00aca85c2c7375030e86fb7f2380ba4fc))
+
+## [0.6.159](https://github.com/planetaryescape/mxr/compare/v0.6.158...v0.6.159) (2026-10-23)
+
+
+### Features
+
+* inspect Messages identities and message audiences ([748044a](https://github.com/planetaryescape/mxr/commit/748044ab455371aa73e36f344e4410e63130f78d))
+* share one stored classifier assessment across mxr ([#687](https://github.com/planetaryescape/mxr/issues/687)) ([fe8ea0f](https://github.com/planetaryescape/mxr/commit/fe8ea0f1ba4253df34d586c82eb2a58e1a240695))
+
+
+### Documentation
+
+* guide existing agents through shared draft review ([4874fbd](https://github.com/planetaryescape/mxr/commit/4874fbd31d785e9e37d64080b2ba1db696e689dd))
+
+## [0.6.158](https://github.com/planetaryescape/mxr/compare/v0.6.157...v0.6.158) (2026-10-23)
+
+
+### Bug Fixes
+
+* require desktop artifacts before release publication ([7636657](https://github.com/planetaryescape/mxr/commit/7636657ac48dae1846eb1e3d1c0a7c20ce8ca0c0))
+
+## [0.6.157](https://github.com/planetaryescape/mxr/compare/v0.6.156...v0.6.157) (2026-10-23)
+
+
+### Features
+
+* build writing help on the current draft ([5fd6382](https://github.com/planetaryescape/mxr/commit/5fd638271cf6598797f80c7d9ab83d7a935a6d1a))
+
+
+### Documentation
+
+* present mxr as a shared local mail runtime ([cc00d40](https://github.com/planetaryescape/mxr/commit/cc00d4081bb5bd7875c39da4641ff95888817d80))
+
 ## [0.6.156](https://github.com/planetaryescape/mxr/compare/v0.6.155...v0.6.156) (2026-10-23)
 
 

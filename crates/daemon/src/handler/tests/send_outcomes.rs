@@ -1,13 +1,19 @@
 use super::*;
 use mxr_core::{Draft, DraftSendOutcome, SendIdentity, SendOutcomeState};
 
-async fn fixture() -> (Arc<AppState>, Arc<mxr_provider_fake::FakeProvider>, Draft) {
+pub(super) async fn fixture() -> (Arc<AppState>, Arc<mxr_provider_fake::FakeProvider>, Draft) {
     fixture_with_sender(None).await
 }
-async fn fixture_with_sender(
+pub(super) async fn fixture_with_sender(
     sender: Option<Arc<dyn mxr_core::MailSendProvider>>,
 ) -> (Arc<AppState>, Arc<mxr_provider_fake::FakeProvider>, Draft) {
-    let account_id = mxr_core::AccountId::new();
+    fixture_with_account_and_sender(mxr_core::AccountId::new(), sender).await
+}
+
+pub(super) async fn fixture_with_account_and_sender(
+    account_id: mxr_core::AccountId,
+    sender: Option<Arc<dyn mxr_core::MailSendProvider>>,
+) -> (Arc<AppState>, Arc<mxr_provider_fake::FakeProvider>, Draft) {
     let account = crate::test_fixtures::test_account_with_id(account_id.clone());
     let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
     let state = Arc::new(
@@ -45,7 +51,7 @@ async fn fixture_with_sender(
     state.store.insert_draft(&draft).await.unwrap();
     (state, fake, draft)
 }
-async fn call(state: &Arc<AppState>, request: Request) -> Response {
+pub(super) async fn call(state: &Arc<AppState>, request: Request) -> Response {
     match handle_request(
         state,
         &IpcMessage {
@@ -62,7 +68,7 @@ async fn call(state: &Arc<AppState>, request: Request) -> Response {
         other => panic!("unexpected {other:?}"),
     }
 }
-fn send(draft: &Draft, identity: SendIdentity) -> Request {
+pub(super) fn send(draft: &Draft, identity: SendIdentity) -> Request {
     Request::SendStoredDraft {
         managed_attachments_reviewed: true,
         send_identity: Some(identity),
@@ -70,7 +76,7 @@ fn send(draft: &Draft, identity: SendIdentity) -> Request {
         override_safety_token: None,
     }
 }
-async fn outcome(
+pub(super) async fn outcome(
     state: &Arc<AppState>,
     draft: &Draft,
     identity: &SendIdentity,
@@ -97,6 +103,140 @@ fn error_contains(response: Response, expected: &str) {
         Response::Error { message, .. } => assert!(message.contains(expected), "{message}"),
         other => panic!("expected error, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn gmail_cooldown_defers_approved_send_without_dispatch_or_false_uncertainty() {
+    use wiremock::{
+        matchers::{method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET")).and(path("/labels"))
+        .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "900")
+            .set_body_json(serde_json::json!({"error":{"code":429,"message":"User-rate limit exceeded.","errors":[{"reason":"rateLimitExceeded"}]}})))
+        .expect(1).mount(&server).await;
+    Mock::given(method("POST"))
+        .and(path("/messages/send"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"id":"synthetic-send"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let account_id = mxr_core::AccountId::new();
+    let client = mxr_provider_gmail::client::GmailClient::new(
+        mxr_provider_gmail::auth::GmailAuth::for_test_token("synthetic-token"),
+    )
+    .with_base_url(server.uri());
+    assert!(client.list_labels().await.is_err());
+    let gmail = Arc::new(mxr_provider_gmail::GmailProvider::new(
+        account_id.clone(),
+        client,
+    ));
+    let (state, _, mut draft) = fixture_with_account_and_sender(account_id, Some(gmail)).await;
+    let temp = tempfile::tempdir().unwrap();
+    let attachment = temp.path().join("approved.pdf");
+    std::fs::write(&attachment, b"approved attachment bytes").unwrap();
+    draft.attachments = vec![attachment.clone()];
+    draft.reply_headers = Some(mxr_core::ReplyHeaders {
+        in_reply_to: "<parent@example.com>".into(),
+        references: vec!["<parent@example.com>".into()],
+        thread_id: Some("gmail-original-thread".into()),
+    });
+    state.store.update_draft(&draft).await.unwrap();
+    let draft = state.store.get_draft(&draft.id).await.unwrap().unwrap();
+    let identity = SendIdentity::for_draft(&draft);
+    let response = call(&state, send(&draft, identity.clone())).await;
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.url.path() == "/messages/send")
+            .count(),
+        0
+    );
+    let retained = outcome(&state, &draft, &identity).await;
+    assert_eq!(
+        serde_json::to_value(&retained).unwrap()["state"],
+        "waiting",
+        "local refusal must not become uncertainty: {response:?}"
+    );
+    assert!(retained.rfc2822_message_id.is_some());
+    let replay = call(&state, send(&draft, identity.clone())).await;
+    assert!(matches!(
+        replay,
+        Response::Ok {
+            data: ResponseData::SendOutcome { .. }
+        }
+    ));
+    assert_eq!(
+        outcome(&state, &draft, &identity)
+            .await
+            .recovery
+            .unwrap()
+            .attempts,
+        1
+    );
+    // A mutable source path cannot change the already approved bytes.
+    std::fs::write(&attachment, b"changed after approval").unwrap();
+    let future = chrono::Utc::now() + chrono::Duration::seconds(960);
+    assert_eq!(
+        super::super::send_recovery::process_due(&state, chrono::Utc::now())
+            .await
+            .unwrap(),
+        0
+    );
+    tokio::time::pause();
+    tokio::time::advance(std::time::Duration::from_secs(960)).await;
+    tokio::time::resume();
+    assert_eq!(
+        super::super::send_recovery::process_due(&state, future)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        super::super::send_recovery::process_due(&state, future)
+            .await
+            .unwrap(),
+        0
+    );
+    let accepted = outcome(&state, &draft, &identity).await;
+    assert_eq!(accepted.state, SendOutcomeState::Accepted);
+    assert_eq!(accepted.rfc2822_message_id, retained.rfc2822_message_id);
+    let requests = server.received_requests().await.unwrap();
+    let sends: Vec<_> = requests
+        .iter()
+        .filter(|request| request.url.path() == "/messages/send")
+        .collect();
+    assert_eq!(sends.len(), 1);
+    let submitted: serde_json::Value = serde_json::from_slice(&sends[0].body).unwrap();
+    assert_eq!(submitted["threadId"], "gmail-original-thread");
+    use base64::Engine as _;
+    let mime = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(submitted["raw"].as_str().unwrap())
+        .unwrap();
+    let parsed = mail_parser::MessageParser::default().parse(&mime).unwrap();
+    assert!(parsed.body_text(0).unwrap().contains("Reviewed text"));
+    assert_eq!(parsed.subject(), Some("Reviewed send"));
+    assert_eq!(
+        parsed.message_id(),
+        retained
+            .rfc2822_message_id
+            .as_deref()
+            .map(|id| id.trim_matches(['<', '>']))
+    );
+    assert_eq!(parsed.in_reply_to().as_text(), Some("parent@example.com"));
+    assert_eq!(
+        parsed.to().unwrap().first().unwrap().address(),
+        Some("recipient@example.com")
+    );
+    assert_eq!(
+        parsed.attachments().next().unwrap().contents(),
+        b"approved attachment bytes"
+    );
 }
 
 #[tokio::test]

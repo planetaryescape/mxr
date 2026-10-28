@@ -13,6 +13,7 @@ import {
 import { openApp, readE2EState } from "./helpers/state";
 import { freshReplyRequest } from "./helpers/reply-request";
 import { archiveViaBridge } from "./helpers/archive";
+import { freshWaitingConversations } from "./helpers/waiting-request";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -22,6 +23,7 @@ function sidebar(page: import("@playwright/test").Page) {
 
 test("the desk shows its lanes with reasons, and only Now has a badge", async ({ page }) => {
   const fixture = await freshReplyRequest(page);
+  const waiting = await freshWaitingConversations(page);
   try {
     await openApp(page, "/desk");
     await expect(page).toHaveURL(/\/desk$/);
@@ -51,6 +53,7 @@ test("the desk shows its lanes with reasons, and only Now has a badge", async ({
     await expect(sidebar(page).getByRole("link", { name: /^Now/ })).toContainText(String(badge));
     await expect(sidebar(page).getByRole("link", { name: "Inbox" })).not.toContainText(/\d/);
   } finally {
+    await waiting.finish();
     await archiveViaBridge(page, fixture.messageIds);
   }
 });

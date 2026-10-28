@@ -358,10 +358,22 @@ pub fn map_request(
         Request::DraftEvalQuick => {
             skip_activity!("draft_eval_quick", "local evaluation; creates nothing")
         }
-        Request::ClassifyEval { .. } => {
+        Request::ClassifyReport { .. }
+        | Request::ClassifyCompare { .. }
+        | Request::ClassifyEval { .. } => {
             skip_activity!("classify_eval", "local evaluation; reads only")
         }
         Request::DraftRefine { .. } => ("draft.update", Some("draft"), None, None),
+        Request::ComposeAssist { .. } => skip_activity!(
+            "compose_assist",
+            "the handler records it with the size of what came back"
+        ),
+        Request::ApplyComposeProposal { draft_id, .. } => (
+            "draft.update",
+            Some("draft"),
+            Some(draft_id.as_str().clone()),
+            None,
+        ),
         Request::SaveDraft { draft } => (
             "draft.save",
             Some("draft"),
@@ -372,6 +384,32 @@ pub fn map_request(
             "draft.update",
             Some("draft"),
             Some(draft.id.as_str().clone()),
+            None,
+        ),
+        Request::EnsureReplyDraft { dry_run: true, .. } => {
+            skip_activity!("reply_preview", "read-only draft preview")
+        }
+        Request::EnsureReplyDraft {
+            message_id,
+            dry_run: false,
+            ..
+        } => (
+            "draft.ensure_reply",
+            Some("message"),
+            Some(message_id.as_str().clone()),
+            None,
+        ),
+        Request::SetReplyDraftAudience { dry_run: true, .. } => {
+            skip_activity!("reply_audience_preview", "read-only draft preview")
+        }
+        Request::SetReplyDraftAudience {
+            draft_id,
+            dry_run: false,
+            ..
+        } => (
+            "draft.update",
+            Some("draft"),
+            Some(draft_id.as_str().clone()),
             None,
         ),
         Request::DeleteDraft { draft_id, .. } => (
@@ -416,6 +454,16 @@ pub fn map_request(
             Some("draft"),
             Some(draft_id.as_str().clone()),
             None,
+        ),
+        Request::RecoverSendOutcome {
+            operation_id,
+            dry_run,
+            ..
+        } => (
+            "mail.send",
+            Some("send_operation"),
+            Some(operation_id.clone()),
+            Some(serde_json::json!({ "recovery": true, "dry_run": dry_run })),
         ),
         Request::RespondInvite {
             message_id,
@@ -910,6 +958,8 @@ pub fn map_request(
         | Request::ResolveTodoSuggestion { .. }
         | Request::ScheduleTodo { .. }
         | Request::UpdateTodo { .. }
+        | Request::CorrectTodo { .. }
+        | Request::UndoTodoCorrection { .. }
         | Request::CreateTodo { .. }
         | Request::GetTodoCatchup { .. }
         | Request::SetTodoCatchup { .. } => {
@@ -1047,6 +1097,7 @@ pub fn map_request(
         }
         Request::GetAssistantAvailability
         | Request::GetAssistantModels
+        | Request::GetComposeModels
         | Request::SetAssistantModel { .. }
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }

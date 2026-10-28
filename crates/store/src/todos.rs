@@ -80,7 +80,7 @@ impl TodoCatchup {
 
 /// A row of the `todos` table. Kinds, verbs and sources are plain strings
 /// here; their vocabulary lives in `mxr-todo`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TodoRecord {
     pub id: String,
     pub account_id: AccountId,
@@ -126,6 +126,12 @@ pub struct TodoRecord {
 }
 
 impl TodoRecord {
+    pub fn has_stored_asks(&self) -> bool {
+        serde_json::from_str::<serde_json::Value>(&self.field_sources)
+            .ok()
+            .is_some_and(|fields| fields.get("asks_fingerprint").is_some())
+    }
+
     /// Made or touched by the user: never expires, never rewritten by a
     /// re-run, and survives its email's deletion. The SQL side is
     /// `todo_untouched_sql!` (a schedule alone still takes newer evidence).
@@ -244,14 +250,112 @@ impl super::Store {
         &self,
         record: &TodoRecord,
     ) -> Result<TodoUpsert, sqlx::Error> {
+        self.upsert_todo_from_assessment(record, None, None).await
+    }
+
+    pub async fn upsert_asks_todo(
+        &self,
+        record: &TodoRecord,
+        answer: &mxr_core::asks::AskAssessment,
+    ) -> Result<TodoUpsert, sqlx::Error> {
+        if record.user_edited {
+            if let Some(prior) = self
+                .get_todo_by_dedup(&record.account_id, &record.dedup_key)
+                .await?
+            {
+                if prior.user_touched() {
+                    return self
+                        .update_accepted_todo_date(record, &prior, Some(answer))
+                        .await;
+                }
+            }
+        }
+        let mut record = record.clone();
+        if record.due_at.is_none() {
+            if let Some((identity, _period)) = record
+                .dedup_key
+                .rsplit_once('|')
+                .filter(|(_, period)| period.starts_with("sent:") || period.starts_with("due:"))
+            {
+                let keys: Vec<String> = sqlx::query_scalar(
+                    "SELECT dedup_key FROM todos WHERE account_id = ?1 AND dedup_key LIKE ?2 UNION SELECT l.dedup_key FROM asks_legacy_links l JOIN todos t ON t.id=l.todo_id WHERE t.account_id=?1 AND l.dedup_key LIKE ?2 LIMIT 2",
+                )
+                .bind(record.account_id.as_str())
+                .bind(format!("{identity}|%"))
+                .fetch_all(self.reader())
+                .await?;
+                match keys.as_slice() {
+                    [key] => record.dedup_key = key.clone(),
+                    [] => {}
+                    _ => return Ok(TodoUpsert::Unchanged),
+                }
+            }
+        }
+        self.upsert_todo_from_assessment(&record, Some(answer), None)
+            .await
+    }
+
+    /// The accepted commitment snapshot and user-edit guard share the insert CAS.
+    pub async fn upsert_accepted_promise_todo(
+        &self,
+        record: &TodoRecord,
+        promise: &crate::PromiseForTodo,
+    ) -> Result<TodoUpsert, sqlx::Error> {
+        if record.account_id != promise.account_id
+            || record.commitment_id.as_deref() != Some(&promise.commitment_id)
+        {
+            return Err(sqlx::Error::Protocol(
+                "to-do does not match accepted commitment".into(),
+            ));
+        }
+        if let Some(prior) = self
+            .get_todo_by_dedup(&record.account_id, &record.dedup_key)
+            .await?
+        {
+            if prior.user_touched() {
+                if promise.by_when_source != Some(crate::ByWhenSource::User)
+                    || promise.status != "open"
+                    || promise.by_when != record.due_at
+                    || promise.what != record.reason
+                {
+                    return Ok(TodoUpsert::Unchanged);
+                }
+                return self.update_accepted_todo_date(record, &prior, None).await;
+            }
+        }
+        self.upsert_todo_from_assessment(record, None, Some(promise))
+            .await
+    }
+
+    async fn upsert_todo_from_assessment(
+        &self,
+        record: &TodoRecord,
+        answer: Option<&mxr_core::asks::AskAssessment>,
+        promise: Option<&crate::PromiseForTodo>,
+    ) -> Result<TodoUpsert, sqlx::Error> {
         // Read for the report only: the conflict clause below decides.
         let prior = self
             .get_todo_by_dedup(&record.account_id, &record.dedup_key)
             .await?;
+        let predicate = if answer.is_some() {
+            "WHERE EXISTS (SELECT 1 FROM mail_assessments a JOIN messages m ON m.id = a.message_id AND m.account_id = a.account_id JOIN assessment_effective_thread_inputs i ON i.account_id = m.account_id AND i.thread_id = m.thread_id WHERE a.message_id = ?41 AND a.account_id = ?42 AND a.policy_version = ?43 AND a.input_fingerprint = ?44 AND a.input_revision = i.effective_revision AND json_extract(a.assessment_json, '$.context_token') = ?45) AND NOT EXISTS (SELECT 1 FROM todos legacy WHERE legacy.account_id = ?42 AND legacy.rules_version < 2 AND legacy.origin IN ('rule', 'schema', 'model', 'ics') AND legacy.source_message_id = ?41 AND legacy.kind = ?6) AND NOT EXISTS (SELECT 1 FROM asks_legacy_links l JOIN todos old ON old.id = l.todo_id WHERE old.account_id = ?42 AND l.dedup_key = ?35) AND NOT EXISTS (SELECT 1 FROM contact_commitments c WHERE c.account_id=?42 AND c.id=?33 AND (c.status != 'open' OR (c.by_when_source='user' AND (?32 != 1 OR c.by_when IS NOT ?14)) OR (c.by_when_source IS NOT 'user' AND ?32 = 1)))"
+        } else if promise.is_some() {
+            "WHERE EXISTS (SELECT 1 FROM contact_commitments c WHERE c.id = ?41 AND c.account_id = ?42 AND c.by_when IS ?43 AND c.by_when_source IS ?44 AND c.status = ?45 AND c.what = ?46 AND c.direction = 'yours' AND (c.id GLOB c.evidence_msg_id || '::????????-????-????-????-????????????' OR c.id GLOB c.evidence_msg_id || '::promise::?*' OR c.by_when_source = 'user') AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.id = c.evidence_msg_id AND (m.account_id != c.account_id OR m.direction != 'outbound')))"
+        } else {
+            "WHERE 1"
+        };
+        let newer_source = if answer.is_some() {
+            "(SELECT rowid FROM messages WHERE id = excluded.source_message_id) >= COALESCE((SELECT rowid FROM messages WHERE id = todos.source_message_id), -1)"
+        } else {
+            "todos.source_date IS NULL OR excluded.source_date > todos.source_date OR (excluded.source_date = todos.source_date AND excluded.source_message_id IS todos.source_message_id)"
+        };
+        let values = (1..=40)
+            .map(|i| format!("?{i}"))
+            .collect::<Vec<_>>()
+            .join(", ");
         let sql = format!(
             "INSERT INTO todos ({COLUMNS})
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             SELECT {values} {predicate}
              ON CONFLICT(account_id, dedup_key) DO UPDATE SET
                 thread_id = excluded.thread_id,
                 source_message_id = excluded.source_message_id,
@@ -275,25 +379,56 @@ impl super::Store {
                 origin = excluded.origin,
                 reason = excluded.reason,
                 field_sources = excluded.field_sources,
+                user_edited = excluded.user_edited,
+                commitment_id = excluded.commitment_id,
                 rules_version = excluded.rules_version,
                 state = CASE WHEN {REOPENS} THEN 'open' ELSE todos.state END,
                 expired_at = CASE WHEN {REOPENS} THEN NULL ELSE todos.expired_at END,
                 expired_at_birth = CASE WHEN {REOPENS} THEN 0 ELSE todos.expired_at_birth END,
                 updated_at = excluded.updated_at
              WHERE {UNTOUCHED_EXISTING}
-               AND (todos.source_date IS NULL
-                    OR excluded.source_date > todos.source_date
-                    OR (excluded.source_date = todos.source_date
-                        AND excluded.source_message_id IS todos.source_message_id))
+               AND (excluded.user_edited = 0 OR todos.state NOT IN ('done', 'dismissed'))
+               AND ({newer_source})
                AND (todos.source_message_id IS NOT excluded.source_message_id
                     OR todos.due_at IS NOT excluded.due_at
                     OR todos.rules_version <> excluded.rules_version
                     OR todos.field_sources <> excluded.field_sources)
              RETURNING id, state"
         );
-        let row = bind_record(sqlx::query(sqlx::AssertSqlSafe(sql)), record)
-            .fetch_optional(self.writer())
-            .await?;
+        let query = bind_record(sqlx::query(sqlx::AssertSqlSafe(sql)), record);
+        let query = if let Some(answer) = answer {
+            if answer.account_id != record.account_id
+                || record.source_message_id.as_ref() != Some(&answer.message_id)
+            {
+                return Err(sqlx::Error::Protocol(
+                    "to-do source does not match asks assessment".into(),
+                ));
+            }
+            query
+                .bind(answer.message_id.as_str())
+                .bind(answer.account_id.as_str())
+                .bind(&answer.policy_version)
+                .bind(&answer.input_fingerprint)
+                .bind(crate::asks_context_token().map_err(sqlx::Error::Io)?)
+        } else if let Some(promise) = promise {
+            if record.account_id != promise.account_id
+                || record.commitment_id.as_deref() != Some(&promise.commitment_id)
+            {
+                return Err(sqlx::Error::Protocol(
+                    "to-do does not match accepted commitment".into(),
+                ));
+            }
+            query
+                .bind(&promise.commitment_id)
+                .bind(promise.account_id.as_str())
+                .bind(promise.recorded_by_when.map(|at| at.timestamp()))
+                .bind(promise.by_when_source.map(crate::ByWhenSource::as_str))
+                .bind(&promise.status)
+                .bind(&promise.what)
+        } else {
+            query
+        };
+        let row = query.fetch_optional(self.writer()).await?;
         let Some(row) = row else {
             return Ok(TodoUpsert::Unchanged);
         };
@@ -413,14 +548,15 @@ impl super::Store {
              WHERE account_id = ?1 AND state = 'open'
                AND thread_id IN (SELECT value FROM json_each(?2))"
         );
-        sqlx::query(sqlx::AssertSqlSafe(sql))
+        let records = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account_id.as_str())
             .bind(wanted)
             .fetch_all(self.reader())
             .await?
             .iter()
             .map(row_to_todo)
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+        self.fresh_asks_todos(records).await
     }
 
     /// Ids that start with `prefix`, at most `limit`, so a client can take
@@ -451,14 +587,15 @@ impl super::Store {
              WHERE (?1 IS NULL OR account_id = ?1)
                AND (state = 'open' OR (state = 'done' AND done_at >= ?2))"
         );
-        sqlx::query(sqlx::AssertSqlSafe(sql))
+        let records = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account_id.map(AccountId::as_str))
             .bind(done_since.timestamp())
             .fetch_all(self.reader())
             .await?
             .iter()
             .map(row_to_todo)
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+        self.fresh_asks_todos(records).await
     }
 
     /// Rows in one state, newest change first.
@@ -474,7 +611,7 @@ impl super::Store {
              ORDER BY COALESCE(expired_at, done_at, dismissed_at, updated_at) DESC, id
              LIMIT ?3"
         );
-        sqlx::query(sqlx::AssertSqlSafe(sql))
+        let records = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account_id.map(AccountId::as_str))
             .bind(state.as_str())
             .bind(i64::from(limit))
@@ -482,7 +619,8 @@ impl super::Store {
             .await?
             .iter()
             .map(row_to_todo)
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+        self.fresh_asks_todos(records).await
     }
 
     pub async fn count_todos_in_state(
@@ -509,26 +647,21 @@ impl super::Store {
              WHERE (?1 IS NULL OR account_id = ?1) AND state = 'open' AND catchup = 'pending'
              ORDER BY act_by_at IS NULL, act_by_at, source_date DESC, id"
         );
-        sqlx::query(sqlx::AssertSqlSafe(sql))
+        let records = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(account_id.map(AccountId::as_str))
             .fetch_all(self.reader())
             .await?
             .iter()
             .map(row_to_todo)
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+        self.fresh_asks_todos(records).await
     }
 
     pub async fn count_catchup_todos(
         &self,
         account_id: Option<&AccountId>,
     ) -> Result<i64, sqlx::Error> {
-        sqlx::query_scalar(
-            "SELECT COUNT(*) FROM todos
-             WHERE (?1 IS NULL OR account_id = ?1) AND state = 'open' AND catchup = 'pending'",
-        )
-        .bind(account_id.map(AccountId::as_str))
-        .fetch_one(self.reader())
-        .await
+        Ok(i64::try_from(self.list_catchup_todos(account_id).await?.len()).unwrap_or(i64::MAX))
     }
 
     pub async fn count_catchup_overflow(
@@ -947,7 +1080,7 @@ impl super::Store {
     }
 }
 
-fn bind_record<'q>(
+pub(crate) fn bind_record<'q>(
     query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments>,
     record: &'q TodoRecord,
 ) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments> {

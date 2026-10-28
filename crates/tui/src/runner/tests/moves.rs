@@ -71,6 +71,7 @@ fn question(subject: &str) -> NotSureData {
 pub(crate) fn arrivals(not_sure: Vec<NotSureData>) -> ArrivalsData {
     let now = Utc::now();
     ArrivalsData {
+        classification_report: None,
         generated_at: now,
         since: now - chrono::Duration::hours(3),
         until: now,
@@ -323,6 +324,39 @@ fn the_move_toast_is_the_daemons_copy_and_its_question() {
         crate::app::move_status(&outcome(message, ModeKindData::Messages, false), true),
         "Moved to Messages.  Always for this sender? y/n"
     );
+}
+
+#[test]
+fn navigation_chords_on_a_not_sure_question_never_answer_it() {
+    for (suffix, action) in [
+        ('m', Action::OpenMessages),
+        ('u', Action::OpenUpdates),
+        ('x', Action::OpenTodo),
+        ('e', Action::OpenArchiveMode),
+    ] {
+        let mut app = now_with_questions();
+        app.mailbox.selected_index = 1;
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
+            None
+        );
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Char(suffix), KeyModifiers::NONE)),
+            Some(action)
+        );
+        assert!(queued(&app).is_empty(), "g {suffix} must not move mail");
+        assert_eq!(
+            app.mailbox
+                .now_page
+                .arrivals
+                .as_ref()
+                .unwrap()
+                .not_sure
+                .len(),
+            2,
+            "navigation must leave the questions unanswered"
+        );
+    }
 }
 
 #[test]

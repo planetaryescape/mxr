@@ -105,6 +105,12 @@ and dependency policy. CI runs the workspace checks, tests, SQLx offline check,
 Rustdoc and builds when the changed paths require them. Use `--full` only to
 reproduce a CI failure that cannot be narrowed to one crate.
 
+When adding an MCP tool, register its authority in
+`crates/assistant/src/gate.rs` and its step wording in
+`crates/daemon/src/assistant/titles.rs`. Run
+`scripts/cargo-test -p mxr --lib assistant::` as well as the MCP crate tests;
+the host checks that every exposed tool has both entries.
+
 On a shared agent workstation, queue heavy commands with
 `agent-work run -- <command>` and keep workers at four or fewer. The dotfiles
 Cargo wrapper already queues Cargo; do not nest another queue around it.
@@ -179,14 +185,30 @@ was made. It prints the accuracy per question.
 
 What an email asks of you is not a yes or no, and it has no accuracy line:
 nearly every email asks nothing, so accuracy would measure the true negatives.
-Each label (label schema v2) lists the items the email should make, each with a
+Each label (label schema v3) lists the items the email should make, each with a
 kind of ask from blueprint 37 (`pay`, `fix_payment`, `sign`, `verify`, `reply`,
 `send`, `provide`, `upload`, `book`, `attend`, `renew_or_cancel`, `register`,
 `contact`, `other`), a direction (`asks_you`, or `you_promised` for your sent
 mail), the counterparty, the amount and the due words, plus whether a reply is
-owed. The eval matches each email's to-do rows to its expected items by kind and
-direction (the table that maps today's to-do kinds to these is
-`translate` in `crates/daemon/src/handler/classify_eval_asks.rs`) and reports:
+owed. Annotated items also grade the exact source quote, actor and state.
+`Row::from_asks` in `crates/daemon/src/handler/classify_eval_asks.rs` builds
+measured items from stored asks and their linked task rows. The eval matches
+these to expected items by kind and direction.
+
+The read-only packet takes assessments and task rows from one SQL snapshot.
+An ask counts as a delivered task only when its current fingerprint and unit
+provenance link to a stored row. Amount, currency, due date and counterparty
+come from that row; action, actor, state and exact quote come from the stored
+ask. Incomplete bodies and unsettled projection retries remain pending. A
+missing task after projection has settled counts as a miss; user-corrected
+rows are excluded from classifier measurement, including after later mail
+changes their source fingerprint. Correction authority is read in the same SQL
+snapshot as the current automatic projection links.
+
+The historical `attend` reporting bucket includes RSVP response tasks. Calendar
+asks retain their stored `Reply` action, owner and pending state; reporting an
+RSVP in this bucket does not assert a promise to attend. Ordinary reply asks
+retain `reply`. The packet excludes tasks born expired, as the product does.
 
 - true positives, false positives, false negatives, precision and recall per
   kind of ask, and for all kinds together;
@@ -218,9 +240,53 @@ The quick set lists every mismatch with the scenario id, provider id, expected
 answer, actual answer and the rule that decided it. The full set can be wrong
 thousands of times, so its table groups mismatches into clusters (same
 scenario, question, expected and actual answer), biggest first, with one
-example each; `--format json` has every one. Home is the arrivals line's
-destination under today's rules; mail with no arrivals row is placed live by
-the same rules. Labels state what mxr should do, not what it does today, so a
+example each; `--format json` has every one. Home is the stored assessment used by the modes, arrivals and Inbox chips,
+including historical mail with no arrivals row. Evaluation never creates or
+repairs assessments: missing or stale answers count as `not_placed` and are skipped
+for both who and home accuracy. Startup and ingest
+reconcile historical mail in bounded thread pages. Unit fixtures that bypass
+ingest must explicitly call `assessments::reconcile_account` before grading.
+
+Sync materializes only the upserted messages' threads. SQLite input triggers
+advance account-scoped sender generations for history dependants and mail
+whose sender you just wrote to. These tokens participate in thread CAS immediately,
+without rewriting all of a common sender's threads during ingest. Each dirty page
+selects at most 100 threads; saving a batch acknowledges their observed sender
+generations. A newer sender mutation keeps earlier pages eligible for the next
+sweep. Aliases and teaching-rule changes can invalidate
+many threads. The background reconciler drains bounded dirty pages and retries
+pending arrivals; startup also covers historical mail. Read flags, inbox changes,
+arrival placement and contact refresh timestamps do not change a home. Changes
+to Spam/Trash boundaries still do.
+
+Assessment batches compare local and sender generations and commit atomically.
+An empty, settled batch checks generations in one reader snapshot without taking
+the writer; dirty acknowledgements still use the same writer CAS as new answers.
+After three input races, projections show pending: Inbox and arrivals retain the
+email as sorting, while modes wait for a stored answer. The single-message kind
+request returns retryable `classification_pending` rather than guessing a kind.
+Database failures remain errors. Keep the concurrent-mutation regressions in
+`handler/tests/arrivals.rs` green when changing inputs or projection loaders.
+
+Bump `mxr_core::assessment::CLASSIFIER_POLICY_VERSION` whenever a judge or the
+resolver changes its answer. Matching policy and input fingerprints deliberately
+reuse the stored answer without judging again. Activation selects that version
+and bounded startup/ingest reconciliation; evaluation never repairs it. Old
+version rows remain available for explicit comparisons.
+
+The shipped asks facet uses a separate `asks-r2c-16` policy in the
+assessment table. Its records include sent mail; home assessments remain
+inbound-only under `r2-1`. Inspect the stored facet and pending message IDs
+in `mxr modes why MESSAGE_ID --format json`. To do, Your turn, Waiting on and relationship commitments read the stored
+answer; item projection retries persist across restart. See the
+[implementation contract](docs/implementation/r2c-asks/README.md) before
+connecting another consumer or changing replay, correction or freshness rules.
+
+`mxr classify report --limit 1000 --format json` counts stored fallbacks by
+home, sender kind, deciding rule and observed address/header/body facts. `mxr classify eval --compare POLICY`
+compares homes only when that policy version is retained locally. Coverage names compared emails, missing previous answers and pending current assessments. An
+unavailable pre-R2 version is reported as unavailable; source snapshots are
+not executed runtime history. Labels state what mxr should do, not what it does today, so a
 gap shows up as a mismatch.
 
 The full set also reports held-out accuracy on its own line, per question.
@@ -425,8 +491,21 @@ examples; never edit generated pages under `reference/cli/`.
 
 The OpenAPI generator uses Cargo when available and otherwise retains
 `site/public/openapi.json`. For prose-only work, that committed spec is enough.
-When changing the HTTP API, build `dump_openapi_spec` and run the built binary
-directly into the output file; queue status text must never enter the JSON.
+When changing HTTP routes or transported protocol types, regenerate both clients
+and run the web crate's contract tests:
+
+```bash
+site/scripts/dump-openapi-spec.sh
+(cd apps/web && npm run gen:types)
+scripts/cargo-test -p mxr-web --tests
+```
+
+The dump script runs the built exporter separately so queue status text never
+enters the JSON. New schema types also change the separate
+`openapi_spec_summary` test snapshot. Regenerate it with
+`INSTA_UPDATE=always scripts/cargo-test -p mxr-web --lib openapi_spec_snapshot`,
+review the expected schema-name additions, then rerun the tests without update
+mode. Regenerating the public spec alone does not update that snapshot.
 
 Check `info.version` against the workspace version in `Cargo.toml` even when
 the routes have not changed. A successful Node-only build can retain an older

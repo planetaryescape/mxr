@@ -39,6 +39,54 @@ unchanged in single quotes to `--expected-workspace` for send and outcome querie
 
 Request explicit host approval with `mxr connect HTTPS_ORIGIN --allow-send`; default registrations stay read-only. Reply text and `$EDITOR` remain on the client. Attachments upload as managed bytes, and previews do not stage resources. Save the draft, preview the returned revision, and keep its account, operation ID and original workspace for sending and recovery. Path-backed legacy drafts are refused remotely. Follow [Read and reply from another computer](/guides/remote-mailbox/) for the complete CLI, TUI and MCP journey.
 
+## Forward the complete message
+
+```bash
+mxr forward MESSAGE_ID --to teammate@example.com --body "FYI" --yes --dry-run --format json
+mxr forward MESSAGE_ID --to teammate@example.com --body "FYI" --draft --format json
+mxr drafts --format json
+```
+
+The introduction appears before the original message and its From, Date, Subject,
+To, and Cc context. In the editor, write above the forwarded message; changing or
+removing the original produces an error rather than a partial forward.
+
+mxr fetches attachment bytes through the account's sync provider, including for
+IMAP accounts that send through SMTP. You do not need to download and reattach
+files. Preparing a forward can fetch and cache bytes even during dry-run, but
+does not save a draft or send mail. Fetch failures and incomplete downloads stop
+the operation.
+
+In JSON, inspect `body_text`, `body_html`, and `managed_attachments`, not only
+`body_markdown` and `attachments`. Forwarded HTML and literal plain text are kept
+as MIME alternatives; embedded images retain their bytes, Content-IDs, and MIME
+Content-Location headers.
+Duplicate attachment names remain separate files. Saved forwards use the same
+content and resources shown in their send preview.
+
+Managed attachments have a 25 MiB per-file limit; your provider may impose a lower
+total message limit. Unsupported attachment declarations fail explicitly rather
+than dropping the file. Saved forwards are HTML drafts, so the existing
+markdown-only `drafts edit` command cannot edit them.
+
+## Resume a conversation reply
+
+The web composer resumes one unsent reply per account and conversation. Opening
+Reply all on an existing reply keeps its current audience until you change it
+explicitly. The audience preview preserves custom recipients and Bcc.
+
+The same operations are available from the CLI:
+
+```bash
+mxr drafts reply MESSAGE_ID --dry-run --format json
+mxr drafts reply MESSAGE_ID --format json
+mxr drafts audience DRAFT_ID --all --expected-revision REVISION --dry-run --format json
+mxr drafts audience DRAFT_ID --all --expected-revision REVISION --format json
+```
+
+Use the returned revision for the next change. A stale revision is rejected;
+none of these commands sends the reply.
+
 ## Local and linked provider drafts
 
 mxr's local draft store is canonical. The CLI, TUI, web app, and MCP all read
@@ -143,6 +191,40 @@ for recovery after a workspace conflict.
 - `f`: forward
 
 If you start from a thread view, reply actions target the focused message, not the latest message in the thread.
+
+From a message reader, choose **Draft for me** in the command palette to open
+a reply in `$EDITOR`. When you close the editor, mxr asks the shared writing
+help service for a proof against the text you entered.
+
+In the send review, `r` asks the shared writing-help service to work from the
+current body. The TUI saves that exact body before requesting help and shows
+the returned changes as a proof. Added text is highlighted; removed text is
+struck through, or shown as `[-removed-]{+added+}` when `NO_COLOR` is set.
+Before the first proof, the TUI lists models from the daemon's compose
+catalogue. `m` opens that list to retry the same draft text with another
+available model. `y`
+accepts the selected proposal, `e` accepts it and reopens `$EDITOR`, `n`
+enters a revision note, and `Esc` keeps the original draft. `←` and `→` move
+through the proof history. Arrow keys or `j`/`k` scroll; PageUp/PageDown and
+Home/End move farther. A proof can include gaps: the warning style marks those
+ranges, and send safety blocks sending until you fill them in the editor.
+Acceptance applies through the daemon and reruns send safety.
+
+Compose proofs also show a local style score and underline detected style
+spans. Open **Style** in the web proof for pattern names and context; Raycast
+and the TUI list the detected names beside their context. These marks are
+advisory: the proposal changes nothing until you accept it. When automatic
+fixing is enabled and the style check finds a pattern above your recent sent
+mail rate, mxr may ask the same model to repair only the marked sentence. It
+keeps the first proof if repair fails or changes its safety checks.
+
+The web help line and Raycast's **Draft for Me** submenu let you choose a
+model for one draft. In the web proof, **Try again with a model** reruns its
+original text, action and selection. That choice does not change the default
+for later drafts. Set the default in Settings → Compose or with
+`mxr config set llm.compose.model <id>`.
+Use `mxr compose models --format json` to inspect compose availability and
+`mxr config set llm.compose.model <id> --dry-run` to preview the default.
 
 ## Draft format
 
@@ -300,9 +382,11 @@ fix or override token before the `s` (send) key is enabled.
 
 ## Pre-send safety
 
-Every send runs through a [six-check safety pipeline](/guides/pre-send-safety/):
+Every send runs through a [seven-check safety pipeline](/guides/pre-send-safety/):
 wrong recipient, missing attachment, reply-all sanity, PII/secrets, tone
-mismatch, and answer-coverage. The pipeline runs in three places:
+mismatch, answer-coverage, and unfilled gaps (a `[[?: …]]` left by
+[writing help](/guides/llm-features/#draft-for-me-builds-on-what-you-typed) blocks
+the send until you fill it in). The pipeline runs in three places:
 
 - The TUI send-confirm modal after `Ctrl-x` (changed draft).
 - The CLI on `mxr send DRAFT_ID` (gates the send) and `mxr send
@@ -491,6 +575,12 @@ An `unknown` result is not evidence that sending failed. Do not reset or
 resend it; query the retained operation first. A `not_accepted` result
 allows a fresh review and an explicit new operation.
 
+A `waiting` result retains the approved send for automatic retry after a
+proven pre-submission refusal, including Gmail's local cooldown. The retry
+deadline and attempt count appear under `recovery`; no second Send press is
+needed. Editing the deferred draft invalidates that approval. Waiting never
+means the provider accepted the message.
+
 ```bash
 mxr drafts recover
 mxr send-outcome OPERATION_ID --account ACCOUNT_ID \
@@ -520,7 +610,7 @@ full state machine.
 ```text
 "Draft a polite decline to the latest message from acme.com using my
 prior tone. Don't send — write to a draft so I can review with `mxr
-drafts`. Use `mxr draft-assist` for the body."
+drafts`. Use `mxr compose assist` for the body."
 ```
 
 ```text
@@ -531,7 +621,7 @@ days. Use `mxr stale --mine --older-than-days 7 --format ids | xargs
 
 ## See also
 
-- [Pre-send safety](/guides/pre-send-safety/) — the six checks every
+- [Pre-send safety](/guides/pre-send-safety/) — the seven checks every
   draft passes through, plus the override-token flow
 - [Crash-safe drafts](/guides/crash-safe-drafts/)
 - [LLM features — draft assist](/guides/llm-features/)
@@ -541,7 +631,9 @@ days. Use `mxr stale --mine --older-than-days 7 --format ids | xargs
 ## The compose sheet in the web app
 
 Popout and fullscreen open the editor as a sheet over a scrim, so the rows
-behind stop answering until you close it (the draft is saved). A reply started
-inline stays in the thread; if you leave the thread it docks in the corner
-without a scrim. **Rich text** and **Markdown** are one switch. The Markdown
-editor is the vim one and shows its mode line; Rich text has none.
+behind stop answering until you close it (the draft is saved). An inline reply
+stays attached to its source conversation. If you leave that conversation, it
+docks in the corner without a scrim and names its source subject; returning to
+the source conversation puts it back inline. It never moves into another
+conversation's reply slot. **Rich text** and **Markdown** are one switch. The
+Markdown editor is the vim one and shows its mode line; Rich text has none.

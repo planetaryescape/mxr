@@ -119,6 +119,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         // read any account.
         Request::GetAssistantAvailability
         | Request::GetAssistantModels
+        | Request::GetComposeModels
         | Request::SetAssistantModel { .. }
         | Request::AssistantSend { .. }
         | Request::AssistantDecide { .. }
@@ -178,6 +179,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ListSenders { account_id, .. }
         | Request::TriageSearch { account_id, .. }
         | Request::DraftEval { account_id, .. }
+        | Request::ClassifyReport { account_id, .. }
+        | Request::ClassifyCompare { account_id, .. }
         | Request::ClassifyEval { account_id, .. }
         | Request::ExportSearch { account_id, .. }
         | Request::GetDesk { account_id, .. }
@@ -283,6 +286,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::Unsnooze { message_id }
         | Request::SetReplyLater { message_id, .. }
         | Request::PrepareReply { message_id, .. }
+        | Request::EnsureReplyDraft { message_id, .. }
         | Request::PrepareForward { message_id }
         | Request::RecordPromise { message_id, .. }
         | Request::CreateTodo { message_id, .. }
@@ -430,11 +434,24 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ExtractDraftCommitments { draft }
         | Request::SuggestCollaborators { draft, .. } => Targets(vec![T::DraftBody(draft)]),
         Request::GetSendOutcome { account_id, .. } => Targets(vec![T::Account(account_id)]),
+        Request::RecoverSendOutcome { account_id, .. } => Targets(vec![T::Account(account_id)]),
+        Request::ComposeAssist { draft, .. } => match draft {
+            mxr_protocol::DraftTargetData::Stored { draft_id } => Targets(vec![T::Draft(draft_id)]),
+            mxr_protocol::DraftTargetData::Reply { message_id, .. }
+            | mxr_protocol::DraftTargetData::Forward { message_id, .. } => {
+                Targets(vec![T::Message(message_id)])
+            }
+            mxr_protocol::DraftTargetData::New { account_id, .. } => {
+                Targets(vec![T::Account(account_id)])
+            }
+        },
         Request::DraftRefine { draft_id, .. }
+        | Request::ApplyComposeProposal { draft_id, .. }
         | Request::SendStoredDraft { draft_id, .. }
         | Request::ScheduleSend { draft_id, .. }
         | Request::CancelScheduledSend { draft_id }
         | Request::DeleteDraft { draft_id, .. }
+        | Request::SetReplyDraftAudience { draft_id, .. }
         | Request::GetDraft { draft_id }
         | Request::ResetOrphanedDraft { draft_id } => Targets(vec![T::Draft(draft_id)]),
 
@@ -453,6 +470,8 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         Request::GetTodo { todo_id }
         | Request::ScheduleTodo { todo_id, .. }
         | Request::UpdateTodo { todo_id, .. }
+        | Request::CorrectTodo { todo_id, .. }
+        | Request::UndoTodoCorrection { todo_id, .. }
         | Request::ResolveTodoSuggestion { todo_id, .. } => Targets(vec![T::Todo(todo_id)]),
         Request::SetTodoState { todo_ids, .. } => {
             Targets(todo_ids.iter().map(|id| T::Todo(id)).collect())

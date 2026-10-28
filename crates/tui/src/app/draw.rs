@@ -806,6 +806,29 @@ impl App {
             &time_preview,
             theme,
         );
+        if let Some(review) = self.compose.assist_review.as_mut() {
+            if let Some(proposal) = review.proposal() {
+                let scroll = ui::compose_assist_proof::draw(
+                    frame,
+                    area,
+                    proposal,
+                    review.note_input.as_deref(),
+                    (review.current_index, review.proposals.len()),
+                    review.proof_scroll_offset,
+                    theme,
+                );
+                review.proof_scroll_offset = scroll;
+            }
+        }
+        if let Some(picker) = self.compose.model_picker.as_ref() {
+            ui::compose_assist_proof::draw_model_picker(
+                frame,
+                area,
+                &picker.choices,
+                picker.selected_index,
+                theme,
+            );
+        }
 
         // Bulk confirmation overlay
         ui::bulk_confirm_modal::draw(

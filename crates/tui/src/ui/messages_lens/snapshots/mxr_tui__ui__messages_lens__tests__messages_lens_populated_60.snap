@@ -2,7 +2,7 @@
 source: crates/tui/src/ui/messages_lens/tests.rs
 expression: rendered
 ---
-"╭ Messages ─ People you talk with, one row each. Reply or m╮"
+"╭ Messages ─ All conversations, including archived and sent╮"
 "│ YOUR TURN                                                │"
 "│▌Samir Patel                                         16h *│"
 "│   “Can you take a look and reply with the next concrete… │"
@@ -35,4 +35,4 @@ expression: rendered
 "│                                                          │"
 "╰──────────────────────────────────────────────────────────╯"
 " Here because: Samir Patel replied to your message, and you…"
-" r reply  . got it  e done here  t make it a to-do  b repl… "
+" f cycle views  r reply  . got it  e done here  t make it … "

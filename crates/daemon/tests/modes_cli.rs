@@ -276,11 +276,28 @@ fn messages_print_as_json_and_got_it_previews_without_sending() {
     );
     assert_eq!(
         messages["header"],
-        "People you talk with, one row each. Reply or mark done."
+        "Conversations that need your attention. Reply or mark done."
     );
     for band in ["your_turn", "pinned", "recent", "quiet"] {
         assert!(messages[band].is_array(), "{band}: {messages}");
     }
+    assert!(messages["recent"].as_array().unwrap().is_empty());
+    assert!(messages["quiet"].as_array().unwrap().is_empty());
+    let history = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["messages", "list", "--turn", "all", "--format", "json"],
+    );
+    assert_eq!(history["filter"]["turn"], "all");
+    assert_eq!(
+        history["header"],
+        "All conversations, including archived and sent-only history."
+    );
+    assert_eq!(
+        history["row_count"], messages["row_count"],
+        "history never inflates attention counts"
+    );
     let Some(row) = messages["your_turn"]
         .as_array()
         .unwrap()

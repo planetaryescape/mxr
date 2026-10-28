@@ -9,6 +9,8 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct PendingSend {
     pub account_id: AccountId,
+    /// Canonical draft revision this editor session was based on.
+    pub draft_revision: Option<i64>,
     pub fm: mxr_compose::frontmatter::ComposeFrontmatter,
     pub body: String,
     pub draft_path: std::path::PathBuf,
@@ -43,8 +45,63 @@ pub struct PendingSend {
     pub resolved_from: Option<mxr_core::types::Address>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ComposeAssistReview {
+    pub pending: PendingSend,
+    /// Proposals for this unchanged draft baseline, oldest first.
+    pub proposals: Vec<mxr_protocol::ComposeProposalData>,
+    pub proposal_models: Vec<Option<String>>,
+    pub current_index: usize,
+    pub note_input: Option<String>,
+    pub proof_scroll_offset: u16,
+    pub request_pending: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComposeModelPickerPurpose {
+    InitialDraft,
+    RetryProof,
+}
+
+#[derive(Debug, Clone)]
+pub struct ComposeModelPicker {
+    pub choices: mxr_protocol::AssistantModelsData,
+    pub selected_index: usize,
+    pub pending: Box<PendingSend>,
+    pub purpose: ComposeModelPickerPurpose,
+}
+
+impl ComposeAssistReview {
+    pub fn proposal(&self) -> Option<&mxr_protocol::ComposeProposalData> {
+        self.proposals.get(self.current_index)
+    }
+
+    pub fn select_version(&mut self, index: usize) {
+        if index < self.proposals.len() {
+            self.current_index = index;
+            self.proof_scroll_offset = 0;
+        }
+    }
+
+    pub fn push_proposal(
+        &mut self,
+        proposal: mxr_protocol::ComposeProposalData,
+        model: Option<String>,
+    ) {
+        self.proposals.push(proposal);
+        self.proposal_models.push(model);
+        self.current_index = self.proposals.len().saturating_sub(1);
+        self.note_input = None;
+        self.proof_scroll_offset = 0;
+        self.request_pending = false;
+    }
+}
+
 impl PendingSend {
     pub(crate) fn draft_id(&self) -> mxr_core::DraftId {
+        if let Some(source) = &self.fm.forward_source {
+            return source.draft_id.clone();
+        }
         mxr_core::DraftId::from_provider_id("compose-file", &self.draft_path.to_string_lossy())
     }
 
@@ -135,10 +192,15 @@ pub struct ComposeState {
     pub last_send_query: Option<String>,
     pub pending_send_mutations: HashMap<crate::app::MutationId, (PendingSend, bool)>,
     pub last_send_identity: Option<(AccountId, mxr_core::SendIdentity)>,
+    pub send_recovery_preview: Option<(AccountId, String, String)>,
     pub pending_draft_cleanup: Vec<std::path::PathBuf>,
     pub active_draft_cleanup: std::collections::HashSet<std::path::PathBuf>,
     pub pending_compose: Option<ComposeAction>,
     pub pending_send_confirm: Option<PendingSend>,
+    pub assist_review: Option<ComposeAssistReview>,
+    pub assist_request_id: u64,
+    pub assist_after_editor: bool,
+    pub model_picker: Option<ComposeModelPicker>,
     pub pending_send_at_input: Option<String>,
     pub pending_remind_at_input: Option<String>,
     /// The send-at / remind prompt's previewed time and selected reading.

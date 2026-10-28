@@ -59,6 +59,17 @@ export function ArrivalsView({
             {arrivals.track_record}
           </p>
         ) : null}
+        {arrivals.classification_report && arrivals.classification_report.fallback > 0 ? (
+          <div className="type-meta text-text-3" data-testid="classification-report">
+            <p>
+              {arrivals.classification_report.fallback} emails placed provisionally
+              {arrivals.classification_report.truncated ? " in this sample" : ""}.
+            </p>
+            {arrivals.classification_report.pending_body > 0 ? (
+              <p>{arrivals.classification_report.pending_body} need more of the email.</p>
+            ) : null}
+          </div>
+        ) : null}
         {/* Keep this mounted while collapsed so the sender follow-up survives refetch. */}
         <NotSureSection
           questions={arrivals.not_sure ?? []}

@@ -13,6 +13,7 @@
 //!   set selection, the held-out accounting and the per-account scoping are
 //!   checked on every run.
 
+use super::classify_eval_diagnostics::emit_ask_diagnostics;
 use super::classify_eval_floor;
 use super::*;
 use crate::handler::classify_eval::classify_eval;
@@ -99,11 +100,16 @@ async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
     for (id, provider) in [(&personal.id, personal_provider), (&work.id, work_provider)] {
         let started = Instant::now();
         let mut pages = 0;
+        let mut sync_time = std::time::Duration::ZERO;
+        let mut classify_time = std::time::Duration::ZERO;
         loop {
+            let stage = Instant::now();
             let outcome = engine
                 .sync_account_with_outcome(provider.as_ref())
                 .await
                 .unwrap();
+            sync_time += stage.elapsed();
+            let stage = Instant::now();
             // As the daemon seeds a demo: every page but the last is part of
             // the initial backfill, which leaves Reading's whole-account
             // sweep to the last page. Run on every page it is quadratic and
@@ -117,11 +123,12 @@ async fn demo_state(total: usize) -> (Arc<AppState>, AccountId, AccountId) {
                 now,
             )
             .await;
+            classify_time += stage.elapsed();
             pages += 1;
             // A line per few pages: a queued job that prints nothing for
             // minutes is taken for stuck.
             if pages % 5 == 0 {
-                eprintln!("  {id}: {pages} pages in {:?}", started.elapsed());
+                eprintln!("  {id}: {pages} pages in {:?} (sync {sync_time:?}, classify {classify_time:?})", started.elapsed());
             }
             if !outcome.has_more {
                 break;
@@ -177,6 +184,14 @@ async fn eval(
     account_id: Option<&AccountId>,
     set: ClassifyEvalSetData,
 ) -> (ClassifyEvalSummaryData, Vec<ClassifyEvalMismatchData>) {
+    for account in state.store.list_accounts().await.unwrap() {
+        if account_id.is_none_or(|id| id == &account.id) {
+            crate::handler::assessments::reconcile_account(state, &account.id)
+                .await
+                .unwrap();
+        }
+    }
+
     let started = Instant::now();
     let response = classify_eval(state, account_id, set).await.unwrap();
     eprintln!("graded the {set:?} set in {:?}", started.elapsed());
@@ -297,6 +312,7 @@ async fn the_full_set_is_graded_on_the_whole_demo() {
         summary.present
     );
     assert!(summary.held_out_present > 5_000);
+    emit_ask_diagnostics(&state, &summary, &mismatches).await;
     classify_eval_floor::check("full", summary.asks.as_ref().expect("asks"));
     insta::assert_snapshot!(report(&summary, &mismatches));
 }
@@ -376,6 +392,44 @@ async fn the_quick_set_on_a_generated_demo_still_grades_only_the_curated_mail() 
 async fn grading_the_full_set_twice_gives_the_same_answer() {
     let (state, _, _) = demo_state(1_200).await;
     let first = eval(&state, None, ClassifyEvalSetData::Full).await;
+    emit_ask_diagnostics(&state, &first.0, &first.1).await;
+    let before: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(state.store.writer())
+        .await
+        .unwrap();
+    let pending_before: i64 = sqlx::query_scalar("SELECT count(*) FROM asks_projection_outbox")
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap();
+    let read_only = classify_eval(&state, None, ClassifyEvalSetData::Full)
+        .await
+        .unwrap();
+    let after: i64 = sqlx::query_scalar("SELECT total_changes()")
+        .fetch_one(state.store.writer())
+        .await
+        .unwrap();
+    let pending_after: i64 = sqlx::query_scalar("SELECT count(*) FROM asks_projection_outbox")
+        .fetch_one(state.store.reader())
+        .await
+        .unwrap();
+    assert_eq!(before, after);
+    assert_eq!(pending_before, pending_after);
+    assert_eq!(
+        pending_after, 0,
+        "fixture must finish projection before grading"
+    );
+    let ResponseData::ClassifyEval {
+        summary,
+        mismatches,
+    } = read_only
+    else {
+        panic!("grading response")
+    };
+    assert_eq!(
+        first,
+        (summary, mismatches),
+        "production reads are stable without repair"
+    );
     let second = eval(&state, None, ClassifyEvalSetData::Full).await;
     assert_eq!(first, second, "no state carries over between runs");
 }
@@ -402,7 +456,7 @@ async fn the_full_set_labels_the_curated_mail_with_the_quick_sets_labels() {
 fn the_snapshot_report_does_not_depend_on_how_long_the_run_took() {
     let summary = |placed_live| ClassifyEvalSummaryData {
         set: ClassifyEvalSetData::Full,
-        label_schema_version: 2,
+        label_schema_version: 3,
         labelled_in_set: 10,
         present: 10,
         placed_live,

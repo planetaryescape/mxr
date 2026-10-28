@@ -1,5 +1,15 @@
 import { request } from "./client";
-import type { ComposeSession, Reply, SafetyReport, Workspace } from "./types";
+import type {
+  ComposeAssistAction,
+  ComposeAssistProposal,
+  ComposeAssistRequest,
+  ComposeSession,
+  Reply,
+  SafetyReport,
+  Workspace,
+  ComposeModelChoice,
+  ComposeModelCatalogue,
+} from "./types";
 
 // Compose sessions are private daemon work, bound to the archive workspace
 // they were opened in; every call carries that binding, as the web app does.
@@ -9,6 +19,11 @@ export type ReplyKind = "reply" | "reply_all";
 export interface ReplyDraft {
   session: ComposeSession;
   workspace: Workspace;
+}
+
+export async function composeModelChoices(): Promise<ComposeModelChoice[]> {
+  const response = await request<{ models: ComposeModelCatalogue }>("/api/v1/mail/compose/models");
+  return response.models.choices;
 }
 
 async function workspace(): Promise<Workspace> {
@@ -34,6 +49,35 @@ export async function startReply(messageId: string, kind: ReplyKind): Promise<Re
     binding,
   );
   return { session, workspace: binding };
+}
+
+/** Ask the daemon for a proof against the exact text in this unsaved reply. */
+export async function assistReply(
+  draft: ReplyDraft,
+  messageId: string,
+  kind: ReplyKind,
+  text: string,
+  options: {
+    action?: ComposeAssistAction;
+    revise?: string;
+    instruction?: string;
+    model?: string;
+  } = {},
+): Promise<ComposeAssistProposal> {
+  const body: ComposeAssistRequest = {
+    draft: { kind: "reply", message_id: messageId, all: kind === "reply_all" },
+    text,
+  };
+  if (options.action) body.action = options.action;
+  if (options.revise) body.revise = options.revise;
+  if (options.instruction) body.instruction = options.instruction;
+  if (options.model) body.model = options.model;
+  const { proposal } = await owned<{ proposal: ComposeAssistProposal }>(
+    "/api/v1/mail/compose/assist",
+    body,
+    draft.workspace,
+  );
+  return proposal;
 }
 
 /** Write the body the user typed into the draft and return the new revision. */

@@ -148,7 +148,7 @@ static VERIFY: Lazy<Regex> = Lazy::new(|| {
         .expect("valid verify regex")
 });
 
-static SECURITY: Lazy<Regex> = Lazy::new(|| {
+pub(crate) static SECURITY: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\b((verification|security|one[- ]time|login|sign[- ]in|access|confirmation) code|passcode|\botp\b|new sign[- ]?in (to|from|on|detected)|sign[- ]in attempt|login attempt|was this you|password (reset|change)|reset your password)")
         .expect("valid security regex")
 });
@@ -830,14 +830,22 @@ fn source_label(source: FieldSource) -> &'static str {
 
 /// Pay link, bank transfer, or neither: picks the bill's act-by rule.
 fn pay_method(detection: &Detection, text: &str) -> &'static str {
-    if detection.link.is_none() && BANK_DETAILS.is_match(text) {
+    if bank_transfer_evidence(detection.link.is_some(), text).is_some() {
         "bill_bank"
     } else {
         "bill_link"
     }
 }
 
-fn bill_thing(text: &str) -> Option<String> {
+/// Factual payment instructions; the caller has already established the obligation.
+pub(crate) fn bank_transfer_evidence(has_pay_link: bool, text: &str) -> Option<&str> {
+    if has_pay_link {
+        return None;
+    }
+    BANK_DETAILS.find(text).map(|found| found.as_str())
+}
+
+pub(crate) fn bill_thing(text: &str) -> Option<String> {
     let lower = text.to_ascii_lowercase();
     BILL_THINGS.iter().find_map(|(needle, thing)| {
         let found = lower.find(needle)?;

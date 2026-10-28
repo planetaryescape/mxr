@@ -1105,34 +1105,39 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             format,
             check,
             no_llm,
+            action,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            let options = commands::mutations::ComposeOptions {
-                to,
-                cc,
-                bcc,
-                subject,
-                body,
-                body_stdin,
-                html_file,
-                html_stdin,
-                text_file,
-                inline,
-                signature_html,
-                attach,
-                from,
-                account,
-                signature,
-                no_signature,
-                yes,
-                draft,
-                dry_run,
-                format,
-            };
-            if check {
-                commands::mutations::compose_check(options, no_llm).await?;
+            if let Some(action) = action {
+                commands::compose_assist::run(*action, format).await?;
             } else {
-                commands::mutations::compose(options).await?;
+                let options = commands::mutations::ComposeOptions {
+                    to,
+                    cc,
+                    bcc,
+                    subject,
+                    body,
+                    body_stdin,
+                    html_file,
+                    html_stdin,
+                    text_file,
+                    inline,
+                    signature_html,
+                    attach,
+                    from,
+                    account,
+                    signature,
+                    no_signature,
+                    yes,
+                    draft,
+                    dry_run,
+                    format,
+                };
+                if check {
+                    commands::mutations::compose_check(options, no_llm).await?;
+                } else {
+                    commands::mutations::compose(options).await?;
+                }
             }
         }
         Some(Command::Reply {
@@ -1241,6 +1246,32 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
         }) => {
             crate::server::ensure_daemon_running().await?;
             match action {
+                Some(crate::cli::DraftsAction::Reply {
+                    message_id,
+                    all,
+                    dry_run,
+                    ..
+                }) => {
+                    commands::mutations::drafts_reply(message_id, all, dry_run, account, format)
+                        .await?;
+                }
+                Some(crate::cli::DraftsAction::Audience {
+                    draft_id,
+                    all,
+                    expected_revision,
+                    dry_run,
+                    ..
+                }) => {
+                    commands::mutations::drafts_audience(
+                        draft_id,
+                        all,
+                        expected_revision,
+                        dry_run,
+                        account,
+                        format,
+                    )
+                    .await?;
+                }
                 None | Some(crate::cli::DraftsAction::List) => {
                     commands::mutations::drafts(account, format).await?;
                 }
@@ -1281,12 +1312,29 @@ async fn run_parsed_cli(mut cli: Cli) -> anyhow::Result<()> {
             }
         }
         Some(Command::SendOutcome {
+            recover_known_not_submitted,
+            dry_run,
+            expected_evidence_sha256,
             expected_workspace,
             operation_id,
             account,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
+            if recover_known_not_submitted {
+                commands::mutations::recover_send_outcome(
+                    operation_id,
+                    account,
+                    format,
+                    expected_workspace
+                        .map(|value| serde_json::from_str(&value))
+                        .transpose()?,
+                    dry_run,
+                    expected_evidence_sha256,
+                )
+                .await?;
+                return Ok(());
+            }
             commands::mutations::send_outcome(
                 operation_id,
                 account,

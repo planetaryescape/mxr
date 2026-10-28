@@ -40,6 +40,8 @@ interface ComposeAutosaveInput {
   queryClient: QueryClient;
   draft: ComposeDraftState | null;
   draftRef: MutableRefObject<ComposeDraftState | null>;
+  operationLockRef?: MutableRefObject<boolean>;
+  operationPaused?: boolean;
   setDraft: Dispatch<SetStateAction<ComposeDraftState | null>>;
   dirty: boolean;
   setDirty: Dispatch<SetStateAction<boolean>>;
@@ -50,10 +52,14 @@ export function useComposeAutosave({
   queryClient,
   draft,
   draftRef,
+  operationLockRef,
+  operationPaused = false,
   setDraft,
   dirty,
   setDirty,
 }: ComposeAutosaveInput) {
+  const defaultOperationLockRef = useRef(false);
+  const activeOperationLockRef = operationLockRef ?? defaultOperationLockRef;
   const recoveryTargetRef = useRef<
     | {
         sourcePath: string;
@@ -339,14 +345,20 @@ export function useComposeAutosave({
       if (snapshot.binding) assertWorkspaceBinding(snapshot.binding);
       const latest = draftRef.current;
       if (latest && draftFingerprint(latest) === savedFingerprint) {
-        const next = {
-          ...draftFromSession(
-            { ...response.session, binding: snapshot.binding },
-            snapshot.accountId,
-          ),
-          recoverySourcePath: recoverySource,
-          preservedRecoveryPath: latest.preservedRecoveryPath,
+        const savedSession = {
+          ...response.session,
+          binding: snapshot.binding,
+          draftIntent: response.session.draftIntent ?? latest.draftIntent,
         };
+        const savedDraft = draftFromSession(savedSession, snapshot.accountId);
+        const next = savedDraft;
+        if (
+          response.session.bodyMarkdown === snapshot.body &&
+          latest.bodyMarkdown === snapshot.body
+        )
+          next.modelSpans = latest.modelSpans;
+        next.recoverySourcePath = recoverySource;
+        next.preservedRecoveryPath = latest.preservedRecoveryPath;
         setDraft(next);
         if (recoverySource)
           preservedFingerprintRef.current = `${next.draftPath}:${draftFingerprint(next)}`;
@@ -389,13 +401,14 @@ export function useComposeAutosave({
   }, [daemonDown]);
 
   useEffect(() => {
-    if (!dirty || !draft) return;
+    if (!dirty || !draft || activeOperationLockRef.current) return;
     if (daemonDown) {
       if (!draft.recoverySourcePath) setSaveError(DAEMON_DOWN_NOTE);
       return;
     }
     if (`${draft.draftPath}:${draftFingerprint(draft)}` === attemptedFingerprintRef.current) return;
     const handle = window.setTimeout(() => {
+      if (activeOperationLockRef.current) return;
       void saveCurrentDraft().catch((error: Error) => {
         // The daemon just went away; the note above replaces this once
         // that's confirmed, and a toast per keystroke pause would nag.
@@ -404,13 +417,14 @@ export function useComposeAutosave({
       });
     }, 3000);
     return () => window.clearTimeout(handle);
-  }, [daemonDown, dirty, draft, saveCurrentDraft]);
+  }, [daemonDown, dirty, draft, operationPaused, activeOperationLockRef, saveCurrentDraft]);
 
   // Flush the autosave debounce the moment the tab is hidden — a closed tab
   // never comes back for the 3s timer.
   useEffect(() => {
     const flush = () => {
       if (document.visibilityState !== "hidden") return;
+      if (activeOperationLockRef.current) return;
       if (!draftRef.current) return;
       void saveCurrentDraft().catch(() => {
         // beforeunload below still warns about the unsaved state.
@@ -418,7 +432,7 @@ export function useComposeAutosave({
     };
     document.addEventListener("visibilitychange", flush);
     return () => document.removeEventListener("visibilitychange", flush);
-  }, [draftRef, saveCurrentDraft]);
+  }, [draftRef, activeOperationLockRef, saveCurrentDraft]);
 
   // Tearing the session down (closing the surface, switching reply target)
   // must not drop edits still inside the debounce window. The save is fired
@@ -427,12 +441,12 @@ export function useComposeAutosave({
   saveOnUnmountRef.current = saveCurrentDraft;
   useEffect(
     () => () => {
-      if (sessionFinishedRef.current) return;
+      if (sessionFinishedRef.current || activeOperationLockRef.current) return;
       void saveOnUnmountRef.current().catch((error: Error) => {
         toast.error("Couldn't save your last edits", { description: error.message });
       });
     },
-    [],
+    [activeOperationLockRef],
   );
 
   function markSessionFinished() {

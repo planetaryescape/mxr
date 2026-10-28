@@ -835,6 +835,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/classify/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stored fallback clusters and pending assessment counts; local and read-only */
+        get: operations["mail_classify_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/codes": {
         parameters: {
             query?: never;
@@ -887,6 +904,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/compose/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Write an accepted proposal into a stored draft's text region; refused if that text changed since the proposal */
+        post: operations["mail_compose_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/compose/assist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Writing help for the text in a compose box: write it, finish it, polish it or edit a selection. Returns a proposal and changes nothing */
+        post: operations["mail_compose_assist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/compose/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List models available to compose under the compose route and privacy policy */
+        get: operations["mail_compose_models"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/compose/session": {
         parameters: {
             query?: never;
@@ -913,6 +981,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["compose_session_attachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/compose/session/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["compose_session_audience"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2024,7 +2108,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Messages: people you talk with in four bands (Your turn, Pinned, Recent, Quiet), each row with its topics and what they asked */
+        /** Messages: conversations needing attention by default; explicit All conversations includes history */
         get: operations["mail_people"];
         put?: never;
         post?: never;
@@ -2799,6 +2883,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mail/send-outcomes/{operation_id}/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["mail_recover_send_outcome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/send-time": {
         parameters: {
             query?: never;
@@ -3341,6 +3441,40 @@ export interface paths {
         get: operations["mail_todo_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/todos/{todo_id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correct ownership, task status or details with safe undo */
+        post: operations["mail_todo_correct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mail/todos/{todo_id}/correction/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo a correction unless the row has changed */
+        post: operations["mail_todo_undo_correction"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4767,6 +4901,31 @@ export interface components {
             /** @description Exactly one recipient: Got it never replies to all. */
             to: components["schemas"]["Address"][];
         };
+        /** @enum {string} */
+        Act:
+            | "request"
+            | "commitment"
+            | "obligation"
+            | "offer"
+            | "question"
+            | "information"
+            | "pleasantry";
+        /** @enum {string} */
+        ActionKind:
+            | "pay"
+            | "fix_payment"
+            | "sign"
+            | "verify"
+            | "reply"
+            | "send"
+            | "provide"
+            | "upload"
+            | "book"
+            | "attend"
+            | "renew_or_cancel"
+            | "register"
+            | "contact"
+            | "other";
         ActivityCursor: {
             /** Format: int64 */
             id: number;
@@ -4831,6 +4990,9 @@ export interface components {
          * @enum {string}
          */
         ActivityTier: "ephemeral" | "standard" | "important";
+        /** @enum {string} */
+        Actor:
+            "owner" | "correspondent" | "third_party" | "everyone" | "nobody";
         Address: {
             email: string;
             name?: string | null;
@@ -4945,6 +5107,7 @@ export interface components {
             | "archive"
             | "screened_out"
             | "spam"
+            | "trash"
             | "sorting";
         /** @description One count on the line, and what opening it lists. */
         ArrivalCountData: {
@@ -5022,6 +5185,8 @@ export interface components {
         ArrivalsData: {
             /** @description To do and Archive, shown as "also" and never added. */
             also?: components["schemas"]["ArrivalCountData"][];
+            classification_report?:
+                components["schemas"]["ClassifyReportData"] | null;
             /**
              * @description When nothing on Now waits: "Clear. All 50 emails since 08:12 are
              *     accounted for." Absent when nothing arrived.
@@ -5067,6 +5232,114 @@ export interface components {
             track_record?: string | null;
             /** Format: date-time */
             until: string;
+        };
+        AskAmount: {
+            currency: string;
+            /** Format: int64 */
+            minor: number;
+            span: components["schemas"]["AskSpan"];
+            zone: number;
+        };
+        /** @enum {string} */
+        AskAnswer:
+            | "asks_you"
+            | "asks_you_to_reply"
+            | "you_promised"
+            | "you_asked_them"
+            | "they_promised_you"
+            | "nothing"
+            | "not_sure";
+        AskDate: {
+            /** Format: date-time */
+            at: string;
+            checked: boolean;
+            span: components["schemas"]["AskSpan"];
+            zone: number;
+        };
+        AskReference: {
+            kind: string;
+            span: components["schemas"]["AskSpan"];
+            value: string;
+            zone: number;
+        };
+        /** @description UTF-8 byte offsets into the unmodified zone text; end is exclusive. */
+        AskSpan: {
+            end: number;
+            start: number;
+        };
+        /** @enum {string} */
+        AskState:
+            | "pending"
+            | "done"
+            | "failed"
+            | "cancelled"
+            | "conditional"
+            | "hypothetical";
+        /**
+         * @description Bounded mode projection of the persisted answer. Full zones stay in the
+         *     local assessment; the message, zone and byte span identify the evidence.
+         */
+        AskSummary: {
+            input_fingerprint: string;
+            message_id: components["schemas"]["MessageId"];
+            more_units: boolean;
+            pending_body: boolean;
+            policy_version: string;
+            units: components["schemas"]["AskUnitSummary"][];
+        };
+        AskTags: {
+            act: components["schemas"]["Act"];
+            action: components["schemas"]["ActionKind"];
+            actor: components["schemas"]["Actor"];
+            amount?: number | null;
+            due?: number | null;
+            reference?: number | null;
+            state: components["schemas"]["AskState"];
+        };
+        AskUnitSummary: {
+            amount?: components["schemas"]["AskAmount"] | null;
+            answer: components["schemas"]["AskAnswer"];
+            author?: string | null;
+            due?: components["schemas"]["AskDate"] | null;
+            /** @description Exact source text, or absent when too long for a mode response. */
+            quote?: string | null;
+            reference?: components["schemas"]["AskReference"] | null;
+            span: components["schemas"]["AskSpan"];
+            tags?: components["schemas"]["AskTags"] | null;
+            unit: number;
+            zone: number;
+        };
+        AssessmentClaim: {
+            evidence: string[];
+            reason: string;
+            rule: string;
+            source: string;
+        };
+        /** @description Canonical observations useful for finding missing classifier distinctions. */
+        AssessmentFacts: {
+            addressed: boolean;
+            auto_generated: boolean;
+            body_cached: boolean;
+            bulk: boolean;
+            has_list_id: boolean;
+            has_unsubscribe: boolean;
+            recipients: number;
+            sender_shape: string;
+            templated_sender: boolean;
+            written_to: boolean;
+        };
+        /**
+         * @description What the writing help does with the text. A request without one lets the
+         *     daemon choose from what is typed.
+         * @enum {string}
+         */
+        AssistActionData: "write" | "finish" | "polish" | "edit_selection";
+        /** @description One-line adjustments the user ticked, each a single instruction to the model. */
+        AssistAdjustData: {
+            more_formal?: boolean;
+            proofread?: boolean;
+            shorter?: boolean;
+            warmer?: boolean;
         };
         AssistantAnswerData: {
             other?: string | null;
@@ -5277,25 +5550,9 @@ export interface components {
             models: components["schemas"]["AssistantModelsData"];
             previous?: string | null;
         };
-        /** @description One model the assistant can run on. */
-        AssistantModelChoiceData: {
-            /** @description Whether it can be picked now. */
-            available: boolean;
-            /** @description True when conversations with it go to a provider off this machine. */
-            cloud: boolean;
-            /** @description The model id, as `set` takes it. */
-            id: string;
-            /** @description What a person calls it ("Claude Haiku 5.5"). */
-            label: string;
-            /**
-             * @description Why it can't be picked, with the command that fixes it when there is
-             *     one. Set exactly when `available` is false.
-             */
-            unavailable_reason?: string | null;
-        };
         /** @description The models the assistant can be set to, and the one it uses now. */
         AssistantModelsData: {
-            choices: components["schemas"]["AssistantModelChoiceData"][];
+            choices: components["schemas"]["ModelChoiceData"][];
             /**
              * @description The model the next turn uses. It may not be in `choices`: a model set
              *     by hand in config.toml stays as it is until one is picked.
@@ -5751,6 +6008,23 @@ export interface components {
             quote: string;
             thread_id?: string | null;
         };
+        ClassifyComparisonData: {
+            available: boolean;
+            available_versions: string[];
+            changes: components["schemas"]["ClassifyHomeChangeData"][];
+            /** Format: int32 */
+            compared: number;
+            current_version: string;
+            /** Format: int32 */
+            missing_previous_assessments: number;
+            /**
+             * Format: int32
+             * @description Missing or stale current assessments excluded from comparison.
+             */
+            pending_assessments: number;
+            requested_version: string;
+            truncated: boolean;
+        };
         /** @description Precision and recall for one kind of ask. */
         ClassifyEvalAskKindData: {
             counts: components["schemas"]["ClassifyEvalCountsData"];
@@ -5993,9 +6267,7 @@ export interface components {
             not_placed: number;
             /**
              * Format: int32
-             * @description Present emails with no arrivals row (history older than 30 days when
-             *     the account first synced), whose home was worked out live by the same
-             *     rules.
+             * @description Legacy field, always zero: historical mail also reads stored assessments.
              */
             placed_live: number;
             /**
@@ -6028,6 +6300,40 @@ export interface components {
              * @description Pairs with both members present.
              */
             pairs: number;
+        };
+        ClassifyFallbackClusterData: {
+            /** Format: int32 */
+            count: number;
+            examples: components["schemas"]["MessageId"][];
+            facts: components["schemas"]["AssessmentFacts"];
+            home: string;
+            rule: string;
+            who: string;
+        };
+        ClassifyHomeChangeData: {
+            current_home: string;
+            deciding_reason: string;
+            message_id: components["schemas"]["MessageId"];
+            previous_home: string;
+        };
+        /** @description A bounded local picture of stored home decisions. It never creates assessments. */
+        ClassifyReportData: {
+            clusters: components["schemas"]["ClassifyFallbackClusterData"][];
+            /** Format: int32 */
+            examined: number;
+            /** Format: int32 */
+            fallback: number;
+            /** Format: int32 */
+            missing: number;
+            /** Format: int32 */
+            pending_body: number;
+            policy_version: string;
+            /**
+             * Format: int32
+             * @description Stored rows whose observed inputs changed; awaiting reconciliation.
+             */
+            stale: number;
+            truncated: boolean;
         };
         /**
          * @description Originating client for an IPC request. Carried on the envelope so the
@@ -6084,6 +6390,47 @@ export interface components {
         CommitmentDirectionData: "yours" | "theirs";
         /** @enum {string} */
         CommitmentStatusData: "open" | "resolved" | "expired";
+        /** @description Body of `POST /api/v1/mail/compose/apply`. */
+        ComposeApplyBody: {
+            draft_id: string;
+            proposal_id: string;
+        };
+        /** @description Answer to `POST /api/v1/mail/compose/apply`. */
+        ComposeApplyResponse: {
+            draft_id: components["schemas"]["DraftId"];
+            /** @description Hex SHA-256 of the draft's new text region. */
+            text_hash: string;
+        };
+        /**
+         * @description Body of `POST /api/v1/mail/compose/assist`: the fields of the daemon's
+         *     `ComposeAssist` request.
+         */
+        ComposeAssistBody: {
+            action?: components["schemas"]["AssistActionData"] | null;
+            adjust?: components["schemas"]["AssistAdjustData"];
+            /** @description What the help is for: a stored draft, a reply, a forward or a new message. */
+            draft: components["schemas"]["DraftTargetData"];
+            instruction?: string | null;
+            /** @description Optional configured model for this draft only. */
+            model?: string | null;
+            /**
+             * @description The id of the proposal on screen, when revising it: the model is shown
+             *     that proposal and the instruction is applied to it. `text` stays the
+             *     user's own text.
+             */
+            revise?: string | null;
+            selection?: components["schemas"]["TextRangeData"] | null;
+            /**
+             * @description The text region of the compose box, without signature or forward header.
+             *     Empty when nothing is typed.
+             */
+            text: string;
+        };
+        /** @description Answer to `POST /api/v1/mail/compose/assist`. */
+        ComposeAssistResponse: {
+            /** @description Never touches the draft; accept it by applying `text` or `compose/apply`. */
+            proposal: components["schemas"]["ComposeProposalData"];
+        };
         ComposeAttachmentChunkResponse: {
             ok: boolean;
         };
@@ -6110,6 +6457,7 @@ export interface components {
             attach?: string[];
             bcc?: string;
             cc?: string;
+            forward_source?: components["schemas"]["ForwardSource"] | null;
             from: string;
             "in-reply-to"?: string | null;
             intent?: components["schemas"]["DraftIntent"];
@@ -6124,6 +6472,43 @@ export interface components {
             message: string;
             severity: string;
         };
+        /** @description The models available to the compose writer under its own policy. */
+        ComposeModelsResponse: {
+            models: components["schemas"]["AssistantModelsData"];
+        };
+        /**
+         * @description What the writing help proposes. Nothing changes the draft until the user
+         *     accepts it with `ApplyComposeProposal`.
+         */
+        ComposeProposalData: {
+            action: components["schemas"]["AssistActionData"];
+            /**
+             * @description Hex SHA-256 of the request text with trailing blank space ignored: the
+             *     text region the proposal was written against. Applying refuses when the
+             *     draft's text region no longer hashes to it.
+             */
+            base: string;
+            changes: components["schemas"]["TextChangeData"][];
+            /** @description Version of the rules that checked this proposal. */
+            composer_version: string;
+            gaps: components["schemas"]["GapData"][];
+            proposal_id: string;
+            /** @description Always filled: the model that answered, where it ran and what it read. */
+            provenance: components["schemas"]["DraftProvenanceData"];
+            /** @description Additive fields: older peers can ignore or omit them. */
+            style_marks?: components["schemas"]["ComposeStyleMarkData"][];
+            /** Format: int32 */
+            style_score?: number;
+            style_version?: string;
+            text: string;
+            /**
+             * @description Positions, from zero, of the user's sentences that the proposal changed
+             *     or dropped. Sentences are the request text split at `.`, `!`, `?` and
+             *     line breaks, with empty ones skipped; case and spacing do not count as a
+             *     change.
+             */
+            yours_changed: number[];
+        };
         ComposeSessionAttachmentRequest: {
             account_id: string;
             content_base64?: string | null;
@@ -6136,11 +6521,20 @@ export interface components {
             operation: string;
             resource_id?: components["schemas"]["DraftAttachmentId"] | null;
         };
+        ComposeSessionAudienceRequest: {
+            draft_id: string;
+            draft_path: string;
+            dry_run?: boolean;
+            /** Format: int64 */
+            expected_revision: number;
+            reply_all: boolean;
+        };
         ComposeSessionData: {
             accountId?: string | null;
             bodyMarkdown: string;
             cursorLine?: number | null;
             draftId?: string | null;
+            draftIntent?: components["schemas"]["DraftIntent"] | null;
             draftPath: string;
             editorCommand?: string | null;
             frontmatter: components["schemas"]["ComposeFrontmatter"];
@@ -6233,6 +6627,17 @@ export interface components {
             retry_recovery?: boolean;
             subject: string;
             to: string;
+        };
+        /** @description A deterministic style tell in proposal text. Ranges are UTF-8 byte offsets. */
+        ComposeStyleMarkData: {
+            context: string;
+            /** Format: int32 */
+            end: number;
+            name: string;
+            /** Format: int32 */
+            pattern: number;
+            /** Format: int32 */
+            start: number;
         };
         /** @description The box at the bottom, already addressed. */
         ComposerData: {
@@ -7006,6 +7411,10 @@ export interface components {
         /** @description Immutable daemon-owned bytes belonging to one saved draft. */
         DraftAttachment: {
             account_id: components["schemas"]["AccountId"];
+            /** @description Original Content-ID of a related forwarded MIME part. */
+            content_id?: string | null;
+            /** @description Original MIME location for related parts whose HTML uses a relative URL. */
+            content_location?: string | null;
             draft_id: components["schemas"]["DraftId"];
             filename: string;
             id: components["schemas"]["DraftAttachmentId"];
@@ -7250,7 +7659,8 @@ export interface components {
             | "tone_mismatch"
             | "answer_coverage"
             | "commitment_candidate"
-            | "send_time_note";
+            | "send_time_note"
+            | "unfilled_gap";
         /** @enum {string} */
         DraftSafetyModeData: "check" | "send" | "scheduled_flush";
         DraftSafetyReport: {
@@ -7271,6 +7681,7 @@ export interface components {
             identity: components["schemas"]["SendIdentity"];
             local_message_id?: components["schemas"]["MessageId"] | null;
             provider_message_id?: string | null;
+            recovery?: components["schemas"]["SendRecoveryStatus"] | null;
             rfc2822_message_id?: string | null;
             state: components["schemas"]["SendOutcomeState"];
         };
@@ -7286,6 +7697,36 @@ export interface components {
             person_name?: string | null;
             thread_id: components["schemas"]["ThreadId"];
         };
+        /**
+         * @description The draft a writing request is about. A stored draft is read from the
+         *     database; the other targets name the thing that does not exist yet, so a
+         *     client can ask for help before the first save.
+         */
+        DraftTargetData:
+            | {
+                  draft_id: components["schemas"]["DraftId"];
+                  /** @enum {string} */
+                  kind: "stored";
+              }
+            | {
+                  all: boolean;
+                  /** @enum {string} */
+                  kind: "reply";
+                  message_id: components["schemas"]["MessageId"];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "forward";
+                  message_id: components["schemas"]["MessageId"];
+                  to: components["schemas"]["Address"][];
+              }
+            | {
+                  account_id: components["schemas"]["AccountId"];
+                  /** @enum {string} */
+                  kind: "new";
+                  subject: string;
+                  to: components["schemas"]["Address"][];
+              };
         EntityCandidateData: {
             display_name?: string | null;
             kind: string;
@@ -7419,7 +7860,19 @@ export interface components {
             account_id: components["schemas"]["AccountId"];
             forwarded_content: string;
             from: string;
+            source?: components["schemas"]["ForwardSource"] | null;
             subject: string;
+        };
+        /**
+         * @description Immutable original content prepared by the daemon for a forward. The editor
+         *     edits only the introduction; original HTML and attachment bytes stay intact.
+         */
+        ForwardSource: {
+            account_id: components["schemas"]["AccountId"];
+            attachments: components["schemas"]["DraftAttachment"][];
+            content: components["schemas"]["DraftContentSchema"];
+            draft_id: components["schemas"]["DraftId"];
+            message_id: components["schemas"]["MessageId"];
         };
         /** @description Returned by `Request::GetFreshness`. */
         FreshnessData: {
@@ -7439,6 +7892,17 @@ export interface components {
              */
             stale_after_secs: number;
             worst_account_id?: components["schemas"]["AccountId"] | null;
+        };
+        /** @description A place the model could not fill, written `[[?: label]]` in the text. */
+        GapData: {
+            /** Format: int32 */
+            end: number;
+            label: string;
+            /**
+             * Format: int32
+             * @description Byte range of the whole marker in the proposal text.
+             */
+            start: number;
         };
         /** @enum {string} */
         GistModelData: "available" | "disabled" | "blocked";
@@ -7604,6 +8068,7 @@ export interface components {
          * @enum {string}
          */
         KindRuleData:
+            | "fallback"
             | "decision"
             | "delivery"
             | "invite"
@@ -7667,10 +8132,12 @@ export interface components {
             allow_cloud_relationship_data?: boolean;
             api_key_env: string;
             base_url: string;
+            compose_model?: string | null;
             /** Format: int32 */
             context_window: number;
             enabled: boolean;
             model: string;
+            models?: string[] | null;
             overrides?: components["schemas"]["LlmOverridesData"] | null;
             /** Format: int64 */
             request_timeout_secs: number;
@@ -7846,6 +8313,21 @@ export interface components {
             request_timeout_secs: number;
             supports_streaming: boolean;
         };
+        MailAssessment: {
+            account_id: components["schemas"]["AccountId"];
+            deciding: components["schemas"]["AssessmentClaim"];
+            facts: components["schemas"]["AssessmentFacts"];
+            fallback: boolean;
+            home: string;
+            /** @description Digest of the canonical observed inputs, never mail content. */
+            input_fingerprint: string;
+            message_id: components["schemas"]["MessageId"];
+            not_sure?: string | null;
+            overridden: components["schemas"]["AssessmentClaim"][];
+            pending_body: boolean;
+            policy_version: string;
+            who: string;
+        };
         /** @description A message's kind with the reason it was given. */
         MailKindData: {
             /** @description True when the user chose this kind for the sender. */
@@ -8013,18 +8495,15 @@ export interface components {
         MessagesBandData: "your_turn" | "pinned" | "recent" | "quiet";
         /** @description Returned by `Request::ListMessages`. */
         MessagesData: {
-            /**
-             * @description Set when Your turn is empty: the clear line or the never-had-any
-             *     line.
-             */
+            /** @description Set when the selected view is empty, with view-specific copy. */
             empty_state?: string | null;
             /** @description The filter the rows were kept by, echoed back. */
             filter?: components["schemas"]["MessagesFilterData"];
             /** Format: date-time */
             generated_at: string;
-            /** @description `messages_copy::HEADER`. */
+            /** @description The selected view's header (attention or conversation history). */
             header: string;
-            /** @description Up to three people whose usual pace lapsed, under the clear line. */
+            /** @description Legacy field, left empty: clear attention is never filled with idle people. */
             lapsed?: components["schemas"]["MessagesLapsedData"][];
             /**
              * Format: int32
@@ -8049,12 +8528,12 @@ export interface components {
             recent_total: number;
             /**
              * Format: int32
-             * @description People and groups in Messages, every band, unfiltered.
+             * @description People and groups needing attention, before toggles or list limits.
              */
             row_count: number;
             /**
              * Format: int32
-             * @description Conversations behind them.
+             * @description Conversations needing attention, before toggles or list limits.
              */
             thread_count: number;
             your_turn: components["schemas"]["MessagesRowData"][];
@@ -8137,7 +8616,7 @@ export interface components {
              *     often (rule)."
              */
             why: string;
-            /** @description Their latest message to you is unanswered on some topic. */
+            /** @description A topic needs attention: an unanswered request or due explicit return. */
             your_turn: boolean;
         };
         /** @enum {string} */
@@ -8165,10 +8644,10 @@ export interface components {
             with?: string[];
         };
         /**
-         * @description Only rows where it is this side's turn.
+         * @description An explicit Messages view. Omission selects Needs attention.
          * @enum {string}
          */
-        MessagesTurnData: "mine" | "theirs";
+        MessagesTurnData: "all" | "mine" | "theirs";
         MicrosoftTodoFieldsData: {
             completed: boolean;
             /** Format: date */
@@ -8353,6 +8832,27 @@ export interface components {
             tag?: string | null;
             /** @description To do: the open rows holding the thread. */
             todo_ids?: string[];
+        };
+        /** @description One model a client can choose. */
+        ModelChoiceData: {
+            /** @description Whether it can be picked now. */
+            available: boolean;
+            /** @description True when conversations with it go to a provider off this machine. */
+            cloud: boolean;
+            /** @description The model id, as `set` takes it. */
+            id: string;
+            /** @description What a person calls it ("Claude Haiku 5.5"). */
+            label: string;
+            /**
+             * @description The context sent with this choice: the current conversation alone, or
+             *     the conversation and the user's past mail.
+             */
+            sees?: string;
+            /**
+             * @description Why it can't be picked, with the command that fixes it when there is
+             *     one. Set exactly when `available` is false.
+             */
+            unavailable_reason?: string | null;
         };
         /** @description Body of `POST /api/v1/mail/messages/{message_id}/move`. */
         MoveBody: {
@@ -9996,6 +10496,10 @@ export interface components {
             kind: string;
             record_ids: string[];
         };
+        RecoverSendBody: {
+            dry_run: boolean;
+            expected_evidence_sha256?: string | null;
+        };
         RecoveredComposeSession: {
             /** @description Confirmed recovery paths in submitted attachment order. */
             attachment_paths: string[];
@@ -11409,6 +11913,35 @@ export interface components {
                   knobs: components["schemas"]["DraftRefineKnobsData"];
               }
             | {
+                  action?: components["schemas"]["AssistActionData"] | null;
+                  adjust?: components["schemas"]["AssistAdjustData"];
+                  /** @enum {string} */
+                  cmd: "ComposeAssist";
+                  draft: components["schemas"]["DraftTargetData"];
+                  instruction?: string | null;
+                  /**
+                   * @description A catalogue model for this draft only. Does not change the
+                   *     persistent compose default.
+                   */
+                  model?: string | null;
+                  /**
+                   * @description The id of a proposal to revise. The model is shown that proposal's
+                   *     text and the instruction is applied to it; `text` stays the user's
+                   *     own text, which the check and the diff still run against. Absent on
+                   *     a first request.
+                   */
+                  revise?: string | null;
+                  selection?: components["schemas"]["TextRangeData"] | null;
+                  /** @description The user's text region only: no signature, no forward header. */
+                  text: string;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "ApplyComposeProposal";
+                  draft_id: components["schemas"]["DraftId"];
+                  proposal_id: string;
+              }
+            | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
                   cmd: "DraftEval";
@@ -11422,6 +11955,21 @@ export interface components {
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
+                  cmd: "ClassifyReport";
+                  /** Format: int32 */
+                  limit: number;
+              }
+            | {
+                  account_id?: components["schemas"]["AccountId"] | null;
+                  /** @enum {string} */
+                  cmd: "ClassifyCompare";
+                  /** Format: int32 */
+                  limit: number;
+                  policy_version: string;
+              }
+            | {
+                  account_id?: components["schemas"]["AccountId"] | null;
+                  /** @enum {string} */
                   cmd: "ClassifyEval";
                   set?: components["schemas"]["ClassifyEvalSetData"];
               }
@@ -11429,6 +11977,22 @@ export interface components {
                   /** @enum {string} */
                   cmd: "PrepareReply";
                   message_id: components["schemas"]["MessageId"];
+                  reply_all: boolean;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "EnsureReplyDraft";
+                  dry_run?: boolean;
+                  message_id: components["schemas"]["MessageId"];
+                  reply_all: boolean;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "SetReplyDraftAudience";
+                  draft_id: components["schemas"]["DraftId"];
+                  dry_run?: boolean;
+                  /** Format: int64 */
+                  expected_revision: number;
                   reply_all: boolean;
               }
             | {
@@ -11447,6 +12011,14 @@ export interface components {
                   account_id: components["schemas"]["AccountId"];
                   /** @enum {string} */
                   cmd: "GetSendOutcome";
+                  operation_id: string;
+              }
+            | {
+                  account_id: components["schemas"]["AccountId"];
+                  /** @enum {string} */
+                  cmd: "RecoverSendOutcome";
+                  dry_run: boolean;
+                  expected_evidence_sha256?: string | null;
                   operation_id: string;
               }
             | {
@@ -11846,6 +12418,22 @@ export interface components {
                   todo_ids: string[];
               }
             | {
+                  /** @enum {string} */
+                  cmd: "CorrectTodo";
+                  dry_run?: boolean;
+                  edits?: components["schemas"]["TodoEditData"][];
+                  reason: components["schemas"]["TodoCorrectionData"];
+                  time_zone?: string | null;
+                  todo_id: string;
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "UndoTodoCorrection";
+                  correction_id: string;
+                  dry_run?: boolean;
+                  todo_id: string;
+              }
+            | {
                   action: components["schemas"]["TodoResolutionActionData"];
                   /** @enum {string} */
                   cmd: "ResolveTodoSuggestion";
@@ -12223,6 +12811,10 @@ export interface components {
             | {
                   /** @enum {string} */
                   cmd: "GetAssistantModels";
+              }
+            | {
+                  /** @enum {string} */
+                  cmd: "GetComposeModels";
               }
             | {
                   /** @enum {string} */
@@ -12847,10 +13439,31 @@ export interface components {
                   summary: components["schemas"]["DraftEvalSummaryData"];
               }
             | {
+                  /** @enum {string} */
+                  kind: "ComposeProposal";
+                  proposal: components["schemas"]["ComposeProposalData"];
+              }
+            | {
+                  draft_id: components["schemas"]["DraftId"];
+                  /** @enum {string} */
+                  kind: "ComposeApplied";
+                  text_hash: string;
+              }
+            | {
                   cases: components["schemas"]["DraftEvalQuickCaseData"][];
                   /** @enum {string} */
                   kind: "DraftEvalQuick";
                   summary: components["schemas"]["DraftEvalQuickSummaryData"];
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "ClassifyReport";
+                  report: components["schemas"]["ClassifyReportData"];
+              }
+            | {
+                  comparison: components["schemas"]["ClassifyComparisonData"];
+                  /** @enum {string} */
+                  kind: "ClassifyCompare";
               }
             | {
                   /** @enum {string} */
@@ -13175,6 +13788,14 @@ export interface components {
                   /** @enum {string} */
                   kind: "SendOutcome";
                   outcome?: components["schemas"]["DraftSendOutcome"] | null;
+              }
+            | {
+                  evidence_sha256?: string | null;
+                  /** @enum {string} */
+                  kind: "SendRecoveryPreview";
+                  outcome: components["schemas"]["DraftSendOutcome"];
+                  reason: string;
+                  recoverable: boolean;
               }
             | {
                   candidates: components["schemas"]["DraftCommitmentCandidateData"][];
@@ -13638,6 +14259,11 @@ export interface components {
                   models: components["schemas"]["AssistantModelsData"];
               }
             | {
+                  /** @enum {string} */
+                  kind: "ComposeModels";
+                  models: components["schemas"]["AssistantModelsData"];
+              }
+            | {
                   change: components["schemas"]["AssistantModelChangeData"];
                   /** @enum {string} */
                   kind: "AssistantModelChange";
@@ -13698,6 +14324,7 @@ export interface components {
               }
             | {
                   account_id: components["schemas"]["AccountId"];
+                  assessment?: components["schemas"]["MailAssessment"] | null;
                   /** @enum {string} */
                   kind: "MessageKind";
                   mail_kind: components["schemas"]["MailKindData"];
@@ -14105,7 +14732,28 @@ export interface components {
             operation_id: string;
         };
         /** @enum {string} */
-        SendOutcomeState: "unknown" | "accepted" | "not_accepted";
+        SendOutcomeState: "unknown" | "accepted" | "not_accepted" | "waiting";
+        SendRecoveryStatus: {
+            /** Format: int32 */
+            attempts: number;
+            phase: components["schemas"]["SendSubmissionPhase"];
+            /** @description Stable diagnostic code; never message bodies, addresses or credentials. */
+            reason?: string | null;
+            /** Format: date-time */
+            retry_at?: string | null;
+        };
+        /**
+         * @description The last boundary for which the adapter has positive evidence.
+         * @enum {string}
+         */
+        SendSubmissionPhase:
+            | "preparation"
+            | "cooldown"
+            | "authentication"
+            | "thread_resolution"
+            | "dispatch"
+            | "provider_response"
+            | "accepted";
         /** @enum {string} */
         SendTimeConfidenceData: "low" | "medium" | "high";
         SendTimeRecommendationData: {
@@ -14480,6 +15128,13 @@ export interface components {
              */
             provider_available: boolean;
         };
+        /** @description One run of a word-level diff from the user's text to the proposal. */
+        TextChangeData: {
+            kind: components["schemas"]["TextChangeKindData"];
+            text: string;
+        };
+        /** @enum {string} */
+        TextChangeKindData: "kept" | "added" | "removed";
         TextPlainFormat:
             | "Fixed"
             | {
@@ -14487,6 +15142,13 @@ export interface components {
                       delsp: boolean;
                   };
               };
+        /** @description A byte range into the request's `text`; both ends fall on char boundaries. */
+        TextRangeData: {
+            /** Format: int32 */
+            end: number;
+            /** Format: int32 */
+            start: number;
+        };
         Thread: {
             account_id: components["schemas"]["AccountId"];
             id: components["schemas"]["ThreadId"];
@@ -14643,6 +15305,14 @@ export interface components {
         /** @description Every mode one thread is in, returned by `Request::GetModeMembership`. */
         ThreadModesData: {
             account_id: components["schemas"]["AccountId"];
+            /** @description The independently versioned asks facet includes sent mail as well as received mail. */
+            asks?: components["schemas"]["AskSummary"][];
+            /** @description Additional stored asks can be inspected through their source messages. */
+            asks_more?: boolean;
+            /** @description Missing or invalidated asks are pending; readers never invent a replacement. */
+            asks_pending?: components["schemas"]["MessageId"][];
+            /** @description The stored answers behind this thread's memberships; live marks stay separate. */
+            assessments?: components["schemas"]["MailAssessment"][];
             /**
              * @description Modes this thread was marked done in and stays out of until a new
              *     message arrives.
@@ -14871,11 +15541,26 @@ export interface components {
             action: string;
             /** @description The rows as they are (or would be) after the change. */
             changed: components["schemas"]["TodoData"][];
+            /** @description Opaque token for one-step correction undo; never inferred by a client. */
+            correction_undo?: string | null;
             dry_run: boolean;
             /** @description One line saying what happened: "Ticked off 2.", "Would let go of 12." */
             summary: string;
             /** @description Ids that matched but were not in a state this change applies to. */
             unchanged?: string[];
+        };
+        TodoCorrectionBody: {
+            dry_run?: boolean;
+            edits?: components["schemas"]["TodoEditData"][];
+            reason: components["schemas"]["TodoCorrectionData"];
+            time_zone?: string | null;
+        };
+        /** @enum {string} */
+        TodoCorrectionData:
+            "not_a_todo" | "not_mine" | "already_done" | "wrong_details";
+        TodoCorrectionUndoBody: {
+            correction_id: string;
+            dry_run?: boolean;
         };
         /** @description Body of `POST /api/v1/mail/todos`. */
         TodoCreateBody: {
@@ -15111,6 +15796,8 @@ export interface components {
             headline: string;
             /** @description Dated, showing up after 30 days. */
             later: components["schemas"]["TodoData"][];
+            /** @description Eligible ask uncertainty only; collapsed by clients and never a Now task. */
+            might_need_you?: components["schemas"]["TodoUncertainData"][];
             next_surface?: components["schemas"]["TodoNextData"] | null;
             /** @description Shown now, by act-by; overdue rows after the ones still in time. */
             now: components["schemas"]["TodoData"][];
@@ -15137,6 +15824,11 @@ export interface components {
         };
         /** @enum {string} */
         TodoStateData: "open" | "done" | "dismissed" | "expired";
+        TodoUncertainData: {
+            asks: components["schemas"]["AskSummary"];
+            subject: string;
+            thread_id: components["schemas"]["ThreadId"];
+        };
         /** @description One week of Coming up. */
         TodoWeekData: {
             /** @description "wk of 12 Oct". */
@@ -17595,6 +18287,38 @@ export interface operations {
             };
         };
     };
+    mail_classify_report: {
+        parameters: {
+            query?: {
+                /** @description Account id; omitted covers every account */
+                account?: string;
+                /** @description Emails examined; default 1000, maximum 10000 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ClassifyReport variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     mail_codes: {
         parameters: {
             query?: {
@@ -17708,6 +18432,109 @@ export interface operations {
             };
         };
     };
+    mail_compose_apply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeApplyBody"];
+            };
+        };
+        responses: {
+            /** @description The draft now holds the proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposeApplyResponse"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The proposal expired, belongs to another draft, or the draft's text changed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_compose_assist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeAssistBody"];
+            };
+        };
+        responses: {
+            /** @description A proposal: the whole proposed text, the word diff from yours, the gaps left, and which of your sentences changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposeAssistResponse"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nothing to finish, a selection off a character boundary, text too long, or a privacy setting that stops the model */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mail_compose_models: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Compose model choices, locality and availability */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposeModelsResponse"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     compose_session_start: {
         parameters: {
             query?: never;
@@ -17785,6 +18612,64 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    compose_session_audience: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComposeSessionAudienceRequest"];
+            };
+        };
+        responses: {
+            /** @description Reply audience preview or updated compose session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComposeSessionResponse"];
+                };
+            };
+            /** @description Invalid draft identity or unsupported compose content */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Stale draft revision; preserve unsent text */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
+            };
+            /** @description Invalid compose session */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftConflictResponse"];
+                };
             };
         };
     };
@@ -19933,7 +20818,7 @@ export interface operations {
             query?: {
                 /** @description Account id; omitted covers every account */
                 account?: string;
-                /** @description `mine` or `theirs`: only rows where it is that side's turn */
+                /** @description Omit for Needs attention; `all` includes conversation history; `mine` or `theirs` selects a side's turn */
                 turn?: string;
                 /** @description `true`: only rows with unread mail from them. Counts in the response are unchanged */
                 unread?: boolean;
@@ -21568,6 +22453,34 @@ export interface operations {
             };
         };
     };
+    mail_recover_send_outcome: {
+        parameters: {
+            query: {
+                account_id: string;
+            };
+            header?: never;
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoverSendBody"];
+            };
+        };
+        responses: {
+            /** @description Evidence-bound recovery preview or resumed original operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+        };
+    };
     mail_send_time: {
         parameters: {
             query?: never;
@@ -22539,6 +23452,58 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    mail_todo_correct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoCorrectionBody"];
+            };
+        };
+        responses: {
+            /** @description The `TodoChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
+            };
+        };
+    };
+    mail_todo_undo_correction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoCorrectionUndoBody"];
+            };
+        };
+        responses: {
+            /** @description The `TodoChange` variant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResponseData"];
+                };
             };
         };
     };

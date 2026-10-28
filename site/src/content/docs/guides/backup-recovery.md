@@ -28,6 +28,12 @@ text, and managed attachment bytes. It excludes credentials, authorization
 tokens, activity data, logs, model files, and derived indexes. Treat the bundle
 as private mail data.
 
+Canonical drafts and send outcomes are retained, but runnable cooldown-send
+approvals, their frozen copies and operational attempt history are excluded.
+A portable restore never resumes an approved-send queue. A missing approval is
+not evidence of rejection; check the retained outcome and any send completed
+through another client before preparing new work.
+
 The durable state includes pending `Looks resolved` checks and their saved
 attempts and results. Restoring keeps that work; it does not start model calls
 while recovery is paused. Follow [Review later evidence](/guides/todo-resolution/)

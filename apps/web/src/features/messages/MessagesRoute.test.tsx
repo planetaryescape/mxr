@@ -8,10 +8,11 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { MessagesRoute, type MessagesSearch } from "./MessagesRoute";
+import { messagesActions } from "./actions";
 import type { Conversation, MessagesData, MessagesRow, MessagesTopic, PersonPage } from "./api";
 import { setActiveQueryClient } from "@/lib/queryClient";
 import { useModeDone, type ModeDoneOutcome } from "@/features/modes/modeDone";
@@ -20,6 +21,10 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 import { runCommand } from "@/lib/keys/controllers";
 import { optionalEnum, optionalFlag, optionalString } from "@/lib/searchParams";
 import { focusActivePane } from "@/lib/keys/focusPane";
+import { ActionRegistry } from "@/lib/actions/registry";
+import { fromDefinition } from "@/lib/actions/definition";
+import { snapshotActionContext } from "@/lib/actions/context";
+import { installKeyDispatcher } from "@/lib/keys/dispatcher";
 
 type FixtureReply =
   | { page: PersonPage }
@@ -67,7 +72,7 @@ vi.mock("@/features/mail-actions/verbFeedback", () => ({
 vi.mock("./MessagesList", () => ({
   MessagesList: ({ data }: { data: MessagesData }) => (
     <ul>
-      {data.your_turn.map((listed) => (
+      {[...data.your_turn, ...data.recent, ...data.quiet].map((listed) => (
         <li key={listed.id} data-testid="listed-row">
           {listed.id}
         </li>
@@ -76,12 +81,34 @@ vi.mock("./MessagesList", () => ({
   ),
 }));
 vi.mock("./PersonPane", () => ({
-  PersonPane: ({ page, onDone }: { page: PersonPage; onDone: () => void }) => (
-    <div>
-      <span data-testid="shown-topic">{page.conversation?.thread_id}</span>
-      <button onClick={onDone}>Done</button>
-    </div>
-  ),
+  PersonPane: ({
+    page,
+    onBack,
+    onDone,
+  }: {
+    page: PersonPage;
+    onBack: () => void;
+    onDone: () => void;
+  }) => {
+    const [topicsOpen, setTopicsOpen] = useState(false);
+    return (
+      <div data-testid="person-page">
+        <span data-testid="shown-topic">{page.conversation?.thread_id}</span>
+        <button aria-label="Back to the people" onClick={onBack}>
+          Back
+        </button>
+        <button data-testid="topics-trigger" onClick={() => setTopicsOpen(true)}>
+          Contract renewal
+        </button>
+        {topicsOpen ? (
+          <button data-testid="topic" aria-current="true">
+            Contract renewal
+          </button>
+        ) : null}
+        <button onClick={onDone}>Done</button>
+      </div>
+    );
+  },
 }));
 
 function topic(id: string, state: MessagesTopic["state"] = "your_turn"): MessagesTopic {
@@ -168,7 +195,7 @@ function validateMessagesSearch(search: Record<string, unknown>): MessagesSearch
   return {
     person: optionalString(search.person),
     topic: optionalString(search.topic),
-    turn: optionalEnum(search.turn, ["mine", "theirs"] as const),
+    turn: optionalEnum(search.turn, ["all", "mine", "theirs"] as const),
     unread: optionalFlag(search.unread),
     pace: optionalFlag(search.pace),
   };
@@ -513,13 +540,65 @@ test("the filter toggles write the URL, ask the bridge with them, and Clear filt
     ),
   );
   expect(screen.getByRole("button", { name: "Unread" }).getAttribute("aria-pressed")).toBe("true");
-  expect(await screen.findByText("Showing 1 of 1")).toBeTruthy();
+  expect(await screen.findByText("1 shown · 1 need attention")).toBeTruthy();
 
   fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
   await waitFor(() => expect(router.state.location.search).not.toHaveProperty("unread"));
   expect(router.state.location.search).not.toHaveProperty("pace");
   expect(router.state.location.search).not.toHaveProperty("turn");
   expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+});
+
+test("f cycles views through the dispatcher even before results arrive, but never while typing", async () => {
+  const pending = deferred<FixtureReply>();
+  http.send.mockImplementation(() => pending.promise);
+  const registry = new ActionRegistry();
+  registry.defineMany(messagesActions.map(fromDefinition));
+  const dispose = installKeyDispatcher(window, { registry, context: snapshotActionContext });
+  try {
+    const router = await mountMessages("/messages?unread=true&pace=true");
+    for (const turn of ["all", "mine", "theirs", undefined]) {
+      fireEvent.keyDown(document.body, { key: "f", code: "KeyF" });
+      // oxlint-disable-next-line no-await-in-loop -- each key advances from the preceding view
+      await waitFor(() => expect(router.state.location.search.turn).toBe(turn));
+      expect(router.state.location.search).toMatchObject({ unread: true, pace: true });
+    }
+    const input = document.createElement("textarea");
+    document.body.append(input);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "f", code: "KeyF" });
+    });
+    input.remove();
+    expect(router.state.location.search.turn).toBeUndefined();
+
+    await act(async () => pending.resolve({ messages: listOf() }));
+    expect(await screen.findByRole("button", { name: "Cycle views" })).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "f", code: "KeyF" });
+    await waitFor(() => expect(router.state.location.search.turn).toBe("all"));
+  } finally {
+    dispose();
+  }
+});
+
+test("cycling views keeps a deep-linked conversation and toggles open", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  cachePage(a, "a-live", "a-live");
+  http.send.mockImplementation(async () => ({ messages: listOf(a) }));
+  const router = await mountMessages("/messages/a-live?unread=true&pace=true");
+  await screen.findByTestId("shown-topic");
+  act(() => {
+    runCommand("messages-filters", "cycleFilter");
+  });
+  await waitFor(() =>
+    expect(router.state.location.search).toMatchObject({
+      turn: "all",
+      person: a.id,
+      topic: "a-live",
+      unread: true,
+      pace: true,
+    }),
+  );
+  expect(await screen.findByTestId("shown-topic")).toHaveTextContent("a-live");
 });
 
 test("an empty filtered view shows the daemon's sentence and Clear filters, not Your turn's clear line", async () => {
@@ -557,7 +636,7 @@ test("a filter change keeps the list but hides the count and empty line until it
     throw new Error(`Unexpected synthetic request: ${path}`);
   });
   await mountMessages("/messages?turn=mine");
-  expect(await screen.findByText("Showing 1 of 1")).toBeTruthy();
+  expect(await screen.findByText("1 shown · 1 need attention")).toBeTruthy();
 
   fireEvent.click(await screen.findByRole("button", { name: "Unread" }));
   await waitFor(() =>
@@ -567,7 +646,7 @@ test("a filter change keeps the list but hides the count and empty line until it
   );
   // The previous filter's rows stay, but no count or empty line describes them.
   expect(screen.getByTestId("listed-row").textContent).toBe("person:a");
-  expect(screen.queryByText(/Showing/)).toBeNull();
+  expect(screen.queryByText(/shown ·/)).toBeNull();
 
   await act(async () => {
     pending.resolve({
@@ -582,7 +661,7 @@ test("a filter change keeps the list but hides the count and empty line until it
     });
   });
   expect(await screen.findByText(/No unread messages from people\./)).toBeTruthy();
-  expect(screen.getByText("Showing 0 of 1")).toBeTruthy();
+  expect(screen.getByText("0 shown · 1 need attention")).toBeTruthy();
 });
 
 test("switching account never shows the previous account's rows", async () => {
@@ -621,6 +700,70 @@ test("switching account never shows the previous account's rows", async () => {
   }
 });
 
+test("returning from All conversations never uses history as the attention placeholder", async () => {
+  const historical = row("person:historical", [topic("archived", "done")]);
+  const history = listWith({
+    your_turn: [],
+    recent: [historical],
+    row_count: 0,
+    matched: 1,
+    filter: { turn: "all", unread: false, past_pace: false },
+  });
+  const pending = deferred<FixtureReply>();
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people")) {
+      return url.searchParams.get("turn") === "all" ? { messages: history } : pending.promise;
+    }
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  const router = await mountMessages("/messages?turn=all");
+  expect(await screen.findByText("person:historical")).toBeInTheDocument();
+  const filter = screen.getByRole("radio", { name: "Needs attention" });
+  fireEvent.click(screen.getByRole("radio", { name: "Needs attention" }));
+  await waitFor(() => expect(router.state.location.search).not.toHaveProperty("turn"));
+  expect(screen.queryByTestId("listed-row")).not.toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "Needs attention" })).toBe(filter);
+  await act(async () => {
+    pending.resolve({
+      messages: listWith({ empty_state: "Nobody is waiting on you.", matched: 0 }),
+    });
+  });
+  expect(await screen.findByText("Nobody is waiting on you.")).toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "Needs attention" })).toBe(filter);
+  expect(screen.queryByText("person:historical")).not.toBeInTheDocument();
+});
+
+test("switching views preserves the open reader and filter nodes while the next list loads", async () => {
+  const a = row("person:a", [topic("a-live")]);
+  client.setQueryData(listKey, listOf(a));
+  cachePage(a, "a-live", "a-live");
+  const pending = deferred<FixtureReply>();
+  http.send.mockImplementation(async (path) => {
+    if (path.includes("turn=all")) return pending.promise;
+    if (path.includes("/people")) return { messages: listOf(a) };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  const router = await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
+  const reader = await screen.findByTestId("shown-topic");
+  const filter = screen.getByRole("radio", { name: "All conversations" });
+  fireEvent.click(filter);
+  await waitFor(() => expect(router.state.location.search.turn).toBe("all"));
+  expect(screen.getByTestId("shown-topic")).toBe(reader);
+  expect(screen.getByRole("radio", { name: "All conversations" })).toBe(filter);
+  await act(async () => {
+    pending.resolve({
+      messages: listWith({
+        filter: { turn: "all", unread: false, past_pace: false },
+        your_turn: [],
+        recent: [],
+      }),
+    });
+  });
+  expect(screen.getByTestId("shown-topic")).toBe(reader);
+  expect(router.state.location.search.person).toBe("person:a");
+});
+
 test("g f below the split reveals the people list before focusing the filter line", async () => {
   layout.wide = false;
   const a = row("person:a", [topic("a-live")]);
@@ -644,6 +787,32 @@ test("g f below the split reveals the people list before focusing the filter lin
       screen.getByRole("radio", { name: "Your turn", hidden: false }),
     ),
   );
+});
+
+test("p focuses the current topic when open, or its trigger when the topic list is closed", async () => {
+  layout.wide = false;
+  const a = row("person:a", [topic("a-live")]);
+  client.setQueryData(listKey, listOf(a));
+  cachePage(a, "a-live", "a-live");
+  http.send.mockImplementation(async (path) => {
+    const url = new URL(path, "http://synthetic.local");
+    if (url.pathname.endsWith("/people")) return { messages: listOf(a) };
+    throw new Error(`Unexpected synthetic request: ${path}`);
+  });
+  await mountMessages("/messages?turn=mine&person=person%3Aa&topic=a-live");
+
+  fireEvent.click(screen.getByRole("button", { name: "Back to the people" }));
+  await waitFor(() => expect(screen.queryByTestId("shown-topic")).toBeNull());
+
+  act(() => expect(runCommand("messages", "personPage")).toBe(true));
+  const trigger = await screen.findByTestId("topics-trigger");
+  expect(screen.queryByTestId("topic")).toBeNull();
+  await waitFor(() => expect(trigger).toHaveFocus());
+
+  fireEvent.click(trigger);
+  const current = screen.getByTestId("topic");
+  act(() => expect(runCommand("messages", "personPage")).toBe(true));
+  await waitFor(() => expect(current).toHaveFocus());
 });
 
 test("an empty filtered view does not count as finishing Messages while Your turn is open", async () => {

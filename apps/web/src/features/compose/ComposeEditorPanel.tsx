@@ -1,5 +1,14 @@
 import { FilePlus2, Loader2, Paperclip, Trash2, X } from "lucide-react";
-import { lazy, Suspense, useRef, useState, type DragEvent } from "react";
+import {
+  lazy,
+  Suspense,
+  useId,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+} from "react";
 
 import {
   AlertDialog,
@@ -13,14 +22,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { ComposeActionBar } from "./ComposeActionBar";
 import { ComposeIssueSummary } from "./ComposeIssueSummary";
-import { ComposeTopBar } from "./ComposeTopBar";
-import { DraftAssist } from "./DraftAssist";
+import { ComposeTopBar, FromControl } from "./ComposeTopBar";
+import { DraftHelpLine } from "./DraftHelpLine";
+import { DraftProof } from "./DraftProof";
+import { proofRuns } from "./assist/proof";
 import { RecipientField } from "./RecipientField";
 import { SendConfirmDialog } from "./SendConfirmDialog";
 import { SendLaterDialog } from "./SendLaterDialog";
@@ -45,9 +57,18 @@ const REMIND_DIALOG_PRESETS = [
   { label: "Next monday 9am", input: "next monday 9am" },
 ] as const;
 
-export function ComposeEditorPanel({ controller }: { controller: ComposeController }) {
-  const editorPreference = useUiPrefs((state) => state.composeEditor);
-  const setComposeEditor = useUiPrefs((state) => state.setComposeEditor);
+export function ComposeEditorPanel({
+  controller,
+  inline = false,
+}: {
+  controller: ComposeController;
+  inline?: boolean;
+}) {
+  const editorPreference = useUiPrefs((state) => {
+    const key = controller.draft?.draftId ?? controller.draft?.draftPath ?? controller.intent.key;
+    return state.composeEditorByDraft[key] ?? state.composeEditor;
+  });
+  const setComposeEditorForDraft = useUiPrefs((state) => state.setComposeEditorForDraft);
 
   const [dragActive, setDragActive] = useState(false);
   const dragDepth = useRef(0);
@@ -55,9 +76,18 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
   // until asked for, and the editor's status row shrinks to a word.
   const quiet = controller.intent.quiet === true;
   const [headersOpen, setHeadersOpen] = useState(false);
+  const headersId = useId();
+  const editRecipientsButton = useRef<HTMLButtonElement>(null);
+  // Only the Markdown editor reports a selection. A selection left from it must
+  // not steer the help after switching to the rich editor, which sends the whole text.
+  const setSelection = controller.setSelection;
+  useEffect(() => {
+    if (editorPreference === "tiptap") setSelection(null);
+  }, [editorPreference, setSelection]);
 
   const { draft } = controller;
   if (!draft) return null;
+  const draftEditorKey = draft.draftId ?? draft.draftPath ?? controller.intent.key;
 
   function onDragEnter(event: DragEvent<HTMLDivElement>) {
     if (!hasFiles(event.dataTransfer)) return;
@@ -85,32 +115,75 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
     void controller.addFiles(event.dataTransfer.files);
   }
 
-  const folded = quiet && !headersOpen && draft.frontmatter.to.trim() !== "";
+  const folded = quiet && !headersOpen;
+  const audience = draft.frontmatter.to.trim() || "Add recipient";
+  const replyAll =
+    draft.draftIntent === "reply" || draft.draftIntent === "reply_all"
+      ? draft.draftIntent === "reply_all"
+      : controller.intent.kind === "reply_all";
+  const replyKind = replyAll ? "Reply all" : "Reply";
+  const isReply =
+    draft.draftIntent === "reply" ||
+    draft.draftIntent === "reply_all" ||
+    controller.intent.kind === "reply" ||
+    controller.intent.kind === "reply_all";
+  const replyAudienceControl = isReply ? (
+    <select
+      aria-label="Reply type"
+      className="h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+      value={replyKind === "Reply all" ? "all" : "single"}
+      disabled={controller.busy || controller.changingAudience}
+      onChange={(event) =>
+        void controller.requestReplyAudience(event.currentTarget.value === "all")
+      }
+    >
+      <option value="single">Reply</option>
+      <option value="all">Reply all</option>
+    </select>
+  ) : null;
 
   return (
     <div
       className="flex min-w-0 flex-1 flex-col overflow-hidden"
       onKeyDown={controller.handleComposeKeyDown}
+      inert={controller.changingAudience || undefined}
     >
       {folded ? (
-        <div className="shrink-0 border-b border-border" data-testid="compose-summary">
-          <div className="mx-auto flex w-full max-w-[860px] items-center gap-2 px-5 py-1.5 text-xs">
-            <span className="text-muted-foreground">To</span>
-            <span className="min-w-0 truncate text-foreground">{draft.frontmatter.to}</span>
-            <span aria-hidden className="text-muted-foreground">
-              ·
-            </span>
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">
-              {draft.frontmatter.subject || "(no subject)"}
-            </span>
+        <div
+          className="shrink-0 border-b border-border"
+          data-testid="compose-summary"
+          role="group"
+          aria-label="Reply audience and sender"
+        >
+          <div className="mx-auto flex min-h-10 w-full max-w-[860px] items-center gap-2 px-4 py-1.5 text-xs">
             <Button
+              ref={editRecipientsButton}
               variant="ghost"
-              size="xs"
-              onClick={() => setHeadersOpen(true)}
-              aria-label="Edit From, To and Subject"
+              size="sm"
+              className="min-w-0 flex-1 justify-start truncate px-1 text-left font-normal"
+              onClick={() => {
+                setHeadersOpen(true);
+                controller.setShowCc(Boolean(draft.frontmatter.cc.trim()));
+                controller.setShowBcc(Boolean(draft.frontmatter.bcc.trim()));
+                requestAnimationFrame(() => controller.toInputRef.current?.focus());
+              }}
+              aria-label={`Edit recipients: To ${audience}, ${replyKind}`}
+              aria-expanded={headersOpen}
             >
-              Edit
+              <span className="truncate text-foreground">To {audience}</span>
+              <span className="shrink-0 text-muted-foreground">· {replyKind}</span>
             </Button>
+            <div aria-label="From account" className="max-w-[45%] shrink-0">
+              <FromControl
+                accounts={controller.runtimeAccounts}
+                value={draft.accountId}
+                onChange={controller.updateAccount}
+                addresses={controller.accountAddresses}
+                fromAddress={draft.frontmatter.from}
+                onFromChange={(email) => controller.updateFrontmatter("from", email)}
+              />
+            </div>
+            {replyAudienceControl}
           </div>
         </div>
       ) : null}
@@ -136,7 +209,25 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
           />
 
           <div className="shrink-0 border-b border-border">
-            <div className="mx-auto w-full max-w-[860px] px-4 py-1.5">
+            <div id={headersId} className="mx-auto w-full max-w-[860px] px-4 py-1.5">
+              {quiet ? (
+                <div className="flex items-center justify-end gap-2">
+                  {replyAudienceControl}
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => {
+                      setHeadersOpen(false);
+                      requestAnimationFrame(() => editRecipientsButton.current?.focus());
+                    }}
+                    aria-label="Done editing recipients"
+                    aria-controls={headersId}
+                    aria-expanded={headersOpen}
+                  >
+                    Done
+                  </Button>
+                </div>
+              ) : null}
               {controller.collaboratorSuggestions.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1 text-2xs text-muted-foreground">
                   <span>Maybe cc:</span>
@@ -227,39 +318,79 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         </>
       )}
 
-      <DraftAssist
-        open={controller.assistOpen}
-        onOpenChange={controller.setAssistOpen}
-        purpose={controller.aiPurpose}
-        onPurposeChange={controller.setAiPurpose}
-        register={controller.aiRegister}
-        onRegisterChange={controller.onRegisterChange}
-        length={controller.aiLength}
-        onLengthChange={controller.onLengthChange}
-        overridden={controller.aiOverridden}
-        onResetTone={controller.resetTone}
-        contextNote={controller.draftSuggestion?.context_note ?? null}
-        onGenerate={controller.generateDraft}
+      <DraftHelpLine
+        open={controller.helpOpen}
+        onOpen={controller.openHelp}
+        onClose={controller.closeHelp}
+        instruction={controller.instruction}
+        onInstructionChange={controller.setInstruction}
+        placeholder={controller.placeholder}
+        adjust={controller.adjust}
+        onToggleAdjust={controller.toggleAdjust}
+        onSubmit={
+          controller.proofOpen ? () => controller.again(controller.instruction) : controller.submit
+        }
+        onPolish={controller.polish}
         generating={controller.generating}
-        refineContext={controller.refineContext}
-        onRefineContextChange={controller.setRefineContext}
-        onRefine={controller.runRefine}
-        refining={controller.refining}
-        canRefine={controller.canRefine}
-        suggestion={controller.draftSuggestion}
-        busy={controller.busy}
+        focusNonce={controller.focusNonce}
+        disabled={controller.busy}
+        model={controller.model}
+        defaultModel={controller.defaultModel}
+        modelChoices={controller.modelChoices}
+        onModelChange={controller.setModel}
       />
 
       <div
         role="group"
         aria-label="Message body"
-        className="relative min-h-0 flex-1 overflow-hidden"
+        className={
+          inline
+            ? "relative min-h-[320px] flex-none overflow-visible"
+            : "relative min-h-0 flex-1 overflow-hidden"
+        }
+        onKeyDownCapture={(event) => {
+          // ⌘Z takes back an accepted proof while the text is still that
+          // proof; the editor's own undo cannot tell the accept apart.
+          if (!controller.canUndoAccept || !isUndoChord(event)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          controller.undoAccept();
+        }}
         onDragEnter={onDragEnter}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
       >
-        <div className="mx-auto h-full w-full max-w-[860px]">
+        {controller.proofOpen && controller.version ? (
+          <div className="mx-auto h-full w-full max-w-[860px]">
+            <DraftProof
+              runs={proofRuns(
+                controller.version.proposal.changes,
+                controller.version.proposal.gaps,
+              )}
+              gapCount={controller.version.proposal.gaps.length}
+              provenance={controller.version.proposal.provenance}
+              versionIndex={controller.versionIndex}
+              versionCount={controller.versionCount}
+              stale={controller.stale}
+              onAccept={controller.accept}
+              onKeep={controller.keepMine}
+              onStep={controller.stepVersion}
+              onAgain={() => controller.again()}
+              onRetryModel={controller.againWithModel}
+              modelChoices={controller.modelChoices}
+              defaultModel={controller.defaultModel}
+              generating={controller.generating}
+              onRevise={controller.openHelp}
+              styleMarks={controller.version.proposal.style_marks}
+              styleScore={controller.version.proposal.style_score}
+            />
+          </div>
+        ) : null}
+        <div
+          className={cn("mx-auto w-full max-w-[860px]", inline ? "h-auto" : "h-full")}
+          hidden={controller.proofOpen}
+        >
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
@@ -269,21 +400,29 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
           >
             {editorPreference === "tiptap" ? (
               <TiptapComposeEditor
+                focusNonce={controller.editorFocusNonce}
                 value={draft.bodyMarkdown}
                 onChange={controller.updateBody}
                 onSave={controller.handleSaveClick}
                 onSend={controller.requestSend}
                 onDiscard={controller.requestDiscard}
+                inline={inline}
+                readOnly={controller.changingAudience}
               />
             ) : (
               <CodeMirrorComposeEditor
+                focusNonce={controller.editorFocusNonce}
                 value={draft.bodyMarkdown}
                 onChange={controller.updateBody}
                 onSave={controller.handleSaveClick}
                 onSend={controller.requestSend}
                 onDiscard={controller.requestDiscard}
                 onClose={() => void controller.requestClose()}
+                onSelectionChange={controller.setSelection}
+                modelSpans={draft.modelSpans}
                 quiet={quiet}
+                inline={inline}
+                readOnly={controller.changingAudience}
               />
             )}
           </Suspense>
@@ -300,6 +439,47 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
           </div>
         ) : null}
       </div>
+
+      <Collapsible
+        open={controller.signatureFoldOpen}
+        onOpenChange={controller.setSignatureFoldOpen}
+        className="shrink-0 border-t border-border"
+      >
+        <div className="mx-auto w-full max-w-[860px] px-5">
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-8 px-1 text-xs text-muted-foreground">
+              Signature
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="flex flex-wrap gap-2 pb-2" aria-label="Saved signatures">
+              {controller.signatureList.length ? (
+                controller.signatureList.map((signature) => (
+                  <Button
+                    key={signature.id}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => controller.insertSignature(signature.body)}
+                  >
+                    {signature.name}
+                  </Button>
+                ))
+              ) : (
+                <p className="py-1 text-xs text-muted-foreground">No saved signatures.</p>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => controller.setSignaturePickerOpen(true)}
+              >
+                Browse signatures…
+              </Button>
+            </div>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
 
       {draft.frontmatter.attach.length > 0 ||
       controller.uploadProgress.length > 0 ||
@@ -334,8 +514,9 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         saveError={controller.saveError}
         onRetrySave={controller.retrySave}
         editorPreference={editorPreference}
-        onEditorChange={setComposeEditor}
-        suggestion={controller.draftSuggestion}
+        onEditorChange={(editor) => setComposeEditorForDraft(draftEditorKey, editor)}
+        onOpenSnippets={() => controller.setSnippetPickerOpen(true)}
+        onOpenSignatures={() => controller.setSignaturePickerOpen(true)}
       />
 
       <input
@@ -351,6 +532,48 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         }}
       />
 
+      <AlertDialog
+        open={Boolean(controller.audiencePreview)}
+        onOpenChange={(open) => {
+          if (!open && !controller.changingAudience) controller.cancelReplyAudience();
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Change to{" "}
+              {controller.audiencePreview?.session.kind === "reply_all" ? "reply all" : "reply"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Review the final recipients before changing this draft.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 text-sm">
+            {(["to", "cc", "bcc"] as const).map((field) => {
+              const value = controller.audiencePreview?.session.frontmatter[field]?.trim();
+              return value ? (
+                <p key={field}>
+                  <span className="text-muted-foreground">{field.toUpperCase()}:</span> {value}
+                </p>
+              ) : null;
+            })}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={controller.changingAudience}>
+              Keep current audience
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={controller.changingAudience}
+              onClick={(event) => {
+                event.preventDefault();
+                void controller.confirmReplyAudience();
+              }}
+            >
+              {controller.changingAudience ? "Updating…" : "Change audience"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <SendConfirmDialog
         open={controller.sendConfirmOpen}
         onOpenChange={controller.setSendConfirmOpen}
@@ -358,7 +581,6 @@ export function ComposeEditorPanel({ controller }: { controller: ComposeControll
         fromAddress={
           draft.frontmatter.from || controller.selectedAccount?.email || "the selected account"
         }
-        suggestion={controller.draftSuggestion}
         sending={controller.sending}
         safetyReport={controller.safetyReport}
         safetyCheckError={controller.safetyCheckError}
@@ -532,4 +754,14 @@ function basename(path: string): string {
     if (part) return part;
   }
   return path;
+}
+
+/** ⌘Z without Shift, for the one-step undo of an accepted proof. */
+function isUndoChord(event: KeyboardEvent<HTMLElement>): boolean {
+  return (
+    (event.metaKey || event.ctrlKey) &&
+    !event.shiftKey &&
+    !event.altKey &&
+    event.key.toLowerCase() === "z"
+  );
 }

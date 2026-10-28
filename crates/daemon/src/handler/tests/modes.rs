@@ -32,6 +32,21 @@ async fn mail(
         MessageDirection::Inbound
     };
     fx.store_envelope(&envelope, direction).await;
+    if direction == MessageDirection::Inbound {
+        // Mode handoff tests add their tasks explicitly; the email asks only for a reply.
+        fx.state
+            .store
+            .insert_body(&mxr_core::MessageBody {
+                message_id: envelope.id.clone(),
+                text_plain: Some("Could you reply with your availability?".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: envelope.date,
+                metadata: Default::default(),
+            })
+            .await
+            .unwrap();
+    }
     envelope
 }
 
@@ -156,9 +171,15 @@ async fn the_landlords_email_is_in_messages_and_to_do_each_saying_why() {
     assert_eq!(messages.key, "g m");
     assert!(!messages.early, "Messages is built (phase 3)");
     assert!(
-        messages
-            .reason
-            .starts_with("Here because: your turn with sam@lettings.example"),
+        messages.reason.contains(
+            &placed
+                .assessments
+                .iter()
+                .find(|a| a.message_id == ask.id)
+                .unwrap()
+                .deciding
+                .reason
+        ),
         "{}",
         messages.reason
     );
@@ -297,6 +318,81 @@ async fn ticking_off_the_last_mode_archives_and_undo_puts_everything_back() {
     );
     let row = fx.state.store.get_todo(&todo).await.unwrap().unwrap();
     assert!(row.done_at.is_none());
+}
+
+#[tokio::test]
+async fn archived_conversation_history_can_be_done_in_messages_and_undone() {
+    let fx = Fixture::new().await;
+    let thread = ThreadId::new();
+    let message = mail(
+        &fx,
+        &thread,
+        "sam@lettings.example",
+        "Hello",
+        Duration::hours(3),
+    )
+    .await;
+    fx.state
+        .store
+        .set_message_labels(&message.id, &[], mxr_core::EventSource::User)
+        .await
+        .unwrap();
+    assert!(!membership(&fx, &thread).await.in_inbox);
+    let listed = request(
+        &fx,
+        Request::ListMessages {
+            account_id: None,
+            turn: None,
+            filter: mxr_protocol::MessagesFilterData {
+                turn: Some(mxr_protocol::MessagesTurnData::All),
+                ..Default::default()
+            },
+            limit: 50,
+        },
+    )
+    .await;
+    let ResponseData::Messages { messages } = listed else {
+        panic!("expected Messages")
+    };
+    assert!(messages
+        .recent
+        .iter()
+        .chain(&messages.quiet)
+        .flat_map(|row| &row.topics)
+        .any(
+            |topic| topic.thread_id == thread && topic.state != mxr_protocol::TopicStateData::Done
+        ));
+
+    let (preview, _) = done(&fx, &thread, ModeKindData::Messages, true).await;
+    assert_eq!(preview.error, None);
+    assert!(preview.marked);
+    assert_eq!(preview.archived, 0);
+    assert!(!membership(&fx, &thread)
+        .await
+        .done_in
+        .contains(&ModeKindData::Messages));
+    let (outcome, undo) = done(&fx, &thread, ModeKindData::Messages, false).await;
+    assert_eq!(outcome, preview);
+    assert!(!in_inbox(&fx, &message.id).await);
+    assert!(membership(&fx, &thread)
+        .await
+        .done_in
+        .contains(&ModeKindData::Messages));
+    assert!(matches!(
+        request(
+            &fx,
+            Request::UndoMutation {
+                mutation_id: undo.unwrap()
+            }
+        )
+        .await,
+        ResponseData::Ack
+    ));
+    assert!(!in_inbox(&fx, &message.id).await);
+    assert!(!membership(&fx, &thread)
+        .await
+        .done_in
+        .contains(&ModeKindData::Messages));
 }
 
 #[tokio::test]
@@ -626,7 +722,10 @@ async fn person_mail_left_in_the_inbox_stays_in_messages_as_quiet() {
         assert_eq!(placed.held_by, [ModeKindData::Messages]);
         let entry = &placed.modes[0];
         assert!(
-            entry.reason.starts_with("Here because: quiet, "),
+            placed
+                .assessments
+                .iter()
+                .any(|a| entry.reason.contains(&a.deciding.reason)),
             "{}",
             entry.reason
         );
@@ -1067,7 +1166,7 @@ async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messa
     assert_eq!(modes(&bank), [ModeKindData::Updates]);
     assert_eq!(
         bank.modes[0].reason,
-        "Here because: repeated subject templates with bulk precedence, and no correspondence history (rule)."
+        "Here because: No rule decided; Updates for now (Not sure)."
     );
     assert!(bank.in_inbox, "the inbox keeps it");
     assert!(bank.new_sender.is_none());
@@ -1075,7 +1174,7 @@ async fn templated_and_role_senders_you_never_wrote_to_land_in_updates_not_messa
     assert_eq!(modes(&toys), [ModeKindData::Updates]);
     assert_eq!(
         toys.modes[0].reason,
-        "Here because: a role address you have never written to (rule)."
+        "Here because: No rule decided; Updates for now (Not sure)."
     );
 
     // Moving the sender to people wins over every rule.

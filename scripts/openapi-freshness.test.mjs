@@ -170,11 +170,13 @@ test('cancellation removes temporary output without replacing the artifact', { t
   const closed = once(child, 'close');
   t.after(() => { if (child.exitCode === null && child.signalCode === null) process.kill(-child.pid, 'SIGKILL'); });
   let stderr = '';
+  let terminationSent = false;
+  // The shell can write termination diagnostics; keep its stderr pipe open through close.
   for await (const chunk of child.stderr) {
     stderr += chunk.toString();
-    if (stderr.includes('exporter-ready')) {
+    if (!terminationSent && stderr.includes('exporter-ready')) {
+      terminationSent = true;
       process.kill(-child.pid, 'SIGTERM');
-      break;
     }
   }
   const [code, signal] = await closed;

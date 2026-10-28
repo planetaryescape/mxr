@@ -24,8 +24,20 @@ macro_rules! todo_untouched_sql {
 
 mod account;
 mod analytics;
+mod approved_sends;
+pub use approved_sends::{ApprovedSendFile, SendApproval};
 mod arrival_ledger;
 mod arrivals;
+mod asks;
+mod asks_projection;
+pub use asks_projection::AsksProjection;
+mod asks_timezone;
+pub use asks_timezone::{AsksOffset, AsksTimezone};
+mod asks_commitments;
+mod asks_todos;
+pub use asks::{asks_context_token, AskSummary};
+mod assessment_authority;
+mod assessments;
 mod assistant;
 mod auto_reminders;
 pub mod backup;
@@ -37,12 +49,18 @@ mod category_rules;
 mod change_feed;
 mod classify_eval;
 mod commitment_date_source;
+mod commitment_lifecycle;
 mod contact_commitments;
+pub use commitment_lifecycle::PromiseResolution;
 mod contact_relationship_summary;
 mod contact_style;
 mod contacts;
 mod contacts_refresh_handle;
 mod context_briefings;
+mod conversation_summaries;
+pub use conversation_summaries::{
+    ConversationHistoryToken, ConversationRevision, ConversationSummary, ConversationSummaryWrite,
+};
 mod decision_log;
 mod deliveries;
 mod desk;
@@ -101,6 +119,7 @@ mod thread;
 mod thread_context;
 mod thread_preview;
 mod thread_summary;
+mod todo_corrections;
 mod todo_first_run;
 mod todo_microsoft;
 mod todo_resolution;
@@ -124,6 +143,7 @@ pub use arrival_ledger::{
     ArrivalCounts, ArrivalPlacement, ArrivalRow, Correction, NewCorrection, PendingArrival,
 };
 pub use arrivals::Arrival;
+pub use assessments::assessment_fingerprint;
 pub use assistant::{AssistantConversationRow, AssistantMessageRow};
 pub use auto_reminders::{DeskReminder, ReminderState, ReplyCandidate, TakenTimers};
 pub use calendar::CalendarInviteRecord;
@@ -131,7 +151,9 @@ pub use categories::{
     normalize_category_name, CategoryMembershipChange, CategoryMembershipVersion,
 };
 pub use change_feed::ChangeFeed;
-pub use classify_eval::{EvalAspects, EvalCandidate, EvalTodo};
+pub use classify_eval::{
+    EvalAspects, EvalCandidate, EvalProjectedTodo, EvalStoredMessage, EvalTodo,
+};
 pub use commitment_date_source::{is_actionable_date, ByWhenSource};
 pub use contact_commitments::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
 pub use contact_relationship_summary::ContactRelationshipSummaryRecord;

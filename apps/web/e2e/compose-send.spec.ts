@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { mailRows, openList } from "./helpers/mail";
+import { mailRows, openList, reader } from "./helpers/mail";
 import { openApp } from "./helpers/state";
 
 function composer(page: Page) {
@@ -29,7 +29,9 @@ test("a sent message appears in Sent after the undo window", async ({ page }) =>
   const sendResponse = page.waitForResponse("**/api/v1/mail/compose/session/send", {
     timeout: 30_000,
   });
-  await composer(page).getByRole("button", { name: /^Send (⌘|Ctrl)/ }).click();
+  await composer(page)
+    .getByRole("button", { name: /^Send (⌘|Ctrl)/ })
+    .click();
   await expect(page.getByText(/^Sending in \d+s/)).toBeVisible();
   await expect(page.getByText(/To alice@example\.com, from alex@demo\.mxr\.local/)).toBeVisible();
   expect((await sendResponse).ok()).toBe(true);
@@ -56,10 +58,10 @@ test("a /compose/new deep link opens the composer prefilled and steps off the UR
   await page.goto("/compose/new?to=bob%40example.com&subject=From%20a%20link");
 
   await expect(composer(page)).toBeVisible();
-  await expect(composer(page).getByRole("button", { name: "Remove bob@example.com" })).toBeVisible();
-  await expect(composer(page).getByRole("textbox", { name: "Subject" })).toHaveValue(
-    "From a link",
-  );
+  await expect(
+    composer(page).getByRole("button", { name: "Remove bob@example.com" }),
+  ).toBeVisible();
+  await expect(composer(page).getByRole("textbox", { name: "Subject" })).toHaveValue("From a link");
   await expect(page).not.toHaveURL(/\/compose\//);
 
   await composer(page).getByRole("button", { name: "Close composer (saves draft)" }).click();
@@ -108,4 +110,35 @@ test("the desktop shortcut event opens a composer over the current page without 
   await page.keyboard.press("Escape");
   await expect(composer(page)).toHaveCount(0);
   await expect(page).toHaveURL(/\/now$/);
+});
+
+test("an inline reply keeps its text and audience when closed and resumed", async ({ page }) => {
+  await openList(page, "/m/inbox");
+  await mailRows(page).first().click();
+  await page.keyboard.press("Enter");
+  await expect(reader(page)).toBeVisible();
+  await page.keyboard.press("r");
+  const inline = page.locator("#inline-composer-slot [data-compose-surface]");
+  await expect(inline).toBeVisible();
+  const editor = inline.locator(".cm-content");
+  await editor.click();
+  await page.keyboard.press("i");
+  await page.keyboard.type("Keep this unsent reply across audience changes.");
+  await page.keyboard.press("Escape");
+  await inline.getByRole("combobox", { name: "Reply type" }).selectOption("all");
+  const preview = page.getByRole("alertdialog");
+  await expect(preview).toBeVisible();
+  await preview.getByRole("button", { name: "Change audience", exact: true }).click();
+  await expect(preview).toHaveCount(0);
+  await expect(editor).toContainText("Keep this unsent reply across audience changes.");
+  await expect(inline.getByRole("combobox", { name: "Reply type" })).toHaveValue("all");
+  await inline.getByRole("button", { name: "Close composer (saves draft)" }).click();
+  await expect(inline).toHaveCount(0);
+  await reader(page).click();
+  await page.keyboard.press("r");
+  await expect(inline).toBeVisible();
+  await expect(inline.locator(".cm-content")).toContainText(
+    "Keep this unsent reply across audience changes.",
+  );
+  await expect(inline.getByRole("combobox", { name: "Reply type" })).toHaveValue("all");
 });

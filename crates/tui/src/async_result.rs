@@ -322,9 +322,33 @@ pub(crate) enum AsyncResult {
     /// rather than silently swallowed.
     SemanticOperationResult(Result<(), MxrError>),
     PlatformModalLoaded {
+        send_recovery_preview: Option<(mxr_core::AccountId, String, String)>,
         compose: Option<Box<app::PendingSend>>,
         title: String,
         result: Result<String, MxrError>,
+    },
+    ComposeAssistLoaded {
+        pending: Box<app::PendingSend>,
+        model: Option<String>,
+        request_id: u64,
+        result: Result<mxr_protocol::ComposeProposalData, MxrError>,
+    },
+    ComposeModelsLoaded {
+        pending: Box<app::PendingSend>,
+        purpose: app::ComposeModelPickerPurpose,
+        result: Result<mxr_protocol::AssistantModelsData, MxrError>,
+    },
+    ComposeAssistAccepted {
+        pending: Box<app::PendingSend>,
+        request_id: u64,
+        reopen_editor: bool,
+        result: Result<
+            (
+                mxr_core::Draft,
+                Result<mxr_core::DraftSafetyReport, MxrError>,
+            ),
+            MxrError,
+        >,
     },
     /// Result of one of the four analytics list requests. The
     /// dispatcher keys the response to the active view at the time
@@ -442,6 +466,7 @@ pub(crate) enum AnalyticsResultPayload {
 
 pub(crate) struct ComposeReadyData {
     pub(crate) account_id: mxr_core::AccountId,
+    pub(crate) draft_revision: Option<i64>,
     pub(crate) intent: mxr_core::DraftIntent,
     pub(crate) draft_path: std::path::PathBuf,
     pub(crate) cursor_line: usize,

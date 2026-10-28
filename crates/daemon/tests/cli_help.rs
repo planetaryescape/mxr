@@ -188,6 +188,9 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_thread", &["thread", "--help"]),
         ("cli_help_thread_preview", &["thread-preview", "--help"]),
         ("cli_help_compose", &["compose", "--help"]),
+        ("cli_help_compose_models", &["compose", "models", "--help"]),
+        ("cli_help_compose_assist", &["compose", "assist", "--help"]),
+        ("cli_help_compose_apply", &["compose", "apply", "--help"]),
         ("cli_help_export", &["export", "--help"]),
         ("cli_help_headers", &["headers", "--help"]),
         ("cli_help_sync", &["sync", "--help"]),
@@ -386,6 +389,11 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_reply_all", &["reply-all", "--help"]),
         ("cli_help_forward", &["forward", "--help"]),
         ("cli_help_drafts", &["drafts", "--help"]),
+        ("cli_help_drafts_reply", &["drafts", "reply", "--help"]),
+        (
+            "cli_help_drafts_audience",
+            &["drafts", "audience", "--help"],
+        ),
         ("cli_help_drafts_list", &["drafts", "list", "--help"]),
         (
             "cli_help_drafts_scheduled",
@@ -477,6 +485,11 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_todo_resolve", &["todo", "resolve", "--help"]),
         ("cli_help_todo_done", &["todo", "done", "--help"]),
         ("cli_help_todo_undo", &["todo", "undo", "--help"]),
+        ("cli_help_todo_correct", &["todo", "correct", "--help"]),
+        (
+            "cli_help_todo_undo_correction",
+            &["todo", "undo-correction", "--help"],
+        ),
         ("cli_help_todo_dismiss", &["todo", "dismiss", "--help"]),
         ("cli_help_todo_snooze", &["todo", "snooze", "--help"]),
         ("cli_help_todo_edit", &["todo", "edit", "--help"]),
@@ -750,6 +763,10 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
             &["commitments", "resolve", "--help"],
         ),
         ("cli_help_classify", &["classify", "--help"]),
+        (
+            "cli_help_classify_report",
+            &["classify", "report", "--help"],
+        ),
         ("cli_help_classify_eval", &["classify", "eval", "--help"]),
         ("cli_help_demo_reset", &["demo", "reset", "--help"]),
         ("cli_help_demo_status", &["demo", "status", "--help"]),
@@ -827,4 +844,21 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_voice_show", &["voice", "show", "--help"]),
         ("cli_help_web_stop", &["web", "stop", "--help"]),
     ]
+}
+
+#[test]
+fn reply_audience_requires_one_explicit_policy() {
+    let base = [
+        "mxr",
+        "drafts",
+        "audience",
+        "draft-id",
+        "--expected-revision",
+        "2",
+    ];
+    assert!(Cli::try_parse_from(base).is_err());
+    for flag in ["--all", "--single"] {
+        assert!(Cli::try_parse_from(base.into_iter().chain([flag])).is_ok());
+    }
+    assert!(Cli::try_parse_from(base.into_iter().chain(["--all", "--single"])).is_err());
 }

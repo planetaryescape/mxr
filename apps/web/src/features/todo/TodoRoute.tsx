@@ -32,8 +32,9 @@ import { useUiPrefs } from "@/state/uiPrefsStore";
 import { fetchRunway, TODO_KEY, type Todo, type TodoRunway } from "./api";
 import { TodoCatchupView, TodoExpiredView } from "./TodoCatchupView";
 import { TodoRow } from "./TodoRow";
+import { TodoEmptyRunway, TodoUncertainty } from "./TodoEmptyRunway";
 import { openCount, primaryAction, runwayItems, type RunwayItem } from "./todoRows";
-import { markNotTodo, restoreTodos, tickOff, useTodoHidden } from "./todoVerbs";
+import { restoreTodos, tickOff, useTodoHidden } from "./todoVerbs";
 import type { LampVia } from "@/components/Row";
 import { useThreadModesMap } from "@/features/modes/membership";
 import { SectionHeading } from "@/components/SectionHeading";
@@ -366,7 +367,7 @@ function Bands({
       else runPrimary(current.todo);
     },
     done: () => actionable && done(actionable, "key"),
-    dismiss: () => actionable && void markNotTodo([actionable], "key"),
+    dismiss: () => actionable && openMailDialog({ kind: "todo-correct", todo: actionable }),
     schedule: () => actionable && openMailDialog({ kind: "todo-schedule", todo: actionable }),
     edit: () => actionable && openMailDialog({ kind: "todo-edit", todo: actionable }),
     openEmail: () => current?.todo.thread_id && openEmail(current.todo),
@@ -435,13 +436,12 @@ function Bands({
 
   if (neverHadAny) {
     return (
-      <PageEmpty
-        framed
-        glyph="todo"
-        title="Nothing here yet"
+      <TodoEmptyRunway
+        runway={runway}
         body={[runway.empty_state ?? guide?.never_had_any, guide?.add_one?.replaceAll("`", "")]
           .filter(Boolean)
           .join(" ")}
+        onOpenSource={(threadId) => navigate({ to: "/todo/$threadId", params: { threadId } })}
       />
     );
   }
@@ -542,6 +542,11 @@ function Bands({
               {doneItems.map(row)}
             </ul>
           ) : null}
+
+          <TodoUncertainty
+            items={runway.might_need_you}
+            onOpenSource={(threadId) => navigate({ to: "/todo/$threadId", params: { threadId } })}
+          />
 
           {expiredOnOpen > 0 ? (
             <p data-testid="expired-line" className="mx-5 mt-5 text-xs text-muted-foreground">

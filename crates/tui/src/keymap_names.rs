@@ -44,6 +44,7 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
         "MessagesBack" => Action::MessagesBack,
         "MessagesDone" => Action::MessagesDone,
         "MessagesFilter" => Action::MessagesFilter,
+        "MessagesCycleFilter" => Action::MessagesCycleFilter,
         "MessagesNewTopic" => Action::MessagesNewTopic,
         "MessagesNextTopic" => Action::MessagesNextTopic,
         "MessagesOpen" => Action::MessagesOpen,
@@ -213,8 +214,26 @@ mod tests {
 
     #[test]
     fn every_name_in_the_definition_is_the_action_it_prints_as() {
+        let proof_actions = [
+            "ComposeProofAccept",
+            "ComposeProofAcceptEdit",
+            "ComposeProofRevise",
+            "ComposeProofModel",
+            "ComposeProofKeep",
+            "ComposeProofPrevious",
+            "ComposeProofNext",
+            "ComposeProofScrollUp",
+            "ComposeProofScrollDown",
+            "ComposeProofPageUp",
+            "ComposeProofPageDown",
+            "ComposeProofScrollTop",
+            "ComposeProofScrollBottom",
+        ];
         for binding in mxr_keymap::defaults().actions.iter().flat_map(|a| &a.tui) {
-            if binding.name.starts_with("inline:") || binding.name == "SidebarSelect" {
+            if binding.name.starts_with("inline:")
+                || binding.name == "SidebarSelect"
+                || proof_actions.contains(&binding.name.as_str())
+            {
                 continue;
             }
             let action = action_named(&binding.name)

@@ -78,7 +78,6 @@ export default function Now() {
                     target={
                       <ReplyForm
                         messageId={row.message_id}
-                        threadId={row.thread_id}
                         to={row.counterparty_name ?? row.counterparty_email}
                         onSent={revalidate}
                       />

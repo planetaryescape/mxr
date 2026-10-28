@@ -1,8 +1,8 @@
+import type { components } from "@/api/generated";
+
 /*
- * The arrivals protocol (crates/protocol/src/types/arrivals.rs), by hand.
- * The daemon's OpenAPI dump can't be regenerated while this branch waits for
- * the build queue; once `npm run gen:types` runs, these become aliases of
- * `components["schemas"]["ArrivalsData"]` and friends in `@/api/generated`.
+ * Arrival view fields from crates/protocol/src/types/arrivals.rs.
+ * The shared classification report uses its generated OpenAPI type.
  */
 
 export type ModeId = "messages" | "todo" | "updates" | "reading" | "archive";
@@ -16,6 +16,7 @@ export const ARRIVAL_BUCKETS = [
   "archive",
   "screened_out",
   "spam",
+  "trash",
   "sorting",
 ] as const;
 
@@ -48,6 +49,7 @@ export interface NotSure {
 }
 
 export interface Arrivals {
+  classification_report?: components["schemas"]["ClassifyReportData"] | null;
   generated_at: string;
   since: string;
   until: string;

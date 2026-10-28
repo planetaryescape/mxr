@@ -3,7 +3,7 @@ title: Talk to Your Mail with the Assistant
 description: Ask questions about your email, or have the assistant sort, archive and draft. Every change waits for your approval.
 ---
 
-The assistant is a chat you have with your mailbox. Ask it what needs a reply this week, what a thread decided, or which newsletters you never open. Ask it to archive every shipping notice older than a month, move a sender to Reading, or draft a reply. It works through the same tools mxr's MCP server offers agents, so anything mxr can do, it can do.
+The optional built-in assistant is one way to work with your mailbox. Ask it what needs a reply this week, what a thread decided, or which subscription candidates currently have a low READ-state rate. Ask it to archive every shipping notice older than a month, move a sender to Reading, or draft a reply. It uses the same daemon-backed tools as mxr's MCP server. An existing agent can connect separately through [MCP or the CLI skill](/guides/for-agents/).
 
 It reads and searches on its own. Every change it wants to make stops and waits for you, with a preview of exactly what it will touch. When it needs you to choose (which account, which of three matching emails, how wide a cleanup) it asks with a card of options.
 
@@ -110,7 +110,7 @@ op read "op://<vault>/<item>/credential" | mxr llm key set openai      # GPT-6 L
 op read "op://<vault>/<item>/credential" | mxr llm key set anthropic    # Claude Haiku, Claude Sonnet
 ```
 
-`OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in the daemon's environment work too, and an OpenRouter key (`mxr llm key set openrouter`) serves all four hosted models. Each model call in a turn may write up to 16,384 tokens, so a prepaid key needs credit for that much; a key that runs short gets "The model's provider wants more credits for this request" with the provider's message under **Details**. See [LLM features](/guides/llm-features/#pick-the-assistants-model) for the list in `llm.assistant_models`, which you can edit, and [Use GPT models](/guides/llm-features/#use-gpt-models-through-openai-with-openrouter-as-fallback).
+`OPENAI_API_KEY` and `ANTHROPIC_API_KEY` in the daemon's environment work too, and an OpenRouter key (`mxr llm key set openrouter`) serves all four hosted models. Each model call in a turn may write up to 16,384 tokens, so a prepaid key needs credit for that much; a key that runs short gets "The model's provider wants more credits for this request" with the provider's message under **Details**. See [LLM features](/guides/llm-features/#pick-the-assistants-model) for the shared list in `llm.models` (formerly `llm.assistant_models`), which you can edit, and [Use GPT models](/guides/llm-features/#use-gpt-models-through-openai-with-openrouter-as-fallback).
 
 ## What it reads, and where it goes
 

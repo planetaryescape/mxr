@@ -170,6 +170,16 @@ pub(super) struct ComposeSessionRestoreRequest {
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub(super) struct ComposeSessionAudienceRequest {
+    pub(super) draft_path: String,
+    pub(super) draft_id: String,
+    pub(super) reply_all: bool,
+    pub(super) expected_revision: i64,
+    #[serde(default)]
+    pub(super) dry_run: bool,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ComposeSessionUpdateRequest {
     /// Explicit canonical persistence retry using a private recovery's observed revision.
     #[serde(default)]
@@ -366,6 +376,10 @@ pub(super) struct LlmConfigRequest {
     pub(super) enabled: bool,
     pub(super) base_url: String,
     pub(super) model: String,
+    #[serde(default)]
+    pub(super) compose_model: Option<String>,
+    #[serde(default)]
+    pub(super) models: Option<Vec<String>>,
     pub(super) api_key_env: String,
     pub(super) context_window: u32,
     pub(super) request_timeout_secs: u64,
@@ -381,6 +395,8 @@ impl From<LlmConfigRequest> for LlmConfigData {
             enabled: value.enabled,
             base_url: value.base_url,
             model: value.model,
+            compose_model: value.compose_model,
+            models: value.models,
             api_key_env: value.api_key_env,
             context_window: value.context_window,
             request_timeout_secs: value.request_timeout_secs,
@@ -443,6 +459,9 @@ pub(super) struct ComposeSessionData {
     preview_html: String,
     issues: Vec<super::ComposeIssueView>,
     kind: Option<String>,
+    /// Stored intent when reopening a saved draft.
+    #[serde(rename = "draftIntent")]
+    draft_intent: Option<mxr_core::DraftIntent>,
     #[serde(rename = "editorCommand")]
     editor_command: Option<String>,
     #[serde(rename = "cursorLine")]

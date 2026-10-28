@@ -108,6 +108,9 @@ async fn handle_compose_action_owned(
                 .map_err(|error| MxrError::Ipc(error.to_string()))?;
             return Ok(ComposeReadyData {
                 account_id,
+                draft_revision: retained
+                    .as_ref()
+                    .map(|(_, identity)| identity.expected_revision),
                 intent: mxr_core::DraftIntent::New,
                 draft_path: path,
                 cursor_line: 1,
@@ -200,6 +203,7 @@ async fn handle_compose_action_owned(
                     mxr_compose::ComposeKind::Forward {
                         subject: context.subject,
                         original_context: context.forwarded_content,
+                        source: Some(context.source.ok_or_else(|| MxrError::Ipc("Daemon cannot prepare complete forwards; upgrade and restart the daemon".into()))?),
                     },
                 ),
                 Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
@@ -268,12 +272,26 @@ async fn handle_compose_action_owned(
         }
     };
     #[cfg(not(test))]
-    let id = mxr_core::DraftId::from_provider_id("compose-file", &path.to_string_lossy());
+    let id = mxr_compose::frontmatter::parse_compose_file(&initial_content)
+        .map_err(|e| MxrError::Ipc(e.to_string()))?
+        .0
+        .forward_source
+        .map_or_else(
+            || mxr_core::DraftId::from_provider_id("compose-file", &path.to_string_lossy()),
+            |source| source.draft_id,
+        );
     #[cfg(not(test))]
     crate::send_recovery_state::retain_owner(&id, &owner)
         .map_err(|error| MxrError::Ipc(error.to_string()))?;
+    #[cfg(not(test))]
+    crate::send_recovery_state::retain_owner(
+        &mxr_core::DraftId::from_provider_id("compose-file", &path.to_string_lossy()),
+        &owner,
+    )
+    .map_err(|error| MxrError::Ipc(error.to_string()))?;
     Ok(ComposeReadyData {
         account_id,
+        draft_revision: None,
         intent,
         draft_path: path,
         cursor_line,
@@ -612,6 +630,7 @@ pub(crate) async fn pending_send_from_edited_draft(
 
     Ok(PendingSend {
         account_id: data.account_id.clone(),
+        draft_revision: data.draft_revision,
         intent: if fm.intent == mxr_core::DraftIntent::New {
             data.intent
         } else {
@@ -636,6 +655,7 @@ pub(crate) async fn handle_compose_editor_status(
     status: std::io::Result<std::process::ExitStatus>,
     bg: &mpsc::UnboundedSender<IpcRequest>,
 ) {
+    let assist_after_editor = std::mem::take(&mut app.compose.assist_after_editor);
     match status {
         Ok(s) if s.success() => match pending_send_from_edited_draft(data).await {
             Ok(mut pending) => {
@@ -663,6 +683,9 @@ pub(crate) async fn handle_compose_editor_status(
                 stamp_safety_report(&mut pending, bg).await;
                 stamp_suggestions(&mut pending, bg).await;
                 app.compose.pending_send_confirm = Some(pending);
+                if assist_after_editor {
+                    app.apply(crate::action::Action::RefinePendingDraft);
+                }
             }
             Err(error) => {
                 app.report_error(error.modal_title(), error.modal_detail());
@@ -719,7 +742,13 @@ async fn resolve_pending_from(
 }
 
 async fn stamp_safety_report(pending: &mut PendingSend, bg: &mpsc::UnboundedSender<IpcRequest>) {
-    let draft = draft_from_pending(pending);
+    let draft = match draft_from_pending(pending) {
+        Ok(draft) => draft,
+        Err(error) => {
+            pending.safety_check_failed = Some(error.to_string());
+            return;
+        }
+    };
     let context = mxr_protocol::DraftSafetyContextData {
         mode: mxr_protocol::DraftSafetyModeData::Check,
         reply_all: matches!(pending.intent, mxr_core::DraftIntent::ReplyAll),
@@ -765,7 +794,9 @@ async fn stamp_safety_report(pending: &mut PendingSend, bg: &mpsc::UnboundedSend
 /// stamp them onto `pending.suggested_collaborators`. Failure is
 /// silent — the modal just renders without the suggestions block.
 async fn stamp_suggestions(pending: &mut PendingSend, bg: &mpsc::UnboundedSender<IpcRequest>) {
-    let draft = draft_from_pending(pending);
+    let Ok(draft) = draft_from_pending(pending) else {
+        return;
+    };
     let req = Request::SuggestCollaborators { draft, limit: 5 };
     if let Ok(Response::Ok {
         data: ResponseData::SuggestedCollaborators { suggestions },
@@ -775,7 +806,9 @@ async fn stamp_suggestions(pending: &mut PendingSend, bg: &mpsc::UnboundedSender
     }
 }
 
-fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
+pub(crate) fn draft_from_pending(
+    pending: &PendingSend,
+) -> Result<mxr_core::Draft, mxr_compose::frontmatter::ComposeError> {
     let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
     let reply_headers =
         pending
@@ -788,8 +821,8 @@ fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
                 thread_id: pending.fm.thread_id.clone(),
             });
     let now = chrono::Utc::now();
-    mxr_core::Draft {
-        revision: Some(1),
+    let mut draft = mxr_core::Draft {
+        revision: pending.draft_revision.or(Some(1)),
         id: pending.draft_id(),
         account_id: pending.account_id.clone(),
         // `fm.from` is already validated by `validate_draft` in
@@ -816,7 +849,9 @@ fn draft_from_pending(pending: &PendingSend) -> mxr_core::Draft {
         inline_calendar_reply: pending.invite_reply.clone(),
         created_at: now,
         updated_at: now,
-    }
+    };
+    mxr_compose::forward::apply(&mut draft, &pending.fm)?;
+    Ok(draft)
 }
 
 #[cfg(test)]
@@ -973,6 +1008,7 @@ mod tests {
         std::fs::write(&temp, "---\n").unwrap();
 
         let data = ComposeReadyData {
+            draft_revision: None,
             account_id: mxr_core::AccountId::new(),
             intent: mxr_core::DraftIntent::New,
             draft_path: temp.clone(),
@@ -1152,6 +1188,7 @@ mod tests {
         assert!(temp.exists(), "test setup: file must exist before discard");
 
         let data = ComposeReadyData {
+            draft_revision: None,
             account_id: mxr_core::AccountId::new(),
             intent: mxr_core::DraftIntent::New,
             draft_path: temp.clone(),

@@ -13,9 +13,6 @@
 //!
 //! minus each mode's done mark (`mode_done`, the desk's watermark).
 
-use super::conversation_shape::{
-    conversation_shape, human_address, Shape, ShapeConfig, ShapeInputs,
-};
 use super::desk::{self_matcher, Senders};
 use super::desk_lanes::{
     clean_subject, is_outbound, thread_lanes, AccountInputs, DESK_WINDOW_DAYS,
@@ -26,11 +23,12 @@ use super::mail_kind::{self, KindSignals};
 use super::mode_rules::{
     mark_covers, membership, merge_marks, messages_membership, quiet_membership, screener_question,
 };
-use super::places::{placed_inbox, scoped_cached_accounts, Placed};
+use super::places::{scoped_cached_accounts, Placed};
 use super::todo_view::{now_order, to_data};
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Duration, Local, Utc};
+use futures::{StreamExt, TryStreamExt};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_protocol::{
     mode_guide, rail_copy, DeskRowData, ModeKindData, RailData, RailEntryData, RailLinkData,
@@ -108,14 +106,54 @@ pub(super) async fn place_threads(
     thread_ids: &[ThreadId],
     now: DateTime<Utc>,
 ) -> Result<Vec<Placement>, HandlerError> {
+    place_threads_with_evidence(state, account_id, thread_ids, now, true).await
+}
+
+async fn place_threads_with_evidence(
+    state: &AppState,
+    account_id: &AccountId,
+    thread_ids: &[ThreadId],
+    now: DateTime<Utc>,
+    include_evidence: bool,
+) -> Result<Vec<Placement>, HandlerError> {
     let store = &state.store;
-    let messages = store
+    let mut messages = store
         .desk_messages_in_threads(account_id, thread_ids)
         .await?;
     if messages.is_empty() {
         return Ok(Vec::new());
     }
-    let senders = Senders::load(state, account_id, &messages).await?;
+    let mut senders = Senders::load(state, account_id, &messages).await?;
+    // Membership exposes bounded evidence quotes as well as verdicts. Keep
+    // full source loading here, on the requested threads, never on the mode
+    // list's whole history. Do not mix evidence from another generation.
+    let mut detailed_asks = HashMap::new();
+    if include_evidence {
+        let ids: Vec<_> = messages.iter().map(|m| m.id.clone()).collect();
+        detailed_asks = store.asks_for_messages(account_id, &ids).await?;
+        detailed_asks.retain(|id, answer| {
+            senders
+                .asks
+                .get(id)
+                .is_some_and(|view| view.input_fingerprint == answer.input_fingerprint)
+        });
+        senders.asks.retain(|id, _| detailed_asks.contains_key(id));
+        senders
+            .assessments
+            .retain(|id, _| senders.asks.contains_key(id));
+    }
+    let invites: Vec<_> = messages
+        .iter()
+        .filter(|m| m.is_invite)
+        .map(|m| m.id.clone())
+        .collect();
+    let released =
+        super::home_projection::released_specialists(state, account_id, &invites, now).await?;
+    for message in &mut messages {
+        if released.contains(&message.id) {
+            message.in_inbox = false;
+        }
+    }
     let is_self = self_matcher(state, account_id).await?;
     let dismissed = messages_dismissals(state, account_id).await?;
     let window_start = now - Duration::days(DESK_WINDOW_DAYS);
@@ -140,6 +178,9 @@ pub(super) async fn place_threads(
         .cloned()
         .collect();
     let lanes = thread_lanes(&AccountInputs {
+        pending_threads: &senders.pending_threads(&messages, &is_self),
+        assessments: &senders.assessments,
+        asks: &senders.asks,
         account_id,
         messages: &lane_messages,
         contacts: &senders.contacts,
@@ -208,9 +249,9 @@ pub(super) async fn place_threads(
             record: records.get(&thread_id),
             marks: &marks,
             senders: &senders,
+            detailed_asks: &detailed_asks,
             written_to: &written_to,
             is_self: &is_self,
-            shape: super::conversation_shape::shape_config(state),
             now,
         });
         let quiet = !rows.contains_key(&thread_id)
@@ -240,10 +281,10 @@ struct PlaceInputs<'a> {
     record: Option<&'a ArchiveRecord>,
     marks: &'a HashMap<(ThreadId, String), DeskDismissal>,
     senders: &'a Senders,
+    detailed_asks: &'a HashMap<mxr_core::MessageId, mxr_core::asks::AskAssessment>,
     /// Senders you have ever written to, anywhere in the account.
     written_to: &'a HashSet<String>,
     is_self: &'a dyn Fn(&str) -> bool,
-    shape: ShapeConfig,
     now: DateTime<Utc>,
 }
 
@@ -256,27 +297,9 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     let mut modes = Vec::new();
     let mut done_in = Vec::new();
 
-    let shape = shape_of(inputs);
-    // Messages: the lane rules already left out a thread put away. A thread
-    // you were only copied on is in Updates instead.
-    if shape == Shape::Copied {
-        if !mark(ModeKindData::Updates).is_some_and(|mark| mark.covers(thread)) {
-            modes.push(membership(
-                ModeKindData::Updates,
-                "Here because: you were only copied, or it went to a crowd, and you never wrote in it (rule).".to_string(),
-                "Also in Updates: a thread you were copied on".to_string(),
-                is_early(ModeKindData::Updates),
-                mail_kind::rule_tag(mxr_protocol::KindRuleData::Copied),
-            ));
-        } else {
-            done_in.push(ModeKindData::Updates);
-        }
-        // A user-set return is attention, not a change of message purpose.
-        // Keep the copied Updates membership and expose its Messages turn too.
-        if let Some(row) = inputs.row.filter(|row| row.back_at.is_some()) {
-            modes.push(messages_membership(row, is_early(ModeKindData::Messages)));
-        }
-    } else if let Some(row) = inputs.row {
+    // Purpose comes from the assessment; explicit return timers can add
+    // Messages attention without changing an Updates/Reading home.
+    if let Some(row) = inputs.row {
         modes.push(messages_membership(row, is_early(ModeKindData::Messages)));
     } else if let Some(message) = quiet(inputs) {
         modes.push(quiet_membership(
@@ -307,7 +330,10 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     let inbound = |m: &&DeskMessage| !is_outbound(m, inputs.is_self) && !m.trashed;
     let mut by_kind: HashMap<SenderKindData, Vec<&DeskMessage>> = HashMap::new();
     for message in thread.iter().filter(inbound) {
-        if !message.in_inbox || message.snoozed || message.is_delivery || message.is_invite {
+        if !message.in_inbox
+            || message.snoozed
+            || !inputs.senders.assessments.contains_key(&message.id)
+        {
             continue;
         }
         let kind = mail_kind::classify(&signals(message, inputs.senders, inputs.is_self))
@@ -385,6 +411,23 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         ));
     }
 
+    for entry in &mut modes {
+        if let Some(assessment) = thread
+            .iter()
+            .rev()
+            .filter_map(|m| inputs.senders.assessments.get(&m.id))
+            .find(|a| a.home == entry.mode.id())
+        {
+            let source = if assessment.not_sure.is_some() {
+                "Not sure"
+            } else if assessment.deciding.source == "you" {
+                "you"
+            } else {
+                "rule"
+            };
+            entry.reason = format!("Here because: {} ({source}).", assessment.deciding.reason);
+        }
+    }
     modes.sort_by_key(|entry| entry.mode);
     done_in.sort();
     let held_by = modes
@@ -394,6 +437,30 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
         .collect();
     let latest = thread.iter().max_by_key(|m| (m.date, m.seq));
     ThreadModesData {
+        asks_more: thread
+            .iter()
+            .filter(|m| inputs.senders.asks.contains_key(&m.id))
+            .count()
+            > 32,
+        asks: thread
+            .iter()
+            .filter_map(|m| {
+                inputs
+                    .detailed_asks
+                    .get(&m.id)
+                    .map(mxr_core::asks::AskAssessment::summary)
+            })
+            .take(32)
+            .collect(),
+        asks_pending: thread
+            .iter()
+            .filter(|m| !inputs.senders.asks.contains_key(&m.id))
+            .map(|m| m.id.clone())
+            .collect(),
+        assessments: thread
+            .iter()
+            .filter_map(|m| inputs.senders.assessments.get(&m.id).cloned())
+            .collect(),
         account_id: inputs.account_id.clone(),
         thread_id: thread_id.clone(),
         subject: latest
@@ -407,26 +474,6 @@ fn place_one(inputs: &PlaceInputs<'_>) -> ThreadModesData {
     }
 }
 
-/// The thread's shape, by the rule the lanes and Messages use.
-fn shape_of(inputs: &PlaceInputs<'_>) -> Shape {
-    let person_sender = |m: &DeskMessage| {
-        mail_kind::classify(&signals(m, inputs.senders, inputs.is_self)).kind
-            == mail_kind::SenderKind::Person
-    };
-    let human = |email: &str| human_address(email, &inputs.senders.screener);
-    let kept = |m: &DeskMessage| inputs.senders.kept_in_messages(m, inputs.is_self);
-    conversation_shape(
-        inputs.thread,
-        &ShapeInputs {
-            is_self: inputs.is_self,
-            person_sender: &person_sender,
-            human_address: &human,
-            kept_in_messages: &kept,
-            config: inputs.shape,
-        },
-    )
-}
-
 /// Person mail still in the inbox that no lane holds: nobody's turn, but
 /// nobody let it go either. Messages keeps it as Quiet until it is done
 /// there, so inbox mail never vanishes from every mode and a to-do ticked
@@ -438,7 +485,8 @@ fn quiet<'a>(inputs: &PlaceInputs<'a>) -> Option<&'a DeskMessage> {
     }
     thread
         .iter()
-        .filter(|m| m.in_inbox && !m.trashed && !is_outbound(m, inputs.is_self))
+        .filter(|m| m.in_inbox && !m.trashed && !m.snoozed && !is_outbound(m, inputs.is_self))
+        .filter(|m| inputs.senders.assessments.contains_key(&m.id))
         .filter(|m| {
             mail_kind::classify(&signals(m, inputs.senders, inputs.is_self)).kind
                 == mail_kind::SenderKind::Person
@@ -455,6 +503,7 @@ fn new_sender(inputs: &PlaceInputs<'_>) -> Option<mxr_protocol::ScreenerQuestion
         .iter()
         .filter(|m| !is_outbound(m, inputs.is_self) && !m.trashed)
         .max_by_key(|m| (m.date, m.seq))?;
+    let assessment = inputs.senders.assessments.get(&latest.id)?;
     let key = latest.from.email.to_ascii_lowercase();
     if inputs
         .senders
@@ -474,11 +523,11 @@ fn new_sender(inputs: &PlaceInputs<'_>) -> Option<mxr_protocol::ScreenerQuestion
     }
     // Only a person is asked about. A machine's mail goes to its mode
     // silently, and its row's why line says which rule put it there.
-    let kind = mail_kind::classify(&signals(latest, inputs.senders, inputs.is_self)).kind;
-    if kind != mail_kind::SenderKind::Person {
+    let person = assessment.who == "person";
+    if !person {
         return None;
     }
-    screener_question(inputs.account_id, &key, kind.to_data())
+    screener_question(inputs.account_id, &key, SenderKindData::People)
 }
 
 /// Group threads by the account that owns them, in request order.
@@ -554,22 +603,25 @@ pub(super) async fn get_membership(
 pub(super) struct InboxModes {
     pub updates: Vec<Placed>,
     pub reading: Vec<Placed>,
+    pub people_threads: HashMap<AccountId, Vec<ThreadId>>,
 }
 
 pub(super) async fn inbox_modes(
     state: &AppState,
     accounts: &[AccountId],
 ) -> Result<InboxModes, HandlerError> {
+    let inbox = super::places::scan_inbox(state, accounts, None).await?;
     let placed = without_done(
         state,
         accounts,
         &[ModeKindData::Updates, ModeKindData::Reading],
-        placed_inbox(state, accounts, None).await?,
+        inbox.mail,
     )
     .await?;
     let mut out = InboxModes {
         updates: Vec::new(),
         reading: Vec::new(),
+        people_threads: inbox.people_threads,
     };
     for item in placed {
         match item.kind.kind {
@@ -683,36 +735,27 @@ fn mode_entry(mode: ModeKindData, count: Option<u32>) -> RailEntryData {
 /// lane holds and nobody marked done there.
 pub(super) async fn quiet_count(
     state: &AppState,
-    accounts: &[AccountId],
+    people: HashMap<AccountId, Vec<ThreadId>>,
+    now: DateTime<Utc>,
+) -> Result<u32, HandlerError> {
+    let counts: Vec<_> = futures::stream::iter(people)
+        .map(|(account, threads)| quiet_account(state, account, threads, now))
+        .buffered(3)
+        .try_collect()
+        .await?;
+    Ok(counts.into_iter().sum())
+}
+
+async fn quiet_account(
+    state: &AppState,
+    account: AccountId,
+    threads: Vec<ThreadId>,
     now: DateTime<Utc>,
 ) -> Result<u32, HandlerError> {
     let mut quiet = 0u32;
-    for account in accounts {
-        let candidates = state.store.place_candidates(account).await?;
-        let mut senders: Vec<String> = candidates
-            .iter()
-            .map(|m| m.from_email.clone())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-        senders.sort_unstable();
-        let kinds = super::places::AccountKinds::load(state, account, &senders).await?;
-        let mut seen: HashSet<&ThreadId> = HashSet::new();
-        let mut threads: Vec<ThreadId> = Vec::new();
-        for message in &candidates {
-            if message.snoozed || kinds.is_outbound(message) {
-                continue;
-            }
-            if mail_kind::classify(&kinds.signals(message)).kind == mail_kind::SenderKind::Person
-                && seen.insert(&message.thread_id)
-            {
-                threads.push(message.thread_id.clone());
-            }
-        }
-        for chunk in threads.chunks(MEMBERSHIP_MAX_THREADS) {
-            let placed = place_threads(state, account, chunk, now).await?;
-            quiet += u32::try_from(placed.iter().filter(|p| p.quiet).count()).unwrap_or(u32::MAX);
-        }
+    for chunk in threads.chunks(MEMBERSHIP_MAX_THREADS) {
+        let placed = place_threads_with_evidence(state, &account, chunk, now, false).await?;
+        quiet += u32::try_from(placed.iter().filter(|p| p.quiet).count()).unwrap_or(u32::MAX);
     }
     Ok(quiet)
 }
@@ -720,7 +763,8 @@ pub(super) async fn quiet_count(
 pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
     let now = Utc::now();
     let accounts = scoped_cached_accounts(state, account_id).await?;
-    let snapshot = super::now::snapshot(state, account_id, &accounts, now, &Local).await?;
+    let (snapshot, quiet) =
+        super::now::rail_snapshot(state, account_id, &accounts, now, &Local).await?;
     let count = |n: usize| Some(super::now::count(n));
     // Badges count work only: Now's people and due soon. To do earns its
     // own badge only once `mxr modes eval` shows under one false to-do a
@@ -740,7 +784,7 @@ pub(super) async fn get_rail(state: &AppState, account_id: Option<&AccountId>) -
     }];
     entries.extend([
         RailEntryData {
-            quiet: Some(quiet_count(state, &accounts, now).await?),
+            quiet: Some(quiet),
             ..mode_entry(ModeKindData::Messages, Some(snapshot.your_turn_total()))
         },
         mode_entry(ModeKindData::Todo, count(snapshot.due_now.len())),

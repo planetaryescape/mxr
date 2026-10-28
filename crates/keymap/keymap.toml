@@ -855,6 +855,16 @@ keys = ["Mod+Shift+f"]
 hide_in_palette = true
 clients = ["web"]
 
+[[action]]
+id = "compose.draft-for-me"
+label = "Draft for me"
+description = "Open the help line; in a proof, revise it"
+group = "Compose"
+scopes = ["compose"]
+keys = ["Mod+j"]
+hide_in_palette = true
+clients = ["web"]
+
 # Mail verbs. Keys match the TUI's live mail-action handler
 # (crates/tui/src/app/input.rs), bound in both the list and the reader.
 [[action]]
@@ -2349,7 +2359,7 @@ short_label = "Do it"
 group = "Triage"
 scopes = ["todo"]
 keys = ["Enter"]
-note = "Opens a link only when the sender passed the check; otherwise the email"
+note = "The TUI opens the source email; the web opens it or a reply for a promise. Links stay in the email."
 
 [[action.tui]]
 name = "TodoPrimary"
@@ -2403,8 +2413,8 @@ contexts = ["todo"]
 
 [[action]]
 id = "todo.dismiss"
-label = "Not a to-do"
-short_label = "Not a to-do"
+label = "Correct to-do"
+short_label = "Correct…"
 group = "Triage"
 scopes = ["todo"]
 keys = ["X"]
@@ -3547,6 +3557,30 @@ contexts = ["messages"]
 until = "0.6.180"
 
 [[action]]
+id = "page.controls"
+label = "Focus page tabs and filters"
+short_label = "Tabs and filters"
+group = "View"
+scopes = ["page"]
+clients = ["web"]
+keys = ["g f"]
+
+[[action]]
+id = "messages.cycle-filter"
+label = "Cycle Messages views"
+short_label = "Cycle views"
+group = "View"
+scopes = ["messages-filters"]
+clients = ["web", "tui"]
+keys = ["f"]
+note = "Needs attention, All conversations, Your turn, Waiting on them; keeps Unread and Past your pace"
+
+[[action.tui]]
+name = "MessagesCycleFilter"
+keys = ["f"]
+contexts = ["messages"]
+
+[[action]]
 id = "messages.filter"
 # Raycast: the Filter submenu; the TUI uses Ctrl+f and the web g f.
 raycast_key = "Cmd+f"
@@ -4267,11 +4301,11 @@ actions = ["now.open", "now.done", "now.open-email"]
 
 [[strip]]
 id = "messages"
-actions = ["messages.reply", "messages.got-it", "messages.done", "messages.to-do", "messages.pin"]
+actions = ["messages.reply", "messages.got-it", "messages.done", "messages.cycle-filter", "messages.to-do", "messages.pin"]
 
 [[strip]]
 id = "messages.empty"
-actions = ["messages.open"]
+actions = ["messages.cycle-filter", "messages.open"]
 
 [[strip]]
 id = "todo"
@@ -4312,3 +4346,135 @@ actions = ["archive.ask", "archive.open-email", "archive.issuer", "archive.filte
 [[strip]]
 id = "screener"
 actions = ["screener.allow", "screener.deny", "screener.feed", "screener.paper-trail"]
+
+# Writing proof overlay. These bindings are scoped to the overlay so their
+# modal keys never shadow mail actions underneath it.
+[[action]]
+id = "compose.proof.accept"
+label = "Accept writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofAccept"
+keys = ["y"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.accept-edit"
+label = "Accept proof and edit"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofAcceptEdit"
+keys = ["e"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.revise"
+label = "Revise writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofRevise"
+keys = ["n"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.model"
+label = "Try writing proof with another model"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofModel"
+keys = ["m"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.keep"
+label = "Keep my draft"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofKeep"
+keys = ["Escape"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.previous"
+label = "Previous writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofPrevious"
+keys = ["ArrowLeft"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.next"
+label = "Next writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofNext"
+keys = ["ArrowRight"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.scroll-up"
+label = "Scroll writing proof up"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofScrollUp"
+keys = ["ArrowUp", "k"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.scroll-down"
+label = "Scroll writing proof down"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofScrollDown"
+keys = ["ArrowDown", "j"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.page-up"
+label = "Page up in writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofPageUp"
+keys = ["PageUp"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.page-down"
+label = "Page down in writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofPageDown"
+keys = ["PageDown"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.top"
+label = "Top of writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofScrollTop"
+keys = ["Home"]
+contexts = ["compose-assist-proof"]
+
+[[action]]
+id = "compose.proof.bottom"
+label = "Bottom of writing proof"
+group = "Compose"
+clients = ["tui"]
+[[action.tui]]
+name = "ComposeProofScrollBottom"
+keys = ["End"]
+contexts = ["compose-assist-proof"]

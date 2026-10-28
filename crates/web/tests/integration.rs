@@ -613,6 +613,227 @@ async fn contacts_autocomplete_matches_addresses_and_returns_typed_suggestions()
 }
 
 // --------------------------------------------------------------------------
+// suite: writing help (compose assist)
+
+fn status_ok() -> Response {
+    Response::Ok {
+        data: ResponseData::Status {
+            workspace_owner_supported: false,
+            draft_revision_supported: true,
+            send_outcome_supported: true,
+            archive_recovery_supported: true,
+            recovery_supported: false,
+            recovery: None,
+            attachment_transfer_supported: true,
+            draft_attachment_upload_supported: true,
+            uptime_secs: 1,
+            accounts: vec![],
+            total_messages: 0,
+            daemon_pid: None,
+            sync_statuses: vec![],
+            protocol_version: IPC_PROTOCOL_VERSION,
+            daemon_version: Some("0.5.0".into()),
+            daemon_build_id: None,
+            repair_required: false,
+            semantic_runtime: None,
+            feature_health: None,
+            degraded: false,
+        },
+    }
+}
+
+#[tokio::test]
+async fn compose_assist_returns_the_proposal_and_apply_writes_it() {
+    use mxr_protocol::{
+        AiLocalityData, AssistActionData, ComposeProposalData, DraftProvenanceData, DraftTargetData,
+    };
+    let draft_id = mxr_core::id::DraftId::new();
+    let temp = TempDir::new().unwrap();
+    let socket = temp.path().join("mxr.sock");
+    let applied_draft = draft_id.clone();
+    let _server = spawn_fake(
+        &socket,
+        move |request| match request {
+            Request::GetStatus => Some(status_ok()),
+            // The proposal echoes what the bridge sent, so the test can see
+            // that every field of the body reached the daemon request.
+            Request::ComposeAssist {
+                draft,
+                text,
+                selection,
+                action,
+                instruction,
+                adjust,
+                model,
+                revise,
+            } => {
+                let kind = match draft {
+                    DraftTargetData::Stored { .. } => "stored",
+                    DraftTargetData::Reply { all: true, .. } => "reply-all",
+                    DraftTargetData::Reply { .. } => "reply",
+                    DraftTargetData::Forward { .. } => "forward",
+                    DraftTargetData::New { .. } => "new",
+                };
+                let selection = selection.map(|range| (range.start, range.end));
+                Some(Response::Ok {
+                    data: ResponseData::ComposeProposal {
+                        proposal: ComposeProposalData {
+                            proposal_id: "p1".into(),
+                            action: action.unwrap_or(AssistActionData::Finish),
+                            base: "abc".into(),
+                            text: format!(
+                                "{kind}|{text}|{selection:?}|{instruction:?}|{}|{model:?}|{revise:?}",
+                                adjust.shorter,
+                            ),
+                            changes: vec![],
+                            gaps: vec![],
+                            provenance: DraftProvenanceData {
+                                model: "m".into(),
+                                locality: AiLocalityData::Local,
+                                history_used: false,
+                                voice_examples: vec![],
+                                conversation: vec![],
+                                rewrite: None,
+                            },
+                            yours_changed: vec![1],
+                            composer_version: "c1".into(),
+                            style_marks: Vec::new(),
+                            style_score: 100,
+                            style_version: String::new(),
+                        },
+                    },
+                })
+            }
+            Request::ApplyComposeProposal {
+                proposal_id,
+                draft_id,
+            } => Some(if proposal_id == "p1" && draft_id == applied_draft {
+                Response::Ok {
+                    data: ResponseData::ComposeApplied {
+                        draft_id,
+                        text_hash: "deadbeef".into(),
+                    },
+                }
+            } else {
+                Response::error_kinded(
+                    "That proposal expired or was never made.",
+                    mxr_protocol::IpcErrorKind::InvalidRequest,
+                )
+            }),
+            _ => None,
+        },
+        vec![],
+    );
+    let addr = boot_bridge(socket).await;
+    let client = reqwest::Client::new();
+
+    // Reply, with a selection and a chip.
+    let message_id = MessageId::new();
+    let response = client
+        .post(format!("http://{addr}/api/v1/mail/compose/assist"))
+        .bearer_auth(TEST_TOKEN)
+        .json(&serde_json::json!({
+            "draft": {"kind": "reply", "message_id": message_id, "all": true},
+            "text": "Thursday works.",
+            "selection": {"start": 0, "end": 8},
+            "instruction": "warmer",
+            "adjust": {"shorter": true},
+            "model": "gpt-6-luna",
+            "revise": "p0",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let json: serde_json::Value = response.json().await.unwrap();
+    // The answer is the typed envelope `{ "proposal": … }`, not a tagged variant.
+    assert!(json.get("kind").is_none(), "{json}");
+    assert_eq!(json["proposal"]["proposal_id"], "p1");
+    assert_eq!(json["proposal"]["action"], "finish");
+    assert_eq!(
+        json["proposal"]["text"],
+        "reply-all|Thursday works.|Some((0, 8))|Some(\"warmer\")|true|Some(\"gpt-6-luna\")|Some(\"p0\")"
+    );
+    assert_eq!(json["proposal"]["yours_changed"], serde_json::json!([1]));
+    assert!(json["proposal"]["provenance"].is_object());
+
+    // Optional fields may be left out.
+    let json: serde_json::Value = client
+        .post(format!("http://{addr}/api/v1/mail/compose/assist"))
+        .bearer_auth(TEST_TOKEN)
+        .json(&serde_json::json!({
+            "draft": {"kind": "stored", "draft_id": draft_id},
+            "text": "",
+            "action": "write",
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(json["proposal"]["action"], "write");
+    assert_eq!(
+        json["proposal"]["text"],
+        "stored||None|None|false|None|None"
+    );
+
+    // A body the daemon would not understand is refused here.
+    let bad = client
+        .post(format!("http://{addr}/api/v1/mail/compose/assist"))
+        .bearer_auth(TEST_TOKEN)
+        .json(&serde_json::json!({"draft": {"kind": "elsewhere"}, "text": ""}))
+        .send()
+        .await
+        .unwrap();
+    assert!(bad.status().is_client_error(), "{}", bad.status());
+
+    // The routes sit behind the bridge token.
+    let unauthorized = client
+        .post(format!("http://{addr}/api/v1/mail/compose/assist"))
+        .json(&serde_json::json!({"draft": {"kind": "stored", "draft_id": draft_id}, "text": ""}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauthorized.status(), 401);
+
+    // Apply answers the typed data of `ComposeApplied`.
+    let applied = client
+        .post(format!("http://{addr}/api/v1/mail/compose/apply"))
+        .bearer_auth(TEST_TOKEN)
+        .json(&serde_json::json!({"proposal_id": "p1", "draft_id": draft_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(applied.status(), 200);
+    assert_eq!(
+        applied.json::<serde_json::Value>().await.unwrap(),
+        serde_json::json!({"draft_id": draft_id, "text_hash": "deadbeef"})
+    );
+
+    // A daemon refusal reaches the caller as a validation error with its words.
+    let refused = client
+        .post(format!("http://{addr}/api/v1/mail/compose/apply"))
+        .bearer_auth(TEST_TOKEN)
+        .json(&serde_json::json!({"proposal_id": "gone", "draft_id": draft_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), 422);
+    assert!(refused.text().await.unwrap().contains("expired"));
+
+    // A draft id that is not one is the caller's mistake.
+    let malformed = client
+        .post(format!("http://{addr}/api/v1/mail/compose/apply"))
+        .bearer_auth(TEST_TOKEN)
+        .json(&serde_json::json!({"proposal_id": "p1", "draft_id": "nope"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(malformed.status(), 400);
+}
+
+// --------------------------------------------------------------------------
 // suite: legacy migration
 
 #[tokio::test]

@@ -16,7 +16,6 @@ import { createPortal } from "react-dom";
 import { PageError } from "@/components/PageParts";
 import { Button } from "@/components/ui/button";
 import { overlayMotion, scrimMotion, sheetMotion } from "@/components/ui/motion";
-import { PHONE_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { focusActivePane } from "@/lib/keys/focusPane";
 import { cn } from "@/lib/utils";
 import { ComposeEditorPanel } from "./ComposeEditorPanel";
@@ -34,6 +33,9 @@ export function ComposeHost() {
 }
 
 function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
+  const surfaceTitle = intent.contextTitle
+    ? `${intent.title} · ${intent.contextTitle}`
+    : intent.title;
   const surface = useComposeUi((s) => s.surface);
   const setSurface = useComposeUi((s) => s.setSurface);
   const closeCompose = useComposeUi((s) => s.closeCompose);
@@ -50,6 +52,9 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     onDiscarded: closeThisSession,
     onClose: closeThisSession,
   });
+  const inlineAvailable = intent.kind !== "new" && slot !== null;
+  const inThread = surface === "inline" && inlineAvailable;
+  const visibleSurface = inThread ? "inline" : surface === "fullscreen" ? "fullscreen" : "overlay";
 
   // Commands for a page that hosts this session inline (focus mode). The
   // latest controller is read at call time.
@@ -64,10 +69,8 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
       intentKey: intent.key,
       send: () => controllerRef.current.requestSend(),
       sendAndRemind: () => controllerRef.current.setRemindDialogOpen(true),
-      draftForMe: () => {
-        controllerRef.current.setAssistOpen(true);
-        controllerRef.current.generateDraft();
-      },
+      // Opens the help line for the user to ask; nothing is sent until they submit.
+      draftForMe: () => controllerRef.current.openHelp(),
     };
     useComposeUi.getState().setCommands(commands);
     return () => {
@@ -88,7 +91,10 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     // Typing in the editor mutates the DOM too: only a new slot re-renders.
     let current: HTMLElement | null | undefined;
     const resolve = () => {
-      const next = document.getElementById("inline-composer-slot");
+      const slotId = intent.contextThreadId
+        ? `inline-composer-slot-${intent.contextThreadId}`
+        : "inline-composer-slot";
+      const next = document.getElementById(slotId);
       if (next !== current) {
         current = next;
         setSlot(next);
@@ -98,7 +104,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
     const observer = new MutationObserver(resolve);
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [surface]);
+  }, [intent.contextThreadId, surface]);
 
   // Bring the inline composer into view once it has content: the slot is
   // hidden while empty, so scrolling to it any earlier does nothing.
@@ -114,14 +120,14 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
   const htmlDraft = htmlDraftRefusal(controller.sessionError);
   const body = controller.sessionLoading ? (
     <div role="status" className="type-body flex h-40 items-center justify-center text-text-2">
-      Opening {intent.title.toLowerCase()}…
+      Opening {surfaceTitle.toLowerCase()}…
     </div>
   ) : htmlDraft ? (
     <HtmlDraftNotice refusal={htmlDraft} />
   ) : controller.sessionError ? (
     <div className="flex flex-col items-start gap-3 p-5">
       <PageError
-        title={`Couldn't open ${intent.title.toLowerCase()}`}
+        title={`Couldn't open ${surfaceTitle.toLowerCase()}`}
         error={controller.sessionError}
         onRetry={controller.retrySession}
       />
@@ -132,47 +138,41 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
       )}
     </div>
   ) : controller.draft ? (
-    <ComposeEditorPanel controller={controller} />
+    <ComposeEditorPanel controller={controller} inline={inThread} />
   ) : null;
 
-  // A sheet is something the user asked for (popout, fullscreen) and gets a scrim. An
-  // inline draft whose thread is gone docks in the corner instead, so going back to the
-  // list never throws a modal over it.
-  const sheet = surface !== "inline";
-  const inThread = surface === "inline" && slot !== null;
-  // On a phone the corner window would cover most of the list, so the docked
-  // draft is its title bar alone; reopening the conversation brings it back
-  // inline, and Popout or Fullscreen open it in place.
-  const phone = useMediaQuery(PHONE_QUERY);
-  const dockedBar = phone && surface === "inline" && slot === null;
+  // If navigation removes the conversation slot, keep the session visible in
+  // its sheet. The inline editor never becomes a floating window over a list.
   const chrome = (
     <div
       data-compose-surface
       className={cn(
         "flex min-h-0 flex-col overflow-hidden border border-rule",
-        inThread
-          ? "max-h-[70vh] min-h-[320px] bg-background"
-          : cn("bg-ink-overlay shadow-2xl", !dockedBar && "h-full"),
+        inThread ? "min-h-[320px] bg-background" : "h-full bg-ink-overlay shadow-2xl",
       )}
       onKeyDown={(event) => {
         if (isComposeActionChord(event, "compose.fullscreen")) {
           event.preventDefault();
-          setSurface(surface === "fullscreen" ? "inline" : "fullscreen");
+          setSurface(
+            surface === "fullscreen" ? (inlineAvailable ? "inline" : "overlay") : "fullscreen",
+          );
         }
       }}
     >
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-rule px-5">
-        <h2 className="type-title min-w-0 truncate text-text-1">{intent.title}</h2>
+        <h2 className="type-title min-w-0 truncate text-text-1">{surfaceTitle}</h2>
         <span className="-mr-2 flex items-center gap-1">
+          {inlineAvailable ? (
+            <SurfaceButton
+              label="Inline"
+              active={visibleSurface === "inline"}
+              onClick={() => setSurface("inline")}
+              icon={<Minimize2 className="size-3.5" />}
+            />
+          ) : null}
           <SurfaceButton
-            label="Inline"
-            active={surface === "inline"}
-            onClick={() => setSurface("inline")}
-            icon={<Minimize2 className="size-3.5" />}
-          />
-          <SurfaceButton
-            label="Popout"
-            active={surface === "overlay"}
+            label="Sheet"
+            active={visibleSurface === "overlay"}
             onClick={() => setSurface("overlay")}
             icon={<PictureInPicture2 className="size-3.5" />}
           />
@@ -194,32 +194,16 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
           </Button>
         </span>
       </div>
-      {dockedBar ? null : <div className="flex min-h-0 flex-1 flex-col">{body}</div>}
+      <div className="flex min-h-0 flex-1 flex-col">{body}</div>
     </div>
   );
 
-  if (surface === "inline" && slot) {
+  if (inThread && slot) {
     return createPortal(chrome, slot);
   }
 
   const fullscreen = surface === "fullscreen";
-  if (!sheet) {
-    // An inline draft whose thread is gone docks in the corner: not modal, so the list stays usable.
-    return (
-      <div
-        role="dialog"
-        aria-label={intent.title}
-        className={
-          dockedBar
-            ? "fixed inset-x-4 bottom-4 z-40 flex flex-col"
-            : "fixed bottom-4 right-4 z-40 flex h-[min(640px,calc(100vh-6rem))] w-[min(680px,calc(100vw-3rem))] flex-col"
-        }
-      >
-        {chrome}
-      </div>
-    );
-  }
-  // A popout or fullscreen sheet is modal: focus stays inside it, Esc leaves (the draft is
+  // The sheet is modal: focus stays inside it, Esc leaves (the draft is
   // saved first), and focus returns to where it was. The scrim and the sheet fade and rise
   // like every overlay (docs/blueprint/26 "Motion").
   return (
@@ -238,7 +222,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
           )}
         />
         <DialogPrimitive.Content
-          aria-label={intent.title}
+          aria-label={surfaceTitle}
           aria-describedby={undefined}
           // The editor focuses itself (useComposeAutofocus); the trap only has to hold it.
           onOpenAutoFocus={(event) => event.preventDefault()}
@@ -253,7 +237,20 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
           onEscapeKeyDown={(event) => {
             // Esc belongs to vim inside the Markdown editor, and to an open suggestion list.
             const target = event.target instanceof Element ? event.target : null;
-            if (target?.closest(".cm-editor, [aria-expanded='true']")) event.preventDefault();
+            if (target?.closest(".cm-editor, [aria-expanded='true']")) {
+              event.preventDefault();
+              return;
+            }
+            // Esc never destroys: on a proof it keeps the user's text, on the help
+            // line it closes the line. Radix runs this in capture, before either
+            // sees the key, so it has to be handled here.
+            if (controller.proofOpen) {
+              event.preventDefault();
+              controller.keepMine();
+            } else if (controller.helpOpen) {
+              event.preventDefault();
+              controller.closeHelp();
+            }
           }}
           className={cn(
             "fixed z-40 flex flex-col outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0",
@@ -266,7 +263,7 @@ function ComposeHostInner({ intent }: { intent: ComposeIntent }) {
         >
           <DialogPrimitive.Title asChild>
             {/* The visible heading is in the chrome; this names the dialog without a second heading. */}
-            <span className="sr-only">{intent.title}</span>
+            <span className="sr-only">{surfaceTitle}</span>
           </DialogPrimitive.Title>
           {chrome}
         </DialogPrimitive.Content>

@@ -40,6 +40,22 @@ help modal (`?`).
 
 ## Look up and check keys
 
+### Find keys while you work (web and desktop)
+
+- Press `g` and pause to see the available next keys for the current page.
+  The same guide appears for selection prefixes such as `*`. Fast sequences
+  run immediately without opening the guide. `Esc` cancels; clicking or
+  entering a text field cancels too.
+- `g f` reaches filters in mail and Search. On tool and settings pages it
+  focuses the selected tab or first filter. The key is shown beside the controls.
+- Once a tab or segmented choice has focus, arrow keys move between choices;
+  `Home` and `End` jump to the ends. `Tab` leaves the group. Settings and
+  Reading section links keep normal link behavior: arrows move focus, `Enter` opens.
+- In Messages, `f` cycles the four views without focusing the controls.
+  In mail lists and the email reader, `f` still means Forward.
+
+Shortcuts do not take letters from text fields, editors or open dialogs.
+
 Ask the daemon which key does what, in which place, instead of searching these
 tables. Each row is the client, the place, the key, the action id, its label and,
 for the TUI, the action the dispatcher runs:
@@ -334,10 +350,10 @@ Open To do with `gx`. See [Act on To dos](/guides/todo/).
 | Key | Action |
 |-----|--------|
 | `e` | Tick off the selected task |
-| `Enter` | Use the row's primary action |
+| `Enter` | Open the source email (TUI); use the row's primary action (web) |
 | `Z` (web) | Schedule when the task returns |
 | `,` (web) | Edit extracted fields |
-| `X` (web) | Mark as not a to-do |
+| `X` | Correct the selected to-do |
 | `o` | Open the source email |
 | `E` (web) | Open Expired |
 | `C` (web) | Open Catch-up |
@@ -781,6 +797,14 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `{` | Previous section |  |
 | `}` | Next section |  |
 
+### Page controls
+
+On tool and settings pages, focus tabs and filters with `g f`; arrow keys then change the choice.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `g f` | Focus page tabs and filters |  |
+
 ### Screener
 
 | Key | Action | Note |
@@ -858,6 +882,7 @@ On a lit new sender, `1` to `4` answer its question.
 | `p` | Go to the person page |  |
 | `o` | Show the message as sent |  |
 | `g f` | Filter the people list: turn, unread, past your pace | Ctrl+f in the TUI opens the same picker; the web filters with g f because Ctrl+f is the browser's Find |
+| `f` | Cycle Messages views | Needs attention, All conversations, Your turn, Waiting on them; keeps Unread and Past your pace |
 | `⌘Enter / Ctrl+Enter` | Send, then the next person whose turn it is |  |
 | `Esc` | Dismiss the hint, or back to the people |  |
 | `1` | New sender: keep in Messages |  |
@@ -876,11 +901,11 @@ On a lit new sender, `1` to `4` answer its question.
 | `Ctrl+U`, `PageUp` | Half page up |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
-| `Enter` | Do it: what the row's button says | Opens a link only when the sender passed the check; otherwise the email |
+| `Enter` | Do it: what the row's button says | The TUI opens the source email; the web opens it or a reply for a promise. Links stay in the email. |
 | `e` | Done |  |
 | `Z` | Schedule… |  |
 | `,` | Edit what mxr read… |  |
-| `X` | Not a to-do |  |
+| `X` | Correct to-do |  |
 | `o` | Open the email it came from |  |
 | `E` | Expired list |  |
 | `C` | Catch-up |  |
@@ -1038,6 +1063,7 @@ While writing a message. ⌘ and Ctrl both work, on every platform.
 | `⌘⇧A / Ctrl+Shift+A` | Attach files |  |
 | `⌘⇧G / Ctrl+Shift+G` | Insert signature |  |
 | `⌘; / Ctrl+;` | Insert snippet |  |
+| `⌘J / Ctrl+J` | Draft for me |  |
 | `⌘⇧F / Ctrl+Shift+F` | Toggle fullscreen |  |
 
 <!-- web-keys:end -->

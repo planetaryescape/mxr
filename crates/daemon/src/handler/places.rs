@@ -11,12 +11,12 @@ use super::mail_kind::{self, KindSignals};
 use super::{mutations, HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::Utc;
-use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::id::{AccountId, MessageId};
 use mxr_core::types::{MessageDirection, OwnedAddresses, UnsubscribeMethod};
 use mxr_core::MessageFlags;
 use mxr_protocol::{
-    KindRuleData, MailKindData, MailPlaceData, ModeKindData, MutationCommand, PlaceBundleData,
-    PlaceMessageData, ResponseData, SenderKindData, SweepPreviewData, SweepSenderData,
+    MailKindData, MailPlaceData, ModeKindData, MutationCommand, PlaceBundleData, PlaceMessageData,
+    ResponseData, SenderKindData, SweepPreviewData, SweepSenderData,
 };
 use mxr_store::{DeskContact, PlaceMessage, ScreenerDecision, ScreenerDisposition};
 use parking_lot::Mutex;
@@ -41,6 +41,8 @@ const fn place_kind(place: MailPlaceData) -> SenderKindData {
 
 /// Everything deciding kinds needs about one account, read once.
 pub(super) struct AccountKinds {
+    assessments: HashMap<MessageId, mxr_core::assessment::MailAssessment>,
+    released: HashSet<MessageId>,
     decisions: HashMap<String, ScreenerDisposition>,
     contacts: HashMap<String, DeskContact>,
     /// Senders you have written to, for the never-bury rule.
@@ -52,19 +54,68 @@ pub(super) struct AccountKinds {
 }
 
 impl AccountKinds {
-    /// `senders` spelled as their messages spell them.
+    /// Observe the requested messages, including archived readers, through the same resolver.
     pub(super) async fn load(
         state: &AppState,
         account_id: &AccountId,
-        senders: &[String],
+        candidates: &[PlaceMessage],
     ) -> Result<Self, HandlerError> {
         let store = &state.store;
-        let decisions = store
-            .list_screener_decisions(account_id)
-            .await?
-            .into_iter()
-            .map(|d| (d.sender_email.to_ascii_lowercase(), d.disposition))
+        let invites: Vec<_> = candidates
+            .iter()
+            .filter(|m| m.is_invite)
+            .map(|m| m.id.clone())
             .collect();
+        let released =
+            super::home_projection::released_specialists(state, account_id, &invites, Utc::now())
+                .await?;
+        let ids: Vec<_> = candidates.iter().map(|m| m.id.clone()).collect();
+        let (mut assessments, asks) = store
+            .assessment_facets_for_messages(account_id, &ids)
+            .await?;
+        // The stored facets already validate policy, context and generation.
+        // Opening Now, Reading or Updates must not re-read and fingerprint all
+        // settled inbox threads merely to describe their stored homes.
+        let mut pending: Vec<_> = candidates
+            .iter()
+            .filter(|m| {
+                asks.get(&m.id)
+                    .is_none_or(|a| !a.owner_authored && !assessments.contains_key(&m.id))
+            })
+            .map(|m| m.thread_id.clone())
+            .collect();
+        pending.sort_by_key(mxr_core::ThreadId::as_str);
+        pending.dedup();
+        if !pending.is_empty() {
+            let mut messages = Vec::new();
+            for chunk in pending.chunks(super::modes::MEMBERSHIP_MAX_THREADS) {
+                messages.extend(store.desk_messages_in_threads(account_id, chunk).await?);
+            }
+            super::assessments::materialize(state, account_id, &messages).await?;
+            assessments = store
+                .assessment_facets_for_messages(account_id, &ids)
+                .await?
+                .0;
+        }
+        // Raw signals are only a fallback for unresolved detail reads (gist).
+        // A validated home needs neither sender histories nor a fresh scan of
+        // every outbound recipient. Normal lists never classify unresolved mail.
+        let senders: Vec<String> = candidates
+            .iter()
+            .filter(|m| !assessments.contains_key(&m.id))
+            .map(|m| m.from_email.clone())
+            .collect();
+        let needs_raw = !senders.is_empty();
+        let decisions = if needs_raw {
+            store
+                .list_screener_decisions(account_id)
+                .await?
+                .into_iter()
+                .map(|d| (d.sender_email.to_ascii_lowercase(), d.disposition))
+                .collect()
+        } else {
+            HashMap::new()
+        };
         let mut lowered: Vec<String> = senders
             .iter()
             .map(|email| email.to_ascii_lowercase())
@@ -86,21 +137,48 @@ impl AccountKinds {
         )
         .await?;
         let written_to = store.addresses_written_to(account_id, &lowered).await?;
-        let moves = store
-            .arrival_moves_in_force(account_id)
-            .await?
-            .into_iter()
-            .filter_map(|(id, mode)| Some((id, mail_kind::kind_for_stored_mode(&mode)?)))
-            .collect();
+        let moves = if needs_raw {
+            store
+                .arrival_moves_in_force(account_id)
+                .await?
+                .into_iter()
+                .filter_map(|(id, mode)| Some((id, mail_kind::kind_for_stored_mode(&mode)?)))
+                .collect()
+        } else {
+            HashMap::new()
+        };
         let owned = state.owned_addresses(account_id).await?;
         Ok(Self {
+            assessments,
+            released,
             decisions,
             contacts,
             written_to,
             moves,
-            treatments: state.store.rule_treatments(account_id).await?,
+            treatments: if needs_raw {
+                state.store.rule_treatments(account_id).await?
+            } else {
+                HashMap::new()
+            },
             owned,
         })
+    }
+
+    pub(super) fn has_assessment(&self, message: &PlaceMessage) -> bool {
+        self.assessments.contains_key(&message.id)
+    }
+
+    pub(super) fn description(&self, message: &PlaceMessage) -> Option<MailKindData> {
+        self.assessments
+            .get(&message.id)
+            .map(super::assessments::describe)
+    }
+
+    pub(super) fn classification(&self, message: &PlaceMessage) -> mail_kind::Classification {
+        self.assessments.get(&message.id).map_or_else(
+            || mail_kind::classify(&self.signals(message)),
+            mail_kind::stored_classification,
+        )
     }
 
     pub(super) fn is_self(&self, email: &str) -> bool {
@@ -110,6 +188,7 @@ impl AccountKinds {
     pub(super) fn signals<'a>(&'a self, message: &'a PlaceMessage) -> KindSignals<'a> {
         let key = message.from_email.to_ascii_lowercase();
         KindSignals {
+            assessment: self.assessments.get(&message.id),
             evidence: &message.evidence,
             recipients: message.to.len() + message.cc.len(),
             reply_request: mail_kind::directed_to_owner(&message.to, &message.evidence, &|email| {
@@ -155,6 +234,11 @@ pub(super) struct Placed {
     pub kind: MailKindData,
 }
 
+pub(super) struct PlacedInbox {
+    pub mail: Vec<Placed>,
+    pub people_threads: HashMap<AccountId, Vec<mxr_core::ThreadId>>,
+}
+
 /// The inbox mail of `accounts` (from `sender_email` only, when given)
 /// that belongs in `place`, minus what that mode was marked done for.
 async fn place_messages(
@@ -189,44 +273,39 @@ pub(super) async fn placed_inbox(
     accounts: &[AccountId],
     sender_email: Option<&str>,
 ) -> Result<Vec<Placed>, HandlerError> {
+    Ok(scan_inbox(state, accounts, sender_email).await?.mail)
+}
+
+/// Share the already-classified inbox with the rail's quiet-thread selector.
+/// Membership still decides whether each complete thread is actually quiet.
+pub(super) async fn scan_inbox(
+    state: &AppState,
+    accounts: &[AccountId],
+    sender_email: Option<&str>,
+) -> Result<PlacedInbox, HandlerError> {
     let mut placed = Vec::new();
+    let mut people_threads = HashMap::new();
     for account_id in accounts {
         let candidates = state.store.place_candidates(account_id).await?;
-        let mut senders: Vec<String> = candidates
-            .iter()
-            .map(|m| m.from_email.clone())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-        senders.sort_unstable();
-        let kinds = AccountKinds::load(state, account_id, &senders).await?;
-        let copied = copied_threads(state, account_id, &candidates, &kinds).await?;
+        let kinds = AccountKinds::load(state, account_id, &candidates).await?;
+        let mut seen_people = HashSet::new();
         for message in candidates {
             if message.snoozed
-                || message.is_delivery
-                || message.is_invite
                 || !same_sender(&message, sender_email)
                 || kinds.is_outbound(&message)
+                || !kinds.has_assessment(&message)
             {
                 continue;
             }
             // Classify first; only mail that stays gets its reason written.
-            let signals = kinds.signals(&message);
-            let classification = mail_kind::classify(&signals);
-            if copied.contains(&message.thread_id)
-                && classification.kind == mail_kind::SenderKind::Person
+            let classification = kinds.classification(&message);
+            if classification.kind.to_data() == SenderKindData::People
+                && seen_people.insert(message.thread_id.clone())
             {
-                // A person's mail in a thread you were only copied on is in
-                // Updates (blueprint 22), so Updates lists it.
-                placed.push(Placed {
-                    message,
-                    kind: MailKindData {
-                        kind: SenderKindData::PaperTrail,
-                        rule: KindRuleData::Copied,
-                        reason: mail_kind::COPIED_REASON.to_string(),
-                        corrected: false,
-                    },
-                });
+                let threads: &mut Vec<_> = people_threads.entry(account_id.clone()).or_default();
+                threads.push(message.thread_id.clone());
+            }
+            if kinds.released.contains(&message.id) {
                 continue;
             }
             if !matches!(
@@ -235,60 +314,16 @@ pub(super) async fn placed_inbox(
             ) {
                 continue;
             }
-            let kind = mail_kind::describe_classified(&signals, classification);
+            let Some(kind) = kinds.description(&message) else {
+                continue;
+            };
             placed.push(Placed { message, kind });
         }
     }
-    Ok(placed)
-}
-
-/// Threads among `candidates` where a person wrote and the thread's shape
-/// is copied: by the same rule the lanes and Messages use.
-async fn copied_threads(
-    state: &AppState,
-    account_id: &AccountId,
-    candidates: &[PlaceMessage],
-    kinds: &AccountKinds,
-) -> Result<HashSet<ThreadId>, HandlerError> {
-    let mut threads: Vec<ThreadId> = candidates
-        .iter()
-        .filter(|m| !kinds.is_outbound(m))
-        .filter(|m| mail_kind::classify(&kinds.signals(m)).kind == mail_kind::SenderKind::Person)
-        .map(|m| m.thread_id.clone())
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
-    if threads.is_empty() {
-        return Ok(HashSet::new());
-    }
-    threads.sort_by_key(ThreadId::as_str);
-    let messages = state
-        .store
-        .desk_messages_in_threads(account_id, &threads)
-        .await?;
-    let senders = super::desk::Senders::load(state, account_id, &messages).await?;
-    let is_self = super::desk::self_matcher(state, account_id).await?;
-    let config = super::conversation_shape::shape_config(state);
-    let person_sender = |m: &mxr_store::DeskMessage| {
-        mail_kind::classify(&senders.signals(m, &is_self)).kind == mail_kind::SenderKind::Person
-    };
-    let human = |email: &str| super::conversation_shape::human_address(email, &senders.screener);
-    let kept = |m: &mxr_store::DeskMessage| senders.kept_in_messages(m, &is_self);
-    let inputs = super::conversation_shape::ShapeInputs {
-        is_self: &is_self,
-        person_sender: &person_sender,
-        human_address: &human,
-        kept_in_messages: &kept,
-        config,
-    };
-    Ok(messages
-        .chunk_by(|a, b| a.thread_id == b.thread_id)
-        .filter(|thread| {
-            super::conversation_shape::conversation_shape(thread, &inputs)
-                == super::conversation_shape::Shape::Copied
-        })
-        .map(|thread| thread[0].thread_id.clone())
-        .collect())
+    Ok(PlacedInbox {
+        mail: placed,
+        people_threads,
+    })
 }
 
 pub(super) async fn scoped_accounts(
@@ -463,22 +498,35 @@ pub(super) async fn list_place(
 }
 
 pub(super) async fn get_message_kind(state: &AppState, message_id: &MessageId) -> HandlerResult {
-    let message = state
+    let envelope = state
         .store
-        .place_message(message_id)
+        .get_envelope(message_id)
         .await?
         .ok_or_else(|| HandlerError::from(format!("Message not found: {message_id}")))?;
-    let kinds = AccountKinds::load(
-        state,
-        &message.account_id,
-        std::slice::from_ref(&message.from_email),
-    )
-    .await?;
+    let thread = state
+        .store
+        .desk_messages_in_threads(
+            &envelope.account_id,
+            std::slice::from_ref(&envelope.thread_id),
+        )
+        .await?;
+    let senders = super::desk::Senders::load(state, &envelope.account_id, &thread).await?;
+    let own = super::desk::self_matcher(state, &envelope.account_id).await?;
+    let message = thread
+        .iter()
+        .find(|m| &m.id == message_id)
+        .ok_or_else(|| HandlerError::from(format!("Message not found: {message_id}")))?;
+    if !super::desk_lanes::is_outbound(message, &own)
+        && !senders.assessments.contains_key(message_id)
+    {
+        return Err(HandlerError::ClassificationPending);
+    }
     Ok(ResponseData::MessageKind {
-        account_id: message.account_id.clone(),
+        assessment: senders.assessments.get(message_id).cloned(),
+        account_id: envelope.account_id,
         message_id: message.id.clone(),
-        sender_email: message.from_email.to_ascii_lowercase(),
-        mail_kind: mail_kind::describe(&kinds.signals(&message)),
+        sender_email: message.from.email.to_ascii_lowercase(),
+        mail_kind: mail_kind::describe(&senders.signals(message, &own)),
     })
 }
 

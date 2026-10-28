@@ -61,6 +61,7 @@ const BUCKET_NAMES = {
   archive: "Archive",
   screened_out: "Screened out",
   spam: "Spam",
+  trash: "Trash",
   sorting: "Still sorting",
 } as const satisfies Record<ArrivalBucket, string>;
 

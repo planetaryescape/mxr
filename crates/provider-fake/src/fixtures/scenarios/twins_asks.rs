@@ -612,9 +612,13 @@ fn conditional_or_unconditional(b: &mut Builder) {
             "A recruiter asks you to send your CV by Friday",
             CONVERSATION,
         )
-        .asks(vec![
-            Item::asks(AskKind::Send, "Naledi Dube").due(Due::Words("Friday"))
-        ]),
+        .asks(vec![Item::asks(AskKind::Send, "Naledi Dube")
+            .due(Due::Words("Friday"))
+            .provenance(
+                "Please send me your CV by Friday, we are shortlisting then.",
+                "owner",
+                "pending",
+            )]),
     );
     let conditional = b.inbound(Mail::new(
         "a12-conditional",

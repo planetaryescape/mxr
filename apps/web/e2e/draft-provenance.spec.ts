@@ -73,11 +73,13 @@ test("a drafted reply says which model wrote it, and each source opens the cited
   const sent = await openFirst(page, "/m/sent");
   const yourEmail = sent.messages.at(-1);
   if (!yourEmail) throw new Error("the demo's Sent list opened an empty conversation");
-  // The conversation being answered; its oldest message is cited too.
+  // The conversation being answered; the oldest message is cited too.
   const inbox = await openFirst(page, "/m/inbox", 2);
   const oldest = inbox.messages[0];
-  if (!oldest) throw new Error("the demo's inbox opened an empty conversation");
-  expect(inbox.messages.length).toBeGreaterThan(1);
+  const newest = inbox.messages.at(-1);
+  if (!oldest || !newest || inbox.messages.length < 2) {
+    throw new Error("the demo's inbox opened a conversation with fewer than two messages");
+  }
   // Folded until something asks for it.
   await expect(reader(page).locator(`[data-message-id="${oldest.id}"]`)).toHaveAttribute(
     "data-collapsed",
@@ -85,47 +87,55 @@ test("a drafted reply says which model wrote it, and each source opens the cited
   );
 
   let draftRequest: Record<string, unknown> | null = null;
-  await page.route("**/api/v1/mail/drafts/compose", async (route) => {
+  await page.route("**/api/v1/mail/compose/assist", async (route) => {
     draftRequest = route.request().postDataJSON() as Record<string, unknown>;
     await route.fulfill({
       json: {
-        kind: "DraftSuggestion",
-        body: "Friday works. I'll send the notes before then.",
-        model: "stub-7b",
-        rewrite_iterations: 0,
-        provenance: {
-          model: "stub-7b",
-          locality: "local",
-          history_used: true,
-          voice_examples: [
-            {
-              message_id: yourEmail.id,
-              thread_id: sent.thread.id,
-              date: yourEmail.date,
-              from_me: true,
-              person: "maya@example.com",
-              person_name: "Maya Chen",
-            },
-          ],
-          conversation: [
-            {
-              message_id: oldest.id,
-              thread_id: inbox.thread.id,
-              date: oldest.date,
-              from_me: false,
-              person: "maya@example.com",
-              person_name: "Maya Chen",
-            },
-          ],
+        proposal: {
+          proposal_id: "proposal-1",
+          action: "write",
+          base: "",
+          text: "Friday works. I'll send the notes before then.",
+          changes: [{ kind: "added", text: "Friday works. I'll send the notes before then." }],
+          gaps: [],
+          yours_changed: [],
+          composer_version: 1,
+          provenance: {
+            model: "stub-7b",
+            locality: "local",
+            history_used: true,
+            voice_examples: [
+              {
+                message_id: yourEmail.id,
+                thread_id: sent.thread.id,
+                date: yourEmail.date,
+                from_me: true,
+                person: "maya@example.com",
+                person_name: "Maya Chen",
+              },
+            ],
+            conversation: [
+              {
+                message_id: oldest.id,
+                thread_id: inbox.thread.id,
+                date: oldest.date,
+                from_me: false,
+                person: "maya@example.com",
+                person_name: "Maya Chen",
+              },
+            ],
+          },
         },
       },
     });
   });
 
   await page.getByRole("button", { name: "Draft in your voice" }).click();
-  await composer(page).getByRole("button", { name: "Generate" }).click();
+  await composer(page).getByRole("textbox", { name: "Draft instruction" }).press("Enter");
   await expect.poll(() => draftRequest).not.toBeNull();
-  expect(draftRequest).toHaveProperty("source_message_id");
+  expect(draftRequest).toHaveProperty("draft.kind", "reply");
+  expect(draftRequest).toHaveProperty("draft.message_id", newest.id);
+  expect(newest.id).not.toBe(oldest.id);
 
   const provenance = composer(page).getByTestId("draft-provenance");
   await expect(provenance.getByTestId("draft-provenance-line")).toHaveText(

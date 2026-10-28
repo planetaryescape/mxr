@@ -257,6 +257,8 @@ async fn read_only_and_revoked_connections_cannot_write_or_upload() {
         account_id: draft.account_id.clone(),
         filename: "fixture.bin".into(),
         mime_type: "application/octet-stream".into(),
+        content_id: None,
+        content_location: None,
         length_bytes: 0,
         sha256: "a".repeat(64),
     };

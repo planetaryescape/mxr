@@ -6,15 +6,9 @@
 //! full set is every labelled email in the store, which on a demo adds the
 //! generated bulk, labelled by where the generator put each email.
 //!
-//! * who: the mail kind the shared `describe` path gives (what `GetMessageKind`
-//!   and the arrivals line read), over the same sender signals placement uses,
-//!   so mail in Spam, which `GetMessageKind` refuses, still has a kind;
-//! * home: the arrivals line's destination under today's rules
-//!   (`arrivals::effective_rows`), not the mode stored when the mail
-//!   arrived, so a rule change shows without re-syncing. Mail with no
-//!   arrivals row (history older than 30 days when the account first
-//!   synced is not an arrival) is placed live by the same rules, as
-//!   `current_bucket` does;
+//! * who: the stored assessment's sender judgement, including mail in Spam;
+//! * home: the persisted assessment used by the modes, arrivals and chips.
+//!   Missing or stale answers remain pending; evaluation never repairs them.
 //! * record: a record row includes this email.
 //!
 //! What an email asks of you (its to-do rows, and whether a reply is owed) is
@@ -25,25 +19,22 @@
 //! including no activity row.
 
 use super::classify_eval_asks::{AskGrader, AskInput, Row, ASK_QUESTIONS};
-use super::desk::{self_matcher, Senders};
-use super::desk_lanes;
-use super::modes::MEMBERSHIP_MAX_THREADS;
-use super::{arrivals, mail_kind, HandlerError, HandlerResult};
+use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
-use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::id::AccountId;
 use mxr_protocol::{
     ClassifyEvalAsksData, ClassifyEvalMismatchData, ClassifyEvalQuestionData, ClassifyEvalSetData,
     ClassifyEvalSummaryData, ResponseData, SenderKindData,
 };
 use mxr_provider_fake::fixtures::scenarios::{self, Labelled, LABEL_SCHEMA_VERSION};
 use mxr_store::EvalCandidate;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 /// What `home` reads, for the output.
-const HOME_PROJECTION: &str = "arrivals line: where each email goes under today's rules, not the mode stored on arrival; mail with no arrivals row is placed live by the same rules";
+const HOME_PROJECTION: &str =
+    "stored assessment; missing or stale answers are pending, never created by evaluation";
 const NO_LABELLED_MAIL: &str = "No labelled mail here; run mxr demo";
 /// An email to place live: its id, thread and whether it is in Spam.
-type Wanted = (MessageId, ThreadId, bool);
 /// Stored emails with the labels that grade them.
 type Present = Vec<(EvalCandidate, Labelled)>;
 
@@ -53,9 +44,9 @@ const QUESTIONS: [&str; 3] = ["who", "home", "record"];
 /// What today's code answers for one email.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Actual {
-    who: &'static str,
+    who: Option<&'static str>,
     who_reason: String,
-    /// `None`: the email has no arrivals row, so no home to compare.
+    /// `None`: no current stored assessment is available to compare.
     home: Option<Home>,
     record: bool,
 }
@@ -65,6 +56,8 @@ struct Actual {
 #[derive(Debug, Clone)]
 struct MailRead {
     kind: SenderKindData,
+    who_pending: bool,
+    home: Option<Home>,
     reason: String,
     reply_owed: bool,
     /// The email's own date.
@@ -108,14 +101,8 @@ const fn yes_no(value: bool) -> &'static str {
     }
 }
 
-/// An arrivals row that was never placed reads `sorting`; both it and a
-/// missing row mean there is no home yet.
-fn placed(mode: &str) -> Option<&str> {
-    (mode != "sorting").then_some(mode)
-}
-
-/// Compare one email's answers with its label. `home` is skipped, and
-/// counted as not placed, when there is none. Mail you sent is not graded
+/// Compare one email's answers with its label. Pending `who` and `home`
+/// answers are skipped; a missing home counts as not placed. Mail you sent is not graded
 /// here: who, home and record are about mail that arrives.
 fn grade(
     label: &Labelled,
@@ -150,7 +137,9 @@ fn grade(
             });
         }
     };
-    check(0, label.expect.who.as_str(), actual.who, &actual.who_reason);
+    if let Some(who) = actual.who {
+        check(0, label.expect.who.as_str(), who, &actual.who_reason);
+    }
     match &actual.home {
         Some(home) => {
             tally.placed_live += u32::from(home.live);
@@ -321,32 +310,81 @@ pub(super) async fn classify_eval(
         });
     }
 
-    let reads = mail_reads(state, &present).await?;
-    // Mail deleted between the lookup and the read has nothing to grade.
+    let ids: Vec<_> = present.iter().map(|(c, _)| c.message_id.clone()).collect();
+    let packet = state.store.classify_eval_packet(&ids).await?;
+    let mut reads = HashMap::new();
+    let mut rows = HashMap::new();
+    let mut stored_answers = HashMap::new();
+    let mut pending_projection = std::collections::HashSet::new();
+    let mut corrected_projection = std::collections::HashSet::new();
+    let mut records = std::collections::HashSet::new();
+    for entry in packet {
+        let message = entry.envelope;
+        if entry.user_corrected {
+            corrected_projection.insert(message.id.clone());
+        }
+        if entry.projection_pending || entry.asks.as_ref().is_some_and(|a| a.pending_body) {
+            pending_projection.insert(message.id.clone());
+        }
+        let assessment = entry.home.as_ref();
+        let kind = assessment.map_or(SenderKindData::ScreenedOut, |a| match a.who.as_str() {
+            "person" => SenderKindData::People,
+            "list" => SenderKindData::Reading,
+            "machine" => SenderKindData::PaperTrail,
+            _ => SenderKindData::ScreenedOut,
+        });
+        let reply_owed = !message.flags.contains(mxr_core::MessageFlags::SPAM)
+            && entry.asks.as_ref().is_some_and(|a| {
+                a.units
+                    .iter()
+                    .any(|u| u.answer == mxr_core::asks::AskAnswer::AsksYouToReply)
+            });
+        reads.insert(
+            message.id.clone(),
+            MailRead {
+                kind,
+                who_pending: assessment.is_none(),
+                home: assessment.map(|a| Home {
+                    mode: a.home.clone(),
+                    reason: a.deciding.reason.clone(),
+                    live: false,
+                }),
+                reason: assessment.map_or_else(String::new, |a| a.deciding.reason.clone()),
+                reply_owed,
+                sent: message.date,
+            },
+        );
+        if entry.record {
+            records.insert(message.id.clone());
+        }
+        if let Some(answer) = entry.asks {
+            let person = if answer.facts.owner_authored {
+                message.to.iter().find(|p| {
+                    !answer
+                        .facts
+                        .owner_addresses
+                        .iter()
+                        .any(|own| own.eq_ignore_ascii_case(&p.email))
+                })
+            } else {
+                Some(&message.from)
+            };
+            let name = person
+                .map(|p| p.name.as_deref().unwrap_or(&p.email))
+                .unwrap_or_default();
+            rows.insert(
+                message.id.clone(),
+                Row::from_asks(&answer, name, &entry.projected_todos),
+            );
+            stored_answers.insert(message.id, answer);
+        }
+    }
     let present: Vec<_> = present
         .into_iter()
-        .filter(|(candidate, _)| reads.contains_key(&candidate.message_id))
+        .filter(|(c, _)| reads.contains_key(&c.message_id))
         .collect();
     let present_count = u32::try_from(present.len()).unwrap_or(u32::MAX);
     let unlabelled = total.saturating_sub(present_count);
-    let ids: Vec<MessageId> = present
-        .iter()
-        .map(|(candidate, _)| candidate.message_id.clone())
-        .collect();
-    let aspects = state.store.classify_eval_aspects(&ids).await?;
-    // Mail you sent has no home: it is context, graded only for its promises.
-    let arriving: Vec<&EvalCandidate> = present
-        .iter()
-        .filter(|(_, label)| !label.outbound)
-        .map(|(candidate, _)| candidate)
-        .collect();
-    let homes = current_homes(state, &arriving).await?;
-    let mut rows: HashMap<&MessageId, Vec<Row>> = HashMap::new();
-    for todo in &aspects.todos {
-        rows.entry(&todo.source_message_id)
-            .or_default()
-            .push(Row::from_todo(todo));
-    }
     let mut tally = Tally::default();
     let mut asks = AskGrader::default();
     let mut mismatches = Vec::new();
@@ -355,19 +393,73 @@ pub(super) async fn classify_eval(
             continue;
         };
         let actual = Actual {
-            who: who_name(read.kind),
+            who: (!read.who_pending).then(|| who_name(read.kind)),
             who_reason: read.reason.clone(),
-            home: homes.get(&candidate.message_id).cloned(),
-            record: aspects.record.contains(&candidate.message_id),
+            home: read.home.clone(),
+            record: records.contains(&candidate.message_id),
         };
         grade(label, &actual, &mut tally, &mut mismatches);
+        if corrected_projection.contains(&candidate.message_id) {
+            asks.corrected();
+            continue;
+        }
+        if !stored_answers.contains_key(&candidate.message_id)
+            || pending_projection.contains(&candidate.message_id)
+        {
+            asks.pending();
+            continue;
+        }
         asks.grade(
             AskInput {
+                provenance_slices: stored_answers.get(&candidate.message_id).map_or_else(
+                    || vec![("rules_abstained", "pending".into())],
+                    |answer| {
+                        let mut zones: Vec<_> = answer
+                            .facts
+                            .zones
+                            .iter()
+                            .map(|z| format!("{:?}", z.kind).to_lowercase())
+                            .collect();
+                        zones.sort();
+                        zones.dedup();
+                        vec![
+                            ("zone", zones.join("+")),
+                            (
+                                "thread_position",
+                                if answer.facts.owner_replied_afterwards {
+                                    "followed_by_owner"
+                                } else if answer.facts.predecessor.is_some() {
+                                    "reply"
+                                } else {
+                                    "first"
+                                }
+                                .into(),
+                            ),
+                            (
+                                "rules_abstained",
+                                if answer.pending_body {
+                                    "pending_body"
+                                } else if answer
+                                    .units
+                                    .iter()
+                                    .any(|u| u.answer == mxr_core::asks::AskAnswer::NotSure)
+                                {
+                                    "yes"
+                                } else {
+                                    "no"
+                                }
+                                .into(),
+                            ),
+                        ]
+                    },
+                ),
                 label,
                 // The store returns rows in key order; the grader does not
                 // rely on it.
                 rows: rows.remove(&candidate.message_id).unwrap_or_default(),
-                reply_found: (!label.outbound).then_some(read.reply_owed),
+                reply_found: (!label.outbound
+                    && stored_answers.contains_key(&candidate.message_id))
+                .then_some(read.reply_owed),
                 sent: read.sent,
             },
             &candidate.from_email,
@@ -387,141 +479,6 @@ pub(super) async fn classify_eval(
         ),
         mismatches,
     })
-}
-
-/// Each email's mail kind and the reason for it, over the sender signals
-/// placement reads: the thread, the sender's history, your choices. Also
-/// whether the desk reads it as asking for a reply.
-async fn mail_reads(
-    state: &AppState,
-    present: &[(EvalCandidate, Labelled)],
-) -> Result<HashMap<MessageId, MailRead>, HandlerError> {
-    let mut by_account: BTreeMap<String, (AccountId, Vec<&EvalCandidate>)> = BTreeMap::new();
-    for (candidate, _) in present {
-        by_account
-            .entry(candidate.account_id.as_str().clone())
-            .or_insert_with(|| (candidate.account_id.clone(), Vec::new()))
-            .1
-            .push(candidate);
-    }
-    let mut kinds = HashMap::new();
-    for (account_id, candidates) in by_account.into_values() {
-        let mut threads: Vec<ThreadId> = candidates.iter().map(|c| c.thread_id.clone()).collect();
-        threads.sort_by_key(ThreadId::as_str);
-        threads.dedup();
-        let mut messages = Vec::new();
-        for chunk in threads.chunks(MEMBERSHIP_MAX_THREADS) {
-            messages.extend(
-                state
-                    .store
-                    .desk_messages_in_threads(&account_id, chunk)
-                    .await?,
-            );
-        }
-        let senders = Senders::load(state, &account_id, &messages).await?;
-        let is_self = self_matcher(state, &account_id).await?;
-        // Looked up once per email: a scan per email is quadratic on a demo
-        // of tens of thousands.
-        let by_id: HashMap<&MessageId, _> = messages.iter().map(|m| (&m.id, m)).collect();
-        // The newest message you sent in each thread, by the order mail was
-        // stored (`seq`), as the desk judges who wrote last
-        // (`desk_lanes::last_stored`).
-        let mut last_sent: HashMap<&ThreadId, i64> = HashMap::new();
-        for message in &messages {
-            if desk_lanes::is_outbound(message, &is_self) {
-                let newest = last_sent.entry(&message.thread_id).or_insert(message.seq);
-                *newest = (*newest).max(message.seq);
-            }
-        }
-        for candidate in candidates {
-            let Some(message) = by_id.get(&candidate.message_id) else {
-                continue;
-            };
-            let signals = senders.signals(message, &is_self);
-            let described = mail_kind::describe(&signals);
-            kinds.insert(
-                candidate.message_id.clone(),
-                MailRead {
-                    kind: described.kind,
-                    reason: described.reason,
-                    // Your turn: a request directed to you that you have not
-                    // answered. The desk puts a thread in You owe only when
-                    // its latest stored message is not yours
-                    // (`desk_lanes.rs:438`: an outbound latest is Waiting)
-                    // and the inbound one passes `requires_reply`
-                    // (`desk_lanes.rs:483`), which is `reply_request` and a
-                    // sender that classifies as a person
-                    // (`mail_kind.rs:408-418`). Per message that is:
-                    // requires_reply on the signals built above, and
-                    // nothing sent after it. The lane's other gates (copied
-                    // threads, decay, the screener, snoozes) are not mirrored.
-                    reply_owed: mail_kind::requires_reply(&signals)
-                        && last_sent
-                            .get(&message.thread_id)
-                            .is_none_or(|sent| *sent < message.seq),
-                    sent: message.date,
-                },
-            );
-        }
-    }
-    Ok(kinds)
-}
-
-/// Where each email goes now: its arrivals row re-placed by today's rules,
-/// else placed live. An email whose home cannot be worked out is absent.
-async fn current_homes(
-    state: &AppState,
-    present: &[&EvalCandidate],
-) -> Result<HashMap<MessageId, Home>, HandlerError> {
-    // The same gate the arrivals line reads under, so a rule edit cannot
-    // land between rows.
-    let _sorting = state.rule_mutation_gate.lock().await;
-    let ids: Vec<MessageId> = present.iter().map(|c| c.message_id.clone()).collect();
-    let rows = arrivals::effective_rows(state, state.store.arrivals_by_ids(&ids).await?).await?;
-    let mut homes: HashMap<MessageId, Home> = rows
-        .into_iter()
-        .filter_map(|row| {
-            let mode = placed(&row.effective)?.to_string();
-            Some((
-                row.message_id,
-                Home {
-                    mode,
-                    reason: row.reason.unwrap_or_default(),
-                    live: false,
-                },
-            ))
-        })
-        .collect();
-
-    let mut without_row: BTreeMap<String, (AccountId, Vec<Wanted>)> = BTreeMap::new();
-    for candidate in present {
-        if !homes.contains_key(&candidate.message_id) {
-            without_row
-                .entry(candidate.account_id.as_str().clone())
-                .or_insert_with(|| (candidate.account_id.clone(), Vec::new()))
-                .1
-                .push((
-                    candidate.message_id.clone(),
-                    candidate.thread_id.clone(),
-                    candidate.spam,
-                ));
-        }
-    }
-    for (account_id, wanted) in without_row.into_values() {
-        for batch in wanted.chunks(MEMBERSHIP_MAX_THREADS) {
-            for placement in arrivals::place_live(state, &account_id, batch).await? {
-                homes.insert(
-                    placement.message_id,
-                    Home {
-                        mode: placement.mode,
-                        reason: placement.reason,
-                        live: true,
-                    },
-                );
-            }
-        }
-    }
-    Ok(homes)
 }
 
 #[cfg(test)]
@@ -554,7 +511,7 @@ mod tests {
 
     fn right() -> Actual {
         Actual {
-            who: "machine",
+            who: Some("machine"),
             who_reason: "automated sender".into(),
             home: Some(Home {
                 mode: "updates".into(),
@@ -616,7 +573,7 @@ mod tests {
             ..label(EXPECT)
         };
         let wrong = Actual {
-            who: "person",
+            who: Some("person"),
             record: false,
             ..right()
         };
@@ -637,6 +594,26 @@ mod tests {
         assert!(mismatches.is_empty(), "not placed is not a wrong answer");
         assert_eq!(tally.not_placed, 1);
         assert_eq!(tally.evaluated, [1, 0, 1]);
+    }
+
+    #[test]
+    fn a_pending_assessment_is_not_a_wrong_who_answer() {
+        let actual = Actual {
+            who: None,
+            home: None,
+            ..right()
+        };
+        let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
+        let held_out = Labelled {
+            held_out: true,
+            ..label(EXPECT)
+        };
+        grade(&held_out, &actual, &mut tally, &mut mismatches);
+        assert!(mismatches.is_empty());
+        assert_eq!(tally.not_placed, 1);
+        assert_eq!(tally.evaluated, [0, 0, 1]);
+        assert_eq!(tally.held_out_evaluated, [0, 0, 1]);
+        assert_eq!(tally.correct, [0, 0, 1]);
     }
 
     #[test]
@@ -663,7 +640,7 @@ mod tests {
         assert_eq!(plain[0].label_review, None);
         // The doubt covers its own question only: a wrong who is not it.
         let wrong_who = Actual {
-            who: "person",
+            who: Some("person"),
             ..right()
         };
         let (mut tally, mut mismatches) = (Tally::default(), Vec::new());
@@ -703,7 +680,7 @@ mod tests {
     #[test]
     fn a_wrong_who_and_home_carry_the_rule_that_decided_them() {
         let actual = Actual {
-            who: "person",
+            who: Some("person"),
             who_reason: "possible personal mail".into(),
             home: Some(Home {
                 mode: "messages".into(),
@@ -822,11 +799,5 @@ mod tests {
         let summary = summarise(ClassifyEvalSetData::Quick, 1, 1, 0, &tally, None);
         assert_eq!(summary.held_out_present, 0);
         assert!(summary.held_out_questions.is_empty());
-    }
-
-    #[test]
-    fn sorting_is_not_a_home() {
-        assert_eq!(placed("sorting"), None);
-        assert_eq!(placed("updates"), Some("updates"));
     }
 }

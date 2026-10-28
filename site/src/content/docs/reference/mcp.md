@@ -9,6 +9,9 @@ mxr daemon. Local MCP calls use the host's MCP profile, account allowlist and
 send gates; paired HTTPS calls use the approved registration grant. Provider
 adapters and send safety remain on the daemon.
 
+For a local Codex setup that starts with synthetic mail and saves a draft for
+human review, follow the [agent quick start](/getting-started/agent-quick-start/).
+
 ## Start the server
 
 Configure your MCP client to run:
@@ -23,7 +26,7 @@ The command speaks MCP over stdin/stdout. It retains the selected daemon for eve
 MXR_DAEMON_ADDR='cmd://ssh -T host mxr daemon dial-stdio' mxr mcp serve
 ```
 
-`MXR_DAEMON_ADDR` accepts `unix://`, `cmd://` and authenticated loopback `tcp://` targets. TCP uses `MXR_DAEMON_TOKEN` or the client profile's daemon-token file and authenticates before status. Remote setup must complete within five seconds and report IPC protocol 15; different daemon package versions and build IDs are accepted. Unsupported protocol, authentication and transport failures never fall back to a local daemon. The MCP access profile belongs on the selected daemon host.
+`MXR_DAEMON_ADDR` accepts `unix://`, `cmd://` and authenticated loopback `tcp://` targets. TCP uses `MXR_DAEMON_TOKEN` or the client profile's daemon-token file and authenticates before status. Remote setup must complete within five seconds and report IPC protocol 26; different daemon package versions and build IDs are accepted. Unsupported protocol, authentication and transport failures never fall back to a local daemon. The MCP access profile belongs on the selected daemon host.
 
 Keep the original `expected_workspace` returned by `mxr_workspace` or a draft review through subsequent tools and recovery. A replacement workspace or recovery generation cannot adopt retained private work. Account provisioning through remote selections is unsupported; perform setup on the daemon host.
 
@@ -74,7 +77,7 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_thread_previews`
 - `mxr_list_place`
 - `mxr_sweep_preview`
-- `mxr_messages`: people as rows in four bands, with topics and what they asked. Takes `turn` (`mine` or `theirs`), and `unread` and `past_pace` to keep only unread rows or rows past the usual pace
+- `mxr_messages`: actionable topics grouped by person, with attention-only selection by default. Explicit `turn: "all"` includes archived and sent-only history; `mine` and `theirs` select a side's turn. `unread` and `past_pace` narrow the selected view. Counts describe attention, not history
 - `mxr_person`: one person's page, each message as its new text with `trimmed` flags
 - `mxr_got_it`: previews the acknowledgement and returns a `preview_token`; sends only with `confirm=true`, the previewed text as `expect_text` and that token, within a minute
 - `mxr_arrivals`: where every email that arrived since Now was last opened went, counted once each
@@ -88,10 +91,14 @@ The server exposes stable mxr tools for common agent workflows:
 - `mxr_todo_list`: tasks in one state, defaulting to open, with an optional account scope
 - `mxr_todo_get`: one task with its source mail and field provenance
 - `mxr_todo_set_state`: `done`, `dismiss` or `undo` for task IDs; previews unless `confirm=true`
+- `mxr_todo_correct`: preview one of `not_a_todo`, `not_mine`, `already_done` or `wrong_details`; saved details take `edits`, and `confirm=true` applies the correction
+- `mxr_todo_undo_correction`: restore the prior task with its `correction_id`; previews unless `confirm=true`, and refuses to overwrite newer edits
 - `mxr_todo_resolve`: preview, accept, dismiss or undo one later-message offer; `confirm=true` applies the named action
+- `mxr_why`: stored home, deciding claim, evidence and uncertainty for one message
+- `mxr_classify_report`: bounded stored fallback clusters and pending assessment counts
 - `mxr_updates_digest`
 - `mxr_updates_let_go_preview`
-- `mxr_draft_assist`
+- `mxr_draft_assist`: writing help for a reply to a thread. With `text` (what the user has typed so far) it finishes it and keeps their sentences; without, it writes the reply. Optional `revise` (a proposal id) applies the instruction to that earlier proposal. Optional `message_id` picks the message to answer (default: the newest one somebody else sent). Returns a proposal; nothing is saved or sent. Gaps come back as `[[?: …]]`, and a draft with one can't be sent
 - `mxr_prepare_reply`
 - `mxr_draft_preview`
 - `mxr_save_draft`
@@ -294,7 +301,9 @@ accept daemon file paths. Treat all uploaded bytes as untrusted data.
 `mxr_update_draft` accepts a complete Draft object, not a patch. Use this
 read-modify-write sequence:
 
-1. Call `mxr_list_drafts` to find the local draft UUID.
+1. Find the local draft UUID. `mxr_list_drafts` has no account selector, so a
+   profile restricted to one account can refuse this unscoped list request.
+   Keep the UUID returned by `mxr_save_draft` when you create the draft.
 2. Call `mxr_get_draft`:
 
    ```json

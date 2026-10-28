@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>mxr · a local mail runtime</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #071522;
+      --ink-soft: #0d2234;
+      --paper: #f4f9fc;
+      --paper-soft: #c7d8e5;
+      --paper-mute: #8fa8bc;
+      --paper-faint: #587088;
+      --rule: #294963;
+      --signal: #57d5ff;
+      --quiet: #ffd166;
+      --display: 'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
+      --body: 'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
+      --mono: 'Recursive Variable', ui-monospace, monospace;
+    }
+
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --ink: #f4f9fc;
+      --ink-soft: #e5f0f6;
+      --paper: #10263b;
+      --paper-soft: #344f66;
+      --paper-mute: #536e84;
+      --paper-faint: #8aa0b2;
+      --rule: #b9cedc;
+      --signal: #006f93;
+      --quiet: #7a5400;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--ink);
+      color: var(--paper);
+      font-family: var(--body);
+      font-variation-settings: 'wght' 400, 'CASL' 0.6, 'MONO' 0, 'slnt' 0;
+      line-height: 1.55;
+    }
+    a { color: var(--signal); text-underline-offset: .22em; }
+    a:hover { color: var(--paper); }
+    a:focus-visible { outline: 2px solid var(--quiet); outline-offset: 4px; }
+    .wrap { width: min(1180px, calc(100% - 64px)); margin-inline: auto; }
+    .mono, code, .eyebrow, .nav, .install-label, .task-label, .step-label,
+    .result-meta, .section-index, .mode-name {
+      font-family: var(--mono);
+      font-variation-settings: 'wght' 500, 'CASL' 0, 'MONO' 1, 'slnt' 0;
+    }
+    .masthead {
+      min-height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .wordmark { color: var(--paper); text-decoration: none; font-size: 1.08rem; font-weight: 700; letter-spacing: -.04em; }
+    .wordmark span { color: var(--signal); }
+    .nav { display: flex; gap: clamp(14px, 2.5vw, 34px); font-size: .76rem; }
+    .nav a { color: var(--paper-soft); text-decoration: none; }
+    .nav a:hover { color: var(--signal); }
+    .hero {
+      padding: clamp(44px, 7vw, 90px) 0 56px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr);
+      gap: clamp(44px, 7vw, 100px);
+      align-items: center;
+    }
+    .eyebrow { color: var(--signal); font-size: .78rem; letter-spacing: .055em; }
+    h1 {
+      max-width: 690px;
+      margin: 18px 0 22px;
+      font-family: var(--display);
+      font-size: clamp(3.15rem, 6.2vw, 5.55rem);
+      font-weight: 800;
+      font-variation-settings: 'wght' 800, 'CASL' 0, 'MONO' 0, 'slnt' 0;
+      line-height: .99;
+      letter-spacing: -.065em;
+    }
+    .intro { max-width: 590px; margin: 0; color: var(--paper-soft); font-size: clamp(1rem, 1.35vw, 1.15rem); line-height: 1.62; }
+    .intro strong { color: var(--paper); font-weight: 600; }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 28px; margin-top: 25px; }
+    .action-primary { display: inline-flex; align-items: center; min-height: 46px; padding: 9px 14px; border: 1px solid var(--signal); color: var(--paper); text-decoration: none; font-weight: 600; }
+    .action-primary::after { content: ' →'; color: var(--signal); margin-left: 14px; }
+    .action-secondary { color: var(--paper-soft); font-size: .92rem; }
+    .install { margin-top: 31px; padding-top: 15px; border-top: 1px solid var(--rule); }
+    .install-label { display: block; color: var(--paper-mute); font-size: .72rem; margin-bottom: 7px; }
+    .install code { display: block; color: var(--quiet); font-size: clamp(.8rem, 1.25vw, .96rem); overflow-wrap: anywhere; }
+
+    .proof { border-top: 2px solid var(--signal); padding-top: 12px; }
+    .task-head { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; padding-bottom: 11px; border-bottom: 1px solid var(--rule); }
+    .task-label { color: var(--signal); font-size: .74rem; }
+    .task-id { color: var(--paper-mute); font-family: var(--mono); font-size: .7rem; }
+    .task-title { margin: 20px 0 5px; font-size: 1.12rem; line-height: 1.35; font-weight: 600; }
+    .task-copy { margin: 0 0 18px; color: var(--paper-soft); font-size: .91rem; }
+    .mailbox-line { display: grid; grid-template-columns: 1fr auto 1.1fr; gap: 10px; align-items: center; padding: 12px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+    .mailbox-source, .mailbox-local { display: flex; flex-direction: column; gap: 2px; }
+    .mailbox-source small, .mailbox-local small { color: var(--paper-mute); font-size: .68rem; }
+    .mailbox-source strong, .mailbox-local strong { font-size: .8rem; font-weight: 600; }
+    .mailbox-local strong { color: var(--signal); }
+    .pipe { color: var(--paper-mute); font-family: var(--mono); }
+    .evidence { margin: 17px 0 0; }
+    .result-meta { display: flex; justify-content: space-between; gap: 12px; color: var(--paper-mute); font-size: .68rem; padding-bottom: 7px; }
+    .result-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--rule); }
+    .sender { display: flex; flex-direction: column; }
+    .sender strong { font-size: .86rem; font-weight: 600; }
+    .sender small { color: var(--paper-mute); font-size: .72rem; }
+    .read-rate { color: var(--paper); text-align: right; font-family: var(--mono); font-size: .75rem; white-space: nowrap; }
+    .read-rate em { color: var(--quiet); font-style: normal; }
+    .limit-note { margin: 10px 0 0; color: var(--paper-mute); font-size: .73rem; line-height: 1.5; }
+    .review-step { display: grid; grid-template-columns: 14px 1fr; gap: 10px; margin-top: 17px; padding-top: 12px; border-top: 1px solid var(--rule); }
+    .review-mark { color: var(--quiet); }
+    .step-label { display: block; color: var(--quiet); font-size: .68rem; }
+    .review-step p { margin: 2px 0 0; color: var(--paper-soft); font-size: .82rem; }
+    .proof-caption { margin-top: 14px; color: var(--paper-mute); font-size: .68rem; }
+
+    .next { border-top: 1px solid var(--rule); padding: 26px 0 66px; }
+    .next-heading { display: flex; align-items: baseline; gap: 16px; margin-bottom: 19px; }
+    .section-index { color: var(--quiet); font-size: .74rem; }
+    .next h2 { margin: 0; font-size: 1.15rem; font-weight: 600; }
+    .modes { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-top: 1px solid var(--rule); }
+    .mode { padding: 13px 12px 0 0; border-right: 1px solid var(--rule); }
+    .mode + .mode { padding-left: 12px; }
+    .mode:last-child { border-right: 0; }
+    .mode-name { display: block; color: var(--signal); font-size: .75rem; margin-bottom: 4px; }
+    .mode p { margin: 0; color: var(--paper-mute); font-size: .75rem; line-height: 1.45; }
+    .footer-line { border-top: 1px solid var(--rule); padding: 14px 0 24px; color: var(--paper-mute); font-family: var(--mono); font-size: .67rem; }
+
+    @media (max-width: 800px) {
+      .wrap { width: min(100% - 40px, 620px); }
+      .hero { grid-template-columns: 1fr; gap: 42px; padding-top: 48px; }
+      h1 { max-width: 600px; font-size: clamp(3.25rem, 11vw, 5rem); }
+      .proof { max-width: 620px; }
+      .modes { grid-template-columns: repeat(3, 1fr); row-gap: 20px; }
+      .mode:nth-child(4) { border-right: 1px solid var(--rule); padding-left: 0; }
+      .mode:nth-child(3) { border-right: 0; }
+      .mode:nth-child(5) { border-right: 1px solid var(--rule); }
+    }
+    @media (max-width: 480px) {
+      .wrap { width: calc(100% - 36px); }
+      .masthead { min-height: 62px; }
+      .nav { gap: 12px; font-size: .68rem; }
+      .nav a:first-child { display: none; }
+      .hero { padding: 39px 0 44px; gap: 34px; }
+      h1 { margin: 15px 0 17px; font-size: clamp(3rem, 14.1vw, 4.1rem); }
+      .intro { font-size: .96rem; }
+      .actions { gap: 14px 20px; margin-top: 21px; }
+      .install { margin-top: 25px; }
+      .mailbox-line { grid-template-columns: 1fr 16px 1fr; gap: 7px; }
+      .mailbox-source strong, .mailbox-local strong { font-size: .72rem; }
+      .mailbox-source small, .mailbox-local small { font-size: .63rem; }
+      .task-title { font-size: 1.02rem; }
+      .result-row { gap: 7px; }
+      .sender strong { font-size: .79rem; }
+      .sender small, .read-rate { font-size: .67rem; }
+      .result-meta { font-size: .61rem; }
+      .next { padding-bottom: 46px; }
+      .modes { grid-template-columns: repeat(2, 1fr); row-gap: 18px; }
+      .mode, .mode + .mode, .mode:nth-child(4), .mode:nth-child(5) { padding-left: 0; border-right: 1px solid var(--rule); }
+      .mode:nth-child(even) { padding-left: 12px; border-right: 0; }
+      .mode:nth-child(3) { border-right: 1px solid var(--rule); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead wrap">
+    <a class="wordmark" href="#top" aria-label="mxr home">mxr<span>.</span></a>
+    <nav class="nav" aria-label="Main navigation">
+      <a href="#working-mailbox">How it works</a>
+      <a href="https://mxr.sh/getting-started/quick-start/#1-try-the-demo-inbox">Try the demo</a>
+      <a href="https://mxr.sh/guides/for-agents/">For agents</a>
+    </nav>
+  </header>
+
+  <main id="top" class="wrap">
+    <section class="hero" aria-labelledby="headline">
+      <div class="hero-copy">
+        <p class="eyebrow">A local mail runtime for you and your agents.</p>
+        <h1 id="headline">Put your whole mail history to work.</h1>
+        <p class="intro"><strong>A Gmail connector gives your agent access to Gmail.</strong> mxr syncs connected accounts into a local mailbox with common mail operations you, your scripts and your agents can use together. Search synced history, build workflows, and review prepared work in mxr.</p>
+        <div class="actions">
+          <a class="action-primary" href="https://mxr.sh/getting-started/quick-start/#1-try-the-demo-inbox">Try it with demo mail</a>
+          <a class="action-secondary" href="https://mxr.sh/guides/for-agents/">Set up your agent</a>
+        </div>
+        <div class="install" aria-label="Homebrew install command">
+          <span class="install-label">INSTALL · HOMEBREW</span>
+          <code>brew install planetaryescape/mxr/mxr</code>
+        </div>
+      </div>
+
+      <figure class="proof" id="working-mailbox" aria-labelledby="task-title">
+        <div class="task-head">
+          <span class="task-label">ONE MAILBOX · ONE TASK</span>
+          <span class="task-id">subscriptions</span>
+        </div>
+        <h2 class="task-title" id="task-title">Find subscriptions to review.</h2>
+        <p class="task-copy">A local read-state summary gives you and an agent something concrete to inspect.</p>
+        <div class="mailbox-line" aria-label="Connected account synced into a local mailbox">
+          <span class="mailbox-source"><small>CONNECTED ACCOUNT</small><strong>Gmail · demo</strong></span>
+          <span class="pipe" aria-hidden="true">→</span>
+          <span class="mailbox-local"><small>SHARED LOCAL STATE</small><strong>synced mailbox</strong></span>
+        </div>
+        <div class="evidence" aria-label="Illustrative subscription result">
+          <div class="result-meta"><span>ILLUSTRATIVE RESULT</span><span>synthetic mail</span></div>
+          <div class="result-row">
+            <span class="sender"><strong>Field Notes</strong><small>12 eligible messages</small></span>
+            <span class="read-rate"><em>3 READ</em> · 25%</span>
+          </div>
+          <div class="result-row">
+            <span class="sender"><strong>Build Journal</strong><small>9 eligible messages</small></span>
+            <span class="read-rate"><em>6 READ</em> · 67%</span>
+          </div>
+        </div>
+        <p class="limit-note">READ flags are a message-state proxy, not tracked opens. Only the returned candidate set is ranked.</p>
+        <div class="review-step">
+          <span class="review-mark" aria-hidden="true">◇</span>
+          <div><span class="step-label">YOUR REVIEW</span><p>Inspect the unsubscribe preview before applying any change.</p></div>
+        </div>
+        <figcaption class="proof-caption">Illustrative mechanism, not CLI output. Pending S2 capture from the demo inbox.</figcaption>
+      </figure>
+    </section>
+
+    <section class="next" aria-labelledby="modes-heading">
+      <div class="next-heading">
+        <span class="section-index">NEXT</span>
+        <h2 id="modes-heading">The same mailbox fits the work in front of you.</h2>
+      </div>
+      <div class="modes" aria-label="Now and the five email modes">
+        <div class="mode"><span class="mode-name">Now</span><p>See what needs attention.</p></div>
+        <div class="mode"><span class="mode-name">Messages</span><p>Reply and follow conversations.</p></div>
+        <div class="mode"><span class="mode-name">To do</span><p>Act on dated work.</p></div>
+        <div class="mode"><span class="mode-name">Updates</span><p>Catch up on what changed.</p></div>
+        <div class="mode"><span class="mode-name">Reading</span><p>Make time for newsletters.</p></div>
+        <div class="mode"><span class="mode-name">Archive</span><p>Find a receipt or reference.</p></div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer-line"><div class="wrap">mxr · your mail, locally available to the tools you choose</div></footer>
+</body>
+</html>

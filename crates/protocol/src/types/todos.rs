@@ -265,6 +265,9 @@ pub struct TodoFirstRunData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TodoRunwayData {
+    /// Eligible ask uncertainty only; collapsed by clients and never a Now task.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub might_need_you: Vec<TodoUncertainData>,
     pub generated_at: chrono::DateTime<chrono::Utc>,
     /// `todo_copy::HEADER`.
     pub header: String,
@@ -290,6 +293,14 @@ pub struct TodoRunwayData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_surface: Option<TodoNextData>,
     pub first_run: TodoFirstRunData,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct TodoUncertainData {
+    pub thread_id: mxr_core::ThreadId,
+    pub subject: String,
+    pub asks: mxr_core::asks::AskSummary,
 }
 
 /// A kind and how many, for "Already over, so not shown: 50 past invites".
@@ -373,11 +384,35 @@ pub struct TodoEditData {
     pub value: String,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum TodoCorrectionData {
+    NotATodo,
+    NotMine,
+    AlreadyDone,
+    WrongDetails,
+}
+
+impl TodoCorrectionData {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotATodo => "not_a_todo",
+            Self::NotMine => "not_mine",
+            Self::AlreadyDone => "already_done",
+            Self::WrongDetails => "wrong_details",
+        }
+    }
+}
+
 /// Returned by every to-do mutation. With `dry_run`, `changed` is what
 /// would change and nothing was written.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TodoChangeData {
+    /// Opaque token for one-step correction undo; never inferred by a client.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction_undo: Option<String>,
     pub dry_run: bool,
     /// done | undo | dismiss | schedule | edit | create | keep | let_go
     pub action: String,

@@ -6,10 +6,17 @@
  */
 
 import { Segmented } from "@/components/Segmented";
+import { KeyChip } from "@/components/KeyChip";
+import { definedShortcut } from "@/lib/actions/definition";
 import { cn } from "@/lib/utils";
 
-import type { MessagesTurn } from "./api";
-import { isFiltered, NO_FILTER, type MessagesFilter } from "./filters";
+import {
+  cycleMessagesFilter,
+  isFiltered,
+  MESSAGES_VIEWS,
+  NO_FILTER,
+  type MessagesFilter,
+} from "./filters";
 
 const FILTER_BAR = '[data-testid="messages-filters"]';
 
@@ -17,13 +24,6 @@ const FILTER_BAR = '[data-testid="messages-filters"]';
 export function focusFilterBar(): void {
   document.querySelector<HTMLElement>(`${FILTER_BAR} [role="radio"][tabindex="0"]`)?.focus();
 }
-
-/** One row per segment: its id, its label and the turn it keeps. */
-const TURN_CHOICES = [
-  ["all", "All", null],
-  ["mine", "Your turn", "mine"],
-  ["theirs", "Waiting on them", "theirs"],
-] as const satisfies readonly (readonly [string, string, MessagesTurn | null])[];
 
 export function MessagesFilterBar({
   filter,
@@ -40,6 +40,7 @@ export function MessagesFilterBar({
   onChange: (next: MessagesFilter) => void;
 }) {
   const filtered = isFiltered(filter);
+  const cycleKey = definedShortcut("messages.cycle-filter");
   return (
     <div
       data-testid="messages-filters"
@@ -47,13 +48,25 @@ export function MessagesFilterBar({
     >
       <Segmented
         label="Show"
-        value={filter.turn ?? "all"}
-        options={TURN_CHOICES.map(([id, label]) => [id, label] as const)}
+        className="max-w-full flex-wrap"
+        value={filter.turn ?? "attention"}
+        options={MESSAGES_VIEWS.map(([id, label]) => [id, label] as const)}
         onChange={(value) => {
-          const choice = TURN_CHOICES.find(([id]) => id === value);
+          const choice = MESSAGES_VIEWS.find(([id]) => id === value);
           if (choice) onChange({ ...filter, turn: choice[2] });
         }}
       />
+      <button
+        type="button"
+        aria-label="Cycle views"
+        aria-keyshortcuts={cycleKey}
+        title={`Cycle views (${cycleKey})`}
+        onClick={() => onChange(cycleMessagesFilter(filter))}
+        className="type-body inline-flex h-7 items-center gap-1.5 px-1 text-text-2 outline-none hover:text-text-1 focus-visible:ring-2 focus-visible:ring-signal"
+      >
+        <KeyChip>{cycleKey}</KeyChip>
+        Cycle views
+      </button>
       <Toggle
         label="Unread"
         on={filter.unread}
@@ -64,25 +77,29 @@ export function MessagesFilterBar({
         on={filter.pastPace}
         onChange={(pastPace) => onChange({ ...filter, pastPace })}
       />
-      {filtered ? (
-        <p className="type-body ml-auto flex items-center gap-2 text-text-2">
-          {counts ? (
-            <>
-              <span>
-                Showing {counts.matched} of {counts.total}
-              </span>
-              <span aria-hidden="true">·</span>
-            </>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => onChange(NO_FILTER)}
-            className="text-text-1 underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-signal"
-          >
-            Clear filters
-          </button>
-        </p>
-      ) : null}
+      <p className="type-body flex min-h-7 min-w-0 basis-full items-center justify-end gap-2 text-text-2">
+        {filtered ? (
+          <>
+            {counts ? (
+              <>
+                <span className="min-w-0 truncate">
+                  {counts.matched} shown · {counts.total} need attention
+                </span>
+                <span aria-hidden="true" className="shrink-0">
+                  ·
+                </span>
+              </>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => onChange(NO_FILTER)}
+              className="shrink-0 text-text-1 underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-signal"
+            >
+              Clear filters
+            </button>
+          </>
+        ) : null}
+      </p>
     </div>
   );
 }

@@ -4,8 +4,8 @@ description: Review task dates, finish work, and schedule what can wait.
 ---
 
 Open To do to act on what an email asks you to do. Rows show an action title,
-the counterparty, and any extracted amount or dates, so you can decide what
-to do before opening the full email.
+who asked or what you promised, the source quote, and any extracted amount
+or dates. Calendar requests identify the invite as their source.
 
 ```bash
 mxr todo
@@ -29,7 +29,7 @@ the due date. Use a row's ID from the JSON output for the CLI commands below.
 mxr todo why TODO_ID --format json
 ```
 
-Inspect where the title, amount and dates came from. In the web app, press
+Inspect where the title, amount, payment method and dates came from. In the web app, press
 `o` to open the source email beside the list, **details** on the row (or
 in the palette) for why the row is here and where each field came from (a
 field mxr wasn't sure of reads "unchecked"), `,` to fix a field,
@@ -42,6 +42,31 @@ Bills, failed payments, sign or verification requests, promises and annual
 renewal reviews can become tasks automatically. An alert in Updates offers
 `t` to create a task when you choose; it does not automatically create one
 merely because it appears in `Needs a look`.
+
+## Correct ownership or details
+
+Press `X` in the web app or TUI and choose `Not a to-do`, `Not mine`,
+`Already done` or `Wrong details`. Wrong details opens the editor and keeps
+the task until you save. The web editor lets you change the title, who, amount,
+due date and kind; changing kind also updates its action and timing. A failed
+save keeps your entered correction available
+for retry in both clients; the editor closes after the daemon confirms the save.
+The asking quote stays unchanged. Undo restores
+the prior task; if you edited it again, mxr keeps the newer work.
+
+```bash
+mxr todo correct TODO_ID not-mine --dry-run --format json
+mxr todo correct TODO_ID not-mine --format json
+mxr todo undo-correction TODO_ID CORRECTION_ID --dry-run --format json
+mxr todo undo-correction TODO_ID CORRECTION_ID --format json
+```
+
+Use the `correction_undo` token from the correction response. Automatic
+rows name who asked, or say you promised, and quote the authored request.
+Reply-only requests stay in Messages' Your turn. Requests you sent and
+promises someone made to you feed Waiting on. Uncertain requests appear in
+the collapsed `Might need you` section; in the TUI, press `m` to review
+those source emails. They do not enter Now's urgent tasks.
 
 ## Add or correct a task yourself
 
@@ -56,8 +81,12 @@ Use a source message ID from search or the reader for `--from`. The title
 names the action, not the email's subject. `edit` accepts `title`, `due`,
 `amount`, `counterparty` and `kind` as `field=value`; an empty value clears
 due, amount or counterparty. A task you create or edit is yours: it no
-longer expires automatically. Check the preview before applying either
-change.
+longer expires automatically. Recording a promise date updates its open task
+while keeping your other edits. If you changed its kind, its lead time is
+recalculated for that date. A due date you corrected directly on the task
+keeps its own authority. Accepting a unique excerpt of a sent promise keeps its
+full source quote and the same task. If the excerpt matches several promises,
+use the exact one. Check the preview before applying either change.
 
 ## Review the first-run catch-up
 
@@ -195,3 +224,14 @@ dismiss or undo that offer.
 - [Annual renewal reviews](/guides/archive/#subscriptions-are-receipts-that-recur)
 - [Keyboard reference](/reference/keybindings/#to-do)
 - [Review later evidence](/guides/todo-resolution/)
+
+## Structured bill fields need receiver trust
+
+By default, mxr does not use email markup to supply a bill’s amount or deadline.
+A mail administrator can enable receiver-reported authentication for one account
+through `mxr config edit`, using `[todo.trusted_authentication_services]` and the
+account ID as the key. Configure an authserv-id only after confirming that the
+receiving server strips forged reports claiming that ID, then restart mxr.
+Raw authentication headers alone are insufficient. A receiver-reported aligned
+DKIM or SPF pass can supplement an authored bill; it never makes a payment link
+trusted. The action still opens the email so you can inspect its source.

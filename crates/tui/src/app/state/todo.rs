@@ -40,15 +40,25 @@ pub enum TodoListFetch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TodoPromptKind {
     /// `Z`: when the row should show up, previewed as it is typed.
-    Schedule { todo_id: String },
+    Schedule {
+        todo_id: String,
+    },
     /// `,`: `field=value`, such as `due=fri 9 oct` or `title=Pay rent`.
-    Edit { todo_id: String },
+    Edit {
+        todo_id: String,
+    },
+    Correct {
+        todo_id: String,
+    },
     /// `t` on a conversation: what to do, starting with the verb.
-    Create { message_id: MessageId },
+    Create {
+        message_id: MessageId,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TodoPromptState {
+    pub pending: Option<crate::app::MutationId>,
     pub kind: TodoPromptKind,
     pub input: String,
     pub time: crate::ui::time_preview::TimePreview,
@@ -58,6 +68,7 @@ pub struct TodoPromptState {
 impl TodoPromptState {
     pub fn new(kind: TodoPromptKind, input: String) -> Self {
         Self {
+            pending: None,
             kind,
             input,
             time: crate::ui::time_preview::TimePreview::default(),
@@ -68,6 +79,8 @@ impl TodoPromptState {
 
 #[derive(Debug, Clone, Default)]
 pub struct TodoPageState {
+    pub uncertain_open: bool,
+    pub uncertain_selected: usize,
     pub runway: Option<TodoRunwayData>,
     pub guide: Option<ModeGuideData>,
     pub panel: TodoPanel,

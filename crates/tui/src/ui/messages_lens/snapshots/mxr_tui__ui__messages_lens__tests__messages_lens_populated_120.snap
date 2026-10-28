@@ -1,9 +1,8 @@
 ---
 source: crates/tui/src/ui/messages_lens/tests.rs
-assertion_line: 272
 expression: rendered
 ---
-"╭ Messages ─ People you talk with, one row each╮╭ Samir Patel · close · usually 47m ───────────────────────────────────╮"
+"╭ Messages ─ All conversations, including archi╮╭ Samir Patel · close · usually 47m ───────────────────────────────────╮"
 "│ YOUR TURN                                    ││ You've written 48 times since 2023. Last: Tuesday.                   │"
 "│▌Samir Patel                             16h *││──────────────────────────────────────────────────────────────────────│"
 "│   “Can you take a look and reply with the n… ││ Topics: [Contract renewal *] · Launch checklist · with Ruth: Pricing │"
@@ -36,4 +35,4 @@ expression: rendered
 "│                                              ││ > Reply to Samir · Contract renewal                                  │"
 "╰──────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────╯"
 " Here because: Samir Patel replied to your message, and you write to each other often (rule).                           "
-" r reply  . got it  e done here  t make it a to-do  b reply later  c new topic  [ ] topic  ? help                       "
+" f cycle views  r reply  . got it  e done here  t make it a to-do  b reply later  c new topic  [ ] topic  ? help        "

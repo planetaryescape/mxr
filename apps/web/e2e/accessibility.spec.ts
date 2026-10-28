@@ -127,18 +127,22 @@ for (const colorScheme of ["dark", "light"] as const) {
         route.fulfill({ status: 500, json: { error: "provider unavailable" } }),
       );
       await openList(page, "/m/inbox");
-      await page.keyboard.press("s");
-      await page.keyboard.press("u");
-      await page.keyboard.press("I");
-      await page.keyboard.press("#");
       const toasts = page.locator("[data-sonner-toast]");
-      for (const type of ["info", "success", "warning", "error"]) {
-        await expect(toasts.and(page.locator(`[data-type="${type}"]`)).first()).toBeVisible();
+      for (const { key, type } of [
+        { key: "s", type: "info" },
+        { key: "u", type: "success" },
+        { key: "I", type: "warning" },
+        { key: "#", type: "error" },
+      ]) {
+        await page.keyboard.press(key);
+        const toast = toasts.and(page.locator(`[data-type="${type}"]`)).first();
+        await expect(toast).toBeVisible();
+        // Undo removes the info toast. Inspect each type while it is shown,
+        // and wait for star's mutation to finish before asking to undo it.
+        await toast.hover();
+        await page.waitForTimeout(500);
+        expect(await blockingViolations(page)).toEqual([]);
       }
-      // Hovering holds them while axe reads them.
-      await toasts.first().hover();
-      await page.waitForTimeout(500);
-      expect(await blockingViolations(page)).toEqual([]);
     });
 
     test("axe: compose overlay", async ({ page }) => {

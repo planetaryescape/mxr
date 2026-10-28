@@ -18,7 +18,9 @@ use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
 use chrono::{TimeDelta, Utc};
 use mxr_core::{AccountId, ServerDraftSnapshot};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(test)]
+use std::time::Instant;
 use tracing::{debug, warn};
 
 const GMAIL_API_BASE: &str = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -160,6 +162,7 @@ impl GmailClient {
                     retry_after_secs,
                     detail: None,
                 },
+                AuthError::RefreshUnavailable(_) => GmailError::AuthTemporary,
                 // Not an authorization failure: keep it out of the "Auth error"
                 // label so sync health does not prescribe signing in again.
                 error @ AuthError::TokenCacheWrite(_) => GmailError::Other(error.into()),
@@ -177,11 +180,22 @@ impl GmailClient {
         endpoint: &'static str,
         request: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, GmailError> {
-        let now = Instant::now();
+        let now = tokio::time::Instant::now().into_std();
         if let Some(held) = self.gate.held(now) {
-            return Err(self.held_error(held));
+            return Err(send_preparation_error(
+                endpoint,
+                mxr_core::SendSubmissionPhase::Cooldown,
+                self.held_error(held),
+            ));
         }
-        let request = request.header("Authorization", self.auth_header().await?);
+        let authorization = self.auth_header().await.map_err(|error| {
+            send_preparation_error(
+                endpoint,
+                mxr_core::SendSubmissionPhase::Authentication,
+                error,
+            )
+        })?;
+        let request = request.header("Authorization", authorization);
         self.requests.record(endpoint, now);
         Ok(request.send().await?)
     }
@@ -217,7 +231,7 @@ impl GmailClient {
     /// detail (endpoint, Gmail's reason, the count) goes into the error text too,
     /// so sync status shows it without a log search.
     fn rate_limited(&self, endpoint: &'static str, refusal: RateLimitRefusal) -> GmailError {
-        let now = Instant::now();
+        let now = tokio::time::Instant::now().into_std();
         let summary = self.requests.summary(now);
         let detail = refused_detail(endpoint, &refusal, &summary);
         self.gate
@@ -616,6 +630,21 @@ impl GmailClient {
         }
 
         Ok(())
+    }
+}
+
+fn send_preparation_error(
+    endpoint: &str,
+    phase: mxr_core::SendSubmissionPhase,
+    error: GmailError,
+) -> GmailError {
+    if endpoint == "messages.send" {
+        GmailError::NotSubmitted {
+            phase,
+            source: Box::new(error),
+        }
+    } else {
+        error
     }
 }
 
@@ -1163,6 +1192,10 @@ mod tests {
         let send = client.send_message("cmF3", None).await.unwrap_err();
 
         for error in [read, write, send] {
+            let error = match error {
+                GmailError::NotSubmitted { source, .. } => *source,
+                error => error,
+            };
             assert!(
                 matches!(
                     error,
@@ -1535,7 +1568,12 @@ mod tests {
         let trash = client.trash_message("m1").await.unwrap_err();
         assert!(matches!(trash, GmailError::RateLimited { .. }), "{trash:?}");
         let send = client.send_message("ZmFrZQ", None).await.unwrap_err();
-        assert!(matches!(send, GmailError::RateLimited { .. }), "{send:?}");
+        assert!(
+            matches!(&send, GmailError::NotSubmitted {
+            phase: mxr_core::SendSubmissionPhase::Cooldown, source,
+        } if matches!(source.as_ref(), GmailError::RateLimited { .. })),
+            "{send:?}"
+        );
 
         assert_eq!(
             client.requests.summary(Instant::now()).last_hour,

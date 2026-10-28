@@ -34,6 +34,21 @@ type MergeResponse = Extract<Schemas["ResponseData"], { kind: "PersonMerge" }>;
 /** Every Messages query starts with this, so one invalidation refreshes them. */
 export const MESSAGES_KEY = ["messages-mode"] as const;
 
+/** Empty data reserves the real pane/filter layout before the first answer. */
+export const LOADING_MESSAGES: MessagesData = {
+  generated_at: "",
+  header: "",
+  your_turn: [],
+  pinned: [],
+  recent: [],
+  quiet: [],
+  recent_total: 0,
+  quiet_total: 0,
+  row_count: 0,
+  thread_count: 0,
+  merge_suggestion_count: 0,
+};
+
 function query(params: Record<string, string | null | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -46,6 +61,7 @@ function query(params: Record<string, string | null | undefined>): string {
 export async function fetchMessages(
   account: string | null,
   filter: MessagesFilter,
+  signal?: AbortSignal,
 ): Promise<MessagesData> {
   const answer = await apiFetch<ListResponse>(
     `/api/v1/mail/people${query({
@@ -54,6 +70,7 @@ export async function fetchMessages(
       unread: filter.unread ? "true" : null,
       pace: filter.pastPace ? "true" : null,
     })}`,
+    { signal },
   );
   return answer.messages;
 }
@@ -69,16 +86,19 @@ export function useMessagesQuery(filter: MessagesFilter = NO_FILTER) {
       ...MESSAGES_KEY,
       "list",
       scope,
-      filter.turn ?? "all",
+      filter.turn ?? "attention",
       ...(filter.unread ? ["unread"] : []),
       ...(filter.pastPace ? ["pace"] : []),
     ],
-    queryFn: () => fetchMessages(account, filter),
-    // A filter change within one account keeps the list on screen until its
-    // answer lands, so the filter line under the cursor doesn't unmount. Another
-    // account's rows never stand in: that switch shows the skeleton as before.
-    placeholderData: (previous, previousQuery) =>
-      previousQuery?.queryKey[LIST_ACCOUNT_AT] === scope ? previous : undefined,
+    queryFn: ({ signal }) => fetchMessages(account, filter, signal),
+    // Preserve the pane tree and open conversation across views, but never
+    // present history rows as attention or one account's mail as another's.
+    placeholderData: (previous, previousQuery) => {
+      if (previousQuery?.queryKey[LIST_ACCOUNT_AT] !== scope) return undefined;
+      return previousQuery.queryKey[LIST_ACCOUNT_AT + 1] === (filter.turn ?? "attention")
+        ? previous
+        : LOADING_MESSAGES;
+    },
     staleTime: 15_000,
     refetchInterval: 60_000,
   });
@@ -88,9 +108,11 @@ export async function fetchPerson(
   account: string | null,
   person: string,
   topic: string | null,
+  signal?: AbortSignal,
 ): Promise<PersonPage> {
   const answer = await apiFetch<PageResponse>(
     `/api/v1/mail/people/page${query({ account, person, topic })}`,
+    { signal },
   );
   return answer.page;
 }
@@ -111,7 +133,7 @@ export function usePersonQuery(person: string | null, topic: string | null) {
   const account = useUiPrefs((s) => s.accountScope);
   return useQuery({
     queryKey: personKey(account, person, topic),
-    queryFn: () => fetchPerson(account, person ?? "", topic),
+    queryFn: ({ signal }) => fetchPerson(account, person ?? "", topic, signal),
     enabled: person !== null,
     staleTime: 15_000,
     placeholderData: (previous, previousQuery) =>

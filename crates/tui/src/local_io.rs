@@ -267,6 +267,7 @@ mod tests {
 
     fn test_pending_send(draft_path: std::path::PathBuf) -> PendingSend {
         PendingSend {
+            draft_revision: None,
             account_id: mxr_core::AccountId::new(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: String::new(),
@@ -280,6 +281,7 @@ mod tests {
                 thread_id: None,
                 attach: vec![],
                 signature: None,
+                forward_source: None,
             },
             body: "Body".into(),
             draft_path,

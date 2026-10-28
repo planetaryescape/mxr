@@ -236,9 +236,19 @@ Two cross-view interactions:
 - Label picker
 - Compose confirmation: `[s]` sends, `[a]` schedules send-later,
   `[n]` sends and sets a follow-up reminder, `[d]` saves a draft,
-  `[r]` refines, `[e]` or `Esc` reopens `$EDITOR` on the draft, and
-  `[#]` discards it. When the safety check blocks the draft, `[O]`
-  overrides the block and sends once.
+  `[r]` opens a writing proof for the current body, `[e]` or `Esc` reopens `$EDITOR` on the draft, and
+  `[#]` discards it. When the safety check returns an override token, `[O]`
+  overrides that block and sends once; a gap block has no override.
+- Writing proof: additions are highlighted and removals are struck through;
+  set `NO_COLOR` to show `[-removed-]{+added+}` marks. Gap ranges use the
+  warning style, and the warning says sending remains blocked. `Esc` keeps the
+  original draft. Model selection opens the daemon's compose catalogue before
+  the first proof and from `[m]` in the proof; unavailable entries show why
+  they cannot run. `[y]` accepts the selected proposal, `[e]` accepts and opens
+  `$EDITOR`, `[n]` enters a revision note, and `←`/`→` select proof versions.
+  Arrow keys or `j`/`k` scroll; PageUp/PageDown and Home/End move farther.
+  Accepting a proof with gaps lets you fill them in the editor; send safety
+  still blocks sending until they are filled.
 - Bulk confirmation
 - Attachment modal
 - Snooze modal: preset list plus a **Custom…** entry that opens a

@@ -150,10 +150,12 @@ test("the rail keeps exactly its inventoried controls, expanded and collapsed", 
   await openApp(page, "/now");
   const rail = page.getByRole("complementary", { name: "Mailboxes" });
   await expect(rail.getByRole("link", { name: /^Inbox/ })).toBeVisible();
-  const groups = (await names(rail)).filter((name) =>
-    INVENTORY.rail.some((known) => known === name),
-  );
-  expect(groups).toEqual(INVENTORY.rail);
+  // Inbox can appear before the independent labels query has finished.
+  await expect
+    .poll(async () =>
+      (await names(rail)).filter((name) => INVENTORY.rail.some((known) => known === name)),
+    )
+    .toEqual(INVENTORY.rail);
   const footer = (await names(rail)).filter((name) => /sidebar$|^More places$/.test(name));
   expect(footer).toEqual(INVENTORY.railFooter);
   await rail.getByRole("button", { name: "Collapse sidebar" }).click();

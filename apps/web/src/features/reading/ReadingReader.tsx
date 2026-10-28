@@ -275,6 +275,10 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             <Segmented
               label="What to read"
               value={view}
+              keys={{
+                issue: definedShortcut("reading.reader-issue"),
+                article: definedShortcut("reading.reader-article"),
+              }}
               options={[
                 ["issue", "Issue"],
                 ["article", "Article"],

@@ -5,7 +5,6 @@
 //!   resumably, applying every window as it goes: what is already over is
 //!   written expired and never surfaces, and undated recent items form one
 //!   catch-up batch of at most `catchup_max`.
-//! * [`sync_promises`] mirrors the promises you made into To do.
 //! * [`sweep`] completes answered RSVPs, expires rows past their window and
 //!   claims the rows whose surface time has come.
 //!
@@ -13,7 +12,7 @@
 //! change can add at most one more catch-up batch, never a flood.
 
 use crate::action_link::registrable_domain;
-use crate::detect::{detect, from_invite, Detection, MessageInput, Origin};
+use crate::detect::{Detection, Origin};
 use crate::provenance::{FieldProvenance, FieldSource, FieldSources};
 use crate::text::clip;
 use crate::timing::{lead_time, place, window, Placement, TimingInput};
@@ -21,14 +20,9 @@ use crate::{TodoKind, RULES_VERSION};
 use chrono::{DateTime, TimeZone, Utc};
 use mxr_core::id::{AccountId, MessageId};
 use mxr_core::types::MessageFlags;
-use mxr_reader::{clean, ReaderConfig};
-use mxr_store::{
-    PromiseForTodo, Store, TodoCatchup, TodoRecord, TodoScanRow, TodoState, TodoUpsert,
-};
-use once_cell::sync::Lazy;
-use regex::Regex;
+use mxr_store::{Store, TodoCatchup, TodoRecord, TodoScanRow, TodoState, TodoUpsert};
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 /// What a pass needs besides the store.
 #[derive(Debug, Clone)]
@@ -64,7 +58,7 @@ pub struct PassSummary {
 }
 
 impl PassSummary {
-    fn add(&mut self, other: &Self) {
+    pub fn add(&mut self, other: &Self) {
         self.scanned += other.scanned;
         self.bodies_read += other.bodies_read;
         self.created += other.created;
@@ -93,13 +87,6 @@ pub struct FirstRunProgress {
     pub scanned_message_ids: Vec<MessageId>,
 }
 
-/// Words that earn a message a read of its body. Cheap on headers so the
-/// first run over a whole mailbox reads few bodies.
-static WORTH_READING: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)(bill|invoice|payment|\bpay\b|\bdue\b|overdue|balance|renew|expir|verify|confirm|activate|\bsign\b|signature|docusign|rsvp|invit|declined|failed|unsuccessful|reminder|action required|statement|booking|reservation|[£$€]\s?\d)")
-        .expect("valid worth-reading regex")
-});
-
 /// Classify newly synced messages. Each account's first-run state decides
 /// whether a recent undated item joins the catch-up or goes straight in.
 pub async fn scan_messages<Tz>(
@@ -127,6 +114,31 @@ where
     }
     if summary.catchup > 0 {
         summary.catchup_overflow += store.trim_todo_catchup(cfg.catchup_max, cfg.now).await?;
+    }
+    Ok(summary)
+}
+
+/// Outbox replay must propagate errors; best-effort scan logging cannot ACK work.
+pub async fn project_stored_ask<Tz>(
+    store: &Store,
+    cfg: &PassConfig<Tz>,
+    id: &MessageId,
+) -> anyhow::Result<PassSummary>
+where
+    Tz: TimeZone,
+    Tz::Offset: std::fmt::Display,
+{
+    let mut summary = PassSummary::default();
+    for row in store.list_todo_scan_rows(std::slice::from_ref(id)).await? {
+        summary.add(
+            &classify(
+                store,
+                cfg,
+                &row,
+                run_in_progress(store, &row.account_id).await?,
+            )
+            .await?,
+        );
     }
     Ok(summary)
 }
@@ -181,7 +193,6 @@ where
             .list_messages_for_todo_scan(account_id, run.cursor.as_ref(), page_size)
             .await?;
         let Some(last) = page.last() else {
-            summary.add(&sync_promises(store, cfg, account_id, true).await?);
             summary.catchup_overflow += store.trim_todo_catchup(cfg.catchup_max, cfg.now).await?;
             store.complete_todo_run(account_id, cfg.now).await?;
             return Ok(FirstRunProgress {
@@ -192,6 +203,17 @@ where
                 scanned_message_ids,
             });
         };
+        let ids: Vec<_> = page.iter().map(|row| row.id.clone()).collect();
+        let stored = store.asks_for_messages(account_id, &ids).await?;
+        if page.iter().any(|row| !stored.contains_key(&row.id)) {
+            return Ok(FirstRunProgress {
+                complete: false,
+                scanned: run.scanned,
+                reached: run.cursor.map(|(date, _)| date),
+                summary,
+                scanned_message_ids,
+            });
+        }
         let cursor = (last.date, last.id.clone());
         let mut page_summary = PassSummary::default();
         for row in &page {
@@ -264,52 +286,204 @@ where
     }
     if row.outbound {
         summary.looks_done += offer_promises_kept(store, cfg, row).await?;
+    }
+    let stored = store
+        .asks_for_messages(&row.account_id, std::slice::from_ref(&row.id))
+        .await?;
+    let Some(answer) = stored.get(&row.id) else {
+        return Ok(summary);
+    };
+    let Some(envelope) = store.get_envelope(&row.id).await? else {
+        return Ok(summary);
+    };
+    let detections = crate::asks::items::detections(answer, &envelope);
+    let previous = if detections
+        .iter()
+        .any(|(_, d)| d.kind == TodoKind::PaymentFailed)
+    {
+        store
+            .asks_before_payment_grouping(answer)
+            .await?
+            .filter(|old| old.facts.zones == answer.facts.zones)
+    } else {
+        None
+    };
+    let timezone = mxr_store::AsksTimezone::resolve()?;
+    if timezone.token() != answer.context_token {
         return Ok(summary);
     }
-    if !WORTH_READING.is_match(&row.subject) && !WORTH_READING.is_match(&row.snippet) {
-        return Ok(summary);
+    let frozen = PassConfig {
+        now: cfg.now,
+        tz: timezone,
+        morning_hour: cfg.morning_hour,
+        catchup_days: cfg.catchup_days,
+        catchup_max: cfg.catchup_max,
+    };
+    let mut current_keys = Vec::new();
+    for (unit_index, mut detection) in detections {
+        let commitment = if detection.kind == TodoKind::Promise {
+            match store
+                .asks_owner_commitment_id(answer, &detection.reason)
+                .await?
+            {
+                Some(id) => store.get_contact_commitment(&id).await?,
+                None => None,
+            }
+        } else {
+            None
+        };
+        if commitment
+            .as_ref()
+            .is_some_and(|c| c.status != mxr_store::CommitmentStatus::Open)
+        {
+            current_keys.push(detection.reason.clone());
+            continue;
+        }
+        let user_date = commitment
+            .as_ref()
+            .filter(|c| c.by_when_source == Some(mxr_store::ByWhenSource::User));
+        if let Some(promise) = user_date {
+            detection.due = promise.by_when.map(|at| crate::dates::FoundDate {
+                at,
+                words: "your chosen promise date".into(),
+                checked: true,
+            });
+            detection.fields.set(
+                "due_at",
+                FieldProvenance::with_evidence(FieldSource::User, "your recorded promise date"),
+            );
+        }
+        let prior = match &commitment {
+            Some(promise) => {
+                store
+                    .unique_commitment_todo(&row.account_id, &promise.id)
+                    .await?
+            }
+            None => None,
+        };
+        // An accepted date moves the retained task's deadline, including its corrected lead time.
+        if let Some(kind) = prior
+            .as_ref()
+            .filter(|_| user_date.is_some())
+            .and_then(|todo| TodoKind::parse(&todo.kind))
+        {
+            detection.kind = kind;
+        }
+        let legacy_payment_identity =
+            if matches!(detection.kind, TodoKind::Bill | TodoKind::PaymentFailed) {
+                let prefix = format!("{}|payment|", envelope.from.email.to_lowercase());
+                detection.object_key.strip_prefix(&prefix).and_then(|rest| {
+                    rest.split_once('|')
+                        .map(|(_, object)| format!("{prefix}{object}"))
+                })
+            } else {
+                None
+            };
+        let (mut record, placement) = stored_record(&frozen, row, detection, run_in_progress);
+        if record.kind == "payment_failed" {
+            if let Some(old) = &previous {
+                let unit = &answer.units[unit_index];
+                let grouped: Vec<_> =
+                    crate::asks::items::detections(old, &envelope)
+                        .into_iter()
+                        .filter(|(index, prior)| {
+                            let previous = &old.units[*index];
+                            prior.kind == TodoKind::PaymentFailed
+                                && previous.zone == unit.zone
+                                && previous.span.start >= unit.span.start
+                                && previous.span.end <= unit.span.end
+                                && previous.tags.as_ref().zip(unit.tags.as_ref()).is_some_and(
+                                    |(a, b)| a.actor == b.actor && a.action == b.action,
+                                )
+                        })
+                        .collect();
+                if grouped.len() > 1 {
+                    let keys: Vec<_> = grouped
+                        .into_iter()
+                        .map(|(_, prior)| {
+                            stored_record(&frozen, row, prior, run_in_progress)
+                                .0
+                                .dedup_key
+                        })
+                        .collect();
+                    store
+                        .adopt_asks_payment_identities(&record, answer, &keys)
+                        .await?;
+                }
+            }
+        }
+        if let Some(identity) = legacy_payment_identity {
+            if let Some((_, period)) = record.dedup_key.rsplit_once('|') {
+                let legacy_key = format!(
+                    "asks|payment|{}|{period}",
+                    mxr_store::assessment_fingerprint(&identity)
+                );
+                store
+                    .adopt_asks_payment_identities(
+                        &record,
+                        answer,
+                        std::slice::from_ref(&legacy_key),
+                    )
+                    .await?;
+            }
+        }
+        record.user_edited = user_date.is_some();
+        record.commitment_id = commitment.map(|c| c.id);
+        if let Some(prior) = prior {
+            record.dedup_key = prior.dedup_key;
+        }
+        current_keys.push(record.reason.clone());
+        record_outcome(
+            &mut summary,
+            &record,
+            placement,
+            store.upsert_asks_todo(&record, answer).await?,
+        );
     }
-    summary.bodies_read = 1;
-    let Some(body) = store.get_body(&row.id).await? else {
-        return Ok(summary);
-    };
-    let text = clean(
-        body.text_plain.as_deref(),
-        body.text_html.as_deref(),
-        &ReaderConfig::default(),
-    )
-    .content;
-
-    let detection = match invite_detection(store, row).await? {
-        Some(detection) => Some(detection),
-        None => detect(
-            &MessageInput {
-                subject: &row.subject,
-                body_text: &text,
-                body_html: body.text_html.as_deref(),
-                from_name: row.from_name.as_deref(),
-                from_email: &row.from_email,
-                sent: row.date,
-                list_mail: body.metadata.list_id.is_some(),
-            },
-            &cfg.tz,
-        ),
-    };
-
-    let Some(detection) = detection else {
-        return Ok(summary);
-    };
-    let (record, placement) = build_record(cfg, row, detection, run_in_progress);
-    record_outcome(
-        &mut summary,
-        &record,
-        placement,
-        store.upsert_detected_todo(&record).await?,
-    );
+    store.withdraw_asks_todos(answer, &current_keys).await?;
     Ok(summary)
 }
 
-fn record_outcome(
+/// The same identity and timing projection serves backfill and new mail.
+pub fn stored_record<Tz>(
+    cfg: &PassConfig<Tz>,
+    row: &TodoScanRow,
+    detection: Detection,
+    run_in_progress: bool,
+) -> (TodoRecord, Placement)
+where
+    Tz: TimeZone,
+    Tz::Offset: std::fmt::Display,
+{
+    let identity = detection.object_key.clone();
+    let calendar = detection.kind == TodoKind::Rsvp && detection.origin == Origin::Ics;
+    let (mut record, placement) = build_record(cfg, row, detection, run_in_progress);
+    let due_period = record.due_at.map_or_else(
+        || {
+            row.date
+                .with_timezone(&cfg.tz)
+                .format("sent:%Y-%m")
+                .to_string()
+        },
+        |due| due.with_timezone(&cfg.tz).format("due:%Y-%m").to_string(),
+    );
+    let kind_identity = if matches!(record.kind.as_str(), "bill" | "payment_failed") {
+        "payment"
+    } else {
+        record.kind.as_str()
+    };
+    record.dedup_key = if calendar {
+        format!("asks|rsvp|{}", mxr_store::assessment_fingerprint(&identity))
+    } else {
+        format!(
+            "asks|{kind_identity}|{}|{due_period}",
+            mxr_store::assessment_fingerprint(&identity)
+        )
+    };
+    (record, placement)
+}
+
+pub(crate) fn record_outcome(
     summary: &mut PassSummary,
     record: &TodoRecord,
     placement: Placement,
@@ -337,24 +511,6 @@ fn record_outcome(
     }
 }
 
-/// A calendar invite still waiting for the user's answer.
-async fn invite_detection(store: &Store, row: &TodoScanRow) -> anyhow::Result<Option<Detection>> {
-    let Some(calendar) = store.invite_awaiting_reply(&row.id).await? else {
-        return Ok(None);
-    };
-    let starts = calendar.starts_at.as_deref().and_then(parse_ics_time);
-    let organizer = calendar
-        .organizer
-        .as_ref()
-        .map(|person| person.name.clone().unwrap_or_else(|| person.email.clone()));
-    Ok(Some(from_invite(
-        calendar.summary.as_deref(),
-        organizer.as_deref(),
-        &row.from_email,
-        starts,
-    )))
-}
-
 /// An ICS date or date-time: `20261015T180000Z`, `20261015T180000` (read
 /// as UTC: no zone is carried here) or `20261015`.
 pub fn parse_ics_time(value: &str) -> Option<DateTime<Utc>> {
@@ -374,7 +530,7 @@ pub fn parse_ics_time(value: &str) -> Option<DateTime<Utc>> {
     Some(Utc.from_utc_datetime(&naive))
 }
 
-fn build_record<Tz>(
+pub(crate) fn build_record<Tz>(
     cfg: &PassConfig<Tz>,
     row: &TodoScanRow,
     detection: Detection,
@@ -579,204 +735,6 @@ async fn offer_promises_kept<Tz>(
         }
     }
     Ok(offered)
-}
-
-/// Mirrors the promises you made into To do: new ones become rows (placed
-/// by the same window and catch-up rules), resolved ones tick their row
-/// off, and expired ones let their row go unless you touched it. An open
-/// row whose commitment is no longer a promise you made (its evidence is
-/// mail you received, or the commitment is gone) is dismissed unless you
-/// touched it: that repairs rows earlier versions built from inbound mail.
-pub async fn sync_promises<Tz>(
-    store: &Store,
-    cfg: &PassConfig<Tz>,
-    account_id: &AccountId,
-    run_in_progress: bool,
-) -> anyhow::Result<PassSummary>
-where
-    Tz: TimeZone,
-{
-    let mut summary = PassSummary::default();
-    let existing: HashMap<String, TodoRecord> = store
-        .list_promise_todos(account_id)
-        .await?
-        .into_iter()
-        .filter_map(|todo| Some((todo.commitment_id.clone()?, todo)))
-        .collect();
-    let mut resolved = Vec::new();
-    let mut lapsed = Vec::new();
-    let promises = store.list_promises_for_todos(account_id).await?;
-    let current: HashSet<&str> = promises
-        .iter()
-        .map(|promise| promise.commitment_id.as_str())
-        .collect();
-    let not_promises: Vec<String> = existing
-        .iter()
-        .filter(|(commitment_id, todo)| {
-            todo.state == TodoState::Open
-                && !todo.user_touched()
-                && !current.contains(commitment_id.as_str())
-        })
-        .map(|(_, todo)| todo.id.clone())
-        .collect();
-    for promise in &promises {
-        match (
-            promise.status.as_str(),
-            existing.get(&promise.commitment_id),
-        ) {
-            ("resolved", Some(todo)) if todo.state == TodoState::Open => {
-                resolved.push(todo.id.clone());
-            }
-            ("expired", Some(todo)) if todo.state == TodoState::Open && !todo.user_touched() => {
-                lapsed.push(todo.id.clone());
-            }
-            ("open", Some(todo)) if todo.due_at == promise.by_when || todo.user_touched() => {}
-            ("open", _) => {
-                let Some(evidence_date) = promise.evidence_date else {
-                    continue;
-                };
-                let (record, placement) =
-                    promise_record(cfg, promise, evidence_date, run_in_progress);
-                let upsert = store.upsert_detected_todo(&record).await?;
-                record_outcome(&mut summary, &record, placement, upsert);
-            }
-            _ => {}
-        }
-    }
-    if !resolved.is_empty() {
-        store
-            .set_todos_state(&resolved, &[TodoState::Open], TodoState::Done, cfg.now)
-            .await?;
-    }
-    if !lapsed.is_empty() {
-        store
-            .set_todos_state(&lapsed, &[TodoState::Open], TodoState::Expired, cfg.now)
-            .await?;
-    }
-    if !not_promises.is_empty() {
-        summary.not_promises += store
-            .set_todos_state(
-                &not_promises,
-                &[TodoState::Open],
-                TodoState::Dismissed,
-                cfg.now,
-            )
-            .await?
-            .len() as u64;
-    }
-    if summary.catchup > 0 {
-        summary.catchup_overflow += store.trim_todo_catchup(cfg.catchup_max, cfg.now).await?;
-    }
-    Ok(summary)
-}
-
-fn promise_record<Tz: TimeZone>(
-    cfg: &PassConfig<Tz>,
-    promise: &PromiseForTodo,
-    evidence_date: DateTime<Utc>,
-    run_in_progress: bool,
-) -> (TodoRecord, Placement) {
-    let input = TimingInput {
-        kind: TodoKind::Promise,
-        doc_type: None,
-        arrived: evidence_date,
-        due: promise.by_when,
-        event_start: None,
-    };
-    let timing = lead_time(&input, &cfg.tz, cfg.morning_hour);
-    let window = window(&input);
-    let placement = place(
-        cfg.now,
-        &window,
-        promise.by_when,
-        evidence_date,
-        cfg.catchup_days,
-        run_in_progress,
-    );
-    let person = promise
-        .contact_name
-        .as_deref()
-        .map(crate::text::strip_glued_id)
-        .filter(|name| !name.is_empty())
-        .map_or_else(|| promise.email.clone(), str::to_string);
-    let what = clip(&crate::text::strip_urls(promise.what.trim()), 100);
-    let what = if what.is_empty() {
-        "Do what you promised".to_string()
-    } else {
-        what
-    };
-    let title = crate::text::capitalise(&what);
-    let mut fields = FieldSources::default();
-    fields.set(
-        "kind",
-        FieldProvenance::with_evidence(
-            FieldSource::Model,
-            format!("a promise found in your email to {person}"),
-        ),
-    );
-    fields.set(
-        "title",
-        FieldProvenance::with_evidence(FieldSource::Model, "the promise as the model worded it"),
-    );
-    fields.set(
-        "counterparty",
-        FieldProvenance::with_evidence(FieldSource::Rule, "who the email was to"),
-    );
-    if promise.by_when.is_some() {
-        fields.set(
-            "due_at",
-            FieldProvenance::with_evidence(FieldSource::Model, "the date you named"),
-        );
-    }
-    set_timing_fields(&mut fields, &timing, &window);
-    let (state, catchup, expired_at, expired_at_birth) = placed_state(placement, cfg.now);
-    let record = TodoRecord {
-        id: new_todo_id(),
-        account_id: promise.account_id.clone(),
-        thread_id: Some(promise.thread_id.clone()),
-        source_message_id: Some(promise.evidence_msg_id.clone()),
-        source_date: Some(evidence_date),
-        kind: TodoKind::Promise.as_str().to_string(),
-        verb: what
-            .split_whitespace()
-            .next()
-            .unwrap_or("do")
-            .to_ascii_lowercase(),
-        doc_type: None,
-        title,
-        counterparty: Some(person.clone()),
-        sender_domain: None,
-        amount_minor: None,
-        currency: None,
-        due_at: promise.by_when,
-        due_words: None,
-        act_by_at: timing.act_by,
-        surface_at: timing.surface_at,
-        scheduled_for: None,
-        action_url: None,
-        action_domain: None,
-        relevant_until: window.until,
-        window_source: window.until.map(|_| "rule".to_string()),
-        state,
-        expired_at,
-        expired_at_birth,
-        catchup,
-        looks_done_message_id: None,
-        looks_done_reason: None,
-        origin: "model".to_string(),
-        reason: format!("you promised {person} (model)"),
-        field_sources: fields.to_json(),
-        user_edited: false,
-        commitment_id: Some(promise.commitment_id.clone()),
-        rules_version: RULES_VERSION,
-        dedup_key: format!("promise|{}", promise.commitment_id),
-        surfaced_at: None,
-        created_at: cfg.now,
-        updated_at: cfg.now,
-        done_at: None,
-        dismissed_at: None,
-    };
-    (record, placement)
 }
 
 /// What one sweep did.

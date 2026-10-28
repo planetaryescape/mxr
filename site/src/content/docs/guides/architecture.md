@@ -3,24 +3,27 @@ title: Architecture
 description: Why mxr is daemon-backed, local-first, and built around one internal mail model.
 ---
 
-mxr is built as local-first email infrastructure.
-
-That is a narrower and more useful description than "terminal email client." The TUI matters, but it sits on top of a daemon, a local store, a search index, and a provider model that are meant to work together.
+mxr is a local mail runtime. Its clients share daemon-backed mail operations over a local store, search index and provider adapters.
 
 ## The short version
 
 ```text
-TUI / CLI / scripts / agents
-          |
-          v
-        daemon
-       /      \
-   SQLite    Tantivy
-       \
-   provider adapters
+TUI / CLI / web / MCP / scripts
+              |
+              v
+            daemon
+       /       |       \
+   SQLite   Tantivy   provider adapters
+ canonical  rebuildable       |
+                              v
+                         mail providers
 ```
 
-The daemon is the system. SQLite is the source of truth. Tantivy is rebuildable from SQLite. Provider adapters map into one internal model.
+The daemon coordinates shared local mail state and operations. SQLite is
+canonical; Tantivy is rebuildable from it. Provider adapters map provider
+mail into mxr's internal model and handle provider I/O. Clients can reuse
+daemon operations without duplicating provider behavior, while exposing
+different capabilities and authority.
 
 ## IPC buckets
 
@@ -79,3 +82,37 @@ Compose opens the editor you already use. mxr handles parsing, reply headers, ma
 
 - Root summary: [ARCHITECTURE.md](https://github.com/planetaryescape/mxr/blob/main/ARCHITECTURE.md)
 - Full blueprint: [docs/blueprint/README.md](https://github.com/planetaryescape/mxr/blob/main/docs/blueprint/README.md)
+
+## Stored asks share one answer across clients
+
+The deterministic asks facet covers received and sent mail. It stores
+who acts, what they were asked to do, document state and authored source
+spans. To do, reply turns, waits and relationship commitments project that
+answer. Home placement remains an inbound-only facet; both facets commit
+under the same thread-generation check. Missing or stale asks stay pending.
+No model decides this facet.
+
+Inspect the stored answer and a task projected from it:
+
+```bash
+mxr modes why MESSAGE_ID --format json
+mxr todo why TODO_ID --format json
+```
+
+An answer is current only for its account, classifier policy, observed input
+generation and context. Owned addresses, actual timezone rules and account
+receiver-trust settings also participate in asks validity. Changing
+those inputs schedules reconciliation. An unchanged daemon restart retains
+settled answers without invalidating the whole mailbox.
+
+Saving an answer also persists its task-projection retry ticket. Acknowledging
+that ticket checks the exact generation and fingerprint, so an older worker
+cannot consume newer work. Evaluation distinguishes unsettled projection from
+a settled answer with a missing task. Current-answer reads do not run a
+replacement judge.
+
+[Task corrections](/guides/todo/#correct-ownership-or-details) retain their reason and
+before/after state separately from the authored source quote. A later accepted
+promise date can update the date and its derived timing while preserving a
+corrected title or kind. If you edited the due date directly on the task, that
+authority blocks the entire promise-date update, including its derived timing.

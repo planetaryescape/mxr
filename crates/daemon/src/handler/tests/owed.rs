@@ -60,9 +60,9 @@ async fn owed_is_the_desk_owed_lane_and_all_keeps_the_raw_list() {
     for days in [40, 45] {
         let old = ThreadId::new();
         let asked = fx
-            .message(&old, "maya@example.com", ME, Duration::days(days), None)
+            .attention_message(&old, "maya@example.com", ME, Duration::days(days), None)
             .await;
-        fx.message(
+        fx.attention_message(
             &old,
             ME,
             "maya@example.com",
@@ -74,9 +74,9 @@ async fn owed_is_the_desk_owed_lane_and_all_keeps_the_raw_list() {
     // Owed: Maya answered you two days ago.
     let maya = ThreadId::new();
     let mine = fx
-        .message(&maya, ME, "maya@example.com", Duration::days(3), None)
+        .attention_message(&maya, ME, "maya@example.com", Duration::days(3), None)
         .await;
-    fx.message(
+    fx.attention_message(
         &maya,
         "maya@example.com",
         ME,
@@ -86,21 +86,21 @@ async fn owed_is_the_desk_owed_lane_and_all_keeps_the_raw_list() {
     .await;
     // Owed: you wrote Priya once before; her new thread waits on you.
     let earlier = ThreadId::new();
-    fx.message(&earlier, ME, "priya@example.com", Duration::days(9), None)
+    fx.attention_message(&earlier, ME, "priya@example.com", Duration::days(9), None)
         .await;
     let priya = ThreadId::new();
-    fx.message(&priya, "priya@example.com", ME, Duration::hours(5), None)
+    fx.attention_message(&priya, "priya@example.com", ME, Duration::hours(5), None)
         .await;
 
     // Not owed by the desk's rule, all in the raw list: a stranger (new
     // from people), a newsletter, archived mail from a person, and a
     // thread from before the desk's window.
     let stranger = ThreadId::new();
-    fx.message(&stranger, "theo@example.com", ME, Duration::hours(3), None)
+    fx.attention_message(&stranger, "theo@example.com", ME, Duration::hours(3), None)
         .await;
     let newsletter_thread = ThreadId::new();
     let mut newsletter = fx
-        .message(
+        .attention_message(
             &newsletter_thread,
             "weekly@lists.example.com",
             ME,
@@ -115,7 +115,7 @@ async fn owed_is_the_desk_owed_lane_and_all_keeps_the_raw_list() {
         .await;
     let archived = ThreadId::new();
     let archived_msg = fx
-        .message(&archived, "maya@example.com", ME, Duration::days(1), None)
+        .attention_message(&archived, "maya@example.com", ME, Duration::days(1), None)
         .await;
     fx.state
         .store
@@ -123,7 +123,7 @@ async fn owed_is_the_desk_owed_lane_and_all_keeps_the_raw_list() {
         .await
         .unwrap();
     let ancient = ThreadId::new();
-    fx.message(&ancient, "jon@example.com", ME, Duration::days(90), None)
+    fx.attention_message(&ancient, "jon@example.com", ME, Duration::days(90), None)
         .await;
 
     // The default is the desk's You owe lane: same rows, same order.
@@ -188,7 +188,7 @@ async fn owed_windows_apply_to_the_latest_message_from_them() {
         (ThreadId::new(), Duration::hours(6)),
     ] {
         let mine = fx
-            .message(
+            .attention_message(
                 &thread,
                 ME,
                 "maya@example.com",
@@ -196,7 +196,7 @@ async fn owed_windows_apply_to_the_latest_message_from_them() {
                 None,
             )
             .await;
-        fx.message(
+        fx.attention_message(
             &thread,
             "maya@example.com",
             ME,
@@ -230,7 +230,7 @@ async fn allowing_a_notification_sender_preserves_visibility_not_automatic_reply
         .unwrap();
     let thread = ThreadId::new();
     let first = fx
-        .message(&thread, sender, ME, Duration::hours(6), None)
+        .attention_message(&thread, sender, ME, Duration::hours(6), None)
         .await;
 
     let ResponseData::Desk {
@@ -247,7 +247,7 @@ async fn allowing_a_notification_sender_preserves_visibility_not_automatic_reply
 
     // An exchange still cannot erase positive automation evidence.
     let reply = fx
-        .message(
+        .attention_message(
             &thread,
             ME,
             sender,
@@ -255,7 +255,7 @@ async fn allowing_a_notification_sender_preserves_visibility_not_automatic_reply
             first.message_id_header.as_deref(),
         )
         .await;
-    fx.message(
+    fx.attention_message(
         &thread,
         sender,
         ME,
@@ -284,7 +284,10 @@ async fn allowing_a_notification_sender_preserves_visibility_not_automatic_reply
         Request::ListMessages {
             account_id: None,
             turn: None,
-            filter: Default::default(),
+            filter: mxr_protocol::MessagesFilterData {
+                turn: Some(mxr_protocol::MessagesTurnData::All),
+                ..Default::default()
+            },
             limit: 50,
         },
     )

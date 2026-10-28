@@ -15,6 +15,7 @@ pub mod classify;
 pub mod code;
 pub mod commitments;
 pub mod completions;
+pub mod compose_assist;
 pub mod config;
 pub mod connect;
 pub mod contacts;

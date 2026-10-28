@@ -135,10 +135,12 @@ impl App {
             self.push_toast(Toast::error("Reviewed send belongs to another account"));
             return;
         }
-        let revision = retained
-            .as_ref()
-            .map_or(1, |(_, identity)| identity.expected_revision);
-        let draft = mxr_core::Draft {
+        let revision = pending.draft_revision.unwrap_or_else(|| {
+            retained
+                .as_ref()
+                .map_or(1, |(_, identity)| identity.expected_revision)
+        });
+        let mut draft = mxr_core::Draft {
             revision: Some(revision),
             id: pending.draft_id(),
             account_id: pending.account_id.clone(),
@@ -166,6 +168,10 @@ impl App {
             created_at: now,
             updated_at: now,
         };
+        if let Err(error) = mxr_compose::forward::apply(&mut draft, &pending.fm) {
+            self.push_toast(Toast::error(error.to_string()));
+            return;
+        }
         let identity = retained.map_or_else(
             || mxr_core::SendIdentity::for_draft(&draft),
             |(_, identity)| identity,

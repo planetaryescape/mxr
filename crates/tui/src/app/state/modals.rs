@@ -232,6 +232,14 @@ impl SaveAttachmentModalState {
 #[derive(Debug, Clone)]
 pub struct PendingPlatformDispatch {
     pub compose: Option<Box<super::compose::PendingSend>>,
+    pub compose_assist: Option<Box<super::compose::PendingSend>>,
+    pub compose_assist_request_id: Option<u64>,
+    pub compose_model_picker: Option<(
+        Box<super::compose::PendingSend>,
+        super::compose::ComposeModelPickerPurpose,
+    )>,
+    pub compose_assist_accept: Option<Box<super::compose::PendingSend>>,
+    pub compose_assist_reopen_editor: bool,
     pub prelude: Vec<Request>,
     pub request: Request,
     pub title: String,
@@ -1079,7 +1087,7 @@ pub struct MessagesFilterPicker {
 
 impl MessagesFilterPicker {
     /// The last row: Clear filters.
-    pub const LAST: usize = 5;
+    pub const LAST: usize = 6;
 }
 
 #[derive(Debug, Clone)]

@@ -1052,38 +1052,26 @@ fn use_semantic_profile_action_queues_use_request() {
 }
 
 #[test]
-fn draft_assist_action_queues_selected_thread_request() {
+fn draft_assist_action_opens_reply_editor_before_shared_writing_help() {
     use crate::action::Action;
     let mut app = App::new();
     let envelope = TestEnvelopeBuilder::new()
         .with_from_address("Sender", "sender@example.com")
         .subject("Quarterly plan")
         .build();
-    let thread_id = envelope.thread_id.clone();
+    let message_id = envelope.id.clone();
+    let account_id = envelope.account_id.clone();
     app.mailbox.envelopes = vec![envelope];
 
     app.apply(Action::DraftAssistCurrentThread);
 
-    let queue = app.take_pending_platform_dispatch();
-    assert_eq!(queue.len(), 1);
-    assert_eq!(queue[0].title, "Draft assist");
-    match &queue[0].request {
-        Request::DraftCompose {
-            thread_id: Some(queued),
-            instruction,
-            register,
-            length_hint,
-            ..
-        } => {
-            assert_eq!(queued, &thread_id);
-            // No instruction: the daemon answers what the message asks.
-            assert_eq!(instruction, "");
-            // The plain assist action drafts on auto tone (no override).
-            assert!(register.is_none());
-            assert!(length_hint.is_none());
-        }
-        other => panic!("expected DraftCompose reply, got {other:?}"),
-    }
+    assert!(app.take_pending_platform_dispatch().is_empty());
+    assert!(app.compose.assist_after_editor);
+    assert!(matches!(
+        app.compose.pending_compose,
+        Some(crate::app::ComposeAction::Reply { message_id: queued, account_id: queued_account, .. })
+            if queued == message_id && queued_account == account_id
+    ));
 }
 
 #[test]
@@ -1259,10 +1247,11 @@ fn draft_new_for_sender_action_queues_selected_sender_request() {
 }
 
 #[test]
-fn refine_pending_draft_saves_then_queues_refine_request() {
+fn refine_pending_draft_loads_the_daemon_compose_catalogue_before_proof() {
     let mut app = App::new();
     let account_id = AccountId::new();
     app.compose.pending_send_confirm = Some(PendingSend {
+        draft_revision: None,
         account_id: account_id.clone(),
         fm: mxr_compose::frontmatter::ComposeFrontmatter {
             to: "sender@example.com".into(),
@@ -1276,8 +1265,9 @@ fn refine_pending_draft_saves_then_queues_refine_request() {
             thread_id: None,
             attach: Vec::new(),
             signature: None,
+            forward_source: None,
         },
-        body: "Could you review the plan?".into(),
+        body: "Could you review the plan?\n\n-- \nBK".into(),
         draft_path: std::path::PathBuf::from("/tmp/mxr-draft.md"),
         intent: mxr_core::DraftIntent::New,
         mode: PendingSendMode::SendOrSave,
@@ -1293,26 +1283,530 @@ fn refine_pending_draft_saves_then_queues_refine_request() {
 
     let queue = app.take_pending_platform_dispatch();
     assert_eq!(queue.len(), 1);
-    assert_eq!(queue[0].prelude.len(), 1);
-    let draft_id = match &queue[0].prelude[0] {
-        Request::SaveDraft { draft } => {
-            assert_eq!(draft.account_id, account_id);
-            assert_eq!(draft.subject, "Quarterly plan");
-            assert_eq!(draft.content.analysis_text(), "Could you review the plan?");
-            draft.id.clone()
-        }
-        other => panic!("expected SaveDraft prelude, got {other:?}"),
+    assert!(queue[0].prelude.is_empty());
+    assert!(matches!(queue[0].request, Request::GetComposeModels));
+    assert_eq!(
+        queue[0]
+            .compose_model_picker
+            .as_ref()
+            .map(|(_, purpose)| *purpose),
+        Some(crate::app::ComposeModelPickerPurpose::InitialDraft)
+    );
+}
+
+#[test]
+fn selecting_a_compose_model_keeps_the_saved_body_as_the_proof_baseline() {
+    let mut app = App::new();
+    let account_id = AccountId::new();
+    let pending = PendingSend {
+        draft_revision: None,
+        account_id: account_id.clone(),
+        fm: mxr_compose::frontmatter::ComposeFrontmatter {
+            to: "sender@example.com".into(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: "Quarterly plan".into(),
+            from: "me@example.com".into(),
+            in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
+            references: vec![],
+            thread_id: None,
+            attach: vec![],
+            signature: None,
+            forward_source: None,
+        },
+        body: "Could you review the plan?\n\n-- \nBK".into(),
+        draft_path: std::path::PathBuf::from("/tmp/mxr-model-picker.md"),
+        intent: mxr_core::DraftIntent::New,
+        mode: PendingSendMode::SendOrSave,
+        safety_report: None,
+        safety_check_failed: None,
+        override_token: None,
+        suggested_collaborators: vec![],
+        invite_reply: None,
+        resolved_from: None,
     };
-    match &queue[0].request {
-        Request::DraftRefine {
-            draft_id: queued,
-            knobs,
+    app.compose.pending_send_confirm = Some(pending.clone());
+    app.compose.model_picker = Some(crate::app::ComposeModelPicker {
+        choices: mxr_protocol::AssistantModelsData {
+            current: Some("gpt-6-luna".into()),
+            choices: vec![mxr_protocol::ModelChoiceData {
+                id: "gpt-6-luna".into(),
+                label: "GPT-6 Luna".into(),
+                cloud: true,
+                sees: "this conversation only".into(),
+                available: true,
+                unavailable_reason: None,
+            }],
+        },
+        selected_index: 1,
+        pending: Box::new(pending),
+        purpose: crate::app::ComposeModelPickerPurpose::InitialDraft,
+    });
+
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    let queue = app.take_pending_platform_dispatch();
+    assert_eq!(queue.len(), 1);
+    assert!(
+        matches!(queue[0].prelude.as_slice(), [Request::SaveDraft { draft }] if draft.account_id == account_id && draft.content.analysis_text() == "Could you review the plan?\n\n-- \nBK")
+    );
+    assert!(
+        matches!(queue[0].request, Request::ComposeAssist { model: Some(ref model), ref text, .. } if model == "gpt-6-luna" && text == "Could you review the plan?")
+    );
+}
+
+#[test]
+fn proof_revision_keeps_the_original_body_and_names_the_displayed_proposal() {
+    let mut app = App::new();
+    let pending = PendingSend {
+        draft_revision: None,
+        account_id: AccountId::new(),
+        fm: mxr_compose::frontmatter::ComposeFrontmatter {
+            to: "sender@example.com".into(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: "Quarterly plan".into(),
+            from: "me@example.com".into(),
+            in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
+            references: vec![],
+            thread_id: None,
+            attach: vec![],
+            signature: None,
+            forward_source: None,
+        },
+        body: "Original text.\n\n-- \nBK".into(),
+        draft_path: std::path::PathBuf::from("/tmp/mxr-proof.md"),
+        intent: mxr_core::DraftIntent::New,
+        mode: PendingSendMode::SendOrSave,
+        safety_report: None,
+        safety_check_failed: None,
+        override_token: None,
+        suggested_collaborators: vec![],
+        invite_reply: None,
+        resolved_from: None,
+    };
+    app.compose.pending_send_confirm = Some(pending.clone());
+    app.compose.assist_review = Some(crate::app::ComposeAssistReview {
+        pending,
+        proposals: vec![test_compose_proposal()],
+        proposal_models: vec![Some("gemma4:latest".into())],
+        current_index: 0,
+        note_input: None,
+        proof_scroll_offset: 0,
+        request_pending: false,
+    });
+
+    let key = |code| crossterm::event::KeyEvent::new(code, crossterm::event::KeyModifiers::NONE);
+    app.handle_key(key(crossterm::event::KeyCode::Char('n')));
+    for ch in "Keep it concise".chars() {
+        app.handle_key(key(crossterm::event::KeyCode::Char(ch)));
+    }
+    app.handle_key(key(crossterm::event::KeyCode::Enter));
+
+    let queued = app.take_pending_platform_dispatch();
+    assert_eq!(queued.len(), 1);
+    assert!(queued[0].prelude.is_empty());
+    assert_eq!(
+        queued[0].compose_assist_request_id,
+        Some(app.compose.assist_request_id)
+    );
+    match &queued[0].request {
+        Request::ComposeAssist {
+            text,
+            action,
+            instruction,
+            revise,
+            model,
             ..
         } => {
-            assert_eq!(queued, &draft_id);
-            assert_eq!(knobs, &mxr_protocol::DraftRefineKnobsData::default());
+            assert_eq!(text, "Original text.");
+            assert_eq!(action, &Some(mxr_protocol::AssistActionData::Polish));
+            assert_eq!(instruction.as_deref(), Some("Keep it concise"));
+            assert_eq!(revise.as_deref(), Some("proposal-1"));
+            assert_eq!(model.as_deref(), Some("gemma4:latest"));
         }
-        other => panic!("expected DraftRefine, got {other:?}"),
+        other => panic!("expected ComposeAssist revision, got {other:?}"),
+    }
+}
+
+#[test]
+fn proof_accept_calls_apply_then_reloads_the_draft_for_safety_review() {
+    let mut app = App::new();
+    let pending = PendingSend {
+        draft_revision: None,
+        account_id: AccountId::new(),
+        fm: mxr_compose::frontmatter::ComposeFrontmatter {
+            to: "sender@example.com".into(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: "Quarterly plan".into(),
+            from: "me@example.com".into(),
+            in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
+            references: vec![],
+            thread_id: None,
+            attach: vec![],
+            signature: None,
+            forward_source: None,
+        },
+        body: "Original text.".into(),
+        draft_path: std::path::PathBuf::from("/tmp/mxr-proof-accept.md"),
+        intent: mxr_core::DraftIntent::New,
+        mode: PendingSendMode::SendOrSave,
+        safety_report: None,
+        safety_check_failed: None,
+        override_token: None,
+        suggested_collaborators: vec![],
+        invite_reply: None,
+        resolved_from: None,
+    };
+    app.compose.pending_send_confirm = Some(pending.clone());
+    app.compose.assist_review = Some(crate::app::ComposeAssistReview {
+        pending,
+        proposals: vec![test_compose_proposal()],
+        proposal_models: vec![None; 1],
+        current_index: 0,
+        note_input: None,
+        proof_scroll_offset: 0,
+        request_pending: false,
+    });
+
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('y'),
+        crossterm::event::KeyModifiers::NONE,
+    ));
+
+    let queued = app.take_pending_platform_dispatch();
+    assert_eq!(queued.len(), 1);
+    assert!(
+        matches!(queued[0].prelude.as_slice(), [Request::ApplyComposeProposal { proposal_id, .. }] if proposal_id == "proposal-1")
+    );
+    assert!(matches!(queued[0].request, Request::GetDraft { .. }));
+    assert!(queued[0].compose_assist_accept.is_some());
+    assert_eq!(queued[0].title, "Accepting writing proof");
+}
+
+#[test]
+fn proof_with_gaps_can_be_accepted_and_send_safety_is_rechecked() {
+    let mut app = App::new();
+    let pending = PendingSend {
+        draft_revision: None,
+        account_id: AccountId::new(),
+        fm: mxr_compose::frontmatter::ComposeFrontmatter {
+            to: "sender@example.com".into(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: "Quarterly plan".into(),
+            from: "me@example.com".into(),
+            in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
+            references: vec![],
+            thread_id: None,
+            attach: vec![],
+            signature: None,
+            forward_source: None,
+        },
+        body: "Original text.".into(),
+        draft_path: std::path::PathBuf::from("/tmp/mxr-proof-gap.md"),
+        intent: mxr_core::DraftIntent::New,
+        mode: PendingSendMode::SendOrSave,
+        safety_report: None,
+        safety_check_failed: None,
+        override_token: None,
+        suggested_collaborators: vec![],
+        invite_reply: None,
+        resolved_from: None,
+    };
+    let mut proposal = test_compose_proposal();
+    proposal.gaps.push(mxr_protocol::GapData {
+        label: "meeting time".into(),
+        start: 0,
+        end: 5,
+    });
+    app.compose.pending_send_confirm = Some(pending.clone());
+    app.compose.assist_review = Some(crate::app::ComposeAssistReview {
+        pending,
+        proposals: vec![proposal],
+        proposal_models: vec![None; 1],
+        current_index: 0,
+        note_input: None,
+        proof_scroll_offset: 0,
+        request_pending: false,
+    });
+
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('y'),
+        crossterm::event::KeyModifiers::NONE,
+    ));
+
+    let queued = app.take_pending_platform_dispatch();
+    assert_eq!(queued.len(), 1);
+    assert!(
+        matches!(queued[0].prelude.as_slice(), [Request::ApplyComposeProposal { proposal_id, .. }] if proposal_id == "proposal-1")
+    );
+    assert!(!queued[0].compose_assist_reopen_editor);
+    assert!(queued[0].compose_assist_accept.is_some());
+}
+
+#[test]
+fn proof_with_gaps_accept_edit_reopens_the_draft_editor() {
+    let mut app = App::new();
+    let pending = test_pending_send("/tmp/mxr-proof-gap-edit.md");
+    let mut proposal = test_compose_proposal();
+    proposal.gaps.push(mxr_protocol::GapData {
+        label: "meeting time".into(),
+        start: 0,
+        end: 5,
+    });
+    app.compose.pending_send_confirm = Some(pending.clone());
+    app.compose.assist_review = Some(crate::app::ComposeAssistReview {
+        pending,
+        proposals: vec![proposal],
+        proposal_models: vec![None; 1],
+        current_index: 0,
+        note_input: None,
+        proof_scroll_offset: 0,
+        request_pending: false,
+    });
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('e'),
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    let queued = app.take_pending_platform_dispatch();
+    assert!(
+        matches!(queued[0].prelude.as_slice(), [Request::ApplyComposeProposal { proposal_id, .. }] if proposal_id == "proposal-1")
+    );
+    assert!(queued[0].compose_assist_reopen_editor);
+    assert!(queued[0].compose_assist_accept.is_some());
+}
+
+#[test]
+fn proof_history_selects_revision_and_escape_keeps_original_review() {
+    let mut app = App::new();
+    let pending = test_pending_send("/tmp/mxr-proof-history.md");
+    let mut first = test_compose_proposal();
+    first.proposal_id = "proposal-1".into();
+    let mut second = test_compose_proposal();
+    second.proposal_id = "proposal-2".into();
+    second.text = "Revised text.".into();
+    app.compose.pending_send_confirm = Some(pending.clone());
+    app.compose.assist_review = Some(crate::app::ComposeAssistReview {
+        pending,
+        proposals: vec![first],
+        proposal_models: vec![None; 1],
+        current_index: 0,
+        note_input: None,
+        proof_scroll_offset: 0,
+        request_pending: false,
+    });
+
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('n'),
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    for ch in "Tighten it".chars() {
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char(ch),
+            crossterm::event::KeyModifiers::NONE,
+        ));
+    }
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    let revise = app.take_pending_platform_dispatch();
+    assert!(matches!(
+        &revise[0].request,
+        Request::ComposeAssist { text, revise: Some(proposal), instruction: Some(note), .. }
+            if text == "Original text." && proposal == "proposal-1" && note == "Tighten it"
+    ));
+    app.modals.platform.close();
+    app.compose
+        .assist_review
+        .as_mut()
+        .unwrap()
+        .push_proposal(second, None);
+    assert_eq!(app.compose.assist_review.as_ref().unwrap().current_index, 1);
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Left,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    let review = app.compose.assist_review.as_ref().unwrap();
+    assert_eq!(review.current_index, 0);
+    assert_eq!(review.proof_scroll_offset, 0);
+    let request_id = app.compose.assist_request_id;
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('y'),
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    let queued = app.take_pending_platform_dispatch();
+    assert!(
+        matches!(queued[0].prelude.as_slice(), [Request::ApplyComposeProposal { proposal_id, .. }] if proposal_id == "proposal-1")
+    );
+    assert_ne!(app.compose.assist_request_id, request_id);
+
+    let mut canceled = App::new();
+    let pending = test_pending_send("/tmp/mxr-proof-history-cancel.md");
+    canceled.compose.pending_send_confirm = Some(pending.clone());
+    canceled.compose.assist_review = Some(crate::app::ComposeAssistReview {
+        pending,
+        proposals: vec![test_compose_proposal()],
+        proposal_models: vec![None; 1],
+        current_index: 0,
+        note_input: None,
+        proof_scroll_offset: 0,
+        request_pending: true,
+    });
+    canceled
+        .modals
+        .platform
+        .open_loading("Writing proof", "Revising...");
+    let request_id = canceled.compose.assist_request_id;
+    canceled.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Esc,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    assert!(canceled.compose.assist_review.is_none());
+    assert!(canceled.compose.pending_send_confirm.is_some());
+    assert!(canceled.take_pending_platform_dispatch().is_empty());
+    assert_ne!(canceled.compose.assist_request_id, request_id);
+    assert!(!canceled.modals.platform.visible);
+}
+
+#[test]
+fn proof_scroll_keys_reach_long_text_and_reset_on_version_change() {
+    let mut app = App::new();
+    let pending = test_pending_send("/tmp/mxr-proof-scroll.md");
+    let mut long = test_compose_proposal();
+    long.text = (0..40)
+        .map(|line| format!("draft line {line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    long.changes = vec![mxr_protocol::TextChangeData {
+        kind: mxr_protocol::TextChangeKindData::Kept,
+        text: long.text.clone(),
+    }];
+    app.compose.assist_review = Some(crate::app::ComposeAssistReview {
+        pending,
+        proposals: vec![long, test_compose_proposal()],
+        proposal_models: vec![None; 2],
+        current_index: 0,
+        note_input: None,
+        proof_scroll_offset: 0,
+        request_pending: false,
+    });
+
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::End,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    assert_eq!(
+        app.compose
+            .assist_review
+            .as_ref()
+            .unwrap()
+            .proof_scroll_offset,
+        u16::MAX
+    );
+    let _ = render_to_string(100, 24, |frame| app.draw(frame));
+    let bottom = app
+        .compose
+        .assist_review
+        .as_ref()
+        .unwrap()
+        .proof_scroll_offset;
+    assert!(bottom > 8 && bottom < u16::MAX);
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('k'),
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    let _ = render_to_string(100, 24, |frame| app.draw(frame));
+    assert_eq!(
+        app.compose
+            .assist_review
+            .as_ref()
+            .unwrap()
+            .proof_scroll_offset,
+        bottom - 1
+    );
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::PageUp,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    let _ = render_to_string(100, 24, |frame| app.draw(frame));
+    assert_eq!(
+        app.compose
+            .assist_review
+            .as_ref()
+            .unwrap()
+            .proof_scroll_offset,
+        bottom - 9
+    );
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Right,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    let review = app.compose.assist_review.as_ref().unwrap();
+    assert_eq!(review.current_index, 1);
+    assert_eq!(review.proof_scroll_offset, 0);
+}
+
+fn test_pending_send(path: &str) -> PendingSend {
+    PendingSend {
+        draft_revision: None,
+        account_id: AccountId::new(),
+        fm: mxr_compose::frontmatter::ComposeFrontmatter {
+            to: "sender@example.com".into(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: "Quarterly plan".into(),
+            from: "me@example.com".into(),
+            in_reply_to: None,
+            intent: mxr_core::DraftIntent::New,
+            references: vec![],
+            thread_id: None,
+            attach: vec![],
+            signature: None,
+            forward_source: None,
+        },
+        body: "Original text.".into(),
+        draft_path: std::path::PathBuf::from(path),
+        intent: mxr_core::DraftIntent::New,
+        mode: PendingSendMode::SendOrSave,
+        safety_report: None,
+        safety_check_failed: None,
+        override_token: None,
+        suggested_collaborators: vec![],
+        invite_reply: None,
+        resolved_from: None,
+    }
+}
+
+fn test_compose_proposal() -> mxr_protocol::ComposeProposalData {
+    mxr_protocol::ComposeProposalData {
+        proposal_id: "proposal-1".into(),
+        action: mxr_protocol::AssistActionData::Polish,
+        base: "base".into(),
+        text: "Original text, made clearer.".into(),
+        changes: vec![],
+        gaps: vec![],
+        provenance: mxr_protocol::DraftProvenanceData {
+            model: "test".into(),
+            locality: mxr_protocol::AiLocalityData::Local,
+            history_used: false,
+            voice_examples: vec![],
+            conversation: vec![],
+            rewrite: None,
+        },
+        yours_changed: vec![],
+        composer_version: "c1".into(),
+        style_marks: Vec::new(),
+        style_score: 100,
+        style_version: String::new(),
     }
 }
 

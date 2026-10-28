@@ -49,6 +49,8 @@ export type ActionScope =
   | "expired"
   | "now"
   | "messages"
+  | "messages-filters"
+  | "page"
   | "updates"
   | "archive"
   | "reading"

@@ -30,6 +30,52 @@ fn validate(metadata: &DraftAttachment) -> Result<(), HandlerError> {
     {
         return Err("Invalid draft attachment declaration: require filename, bounded MIME type and lowercase SHA-256".into());
     }
+    if metadata.content_id.as_ref().is_some_and(|cid| {
+        cid.is_empty()
+            || !cid
+                .bytes()
+                .all(|ch| ch.is_ascii_graphic() && !matches!(ch, b'<' | b'>' | b'"' | b'\\'))
+    }) {
+        return Err("Invalid forwarded attachment Content-ID".into());
+    }
+    if metadata.content_location.as_ref().is_some_and(|location| {
+        location.is_empty() || location.len() > 2048 || location.chars().any(char::is_control)
+    }) {
+        return Err("Invalid forwarded attachment Content-Location".into());
+    }
+    Ok(())
+}
+
+/// Cache provider bytes for an as-yet unsaved forward. Like fetched message
+/// bodies, these resources may be prepared during preview; no draft is saved.
+pub(super) async fn import_forward(
+    state: &AppState,
+    metadata: &DraftAttachment,
+    bytes: &[u8],
+) -> Result<(), HandlerError> {
+    validate(metadata)?;
+    cleanup(state).await?;
+    state.store.insert_draft_attachment(metadata).await?;
+    let (partial, final_path) = paths(state, metadata);
+    private_dir(state.store.draft_attachment_dir())?;
+    private_dir(partial.parent().ok_or("Missing resource directory")?)?;
+    private_dir(final_path.parent().ok_or("Missing publication directory")?)?;
+    mxr_compose::private_tmp::write_private(&partial, bytes).map_err(|e| e.to_string())?;
+    verify(&partial, metadata)?;
+    std::fs::File::open(&partial)
+        .and_then(|file| file.sync_all())
+        .map_err(|e| e.to_string())?;
+    std::fs::rename(&partial, &final_path).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&final_path, std::fs::Permissions::from_mode(0o400))
+            .map_err(|e| e.to_string())?;
+    }
+    std::fs::File::open(final_path.parent().ok_or("Missing publication directory")?)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|e| e.to_string())?;
+    state.store.finalize_draft_attachment(&metadata.id).await?;
     Ok(())
 }
 
@@ -254,9 +300,18 @@ pub(super) async fn finalize(
 
 pub(super) async fn validate_set(state: &AppState, draft: &Draft) -> Result<(), HandlerError> {
     let mut ids = std::collections::HashSet::new();
+    let mut cids = std::collections::HashSet::new();
     for metadata in draft.managed_attachments.as_deref().unwrap_or_default() {
+        validate(metadata)?;
         if !ids.insert(metadata.id.clone()) {
             return Err("Duplicate managed attachment resource ID".into());
+        }
+        if metadata
+            .content_id
+            .as_ref()
+            .is_some_and(|cid| !cids.insert(cid))
+        {
+            return Err("Duplicate forwarded inline Content-ID".into());
         }
         let (stored, ready) = owned(state, &draft.id, &draft.account_id, &metadata.id).await?;
         if !ready || stored != *metadata {
@@ -287,7 +342,14 @@ pub(super) async fn resolve(state: &AppState, draft: &Draft) -> Result<Draft, Ha
     for metadata in draft.managed_attachments.as_deref().unwrap_or_default() {
         let (_, path) = paths(state, metadata);
         verify(&path, metadata)?;
-        resolved.attachments.push(path);
+        if let Some(cid) = &metadata.content_id {
+            resolved.inline_assets.push(mxr_core::InlineAsset {
+                cid: cid.clone(),
+                path,
+            });
+        } else {
+            resolved.attachments.push(path);
+        }
     }
     Ok(resolved)
 }

@@ -125,6 +125,54 @@ pub async fn run(
             )
             .await
         }
+        TodoAction::Correct {
+            todo_id,
+            reason,
+            edits,
+            dry_run,
+        } => {
+            use crate::cli::TodoCorrectionArg as Reason;
+            let reason = match reason {
+                Reason::NotATodo => mxr_protocol::TodoCorrectionData::NotATodo,
+                Reason::NotMine => mxr_protocol::TodoCorrectionData::NotMine,
+                Reason::AlreadyDone => mxr_protocol::TodoCorrectionData::AlreadyDone,
+                Reason::WrongDetails => mxr_protocol::TodoCorrectionData::WrongDetails,
+            };
+            let edits = edits
+                .iter()
+                .map(|edit| parse_edit(edit))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            print_change(
+                change(
+                    &mut client,
+                    Request::CorrectTodo {
+                        time_zone: None,
+                        todo_id,
+                        reason,
+                        edits,
+                        dry_run,
+                    },
+                )
+                .await?,
+                format,
+            )
+        }
+        TodoAction::UndoCorrection {
+            todo_id,
+            correction_id,
+            dry_run,
+        } => print_change(
+            change(
+                &mut client,
+                Request::UndoTodoCorrection {
+                    todo_id,
+                    correction_id,
+                    dry_run,
+                },
+            )
+            .await?,
+            format,
+        ),
         TodoAction::Snooze {
             todo_id,
             when,

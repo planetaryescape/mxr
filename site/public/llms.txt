@@ -1,15 +1,16 @@
 # mxr
 
-> Local-first, keyboard-native email client. Daemon-backed
-> (Rust + SQLite + Tantivy). Provider-agnostic core; first-party
-> Gmail, IMAP, and SMTP adapters. CLI is the canonical surface
-> and emits JSON for piping into agents/scripts. TUI is one
-> client of the daemon. HTTP bridge serves an OpenAPI 3.1 spec
-> at /api/v1/openapi.json. Pronounced "Mixer".
+> A local mail runtime for you and your agents. mxr syncs connected mail
+> into a local mailbox and exposes shared daemon-backed state to human and
+> machine clients. Client operations and authority vary by path. Local search
+> and cached-mail reads use that state; sync,
+> sends, provider-backed changes, uncached attachments, and configured model
+> endpoints can still use the network. Pronounced "Mixer".
 
 ## Getting started
 
-- [Quick start](https://mxr.sh/getting-started/quick-start.md): install → first email in five minutes
+- [Quick start](https://mxr.sh/getting-started/quick-start.md): inspect synthetic mail locally, choose a client, then connect your own account
+- [Use mxr with an existing agent](https://mxr.sh/getting-started/agent-quick-start.md): local Codex MCP or CLI skill, synthetic mail, shared draft review
 - [Installation](https://mxr.sh/getting-started/install.md): Homebrew, cargo, or pre-built binaries
 - [Gmail setup](https://mxr.sh/getting-started/gmail-setup.md): OAuth flow plus SSH-friendly fallbacks
 - [IMAP / SMTP setup](https://mxr.sh/getting-started/imap-smtp-setup.md): Fastmail, Migadu, ProtonMail Bridge, Outlook, Yahoo, self-hosted
@@ -28,12 +29,18 @@
 - [HTTP bridge](https://mxr.sh/reference/bridge.md): endpoints, auth, curl recipes
 - [API route inventory](https://mxr.sh/reference/api-explorer/): read-only list of the daemon HTTP routes in the generated OpenAPI document; some live routes are missing (requires JS)
 
-## Your day in mxr
+## Work with your mail
 
-- [Work through your day](https://mxr.sh/guides/your-day.md): desk, focus & reply, then Reading and Paper trail
-- [Clear the desk](https://mxr.sh/guides/desk.md): replies you owe, promises due, threads waiting, new mail from people; `mxr desk`, `mxr desk done`
-- [Reply to everyone you owe](https://mxr.sh/guides/focus-and-reply.md): focus mode, undo send, promises on send, `mxr commitments add`
-- [Clear Reading and Paper trail](https://mxr.sh/guides/reading-and-paper-trail.md): `mxr reading`, `mxr paper-trail`, `mxr why`, `mxr sender kind`, `mxr pin`, `mxr sweep`
+- [Work through your day](https://mxr.sh/guides/your-day.md): start on Now, then reply in Messages, act on To do, review Updates, read newsletters and retrieve sourced records
+- [Start from Now](https://mxr.sh/guides/now.md): choose from a short list across five modes; finish each item in its own mode
+- [Email modes](https://mxr.sh/guides/email-modes.md): five workflows over one mailbox, with separate completion actions; Inbox remains an arrival-order view
+- [Messages](https://mxr.sh/guides/messages.md): conversations with people, their source messages and reply actions
+- [To do](https://mxr.sh/guides/todo.md): dated actions tied to source email and reviewed before completion
+- [Updates](https://mxr.sh/guides/updates.md): notifications grouped by source; inspect the source email or create a task when needed
+- [Reading](https://mxr.sh/guides/reading.md): read chosen newsletters as an edition and keep items in Later
+- [Archive](https://mxr.sh/guides/archive.md): retrieve a sourced fact and open its supporting email or document; records do not archive provider mail
+- [Reply to everyone you owe](https://mxr.sh/guides/focus-and-reply.md): focus workflow, undo send, promises on send, `mxr commitments add`
+- [Reading and Paper trail](https://mxr.sh/guides/reading-and-paper-trail.md): compatibility guide to the older Paper trail sender-bundle view and its commands
 
 ## Working with mxr
 
@@ -48,13 +55,14 @@
 
 ## Agents and automation
 
-- [For agents](https://mxr.sh/guides/for-agents.md): three worked examples (newsletter prune, meeting prep, CI cleanup) with prompts, tool calls, and JSON
-- [Agent skill](https://mxr.sh/guides/agent-skill.md): install paths for Claude Code, Cursor, Continue, Aider, generic LLM
+- [For agents](https://mxr.sh/guides/for-agents.md): use local mail through CLI or first-party MCP; external agent models, account scope, and request-origin authority boundaries
+- [LLM features](https://mxr.sh/guides/llm-features.md): configure mxr-native features separately from an external agent model; per-feature overrides, destinations, and planned mode tiers
+- [Agent skill](https://mxr.sh/guides/agent-skill.md): install paths for Codex, Claude Code, Cursor, Continue, Aider, and custom prompts
 - [Automation contract](https://mxr.sh/guides/automation-contract.md): which commands return JSON, which support `--dry-run`, which accept piped IDs
 
 ## Concepts
 
-- [Why mxr](https://mxr.sh/guides/why-mxr.md): the design pitch
+- [Why mxr](https://mxr.sh/guides/why-mxr.md): why a shared local mail runtime complements an agent's provider connector
 - [Architecture](https://mxr.sh/guides/architecture.md): daemon-backed, provider-agnostic, IPC bucket model
 - [Glossary](https://mxr.sh/guides/glossary.md): plain-language definitions of the terms scattered across docs
 - [Security & privacy](https://mxr.sh/guides/security-and-privacy.md): what stays local, what doesn't

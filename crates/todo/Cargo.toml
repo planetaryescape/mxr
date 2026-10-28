@@ -21,6 +21,7 @@ chrono-tz = { workspace = true }
 once_cell = { workspace = true }
 psl = { workspace = true }
 regex = { workspace = true }
+msg-auth-status = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

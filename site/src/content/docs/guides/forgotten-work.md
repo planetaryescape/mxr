@@ -1,34 +1,52 @@
 ---
 title: Forgotten work
-description: Catch the commitments you make in sent mail and the replies you owe, ranked by your own cadence.
+description: Track promises, review requests and resolve work without losing its source.
 ---
 
-Two things make email feel like dropped balls: promises you typed into a draft and forgot about, and inbound threads that quietly aged past the speed at which you usually reply. mxr surfaces both, using only local data: extracted commitments from sent mail, and an "owed reply" lens that ranks the replies you owe people against how fast you usually answer them.
-
-:::tip[The one-line mental model]
-Commitments come **out** of your sent mail; the owed-reply lens looks at threads where you owe **in**. Both are deterministic ledgers: no LLM is required for the owed lens; the commitments extractor uses an LLM only to confirm a deterministic prefilter match.
-:::
-
-## Commitments: promises you made
-
-When `mxr send DRAFT_ID --check` (or any real send) runs the [safety pipeline](/guides/pre-send-safety/), it scans the draft body for explicit outgoing commitments: "I'll send the deck Friday", "I'll get back to you next week", "I can review by EOD Monday". Each match becomes a **candidate** scoped to the draft. On successful send, candidates promote into the canonical `contact_commitments` ledger and show up in `mxr commitments`.
+List open commitments, inspect their source messages, and resolve the work you have finished:
 
 ```bash
-# Before sending: see the candidates the pipeline extracted.
+mxr commitments --status open --format json
+mxr cat MESSAGE_ID
+```
+
+Stored asks track promises and requests in received and sent mail without a model. The owed-reply lens separately ranks unanswered directed requests against your usual reply cadence. Both use synced local mail.
+
+:::tip[The one-line mental model]
+Sent-mail asks use stored deterministic rules for owner promises and requests. Reply-only asks feed Your turn. Optional draft safety proposals are a separate feature; they do not decide automatic To do rows.
+:::
+
+<span id="commitments-promises-you-made"></span>
+
+## Track promises and requests
+
+After sync or an accepted send, stored asks project confirmed promises and requests into the commitment ledger. An owner promise is `yours`; a correspondent promise or an outgoing request is `theirs`. Waiting on uses these stored answers. Reply-only asks feed Your turn, while actionable instructions belong in [To do](/guides/todo/).
+
+Draft safety hints are separate. Preview them before sending:
+
+```bash
+# Inspect informational commitment hints in the safety report.
 mxr send DRAFT_ID --check --format json \
   | jq '.issues[] | select(.code == "commitment_candidate")'
 
-# After a real send: candidate is now in the ledger.
+# After sending: inspect the stored commitments for this account.
 mxr commitments --status open --format json
 ```
 
-What you get: a JSON array of rows like `{ id, contact_email, direction, what, by_when, evidence_msg_id, status, created_at }`. `direction` is `yours` (you owe work) or `theirs` (they owe you). Every row has a message id you can `mxr cat` to read the original. `by_when` is set only when the words that say when ("by Friday", "next week") appear in that message and the [time parser](/reference/time-phrases/) reads them, counted from when the message was written; mxr never takes a date from the model. Otherwise it is `null`.
+What you get: a JSON array with `id`, `account_id`, `email`, `thread_id`, `direction`, `status`, `who_owes`, `what`, `date_unverified`, `evidence_msg_id` and `extracted_at`. A dated row also has `by_when`; an undated row omits it. Use `evidence_msg_id` with `mxr cat` to read the source. `extracted_at` is an RFC3339 timestamp.
+
+Automatic deadlines come from unambiguous words in the message, interpreted relative to its date. A date you explicitly record also has authority. Older model-supplied dates can remain visible as unverified; they do not drive task timing. See [date provenance](#dates-mxr-shows-but-does-not-act-on).
+
+Optional model-backed draft extraction can also persist proposals, which promote after a successful send. A safety hint alone does not create a commitment.
 
 ### List, filter, and resolve
 
 ```bash
-# List everything still open across all contacts.
+# List open rows across contacts in the selected/default account.
 mxr commitments --status open --format json
+
+# Select another account explicitly:
+mxr commitments --account personal --status open --format json
 
 # Just one person:
 mxr commitments --contact alice@example.com --format json
@@ -38,14 +56,16 @@ mxr commitments resolve COMMITMENT_ID
 ```
 
 ```bash
-# Daily standup: what did I commit to this week that's still open?
+# Open rows recorded in the last seven days, sorted by due date.
 mxr commitments --status open --format json \
-  | jq -r '.[] | select(.created_at > (now - 7*24*3600))
-           | "\(.by_when // "unscheduled")\t\(.contact_email)\t\(.what)"' \
+  | jq -r '
+    def epoch: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
+    .[] | select((.extracted_at | epoch) > (now - 7*24*3600))
+    | [(.by_when // "unscheduled"), .email, .what] | @tsv' \
   | sort
 ```
 
-What you get: one row per open commitment from the last 7 days, tab-separated, sorted by due date. Pipe into `column -t` or paste straight into a standup doc.
+What you get: tab-separated due date, contact email and promise text. The filter uses the recorded `extracted_at`, not the deadline. Automatic asks use the source message date for this field; draft proposals use their extraction time. Pipe into `column -t` or paste into a standup doc.
 
 ### Dates mxr shows but does not act on
 
@@ -76,7 +96,7 @@ A phrase with more than one reading is saved without a date. That covers "fri 3"
 
 ### When the LLM is off
 
-The extractor's prefilter is pure regex on first-person commitment markers (`I'll`, `I will`, `I can`, `I'll send`, …) and due-phrases (weekday, date, `tomorrow`, `next week`, `by EOD`). When the LLM is disabled or unreachable, deterministic prefilter matches still surface as low-confidence candidates in the safety report; they just don't get promoted into the ledger automatically. Run with `--check` to see them and decide.
+Automatic stored asks and explicit `mxr commitments add` work with the LLM off. The safety report can still show informational regex hints for possible promises. Optional model-backed draft extraction produces no stored proposals when the model is disabled; those hints are not automatic ledger entries. Inspect them with:
 
 ```bash
 mxr send DRAFT_ID --check --no-llm --format json \
@@ -122,7 +142,7 @@ The default list only looks at conversations active in the last 30 days, like th
 
 ## In real life
 
-- **Friday standup prep:** `mxr commitments --status open --format json | jq '.[] | select(.direction == "yours") | {who: .contact_email, what, due: .by_when}'` lists every open promise across every contact, grouped by who's waiting.
+- **Friday standup prep:** `mxr commitments --status open --format json | jq '.[] | select(.direction == "yours") | {who: .email, what, due: .by_when}'` lists your open promises and the contact waiting for each, in the selected account.
 - **Inbox-zero focus session:** `mxr owed --since 3 --format ids | head -10 | xargs -I{} mxr thread {} --format json` pulls the top 10 overdue threads so you can read them in batch and reply down the list.
 - **Quarter-end review:** `mxr commitments --status open --format json | jq '[.[] | select(.direction == "theirs")] | length'` counts how many things people owe you that have been sitting open.
 - **Pre-send sanity:** before queuing 8 replies in a row, check `mxr commitments --contact alice@example.com` so you don't promise the same deck twice.
@@ -148,5 +168,7 @@ ARCHIVE, DELEGATE."
 - [Pre-send safety](/guides/pre-send-safety/): where the commitment candidates are extracted
 - [Automated follow-ups](/guides/automated-followups/): reminders and send-later for the *outbound* side
 - [Search workflow](/guides/search/): the `is:owed-reply` operator
-- [LLM features](/guides/llm-features/): configure the model used for commitment extraction
+- [To do](/guides/todo/): inspect and correct tasks from stored asks
+- [LLM features](/guides/llm-features/): configure optional model-backed draft proposals
+- [Review later evidence](/guides/todo-resolution/): completion checks after new mail arrives
 - [CLI: `mxr commitments`](/reference/cli/commitments/), [`mxr owed`](/reference/cli/owed/), [`mxr send`](/reference/cli/send/)

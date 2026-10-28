@@ -6,6 +6,11 @@ For verified implementation gaps, shipped features that these plans understate,
 and docs-site drift, see the [2026-10-20 implementation audit](../research/blueprint-implementation-audit-2026-10-20.md).
 It distinguishes missing code from historical designs and explicitly deferred work.
 
+For the proposed docs-website refresh around mxr as a local mail runtime, use the
+[website blueprint](../website-refresh/blueprint/README.md). It covers positioning,
+the connector distinction, all authored pages, design and delivery; it preserves
+this product blueprint as design history.
+
 ## Document Index
 
 | # | Document | What it covers |
@@ -45,7 +50,7 @@ It distinguishes missing code from historical designs and explicitly deferred wo
 | 31 | [Design open questions](31-design-open-questions.md) | Spikes S1-S4 and BK's product questions Q1-Q6 for the design work |
 | 32 | [Classifier and attention](32-classifier.md) | One design for understanding each email (five questions, one stored assessment, every email a home), Now as an attention scheduler across modes, teaching versus action rules, and the label, scenario-corpus and eval loop that improves both (draft, not built) |
 | 33 | [Account identity](33-account-identity.md) | One colour and tag per account, owned by the daemon and drawn the same way in every row of the web app, TUI and CLI while a view mixes accounts (D147) |
-| 34 | [The composer](34-composer.md) | Writing mail as one subsystem: the draft, `ComposeAssist` and the proof, Draft for me that finishes what you typed, humanizer 3.1 as a catalogue measured against your own mail, one drafting model setting with a pick per draft, the compose corpus and eval, and the page-and-proof compose screen across web, TUI, Raycast and CLI (D152-D161; proposal, not built) |
+| 34 | [The composer](34-composer.md) | Writing mail as one subsystem: the draft, `ComposeAssist` and the proof, Draft for me that finishes what you typed, humanizer 3.1, one drafting model setting with a pick per draft, the compose corpus and eval, and the page-and-proof compose screen across web, TUI, Raycast and CLI (C0-C4 shipped; C5 planned) |
 | 35 | [Keyboard](35-keyboard.md) | Keys as one grammar of verbs: the verb table, Shift and `g` rules, one context tree for both clients, overlay grammar, one definition in `crates/keymap` served by `mxr keys`, accessibility and layout rules, and the K1-K4 rungs (D163-D173; draft, not built) |
 | 35r | Keyboard research | [How good shortcut systems are designed, and the audit of mxr's keys](../research/keyboard-shortcuts.md) |
 | 36 | [Compose design](36-compose-design.md) | The compose screens drawn: reply under the message, Draft for me as one line that returns a proof, the new-message sheet, the model menu, the Messages filter bar, the TUI review and Raycast proof, keys, motion and the checks a build must pass (D161, D162; proposal, not built) |

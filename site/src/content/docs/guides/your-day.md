@@ -4,7 +4,8 @@ description: Start on Now, answer people, act on tasks, and clear the digest.
 ---
 
 Open Now to choose what needs you, then work in the mode that holds it.
-Use the same mailbox from the web app, terminal or CLI.
+The web app, TUI and CLI use the same local mailbox through the daemon; each
+mode keeps its own work and completion action.
 
 ## 1. Start on Now
 
@@ -14,7 +15,9 @@ mxr web
 ```
 
 In the web app or TUI, press `g h` for Now. Open a person or task to continue
-in its mode. Now caps each section instead of showing the whole inbox.
+in its mode. Now is a starting view, not a sixth mode with its own Done
+action. Finish the item where it lives. Now caps each section instead of
+showing the whole inbox.
 On the web, expand the arrivals line only when you want the sorting details.
 [Start from Now](/guides/now/) explains the sections and counts.
 
@@ -34,7 +37,9 @@ mxr modes done THREAD_ID --mode messages --dry-run
 mxr modes done THREAD_ID --mode messages
 ```
 
-Other modes can still hold work from the same conversation.
+Done here clears the Messages topic; another mode can still hold work from
+the same conversation. The preview shows whether the last mode will also
+archive the provider email under the current setting.
 [Messages](/guides/messages/) covers replies, acknowledgements and retained
 quoted context. [Focus & reply](/guides/focus-and-reply/) works through a reply
 queue one conversation at a time.
@@ -66,7 +71,8 @@ mxr updates let-go
 Press `g u` to read the digest. Check `Needs a look`, then `Changed`; routine
 mail is grouped behind them. Press `t` on an update to create a to-do when
 you want to act on it. A warning in Updates is a suggestion, not proof that
-a task was created.
+a task was created. Let go of the reviewed digest from Updates; its preview
+selects the exact messages, and a message held by another mode stays there.
 
 For a package, read the latest state mxr found in its email and open that
 email for context. Use the carrier's tracking service when you need live
@@ -91,7 +97,8 @@ mxr records ask "lisbon booking ref"
 mxr categories --format json
 ```
 
-Press `g e` to search Archive's filed records and inspect a field's source.
+Press `g e` to search Archive's filed records and inspect a field's source
+email or document. Filing a record does not archive its email at the provider.
 [Archive](/guides/archive/) also shows subscriptions and annual renewal tasks.
 Use [personal categories](/guides/personal-categories/) for your own groups,
 such as Travel, across the modes. Preview category assignments and rules

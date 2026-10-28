@@ -1,30 +1,38 @@
 ---
 title: Why mxr
-description: Decide whether mxr fits your email workflow.
+description: Compare an agent connector with a local mail runtime for synced history.
 ---
 
-Use mxr when you want your whole mail history on your own machine, with
-one local runtime behind the TUI, CLI, web app, scripts and agents, and a
-mail client that sorts what needs you from what merely arrived.
+mxr keeps a synced mailbox on your computer. Search your history, analyse it
+with a script, or let your agent work with it. You, your tools and mxr's own
+clients all use the same local mailbox.
+
+A connector may be all you need to use Gmail inside your agent. Choose mxr
+when you also want the synced mailbox on your computer, available to your own
+tools and to clients you can use yourself.
+
+The daemon handles sync, storage, search and mail operations. The web app,
+terminal interface, CLI and agent interfaces call it. Build another client
+without rebuilding the mail engine.
+
+Synced messages and locally cached content can be read from this machine.
+Initial sync can take time; sync, sending, provider-backed changes, uncached
+attachments, remote articles, and configured model endpoints may use the
+network. The demo uses isolated synthetic mail.
+
+After [installing mxr](/getting-started/install/), try it with synthetic mail:
 
 ```bash
 mxr demo
-mxr desk
-mxr search "is:unread" --format json
-mxr web
+mxr subscriptions --rank --format json
 ```
 
-What you get: an isolated demo inbox, the desk's list of replies you owe
-and promises due, a machine-readable search result, and the browser UI
-served by the local bridge.
+The result is a limited candidate set. By default the query returns up to
+200 candidates; `--rank` sorts those results using the current READ flags.
+`opened_count` is the number currently marked READ, not a count of tracked
+opens.
 
-## mxr keeps your mail local and works it by what you do with it
-
-mxr is a local mail runtime. It syncs provider mail into SQLite, indexes
-it locally, and exposes the same daemon-backed state through human and
-machine interfaces. Because the whole history is on your disk, search,
-analytics and an agent's questions run against it without a provider
-round trip.
+## Five modes put mail into your day
 
 On top of that store, mxr treats email as five jobs: conversations with
 people, things to do, updates to glance at, reading you chose, and records

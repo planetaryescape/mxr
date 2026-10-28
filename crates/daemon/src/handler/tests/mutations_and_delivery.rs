@@ -1337,6 +1337,14 @@ async fn dispatch_prepare_forward() {
                 !context.forwarded_content.is_empty(),
                 "forwarded_content should be non-empty"
             );
+            assert!(
+                context.forwarded_content.contains("From:")
+                    && context.forwarded_content.contains("Date:")
+                    && context.forwarded_content.contains("Subject:")
+                    && context.forwarded_content.contains("To:"),
+                "forward must include original header context, got {:?}",
+                context.forwarded_content
+            );
         }
         other => panic!("Expected ForwardContext, got {other:?}"),
     }
@@ -1436,7 +1444,7 @@ async fn get_thread_includes_message_label_provider_ids() {
 }
 
 #[tokio::test]
-async fn list_envelopes_includes_message_label_provider_ids() {
+async fn envelope_pages_and_id_lookups_include_message_label_provider_ids() {
     let state = Arc::new(AppState::in_memory().await.unwrap());
     let id = sync_and_get_first_id(&state).await;
 
@@ -1463,32 +1471,45 @@ async fn list_envelopes_includes_message_label_provider_ids() {
         .await
         .unwrap();
 
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 2,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListEnvelopes {
+    for request in [
+        Request::ListEnvelopes {
             label_id: None,
             account_id: None,
             limit: 200,
             offset: 0,
-        }),
-    };
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Ok {
-            data: ResponseData::Envelopes { envelopes },
-        }) => {
-            let envelope = envelopes
-                .into_iter()
-                .find(|envelope| envelope.id == id)
-                .unwrap();
-            assert!(envelope
-                .label_provider_ids
-                .iter()
-                .any(|provider_id| provider_id == &label.provider_id));
+        },
+        Request::ListEnvelopes {
+            label_id: Some(label.id.clone()),
+            account_id: None,
+            limit: 200,
+            offset: 0,
+        },
+        Request::ListEnvelopesByIds {
+            message_ids: vec![id.clone(), mxr_core::MessageId::new()],
+        },
+    ] {
+        let msg = IpcMessage {
+            expected_workspace: None,
+            id: 2,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(request),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Envelopes { envelopes },
+            }) => {
+                let envelope = envelopes
+                    .into_iter()
+                    .find(|envelope| envelope.id == id)
+                    .unwrap();
+                assert!(envelope
+                    .label_provider_ids
+                    .iter()
+                    .any(|provider_id| provider_id == &label.provider_id));
+            }
+            other => panic!("Expected Envelopes response, got {other:?}"),
         }
-        other => panic!("Expected Envelopes response, got {other:?}"),
     }
 }
 
@@ -1637,6 +1658,8 @@ fn update_llm_config_persists_and_rebuilds_provider_status() {
                             enabled: true,
                             base_url: "http://127.0.0.1:11434/v1".into(),
                             model: "local-test-model".into(),
+                            compose_model: None,
+                            models: Some(vec![]),
                             api_key_env: "MXR_TEST_LLM_KEY".into(),
                             context_window: 4096,
                             request_timeout_secs: 30,
@@ -1762,37 +1785,67 @@ fn update_notification_chimes_persists_and_updates_daemon_snapshot() {
     );
 }
 
-#[tokio::test]
-async fn update_llm_config_rejects_blank_model() {
-    let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
-    let msg = IpcMessage {
-        expected_workspace: None,
-        id: 1,
-        source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::UpdateLlmConfig {
-            config: Box::new(mxr_protocol::LlmConfigData {
-                enabled: true,
-                base_url: "http://127.0.0.1:11434/v1".into(),
-                model: "  ".into(),
-                api_key_env: String::new(),
-                context_window: 4096,
-                request_timeout_secs: 30,
-                allow_cloud_relationship_data: false,
-                overrides: None,
-            }),
-        }),
-    };
+#[test]
+fn update_llm_config_rejects_blank_model() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let config_dir = temp_dir.path().join("config");
+    let data_dir = temp_dir.path().join("data");
+    let socket_path = temp_dir.path().join("mxr.sock");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    temp_env::with_vars(
+        [
+            ("MXR_CONFIG_DIR", Some(config_dir)),
+            ("MXR_DATA_DIR", Some(data_dir)),
+            ("MXR_SOCKET_PATH", Some(socket_path)),
+        ],
+        || {
+            runtime.block_on(async {
+                mxr_config::save_config(&mxr_config::MxrConfig::default())
+                    .expect("seed isolated config");
+                let disk_before =
+                    std::fs::read(mxr_config::config_file_path()).expect("seeded config");
+                let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+                let msg = IpcMessage {
+                    expected_workspace: None,
+                    id: 1,
+                    source: ::mxr_protocol::ClientKind::default(),
+                    payload: IpcPayload::Request(Request::UpdateLlmConfig {
+                        config: Box::new(mxr_protocol::LlmConfigData {
+                            enabled: true,
+                            base_url: "http://127.0.0.1:11434/v1".into(),
+                            model: "  ".into(),
+                            compose_model: None,
+                            models: Some(vec![]),
+                            api_key_env: String::new(),
+                            context_window: 4096,
+                            request_timeout_secs: 30,
+                            allow_cloud_relationship_data: false,
+                            overrides: None,
+                        }),
+                    }),
+                };
 
-    let resp = handle_request(&state, &msg).await;
-    match resp.payload {
-        IpcPayload::Response(Response::Error { message, .. }) => {
-            assert!(message.contains("llm.model must not be empty"));
-        }
-        other => panic!("Expected error response, got {other:?}"),
-    }
-    assert_eq!(
-        state.config_snapshot().llm.model,
-        mxr_config::LlmConfig::default().model
+                let resp = handle_request(&state, &msg).await;
+                match resp.payload {
+                    IpcPayload::Response(Response::Error { message, .. }) => {
+                        assert!(message.contains("llm.model must not be empty"));
+                    }
+                    other => panic!("Expected error response, got {other:?}"),
+                }
+                assert_eq!(
+                    state.config_snapshot().llm.model,
+                    mxr_config::LlmConfig::default().model
+                );
+                assert_eq!(
+                    std::fs::read(mxr_config::config_file_path()).expect("unchanged config"),
+                    disk_before
+                );
+            });
+        },
     );
 }
 
@@ -2200,9 +2253,19 @@ async fn dispatch_send_draft_preserves_keychain_repair_error() {
     };
     let resp = handle_request(&state, &msg).await;
     match resp.payload {
-        IpcPayload::Response(Response::Error { message, .. }) => {
-            assert!(message.contains("consulting-smtp"));
-            assert!(message.contains("mxr accounts repair"));
+        IpcPayload::Response(Response::Error {
+            message,
+            code,
+            retryable,
+            details,
+            ..
+        }) => {
+            assert!(message.contains("consulting-smtp"), "{message}");
+            assert!(message.contains("mxr accounts repair"), "{message}");
+            assert!(message.contains("do not resend"), "{message}");
+            assert_eq!(code, "send_outcome_unknown");
+            assert!(!retryable);
+            assert_eq!(details.unwrap()["outcome"]["state"], "unknown");
         }
         other => panic!("Expected send error, got {other:?}"),
     }
@@ -3164,6 +3227,454 @@ async fn prepare_reply_ignores_a_synthesized_name_delivered_to_and_defaults_to_p
         "user@example.com",
         "a synthesized-name Delivered-To must not steer the From"
     );
+}
+
+#[tokio::test]
+async fn ensure_reply_draft_reuses_one_canonical_draft_concurrently_and_preserves_edits() {
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    let message_id =
+        seed_reply_source_with_raw_headers(&state, &account_id, "ensure-reply", &[]).await;
+    let original = state
+        .store
+        .get_envelope(&message_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let other = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .account_id(account_id.clone())
+        .thread_id(original.thread_id)
+        .provider_id("ensure-reply-later")
+        .subject("Re: Steer me")
+        .sender_address("Sender", "sender@example.com")
+        .recipient_address(Some("External"), "external@example.com")
+        .build();
+    let other_message_id = other.id.clone();
+    state.store.upsert_envelope(&other).await.unwrap();
+    let state = Arc::new(state);
+    let preview = handle_request(
+        &state,
+        &from_request(Request::EnsureReplyDraft {
+            message_id: message_id.clone(),
+            reply_all: false,
+            dry_run: true,
+        }),
+    )
+    .await;
+    assert!(matches!(
+        preview.payload,
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { .. }
+        })
+    ));
+    assert!(state
+        .store
+        .list_drafts(&account_id)
+        .await
+        .unwrap()
+        .is_empty());
+    let mut joins = Vec::new();
+    for index in 0..8 {
+        let state = state.clone();
+        let message_id = if index % 2 == 0 {
+            message_id.clone()
+        } else {
+            other_message_id.clone()
+        };
+        joins.push(tokio::spawn(async move {
+            let result = handle_request(
+                &state,
+                &from_request(Request::EnsureReplyDraft {
+                    message_id,
+                    reply_all: false,
+                    dry_run: false,
+                }),
+            )
+            .await;
+            match result.payload {
+                IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Draft { draft },
+                }) => draft.id,
+                other => panic!("expected reply draft, got {other:?}"),
+            }
+        }));
+    }
+    let mut ids = Vec::new();
+    for join in joins {
+        ids.push(join.await.unwrap());
+    }
+    assert!(ids.iter().all(|id| *id == ids[0]));
+    let drafts = state.store.list_drafts(&account_id).await.unwrap();
+    assert_eq!(drafts.len(), 1);
+    assert_eq!(drafts[0].content.analysis_text(), "");
+    let mut edited = drafts[0].clone();
+    edited.content = mxr_core::types::DraftContent::markdown("preserve existing reply text");
+    edited
+        .attachments
+        .push(std::path::PathBuf::from("reply-attachment.txt"));
+    edited.to.push(mxr_core::types::Address {
+        name: Some("Custom".into()),
+        email: "custom@example.com".into(),
+    });
+    let saved = handle_request(
+        &state,
+        &from_request(Request::UpdateDraft { draft: edited }),
+    )
+    .await;
+    assert!(matches!(
+        saved.payload,
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { .. }
+        })
+    ));
+    let resumed = handle_request(
+        &state,
+        &from_request(Request::EnsureReplyDraft {
+            message_id: other_message_id,
+            reply_all: true,
+            dry_run: false,
+        }),
+    )
+    .await;
+    let resumed = match resumed.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { draft },
+        }) => draft,
+        other => panic!("expected resumed reply, got {other:?}"),
+    };
+    assert_eq!(resumed.id, drafts[0].id);
+    assert_eq!(
+        resumed.content.analysis_text(),
+        "preserve existing reply text"
+    );
+    assert_eq!(
+        resumed.attachments,
+        [std::path::PathBuf::from("reply-attachment.txt")]
+    );
+    assert!(resumed.to.iter().any(|a| a.email == "custom@example.com"));
+}
+
+#[tokio::test]
+async fn reply_audience_preview_is_read_only_and_apply_preserves_body_custom_recipients_and_bcc() {
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    let message_id =
+        seed_reply_source_with_raw_headers(&state, &account_id, "audience-reply", &[]).await;
+    let mut duplicate = state
+        .store
+        .get_envelope(&message_id)
+        .await
+        .unwrap()
+        .unwrap();
+    duplicate.id = mxr_core::MessageId::new();
+    duplicate.provider_id = "duplicate-audience-source".into();
+    state.store.upsert_envelope(&duplicate).await.unwrap();
+    let state = Arc::new(state);
+    let created = handle_request(
+        &state,
+        &from_request(Request::EnsureReplyDraft {
+            message_id,
+            reply_all: false,
+            dry_run: false,
+        }),
+    )
+    .await;
+    let mut draft = match created.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { draft },
+        }) => draft,
+        other => panic!("expected reply draft, got {other:?}"),
+    };
+    draft.content = mxr_core::types::DraftContent::markdown("keep this body byte-for-byte");
+    draft.to.push(mxr_core::types::Address {
+        name: Some("Custom".into()),
+        email: "custom@example.com".into(),
+    });
+    draft.bcc.push(mxr_core::types::Address {
+        name: None,
+        email: "blind@example.com".into(),
+    });
+    draft.bcc.push(mxr_core::types::Address {
+        name: None,
+        email: "sender@example.com".into(),
+    });
+    let saved = handle_request(
+        &state,
+        &from_request(Request::UpdateDraft {
+            draft: draft.clone(),
+        }),
+    )
+    .await;
+    let draft = match saved.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { draft },
+        }) => draft,
+        other => panic!("expected saved draft, got {other:?}"),
+    };
+    let revision = draft.revision.unwrap();
+    let preview = handle_request(
+        &state,
+        &from_request(Request::SetReplyDraftAudience {
+            draft_id: draft.id.clone(),
+            reply_all: true,
+            expected_revision: revision,
+            dry_run: true,
+        }),
+    )
+    .await;
+    let preview = match preview.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { draft },
+        }) => draft,
+        other => panic!("expected audience preview, got {other:?}"),
+    };
+    assert_eq!(
+        preview.content.analysis_text(),
+        "keep this body byte-for-byte"
+    );
+    assert!(preview.to.iter().any(|a| a.email == "custom@example.com"));
+    assert_eq!(preview.bcc[0].email, "blind@example.com");
+    assert!(!preview.to.iter().any(|a| a.email == "sender@example.com"));
+    assert!(preview.bcc.iter().any(|a| a.email == "sender@example.com"));
+    let unchanged = state.store.get_draft(&draft.id).await.unwrap().unwrap();
+    assert_eq!(unchanged.revision, Some(revision));
+    assert_eq!(unchanged.intent, mxr_core::DraftIntent::Reply);
+
+    let applied = handle_request(
+        &state,
+        &from_request(Request::SetReplyDraftAudience {
+            draft_id: draft.id.clone(),
+            reply_all: true,
+            expected_revision: revision,
+            dry_run: false,
+        }),
+    )
+    .await;
+    let applied = match applied.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { draft },
+        }) => draft,
+        other => panic!("expected audience update, got {other:?}"),
+    };
+    assert_eq!(
+        applied.content.analysis_text(),
+        "keep this body byte-for-byte"
+    );
+    assert!(applied.to.iter().any(|a| a.email == "custom@example.com"));
+    assert_eq!(applied.bcc[0].email, "blind@example.com");
+    assert!(!applied.to.iter().any(|a| a.email == "sender@example.com"));
+    assert!(applied.bcc.iter().any(|a| a.email == "sender@example.com"));
+    assert_eq!(applied.intent, mxr_core::DraftIntent::ReplyAll);
+    assert!(applied.revision.unwrap() > revision);
+    duplicate.thread_id = mxr_core::ThreadId::new();
+    state.store.upsert_envelope(&duplicate).await.unwrap();
+    let ambiguous = handle_request(
+        &state,
+        &from_request(Request::SetReplyDraftAudience {
+            draft_id: applied.id,
+            reply_all: false,
+            expected_revision: applied.revision.unwrap(),
+            dry_run: false,
+        }),
+    )
+    .await;
+    assert!(matches!(
+        ambiguous.payload,
+        IpcPayload::Response(Response::Error { .. })
+    ));
+}
+
+#[tokio::test]
+async fn reply_audience_rejects_stale_revision_without_overwriting_later_body() {
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    let message_id =
+        seed_reply_source_with_raw_headers(&state, &account_id, "stale-audience", &[]).await;
+    let state = Arc::new(state);
+    let created = handle_request(
+        &state,
+        &from_request(Request::EnsureReplyDraft {
+            message_id,
+            reply_all: false,
+            dry_run: false,
+        }),
+    )
+    .await;
+    let mut draft = match created.payload {
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { draft },
+        }) => draft,
+        other => panic!("expected reply draft, got {other:?}"),
+    };
+    let stale_revision = draft.revision.unwrap();
+    draft.content = mxr_core::types::DraftContent::markdown("later saved body");
+    assert!(matches!(
+        handle_request(
+            &state,
+            &from_request(Request::UpdateDraft {
+                draft: draft.clone()
+            })
+        )
+        .await
+        .payload,
+        IpcPayload::Response(Response::Ok {
+            data: ResponseData::Draft { .. }
+        })
+    ));
+    let result = handle_request(
+        &state,
+        &from_request(Request::SetReplyDraftAudience {
+            draft_id: draft.id.clone(),
+            reply_all: true,
+            expected_revision: stale_revision,
+            dry_run: false,
+        }),
+    )
+    .await;
+    assert!(matches!(
+        result.payload,
+        IpcPayload::Response(Response::Error { .. })
+    ));
+    let stored = state.store.get_draft(&draft.id).await.unwrap().unwrap();
+    assert_eq!(stored.content.analysis_text(), "later saved body");
+    assert_eq!(stored.intent, mxr_core::DraftIntent::Reply);
+}
+
+#[tokio::test]
+async fn ensured_replies_are_independent_across_threads_and_accounts() {
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    let other_account_id = mxr_core::AccountId::new();
+    state
+        .store
+        .insert_account(&crate::test_fixtures::test_account_with_id(
+            other_account_id.clone(),
+        ))
+        .await
+        .unwrap();
+    let state = Arc::new(state);
+    let thread_a = mxr_core::ThreadId::new();
+    let thread_b = mxr_core::ThreadId::new();
+    let thread_c = mxr_core::ThreadId::new();
+    let make_source = |account_id: mxr_core::AccountId,
+                       thread_id: mxr_core::ThreadId,
+                       provider_id: &'static str| {
+        crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .thread_id(thread_id)
+            .provider_id(provider_id)
+            .message_id_header(Some(format!("<{provider_id}@example.com>")))
+            .subject("Separate conversation")
+            .sender_address("Sender", "sender@example.com")
+            .recipient_address(Some("External"), "external@example.com")
+            .build()
+    };
+    let sources = [
+        (
+            make_source(account_id.clone(), thread_a, "scope-account-a"),
+            account_id.clone(),
+        ),
+        (
+            make_source(account_id.clone(), thread_b, "scope-thread-b"),
+            account_id.clone(),
+        ),
+        (
+            make_source(other_account_id.clone(), thread_c, "scope-other-account"),
+            other_account_id,
+        ),
+    ];
+    let mut ids = Vec::new();
+    for (source, expected_account) in sources {
+        let message_id = source.id.clone();
+        state.store.upsert_envelope(&source).await.unwrap();
+        assert_eq!(
+            state
+                .store
+                .get_envelope(&message_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .account_id,
+            expected_account,
+            "fixture message must stay in its seeded account"
+        );
+        match handle_request(
+            &state,
+            &from_request(Request::EnsureReplyDraft {
+                message_id,
+                reply_all: false,
+                dry_run: false,
+            }),
+        )
+        .await
+        .payload
+        {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Draft { draft },
+            }) => {
+                assert_eq!(draft.account_id, expected_account);
+                ids.push(draft.id);
+            }
+            other => panic!("expected scoped reply draft, got {other:?}"),
+        }
+    }
+    assert_eq!(ids.len(), 3);
+    assert_ne!(ids[0], ids[1]);
+    assert_ne!(ids[0], ids[2]);
+    assert_ne!(ids[1], ids[2]);
+}
+
+#[tokio::test]
+async fn ensure_reply_draft_never_reuses_sent_scheduled_or_sending_replies() {
+    let (state, _fake) = AppState::in_memory_with_fake().await.unwrap();
+    let account_id = state.default_account_id_opt().unwrap();
+    let message_id =
+        seed_reply_source_with_raw_headers(&state, &account_id, "reply-lifecycle-status", &[])
+            .await;
+    let state = Arc::new(state);
+    let ensure = |state: Arc<AppState>, message_id: mxr_core::MessageId| async move {
+        match handle_request(
+            &state,
+            &from_request(Request::EnsureReplyDraft {
+                message_id,
+                reply_all: false,
+                dry_run: false,
+            }),
+        )
+        .await
+        .payload
+        {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Draft { draft },
+            }) => draft,
+            other => panic!("expected reply draft, got {other:?}"),
+        }
+    };
+    let sent = ensure(state.clone(), message_id.clone()).await;
+    state
+        .store
+        .update_draft_status(&sent.id, mxr_core::DraftStatus::Sent)
+        .await
+        .unwrap();
+    let scheduled = ensure(state.clone(), message_id.clone()).await;
+    assert_ne!(sent.id, scheduled.id);
+    state
+        .store
+        .schedule_send(
+            &scheduled.id,
+            chrono::Utc::now() + chrono::Duration::hours(1),
+        )
+        .await
+        .unwrap();
+    let sending = ensure(state.clone(), message_id.clone()).await;
+    assert_ne!(scheduled.id, sending.id);
+    state
+        .store
+        .update_draft_status(&sending.id, mxr_core::DraftStatus::Sending)
+        .await
+        .unwrap();
+    let fresh = ensure(state, message_id).await;
+    assert_ne!(sending.id, fresh.id);
 }
 
 async fn purge(

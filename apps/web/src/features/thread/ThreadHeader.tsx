@@ -31,6 +31,7 @@ import {
 
 import { PageFrame } from "@/components/PageFrame";
 import { Segmented } from "@/components/Segmented";
+import { definedShortcut } from "@/lib/actions/definition";
 import { ReaderToolbar, TOOL_BUTTON_CLASS, ToolbarRule, ToolButton } from "@/components/ToolButton";
 import { Button } from "@/components/ui/button";
 import {
@@ -185,6 +186,10 @@ function ViewSwitch({ view }: { view: ReaderView }) {
       label="Message view"
       value={view}
       options={VIEWS.map((option) => [option.id, option.label])}
+      keys={{
+        formatted: definedShortcut("reader.view-html"),
+        reader: definedShortcut("reader.view-reader"),
+      }}
       // Choosing the current view is a no-op; the key commands toggle.
       onChange={(id) => {
         const option = VIEWS.find((candidate) => candidate.id === id);

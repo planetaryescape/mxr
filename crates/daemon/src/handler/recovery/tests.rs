@@ -126,6 +126,8 @@ async fn originals_stay_held_new_preparation_is_idempotent_and_preview_validates
         account_id: draft.account_id.clone(),
         filename: "safe.txt".into(),
         mime_type: "text/plain".into(),
+        content_id: None,
+        content_location: None,
         length_bytes: bytes.len() as u64,
         sha256: sha2::Sha256::digest(bytes)
             .iter()

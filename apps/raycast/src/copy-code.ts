@@ -1,6 +1,6 @@
 import { Clipboard, showHUD } from "@raycast/api";
 import { BridgeError } from "./bridge/client";
-import { codeSender, getCodes } from "./bridge/mail";
+import { codeSender, getFreshCodes } from "./bridge/mail";
 import { message } from "./components/previewed";
 import { when } from "./components/time";
 
@@ -11,7 +11,8 @@ import { when } from "./components/time";
  */
 export default async function CopyLatestCode() {
   try {
-    const codes = await getCodes();
+    await showHUD("Refreshing mail…");
+    const codes = await getFreshCodes();
     const latest = codes.find((code) => code.current);
     if (!latest) {
       const last = codes[0];
@@ -27,7 +28,7 @@ export default async function CopyLatestCode() {
   } catch (failure) {
     await showHUD(
       failure instanceof BridgeError && failure.status === 404
-        ? "Update mxr to 0.6.138 or later to copy codes"
+        ? "Update mxr to the latest version to refresh mail and copy codes"
         : message(failure),
     );
   }

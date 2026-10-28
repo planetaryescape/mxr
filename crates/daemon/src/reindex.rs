@@ -6,6 +6,7 @@
     )
 )]
 
+use mxr_core::id::MessageId;
 use mxr_core::MxrError;
 use mxr_search::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
 use mxr_store::Store;
@@ -18,10 +19,24 @@ pub enum ReindexProgress {
     Complete { indexed: u32 },
 }
 
+const REINDEX_BATCH_SIZE: u32 = 500;
+
 /// Drop and rebuild the Tantivy index from all messages in SQLite.
 pub async fn reindex(
     search: &SearchServiceHandle,
     store: &Store,
+    progress: impl FnMut(ReindexProgress),
+) -> Result<u32, MxrError> {
+    reindex_in_batches(search, store, REINDEX_BATCH_SIZE, progress).await
+}
+
+/// Pages by primary key, not by offset. An offset page re-sorts the table and
+/// walks past every earlier row, so the rebuild got slower as it went. A key
+/// seek costs the same at the start and the end of the mailbox.
+async fn reindex_in_batches(
+    search: &SearchServiceHandle,
+    store: &Store,
+    batch_size: u32,
     mut progress: impl FnMut(ReindexProgress),
 ) -> Result<u32, MxrError> {
     // Searches answer from SQLite while the index is wiped and refilled,
@@ -36,36 +51,35 @@ pub async fn reindex(
     // Clear existing index
     search.clear().await?;
 
-    let batch_size: u32 = 500;
     let mut indexed: u32 = 0;
-    let mut offset: u32 = 0;
+    let mut after: Option<MessageId> = None;
 
     loop {
         let envelopes = store
-            .list_all_envelopes_paginated(batch_size, offset)
+            .list_envelopes_for_reindex(after.as_ref(), batch_size)
+            .await
+            .map_err(|e| MxrError::Store(e.to_string()))?;
+        let Some(last) = envelopes.last() else {
+            break;
+        };
+        after = Some(last.id.clone());
+
+        let ids: Vec<MessageId> = envelopes.iter().map(|env| env.id.clone()).collect();
+        let mut bodies = store
+            .bodies_for_messages(&ids)
+            .await
+            .map_err(|e| MxrError::Store(e.to_string()))?;
+        let reply_later = store
+            .reply_later_message_ids(&ids)
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?;
 
-        if envelopes.is_empty() {
-            break;
-        }
-
         let mut batch = SearchUpdateBatch::default();
-        for env in &envelopes {
-            // Fetch body for full-text indexing
-            let body = store
-                .get_body(&env.id)
-                .await
-                .map_err(|e| MxrError::Store(e.to_string()))?;
-            let reply_later = store
-                .is_reply_later(&env.id)
-                .await
-                .map_err(|e| MxrError::Store(e.to_string()))?;
-
+        for env in envelopes {
             batch.entries.push(SearchIndexEntry {
-                envelope: env.clone(),
-                body,
-                reply_later,
+                body: bodies.remove(&env.id),
+                reply_later: reply_later.contains(&env.id),
+                envelope: env,
             });
 
             indexed += 1;
@@ -74,8 +88,6 @@ pub async fn reindex(
             }
         }
         search.apply_batch(batch).await?;
-
-        offset += batch_size;
     }
 
     progress(ReindexProgress::Complete { indexed });
@@ -123,6 +135,28 @@ mod tests {
 
         assert_eq!(result, 0);
         assert!(progress_calls.len() >= 2); // Starting + Complete
+    }
+
+    #[tokio::test]
+    async fn reindex_across_many_batches_indexes_every_message_once() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+        let total = state.store.count_all_messages().await.unwrap();
+        // 55 fake messages in batches of 7: eight full-or-partial pages, with
+        // the last page short.
+        assert!(total > 7 * 7, "need enough messages for several batches");
+
+        state.search.clear().await.unwrap();
+        let indexed = reindex_in_batches(&state.search, &state.store, 7, |_| {})
+            .await
+            .unwrap();
+
+        assert_eq!(indexed, total);
+        assert_eq!(state.search.num_docs().await.unwrap(), total as u64);
     }
 
     #[tokio::test]

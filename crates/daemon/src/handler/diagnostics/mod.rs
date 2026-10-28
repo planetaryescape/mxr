@@ -577,17 +577,18 @@ pub(crate) async fn refresh_contacts(state: &AppState) -> HandlerResult {
 ///
 /// Single-pass, paginated; avoids loading every message into memory.
 pub(crate) async fn recompute_link_counts(state: &AppState) -> HandlerResult {
-    let mut offset: u32 = 0;
+    let mut after: Option<MessageId> = None;
     let page_size: u32 = 200;
     let mut updated: u32 = 0;
     loop {
         let envelopes = state
             .store
-            .list_all_envelopes_paginated(page_size, offset)
+            .list_envelopes_for_reindex(after.as_ref(), page_size)
             .await?;
         if envelopes.is_empty() {
             break;
         }
+        after = envelopes.last().map(|envelope| envelope.id.clone());
         for envelope in &envelopes {
             let body = match state.store.get_body(&envelope.id).await {
                 Ok(Some(body)) => body,
@@ -611,7 +612,6 @@ pub(crate) async fn recompute_link_counts(state: &AppState) -> HandlerResult {
         if (envelopes.len() as u32) < page_size {
             break;
         }
-        offset += page_size;
     }
     tracing::info!(updated, "recompute_link_counts complete");
     Ok(ResponseData::Ack)

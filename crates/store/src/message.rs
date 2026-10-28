@@ -741,6 +741,51 @@ impl super::Store {
             .collect()
     }
 
+    /// Keyset page of every envelope, ordered by id. Used for full-table scans
+    /// (lexical reindex, link-count recompute). Each page is one index seek on
+    /// the primary key, so a full scan costs linear time. `after_id` is the
+    /// last id of the previous page; `None` starts at the beginning.
+    ///
+    /// Unchecked query (like `list_envelopes_by_message_id_header`) to avoid a
+    /// `.sqlx` regen for an internal maintenance query.
+    pub async fn list_envelopes_for_reindex(
+        &self,
+        after_id: Option<&MessageId>,
+        limit: u32,
+    ) -> Result<Vec<Envelope>, sqlx::Error> {
+        let select = "SELECT
+                id, account_id, provider_id, thread_id, message_id_header, in_reply_to,
+                reference_headers, from_name, from_email, to_addrs, cc_addrs, bcc_addrs,
+                subject, date, flags, snippet, has_attachments, size_bytes, unsubscribe_method,
+                COALESCE((
+                    SELECT GROUP_CONCAT(labels.provider_id, char(31))
+                    FROM message_labels
+                    JOIN labels ON labels.id = message_labels.label_id
+                    WHERE message_labels.message_id = messages.id
+                ), '') as label_provider_ids
+             FROM messages";
+        let lim = limit as i64;
+        let rows = match after_id {
+            Some(after) => {
+                sqlx::query(sqlx::AssertSqlSafe(format!(
+                    "{select} WHERE id > ? ORDER BY id LIMIT ?"
+                )))
+                .bind(after.as_str())
+                .bind(lim)
+                .fetch_all(self.reader())
+                .await?
+            }
+            None => {
+                sqlx::query(sqlx::AssertSqlSafe(format!("{select} ORDER BY id LIMIT ?")))
+                    .bind(lim)
+                    .fetch_all(self.reader())
+                    .await?
+            }
+        };
+
+        rows.iter().map(sqlite_row_to_envelope).collect()
+    }
+
     /// Count all messages across all accounts. Used for reindexing.
     pub async fn count_all_messages(&self) -> Result<u32, sqlx::Error> {
         let row = sqlx::query!(r#"SELECT COUNT(*) as "cnt!: i64" FROM messages"#)

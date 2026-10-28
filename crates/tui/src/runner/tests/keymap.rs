@@ -359,11 +359,12 @@ async fn configured_retired_prefixes_are_bounded() {
             mxr_protocol::CalendarInviteActionData::Tentative
         ))
     );
-    // `z z` retired: `z` still waits so the pair can say so, and runs nothing.
+    // `z z` retired: `z` is undo now, as in the web app, and waits for nothing.
     let mut defaults = app_in("list");
-    assert_eq!(press_char(&mut defaults, 'z'), None);
-    assert!(defaults.input_pending());
-    assert_eq!(press_char(&mut defaults, 'z'), None);
+    assert_eq!(
+        press_char(&mut defaults, 'z'),
+        Some(Action::UndoLastMutation)
+    );
     assert!(!defaults.input_pending());
 }
 
@@ -539,12 +540,8 @@ fn configured_plain_a_remap_preserves_unrelated_ctrl_a() {
     assert_eq!(press_char(&mut app, ';'), Some(Action::ReplyAll));
     assert_eq!(
         app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)),
-        None
-    );
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Toggle assistant is now @"),
-        "retiring plain a must not swallow Ctrl-a's move notice"
+        None,
+        "Ctrl-a is not the remapped plain a"
     );
 }
 
@@ -554,12 +551,8 @@ fn configured_plain_a_unbind_preserves_unrelated_ctrl_a() {
     assert_eq!(press_char(&mut app, 'a'), None);
     assert_eq!(
         app.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)),
-        None
-    );
-    assert_eq!(
-        app.status_message.as_deref(),
-        Some("Toggle assistant is now @"),
-        "unbinding plain a must not swallow Ctrl-a's move notice"
+        None,
+        "Ctrl-a is not the unbound plain a"
     );
 }
 
@@ -1237,87 +1230,33 @@ fn mail_list_remaps_stay_out_of_the_modes() {
 /// starts with a prefix.
 #[test]
 fn a_moved_key_names_its_new_key_and_runs_nothing() {
-    let mut app = app_in("now");
+    let mut app = app_in("todo");
     let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
-    assert_eq!(app.handle_key(shifted('A')), None);
+    assert_eq!(app.handle_key(shifted('C')), None);
     let notice = app.status_message.clone().unwrap_or_default();
-    assert!(notice.ends_with("is now E"), "{notice}");
-    assert_eq!(app.handle_key(shifted('E')), Some(Action::NowLetGoDigest));
+    assert!(notice.ends_with("is now 2"), "{notice}");
+    assert_eq!(press_char(&mut app, '2'), Some(Action::TodoOpenCatchup));
 
-    let mut app = app_in("now");
+    let mut app = app_in("todo");
     assert_eq!(press_char(&mut app, 'g'), None);
     assert_eq!(
-        app.handle_key(shifted('A')),
-        Some(Action::OpenAnalyticsScreen),
-        "g A is a sequence, not the moved A"
+        app.handle_key(shifted('C')),
+        Some(Action::OpenTab4),
+        "g C is a sequence, not the moved C"
     );
 
     let mut app = app_in("list");
-    assert_eq!(app.handle_key(shifted('K')), None);
+    assert_eq!(app.handle_key(shifted('Z')), None);
     let notice = app.status_message.clone().unwrap_or_default();
-    assert!(notice.ends_with("is now P"), "{notice}");
-    assert_eq!(
-        app.handle_key(shifted('P')),
-        Some(Action::OpenSenderMoveMenu)
-    );
+    assert!(notice.ends_with("is now b"), "{notice}");
+    assert_eq!(press_char(&mut app, 'b'), Some(Action::Snooze));
 }
 
-/// The second wave of moves (blueprint 35's `g` table): tools take `g` and
-/// a capital, duplicates retire, and each old key names the key to use, in
-/// the mailbox panes and in the modes alike.
+/// Blueprint 35's `g` table: tools take `g` and a capital, in the mailbox
+/// panes and in the modes alike.
 #[test]
-fn retired_tab_digits_and_chords_name_their_new_keys() {
+fn tools_open_with_g_and_a_capital_everywhere() {
     let shifted = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
-    for (context, keys, notice) in [
-        ("list", vec![press_of('1')], "Mail is now g i"),
-        ("list", vec![press_of('2')], "Search page is now /"),
-        ("sidebar", vec![press_of('3')], "Rules is now g R"),
-        ("reader", vec![press_of('4')], "Accounts is now g C"),
-        ("todo", vec![press_of('5')], "Diagnostics is now g D"),
-        ("now", vec![press_of('6')], "Analytics is now g A"),
-        ("archive", vec![press_of('7')], "Deliveries is now g P"),
-        (
-            "list",
-            vec![press_of('g'), press_of('c')],
-            "Settings is now g C",
-        ),
-        (
-            "updates",
-            vec![press_of('g'), press_of('y')],
-            "Activity log is now g Y",
-        ),
-        (
-            "list",
-            vec![press_of('g'), shifted('E')],
-            "Go to Drafts is now g d",
-        ),
-        ("reader", vec![press_of('y')], "Summarize thread is now B"),
-        (
-            "list",
-            vec![shifted('H')],
-            "Top of screen has no key now; find it in the palette",
-        ),
-        (
-            "todo",
-            vec![press_of('z'), press_of('z')],
-            "Center current has no key now; find it in the palette",
-        ),
-        (
-            "messages",
-            vec![KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)],
-            "Toggle assistant is now @",
-        ),
-    ] {
-        let mut app = app_in(context);
-        let mut action = None;
-        for key in &keys {
-            action = app.handle_key(*key);
-        }
-        assert_eq!(action, None, "{keys:?} in {context} ran something");
-        assert!(!app.input_pending(), "{keys:?} in {context} left a prefix");
-        assert_eq!(app.status_message.as_deref(), Some(notice), "{context}");
-    }
-
     for (keys, expected) in [
         (vec![press_of('g'), shifted('R')], Action::OpenTab3),
         (vec![press_of('g'), shifted('C')], Action::OpenTab4),

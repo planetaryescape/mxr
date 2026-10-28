@@ -83,9 +83,7 @@ test("reader views switch with R and H", async ({ page }) => {
   await expect(views.getByRole("radio", { name: "Formatted" })).toBeChecked();
 });
 
-test("g and a capital open the tools, and an old tab digit says where it went", async ({
-  page,
-}) => {
+test("g and a capital open the tools, and @ the assistant", async ({ page }) => {
   await openList(page, "/m/inbox");
 
   const tools: [string, RegExp][] = [
@@ -104,9 +102,6 @@ test("g and a capital open the tools, and an old tab digit says where it went", 
   }
 
   await openList(page, "/m/inbox");
-  await page.keyboard.press("3");
-  await expect(page.getByText(/Rules is now/)).toBeVisible();
-  await expect(page).toHaveURL(/\/m\/inbox$/);
   await page.keyboard.press("@");
   await expect(page.getByLabel("Message the assistant")).toBeVisible();
 });

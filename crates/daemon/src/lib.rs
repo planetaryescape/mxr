@@ -14,6 +14,7 @@ pub mod backup;
 pub(crate) mod bridge;
 pub(crate) mod chimes;
 pub mod cli;
+pub mod cli_error;
 pub mod commands;
 #[doc(hidden)]
 pub mod handler;

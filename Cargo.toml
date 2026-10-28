@@ -56,6 +56,10 @@ name = "dial_stdio_cli"
 path = "crates/daemon/tests/dial_stdio_cli.rs"
 
 [[test]]
+name = "cli_exit_codes_cli"
+path = "crates/daemon/tests/cli_exit_codes_cli.rs"
+
+[[test]]
 name = "selected_daemon_diagnostics"
 path = "crates/daemon/tests/selected_daemon_diagnostics.rs"
 

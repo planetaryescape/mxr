@@ -244,5 +244,9 @@ mxr completions fish > ~/.config/fish/completions/mxr.fish
 - `0`: success
 - `1`: general error
 - `2`: usage error
-- `3`: daemon not running
-- `4`: auth error
+- `3`: daemon unusable. Kind `daemon_unavailable` when it is not running or cannot be reached after any autostart attempt; kind `daemon_incompatible` when it speaks another protocol or is a supervised build this binary cannot use.
+- `4`: auth error. Kind `daemon_auth` when the daemon rejects the token this client presents; kind `auth` when a daemon response has kind `Auth`.
+
+Only the paths that know their failure class use codes 3 and 4. Everything else exits 1, and compose's existing exit 2 is unchanged.
+
+When the command's output is JSON or JSONL (explicit `--format json` or `jsonl`, or the non-TTY default), a failure with exit 3 or 4 also prints one line to stderr: `{"error":{"kind":"daemon_unavailable","message":"…","exit_code":3}}`. Stdout stays results-only, and the human stderr message is unchanged.

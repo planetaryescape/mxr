@@ -98,9 +98,10 @@ pub mod web;
 pub mod whois;
 pub mod wrapped;
 
+use crate::cli_error::CliError;
 use crate::ipc_client::IpcClient;
 use mxr_core::{AccountId, DraftId, MessageId};
-use mxr_protocol::{AccountSummaryData, Request, Response, ResponseData};
+use mxr_protocol::{AccountSummaryData, IpcErrorKind, Request, Response, ResponseData};
 
 /// Whether a `GetStatus` reply carries a usable DB reading.
 ///
@@ -118,6 +119,16 @@ pub(crate) fn degraded_status_reading(degraded: bool, accounts: &[String]) -> bo
     degraded || accounts.is_empty()
 }
 
+/// A daemon `Response::Error` as a CLI failure. Only the `Auth` kind has a
+/// defined exit code today; every other kind keeps exit 1.
+fn daemon_response_error(message: String, kind: IpcErrorKind) -> anyhow::Error {
+    if kind == IpcErrorKind::Auth {
+        CliError::auth(message)
+    } else {
+        anyhow::anyhow!("{message}")
+    }
+}
+
 /// Extract a typed value from a daemon `Response`, converting `Response::Error`
 /// into an `anyhow` error and rejecting unexpected variants.
 pub(crate) fn expect_response<F, T>(resp: Response, extract: F) -> anyhow::Result<T>
@@ -125,7 +136,7 @@ where
     F: FnOnce(Response) -> Option<T>,
 {
     match resp {
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        Response::Error { message, kind, .. } => Err(daemon_response_error(message, kind)),
         other => extract(other).ok_or_else(|| anyhow::anyhow!("unexpected response from daemon")),
     }
 }
@@ -139,7 +150,7 @@ pub(crate) async fn resolve_account(
         Response::Ok {
             data: ResponseData::Accounts { accounts },
         } => accounts,
-        Response::Error { message, .. } => anyhow::bail!(message),
+        Response::Error { message, kind, .. } => return Err(daemon_response_error(message, kind)),
         _ => anyhow::bail!("Unexpected response"),
     };
     if let Some(key) = explicit {
@@ -238,7 +249,21 @@ fn account_matches(account: &AccountSummaryData, selector: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::degraded_status_reading;
+    use super::{degraded_status_reading, expect_response};
+    use crate::cli_error::CliError;
+    use mxr_protocol::{IpcErrorKind, Response};
+
+    #[test]
+    fn auth_kind_daemon_errors_exit_4_and_other_kinds_stay_general() {
+        let auth = Response::error_kinded("Unauthorized", IpcErrorKind::Auth);
+        let error = expect_response(auth, |_| None::<()>).unwrap_err();
+        assert_eq!(error.to_string(), "Unauthorized");
+        assert_eq!(CliError::find(&error).map(CliError::exit_code), Some(4));
+
+        let internal = Response::error_kinded("boom", IpcErrorKind::Internal);
+        let error = expect_response(internal, |_| None::<()>).unwrap_err();
+        assert!(CliError::find(&error).is_none());
+    }
 
     #[test]
     fn a_flagged_snapshot_is_no_reading_even_when_accounts_came_back() {

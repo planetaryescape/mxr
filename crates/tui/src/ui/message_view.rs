@@ -67,6 +67,28 @@ pub struct DrawOptions<'a> {
     pub now: DateTime<Utc>,
     /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
+    /// Names the account each message came to (blueprint 33).
+    pub account_marks: &'a crate::ui::account_mark::AccountMarks,
+}
+
+/// "In Work · work@example.com", led by the account's chip. The chip shows
+/// whatever the view, so a reader always says which account the mail came to.
+fn account_line(
+    account_id: &mxr_core::AccountId,
+    account_marks: &crate::ui::account_mark::AccountMarks,
+    theme: &Theme,
+    label_width: usize,
+) -> Option<Line<'static>> {
+    let (name, email) = account_marks.name_and_email(account_id)?;
+    let mut spans = vec![Span::raw(" ".repeat(label_width))];
+    if let Some(chip) = account_marks.chip(account_id, theme) {
+        spans.extend(chip);
+    }
+    spans.push(Span::styled(
+        format!("In {name} \u{b7} {email}"),
+        Style::default().fg(theme.text_muted),
+    ));
+    Some(Line::from(spans))
 }
 
 /// Draws the thread/message reader. Returns the scroll offset actually used,
@@ -87,6 +109,7 @@ pub fn draw(
         html_images,
         now,
         zone,
+        account_marks,
     } = options;
     let is_focused = *active_pane == ActivePane::MessageView;
     let border_style = theme.border_style(is_focused);
@@ -168,6 +191,9 @@ pub fn draw(
             Span::styled(format!("{:<label_width$}", "Subject:"), label_style),
             Span::styled(env.subject.clone(), value_style),
         ]));
+        if let Some(line) = account_line(&env.account_id, account_marks, theme, label_width) {
+            text_lines.push(line);
+        }
 
         // Selection + label chips
         if message.bulk_selected || !message.labels.is_empty() {
@@ -1289,6 +1315,44 @@ fn style_line_with_links(line: &str, theme: &Theme) -> Line<'static> {
 
 #[cfg(test)]
 mod tests {
+
+    /// The reader names the account a message came to, led by its chip, even
+    /// when the view shows no row marks (blueprint 33).
+    #[test]
+    fn reader_header_names_the_account_with_its_chip() {
+        use crate::ui::account_mark::{AccountMarks, ChipDepth};
+        let account_id = mxr_core::AccountId::new();
+        let work = mxr_protocol::AccountSummaryData {
+            account_id: account_id.clone(),
+            key: Some("work".into()),
+            name: "Work".into(),
+            email: "work@example.com".into(),
+            provider_kind: "imap".into(),
+            sync_kind: Some("imap".into()),
+            send_kind: None,
+            enabled: true,
+            is_default: true,
+            source: mxr_protocol::AccountSourceData::Config,
+            editable: mxr_protocol::AccountEditModeData::Full,
+            sync: None,
+            send: None,
+            capabilities: Default::default(),
+            identity: Some(mxr_protocol::AccountIdentityData {
+                color: mxr_core::AccountColor::Sky,
+                tag: "W".into(),
+            }),
+        };
+        // One account: no row marks, but the reader still names it.
+        let marks = AccountMarks::from_accounts(&[work], false, ChipDepth::Plain);
+        let line = account_line(&account_id, &marks, &Theme::default(), 10)
+            .expect("a known account has a header line");
+        let text: String = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect();
+        insta::assert_snapshot!("reader_account_line", text);
+    }
     use super::*;
     use crate::app::{BodySource, BodyViewMetadata, BodyViewMode};
     use chrono::{TimeZone, Utc};
@@ -1365,6 +1429,7 @@ mod tests {
                     theme: &Theme::default(),
                     html_images: &mut html_images,
                     now: chrono::Utc::now(),
+                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
                 },
             );
         });
@@ -1414,6 +1479,7 @@ mod tests {
                     theme: &Theme::default(),
                     html_images: &mut html_images,
                     now: chrono::Utc::now(),
+                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
                 },
             );
         });
@@ -1470,6 +1536,7 @@ mod tests {
                     theme: &Theme::default(),
                     html_images: &mut html_images,
                     now: chrono::Utc::now(),
+                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
                 },
             );
         });
@@ -1522,6 +1589,7 @@ mod tests {
                     theme: &Theme::default(),
                     html_images: &mut html_images,
                     now: chrono::Utc::now(),
+                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
                 },
             );
         });
@@ -1581,6 +1649,7 @@ mod tests {
                     theme: &Theme::default(),
                     html_images: &mut html_images,
                     now: chrono::Utc::now(),
+                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
                 },
             );
         });
@@ -1635,6 +1704,7 @@ mod tests {
                     theme: &Theme::default(),
                     html_images: &mut html_images,
                     now: chrono::Utc::now(),
+                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
                 },
             );
         });
@@ -1696,6 +1766,7 @@ mod tests {
                     theme: &Theme::default(),
                     html_images: &mut html_images,
                     now: chrono::Utc::now(),
+                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
                 },
             );
         });
@@ -1760,6 +1831,7 @@ mod tests {
                     theme: &Theme::default(),
                     html_images: &mut html_images,
                     now: chrono::Utc::now(),
+                    account_marks: &crate::ui::account_mark::AccountMarks::default(),
                 },
             );
         });

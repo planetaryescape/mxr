@@ -74,6 +74,11 @@ Behavior:
   **Archive** and **Inbox**. Additional views include Screener, Reply queue,
   Waiting on, Snoozed and Subscriptions.
 
+In a list that mixes accounts, each email row shows its account as a coloured
+tag chip just before the date. A list scoped to one account, or an install with
+one enabled account, shows no chips. The reader header always names the account
+the message came to.
+
 ## Now and the modes
 
 Press `gh` for [Now](/guides/now/), the front page of people waiting on you,
@@ -195,6 +200,7 @@ mxr summarize THREAD_ID
 - Add IMAP/SMTP account
 - Test connectivity
 - Set default account
+- Edit an account's colour and tag with `i`; the first Enter previews, the next saves
 - Edit config without leaving the TUI
 - Inspect runtime-only accounts such as browser-auth Gmail setups
 

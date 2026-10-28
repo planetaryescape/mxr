@@ -6,6 +6,7 @@ use ratatui::widgets::*;
 
 const MODAL_WIDTH_PCT: u16 = 86;
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw(
     frame: &mut Frame,
     area: Rect,
@@ -14,6 +15,7 @@ pub fn draw(
     remind_at_input: Option<&str>,
     time_preview: &[String],
     theme: &crate::theme::Theme,
+    account_marks: &crate::ui::account_mark::AccountMarks,
 ) {
     let Some(pending) = pending else {
         return;
@@ -49,7 +51,21 @@ pub fn draw(
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
-    let paragraph_lines = lines.into_iter().map(Line::from).collect::<Vec<_>>();
+    let mut paragraph_lines = lines
+        .iter()
+        .map(|line| Line::from(line.clone()))
+        .collect::<Vec<_>>();
+    // The From line leads with the chip of the account the draft sends from
+    // (blueprint 33): the one place a wrong account costs a message.
+    if let (Some(index), Some(chip)) = (
+        lines.iter().position(|line| line.starts_with("From: ")),
+        account_marks.chip(&pending.account_id, theme),
+    ) {
+        let mut spans = chip;
+        spans.push(Span::raw(" "));
+        spans.push(Span::raw(lines[index].clone()));
+        paragraph_lines[index] = Line::from(spans);
+    }
     frame.render_widget(
         Paragraph::new(paragraph_lines).wrap(Wrap { trim: false }),
         inner,
@@ -272,6 +288,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
         assert!(
@@ -296,6 +313,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
         assert!(!rendered.contains("Safety check unavailable"));
@@ -322,6 +340,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
         assert!(
@@ -349,6 +368,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
         assert!(rendered.contains("Safety: SAFE"), "got:\n{rendered}");
@@ -369,6 +389,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
 
@@ -398,6 +419,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
         assert!(rendered.contains("Safety: BLOCKED"));
@@ -418,6 +440,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
 
@@ -437,6 +460,7 @@ mod tests {
                 None,
                 &preview,
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
 
@@ -455,6 +479,7 @@ mod tests {
                 Some("friday 10am"),
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
 
@@ -473,6 +498,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
 
@@ -508,6 +534,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
 
@@ -548,6 +575,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
 
@@ -581,6 +609,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
 
@@ -616,6 +645,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
 
@@ -655,6 +685,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
         assert!(rendered.contains("Safety: SAFE"));
@@ -675,6 +706,7 @@ mod tests {
                 None,
                 &[],
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
 

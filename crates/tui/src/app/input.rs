@@ -2667,11 +2667,20 @@ impl App {
             };
         }
 
+        if self.accounts.page.identity_editor.is_some() {
+            return self.handle_identity_editor_key(key);
+        }
+
         if self.accounts.page.form.visible {
             return self.handle_account_form_key(key);
         }
 
         match (key.code, key.modifiers) {
+            // i edits the selected account's colour and tag (blueprint 33).
+            (KeyCode::Char('i'), KeyModifiers::NONE) => {
+                self.open_identity_editor();
+                None
+            }
             (KeyCode::Char('j') | KeyCode::Down, _) => {
                 if self.accounts.page.selected_index + 1 < self.accounts.page.accounts.len() {
                     self.accounts.page.selected_index += 1;

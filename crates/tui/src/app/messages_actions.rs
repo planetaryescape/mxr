@@ -99,6 +99,7 @@ impl App {
             now,
             offset: now.with_timezone(&chrono::Local).offset().fix(),
             ack_seconds_left,
+            account_marks: self.account_marks(),
         }
     }
 

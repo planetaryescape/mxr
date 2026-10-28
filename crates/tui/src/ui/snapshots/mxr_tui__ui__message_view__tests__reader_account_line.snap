@@ -1,0 +1,6 @@
+---
+source: crates/tui/src/ui/message_view.rs
+assertion_line: 1350
+expression: text
+---
+          [W]  In Work · work@example.com

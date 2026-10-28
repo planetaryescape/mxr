@@ -327,6 +327,7 @@ fn render_at(page: &RecordsPageState, width: u16) -> String {
                 page,
                 selected_index: 0,
                 active_pane: &ActivePane::MailList,
+                account_marks: crate::ui::account_mark::AccountMarks::default(),
             },
             &crate::theme::Theme::default(),
         );

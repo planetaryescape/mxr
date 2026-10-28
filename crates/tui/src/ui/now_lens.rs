@@ -28,6 +28,7 @@ pub struct NowView<'a> {
     /// "Now" for relative and absolute arrival times, passed in so the render
     /// doesn't read the clock.
     pub now: chrono::DateTime<chrono::Utc>,
+    pub account_marks: crate::ui::account_mark::AccountMarks,
 }
 
 /// "22h", "3d", "40m": how long a person has waited.
@@ -115,6 +116,7 @@ fn person_line(
     selected: bool,
     width: usize,
     theme: &crate::theme::Theme,
+    chip: Option<Vec<Span<'static>>>,
 ) -> Line<'static> {
     let row = &person.row;
     let who = one_line(
@@ -128,7 +130,7 @@ fn person_line(
     let who_width = (avail / 3).clamp(8, 22).min(avail);
     let subject_width = avail.saturating_sub(who_width + 2);
     let subject = truncate(&one_line(&row.subject), subject_width);
-    Line::from(vec![
+    let mut spans = vec![
         Span::raw(marker(selected)),
         Span::styled(
             format!("{:<who_width$}  ", truncate(&who, who_width)),
@@ -138,8 +140,10 @@ fn person_line(
             format!("{subject:<subject_width$} "),
             Style::default().fg(theme.text_secondary),
         ),
-        Span::styled(age, Style::default().fg(theme.text_muted)),
-    ])
+    ];
+    spans.extend(chip.unwrap_or_default());
+    spans.push(Span::styled(age, Style::default().fg(theme.text_muted)));
+    Line::from(spans)
 }
 
 fn todo_line(
@@ -147,6 +151,7 @@ fn todo_line(
     selected: bool,
     width: usize,
     theme: &crate::theme::Theme,
+    chip: Option<Vec<Span<'static>>>,
 ) -> Line<'static> {
     let todo = &item.todo;
     let when = one_line(&todo.when_label);
@@ -174,11 +179,12 @@ fn todo_line(
             ),
             Style::default().fg(theme.text_primary),
         ),
-        Span::styled(
-            truncate(&when, when_width),
-            Style::default().fg(theme.text_muted),
-        ),
     ];
+    spans.extend(chip.unwrap_or_default());
+    spans.push(Span::styled(
+        truncate(&when, when_width),
+        Style::default().fg(theme.text_muted),
+    ));
     if who_width > 0 {
         spans.push(Span::styled(
             format!("  {}", truncate(&who, who_width)),
@@ -248,7 +254,12 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
         }
         for person in &now.people.rows {
             let selected = index == view.selected_index;
-            body.select(person_line(person, selected, width, theme), selected);
+            let chip = view.account_marks.row_cell(&person.row.account_id, theme);
+            let row_width = width.saturating_sub(view.account_marks.column_width());
+            body.select(
+                person_line(person, selected, row_width, theme, chip),
+                selected,
+            );
             if let Some(question) = &person.new_sender {
                 // Answered through `X`: a capital per answer (blueprint 35).
                 let choices = question
@@ -283,7 +294,9 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
         ));
         for item in &now.due_soon.todos {
             let selected = index == view.selected_index;
-            body.select(todo_line(item, selected, width, theme), selected);
+            let chip = view.account_marks.row_cell(&item.todo.account_id, theme);
+            let row_width = width.saturating_sub(view.account_marks.column_width());
+            body.select(todo_line(item, selected, row_width, theme, chip), selected);
             index += 1;
         }
     }
@@ -312,12 +325,12 @@ fn body_for(view: &NowView<'_>, now: &NowData, width: usize, theme: &crate::them
             selected,
         );
         for line in &card.lines {
+            let chip = view.account_marks.row_cell(&line.account_id, theme);
+            let row_width = width
+                .saturating_sub(2)
+                .saturating_sub(view.account_marks.column_width());
             body.lines.push(super::updates_lens::line_row(
-                line,
-                false,
-                width.saturating_sub(2),
-                theme,
-                view.now,
+                line, false, row_width, theme, view.now, chip,
             ));
         }
         body.text("  \u{21b5} open  A let go of this digest", muted);
@@ -719,6 +732,7 @@ pub(crate) mod tests {
                     selected_index,
                     active_pane: &ActivePane::MailList,
                     updates_since: Some("08:00".into()),
+                    account_marks: crate::ui::account_mark::AccountMarks::default(),
                 },
                 &crate::theme::Theme::default(),
             );

@@ -28,6 +28,7 @@ pub struct RecordsView<'a> {
     pub now: chrono::DateTime<chrono::Utc>,
     /// The zone times show in: `Local` in the app, a fixed one in tests.
     pub zone: crate::ui::received_label::DisplayZone,
+    pub account_marks: crate::ui::account_mark::AccountMarks,
 }
 
 /// "03 Mar". Record days are stored at midday UTC, so UTC reads the same
@@ -109,6 +110,7 @@ fn row_line(
     selected: bool,
     width: usize,
     theme: &crate::theme::Theme,
+    chip: Option<Vec<Span<'static>>>,
 ) -> Line<'static> {
     let cols = Columns::for_width(width);
     let marker = if selected { "\u{258c} " } else { "  " };
@@ -116,13 +118,13 @@ fn row_line(
         .title
         .as_deref()
         .unwrap_or(record.kind_label.as_str());
-    let mut spans = vec![
-        Span::raw(marker),
-        Span::styled(
-            format!("{:<6}  ", record.date.map(day).unwrap_or_default()),
-            Style::default().fg(theme.text_muted),
-        ),
-    ];
+    // Records open with their date, so the chip sits ahead of it.
+    let mut spans = vec![Span::raw(marker)];
+    spans.extend(chip.unwrap_or_default());
+    spans.push(Span::styled(
+        format!("{:<6}  ", record.date.map(day).unwrap_or_default()),
+        Style::default().fg(theme.text_muted),
+    ));
     if cols.issuer > 0 {
         let issuer_width = cols.issuer;
         spans.push(Span::styled(
@@ -578,7 +580,10 @@ fn month_rows(
         if selected {
             body.selected_line = body.lines.len();
         }
-        body.lines.push(row_line(record, selected, width, theme));
+        let chip = view.account_marks.row_cell(&record.account_id, theme);
+        let row_width = width.saturating_sub(view.account_marks.column_width());
+        body.lines
+            .push(row_line(record, selected, row_width, theme, chip));
         for extra in [&record.stage_line, &record.detail_line]
             .into_iter()
             .flatten()

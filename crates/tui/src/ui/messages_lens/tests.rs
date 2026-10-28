@@ -255,6 +255,7 @@ fn render_at(page: &MessagesPageState, width: u16, selected_index: usize) -> Str
                 now: now(),
                 offset: FixedOffset::east_opt(0).unwrap(),
                 ack_seconds_left: None,
+                account_marks: crate::ui::account_mark::AccountMarks::default(),
             },
             &crate::theme::Theme::default(),
         );
@@ -459,6 +460,7 @@ fn got_it_shows_its_exact_text_and_countdown() {
                 now: now(),
                 offset: FixedOffset::east_opt(0).unwrap(),
                 ack_seconds_left: Some(4),
+                account_marks: crate::ui::account_mark::AccountMarks::default(),
             },
             &crate::theme::Theme::default(),
         );

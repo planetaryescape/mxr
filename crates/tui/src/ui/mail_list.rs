@@ -1,5 +1,6 @@
 use crate::app::{ActivePane, MailListMode, MailListRow, RowGists};
 use crate::theme::Theme;
+use crate::ui::account_mark::AccountMarks;
 use crate::ui::sanitize::strip_control_chars;
 use chrono::{Datelike, Local, Utc};
 use mxr_core::id::MessageId;
@@ -24,6 +25,8 @@ pub struct MailListView<'a> {
     /// Gist lines by conversation; a row with one shows it in place of the
     /// snippet.
     pub row_gists: &'a RowGists,
+    /// Account chips for rows that mix accounts (blueprint 33).
+    pub account_marks: &'a AccountMarks,
 }
 
 pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: &Theme) {
@@ -78,8 +81,9 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
     // brighter color rather than a double glyph to keep the column narrow).
     let show_triage = view.rows.iter().any(|row| row.triage_verdict.is_some());
     let triage_width = if show_triage { 8 } else { 0 };
-    let fixed_columns_width = 4 + 1 + 2 + 2 + triage_width + 22 + 8 + 8 + 2;
-    let column_count = if show_triage { 10 } else { 9 };
+    let chip_width = view.account_marks.column_width() as u16;
+    let fixed_columns_width = 4 + 1 + 2 + 2 + triage_width + 22 + 8 + 8 + 2 + chip_width;
+    let column_count: u16 = if show_triage { 10 } else { 9 } + u16::from(chip_width > 0);
     let column_spacing_total: u16 = column_count - 1;
     let border_total: u16 = 2;
     let subject_max_width = area
@@ -109,9 +113,14 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
     widths.extend([
         Constraint::Length(22), // sender
         Constraint::Fill(1),    // subject (+ snippet preview)
-        Constraint::Length(8),  // date
-        Constraint::Length(8),  // attachment chip ("📎 99K")
-        Constraint::Length(2),  // link chip (`🔗` for Some / Heavy, blank for None)
+    ]);
+    if chip_width > 0 {
+        widths.push(Constraint::Length(chip_width)); // account chip, only when rows mix accounts
+    }
+    widths.extend([
+        Constraint::Length(8), // date
+        Constraint::Length(8), // attachment chip ("📎 99K")
+        Constraint::Length(2), // link chip (`🔗` for Some / Heavy, blank for None)
     ]);
 
     let table = Table::new(table_rows, widths)
@@ -338,7 +347,11 @@ fn build_row<'a>(
     if show_triage {
         cells.push(triage_cell);
     }
-    cells.extend([sender_cell, subject_cell, date_cell, attach_cell, link_cell]);
+    cells.extend([sender_cell, subject_cell]);
+    if let Some(spans) = view.account_marks.row_cell(&env.account_id, theme) {
+        cells.push(Cell::from(Line::from(spans)));
+    }
+    cells.extend([date_cell, attach_cell, link_cell]);
 
     Row::new(cells).style(base_style)
 }
@@ -775,6 +788,7 @@ mod tests {
                         loading_message: None,
                         loading_throbber: None,
                         row_gists: &RowGists::new(),
+                        account_marks: &AccountMarks::default(),
                     },
                     &Theme::default(),
                 );
@@ -829,6 +843,7 @@ mod tests {
                     loading_message: None,
                     loading_throbber: None,
                     row_gists: &RowGists::new(),
+                    account_marks: &AccountMarks::default(),
                 },
                 &Theme::default(),
             );
@@ -865,6 +880,7 @@ mod tests {
                     loading_message: None,
                     loading_throbber: None,
                     row_gists: &RowGists::new(),
+                    account_marks: &AccountMarks::default(),
                 },
                 &Theme::default(),
             );
@@ -874,6 +890,133 @@ mod tests {
             rendered.contains(" 2 "),
             "rows with open commitments should render a count marker; got:\n{rendered}"
         );
+    }
+
+    /// An enabled or disabled account with the given identity, as the daemon
+    /// sends it.
+    fn marked_account(
+        key: &str,
+        enabled: bool,
+        color: mxr_core::AccountColor,
+        tag: &str,
+    ) -> (AccountId, mxr_protocol::AccountSummaryData) {
+        let account_id = AccountId::new();
+        let summary = mxr_protocol::AccountSummaryData {
+            account_id: account_id.clone(),
+            key: Some(key.into()),
+            name: key.into(),
+            email: format!("{key}@example.com"),
+            provider_kind: "imap".into(),
+            sync_kind: Some("imap".into()),
+            send_kind: None,
+            enabled,
+            is_default: false,
+            source: mxr_protocol::AccountSourceData::Config,
+            editable: mxr_protocol::AccountEditModeData::Full,
+            sync: None,
+            send: None,
+            capabilities: Default::default(),
+            identity: Some(mxr_protocol::AccountIdentityData {
+                color,
+                tag: tag.into(),
+            }),
+        };
+        (account_id, summary)
+    }
+
+    /// Two rows, the first from `first` and the second from `second`.
+    fn two_account_rows(first: &AccountId, second: &AccountId) -> Vec<MailListRow> {
+        let mut first_row = row(1, false);
+        first_row.representative.subject = "Quarterly plan".into();
+        first_row.representative.account_id = first.clone();
+        let mut second_row = row(1, false);
+        second_row.representative.subject = "Venue booking".into();
+        second_row.representative.account_id = second.clone();
+        vec![first_row, second_row]
+    }
+
+    fn render_marked_rows(
+        rows: &[MailListRow],
+        marks: &crate::ui::account_mark::AccountMarks,
+    ) -> String {
+        use mxr_test_support::render_to_string;
+        use std::collections::HashSet;
+
+        render_to_string(100, 6, |frame| {
+            draw_view(
+                frame,
+                Rect::new(0, 0, 100, 6),
+                &MailListView {
+                    rows,
+                    selected_index: 0,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MailList,
+                    title: "All accounts",
+                    selected_set: &HashSet::new(),
+                    mode: MailListMode::Messages,
+                    loading_message: None,
+                    loading_throbber: None,
+                    row_gists: &RowGists::new(),
+                    account_marks: marks,
+                },
+                &Theme::default(),
+            );
+        })
+    }
+
+    #[test]
+    fn mixed_accounts_mark_each_row_with_its_chip() {
+        use crate::ui::account_mark::{AccountMarks, ChipDepth};
+        use mxr_core::AccountColor;
+
+        let (first_id, work) = marked_account("work", true, AccountColor::Sky, "W");
+        let (second_id, home) = marked_account("home", true, AccountColor::Amber, "PE");
+        let rows = two_account_rows(&first_id, &second_id);
+        let marks = AccountMarks::from_accounts(&[work, home], false, ChipDepth::Truecolor);
+
+        let rendered = render_marked_rows(&rows, &marks);
+        insta::assert_snapshot!("mail_list_account_chips_mixed", rendered);
+    }
+
+    #[test]
+    fn account_scoped_view_shows_no_chips() {
+        use crate::ui::account_mark::{AccountMarks, ChipDepth};
+        use mxr_core::AccountColor;
+
+        let (first_id, work) = marked_account("work", true, AccountColor::Sky, "W");
+        let (second_id, home) = marked_account("home", true, AccountColor::Amber, "PE");
+        let rows = two_account_rows(&first_id, &second_id);
+        let marks = AccountMarks::from_accounts(&[work, home], true, ChipDepth::Truecolor);
+
+        let rendered = render_marked_rows(&rows, &marks);
+        insta::assert_snapshot!("mail_list_account_chips_scoped", rendered);
+    }
+
+    #[test]
+    fn one_account_view_shows_no_chips() {
+        use crate::ui::account_mark::{AccountMarks, ChipDepth};
+        use mxr_core::AccountColor;
+
+        let (first_id, work) = marked_account("work", true, AccountColor::Sky, "W");
+        let rows = two_account_rows(&first_id, &AccountId::new());
+        let marks = AccountMarks::from_accounts(&[work], false, ChipDepth::Truecolor);
+
+        let rendered = render_marked_rows(&rows, &marks);
+        insta::assert_snapshot!("mail_list_account_chips_one_account", rendered);
+    }
+
+    #[test]
+    fn plain_terminal_marks_rows_with_a_bracketed_tag() {
+        use crate::ui::account_mark::{AccountMarks, ChipDepth};
+        use mxr_core::AccountColor;
+
+        let (first_id, work) = marked_account("work", true, AccountColor::Sky, "W");
+        let (second_id, home) = marked_account("home", true, AccountColor::Amber, "PE");
+        let rows = two_account_rows(&first_id, &second_id);
+        let marks = AccountMarks::from_accounts(&[work, home], false, ChipDepth::Plain);
+
+        let rendered = render_marked_rows(&rows, &marks);
+        insta::assert_snapshot!("mail_list_account_chips_plain", rendered);
     }
 
     #[test]
@@ -914,6 +1057,7 @@ mod tests {
                     loading_message: None,
                     loading_throbber: None,
                     row_gists: &RowGists::new(),
+                    account_marks: &AccountMarks::default(),
                 },
                 &Theme::default(),
             );
@@ -961,6 +1105,7 @@ mod tests {
                     loading_message: None,
                     loading_throbber: None,
                     row_gists: &gists,
+                    account_marks: &AccountMarks::default(),
                 },
                 &Theme::default(),
             );
@@ -997,6 +1142,7 @@ mod tests {
                     loading_message: None,
                     loading_throbber: None,
                     row_gists: &RowGists::new(),
+                    account_marks: &AccountMarks::default(),
                 },
                 &Theme::default(),
             );
@@ -1038,6 +1184,7 @@ mod tests {
                     loading_message: None,
                     loading_throbber: None,
                     row_gists: &RowGists::new(),
+                    account_marks: &AccountMarks::default(),
                 },
                 &Theme::default(),
             );
@@ -1075,6 +1222,7 @@ mod tests {
                     loading_message: None,
                     loading_throbber: None,
                     row_gists: &RowGists::new(),
+                    account_marks: &AccountMarks::default(),
                 },
                 &Theme::default(),
             );
@@ -1122,6 +1270,7 @@ mod tests {
                     loading_message: Some("Loading selected account..."),
                     loading_throbber: Some(&throbber),
                     row_gists: &RowGists::new(),
+                    account_marks: &AccountMarks::default(),
                 },
                 &Theme::default(),
             );
@@ -1159,6 +1308,7 @@ mod tests {
                     loading_message: None,
                     loading_throbber: None,
                     row_gists: &RowGists::new(),
+                    account_marks: &AccountMarks::default(),
                 },
                 &Theme::default(),
             );

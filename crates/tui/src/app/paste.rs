@@ -41,6 +41,16 @@ impl App {
         if modals.draft_options.visible {
             return modals.draft_options.active == DraftOptionsField::Instruction;
         }
+        // The identity tag takes letters; the colour field does not.
+        if self
+            .accounts
+            .page
+            .identity_editor
+            .as_ref()
+            .is_some_and(|editor| editor.field == IdentityField::Tag)
+        {
+            return true;
+        }
         if modals.platform.visible || self.accounts.page.onboarding_modal_open {
             return false;
         }

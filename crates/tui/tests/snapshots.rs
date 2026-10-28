@@ -135,6 +135,7 @@ fn message_view_snapshot() {
                 theme: &mxr_tui::theme::Theme::default(),
                 html_images: &mut html_images,
                 now: chrono::Utc::now(),
+                account_marks: &mxr_tui::ui::account_mark::AccountMarks::default(),
             },
         );
     });
@@ -285,6 +286,7 @@ fn send_confirm_snapshot() {
             None,
             &[],
             &mxr_tui::theme::Theme::default(),
+            &mxr_tui::ui::account_mark::AccountMarks::default(),
         );
     });
     assert!(snapshot.contains("Send this draft?"));
@@ -417,6 +419,7 @@ fn search_page_snapshot() {
                 preview_scroll: 0,
                 html_images: &mut html_images,
                 now: chrono::Utc::now(),
+                account_marks: &mxr_tui::ui::account_mark::AccountMarks::default(),
             },
             &mxr_tui::theme::Theme::default(),
         );
@@ -446,6 +449,7 @@ fn search_page_blank_snapshot() {
                 preview_scroll: 0,
                 html_images: &mut html_images,
                 now: chrono::Utc::now(),
+                account_marks: &mxr_tui::ui::account_mark::AccountMarks::default(),
             },
             &mxr_tui::theme::Theme::default(),
         );
@@ -485,6 +489,7 @@ fn accounts_page_snapshot() {
         resume_new_account_draft_prompt_open: false,
         form: AccountFormState::default(),
         active_auth_session: None,
+        identity_editor: None,
     };
 
     let snapshot = render_to_string(100, 20, |frame| {
@@ -494,6 +499,7 @@ fn accounts_page_snapshot() {
             &state,
             &[],
             &mxr_tui::theme::Theme::default(),
+            &mxr_tui::ui::account_mark::AccountMarks::default(),
         );
     });
     insta::assert_snapshot!("accounts_page_snapshot", snapshot);
@@ -561,6 +567,7 @@ fn search_page_searching_snapshot() {
                 preview_scroll: 0,
                 html_images: &mut html_images,
                 now: chrono::Utc::now(),
+                account_marks: &mxr_tui::ui::account_mark::AccountMarks::default(),
             },
             &mxr_tui::theme::Theme::default(),
         );
@@ -590,6 +597,7 @@ fn accounts_form_gmail_snapshot() {
             &state,
             &[],
             &mxr_tui::theme::Theme::default(),
+            &mxr_tui::ui::account_mark::AccountMarks::default(),
         );
     });
     insta::assert_snapshot!("accounts_form_gmail_snapshot", snapshot);
@@ -620,6 +628,7 @@ fn accounts_form_gmail_editing_snapshot() {
             &state,
             &[],
             &mxr_tui::theme::Theme::default(),
+            &mxr_tui::ui::account_mark::AccountMarks::default(),
         );
     });
     insta::assert_snapshot!("accounts_form_gmail_editing_snapshot", snapshot);
@@ -640,6 +649,7 @@ fn accounts_page_onboarding_snapshot() {
             &state,
             &[],
             &mxr_tui::theme::Theme::default(),
+            &mxr_tui::ui::account_mark::AccountMarks::default(),
         );
     });
     insta::assert_snapshot!("accounts_page_onboarding_snapshot", snapshot);

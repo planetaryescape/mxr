@@ -1,0 +1,11 @@
+---
+source: crates/tui/src/ui/mail_list.rs
+assertion_line: 978
+expression: rendered
+---
+"┌ All accounts ────────────────────────────────────────────────────────────────────────────────────┐"
+"│>  1 N       Matt                   Quarterly plan                       W    now                 │"
+"│   2 N       Matt                   Venue booking                        PE   now                 │"
+"│                                                                                                  │"
+"│                                                                                                  │"
+"└──────────────────────────────────────────────────────────────────────────────────────────────────┘"

@@ -122,6 +122,7 @@ fn microsoft_sync_preview_must_be_rendered_on_the_runway_before_confirmation() {
                     page: &app.mailbox.todo_page,
                     selected_index: app.mailbox.selected_index,
                     active_pane: &crate::app::ActivePane::MailList,
+                    account_marks: crate::ui::account_mark::AccountMarks::default(),
                 },
                 &crate::theme::Theme::default(),
             );
@@ -215,6 +216,7 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
                 page: &app.mailbox.todo_page,
                 selected_index: app.mailbox.selected_index,
                 active_pane: &crate::app::ActivePane::MailList,
+                account_marks: crate::ui::account_mark::AccountMarks::default(),
             },
             &crate::theme::Theme::default(),
         );
@@ -233,6 +235,7 @@ fn microsoft_link_is_installation_gated_and_requires_a_second_explicit_key() {
                 page: &app.mailbox.todo_page,
                 selected_index: app.mailbox.selected_index,
                 active_pane: &crate::app::ActivePane::MailList,
+                account_marks: crate::ui::account_mark::AccountMarks::default(),
             },
             &crate::theme::Theme::default(),
         );
@@ -303,6 +306,7 @@ fn microsoft_review_scrolls_without_moving_the_task_and_escape_discards_confirma
                 page: &app.mailbox.todo_page,
                 selected_index: 0,
                 active_pane: &crate::app::ActivePane::MailList,
+                account_marks: crate::ui::account_mark::AccountMarks::default(),
             },
             &crate::theme::Theme::default(),
         );

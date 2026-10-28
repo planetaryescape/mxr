@@ -1,5 +1,5 @@
 use super::centered_rect;
-use crate::app::{AccountFormMode, AccountsPageState};
+use crate::app::{AccountFormMode, AccountIdentityEditor, AccountsPageState, IdentityField};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use throbber_widgets_tui::{Throbber, BRAILLE_SIX};
@@ -10,6 +10,7 @@ pub fn draw(
     state: &AccountsPageState,
     sync_statuses: &[mxr_protocol::AccountSyncStatus],
     theme: &crate::theme::Theme,
+    account_marks: &crate::ui::account_mark::AccountMarks,
 ) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -52,7 +53,12 @@ pub fn draw(
                 .iter()
                 .find(|s| s.account_id == account.account_id)
                 .filter(|s| !s.healthy);
-            let mut spans = vec![
+            let mut spans: Vec<Span> = account_marks
+                .chip(&account.account_id, theme)
+                .map_or_else(Vec::new, |chip| {
+                    chip.into_iter().chain([Span::raw(" ")]).collect()
+                });
+            spans.extend([
                 Span::styled(
                     account.name.clone(),
                     Style::default().fg(theme.text_primary).bold(),
@@ -61,7 +67,7 @@ pub fn draw(
                     format!("  [{badges}]"),
                     Style::default().fg(theme.text_secondary),
                 ),
-            ];
+            ]);
             if unhealthy.is_some() {
                 spans.push(Span::styled(
                     "  [unhealthy]",
@@ -82,6 +88,11 @@ pub fn draw(
         .highlight_symbol("> ");
     let mut list_state = ListState::default().with_selected(Some(state.selected_index));
     frame.render_stateful_widget(list, chunks[1], &mut list_state);
+
+    if let Some(editor) = &state.identity_editor {
+        draw_identity_editor(frame, chunks[1], editor, theme);
+        return;
+    }
 
     if state.form.visible {
         draw_form(frame, chunks[1], state, theme);
@@ -225,6 +236,61 @@ pub fn draw(
     if state.resume_new_account_draft_prompt_open {
         draw_resume_new_account_draft_modal(frame, area, theme);
     }
+}
+
+/// The colour and tag editor (blueprint 33). Enter previews, Enter again saves.
+fn draw_identity_editor(
+    frame: &mut Frame,
+    area: Rect,
+    editor: &AccountIdentityEditor,
+    theme: &crate::theme::Theme,
+) {
+    let marker = |field: IdentityField| {
+        if editor.field == field {
+            "\u{258c} "
+        } else {
+            "  "
+        }
+    };
+    let mut lines = vec![
+        Line::from(format!(
+            "{}Colour  \u{2039} {} \u{203a}",
+            marker(IdentityField::Colour),
+            editor.color
+        )),
+        Line::from(format!(
+            "{}Tag     [{:<3}]",
+            marker(IdentityField::Tag),
+            editor.tag
+        )),
+        Line::from(""),
+    ];
+    if let Some(message) = &editor.message {
+        lines.push(Line::from(Span::styled(
+            message.clone(),
+            Style::default().fg(theme.warning),
+        )));
+        lines.push(Line::from(""));
+    }
+    let hint = if editor.previewed {
+        "Enter saves this change. Any edit previews again. Esc closes."
+    } else {
+        "Enter previews the change with the daemon. Tab switches field. Esc closes."
+    };
+    lines.push(Line::from(Span::styled(
+        hint,
+        Style::default().fg(theme.text_muted),
+    )));
+    let block = Block::default()
+        .title(format!(" Identity \u{b7} {} ", editor.account_name))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.accent));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false }),
+        area,
+    );
 }
 
 fn draw_form(
@@ -1032,6 +1098,7 @@ mod tests {
                 &state,
                 std::slice::from_ref(&status),
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
         assert!(
@@ -1063,6 +1130,7 @@ mod tests {
                 &state,
                 std::slice::from_ref(&status),
                 &crate::theme::Theme::default(),
+                &crate::ui::account_mark::AccountMarks::default(),
             );
         });
         assert!(

@@ -418,7 +418,7 @@ const SYSTEM_MAILBOX_NAMES: [(Role, &str, &[&str]); 7] = [
 
 impl Role {
     /// Roles that have a unified "All accounts" mailbox.
-    pub fn system_mailboxes() -> impl Iterator<Item = Role> {
+    pub fn system_mailboxes() -> impl Iterator<Item = Self> {
         SYSTEM_MAILBOX_NAMES.iter().map(|(role, _, _)| *role)
     }
 
@@ -431,7 +431,7 @@ impl Role {
             .map(|(_, wire, _)| *wire)
     }
 
-    pub fn from_system_mailbox_wire_name(wire: &str) -> Option<Role> {
+    pub fn from_system_mailbox_wire_name(wire: &str) -> Option<Self> {
         SYSTEM_MAILBOX_NAMES
             .iter()
             .find(|(_, name, _)| name.eq_ignore_ascii_case(wire))
@@ -442,13 +442,13 @@ impl Role {
     /// calls its label (`DRAFT`, `Sent Items`, `[Gmail]/Spam`).
     pub fn system_mailbox_title(self) -> Option<&'static str> {
         Some(match self {
-            Role::Inbox => "Inbox",
-            Role::Starred => "Starred",
-            Role::Sent => "Sent",
-            Role::Drafts => "Drafts",
-            Role::Spam => "Spam",
-            Role::Trash => "Trash",
-            Role::AllMail => "All Mail",
+            Self::Inbox => "Inbox",
+            Self::Starred => "Starred",
+            Self::Sent => "Sent",
+            Self::Drafts => "Drafts",
+            Self::Spam => "Spam",
+            Self::Trash => "Trash",
+            Self::AllMail => "All Mail",
             _ => return None,
         })
     }
@@ -462,7 +462,7 @@ impl Role {
             .map_or(&[], |(_, _, names)| *names)
     }
 
-    pub fn from_system_label_name(name: &str) -> Option<Role> {
+    pub fn from_system_label_name(name: &str) -> Option<Self> {
         SYSTEM_MAILBOX_NAMES
             .iter()
             .find(|(_, _, names)| names.iter().any(|n| n.eq_ignore_ascii_case(name)))

@@ -116,7 +116,7 @@ fn thread_lens<'a>(
             counts: Some(
                 chrome
                     .role_counts(Role::AllMail)
-                    .unwrap_or((0, chrome.all_accounts_total.unwrap_or(0))),
+                    .unwrap_or_else(|| (0, chrome.all_accounts_total.unwrap_or(0))),
             ),
             lens_label: "All Mail".to_string(),
         },

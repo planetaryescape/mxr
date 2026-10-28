@@ -402,7 +402,7 @@ mod tests {
         labels: &[&Label],
         thread_id: Option<ThreadId>,
     ) -> (ThreadId, mxr_core::id::MessageId) {
-        let thread_id = thread_id.unwrap_or_else(ThreadId::new);
+        let thread_id = thread_id.unwrap_or_default();
         let mut env = TestEnvelopeBuilder::new()
             .account_id(account_id.clone())
             .build();
@@ -555,7 +555,7 @@ mod tests {
             env.date = when;
             t.store.upsert_envelope(&env).await.unwrap();
             t.store
-                .set_message_labels(&env.id, &[lbl.id.clone()], EventSource::Sync)
+                .set_message_labels(&env.id, std::slice::from_ref(&lbl.id), EventSource::Sync)
                 .await
                 .unwrap();
         }
@@ -802,7 +802,7 @@ mod tests {
         visible.date = Utc::now() - Duration::minutes(10);
         t.store.upsert_envelope(&visible).await.unwrap();
         t.store
-            .set_message_labels(&visible.id, &[t.a_inbox.id.clone()], EventSource::Sync)
+            .set_message_labels(&visible.id, std::slice::from_ref(&t.a_inbox.id), EventSource::Sync)
             .await
             .unwrap();
         let mut hidden = TestEnvelopeBuilder::new()
@@ -819,7 +819,7 @@ mod tests {
         hidden.date = Utc::now();
         t.store.upsert_envelope(&hidden).await.unwrap();
         t.store
-            .set_message_labels(&hidden.id, &[outsider_inbox.id.clone()], EventSource::Sync)
+            .set_message_labels(&hidden.id, std::slice::from_ref(&outsider_inbox.id), EventSource::Sync)
             .await
             .unwrap();
 

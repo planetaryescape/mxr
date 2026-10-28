@@ -393,7 +393,7 @@ pub(crate) fn mailbox_counts(chrome: &BridgeChrome, envelopes: &[Envelope]) -> s
 fn all_mail_counts(chrome: &BridgeChrome) -> serde_json::Value {
     let (unread, total) = chrome
         .role_counts(Role::AllMail)
-        .unwrap_or((0, chrome.all_accounts_total.unwrap_or(0)));
+        .unwrap_or_else(|| (0, chrome.all_accounts_total.unwrap_or(0)));
     json!({ "unread": unread, "total": total })
 }
 

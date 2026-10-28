@@ -2047,7 +2047,7 @@ async fn mailbox_endpoint_without_an_account_merges_system_mailboxes() {
             } => {
                 seen_for_ipc.lock().unwrap().push(label_role.clone());
                 let envelopes = match label_role.as_deref() {
-                    Some("inbox") | Some("all_mail") => {
+                    Some("inbox" | "all_mail") => {
                         // The default account's label id rides along for an older daemon.
                         assert!(
                             label_role.as_deref() == Some("all_mail")

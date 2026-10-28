@@ -77,7 +77,7 @@ async fn serve_two_accounts(
                         } => {
                             seen_roles.lock().unwrap().push(label_role.clone());
                             let listed = match label_role.as_deref() {
-                                Some("inbox") | Some("all_mail") => envelopes.to_vec(),
+                                Some("inbox" | "all_mail") => envelopes.to_vec(),
                                 // An older daemon: the default account's label only.
                                 _ if label_id.as_ref() == Some(&first.id) => {
                                     vec![envelopes[0].clone()]

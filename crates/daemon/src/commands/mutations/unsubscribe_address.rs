@@ -13,8 +13,10 @@ use super::helpers::{
     SelectionCounts,
 };
 use super::{unsubscribe_method_text, IpcClient, OutputFormat};
+use crate::commands::selection::SEARCH_HARD_CAP;
 use crate::output::resolve_format;
 use mxr_core::id::MessageId;
+use mxr_core::types::{SearchMode, SortOrder};
 use mxr_core::AccountId;
 use mxr_protocol::{
     Request, Response, ResponseData, UnsubscribePlanData, UnsubscribePlanRequestData,
@@ -168,13 +170,7 @@ async fn plan_addresses(
 ) -> anyhow::Result<Vec<AddressPlan>> {
     let mut plans = Vec::with_capacity(addresses.len());
     for address in addresses {
-        let selection = resolve_mutation_selection(
-            client,
-            Vec::new(),
-            Some(address_query(address, search)),
-            account_id,
-        )
-        .await?;
+        let selection = address_selection(client, address, search, account_id).await?;
         let plan = if selection.ids.is_empty() {
             UnsubscribePlanData {
                 matched_messages: 0,
@@ -200,6 +196,60 @@ async fn plan_addresses(
         });
     }
     Ok(plans)
+}
+
+/// The messages for one address, newest first.
+///
+/// The search is lexical and date-sorted on purpose. The shared resolver uses
+/// the configured search mode, and hybrid mode ranks by relevance, so with more
+/// than `SEARCH_HARD_CAP` matches the newest message could fall outside the
+/// window and an older message would be planned instead.
+async fn address_selection(
+    client: &mut IpcClient,
+    address: &str,
+    search: Option<&str>,
+    account_id: Option<&AccountId>,
+) -> anyhow::Result<MutationSelection> {
+    let resp = client
+        .request(address_search_request(address, search, account_id))
+        .await?;
+    let ids: Vec<String> = match resp {
+        Response::Ok {
+            data: ResponseData::SearchResults { results, .. },
+        } => results
+            .into_iter()
+            .map(|result| result.message_id.as_str())
+            .collect(),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response from search"),
+    };
+    if ids.is_empty() {
+        return Ok(MutationSelection {
+            ids: Vec::new(),
+            envelopes: Vec::new(),
+            used_search: true,
+        });
+    }
+    let mut selection = resolve_mutation_selection(client, ids, None, account_id).await?;
+    selection.used_search = true;
+    Ok(selection)
+}
+
+fn address_search_request(
+    address: &str,
+    search: Option<&str>,
+    account_id: Option<&AccountId>,
+) -> Request {
+    Request::Search {
+        query: address_query(address, search),
+        limit: SEARCH_HARD_CAP,
+        offset: 0,
+        account_id: account_id.cloned(),
+        mode: Some(SearchMode::Lexical),
+        sort: Some(SortOrder::DateDesc),
+        explain: false,
+        limit_from_config: false,
+    }
 }
 
 /// The search for one address. A `--search` scope narrows it with AND.
@@ -517,6 +567,24 @@ mod tests {
             1
         );
         assert!(json.get("succeeded").is_none(), "a dry run sends nothing");
+    }
+
+    #[test]
+    fn an_address_is_searched_lexically_newest_first_whatever_the_configured_mode() {
+        let Request::Search {
+            query,
+            limit,
+            mode,
+            sort,
+            ..
+        } = address_search_request("alice@example.com", Some("label:news"), None)
+        else {
+            unreachable!("an address resolves through search");
+        };
+        assert_eq!(query, "(label:news) AND (from:alice@example.com)");
+        assert_eq!(limit, SEARCH_HARD_CAP);
+        assert_eq!(mode, Some(SearchMode::Lexical));
+        assert_eq!(sort, Some(SortOrder::DateDesc));
     }
 
     #[test]

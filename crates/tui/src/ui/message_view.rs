@@ -924,8 +924,9 @@ fn render_html_blocks(
     remote_content_enabled: bool,
 ) -> Vec<RenderBlock> {
     let width = usize::from(width.max(20));
+    let clamped = mxr_reader::clamp_table_spans(html);
     let rendered = mxr_reader::guard_html2text("tui html body", || {
-        let render_tree = html2text::parse(html.as_bytes()).ok()?;
+        let render_tree = html2text::parse(clamped.as_bytes()).ok()?;
         html2text::config::rich()
             .render_to_lines(render_tree, width)
             .ok()

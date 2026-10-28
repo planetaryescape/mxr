@@ -4832,6 +4832,7 @@ dependencies = [
  "lettre",
  "mail-parser 0.11.9",
  "mxr-core",
+ "regex",
  "scraper",
  "thiserror 2.0.21",
  "tokio",

@@ -23,6 +23,7 @@ futures = { workspace = true }
 # Same renderer and width the reader uses, so the generated text/plain
 # alternative matches what mxr itself shows.
 html2text = { workspace = true }
+regex = { workspace = true }
 lettre = { workspace = true }
 # Parses supplied HTML for validation only. The document is never rewritten.
 scraper = { workspace = true }

@@ -10,6 +10,7 @@ use ratatui::crossterm::event::{
 };
 use ratatui::crossterm::execute;
 use std::io::{self, stdout};
+use std::panic::PanicHookInfo;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Once, OnceLock};
 
@@ -95,10 +96,25 @@ fn install_panic_hook() {
     HOOK.call_once(|| {
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
-            disable_extras();
-            previous(info);
+            forward_panic(info, &*previous, disable_extras);
         }));
     });
+}
+
+/// Runs terminal teardown and then the previous hook, unless the panic is one
+/// a guard is about to catch. The hook runs on the panicking thread, so the
+/// thread-local `in_guarded_render` says whether this panic came from a
+/// guarded html2text call; other threads' panics never see that flag.
+fn forward_panic(
+    info: &PanicHookInfo<'_>,
+    previous: &dyn Fn(&PanicHookInfo<'_>),
+    restore_terminal: fn(),
+) {
+    if mxr_reader::in_guarded_render() {
+        return;
+    }
+    restore_terminal();
+    previous(info);
 }
 
 #[cfg(test)]
@@ -126,5 +142,48 @@ mod tests {
             || Ok(true),
             || Err(io::Error::other("closed"))
         ));
+    }
+
+    // Counts teardown and previous-hook calls on the panicking thread.
+    thread_local! {
+        static HOOK_CALLS: Cell<u32> = const { Cell::new(0) };
+    }
+
+    fn count_teardown() {
+        HOOK_CALLS.with(|calls| calls.set(calls.get() + 1));
+    }
+
+    fn count_previous(_: &std::panic::PanicHookInfo<'_>) {
+        count_teardown();
+    }
+
+    #[test]
+    fn guarded_panic_skips_terminal_teardown_and_the_previous_hook() {
+        use super::forward_panic;
+        use std::panic;
+
+        let original = panic::take_hook();
+        panic::set_hook(Box::new(|info| {
+            forward_panic(info, &count_previous, count_teardown);
+        }));
+        HOOK_CALLS.with(|calls| calls.set(0));
+
+        let guarded: Option<()> =
+            mxr_reader::guard_html2text("tui test", || panic!("guarded probe"));
+        assert!(guarded.is_none());
+        let after_guarded = HOOK_CALLS.with(Cell::get);
+
+        let _ = panic::catch_unwind(|| panic!("unguarded probe"));
+        let after_unguarded = HOOK_CALLS.with(Cell::get);
+
+        panic::set_hook(original);
+        assert_eq!(
+            after_guarded, 0,
+            "a guarded panic reached the terminal hook"
+        );
+        assert_eq!(
+            after_unguarded, 2,
+            "an unguarded panic should run teardown and the previous hook"
+        );
     }
 }

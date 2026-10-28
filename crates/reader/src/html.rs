@@ -1,6 +1,8 @@
 use crate::pipeline::ReaderConfig;
 use once_cell::sync::Lazy;
-use regex::Regex;
+use regex::{Captures, Regex};
+use std::borrow::Cow;
+use std::cell::Cell;
 use std::panic::AssertUnwindSafe;
 use std::process::Command;
 
@@ -35,6 +37,62 @@ fn builtin_to_plain_text(html: &str) -> String {
     html_to_plain_text(html, "reader")
 }
 
+/// Largest colspan/rowspan html2text is given. Real mail stays far below
+/// this; anything above it is a malformed or hostile table.
+pub const MAX_TABLE_SPAN: u64 = 1000;
+
+static TABLE_SPAN_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?i)\b(colspan|rowspan)(\s*=\s*["']?\s*)(\d+)"#)
+        .expect("table span regex should compile")
+});
+
+/// Clamps `colspan` and `rowspan` attribute values to `MAX_TABLE_SPAN`.
+///
+/// html2text 0.17.4 overflows its column arithmetic on huge spans (a colspan
+/// near `usize::MAX` panics), so clamping keeps the common case in the
+/// renderer itself. Values that don't fit a u64 are clamped too. Values at or
+/// under the cap come back as the same text.
+pub fn clamp_table_spans(html: &str) -> Cow<'_, str> {
+    TABLE_SPAN_RE.replace_all(html, |caps: &Captures<'_>| {
+        let value = caps[3]
+            .parse::<u64>()
+            .map_or(MAX_TABLE_SPAN, |n| n.min(MAX_TABLE_SPAN));
+        format!("{}{}{value}", &caps[1], &caps[2])
+    })
+}
+
+thread_local! {
+    // Set while a guarded html2text call runs on this thread. A panic hook
+    // runs on the panicking thread, before unwinding reaches the guard, so a
+    // thread-local is the right scope for "this panic is about to be caught".
+    static IN_GUARDED_RENDER: Cell<bool> = const { Cell::new(false) };
+}
+
+/// True while the current thread is inside `guard_html2text`. A panic hook
+/// checks this to stay quiet for a panic the guard is about to catch.
+pub fn in_guarded_render() -> bool {
+    IN_GUARDED_RENDER.with(Cell::get)
+}
+
+/// Restores the previous flag value on drop, so nested guards and unwinding
+/// both leave the thread in the state they found it.
+struct GuardedRenderFlag {
+    previous: bool,
+}
+
+impl GuardedRenderFlag {
+    fn enter() -> Self {
+        let previous = IN_GUARDED_RENDER.with(|flag| flag.replace(true));
+        Self { previous }
+    }
+}
+
+impl Drop for GuardedRenderFlag {
+    fn drop(&mut self) {
+        IN_GUARDED_RENDER.with(|flag| flag.set(self.previous));
+    }
+}
+
 /// Runs an html2text call and returns `None` if it panics.
 ///
 /// html2text 0.17.4 panics on some malformed tables (a colspan near
@@ -43,6 +101,7 @@ fn builtin_to_plain_text(html: &str) -> String {
 /// message. `site` names the call site in the warning; the panic payload and
 /// the message body are never logged.
 pub fn guard_html2text<T>(site: &'static str, render: impl FnOnce() -> T) -> Option<T> {
+    let _flag = GuardedRenderFlag::enter();
     match std::panic::catch_unwind(AssertUnwindSafe(render)) {
         Ok(value) => Some(value),
         Err(_) => {
@@ -61,8 +120,9 @@ pub fn guard_html2text<T>(site: &'static str, render: impl FnOnce() -> T) -> Opt
 pub fn html_to_plain_text(html: &str, site: &'static str) -> String {
     // plain_no_decorate keeps the pre-0.17 behavior: no markdown-style
     // `**bold**` / `*italic*` markers in the reader's plain text.
+    let clamped = clamp_table_spans(html);
     guard_html2text(site, || {
-        html2text::config::plain_no_decorate().string_from_read(html.as_bytes(), 80)
+        html2text::config::plain_no_decorate().string_from_read(clamped.as_bytes(), 80)
     })
     .and_then(Result::ok)
     .unwrap_or_else(|| strip_html_tags(html))
@@ -322,6 +382,49 @@ mod tests {
     fn strip_fallback_drops_an_unclosed_style_block_to_the_end() {
         assert_eq!(strip_html_tags("<p>ok</p><style>a{}"), "ok");
         assert_eq!(strip_html_tags("a < b and c"), "a < b and c");
+    }
+
+    #[test]
+    fn huge_colspan_is_clamped_and_html2text_renders_it_without_fallback() {
+        let html = r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#;
+        let clamped = clamp_table_spans(html);
+        // Call html2text directly: an Err or panic here would mean the clamp
+        // did not keep the renderer away from the overflow.
+        let text = html2text::config::plain_no_decorate()
+            .string_from_read(clamped.as_bytes(), 80)
+            .expect("clamped table should render");
+        assert!(text.contains('A') && text.contains('B'), "got {text:?}");
+    }
+
+    #[test]
+    fn normal_spans_are_left_untouched() {
+        let html = r#"<table><tr><td colspan="2">A</td><td rowspan='3'>B</td></tr></table>"#;
+        assert_eq!(clamp_table_spans(html), html);
+    }
+
+    #[test]
+    fn spans_above_the_cap_are_clamped_to_it() {
+        let html = format!(r#"<td colspan="{}">x</td>"#, MAX_TABLE_SPAN + 5);
+        assert_eq!(
+            clamp_table_spans(&html),
+            format!(r#"<td colspan="{MAX_TABLE_SPAN}">x</td>"#)
+        );
+    }
+
+    #[test]
+    fn guarded_render_flag_is_set_only_inside_the_guard() {
+        assert!(!in_guarded_render());
+        let inside = guard_html2text("test", in_guarded_render);
+        assert_eq!(inside, Some(true));
+        assert!(!in_guarded_render());
+    }
+
+    #[test]
+    #[allow(clippy::panic, reason = "the test needs a real panic for the guard to catch")]
+    fn guarded_render_flag_is_reset_after_a_caught_panic() {
+        let result: Option<()> = guard_html2text("test", || panic!("probe"));
+        assert!(result.is_none());
+        assert!(!in_guarded_render());
     }
 
     #[test]

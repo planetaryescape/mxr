@@ -41,9 +41,10 @@ field still enters text.
 
 ## Discoverability
 
-Three places to find a key without memorising:
+Four places to find a key without memorising:
 
 - **`?`** opens the help modal, which shows every key bound in the current view.
+- **A pause after a prefix.** Press `g`, `*` or `i` and wait 300 ms: a box above the status bar lists the keys that can follow here, your `keys.toml` changes included. Typing the next key sooner never shows it. The prefix waits four seconds for its next key, and `Esc` cancels it.
 - **`:`** (or `Ctrl-k`) opens the command palette, which fuzzy-matches every action that works where you are, by name, with all of its keys there (your `keys.toml` remaps included). The first time you run an action that has a key from the palette, a toast names the key: **Catch-up. Next time: 2**. That shows once per action on your profile, shared with the web app.
 - **The hint bar at the bottom** of every screen surfaces the most relevant shortcuts for the current selection.
 

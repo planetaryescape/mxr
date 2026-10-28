@@ -338,6 +338,7 @@ impl App {
             self.input.reset();
         }
         self.input_context = Some(context);
+        let was_waiting = self.input.is_pending();
         self.input.begin_turn();
         let mut action = self.handle_key_press(key);
         // `q` closes the innermost layer and quits only at the root
@@ -351,6 +352,9 @@ impl App {
             self.status_message = Some(format!("{keys} is not a shortcut"));
         }
         self.input.end_turn();
+        if !was_waiting {
+            self.shorten_bare_prefix();
+        }
         action
     }
 

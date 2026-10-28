@@ -9,6 +9,8 @@ on:
   pull_request:
     paths:
       - "apps/desktop/**"
+      # The menu is built from the key definition.
+      - "crates/keymap/keymap.toml"
       - ".github/workflows/desktop.yml"
   workflow_dispatch:
 

@@ -45,10 +45,12 @@ help modal (`?`).
 
 ### Find keys while you work (web and desktop)
 
-- Press `g` and pause to see the available next keys for the current page.
-  The same guide appears for selection prefixes such as `*`. Fast sequences
-  run immediately without opening the guide. `Esc` cancels; clicking or
-  entering a text field cancels too.
+- Press `g` and pause for a moment (300 ms) to see the next keys you can
+  press here, with any keys you changed. The same guide appears after `*`
+  (select) and `i` (invitations), and the TUI shows it above its status bar.
+  Fast sequences run immediately without opening the guide. A prefix waits
+  four seconds for its next key. `Esc` cancels; clicking or entering a text
+  field cancels too.
 - `g f` reaches filters in mail and Search. On tool and settings pages it
   focuses the selected tab or first filter. The key is shown beside the controls.
 - Once a tab or segmented choice has focus, arrow keys move between choices;

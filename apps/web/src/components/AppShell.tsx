@@ -19,6 +19,7 @@ import { llmStatusQuery } from "@/features/llm/useLlmStatus";
 import { useNewMessageNotifier } from "@/features/notifications/useNewMessageNotifier";
 import { chimeSettingsQuery } from "@/features/sound/api";
 import { installSoundFeedback } from "@/features/sound/feedback";
+import { useDesktopMenu } from "@/hooks/useDesktopMenu";
 import { useKeyDispatcher } from "@/hooks/useKeyDispatcher";
 import { NARROW_SHELL_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { SIDEBAR_ID, SIDEBAR_SIZE, useResizableSidebar } from "@/hooks/useResizableSidebar";
@@ -163,6 +164,7 @@ export function AppShell() {
   const mountSearch = useOnceTrue(searchOpen);
   const mountLauncher = useOnceTrue(launcherOpen);
   useNewMessageEvent();
+  useDesktopMenu();
   const mountCompose = useOnceTrue(composing);
   const mountDialogs = useOnceTrue(mailDialog);
   const mountHelp = useOnceTrue(helpOpen);

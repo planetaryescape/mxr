@@ -949,7 +949,7 @@ Moving an action to a new key retires its default keys in that mode only. The hi
 - Bare characters: `"j"`, `"E"`, `"#"`, `";"`, `","`
 - Modifier prefixes: `Ctrl-`, `Alt-`, and `Shift-`. Bare uppercase letters imply Shift. Most terminals send `Ctrl-Shift-A` as `Ctrl-a` and `Ctrl-i`, `Ctrl-m`, `Ctrl-h` as Tab, Enter and Backspace, so avoid binding those.
 - Special keys: `Enter`, `Esc`, `Escape`, `Tab`, `Space`, `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`, `Backspace`, and `Delete`.
-- Character chords: concatenate without separators, such as `"gg"`, `"wq"`, or `"wqr"`. Press each next key within 500 ms. A timeout discards the prefix; an unmatched suffix is processed as a fresh key.
+- Character chords: concatenate without separators, such as `"gg"`, `"wq"`, or `"wqr"`. Press each next key within four seconds; after 300 ms the TUI lists the keys that can follow. A timeout discards the prefix, and a next key that completes nothing cancels it and runs nothing.
 
 ### Action names
 

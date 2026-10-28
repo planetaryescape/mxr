@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.168](https://github.com/planetaryescape/mxr/compare/v0.6.167...v0.6.168) (2026-10-28)
+
+
+### Features
+
+* mark each email's account in the web app ([#728](https://github.com/planetaryescape/mxr/issues/728)) ([3a2e06a](https://github.com/planetaryescape/mxr/commit/3a2e06a16c1001d34776f96eddfefae468589610))
+
+
+### Documentation
+
+* record inline compose release ([75d1c31](https://github.com/planetaryescape/mxr/commit/75d1c310cf3862f33c5c0c5b69e61bd0bd62f20d))
+
 ## [0.6.167](https://github.com/planetaryescape/mxr/compare/v0.6.166...v0.6.167) (2026-10-27)
 
 

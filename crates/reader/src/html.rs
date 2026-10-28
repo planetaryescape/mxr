@@ -420,9 +420,9 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::panic, reason = "the test needs a real panic for the guard to catch")]
     fn guarded_render_flag_is_reset_after_a_caught_panic() {
-        let result: Option<()> = guard_html2text("test", || panic!("probe"));
+        let result: Option<()> =
+            guard_html2text("test", || std::panic::resume_unwind(Box::new("probe")));
         assert!(result.is_none());
         assert!(!in_guarded_render());
     }

@@ -95,4 +95,10 @@ if ! grep -Fq -- '--ignored' <<<"$classifier_block"; then
   exit 1
 fi
 
+keymap_block="$(sed -n '/^  keymap:/,/^  classifier-eval:/p' "$workflow")"
+if ! grep -Fq "needs.changes.outputs.rust != 'true'" <<<"$keymap_block" || ! grep -Fq 'cargo test -p mxr-keymap' <<<"$keymap_block"; then
+  echo "Key definition must run mxr-keymap's tests whenever the Rust suites are skipped, so a release bump past a moved key's until fails." >&2
+  exit 1
+fi
+
 echo "ci_workflow_test: ok"

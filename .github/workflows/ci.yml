@@ -10,8 +10,15 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
+# A new push to a PR cancels that PR's older run. Pushes to main group by commit
+# instead, so no main run is ever cancelled or queued behind another: each push
+# only tests its own diff (github.event.before..sha in `changes`), so a
+# cancelled or superseded main run leaves that commit's suites unrun for good.
+# Sharing one group per ref cancelled nearly every apps/web merge, because the
+# release-please merge lands minutes later, and the full Web E2E matrix never
+# finished on main.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 env:

@@ -138,7 +138,10 @@ test("an inline reply keeps its text and audience when closed and resumed", asyn
   await expect(inline.getByRole("combobox", { name: "Reply type" })).toHaveValue("all");
   await inline.getByRole("button", { name: "Close composer (saves draft)" }).click();
   await expect(inline).toHaveCount(0);
-  await reader(page).click();
+  // The heading, not the middle of the reader: that lands in the HTML mail's
+  // iframe, and WebKit delivers no keys from there
+  // (docs/issues/webkit-keys-after-clicking-html-mail.md).
+  await reader(page).getByRole("heading").first().click();
   await page.keyboard.press("r");
   await expect(inline).toBeVisible();
   await expect(inline.locator(".cm-content")).toContainText(

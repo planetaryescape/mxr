@@ -26,19 +26,8 @@ The index cleans HTML with the built-in converter even when `render.html_command
 
 Fix direction: only if this shows up in practice, run the external command in batches or cache its output per body hash, and include the setting in the content-version marker.
 
-## The reader's HTML conversion panics on malformed tables
+## The reader's HTML conversion can panic on other malformed tables
 
-html2text 0.17.4 panics on some malformed tables, for example `<td colspan="18446744073709551615">` (unchecked column arithmetic). The search index now catches the panic and indexes that part as tag-stripped text (`crates/search/src/index.rs`, `convert_part`). The reader display path does not, so the same message panics there. Verified by calling `mxr_reader::clean` on the input: it panics.
+html2text 0.17.4 panicked on a table with a huge `colspan`, from unchecked column arithmetic. PR 767 clamps `colspan` and `rowspan` before html2text runs and guards the built-in conversion (`crates/reader/src/html.rs`). With that change, `mxr_reader::clean` converts the reproduction table without panicking (checked on 4fe5d04ee). The search index also catches any panic in its conversion and indexes that part as tag-stripped text (`crates/search/src/index.rs`, `convert_guarded`).
 
-Display call sites that reach the built-in converter with HTML bodies, not fixed here:
-
-- `crates/tui/src/app/body_helpers.rs:396` (reader view, HTML body source), `:395` and `:397` for plain parts that look like HTML
-- `crates/tui/src/runner.rs:6116`
-- `crates/daemon/src/commands/cat.rs:24` (`mxr cat` reader output)
-- Daemon handlers that clean bodies for LLM or assistant features: `crates/daemon/src/handler/promises.rs:98`, `updates.rs:109`, `todos.rs:926`, `thread_gist.rs:534`, `todo_resolution.rs:130`, `safety_llm.rs:95`, `commitments_extract.rs:67`, `decisions_extract.rs:97`, `briefing.rs:78`, `archive_ask.rs:103`
-
-Fix direction: catch the panic in `mxr_reader::clean` itself and return the same fallback text the index uses, or pin html2text to a version that checks the arithmetic. The first covers every caller at once.
-
-## Bare words no longer match list ids
-
-A bare word used to match a message's `List-Id` through `content_hints`, which prose search read. That field now holds raw markup and is only read by `has:` filters, so a bare word no longer matches a list id. `list:` filters still search the list-id field. Fix direction: index list-id words into a prose field, if bare-word matching of list ids is wanted.
+Other malformed HTML may still reach a panic the clamp does not cover. If one does, the reader display paths are the ones to check: `crates/tui/src/app/body_helpers.rs:396`, `crates/tui/src/runner.rs:6116`, `crates/daemon/src/commands/cat.rs:24`, and the daemon handlers that clean bodies for LLM or assistant features (`crates/daemon/src/handler/promises.rs:98`, `updates.rs:109`, `todos.rs:926`, `thread_gist.rs:534`, `todo_resolution.rs:130`, `safety_llm.rs:95`, `commitments_extract.rs:67`, `decisions_extract.rs:97`, `briefing.rs:78`, `archive_ask.rs:103`).

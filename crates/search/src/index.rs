@@ -59,14 +59,23 @@ fn indexed_body_parts(body: &MessageBody, clean_fallbacks: &AtomicU64) -> Vec<St
 /// it hits on some malformed tables, falls back to tag stripping and is counted.
 fn convert_part(text: &str, as_html: bool, clean_fallbacks: &AtomicU64) -> String {
     let config = conversion_only_config();
-    let converted = std::panic::catch_unwind(AssertUnwindSafe(|| {
+    convert_guarded(text, clean_fallbacks, || {
         if as_html {
             clean(None, Some(text), &config).content
         } else {
             clean(Some(text), None, &config).content
         }
-    }));
-    converted.unwrap_or_else(|_| {
+    })
+}
+
+/// Runs one conversion, and on a panic indexes the part as tag-stripped text
+/// and counts it. Taking the conversion as a closure lets tests make it panic.
+fn convert_guarded(
+    text: &str,
+    clean_fallbacks: &AtomicU64,
+    convert: impl FnOnce() -> String,
+) -> String {
+    std::panic::catch_unwind(AssertUnwindSafe(convert)).unwrap_or_else(|_| {
         clean_fallbacks.fetch_add(1, Ordering::Relaxed);
         strip_html_tags(text)
     })
@@ -911,17 +920,29 @@ mod reader_text_tests {
     }
 
     #[test]
-    fn malformed_table_that_panics_html2text_still_indexes() {
-        // HTML only: the HTML part falls back to tag stripping.
+    fn malformed_table_with_huge_colspan_still_indexes() {
+        // PR 767 clamps spans before html2text runs, so this table converts
+        // without a panic and nothing is counted as a fallback.
         let (index, id) = index_one(None, Some(PANICKING_HTML));
-        assert_eq!(search_ids(&index, "body:tablewordalpha"), vec![id]);
-        assert_eq!(index.clean_fallbacks.load(Ordering::Relaxed), 1);
-
-        // With a plain part: the plain part indexes as stored, the HTML part
-        // falls back.
-        let (index, id) = index_one(Some("plain tablewordbeta"), Some(PANICKING_HTML));
+        assert_eq!(search_ids(&index, "body:tablewordalpha"), vec![id.clone()]);
         assert_eq!(search_ids(&index, "body:tablewordbeta"), vec![id]);
-        assert_eq!(index.clean_fallbacks.load(Ordering::Relaxed), 1);
+        assert_eq!(index.clean_fallbacks.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn a_converter_panic_falls_back_to_tag_stripped_text_and_is_counted() {
+        let counter = AtomicU64::new(0);
+        let text = convert_guarded(
+            "<p>keepme</p><script>var hidden=1;</script><b>also</b>",
+            &counter,
+            || panic!("converter failed"),
+        );
+
+        assert!(text.contains("keepme"));
+        assert!(text.contains("also"));
+        assert!(!text.contains("hidden"));
+        assert!(!text.contains('<'));
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
     }
 
     #[test]

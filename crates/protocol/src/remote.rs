@@ -102,6 +102,7 @@ pub fn remote_read_allowed(request: &crate::Request) -> bool {
             | crate::Request::GetBody { .. }
             | crate::Request::ListBodies { .. }
             | crate::Request::ListLabels { .. }
+            | crate::Request::SystemMailboxCounts { .. }
             | crate::Request::ListEnvelopes { .. }
             | crate::Request::ListEnvelopesByIds { .. }
             | crate::Request::GetEnvelope { .. }

@@ -9,12 +9,12 @@ use mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
 use mxr_core::types::{
     Account, Address, BodyPartSource, CalendarAttendee, CalendarMetadata, CalendarPartstat,
     CalendarReplyMessage, Envelope, HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind,
-    InlineCalendarReply, MessageBody, MessageFlags,
+    InlineCalendarReply, MessageBody, MessageFlags, Role,
 };
 use mxr_protocol::{
     AttachmentChunk, AttachmentTransferMetadata, BodyFailure, CalendarInviteActionData,
     CalendarInviteData, CalendarInviteResponsePreview, CalendarInviteResponseResult, ResponseData,
-    MAX_ATTACHMENT_CHUNK_BYTES,
+    SystemMailboxCount, MAX_ATTACHMENT_CHUNK_BYTES,
 };
 use scraper::{Html, Selector};
 use sha2::{Digest, Sha256};
@@ -74,14 +74,84 @@ async fn resolve_local_account_id(
         .map(|account| account.id.clone()))
 }
 
+/// A `label_role` request resolved to the role and the accounts it covers:
+/// the named account, or every enabled account when none is named. `None`
+/// when the request carries no role (an old client), so the label id path
+/// runs as before.
+async fn resolve_role_scope(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    label_role: Option<&str>,
+) -> Result<Option<(Role, Vec<AccountId>)>, String> {
+    let Some(wire) = label_role else {
+        return Ok(None);
+    };
+    let role = Role::from_system_mailbox_wire_name(wire)
+        .ok_or_else(|| format!("unknown mailbox role: {wire}"))?;
+    Ok(Some((
+        role,
+        enabled_accounts_in_scope(state, account_id).await?,
+    )))
+}
+
+/// The accounts a merged listing may read: the named account, or every
+/// enabled one, and only if it is enabled. A disabled account's mail stays
+/// out whether it is named or not.
+async fn enabled_accounts_in_scope(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+) -> Result<Vec<AccountId>, String> {
+    let enabled = state
+        .store
+        .list_cached_mail_accounts()
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|account| account.id);
+    Ok(match account_id {
+        Some(account_id) => enabled.filter(|id| id == account_id).collect(),
+        None => enabled.collect(),
+    })
+}
+
+pub(super) async fn system_mailbox_counts(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+) -> HandlerResult {
+    let accounts = enabled_accounts_in_scope(state, account_id).await?;
+    let mailboxes = state
+        .store
+        .system_mailbox_counts(&accounts)
+        .await?
+        .into_iter()
+        .filter_map(|(role, unread, total)| {
+            Some(SystemMailboxCount {
+                role: role.system_mailbox_wire_name()?.to_string(),
+                unread,
+                total,
+            })
+        })
+        .collect();
+    Ok(ResponseData::SystemMailboxCounts { mailboxes })
+}
+
 pub(super) async fn list_envelopes(
     state: &AppState,
     label_id: Option<&LabelId>,
     account_id: Option<&AccountId>,
     limit: u32,
     offset: u32,
+    label_role: Option<&str>,
 ) -> HandlerResult {
-    let result = if let Some(label_id) = label_id {
+    let result = if let Some((role, accounts)) =
+        resolve_role_scope(state, account_id, label_role).await?
+    {
+        tracing::debug!(role = ?role, accounts = accounts.len(), limit, offset, "listing envelopes by role");
+        state
+            .store
+            .list_envelopes_by_role(&accounts, role, limit, offset)
+            .await
+    } else if let Some(label_id) = label_id {
         tracing::debug!(label_id = %label_id, limit, offset, "listing envelopes by label");
         state
             .store
@@ -1395,16 +1465,24 @@ pub(super) async fn list_bodies(state: &AppState, message_ids: &[MessageId]) -> 
 }
 
 pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
+    // A legacy thread id can span accounts. Only enabled accounts' messages
+    // are read, so a disabled account's subject, snippet, participants and
+    // message ids never reach a reader (which would go on to fetch bodies).
+    let accounts = enabled_accounts_in_scope(state, None).await?;
     let thread = state
         .store
-        .get_thread(thread_id)
+        .hydrate_threads_in_accounts(std::slice::from_ref(thread_id), &accounts)
         .await?
+        .pop()
         .ok_or_else(|| "Thread not found".to_string())?;
     let messages = state
         .store
         .get_thread_envelopes(thread_id)
         .await
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|message| accounts.contains(&message.account_id))
+        .collect::<Vec<_>>();
     let summary = super::summarize::valid_cached_summary(&state.store, thread_id, &messages).await;
     Ok(ResponseData::Thread {
         thread,
@@ -1420,16 +1498,36 @@ pub(super) async fn list_threads(
     limit: u32,
     offset: u32,
     sort: Option<mxr_core::types::SortOrder>,
+    label_role: Option<&str>,
 ) -> HandlerResult {
     let sort = sort.unwrap_or(mxr_core::types::SortOrder::DateDesc);
-    let threads = state
-        .store
-        .list_threads(account_id, label_id, limit, offset, sort)
-        .await?;
+    let threads =
+        if let Some((role, accounts)) = resolve_role_scope(state, account_id, label_role).await? {
+            state
+                .store
+                .list_threads_by_role(&accounts, role, limit, offset, sort)
+                .await?
+        } else {
+            state
+                .store
+                .list_threads(account_id, label_id, limit, offset, sort)
+                .await?
+        };
     Ok(ResponseData::Threads { threads })
 }
 
-pub(super) async fn list_labels(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
+pub(super) async fn list_labels(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    all_accounts: bool,
+) -> HandlerResult {
+    if all_accounts && account_id.is_none() {
+        let mut labels = Vec::new();
+        for account in state.store.list_cached_mail_accounts().await? {
+            labels.extend(state.store.list_labels_by_account(&account.id).await?);
+        }
+        return Ok(ResponseData::Labels { labels });
+    }
     let Some(account_id) = resolve_local_account_id(state, account_id).await? else {
         return Ok(ResponseData::Labels { labels: Vec::new() });
     };

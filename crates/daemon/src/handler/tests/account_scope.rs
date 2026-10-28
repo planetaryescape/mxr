@@ -979,6 +979,7 @@ async fn previously_unlisted_requests_stay_in_the_agents_accounts() {
         account_id: Some(o.account.clone()),
         limit: 10,
         offset: 0,
+        label_role: None,
     })
     .await;
     let foreign_label = Request::ListEnvelopes {
@@ -986,6 +987,7 @@ async fn previously_unlisted_requests_stay_in_the_agents_accounts() {
         account_id: Some(s.own.account.clone()),
         limit: 10,
         offset: 0,
+        label_role: None,
     };
     let error = check(&s, &foreign_label).await.unwrap_err();
     assert!(error.contains("is not in account"), "{error}");
@@ -1730,6 +1732,7 @@ async fn list_threads_shows_a_scoped_client_only_its_part_of_a_shared_thread() {
             limit: 50,
             offset: 0,
             sort: None,
+            label_role: None,
         },
     )
     .await

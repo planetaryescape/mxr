@@ -387,6 +387,7 @@ pub(crate) fn request_supports_retry(request: &Request) -> bool {
             | Request::GetThread { .. }
             | Request::ListThreads { .. }
             | Request::ListLabels { .. }
+            | Request::SystemMailboxCounts { .. }
             | Request::ListRules
             | Request::ListAccounts
             | Request::ListAccountsConfig

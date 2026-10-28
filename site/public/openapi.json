@@ -25817,6 +25817,13 @@
                   }
                 ]
               },
+              "label_role": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "A system mailbox (`inbox`, `starred`, `sent`, `drafts`, `spam`,\n`trash`, `all_mail`). With no `account_id` it lists that mailbox\nacross every enabled account; with one, that account's. A daemon\nthat knows it prefers it to `label_id`; an older one ignores it\nand lists `label_id`, so callers keep sending both."
+              },
               "limit": {
                 "type": "integer",
                 "format": "int32",
@@ -26337,6 +26344,13 @@
                   }
                 ]
               },
+              "label_role": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Same meaning as on `ListEnvelopes`."
+              },
               "limit": {
                 "type": "integer",
                 "format": "int32",
@@ -26375,10 +26389,39 @@
                   }
                 ]
               },
+              "all_accounts": {
+                "type": "boolean",
+                "description": "With no `account_id`, return every enabled account's labels\ninstead of only the default account's. Ignored when\n`account_id` is set."
+              },
               "cmd": {
                 "type": "string",
                 "enum": [
                   "ListLabels"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Unread and total for each system mailbox, summed over the named\naccount or, with none, every enabled account. A daemon that predates\nit answers with an error and callers fall back to summing labels.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SystemMailboxCounts"
                 ]
               }
             }
@@ -34893,6 +34936,27 @@
           {
             "type": "object",
             "required": [
+              "mailboxes",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SystemMailboxCounts"
+                ]
+              },
+              "mailboxes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SystemMailboxCount"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "label",
               "kind"
             ],
@@ -41932,6 +41996,30 @@
           "provider_available": {
             "type": "boolean",
             "description": "False means the account is configured for sync but the running daemon\nhas no registered sync provider for it."
+          }
+        }
+      },
+      "SystemMailboxCount": {
+        "type": "object",
+        "description": "One system mailbox's counts across a set of accounts. `role` is the wire\nname `label_role` uses (`inbox`, `starred`, ..., `all_mail`).",
+        "required": [
+          "role",
+          "unread",
+          "total"
+        ],
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "unread": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },

@@ -659,6 +659,13 @@ pub enum Request {
         account_id: Option<AccountId>,
         limit: u32,
         offset: u32,
+        /// A system mailbox (`inbox`, `starred`, `sent`, `drafts`, `spam`,
+        /// `trash`, `all_mail`). With no `account_id` it lists that mailbox
+        /// across every enabled account; with one, that account's. A daemon
+        /// that knows it prefers it to `label_id`; an older one ignores it
+        /// and lists `label_id`, so callers keep sending both.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_role: Option<String>,
     },
     ListEnvelopesByIds {
         message_ids: Vec<MessageId>,
@@ -769,8 +776,22 @@ pub enum Request {
         offset: u32,
         #[serde(default)]
         sort: Option<SortOrder>,
+        /// Same meaning as on `ListEnvelopes`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_role: Option<String>,
     },
     ListLabels {
+        account_id: Option<AccountId>,
+        /// With no `account_id`, return every enabled account's labels
+        /// instead of only the default account's. Ignored when
+        /// `account_id` is set.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        all_accounts: bool,
+    },
+    /// Unread and total for each system mailbox, summed over the named
+    /// account or, with none, every enabled account. A daemon that predates
+    /// it answers with an error and callers fall back to summing labels.
+    SystemMailboxCounts {
         account_id: Option<AccountId>,
     },
     CreateLabel {
@@ -2994,6 +3015,7 @@ impl Request {
             | Self::GetThread { .. }
             | Self::ListThreads { .. }
             | Self::ListLabels { .. }
+            | Self::SystemMailboxCounts { .. }
             | Self::CreateLabel { .. }
             | Self::DeleteLabel { .. }
             | Self::RenameLabel { .. }
@@ -3709,6 +3731,9 @@ pub enum ResponseData {
     },
     Labels {
         labels: Vec<Label>,
+    },
+    SystemMailboxCounts {
+        mailboxes: Vec<SystemMailboxCount>,
     },
     Label {
         label: Label,
@@ -4736,6 +4761,7 @@ impl ResponseData {
             | Self::Thread { .. }
             | Self::Threads { .. }
             | Self::Labels { .. }
+            | Self::SystemMailboxCounts { .. }
             | Self::Label { .. }
             | Self::Categories { .. }
             | Self::CategoryNamePreview { .. }
@@ -6105,6 +6131,16 @@ pub struct LabelCount {
     pub label_id: LabelId,
     pub unread_count: u32,
     pub total_count: u32,
+}
+
+/// One system mailbox's counts across a set of accounts. `role` is the wire
+/// name `label_role` uses (`inbox`, `starred`, ..., `all_mail`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SystemMailboxCount {
+    pub role: String,
+    pub unread: u32,
+    pub total: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

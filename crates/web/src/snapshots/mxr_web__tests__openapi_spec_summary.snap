@@ -554,6 +554,7 @@ expression: summary
     "SyncHealthData",
     "SyncProgressData",
     "SyncTarget",
+    "SystemMailboxCount",
     "TextChangeData",
     "TextChangeKindData",
     "TextPlainFormat",

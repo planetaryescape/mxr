@@ -214,6 +214,9 @@ pub struct IpcConnection {
     source: ClientKind,
     default_timeout: Option<Duration>,
     attachment_transfer_supported: Option<bool>,
+    // Set once this connection's daemon turned out not to know
+    // `SystemMailboxCounts` (see `Self::system_mailbox_counts`).
+    system_mailbox_counts_unsupported: bool,
     // TCP/command targets restrict local provisioning without paired authority.
     selected_remote: bool,
     preview_attachment_declarations:
@@ -224,6 +227,48 @@ pub struct IpcConnection {
 }
 
 impl IpcConnection {
+    /// Ask for unread/total per system mailbox, tolerating a daemon that does
+    /// not know the request.
+    ///
+    /// A daemon that predates `SystemMailboxCounts` either answers with an
+    /// error or cannot decode the variant and drops the connection; the
+    /// protocol version is the same on both sides of that change, so there is
+    /// nothing to check beforehand. On any failure this reconnects once through
+    /// `reconnect` and replaces `self` with the fresh connection BEFORE
+    /// returning, so the caller's next request does not run on a dead or
+    /// desynchronised connection. The fresh connection remembers the daemon
+    /// does not support the request and answers `Ok(None)` without sending it
+    /// again. `Ok(None)` means "use the labels' own counts".
+    ///
+    /// `Err` is only a failed reconnect, which leaves `self` as it was.
+    pub async fn system_mailbox_counts<F, Fut>(
+        &mut self,
+        account_id: Option<mxr_core::AccountId>,
+        reconnect: F,
+    ) -> Result<Option<Vec<mxr_protocol::SystemMailboxCount>>, ClientError>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<Self, ClientError>>,
+    {
+        if self.system_mailbox_counts_unsupported {
+            return Ok(None);
+        }
+        let request = Request::SystemMailboxCounts { account_id };
+        if let Ok(Response::Ok {
+            data: ResponseData::SystemMailboxCounts { mailboxes },
+        }) = self.request_response(request, drop_event, None).await
+        {
+            return Ok(Some(mailboxes));
+        }
+        let mut fresh = reconnect().await?;
+        fresh.system_mailbox_counts_unsupported = true;
+        // Byte reviews belong to the session; carry them over when the new
+        // connection is the same one, drop them (to be reviewed again) when not.
+        let _ = fresh.retain_draft_attachment_previews_from(self);
+        *self = fresh;
+        Ok(None)
+    }
+
     pub fn is_paired_remote(&self) -> bool {
         self.remote_registration_identity.is_some()
     }
@@ -337,6 +382,7 @@ impl IpcConnection {
             source,
             default_timeout: None,
             attachment_transfer_supported: None,
+            system_mailbox_counts_unsupported: false,
             selected_remote: false,
             preview_attachment_declarations: std::collections::HashMap::new(),
             remote_workspace: None,
@@ -1137,6 +1183,151 @@ mod tests {
             conn.request(Request::Ping).await.unwrap(),
             ResponseData::Pong
         ));
+    }
+
+    /// A daemon that predates the request closes the connection when it
+    /// cannot decode it. The helper reconnects before returning, remembers the
+    /// daemon does not support it, and the caller's next request works.
+    #[tokio::test]
+    async fn system_mailbox_counts_survive_a_daemon_that_closes_on_the_unknown_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        let listener = tokio::net::UnixListener::bind(&sock).unwrap();
+        let counts_seen = Arc::new(std::sync::Mutex::new(0usize));
+        let connections = Arc::new(std::sync::Mutex::new(0usize));
+        let (counts_writer, connections_writer) = (counts_seen.clone(), connections.clone());
+        let _server = tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                *connections_writer.lock().unwrap() += 1;
+                let counts_writer = counts_writer.clone();
+                tokio::spawn(async move {
+                    let mut framed = Framed::new(stream, IpcCodec::new());
+                    while let Some(Ok(message)) = framed.next().await {
+                        let IpcPayload::Request(request) = message.payload else {
+                            continue;
+                        };
+                        let response = match request {
+                            Request::SystemMailboxCounts { .. } => {
+                                *counts_writer.lock().unwrap() += 1;
+                                // The old daemon cannot decode this: drop the connection.
+                                return;
+                            }
+                            Request::Ping => Response::Ok {
+                                data: ResponseData::Pong,
+                            },
+                            _ => continue,
+                        };
+                        framed
+                            .send(IpcMessage {
+                                id: message.id,
+                                expected_workspace: None,
+                                source: ClientKind::Daemon,
+                                payload: IpcPayload::Response(response),
+                            })
+                            .await
+                            .unwrap();
+                    }
+                });
+            }
+        });
+
+        let mut conn = IpcConnection::connect(&sock, ClientKind::Tui)
+            .await
+            .unwrap();
+        let path = sock.clone();
+        let counts = conn
+            .system_mailbox_counts(None, || async move {
+                IpcConnection::connect(&path, ClientKind::Tui).await
+            })
+            .await
+            .unwrap();
+        assert_eq!(counts, None, "unsupported means use the label counts");
+        // The caller's next request runs on the fresh connection.
+        assert!(matches!(
+            conn.request(Request::Ping).await.unwrap(),
+            ResponseData::Pong
+        ));
+        // Remembered: no second attempt and no further reconnect.
+        let path = sock.clone();
+        assert_eq!(
+            conn.system_mailbox_counts(None, || async move {
+                IpcConnection::connect(&path, ClientKind::Tui).await
+            })
+            .await
+            .unwrap(),
+            None
+        );
+        assert_eq!(*counts_seen.lock().unwrap(), 1, "asked the old daemon once");
+        assert_eq!(*connections.lock().unwrap(), 2, "reconnected exactly once");
+        assert!(matches!(
+            conn.request(Request::Ping).await.unwrap(),
+            ResponseData::Pong
+        ));
+    }
+
+    /// A daemon that answers the unknown request with an error is handled the
+    /// same way.
+    #[tokio::test]
+    async fn system_mailbox_counts_survive_a_daemon_that_answers_with_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        let _server = spawn_fake_daemon(&sock, Vec::new(), |message| match &message.payload {
+            IpcPayload::Request(Request::SystemMailboxCounts { .. }) => {
+                Some(Response::error("unknown request"))
+            }
+            IpcPayload::Request(Request::Ping) => Some(Response::Ok {
+                data: ResponseData::Pong,
+            }),
+            _ => None,
+        })
+        .await;
+        let mut conn = IpcConnection::connect(&sock, ClientKind::Web)
+            .await
+            .unwrap();
+        let path = sock.clone();
+        assert_eq!(
+            conn.system_mailbox_counts(None, || async move {
+                IpcConnection::connect(&path, ClientKind::Web).await
+            })
+            .await
+            .unwrap(),
+            None
+        );
+        assert!(matches!(
+            conn.request(Request::Ping).await.unwrap(),
+            ResponseData::Pong
+        ));
+    }
+
+    #[tokio::test]
+    async fn system_mailbox_counts_come_back_from_a_daemon_that_supports_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        let _server = spawn_fake_daemon(&sock, Vec::new(), |message| match &message.payload {
+            IpcPayload::Request(Request::SystemMailboxCounts { .. }) => Some(Response::Ok {
+                data: ResponseData::SystemMailboxCounts {
+                    mailboxes: vec![mxr_protocol::SystemMailboxCount {
+                        role: "inbox".into(),
+                        unread: 1,
+                        total: 2,
+                    }],
+                },
+            }),
+            _ => None,
+        })
+        .await;
+        let mut conn = IpcConnection::connect(&sock, ClientKind::Tui)
+            .await
+            .unwrap();
+        let path = sock.clone();
+        let counts = conn
+            .system_mailbox_counts(None, || async move {
+                IpcConnection::connect(&path, ClientKind::Tui).await
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(counts.len(), 1);
     }
 
     #[tokio::test]

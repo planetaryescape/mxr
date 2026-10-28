@@ -969,6 +969,7 @@ impl MxrMcpServer {
             account_id: parse_optional_id(input.account_id)?,
             limit: input.limit.unwrap_or(25).min(100),
             offset: input.offset.unwrap_or(0),
+            label_role: None,
         })
         .await
     }

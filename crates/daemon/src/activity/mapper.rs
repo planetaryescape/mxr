@@ -743,6 +743,7 @@ pub fn map_request(
         | Request::ListBodies { .. }
         | Request::ListThreads { .. }
         | Request::ListLabels { .. }
+        | Request::SystemMailboxCounts { .. }
         | Request::ListAccounts
         | Request::ListAccountsConfig
         | Request::ListRules
@@ -1335,6 +1336,7 @@ mod tests {
                 account_id: None,
                 limit: 50,
                 offset: 0,
+                label_role: None,
             },
             Request::StartMutationJob {
                 mutation: MutationCommand::Archive {
@@ -1396,6 +1398,7 @@ mod tests {
             account_id: None,
             limit: 50,
             offset: 0,
+            label_role: None,
         };
         assert!(ok_map(&req).is_none());
     }

@@ -60,6 +60,7 @@ fn request_lane_defaults_user_initiated_commands_to_hot() {
         account_id: None,
         limit: 50,
         offset: 0,
+        label_role: None,
     };
     assert_eq!(request_lane(&list), IpcLane::Hot);
 
@@ -247,6 +248,7 @@ async fn dispatch_list_envelopes_after_sync() {
             account_id: None,
             limit: 100,
             offset: 0,
+            label_role: None,
         }),
     };
     let resp = handle_request(&state, &msg).await;
@@ -276,7 +278,10 @@ async fn dispatch_list_envelopes_by_label() {
         expected_workspace: None,
         id: 10,
         source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListLabels { account_id: None }),
+        payload: IpcPayload::Request(Request::ListLabels {
+            account_id: None,
+            all_accounts: false,
+        }),
     };
     let resp = handle_request(&state, &labels_msg).await;
     let labels = match resp.payload {
@@ -302,6 +307,7 @@ async fn dispatch_list_envelopes_by_label() {
             account_id: None,
             limit: 100,
             offset: 0,
+            label_role: None,
         }),
     };
     let resp = handle_request(&state, &msg).await;
@@ -330,7 +336,10 @@ async fn dispatch_list_labels_without_accounts_returns_empty() {
         expected_workspace: None,
         id: 12,
         source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListLabels { account_id: None }),
+        payload: IpcPayload::Request(Request::ListLabels {
+            account_id: None,
+            all_accounts: false,
+        }),
     };
     let resp = handle_request(&state, &msg).await;
 
@@ -355,6 +364,7 @@ async fn dispatch_list_envelopes_without_accounts_returns_empty() {
             account_id: None,
             limit: 100,
             offset: 0,
+            label_role: None,
         }),
     };
     let resp = handle_request(&state, &msg).await;
@@ -439,6 +449,7 @@ async fn dispatch_read_only_mailbox_uses_local_account_when_provider_missing() {
             account_id: None,
             limit: 100,
             offset: 0,
+            label_role: None,
         }),
     };
     let resp = handle_request(&state, &envelopes_msg).await;
@@ -456,7 +467,10 @@ async fn dispatch_read_only_mailbox_uses_local_account_when_provider_missing() {
         expected_workspace: None,
         id: 15,
         source: ::mxr_protocol::ClientKind::default(),
-        payload: IpcPayload::Request(Request::ListLabels { account_id: None }),
+        payload: IpcPayload::Request(Request::ListLabels {
+            account_id: None,
+            all_accounts: false,
+        }),
     };
     let resp = handle_request(&state, &labels_msg).await;
     match resp.payload {
@@ -502,6 +516,7 @@ async fn dispatch_create_label_persists_and_returns_label() {
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListLabels {
             account_id: Some(account_id),
+            all_accounts: false,
         }),
     };
     let resp = handle_request(&state, &list_msg).await;
@@ -713,6 +728,7 @@ async fn dispatch_rename_label_updates_visible_label() {
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListLabels {
             account_id: Some(account_id),
+            all_accounts: false,
         }),
     };
     let resp = handle_request(&state, &list_msg).await;
@@ -767,6 +783,7 @@ async fn dispatch_delete_label_removes_it_from_store() {
         source: ::mxr_protocol::ClientKind::default(),
         payload: IpcPayload::Request(Request::ListLabels {
             account_id: Some(account_id),
+            all_accounts: false,
         }),
     };
     let resp = handle_request(&state, &list_msg).await;
@@ -1673,6 +1690,7 @@ async fn dispatch_get_body_after_sync() {
             account_id: None,
             limit: 1,
             offset: 0,
+            label_role: None,
         }),
     };
     let resp = handle_request(&state, &envelopes_msg).await;

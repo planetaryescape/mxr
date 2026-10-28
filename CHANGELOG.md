@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.172](https://github.com/planetaryescape/mxr/compare/v0.6.171...v0.6.172) (2026-10-28)
+
+
+### Features
+
+* mark each email's account in the TUI ([#745](https://github.com/planetaryescape/mxr/issues/745)) ([6b59815](https://github.com/planetaryescape/mxr/commit/6b59815a4ad7eac01ed398f4037bde830999ac4f))
+* turn single-key shortcuts off and remap keys in both clients ([#742](https://github.com/planetaryescape/mxr/issues/742)) ([1175f41](https://github.com/planetaryescape/mxr/commit/1175f41609d806e0166c1de4f084d5b79535666f))
+
+
+### Bug Fixes
+
+* send one unsubscribe request per sender address ([#739](https://github.com/planetaryescape/mxr/issues/739)) ([bd4fb5e](https://github.com/planetaryescape/mxr/commit/bd4fb5e0fd43c1e6831c78108ba110bf6269b390))
+
+
+### Documentation
+
+* align compose guidance with released voice behavior ([835f06e](https://github.com/planetaryescape/mxr/commit/835f06e051fa8be0ce6f125e5e361aa89ee5158f))
+
 ## [0.6.171](https://github.com/planetaryescape/mxr/compare/v0.6.170...v0.6.171) (2026-10-28)
 
 

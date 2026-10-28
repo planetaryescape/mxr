@@ -34,6 +34,7 @@ pub(crate) struct DraftContext {
     pub background: Option<String>,
     /// The context includes a stored profile derived from sent or received mail.
     pub history_used: bool,
+    pub style_used: bool,
     /// Effective register used for the draft (inferred, unless overridden).
     pub inferred_register: VoiceRegisterData,
     /// Effective length used for the draft (inferred, unless overridden).
@@ -135,6 +136,7 @@ pub(crate) async fn build_relationship_block(
     DraftContext {
         baseline,
         history_used: matched_email.is_some() || user_voice.is_some() || background.is_some(),
+        style_used: primary_style.is_some() || user_voice.is_some(),
         background,
         inferred_register,
         inferred_length,

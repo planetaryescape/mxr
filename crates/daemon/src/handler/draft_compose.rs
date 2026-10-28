@@ -262,22 +262,25 @@ async fn draft_with(
     let material = snapshot.material;
     let context = snapshot.context;
     let background = share.then_some(context.background.as_deref()).flatten();
-    let inferred_length = context.history_used.then_some(context.inferred_length);
+    let inferred_length = context.style_used.then_some(context.inferred_length);
     let target_words = target_words(request.length_hint.or(inferred_length), &material);
     let max_tokens = max_tokens_for_words(target_words);
     let budget_chars = prompt_budget_chars(policy.llm.context_window(), max_tokens);
     let today = draft_voice::today();
     let mut prompt_habits = material.habits.clone();
-    if let Some(words) = material.median_words {
+    if let Some(words) = material
+        .median_words
+        .filter(|_| request.length_hint.is_none())
+    {
         prompt_habits.push(format!("I usually write about {words} words."));
     }
-    if share && request.register.is_none() {
+    if share && context.style_used && request.register.is_none() {
         prompt_habits.push(format!(
             "My usual register is {}.",
             draft_context::register_label(context.inferred_register)
         ));
     }
-    if share && request.length_hint.is_none() {
+    if share && context.style_used && request.length_hint.is_none() {
         prompt_habits.push(format!(
             "My usual email length is {}.",
             draft_context::length_label(context.inferred_length)
@@ -293,7 +296,7 @@ async fn draft_with(
         turns: &turns,
         tone: request
             .register
-            .or_else(|| share.then_some(context.inferred_register)),
+            .or_else(|| (share && context.style_used).then_some(context.inferred_register)),
         target_words,
         instruction: request.instruction,
         subject: "",

@@ -595,6 +595,45 @@ async fn seed_voice_style(state: &AppState, email: &str, formality: f64) {
 }
 
 #[tokio::test]
+async fn no_style_history_does_not_claim_default_values_are_writing_habits() {
+    let state = AppState::in_memory().await.unwrap();
+    let model = Scripted::new("Thursday works.");
+    state.llm.replace(model.clone());
+    assist(&state, &new_message(&state), &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+    let prompt = model.user_prompt();
+    assert!(!prompt.contains("My usual register"), "{prompt}");
+    assert!(!prompt.contains("My usual email length"), "{prompt}");
+    state
+        .store
+        .upsert_contact_relationship_summary(&mxr_store::ContactRelationshipSummaryRecord {
+            account_id: state.default_account_id(),
+            email: "sam@example.com".into(),
+            text: "We discussed Thursday.".into(),
+            model: "test".into(),
+            known_topics: vec![],
+            computed_at: chrono::Utc::now(),
+            source_hash: "summary-only".into(),
+            last_error: None,
+        })
+        .await
+        .unwrap();
+    assist(&state, &new_message(&state), &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+    let summary_prompt = model.user_prompt();
+    assert!(
+        !summary_prompt.contains("My usual email length"),
+        "{summary_prompt}"
+    );
+    assert!(
+        summary_prompt.contains("Aim for about 70 words"),
+        "{summary_prompt}"
+    );
+}
+
+#[tokio::test]
 async fn refreshed_relationship_voice_shapes_the_assist_prompt() {
     let state = AppState::in_memory().await.unwrap();
     seed_voice_style(&state, "sam@example.com", 0.9).await;

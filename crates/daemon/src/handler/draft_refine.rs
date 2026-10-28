@@ -108,7 +108,7 @@ pub(super) async fn draft_refine(
         }
         prompt.push('\n');
     }
-    if share && context.history_used {
+    if share && context.style_used {
         prompt.push_str(&format!(
             "This draft uses a {} register and {} length.\n\n",
             draft_context::register_label(context.inferred_register),

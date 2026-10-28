@@ -227,13 +227,16 @@ pub(super) async fn compose_assist(
     let tone = if request.adjust.more_formal {
         Some(VoiceRegisterData::Formal)
     } else {
-        context.as_ref().map(|context| context.inferred_register)
+        context
+            .as_ref()
+            .filter(|context| context.style_used)
+            .map(|context| context.inferred_register)
     };
     let mut habits = material.habits.clone();
     if let Some(words) = material.median_words {
         habits.push(format!("I usually write about {words} words."));
     }
-    if let Some(context) = &context {
+    if let Some(context) = context.as_ref().filter(|context| context.style_used) {
         habits.push(format!(
             "My usual register is {}.",
             draft_context::register_label(context.inferred_register)
@@ -247,7 +250,7 @@ pub(super) async fn compose_assist(
     let typed_words = u32::try_from(request.text.split_whitespace().count()).unwrap_or(u32::MAX);
     let inferred_length = context
         .as_ref()
-        .filter(|context| context.history_used)
+        .filter(|context| context.style_used)
         .map(|context| context.inferred_length);
     let mut words = plan::target_words(
         target_words(inferred_length, &material),

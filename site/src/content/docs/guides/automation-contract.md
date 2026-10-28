@@ -189,6 +189,10 @@ can create a second message even though saved-draft operations are protected.
 See [crash-safe drafts](/guides/crash-safe-drafts/) for the review and recovery
 steps.
 
+## Failures a script can branch on
+
+A missing or incompatible daemon exits `3`, and an auth failure exits `4`; other errors exit `1`. With JSON output, those two also write one `{"error":{"kind":…}}` line to stderr, so stdout stays results-only. See [exit codes](/reference/cli/concepts/#exit-codes).
+
 ## See also
 
 - [CLI reference](/reference/cli/) — every command, every flag, auto-generated

@@ -35378,6 +35378,17 @@
               "kind"
             ],
             "properties": {
+              "degraded": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SearchDegraded",
+                    "description": "Set when the lexical index was unavailable and SQLite answered a\nnarrower question. Absent when the index answered."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "explain": {
                 "oneOf": [
                   {
@@ -40759,6 +40770,33 @@
             "minimum": 0
           }
         }
+      },
+      "SearchDegraded": {
+        "type": "object",
+        "description": "Set on a search reply that came from the SQLite fallback instead of the\nlexical index. Absent on a reply from the index.",
+        "required": [
+          "reason",
+          "searched_fields"
+        ],
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/SearchDegradedReason"
+          },
+          "searched_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The parts of a message the limited search looked at."
+          }
+        }
+      },
+      "SearchDegradedReason": {
+        "type": "string",
+        "enum": [
+          "index_stopped",
+          "index_rebuilding"
+        ]
       },
       "SearchExplain": {
         "type": "object",

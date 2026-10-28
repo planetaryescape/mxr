@@ -89,6 +89,7 @@ function InviteRow({ invite, rowProps }: { invite: CalendarInviteData; rowProps:
     .join(" · ");
   return (
     <Row
+      accountId={invite.account_id}
       {...rowProps}
       lead={<Calendar aria-hidden className="size-4 text-text-3" />}
       primary={

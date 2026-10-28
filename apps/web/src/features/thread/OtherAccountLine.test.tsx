@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 const fetchAccounts = vi.hoisted(() => vi.fn<() => Promise<unknown>>());
@@ -9,13 +9,17 @@ vi.mock("@/features/accounts/api", () => ({ fetchAccounts }));
 
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
+import { AccountIdentitiesProvider } from "@/features/accounts/useAccountIdentities";
+
 import { OtherAccountLine } from "./OtherAccountLine";
 
 function renderLine(accountId: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <OtherAccountLine accountId={accountId} />
+      <AccountIdentitiesProvider>
+        <OtherAccountLine accountId={accountId} />
+      </AccountIdentitiesProvider>
     </QueryClientProvider>,
   );
 }
@@ -35,17 +39,22 @@ describe("OtherAccountLine", () => {
     });
     useUiPrefs.getState().setAccountScope("work");
     renderLine("home");
-    expect(await screen.findByText(/In me@home\.example, not the account/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/In Home · me@home\.example · not the account/),
+    ).toBeInTheDocument();
   });
 
-  test("says nothing in the scoped account, or with all accounts shown", () => {
+  test("says nothing in the scoped account, or with one account", async () => {
+    fetchAccounts.mockResolvedValue({
+      accounts: [{ account_id: "home", name: "Home", email: "me@home.example", enabled: true }],
+    });
     useUiPrefs.getState().setAccountScope("work");
     const { unmount } = renderLine("work");
     expect(screen.queryByTestId("other-account-line")).toBeNull();
     unmount();
     useUiPrefs.getState().setAccountScope(null);
     renderLine("home");
+    await waitFor(() => expect(fetchAccounts).toHaveBeenCalled());
     expect(screen.queryByTestId("other-account-line")).toBeNull();
-    expect(fetchAccounts).not.toHaveBeenCalled();
   });
 });

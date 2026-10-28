@@ -5,6 +5,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { disableAccount, fetchAccounts, setDefaultAccount } from "./api";
+import { AccountIdentityDialog } from "./AccountIdentityDialog";
+import { useAccountIdentities } from "./useAccountIdentities";
 import { Page } from "@/components/Page";
 import { PageEmpty, PageError, PageSkeleton, RuledList, RuledRow } from "@/components/PageParts";
 import {
@@ -27,6 +29,8 @@ export function AccountsListRoute() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [confirmDisable, setConfirmDisable] = useState<RuntimeAccount | null>(null);
+  const [editingIdentity, setEditingIdentity] = useState<RuntimeAccount | null>(null);
+  const identities = useAccountIdentities();
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
   const accountsHeld = useHeldPending(accounts.isPending);
   const makeDefault = useMutation({
@@ -109,6 +113,15 @@ export function AccountsListRoute() {
                 openLabel={`Manage ${account.email}`}
                 actions={
                   <>
+                    {account.key && identities.byId.has(account.account_id) ? (
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => setEditingIdentity(account)}
+                      >
+                        Colour and tag
+                      </Button>
+                    ) : null}
                     {!account.is_default ? (
                       <Button
                         variant="outline"
@@ -136,6 +149,11 @@ export function AccountsListRoute() {
           })}
         </RuledList>
       )}
+      <AccountIdentityDialog
+        account={editingIdentity}
+        identities={identities}
+        onClose={() => setEditingIdentity(null)}
+      />
       <AlertDialog
         open={confirmDisable !== null}
         onOpenChange={(open) => !open && setConfirmDisable(null)}

@@ -68,6 +68,7 @@ function NowRow({
 }) {
   return (
     <Row
+      accountId={item.kind === "reading" ? item.pick.account_id : undefined}
       data-index={state.index}
       data-testid="now-row"
       data-kind={item.kind}

@@ -12,7 +12,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AccountMark, AccountStrip } from "@/components/AccountMark";
 import { fetchAccounts } from "@/features/accounts/api";
+import { useAccountIdentities } from "@/features/accounts/useAccountIdentities";
 import { initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useUiPrefs } from "@/state/uiPrefsStore";
@@ -29,6 +31,7 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
   const recoveryStatus = useRecoveryStatus();
   const scope = useUiPrefs((s) => s.accountScope);
   const setScope = useUiPrefs((s) => s.setAccountScope);
+  const identities = useAccountIdentities();
   const rows = (accounts.data?.accounts ?? []).filter(
     (row) => row.enabled !== false || isRestoredProfile(recoveryStatus.data),
   );
@@ -101,26 +104,41 @@ export function AccountSwitcher({ collapsed = false }: { collapsed?: boolean }) 
           <DropdownMenuItem onSelect={() => setScope(null)}>
             <Layers className="size-3.5" />
             <span className="flex-1">All accounts</span>
+            {identities.several ? (
+              <AccountStrip
+                items={rows.flatMap((row) => {
+                  const identity = identities.byId.get(row.account_id);
+                  return identity ? [{ accountId: row.account_id, slot: identity.slot }] : [];
+                })}
+              />
+            ) : null}
             {scope === null ? <Check className="size-3.5 text-primary" /> : null}
           </DropdownMenuItem>
         ) : null}
-        {rows.map((row) => (
-          <DropdownMenuItem key={row.account_id} onSelect={() => setScope(row.account_id)}>
-            <span className="grid size-5 place-items-center rounded-sm bg-muted font-mono text-2xs">
-              {initials(row.name || row.email)}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate">{row.name || row.email}</span>
-              <span className="block truncate font-mono text-2xs text-muted-foreground">
-                {row.email}
+        {rows.map((row) => {
+          const chip = identities.several ? identities.byId.get(row.account_id) : undefined;
+          return (
+            <DropdownMenuItem key={row.account_id} onSelect={() => setScope(row.account_id)}>
+              {chip ? (
+                <AccountMark identity={chip} />
+              ) : (
+                <span className="grid size-5 place-items-center rounded-sm bg-muted font-mono text-2xs">
+                  {initials(row.name || row.email)}
+                </span>
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{row.name || row.email}</span>
+                <span className="block truncate font-mono text-2xs text-muted-foreground">
+                  {row.email}
+                </span>
               </span>
-            </span>
-            <SyncHealthDot accountId={row.account_id} />
-            {scope === row.account_id || (scope === null && rows.length === 1) ? (
-              <Check className="size-3.5 text-primary" />
-            ) : null}
-          </DropdownMenuItem>
-        ))}
+              <SyncHealthDot accountId={row.account_id} />
+              {scope === row.account_id || (scope === null && rows.length === 1) ? (
+                <Check className="size-3.5 text-primary" />
+              ) : null}
+            </DropdownMenuItem>
+          );
+        })}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link to="/accounts">

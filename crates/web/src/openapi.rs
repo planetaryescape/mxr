@@ -70,7 +70,7 @@ use utoipa::{
         rule_history, rule_dry_run, rule_upsert, rule_upsert_form, rule_delete, rule_treatment, rule_categories, category_why,
         saved_searches_list, saved_searches_create, saved_searches_delete, saved_searches_update,
         saved_searches_run, accounts_list, accounts_config, account_test,
-        account_upsert, account_set_default, account_remove, account_disable,
+        account_upsert, account_set_default, account_remove, account_disable, account_identity,
         account_addresses_list, account_addresses_add, account_addresses_remove,
         account_addresses_primary, auth_session_start, auth_session_get,
         auth_session_cancel, auth_session_complete, subscriptions_list,
@@ -1940,6 +1940,7 @@ endpoint!(post account_upsert "/api/v1/platform/accounts/upsert", "Create or upd
 endpoint!(post account_set_default "/api/v1/platform/accounts/default", "Set default account");
 endpoint!(delete account_remove "/api/v1/platform/accounts/{key}", "Remove account");
 endpoint!(post account_disable "/api/v1/platform/accounts/{key}/disable", "Disable account");
+endpoint!(post account_identity "/api/v1/platform/accounts/{key}/identity", "Set account colour and tag");
 endpoint!(get account_addresses_list "/api/v1/platform/accounts/{account_id}/addresses", "List account addresses");
 endpoint!(post account_addresses_add "/api/v1/platform/accounts/{account_id}/addresses", "Add account address");
 endpoint!(post account_addresses_remove "/api/v1/platform/accounts/{account_id}/addresses/remove", "Remove account address");

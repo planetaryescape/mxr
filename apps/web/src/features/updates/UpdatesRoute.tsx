@@ -307,7 +307,7 @@ function Digest({ digest, subtitle }: { digest: UpdatesDigest; subtitle: string 
     setCursorId(next.line.id);
   };
   // The status bar says why the lit line is here and which keys work on it.
-  useLitReason(current?.why);
+  useLitReason(current?.why, null, current?.account_id);
   // While the open email has focus these keys aren't live, so the strip doesn't offer them.
   usePageKeys(
     current && (!params.threadId || activePane !== "reader")

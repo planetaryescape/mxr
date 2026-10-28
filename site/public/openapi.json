@@ -7264,6 +7264,21 @@
         }
       }
     },
+    "/api/v1/platform/accounts/{key}/identity": {
+      "post": {
+        "tags": [],
+        "summary": "Set account colour and tag",
+        "operationId": "account_identity",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/platform/analytics/cadence-drift": {
       "get": {
         "tags": [],

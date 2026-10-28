@@ -94,6 +94,22 @@
   --chart-4: var(--star);
   --chart-5: #ff9e7a;
   --chart-6: #70e3d6;
+  --account-sky: #6cc0f0;
+  --account-sky-ink: #0b1218;
+  --account-amber: #e8a33d;
+  --account-amber-ink: #0b1218;
+  --account-green: #3fbf94;
+  --account-green-ink: #0b1218;
+  --account-yellow: #e9dc5c;
+  --account-yellow-ink: #0b1218;
+  --account-blue: #7aa6f5;
+  --account-blue-ink: #0b1218;
+  --account-vermilion: #f08a5d;
+  --account-vermilion-ink: #0b1218;
+  --account-purple: #d58fc0;
+  --account-purple-ink: #0b1218;
+  --account-slate: #a8b3bf;
+  --account-slate-ink: #0b1218;
 }
 
 /*
@@ -183,6 +199,22 @@
   --chart-4: var(--star);
   --chart-5: #c2553a;
   --chart-6: #15837a;
+  --account-sky: #1f6fa8;
+  --account-sky-ink: #ffffff;
+  --account-amber: #8f5a00;
+  --account-amber-ink: #ffffff;
+  --account-green: #00785a;
+  --account-green-ink: #ffffff;
+  --account-yellow: #6f6400;
+  --account-yellow-ink: #ffffff;
+  --account-blue: #2f55b8;
+  --account-blue-ink: #ffffff;
+  --account-vermilion: #b3471b;
+  --account-vermilion-ink: #ffffff;
+  --account-purple: #9a4a84;
+  --account-purple-ink: #ffffff;
+  --account-slate: #56606b;
+  --account-slate-ink: #ffffff;
 }
 
 /*
@@ -273,6 +305,22 @@
   --chart-4: var(--star);
   --chart-5: #ff9e7a;
   --chart-6: #70e3d6;
+  --account-sky: #6cc0f0;
+  --account-sky-ink: #0b1218;
+  --account-amber: #e8a33d;
+  --account-amber-ink: #0b1218;
+  --account-green: #3fbf94;
+  --account-green-ink: #0b1218;
+  --account-yellow: #e9dc5c;
+  --account-yellow-ink: #0b1218;
+  --account-blue: #7aa6f5;
+  --account-blue-ink: #0b1218;
+  --account-vermilion: #f08a5d;
+  --account-vermilion-ink: #0b1218;
+  --account-purple: #d58fc0;
+  --account-purple-ink: #0b1218;
+  --account-slate: #a8b3bf;
+  --account-slate-ink: #0b1218;
 }
 
 /*
@@ -361,6 +409,22 @@
   --chart-4: var(--star);
   --chart-5: #7a43b1;
   --chart-6: #15837a;
+  --account-sky: #1f6fa8;
+  --account-sky-ink: #ffffff;
+  --account-amber: #8f5a00;
+  --account-amber-ink: #ffffff;
+  --account-green: #00785a;
+  --account-green-ink: #ffffff;
+  --account-yellow: #6f6400;
+  --account-yellow-ink: #ffffff;
+  --account-blue: #2f55b8;
+  --account-blue-ink: #ffffff;
+  --account-vermilion: #b3471b;
+  --account-vermilion-ink: #ffffff;
+  --account-purple: #9a4a84;
+  --account-purple-ink: #ffffff;
+  --account-slate: #56606b;
+  --account-slate-ink: #ffffff;
 }
 
 /* The explicit preference and system `prefers-contrast: more` share this

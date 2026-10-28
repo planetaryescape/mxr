@@ -682,7 +682,7 @@ function MessagesBody({
   };
   // The lit row's reason goes to the status bar; a new sender adds the key choices.
   const newSender = selectedId ? memberships?.get(firstThread(selected))?.new_sender : undefined;
-  useLitReason(selected?.why, newSender ? NEW_SENDER_NOTE : null);
+  useLitReason(selected?.why, newSender ? NEW_SENDER_NOTE : null, selected?.account_id);
   // A new sender's choice keys are spelled out in the status note, so the strip keeps the common verbs.
   usePageKeys(stripKeys(selectedId ? "messages" : "messages.empty"));
   useShortcutScope("messages", true);

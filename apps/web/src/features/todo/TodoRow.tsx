@@ -294,6 +294,7 @@ export const TodoRow = memo(function TodoRow({
   const askQuote = todo.fields.find((field) => field.field === "quote")?.evidence;
   return (
     <Row
+      accountId={todo.account_id}
       data-index={index}
       data-testid="todo-row"
       data-id={todo.id}

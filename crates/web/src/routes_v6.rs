@@ -692,6 +692,38 @@ async fn disable_account(
     passthrough(response)
 }
 
+#[derive(Debug, Deserialize, Default)]
+struct SetAccountIdentityBody {
+    #[serde(default)]
+    color: Option<mxr_core::AccountColor>,
+    #[serde(default)]
+    tag: Option<String>,
+    #[serde(default)]
+    dry_run: bool,
+}
+
+async fn set_account_identity(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(key): Path<String>,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<SetAccountIdentityBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::SetAccountIdentity {
+            key,
+            color: body.color,
+            tag: body.tag,
+            dry_run: body.dry_run,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
 // ---------------------------------------------------------------------------
 // platform — account addresses (account_id is a UUID, hence path param parsing)
 
@@ -3260,6 +3292,7 @@ pub fn extend_platform(router: Router<AppState>) -> Router<AppState> {
         .route("/accounts/repair", post(repair_account_config))
         .route("/accounts/{key}", delete(remove_account))
         .route("/accounts/{key}/disable", post(disable_account))
+        .route("/accounts/{key}/identity", post(set_account_identity))
         // account addresses
         .route(
             "/accounts/{account_id}/addresses",

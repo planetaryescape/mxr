@@ -69,6 +69,7 @@ export const ReadingIssueRow = memo(function ReadingIssueRow({
   const canUnsubscribe = Boolean(item.unsubscribe_offer) && !shelf;
   return (
     <Row
+      accountId={item.account_id}
       data-testid="reading-item"
       data-index={index}
       data-key={item.item_key}

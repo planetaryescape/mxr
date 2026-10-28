@@ -16,6 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AccountMark } from "@/components/AccountMark";
+import { useAccountIdentities } from "@/features/accounts/useAccountIdentities";
+
 import type { RuntimeAccount } from "./api";
 
 interface ComposeTopBarProps {
@@ -124,6 +127,8 @@ export function FromControl({
   fromAddress: string;
   onFromChange: (email: string) => void;
 }) {
+  // The From line always names the account when there are several (docs/blueprint/33).
+  const identities = useAccountIdentities();
   if (accounts.length === 0) return null;
   const selected = accounts.find((account) => account.account_id === value) ?? accounts[0];
   const hasAliases = addresses.length > 1;
@@ -152,11 +157,19 @@ export function FromControl({
             <SelectValue placeholder="Account" />
           </SelectTrigger>
           <SelectContent>
-            {accounts.map((account) => (
-              <SelectItem key={account.account_id} value={account.account_id}>
-                {account.name || account.email} · {account.email}
-              </SelectItem>
-            ))}
+            {accounts.map((account) => {
+              const chip = identities.several ? identities.byId.get(account.account_id) : undefined;
+              return (
+                <SelectItem key={account.account_id} value={account.account_id}>
+                  <span className="flex min-w-0 items-center gap-2">
+                    {chip ? <AccountMark identity={chip} /> : null}
+                    <span className="truncate">
+                      {account.name || account.email} · {account.email}
+                    </span>
+                  </span>
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       ) : null}

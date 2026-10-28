@@ -104,6 +104,7 @@ function DraftRow({
   const subject = draft.subject.trim() || "(no subject)";
   return (
     <Row
+      accountId={draft.account_id}
       {...rowProps}
       lead={<FileText aria-hidden className="size-4 text-text-3" />}
       primary={subject}

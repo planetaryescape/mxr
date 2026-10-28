@@ -234,6 +234,7 @@ function ScreenerQueue({ accountId }: { accountId: string }) {
           return (
             <Row
               key={entry.sender_email}
+              accountId={accountId}
               data-testid="screener-row"
               lit={index === focused}
               via={via.current}

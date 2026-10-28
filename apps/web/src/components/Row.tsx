@@ -1,7 +1,9 @@
 import type { LucideIcon } from "lucide-react";
 import { memo, type ComponentPropsWithoutRef, type ReactNode, type Ref } from "react";
 
+import { AccountMark } from "@/components/AccountMark";
 import { KeyChip } from "@/components/KeyChip";
+import { useAccountIdentities } from "@/features/accounts/useAccountIdentities";
 import { cn } from "@/lib/utils";
 import { useLanded } from "@/state/landingStore";
 
@@ -48,6 +50,11 @@ export interface RowProps extends Omit<ComponentPropsWithoutRef<"li">, "children
   renderMain?: (content: ReactNode, className: string) => ReactNode;
   /** An anchored hint, drawn under the row so it never changes the row's height. */
   hint?: ReactNode;
+  /**
+   * The account the row's mail came to. Drawn as the account's chip, between
+   * the trail and the time, when the view mixes accounts (docs/blueprint/33).
+   */
+  accountId?: string | null;
 }
 
 const NO_IDS: readonly string[] = [];
@@ -80,11 +87,14 @@ export const Row = memo(function Row({
   verbs,
   renderMain,
   hint,
+  accountId,
   className,
   ref,
   ...rest
 }: RowProps) {
   const landed = useLanded(...land);
+  const accounts = useAccountIdentities();
+  const identity = accountId && accounts.marksShown ? accounts.byId.get(accountId) : undefined;
   const text = (
     <>
       {leadControl ? null : lead}
@@ -137,7 +147,7 @@ export const Row = memo(function Row({
         />
         {leadControl ? lead : null}
         {renderMain ? renderMain(text, MAIN) : <div className={MAIN}>{text}</div>}
-        {trail || verbs || time ? (
+        {trail || verbs || time || identity ? (
           // Below sm the group takes at most 60% of the row, so the primary
           // text keeps room. Inside it the actions and marks clip first; the
           // time never does.
@@ -152,6 +162,7 @@ export const Row = memo(function Row({
                 {trail}
               </div>
             ) : null}
+            {identity ? <AccountMark identity={identity} className="ml-2.5" /> : null}
             {verbs ? (
               <div
                 className={cn(
@@ -163,7 +174,12 @@ export const Row = memo(function Row({
               </div>
             ) : null}
             {time ? (
-              <div className="ml-2.5 flex shrink-0 items-center whitespace-nowrap tabular-nums">
+              <div
+                className={cn(
+                  "flex shrink-0 items-center whitespace-nowrap tabular-nums",
+                  identity ? "ml-1.5" : "ml-2.5",
+                )}
+              >
                 {time}
               </div>
             ) : null}

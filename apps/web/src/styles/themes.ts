@@ -7,7 +7,34 @@
  */
 
 import { CONTRAST, generateIncreased, generateRoles } from "./themeGenerator.ts";
-import type { Roles, ThemeInput } from "./themeGenerator.ts";
+import type { AccountPalette, Roles, ThemeInput } from "./themeGenerator.ts";
+
+/*
+ * Account chips (docs/blueprint/33). Dark themes take lighter fills with dark
+ * ink; light themes deeper fills with light ink. Every pair passes 4.5:1, and
+ * themes.test.ts fails a pair that drifts below it.
+ */
+const DARK_ACCOUNTS: AccountPalette = {
+  sky: { fill: "#6cc0f0", ink: "#0b1218" },
+  amber: { fill: "#e8a33d", ink: "#0b1218" },
+  green: { fill: "#3fbf94", ink: "#0b1218" },
+  yellow: { fill: "#e9dc5c", ink: "#0b1218" },
+  blue: { fill: "#7aa6f5", ink: "#0b1218" },
+  vermilion: { fill: "#f08a5d", ink: "#0b1218" },
+  purple: { fill: "#d58fc0", ink: "#0b1218" },
+  slate: { fill: "#a8b3bf", ink: "#0b1218" },
+};
+
+const LIGHT_ACCOUNTS: AccountPalette = {
+  sky: { fill: "#1f6fa8", ink: "#ffffff" },
+  amber: { fill: "#8f5a00", ink: "#ffffff" },
+  green: { fill: "#00785a", ink: "#ffffff" },
+  yellow: { fill: "#6f6400", ink: "#ffffff" },
+  blue: { fill: "#2f55b8", ink: "#ffffff" },
+  vermilion: { fill: "#b3471b", ink: "#ffffff" },
+  purple: { fill: "#9a4a84", ink: "#ffffff" },
+  slate: { fill: "#56606b", ink: "#ffffff" },
+};
 
 export const THEMES: readonly ThemeInput[] = [
   {
@@ -18,6 +45,7 @@ export const THEMES: readonly ThemeInput[] = [
     base: "#0d161f",
     accent: "#5cd5fc",
     contrast: CONTRAST.dark,
+    accountPalette: DARK_ACCOUNTS,
   },
   {
     id: "light",
@@ -27,6 +55,7 @@ export const THEMES: readonly ThemeInput[] = [
     base: "#f4f9fc",
     accent: "#006f93",
     contrast: CONTRAST.light,
+    accountPalette: LIGHT_ACCOUNTS,
     // Navy ink on a desk that is barely tinted: the text carries more chroma and a bluer hue than the desk.
     ink: { hue: 249, chroma: [0.049, 0.045, 0.037] },
   },
@@ -38,6 +67,7 @@ export const THEMES: readonly ThemeInput[] = [
     base: "oklch(14.5% 0.01 290)",
     accent: "oklch(80% 0.13 330)",
     contrast: CONTRAST.soft,
+    accountPalette: DARK_ACCOUNTS,
     overrides: {
       // Violet pending sits next to the magenta accent; the second chart colour is a blue instead.
       "chart-2": "oklch(80% 0.1 230)",
@@ -51,6 +81,7 @@ export const THEMES: readonly ThemeInput[] = [
     base: "hsl(36 30% 96%)",
     accent: "hsl(14 75% 38%)",
     contrast: CONTRAST.light,
+    accountPalette: LIGHT_ACCOUNTS,
     // Rust reads as error red on counts and unread marks (D139): they use the primary text tier here.
     neutralMarks: true,
     overrides: {

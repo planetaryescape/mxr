@@ -3839,6 +3839,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/accounts/{key}/identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set account colour and tag */
+        post: operations["account_identity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/analytics/cadence-drift": {
         parameters: {
             query?: never;
@@ -24105,6 +24122,31 @@ export interface operations {
         };
     };
     account_disable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    account_identity: {
         parameters: {
             query?: never;
             header?: never;

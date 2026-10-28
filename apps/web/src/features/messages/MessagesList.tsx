@@ -348,6 +348,7 @@ const PersonRow = memo(function PersonRow({
   if (allGone && !folding) return null;
   return (
     <Row
+      accountId={row.account_id}
       ref={measure}
       data-index={slotIndex}
       aria-setsize={setSize}

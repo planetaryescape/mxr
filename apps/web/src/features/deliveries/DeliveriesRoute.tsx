@@ -166,6 +166,7 @@ export function DeliveriesRoute() {
             const threadId = delivery.thread_id;
             return (
               <Row
+                accountId={delivery.account_id}
                 key={delivery.id}
                 {...rowProps(delivery.id)}
                 lead={<Package aria-hidden className="size-4 text-text-3" />}

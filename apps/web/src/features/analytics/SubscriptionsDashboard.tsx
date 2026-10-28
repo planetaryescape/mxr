@@ -82,6 +82,7 @@ export function SubscriptionsDashboard() {
               const id = rowId(row);
               return (
                 <Row
+                  accountId={row.account_id}
                   key={id}
                   {...rowProps(id)}
                   primary={row.sender_name || row.sender_email}

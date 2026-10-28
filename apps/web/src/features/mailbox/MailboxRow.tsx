@@ -85,6 +85,7 @@ export const MailboxRow = memo(function MailboxRow({
 
   return (
     <Row
+      accountId={row.account_id}
       id={domId}
       role="option"
       aria-selected={selected}

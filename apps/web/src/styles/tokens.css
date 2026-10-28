@@ -173,6 +173,23 @@
   --color-vip-foreground: var(--vip-foreground);
   --color-pending: var(--pending);
   --color-pending-foreground: var(--pending-foreground);
+  /* Account chips (docs/blueprint/33): the account palette is used for nothing else. */
+  --color-account-sky: var(--account-sky);
+  --color-account-sky-ink: var(--account-sky-ink);
+  --color-account-amber: var(--account-amber);
+  --color-account-amber-ink: var(--account-amber-ink);
+  --color-account-green: var(--account-green);
+  --color-account-green-ink: var(--account-green-ink);
+  --color-account-yellow: var(--account-yellow);
+  --color-account-yellow-ink: var(--account-yellow-ink);
+  --color-account-blue: var(--account-blue);
+  --color-account-blue-ink: var(--account-blue-ink);
+  --color-account-vermilion: var(--account-vermilion);
+  --color-account-vermilion-ink: var(--account-vermilion-ink);
+  --color-account-purple: var(--account-purple);
+  --color-account-purple-ink: var(--account-purple-ink);
+  --color-account-slate: var(--account-slate);
+  --color-account-slate-ink: var(--account-slate-ink);
   --color-unread-marker: var(--unread-marker);
   --color-unread-marker-foreground: var(--unread-marker-foreground);
   --color-star: var(--star);

@@ -272,11 +272,15 @@ const PLACE_COLUMNS: &str = r#"
     EXISTS (SELECT 1 FROM message_pins p WHERE p.message_id = m.id) AS pinned,
     EXISTS (SELECT 1 FROM snoozed s WHERE s.message_id = m.id) AS snoozed"#;
 
+/// `8` in the SQL below is `MessageFlags::SENT` (checked by
+/// `place_evidence_sent_bit_matches_the_flag`): unknown-direction mail the
+/// provider filed as sent counts as yours, as in `MessageDirection::for_message`.
 const PLACE_EVIDENCE: &str = r#"
     EXISTS (SELECT 1 FROM messages sent WHERE sent.account_id = m.account_id
         AND sent.thread_id = m.thread_id AND (sent.direction = 'outbound'
-            OR (sent.direction != 'inbound' AND EXISTS (SELECT 1 FROM account_addresses own
-                WHERE own.account_id = sent.account_id AND lower(own.email) = lower(sent.from_email))))
+            OR (sent.direction != 'inbound' AND ((sent.flags & 8) != 0
+                OR EXISTS (SELECT 1 FROM account_addresses own
+                WHERE own.account_id = sent.account_id AND lower(own.email) = lower(sent.from_email)))))
         AND sent.id != m.id) AS evidence_thread_correspondence,
     (SELECT json_object('list_id', json_extract(metadata_json, '$.list_id'),
         'raw_headers', substr(json_extract(metadata_json, '$.raw_headers'), 1, 131072))
@@ -611,5 +615,14 @@ pub(crate) mod tests {
                 "history keeps every envelope/state field, omitting only evidence"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod place_evidence_flag_tests {
+    #[test]
+    fn place_evidence_sent_bit_matches_the_flag() {
+        assert_eq!(mxr_core::types::MessageFlags::SENT.bits(), 8);
+        assert!(super::PLACE_EVIDENCE.contains("(sent.flags & 8) != 0"));
     }
 }

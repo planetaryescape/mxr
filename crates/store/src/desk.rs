@@ -675,11 +675,15 @@ fn desk_messages_sql(active_threads: &str, evidence_mode: Evidence) -> String {
         "1".to_string()
     };
     let evidence = if !matches!(evidence_mode, Evidence::None) {
+        // Unknown-direction mail the provider filed as sent counts as yours,
+        // the same rule as `MessageDirection::for_message`.
+        let sent_flag = mxr_core::types::MessageFlags::SENT.bits();
         format!(
             r#"EXISTS (SELECT 1 FROM messages sent WHERE sent.account_id = m.account_id
                     AND sent.thread_id = m.thread_id AND (sent.direction = 'outbound'
-                        OR (sent.direction != 'inbound' AND EXISTS (SELECT 1 FROM account_addresses own
-                            WHERE own.account_id = sent.account_id AND lower(own.email) = lower(sent.from_email))))
+                        OR (sent.direction != 'inbound' AND ((sent.flags & {sent_flag}) != 0
+                            OR EXISTS (SELECT 1 FROM account_addresses own
+                            WHERE own.account_id = sent.account_id AND lower(own.email) = lower(sent.from_email)))))
                     AND sent.id != m.id) AS evidence_thread_correspondence,
                 CASE WHEN {gate} THEN (SELECT json_object('list_id', json_extract(metadata_json, '$.list_id'),
                     'raw_headers', substr(json_extract(metadata_json, '$.raw_headers'), 1, 131072))

@@ -118,8 +118,8 @@ Gmail's SENT label marks mail sent from a Gmail send-as address, so that mail
 counts as sent even if you have not added the address as an alias. Over IMAP, mxr
 marks mail as sent from Gmail's labels and from a folder named in English, such
 as `Sent`, `Sent Items`, `Sent Mail` or `Sent Messages`. A localised Sent folder
-does not count yet, because mxr does not read the folder's special-use
-attribute. Screening still follows owned addresses only: a message from a
+does not count yet: mxr reads the folder's special-use attribute to label the
+folder, but does not carry it into each message's sent mark. Screening still follows owned addresses only: a message from a
 screened sender is screened unless its From is one of your addresses, whatever
 the sent mark says.
 

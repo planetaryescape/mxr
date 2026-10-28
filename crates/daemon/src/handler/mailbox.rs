@@ -296,7 +296,8 @@ async fn rehydrate_attachment_only_invites(
                 continue;
             };
             match provider.fetch_message(&envelope.provider_id).await {
-                Ok(Some(synced)) if synced.body.metadata.calendar.is_some() => {
+                Ok(Some(mut synced)) if synced.body.metadata.calendar.is_some() => {
+                    keep_stored_sent_flag(&mut synced.envelope, envelope);
                     if let Err(error) = state.sync_engine.persist_synced_message(&synced).await {
                         tracing::warn!(message_id = %envelope.id, "backfill_invites: persist failed: {error}");
                         continue;

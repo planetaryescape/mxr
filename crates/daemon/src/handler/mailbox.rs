@@ -9,7 +9,7 @@ use mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
 use mxr_core::types::{
     Account, Address, BodyPartSource, CalendarAttendee, CalendarMetadata, CalendarPartstat,
     CalendarReplyMessage, Envelope, HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind,
-    InlineCalendarReply, MessageBody, MessageFlags,
+    InlineCalendarReply, MessageBody, MessageFlags, Role,
 };
 use mxr_protocol::{
     AttachmentChunk, AttachmentTransferMetadata, BodyFailure, CalendarInviteActionData,
@@ -74,14 +74,51 @@ async fn resolve_local_account_id(
         .map(|account| account.id.clone()))
 }
 
+/// A `label_role` request resolved to the role and the accounts it covers:
+/// the named account, or every enabled account when none is named. `None`
+/// when the request carries no role (an old client), so the label id path
+/// runs as before.
+async fn resolve_role_scope(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    label_role: Option<&str>,
+) -> Result<Option<(Role, Vec<AccountId>)>, String> {
+    let Some(wire) = label_role else {
+        return Ok(None);
+    };
+    let role = Role::from_system_mailbox_wire_name(wire)
+        .ok_or_else(|| format!("unknown mailbox role: {wire}"))?;
+    let accounts = match account_id {
+        Some(account_id) => vec![account_id.clone()],
+        None => state
+            .store
+            .list_cached_mail_accounts()
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|account| account.id)
+            .collect(),
+    };
+    Ok(Some((role, accounts)))
+}
+
 pub(super) async fn list_envelopes(
     state: &AppState,
     label_id: Option<&LabelId>,
     account_id: Option<&AccountId>,
     limit: u32,
     offset: u32,
+    label_role: Option<&str>,
 ) -> HandlerResult {
-    let result = if let Some(label_id) = label_id {
+    let result = if let Some((role, accounts)) =
+        resolve_role_scope(state, account_id, label_role).await?
+    {
+        tracing::debug!(role = ?role, accounts = accounts.len(), limit, offset, "listing envelopes by role");
+        state
+            .store
+            .list_envelopes_by_role(&accounts, role, limit, offset)
+            .await
+    } else if let Some(label_id) = label_id {
         tracing::debug!(label_id = %label_id, limit, offset, "listing envelopes by label");
         state
             .store
@@ -1420,16 +1457,36 @@ pub(super) async fn list_threads(
     limit: u32,
     offset: u32,
     sort: Option<mxr_core::types::SortOrder>,
+    label_role: Option<&str>,
 ) -> HandlerResult {
     let sort = sort.unwrap_or(mxr_core::types::SortOrder::DateDesc);
-    let threads = state
-        .store
-        .list_threads(account_id, label_id, limit, offset, sort)
-        .await?;
+    let threads =
+        if let Some((role, accounts)) = resolve_role_scope(state, account_id, label_role).await? {
+            state
+                .store
+                .list_threads_by_role(&accounts, role, limit, offset, sort)
+                .await?
+        } else {
+            state
+                .store
+                .list_threads(account_id, label_id, limit, offset, sort)
+                .await?
+        };
     Ok(ResponseData::Threads { threads })
 }
 
-pub(super) async fn list_labels(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
+pub(super) async fn list_labels(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    all_accounts: bool,
+) -> HandlerResult {
+    if all_accounts && account_id.is_none() {
+        let mut labels = Vec::new();
+        for account in state.store.list_cached_mail_accounts().await? {
+            labels.extend(state.store.list_labels_by_account(&account.id).await?);
+        }
+        return Ok(ResponseData::Labels { labels });
+    }
     let Some(account_id) = resolve_local_account_id(state, account_id).await? else {
         return Ok(ResponseData::Labels { labels: Vec::new() });
     };

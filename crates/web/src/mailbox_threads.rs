@@ -7,12 +7,14 @@
 //! thread's envelopes. Saved-search and subscription lenses have no thread
 //! listing in the daemon, so they keep the envelope path.
 
-use super::chrome::{derived_counts, find_inbox_label, matches_system_label, BridgeChrome};
+use super::chrome::{
+    derived_counts, find_inbox_label, matches_system_label, unscoped_label_role, BridgeChrome,
+};
 use super::chrome::{MessageRowView, THREAD_ROW_PARTICIPANT_LIMIT};
 use super::envelope_list::{list_envelopes_by_message_ids, message_row_view};
 use super::row_labels::{annotate_row_labels, LabelCatalog};
 use super::*;
-use mxr_core::{MessageFlags, Thread};
+use mxr_core::{MessageFlags, Role, Thread};
 
 /// Envelope lookups are batched so a page of very long threads never builds
 /// one oversized IPC frame.
@@ -31,6 +33,9 @@ pub(crate) struct ThreadPage {
 /// The lens-specific inputs to a thread listing.
 struct ThreadLens<'a> {
     label_filter: Option<LabelId>,
+    /// System mailbox to list across every account; set only without an
+    /// account scope.
+    label_role: Option<String>,
     /// Label whose members count as "in the lens". `None` means every message
     /// of the thread belongs (All Mail, or an account with no inbox label).
     member_label: Option<&'a Label>,
@@ -41,12 +46,17 @@ struct ThreadLens<'a> {
 fn thread_lens<'a>(
     chrome: &'a BridgeChrome,
     lens: &MailboxLensRequest,
+    account_id: Option<&AccountId>,
 ) -> Result<Option<ThreadLens<'a>>, BridgeError> {
     Ok(Some(match lens.kind {
         MailboxLensKind::Inbox => {
             let inbox = find_inbox_label(&chrome.labels);
             ThreadLens {
                 label_filter: chrome.inbox_label_id.clone(),
+                label_role: account_id
+                    .is_none()
+                    .then(|| Role::Inbox.system_mailbox_wire_name().map(str::to_string))
+                    .flatten(),
                 member_label: inbox,
                 count_label: inbox,
                 lens_label: inbox.map_or_else(|| "Inbox".to_string(), |label| label.name.clone()),
@@ -54,6 +64,10 @@ fn thread_lens<'a>(
         }
         MailboxLensKind::AllMail => ThreadLens {
             label_filter: None,
+            label_role: account_id
+                .is_none()
+                .then(|| Role::AllMail.system_mailbox_wire_name().map(str::to_string))
+                .flatten(),
             member_label: None,
             count_label: chrome
                 .labels
@@ -73,6 +87,7 @@ fn thread_lens<'a>(
                 .find(|candidate| candidate.id == label_id);
             ThreadLens {
                 label_filter: Some(label_id),
+                label_role: unscoped_label_role(account_id, label),
                 member_label: label,
                 count_label: label,
                 lens_label: label.map_or_else(|| "Label".to_string(), |label| label.name.clone()),
@@ -94,7 +109,7 @@ pub(crate) async fn load_thread_page(
     limit: u32,
     offset: u32,
 ) -> Result<Option<ThreadPage>, BridgeError> {
-    let Some(thread_lens) = thread_lens(chrome, lens)? else {
+    let Some(thread_lens) = thread_lens(chrome, lens, account_id)? else {
         return Ok(None);
     };
     let threads = match ipc_request(
@@ -105,6 +120,7 @@ pub(crate) async fn load_thread_page(
             limit,
             offset,
             sort: Some(SortOrder::DateDesc),
+            label_role: thread_lens.label_role.clone(),
         },
     )
     .await?
@@ -151,9 +167,10 @@ pub(crate) async fn load_thread_page(
     let counts = thread_lens.count_label.map_or_else(
         || derived_counts(&page_envelopes),
         |label| {
+            let (unread, total) = chrome.label_counts(label);
             json!({
-                "unread": label.unread_count,
-                "total": label.total_count,
+                "unread": unread,
+                "total": total,
             })
         },
     );

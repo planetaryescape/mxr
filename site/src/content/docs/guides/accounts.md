@@ -302,6 +302,7 @@ Compose, reply, and forward resolve the sender from the selected/default runtime
 ## Multi-account notes
 
 - Sync can run per account.
+- With no account chosen, the web app's "All accounts" and the TUI list the Inbox, Starred, Sent, Drafts, Spam, Trash and All Mail of every enabled account, and their counts add up across accounts. `mxr threads --label INBOX` (or SENT, DRAFT, SPAM, TRASH, STARRED) without `--account` does the same. Name an account and you get that account's mailbox. Your own labels are still listed per account: the sidebar shows the default account's.
 - Mail reads, searches, saved searches, reply queues, deliveries, invites, drafts, and core mutations can run per account with `--account`.
 - The daemon tracks account health in status and diagnostics.
 - Changing editable accounts in the TUI triggers daemon reload so the runtime view updates without a restart.

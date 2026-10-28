@@ -416,7 +416,9 @@ async fn one_route_per_bucket_dispatches() {
                     subscriptions: vec![],
                 },
             }),
-            Request::ListLabels { account_id: None } => Some(Response::Ok {
+            Request::ListLabels {
+                account_id: None, ..
+            } => Some(Response::Ok {
                 data: ResponseData::Labels { labels: vec![] },
             }),
             Request::ListCategories { account_id: None } => Some(Response::Ok {

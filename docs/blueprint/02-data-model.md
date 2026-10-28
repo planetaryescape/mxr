@@ -124,6 +124,8 @@ The honesty seam is:
 
 This is the rule for contributors: unify the organizer surface, but do not paper over folder semantics into fake Gmail labels.
 
+**System mailboxes across accounts.** "All accounts" views list a system mailbox (Inbox, Starred, Sent, Drafts, Spam, Trash, All Mail) by role instead of by one label id. `ListThreads` and `ListEnvelopes` carry an optional `label_role` (`inbox`, `starred`, `sent`, `drafts`, `spam`, `trash`, `all_mail`). With no `account_id` it means the labels with that role in every enabled account; with one, that account's. `label_id` is still sent (the default account's label) so a daemon without `label_role` lists what it always did. `ListLabels { all_accounts: true }` returns every enabled account's labels so callers can sum a mailbox's counts. The store does not persist `Label::role`, so a label has a mailbox role when it is `LabelKind::System` and either its provider role or its name (`INBOX`, `Sent`, `DRAFT`, ...) says so; that mapping lives in one table in `mxr-core` (`Role::system_label_names`, `Label::system_mailbox_role`). User labels and folders never match, so a folder called "Inbox" is not the Inbox. User labels are still per account.
+
 ### Message flags (bitfield)
 
 ```rust

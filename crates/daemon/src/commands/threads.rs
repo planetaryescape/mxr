@@ -27,11 +27,12 @@ pub async fn run(
 
     // Resolve --label name → LabelId via the ListLabels endpoint so the
     // CLI accepts the human-readable label name (matching `mxr labels`).
-    let label_id = match label {
+    let selection = match label {
         Some(name) => {
             let resp = client
                 .request(Request::ListLabels {
                     account_id: account_id.clone(),
+                    all_accounts: false,
                 })
                 .await?;
             let labels = expect_response(resp, |r| match r {
@@ -40,21 +41,15 @@ pub async fn run(
                 } => Some(labels),
                 _ => None,
             })?;
-            Some(
-                labels
-                    .into_iter()
-                    .find(|l| l.name == name)
-                    .map(|l| l.id)
-                    .ok_or_else(|| anyhow::anyhow!("no label named '{name}'"))?,
-            )
+            select_label(&name, &labels, account_id.is_some())?
         }
-        None => None,
+        None => LabelSelection::default(),
     };
 
     let threads = fetch_threads(
         &mut client,
         account_id,
-        label_id,
+        selection,
         limit,
         offset,
         sort.map(mxr_core::types::SortOrder::from),
@@ -113,10 +108,42 @@ pub async fn run(
     Ok(())
 }
 
+/// What `--label` resolved to. Without `--account`, a system mailbox name
+/// (INBOX, SENT, ...) also sets `label_role`, so a daemon that knows it lists
+/// that mailbox across every account; `label_id` stays the default account's
+/// label for a daemon that does not.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct LabelSelection {
+    label_id: Option<LabelId>,
+    label_role: Option<String>,
+}
+
+fn select_label(
+    name: &str,
+    labels: &[mxr_core::Label],
+    account_scoped: bool,
+) -> anyhow::Result<LabelSelection> {
+    let label_id = labels.iter().find(|l| l.name == name).map(|l| l.id.clone());
+    let label_role = if account_scoped {
+        None
+    } else {
+        mxr_core::Role::from_system_label_name(name)
+            .and_then(mxr_core::Role::system_mailbox_wire_name)
+            .map(str::to_string)
+    };
+    if label_id.is_none() && label_role.is_none() {
+        anyhow::bail!("no label named '{name}'");
+    }
+    Ok(LabelSelection {
+        label_id,
+        label_role,
+    })
+}
+
 async fn fetch_threads(
     client: &mut IpcClient,
     account_id: Option<AccountId>,
-    label_id: Option<LabelId>,
+    selection: LabelSelection,
     limit: u32,
     offset: u32,
     sort: Option<mxr_core::types::SortOrder>,
@@ -124,10 +151,11 @@ async fn fetch_threads(
     let resp = client
         .request(Request::ListThreads {
             account_id,
-            label_id,
+            label_id: selection.label_id,
             limit,
             offset,
             sort,
+            label_role: selection.label_role,
         })
         .await?;
     expect_response(resp, |r| match r {
@@ -136,4 +164,56 @@ async fn fetch_threads(
         } => Some(threads),
         _ => None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(clippy::unwrap_used, reason = "tests unwrap fixture values")]
+    use super::*;
+    use mxr_core::{AccountId, Label, LabelKind};
+
+    fn label(name: &str, kind: LabelKind) -> Label {
+        Label {
+            id: LabelId::new(),
+            account_id: AccountId::new(),
+            name: name.to_string(),
+            kind,
+            color: None,
+            provider_id: name.to_string(),
+            unread_count: 0,
+            total_count: 0,
+            role: None,
+        }
+    }
+
+    #[test]
+    fn system_name_without_account_selects_role_and_keeps_default_label_id() {
+        let inbox = label("INBOX", LabelKind::System);
+        let selection = select_label("INBOX", std::slice::from_ref(&inbox), false).unwrap();
+        assert_eq!(selection.label_role.as_deref(), Some("inbox"));
+        assert_eq!(selection.label_id, Some(inbox.id));
+    }
+
+    #[test]
+    fn system_name_is_a_role_even_when_the_default_account_lacks_it() {
+        let selection = select_label("SENT", &[], false).unwrap();
+        assert_eq!(selection.label_role.as_deref(), Some("sent"));
+        assert_eq!(selection.label_id, None);
+    }
+
+    #[test]
+    fn account_scoped_label_stays_a_plain_label_id() {
+        let inbox = label("INBOX", LabelKind::System);
+        let selection = select_label("INBOX", std::slice::from_ref(&inbox), true).unwrap();
+        assert_eq!(selection.label_role, None);
+        assert_eq!(selection.label_id, Some(inbox.id));
+    }
+
+    #[test]
+    fn user_label_never_becomes_a_role() {
+        let work = label("Work", LabelKind::User);
+        let selection = select_label("Work", std::slice::from_ref(&work), false).unwrap();
+        assert_eq!(selection.label_role, None);
+        assert!(select_label("Missing", &[work], false).is_err());
+    }
 }

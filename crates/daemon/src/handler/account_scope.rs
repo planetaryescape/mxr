@@ -149,7 +149,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         },
         Request::ListInvites { account_id, .. }
         | Request::BackfillCalendarInvites { account_id }
-        | Request::ListLabels { account_id }
+        | Request::ListLabels { account_id, .. }
         | Request::ListCategories { account_id }
         | Request::CreateLabel { account_id, .. }
         | Request::DeleteLabel { account_id, .. }

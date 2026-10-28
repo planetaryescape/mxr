@@ -71,6 +71,7 @@ pub async fn run(
             let resp = client
                 .request(Request::ListLabels {
                     account_id: account_id.clone(),
+                    all_accounts: false,
                 })
                 .await?;
             match resp {

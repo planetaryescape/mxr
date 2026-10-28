@@ -659,6 +659,13 @@ pub enum Request {
         account_id: Option<AccountId>,
         limit: u32,
         offset: u32,
+        /// A system mailbox (`inbox`, `starred`, `sent`, `drafts`, `spam`,
+        /// `trash`, `all_mail`). With no `account_id` it lists that mailbox
+        /// across every enabled account; with one, that account's. A daemon
+        /// that knows it prefers it to `label_id`; an older one ignores it
+        /// and lists `label_id`, so callers keep sending both.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_role: Option<String>,
     },
     ListEnvelopesByIds {
         message_ids: Vec<MessageId>,
@@ -769,9 +776,17 @@ pub enum Request {
         offset: u32,
         #[serde(default)]
         sort: Option<SortOrder>,
+        /// Same meaning as on `ListEnvelopes`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_role: Option<String>,
     },
     ListLabels {
         account_id: Option<AccountId>,
+        /// With no `account_id`, return every enabled account's labels
+        /// instead of only the default account's. Ignored when
+        /// `account_id` is set.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        all_accounts: bool,
     },
     CreateLabel {
         name: String,

@@ -490,6 +490,7 @@ async fn sync_and_get_first_id(state: &Arc<AppState>) -> mxr_core::MessageId {
             account_id: None,
             limit: 1,
             offset: 0,
+            label_role: None,
         }),
     };
     let resp = handle_request(state, &msg).await;
@@ -754,6 +755,7 @@ mod routing_and_search;
 mod send_outcomes;
 mod sent_assessments;
 mod stars;
+mod system_mailboxes;
 mod thread_gists;
 mod thread_previews;
 mod todo;

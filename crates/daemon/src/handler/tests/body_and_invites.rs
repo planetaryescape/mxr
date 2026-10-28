@@ -721,6 +721,7 @@ async fn dispatch_download_attachment_persists_local_path() {
             account_id: None,
             limit: 200,
             offset: 0,
+            label_role: None,
         }),
     };
     let resp = handle_request(&state, &list_msg).await;

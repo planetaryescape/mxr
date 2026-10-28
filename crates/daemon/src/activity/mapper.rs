@@ -1335,6 +1335,7 @@ mod tests {
                 account_id: None,
                 limit: 50,
                 offset: 0,
+                label_role: None,
             },
             Request::StartMutationJob {
                 mutation: MutationCommand::Archive {
@@ -1396,6 +1397,7 @@ mod tests {
             account_id: None,
             limit: 50,
             offset: 0,
+            label_role: None,
         };
         assert!(ok_map(&req).is_none());
     }

@@ -1767,7 +1767,9 @@ async fn mailbox_endpoint_lists_envelopes() {
                     degraded: false,
                 },
             }),
-            Request::ListLabels { account_id: None } => Some(Response::Ok {
+            Request::ListLabels {
+                account_id: None, ..
+            } => Some(Response::Ok {
                 data: ResponseData::Labels {
                     labels: labels.clone(),
                 },
@@ -1795,6 +1797,7 @@ async fn mailbox_endpoint_lists_envelopes() {
                 offset: 0,
                 label_id: Some(label_id),
                 account_id: None,
+                ..
             } if label_id == inbox_label_id => Some(Response::Ok {
                 data: ResponseData::Envelopes {
                     envelopes: vec![expected.clone()],
@@ -1876,7 +1879,9 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
                     degraded: false,
                 },
             }),
-            Request::ListLabels { account_id: None } => Some(Response::Ok {
+            Request::ListLabels {
+                account_id: None, ..
+            } => Some(Response::Ok {
                 data: ResponseData::Labels {
                     labels: labels.clone(),
                 },
@@ -1904,6 +1909,7 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
                 offset: 0,
                 label_id: None,
                 account_id: None,
+                ..
             } => Some(Response::Ok {
                 data: ResponseData::Envelopes {
                     envelopes: vec![expected.clone()],
@@ -1945,6 +1951,191 @@ async fn mailbox_endpoint_supports_all_mail_lens() {
         json["mailbox"]["groups"][0]["rows"][0]["subject"],
         "Archive rollup"
     );
+}
+
+/// With no account chosen, the system mailboxes list every account's mail and
+/// their counts add up; with an account, the request carries no role.
+#[tokio::test]
+async fn mailbox_endpoint_without_an_account_merges_system_mailboxes() {
+    let temp = TempDir::new().unwrap();
+    let socket_path = temp.path().join("mxr.sock");
+    let mut first = sample_envelope();
+    first.subject = "From the first account".into();
+    let mut second = sample_envelope();
+    second.subject = "From the second account".into();
+    let first_labels = sample_labels(&first.account_id);
+    let mut second_labels = sample_labels(&second.account_id);
+    second_labels.truncate(2);
+    second_labels[0].unread_count = 3;
+    second_labels[0].total_count = 50;
+    second_labels[1].unread_count = 6;
+    second_labels[1].total_count = 1000;
+    let inbox_label_id = first_labels[0].id.clone();
+    let saved_search = sample_saved_search(first.account_id.clone());
+    let subscription = sample_subscription(&first.account_id);
+    let (first_for_ipc, second_for_ipc) = (first.clone(), second.clone());
+    let thread_pair = [sample_thread(&first), sample_thread(&second)];
+    let seen_roles = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Option<String>>::new()));
+    let seen_for_ipc = seen_roles.clone();
+    let _ipc = spawn_fake_ipc_server(
+        &socket_path,
+        move |request| match request {
+            Request::GetStatus => Some(Response::Ok {
+                data: sample_status(),
+            }),
+            Request::ListLabels {
+                account_id: None,
+                all_accounts,
+            } => Some(Response::Ok {
+                data: ResponseData::Labels {
+                    labels: if all_accounts {
+                        first_labels
+                            .iter()
+                            .chain(second_labels.iter())
+                            .cloned()
+                            .collect()
+                    } else {
+                        first_labels.clone()
+                    },
+                },
+            }),
+            Request::ListCategories { account_id: None } => Some(Response::Ok {
+                data: ResponseData::Categories {
+                    categories: Vec::new(),
+                },
+            }),
+            Request::ListSavedSearches => Some(Response::Ok {
+                data: ResponseData::SavedSearches {
+                    searches: vec![saved_search.clone()],
+                },
+            }),
+            Request::ListSubscriptions {
+                account_id: None,
+                limit: 8,
+            } => Some(Response::Ok {
+                data: ResponseData::Subscriptions {
+                    subscriptions: vec![subscription.clone()],
+                },
+            }),
+            Request::ListEnvelopes {
+                label_id,
+                account_id: None,
+                label_role,
+                ..
+            } => {
+                seen_for_ipc.lock().unwrap().push(label_role.clone());
+                let envelopes = match label_role.as_deref() {
+                    Some("inbox") | Some("all_mail") => {
+                        // The default account's label id rides along for an older daemon.
+                        assert!(
+                            label_role.as_deref() == Some("all_mail")
+                                || label_id.as_ref() == Some(&inbox_label_id)
+                        );
+                        vec![first_for_ipc.clone(), second_for_ipc.clone()]
+                    }
+                    _ => vec![first_for_ipc.clone()],
+                };
+                Some(Response::Ok {
+                    data: ResponseData::Envelopes { envelopes },
+                })
+            }
+            Request::ListThreads {
+                account_id: None,
+                label_role,
+                ..
+            } => {
+                seen_for_ipc.lock().unwrap().push(label_role.clone());
+                Some(Response::Ok {
+                    data: ResponseData::Threads {
+                        threads: if label_role.as_deref() == Some("inbox") {
+                            thread_pair.to_vec()
+                        } else {
+                            thread_pair[..1].to_vec()
+                        },
+                    },
+                })
+            }
+            Request::ListEnvelopesByIds { message_ids } => Some(Response::Ok {
+                data: ResponseData::Envelopes {
+                    envelopes: [first_for_ipc.clone(), second_for_ipc.clone()]
+                        .into_iter()
+                        .filter(|envelope| message_ids.contains(&envelope.id))
+                        .collect(),
+                },
+            }),
+            Request::ListCommitments { .. } => Some(Response::Ok {
+                data: ResponseData::CommitmentList {
+                    commitments: Vec::new(),
+                },
+            }),
+            other => Some(Response::error(format!("unexpected request: {other:?}"))),
+        },
+        None,
+    )
+    .await;
+
+    let addr = bind_and_serve(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        0,
+        WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+    )
+    .await
+    .unwrap();
+    let client = test_http_client();
+    let get = |query: &'static str| {
+        let client = client.clone();
+        async move {
+            let response = client
+                .get(format!("http://{addr}/mailbox?{query}"))
+                .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+                .send()
+                .await
+                .unwrap();
+            let status = response.status();
+            let body = response.text().await.unwrap();
+            assert_eq!(status, reqwest::StatusCode::OK, "{query}: {body}");
+            serde_json::from_str::<serde_json::Value>(&body).unwrap()
+        }
+    };
+    let subjects = |json: &serde_json::Value| {
+        json["mailbox"]["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|group| group["rows"].as_array().unwrap().iter())
+            .map(|row| row["subject"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>()
+    };
+
+    let inbox = get("view=messages").await;
+    assert_eq!(
+        subjects(&inbox),
+        vec!["From the first account", "From the second account"]
+    );
+    // 12 + 3 unread, 144 + 50 total.
+    assert_eq!(inbox["mailbox"]["counts"]["unread"], 15);
+    assert_eq!(inbox["mailbox"]["counts"]["total"], 194);
+    let system = inbox["sidebar"]["sections"][0]["items"].as_array().unwrap();
+    let item = |label: &str| system.iter().find(|item| item["label"] == label).unwrap();
+    assert_eq!(item("Inbox")["unread"], 15);
+    assert_eq!(item("Inbox")["total"], 194);
+    // 8124 + 1000 total, 24 + 6 unread.
+    assert_eq!(item("All Mail")["unread"], 30);
+    assert_eq!(item("All Mail")["total"], 9124);
+
+    let threads = get("view=threads").await;
+    assert_eq!(
+        subjects(&threads),
+        vec!["From the first account", "From the second account"]
+    );
+
+    let all_mail = get("lens_kind=all_mail&view=messages").await;
+    assert_eq!(subjects(&all_mail).len(), 2);
+    assert_eq!(all_mail["mailbox"]["counts"]["total"], 9124);
+
+    let roles = seen_roles.lock().unwrap().clone();
+    assert!(roles.contains(&Some("inbox".to_string())), "{roles:?}");
+    assert!(roles.contains(&Some("all_mail".to_string())), "{roles:?}");
 }
 
 #[tokio::test]
@@ -2010,7 +2201,9 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
                     degraded: false,
                 },
             }),
-            Request::ListLabels { account_id: None } => Some(Response::Ok {
+            Request::ListLabels {
+                account_id: None, ..
+            } => Some(Response::Ok {
                 data: ResponseData::Labels {
                     labels: labels.clone(),
                 },
@@ -2038,6 +2231,7 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
                 offset: 0,
                 label_id: Some(label_id),
                 account_id: None,
+                ..
             } if label_id == inbox_label_id => Some(Response::Ok {
                 data: ResponseData::Envelopes {
                     envelopes: vec![first.clone(), second.clone()],
@@ -5072,7 +5266,7 @@ fn chrome_fake_response(
 ) -> Option<Response> {
     let data = match request {
         Request::GetStatus => sample_status(),
-        Request::ListLabels { account_id } => {
+        Request::ListLabels { account_id, .. } => {
             seen_accounts.lock().unwrap().push(account_id.clone());
             ResponseData::Labels {
                 labels: labels.to_vec(),
@@ -5179,10 +5373,12 @@ async fn account_param_scopes_search_triage_groups_and_mailbox() {
                 Request::ListEnvelopes {
                     account_id,
                     label_id,
+                    label_role,
                     ..
                 } => {
                     assert_eq!(account_id.as_ref(), Some(&scoped), "mailbox scope");
                     assert_eq!(label_id.as_ref(), Some(&inbox_label_id));
+                    assert_eq!(label_role, None, "an account keeps the label id path");
                     ResponseData::Envelopes {
                         envelopes: Vec::new(),
                     }
@@ -6224,10 +6420,11 @@ async fn mailbox_and_search_rows_carry_labels() {
     );
     assert_eq!(rows[0]["labels"][1]["kind"], "user");
     assert_eq!(label_names(&rows[1]), vec!["Inbox".to_string()]);
-    // Chrome's own ListLabels + ListCategories + ListSubscriptions use the default account.
+    // Chrome's ListLabels (twice: default account, then all accounts for the
+    // summed system counts) + ListCategories + ListSubscriptions use no account.
     assert_eq!(
         *chrome_lookups.lock().unwrap(),
-        vec![None, None, None],
+        vec![None, None, None, None],
         "mailbox chrome lookups use the daemon's default account when no account is selected"
     );
 

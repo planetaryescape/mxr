@@ -357,6 +357,7 @@ async fn thread(
                 &state.config.socket_path,
                 Request::ListLabels {
                     account_id: Some(thread.account_id.clone()),
+                    all_accounts: false,
                 },
             )
             .await?

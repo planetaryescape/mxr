@@ -401,6 +401,73 @@ pub enum Role {
     Starred,
 }
 
+/// The system mailboxes that "All accounts" views merge across accounts,
+/// each with the lowercase label names providers give it. The store does not
+/// persist `Label::role`, so a system label is matched by name; this table is
+/// the one place that mapping lives (store queries, daemon, web, TUI and CLI
+/// all go through it).
+const SYSTEM_MAILBOX_NAMES: [(Role, &str, &[&str]); 7] = [
+    (Role::Inbox, "inbox", &["inbox"]),
+    (Role::Starred, "starred", &["starred"]),
+    (Role::Sent, "sent", &["sent"]),
+    (Role::Drafts, "drafts", &["draft", "drafts"]),
+    (Role::Spam, "spam", &["spam"]),
+    (Role::Trash, "trash", &["trash"]),
+    (Role::AllMail, "all_mail", &["all", "all mail"]),
+];
+
+impl Role {
+    /// Roles that have a unified "All accounts" mailbox.
+    pub fn system_mailboxes() -> impl Iterator<Item = Role> {
+        SYSTEM_MAILBOX_NAMES.iter().map(|(role, _, _)| *role)
+    }
+
+    /// Wire name carried in `label_role` on list requests. `None` for roles
+    /// without a system mailbox (Archive, Important).
+    pub fn system_mailbox_wire_name(self) -> Option<&'static str> {
+        SYSTEM_MAILBOX_NAMES
+            .iter()
+            .find(|(role, _, _)| *role == self)
+            .map(|(_, wire, _)| *wire)
+    }
+
+    pub fn from_system_mailbox_wire_name(wire: &str) -> Option<Role> {
+        SYSTEM_MAILBOX_NAMES
+            .iter()
+            .find(|(_, name, _)| name.eq_ignore_ascii_case(wire))
+            .map(|(role, _, _)| *role)
+    }
+
+    /// Lowercase names a System label of this role carries (empty for roles
+    /// without a system mailbox).
+    pub fn system_label_names(self) -> &'static [&'static str] {
+        SYSTEM_MAILBOX_NAMES
+            .iter()
+            .find(|(role, _, _)| *role == self)
+            .map_or(&[], |(_, _, names)| *names)
+    }
+
+    pub fn from_system_label_name(name: &str) -> Option<Role> {
+        SYSTEM_MAILBOX_NAMES
+            .iter()
+            .find(|(_, _, names)| names.iter().any(|n| n.eq_ignore_ascii_case(name)))
+            .map(|(role, _, _)| *role)
+    }
+}
+
+impl Label {
+    /// The unified system mailbox this label belongs to. Only System labels
+    /// qualify, so a user label or folder named "Inbox" never matches.
+    pub fn system_mailbox_role(&self) -> Option<Role> {
+        if self.kind != LabelKind::System {
+            return None;
+        }
+        self.role
+            .filter(|role| role.system_mailbox_wire_name().is_some())
+            .or_else(|| Role::from_system_label_name(&self.name))
+    }
+}
+
 // -- MessageFlags -------------------------------------------------------------
 
 bitflags! {
@@ -2866,4 +2933,81 @@ pub struct DraftSendOutcome {
     pub rfc2822_message_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery: Option<SendRecoveryStatus>,
+}
+
+#[cfg(test)]
+mod system_mailbox_tests {
+    use super::*;
+
+    fn label(name: &str, kind: LabelKind, role: Option<Role>) -> Label {
+        Label {
+            id: crate::id::LabelId::new(),
+            account_id: crate::id::AccountId::new(),
+            name: name.to_string(),
+            kind,
+            color: None,
+            provider_id: name.to_string(),
+            unread_count: 0,
+            total_count: 0,
+            role,
+        }
+    }
+
+    #[test]
+    fn provider_label_names_map_to_one_role() {
+        for (name, role) in [
+            ("INBOX", Role::Inbox),
+            ("Inbox", Role::Inbox),
+            ("STARRED", Role::Starred),
+            ("SENT", Role::Sent),
+            ("DRAFT", Role::Drafts),
+            ("Drafts", Role::Drafts),
+            ("SPAM", Role::Spam),
+            ("TRASH", Role::Trash),
+            ("ALL", Role::AllMail),
+            ("All Mail", Role::AllMail),
+        ] {
+            let system = label(name, LabelKind::System, None);
+            assert_eq!(system.system_mailbox_role(), Some(role), "{name}");
+            assert!(role
+                .system_label_names()
+                .contains(&name.to_lowercase().as_str()));
+        }
+    }
+
+    #[test]
+    fn only_system_labels_have_a_mailbox_role() {
+        assert_eq!(
+            label("Inbox", LabelKind::User, None).system_mailbox_role(),
+            None
+        );
+        assert_eq!(
+            label("INBOX", LabelKind::Folder, None).system_mailbox_role(),
+            None
+        );
+        assert_eq!(
+            label("CATEGORY_PROMOTIONS", LabelKind::System, None).system_mailbox_role(),
+            None
+        );
+        assert_eq!(
+            label("ARCHIVE", LabelKind::System, Some(Role::Archive)).system_mailbox_role(),
+            None
+        );
+    }
+
+    #[test]
+    fn provider_role_wins_over_the_name() {
+        let imap_inbox = label("Posteingang", LabelKind::System, Some(Role::Inbox));
+        assert_eq!(imap_inbox.system_mailbox_role(), Some(Role::Inbox));
+    }
+
+    #[test]
+    fn wire_names_round_trip() {
+        for role in Role::system_mailboxes() {
+            let wire = role.system_mailbox_wire_name().unwrap();
+            assert_eq!(Role::from_system_mailbox_wire_name(wire), Some(role));
+        }
+        assert_eq!(Role::from_system_mailbox_wire_name("archive"), None);
+        assert_eq!(Role::Archive.system_mailbox_wire_name(), None);
+    }
 }

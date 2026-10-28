@@ -40,6 +40,7 @@ impl LabelCatalog {
                 socket_path,
                 Request::ListLabels {
                     account_id: Some(account_id.clone()),
+                    all_accounts: false,
                 },
             )
             .await

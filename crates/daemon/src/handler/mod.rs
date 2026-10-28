@@ -674,6 +674,7 @@ async fn dispatch(
             account_id,
             limit,
             offset,
+            label_role,
         } => {
             mailbox::list_envelopes(
                 state,
@@ -681,6 +682,7 @@ async fn dispatch(
                 account_id.as_ref(),
                 *limit,
                 *offset,
+                label_role.as_deref(),
             )
             .await
         }
@@ -771,6 +773,7 @@ async fn dispatch(
             limit,
             offset,
             sort,
+            label_role,
         } => {
             mailbox::list_threads(
                 state,
@@ -779,12 +782,14 @@ async fn dispatch(
                 *limit,
                 *offset,
                 sort.clone(),
+                label_role.as_deref(),
             )
             .await
         }
-        Request::ListLabels { account_id } => {
-            mailbox::list_labels(state, account_id.as_ref()).await
-        }
+        Request::ListLabels {
+            account_id,
+            all_accounts,
+        } => mailbox::list_labels(state, account_id.as_ref(), *all_accounts).await,
         Request::CreateLabel {
             name,
             color,
@@ -3324,7 +3329,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
     match req {
         Request::ListEnvelopes { account_id, .. }
         | Request::ListThreads { account_id, .. }
-        | Request::ListLabels { account_id }
+        | Request::ListLabels { account_id, .. }
         | Request::DeleteLabel { account_id, .. }
         | Request::CreateLabel { account_id, .. }
         | Request::RenameLabel { account_id, .. }

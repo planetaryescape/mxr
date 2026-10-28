@@ -18,6 +18,45 @@ pub struct Client {
     event_tx: Option<mpsc::UnboundedSender<DaemonEvent>>,
 }
 
+/// `label_role` that lists every enabled account's mail.
+pub(crate) fn all_mail_role() -> Option<String> {
+    Role::AllMail.system_mailbox_wire_name().map(str::to_string)
+}
+
+/// `label_role` for listing `label` across every account, for a System
+/// label; `None` for user labels and folders, which stay per label id.
+pub(crate) fn unified_role_for(labels: &[Label], label_id: &LabelId) -> Option<String> {
+    labels
+        .iter()
+        .find(|label| &label.id == label_id)?
+        .system_mailbox_role()
+        .and_then(Role::system_mailbox_wire_name)
+        .map(str::to_string)
+}
+
+/// Replace each system label's unread/total with the sum over every
+/// account's label of the same mailbox. User labels are left alone.
+pub(crate) fn with_unified_system_counts(mut labels: Vec<Label>, all: &[Label]) -> Vec<Label> {
+    let mut sums: std::collections::HashMap<Role, (u32, u32)> = std::collections::HashMap::new();
+    for label in all {
+        if let Some(role) = label.system_mailbox_role() {
+            let entry = sums.entry(role).or_default();
+            entry.0 += label.unread_count;
+            entry.1 += label.total_count;
+        }
+    }
+    for label in &mut labels {
+        if let Some((unread, total)) = label
+            .system_mailbox_role()
+            .and_then(|role| sums.get(&role).copied())
+        {
+            label.unread_count = unread;
+            label.total_count = total;
+        }
+    }
+    labels
+}
+
 impl Client {
     pub(crate) fn replace_connection(&mut self, mut replacement: Self) -> Result<(), MxrError> {
         replacement
@@ -201,6 +240,7 @@ impl Client {
             .map_err(map_request_error)
     }
 
+    /// Every enabled account's mail (the All Mail mailbox), newest first.
     pub async fn list_envelopes(
         &mut self,
         limit: u32,
@@ -212,6 +252,7 @@ impl Client {
                 account_id: None,
                 limit,
                 offset,
+                label_role: all_mail_role(),
             })
             .await?;
 
@@ -224,17 +265,36 @@ impl Client {
         }
     }
 
+    /// The default account's labels, with each system mailbox's counts
+    /// summed over every account. A failed sum request keeps the default
+    /// account's counts: the sidebar still renders.
     pub async fn list_labels(&mut self) -> Result<Vec<Label>, MxrError> {
         let resp = self
-            .request(Request::ListLabels { account_id: None })
+            .request(Request::ListLabels {
+                account_id: None,
+                all_accounts: false,
+            })
             .await?;
-        match resp {
+        let labels = match resp {
             Response::Ok {
                 data: ResponseData::Labels { labels },
-            } => Ok(labels),
-            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
-            _ => Err(MxrError::Ipc("Unexpected response".into())),
-        }
+            } => labels,
+            Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
+            _ => return Err(MxrError::Ipc("Unexpected response".into())),
+        };
+        let all = match self
+            .request(Request::ListLabels {
+                account_id: None,
+                all_accounts: true,
+            })
+            .await
+        {
+            Ok(Response::Ok {
+                data: ResponseData::Labels { labels },
+            }) => labels,
+            _ => return Ok(labels),
+        };
+        Ok(with_unified_system_counts(labels, &all))
     }
 
     /// Phase F: paginated thread list. Provides the TUI's read path
@@ -254,6 +314,7 @@ impl Client {
                 limit,
                 offset,
                 sort: None,
+                label_role: all_mail_role(),
             })
             .await?;
         match resp {

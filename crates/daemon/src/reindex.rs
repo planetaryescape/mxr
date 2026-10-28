@@ -21,13 +21,40 @@ pub enum ReindexProgress {
 
 const REINDEX_BATCH_SIZE: u32 = 500;
 
+/// Why a rebuild ran. Recorded on the "Lexical index rebuilt" event, which
+/// is the only place a user can see it.
+pub(crate) const REASON_FULL_REINDEX: &str = "full_reindex";
+/// The indexed text changed since the index was written.
+pub(crate) const REASON_CONTENT_VERSION: &str = "content_version";
+
 /// Drop and rebuild the Tantivy index from all messages in SQLite.
 pub async fn reindex(
     search: &SearchServiceHandle,
     store: &Store,
     progress: impl FnMut(ReindexProgress),
 ) -> Result<u32, MxrError> {
-    reindex_in_batches(search, store, REINDEX_BATCH_SIZE, progress).await
+    reindex_for(search, store, REASON_FULL_REINDEX, progress).await
+}
+
+/// [`reindex`], recording `reason` on the rebuilt event.
+pub(crate) async fn reindex_for(
+    search: &SearchServiceHandle,
+    store: &Store,
+    reason: &str,
+    progress: impl FnMut(ReindexProgress),
+) -> Result<u32, MxrError> {
+    reindex_in_batches(search, store, REINDEX_BATCH_SIZE, reason, progress).await
+}
+
+/// Whether startup must rebuild the index: it was written from older text, or
+/// it does not hold every message. An empty mailbox with a current index needs
+/// nothing, even if the index still has documents.
+pub(crate) fn startup_rebuild_needed(
+    stale_content: bool,
+    total_messages: u32,
+    indexed: u64,
+) -> bool {
+    stale_content || (total_messages != 0 && indexed != u64::from(total_messages))
 }
 
 /// Pages by primary key, not by offset. An offset page re-sorts the table and
@@ -37,6 +64,7 @@ async fn reindex_in_batches(
     search: &SearchServiceHandle,
     store: &Store,
     batch_size: u32,
+    reason: &str,
     mut progress: impl FnMut(ReindexProgress),
 ) -> Result<u32, MxrError> {
     // Searches answer from SQLite while the index is wiped and refilled,
@@ -120,7 +148,7 @@ async fn reindex_in_batches(
             "search",
             "Lexical index rebuilt",
             None,
-            Some(&format!("reason=full_reindex indexed={indexed}")),
+            Some(&format!("reason={reason} indexed={indexed}")),
         )
         .await
         .map_err(|e| MxrError::Store(e.to_string()))?;
@@ -164,9 +192,10 @@ mod tests {
         assert!(total > 7 * 7, "need enough messages for several batches");
 
         state.search.clear().await.unwrap();
-        let indexed = reindex_in_batches(&state.search, &state.store, 7, |_| {})
-            .await
-            .unwrap();
+        let indexed =
+            reindex_in_batches(&state.search, &state.store, 7, REASON_FULL_REINDEX, |_| {})
+                .await
+                .unwrap();
 
         assert_eq!(indexed, total);
         assert_eq!(state.search.num_docs().await.unwrap(), total as u64);
@@ -299,5 +328,43 @@ mod tests {
             calls.last(),
             Some(ReindexProgress::Complete { indexed: i }) if *i == total
         ));
+    }
+
+    #[test]
+    fn startup_rebuilds_a_stale_index_or_a_short_one_but_not_an_empty_mailbox() {
+        assert!(startup_rebuild_needed(true, 0, 0));
+        assert!(startup_rebuild_needed(true, 5, 5));
+        assert!(startup_rebuild_needed(false, 5, 4));
+        assert!(startup_rebuild_needed(false, 5, 6));
+        assert!(!startup_rebuild_needed(false, 5, 5));
+        assert!(!startup_rebuild_needed(false, 0, 3));
+    }
+
+    #[tokio::test]
+    async fn a_content_version_rebuild_is_recorded_as_a_rebuilt_event_with_its_reason() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        state.search.clear().await.unwrap();
+
+        reindex_for(&state.search, &state.store, REASON_CONTENT_VERSION, |_| {})
+            .await
+            .unwrap();
+
+        let rebuilt: Vec<_> = state
+            .store
+            .list_events(50, None, Some("search"))
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|event| event.summary.starts_with("Lexical index rebuilt"))
+            .collect();
+        assert_eq!(rebuilt.len(), 1);
+        let details = rebuilt[0].details.as_deref().unwrap_or_default();
+        assert!(
+            details.starts_with("reason=content_version "),
+            "got {details:?}"
+        );
+        // The retention predicate keeps the newest rebuilt row, so this reason
+        // survives pruning for doctor and status to read.
+        assert_eq!(rebuilt[0].summary, "Lexical index rebuilt");
     }
 }

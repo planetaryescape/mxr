@@ -1,33 +1,15 @@
 # Search fallback follow-ups
 
-The SQLite fallback (used while the lexical index is stopped or rebuilding) matches subject, sender name and preview. Two small differences from the index remain.
+Two behaviours differ from the lexical index on purpose, and one limitation of paging is kept on record. Each entry says why it stays.
 
-## Decomposed accents split compound words differently
+## Search `+c++` matches the word `c`; rules match the literal `c++`
 
-A compound query typed with a decomposed accent, such as `naïve-beta` with `i` followed by U+0308, is split by the index's tokenizer into `nai`, `ve`, `beta`. FTS5's `unicode61` tokenizer stores `naive`, `beta`, so the fallback's AND of tokens finds nothing where the index matches (`crates/daemon/src/handler/diagnostics/search_fallback.rs`, compound-term splitting).
+The index cuts query terms on non-alphanumeric characters (`tokenize_text_value` in `crates/search/src/query_builder.rs`), so `+c++` searches the token `c` and finds any mail with the word "c". A rule's `c++` matches the literal text `c++`, as `+c++` in a rule does too (`StringMatch::whole_word`). The two forms disagree for the same typed word. Making search keep the raw token needs a mirror field in Tantivy, which means a schema change and a full rebuild on upgrade, for a query that is rare. Until a user reports it, the difference stays.
 
-Fix direction: NFC-normalise query text before splitting, or split with FTS5's own rules and strip diacritics the way `unicode61` does.
+## Indexing ignores `render.html_command`
 
-## A bare word that is exactly a sender address
+The index cleans HTML with the built-in converter even when `render.html_command` is set. Running the external command for every HTML message during a rebuild would start one process per message, so the index always uses the built-in converter. For users who set `html_command`, a word the external renderer lays out differently can read one way in the reader and match another way in search. If that shows up in practice, the fix is to run the command in batches or cache its output per body hash, and to include the setting in the content-version marker.
 
-The index's text query includes `from_email` as a whole-address term, so a bare `alice@example.com` matches mail from that address. The fallback's bare words search subject, sender name and preview only, so that query finds such mail only when the address also appears in those fields.
+## Paging across a fallback and index switch
 
-Fix direction: for a bare term containing `@`, also accept `LOWER(m.from_email) = LOWER(term)`, within the same AND.
-
-## Rules still match the raw body text
-
-Search indexes the reader's cleaned text, but rules do not. `RuleMessage` sets `body_text` from `text_plain` only, and its `MessageView` implementation reads `text_plain` or `text_html` for other body fields (`crates/daemon/src/loops.rs:1854` and `:1899`). A rule on body text can match words that search does not index, such as markup and script contents. Changing what rules match is a separate behaviour change, so it stays out of the reader-text change.
-
-Fix direction: decide whether rules should match the reader text, then route `RuleMessage` through `mxr_reader::clean` the same way the index does, and say so in the rules guide.
-
-## Search uses the built-in HTML converter, not html_command
-
-The index cleans HTML with the built-in converter even when `render.html_command` is set, because a rebuild would otherwise start one external process per HTML message (`crates/daemon/src/state.rs`, `open_search_index` call in `AppState::new`). For `html_command` users, a word the external renderer produces differently (table layout, entity handling) can read one way in the reader and match another way in search.
-
-Fix direction: only if this shows up in practice, run the external command in batches or cache its output per body hash, and include the setting in the content-version marker.
-
-## The reader's HTML conversion can panic on other malformed tables
-
-html2text 0.17.4 panicked on a table with a huge `colspan`, from unchecked column arithmetic. PR 767 clamps `colspan` and `rowspan` before html2text runs and guards the built-in conversion (`crates/reader/src/html.rs`). With that change, `mxr_reader::clean` converts the reproduction table without panicking (checked on 4fe5d04ee). The search index also catches any panic in its conversion and indexes that part as tag-stripped text (`crates/search/src/index.rs`, `convert_guarded`).
-
-Other malformed HTML may still reach a panic the clamp does not cover. If one does, the reader display paths are the ones to check: `crates/tui/src/app/body_helpers.rs:396`, `crates/tui/src/runner.rs:6116`, `crates/daemon/src/commands/cat.rs:24`, and the daemon handlers that clean bodies for LLM or assistant features (`crates/daemon/src/handler/promises.rs:98`, `updates.rs:109`, `todos.rs:926`, `thread_gist.rs:534`, `todo_resolution.rs:130`, `safety_llm.rs:95`, `commitments_extract.rs:67`, `decisions_extract.rs:97`, `briefing.rs:78`, `archive_ask.rs:103`).
+A client that pages through results while the index stops or starts can get a page from SQLite and the next page from the index. Each page is internally consistent, and the degraded notice stays on every page after the switch, so the client can tell. A cursor that pins the source would fix the mixing, but it is a cross-client protocol change for a state that lasts only while the index is stopped or rebuilding, so paging keeps offset semantics.

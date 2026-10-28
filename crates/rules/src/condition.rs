@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Composable condition tree. Evaluated recursively.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +99,35 @@ fn unescape_regex_literal(escaped: &str) -> String {
     out
 }
 
+/// Patterns kept compiled. Rules are few and fixed, so the cap is only a bound
+/// on a caller that feeds in many distinct patterns.
+const REGEX_CACHE_CAPACITY: usize = 256;
+
+type RegexCache = std::sync::Mutex<std::collections::HashMap<String, Option<Arc<regex::Regex>>>>;
+
+/// The compiled form of a regex pattern, or `None` when it does not compile.
+/// Rules run this for every message, so a pattern is compiled once and reused.
+/// A pattern that does not compile is remembered as `None`, so it is not
+/// recompiled either.
+fn compiled_regex(pattern: &str) -> Option<Arc<regex::Regex>> {
+    static CACHE: std::sync::OnceLock<RegexCache> = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    // A poisoned lock still holds a usable map: a panic cannot leave a
+    // half-written entry behind, so the poison is not worth propagating.
+    let mut cache = cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(entry) = cache.get(pattern) {
+        return entry.clone();
+    }
+    if cache.len() >= REGEX_CACHE_CAPACITY {
+        cache.clear();
+    }
+    let compiled = regex::Regex::new(pattern).ok().map(Arc::new);
+    cache.insert(pattern.to_string(), compiled.clone());
+    compiled
+}
+
 /// A message-like view for condition evaluation.
 /// The engine evaluates conditions against this trait so it
 /// doesn't depend on mxr-core's concrete Envelope type directly.
@@ -155,9 +185,7 @@ impl StringMatch {
         match self {
             Self::Exact(s) => haystack == s,
             Self::Contains(s) => haystack.to_lowercase().contains(&s.to_lowercase()),
-            Self::Regex(pattern) => {
-                regex::Regex::new(pattern).is_ok_and(|re| re.is_match(haystack))
-            }
+            Self::Regex(pattern) => compiled_regex(pattern).is_some_and(|re| re.is_match(haystack)),
             Self::Glob(pattern) => glob_match::glob_match(pattern, haystack),
         }
     }
@@ -296,6 +324,34 @@ mod tests {
         assert!(m.matches("Re: Invoice #2847"));
         assert!(m.matches("invoice#100"));
         assert!(!m.matches("Receipt attached"));
+    }
+
+    #[test]
+    fn cached_regex_answers_match_a_fresh_compile() {
+        let pattern = r"(?i)cache\s*probe\d+";
+        let fresh = regex::Regex::new(pattern).unwrap();
+        for haystack in [
+            "Cache probe7",
+            "cacheprobe",
+            "no match here",
+            "CACHE PROBE12",
+        ] {
+            for _ in 0..3 {
+                assert_eq!(
+                    StringMatch::Regex(pattern.into()).matches(haystack),
+                    fresh.is_match(haystack),
+                    "{haystack:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_regex_stays_false_on_every_call() {
+        let m = StringMatch::Regex("(unclosed".into());
+        for _ in 0..3 {
+            assert!(!m.matches("(unclosed"));
+        }
     }
 
     #[test]

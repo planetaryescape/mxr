@@ -1798,6 +1798,9 @@ pub(crate) struct RuleMessage {
     body: Option<mxr_core::MessageBody>,
     to: Vec<String>,
     labels: Vec<String>,
+    /// The text rules match, built on first use. `None` when the body is
+    /// absent or has no text part, so body rules report unknown.
+    searchable_body: std::sync::OnceLock<Option<String>>,
 }
 
 impl RuleMessage {
@@ -1812,6 +1815,7 @@ impl RuleMessage {
             envelope,
             body,
             labels,
+            searchable_body: std::sync::OnceLock::new(),
         }
     }
 
@@ -1894,9 +1898,23 @@ impl mxr_rules::MessageView for RuleMessage {
         )
     }
     fn body_text(&self) -> Option<&str> {
-        self.body
-            .as_ref()
-            .and_then(|body| body.text_plain.as_deref().or(body.text_html.as_deref()))
+        // The same text the search index holds, so a rule and a search agree
+        // on what a message says. Raw markup and style contents are not text.
+        self.searchable_body
+            .get_or_init(|| {
+                let body = self.body.as_ref()?;
+                if body.text_plain.is_none() && body.text_html.is_none() {
+                    return None;
+                }
+                Some(
+                    mxr_reader::searchable_text(
+                        body.text_plain.as_deref(),
+                        body.text_html.as_deref(),
+                    )
+                    .text,
+                )
+            })
+            .as_deref()
     }
     fn link_density_inputs(&self) -> (u32, u32) {
         (self.envelope.link_count, self.envelope.body_word_count)
@@ -4221,5 +4239,74 @@ mod history_prune_tests {
             .await
             .expect("history prune loop exits after shutdown")
             .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod rule_message_text_tests {
+    use super::RuleMessage;
+    use crate::test_fixtures::{make_empty_body, TestEnvelopeBuilder};
+    use mxr_rules::{Conditions, FieldCondition, MessageView, StringMatch};
+
+    fn body_contains(word: &str) -> Conditions {
+        Conditions::Field(FieldCondition::BodyContains {
+            pattern: StringMatch::Contains(word.to_string()),
+        })
+    }
+
+    fn message(text_plain: Option<&str>, text_html: Option<&str>) -> RuleMessage {
+        let envelope = TestEnvelopeBuilder::new().build();
+        let mut body = make_empty_body(&envelope.id);
+        body.text_plain = text_plain.map(str::to_string);
+        body.text_html = text_html.map(str::to_string);
+        RuleMessage::from_parts(envelope, Some(body), Vec::new())
+    }
+
+    #[test]
+    fn a_word_only_inside_style_does_not_match_a_body_rule() {
+        let html = "<html><head><style>.a{b:c} zzcssword{d:e}</style></head>\
+                    <body><p>Visible text</p></body></html>";
+        let view = message(None, Some(html));
+        assert_eq!(
+            body_contains("zzcssword").evaluate_known(&view),
+            Some(false)
+        );
+        assert_eq!(
+            body_contains("visible text").evaluate_known(&view),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn a_word_in_the_html_part_matches_when_the_plain_part_lacks_it() {
+        let view = message(
+            Some("Plain part without it"),
+            Some("<p>The html part says zzhtmlword</p>"),
+        );
+        assert_eq!(
+            body_contains("zzhtmlword").evaluate_known(&view),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn rule_body_text_is_the_search_text_and_is_stable_across_calls() {
+        let view = message(Some("plain words"), Some("<p>html words</p>"));
+        let expected =
+            mxr_reader::searchable_text(Some("plain words"), Some("<p>html words</p>")).text;
+        assert_eq!(view.body_text(), Some(expected.as_str()));
+        assert_eq!(view.body_text(), Some(expected.as_str()));
+    }
+
+    #[test]
+    fn a_message_without_body_or_text_is_unknown_to_body_rules() {
+        let envelope = TestEnvelopeBuilder::new().build();
+        let no_body = RuleMessage::from_parts(envelope.clone(), None, Vec::new());
+        assert_eq!(body_contains("anything").evaluate_known(&no_body), None);
+
+        let mut empty = make_empty_body(&envelope.id);
+        empty.text_plain = None;
+        let no_text = RuleMessage::from_parts(envelope, Some(empty), Vec::new());
+        assert_eq!(body_contains("anything").evaluate_known(&no_text), None);
     }
 }

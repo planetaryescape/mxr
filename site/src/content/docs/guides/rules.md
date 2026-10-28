@@ -183,8 +183,9 @@ actions or hooks. It does not simulate effects from earlier actions.
 
 Preview and sync use the stored link and word counts for `has:link`,
 `has:link-heavy` and `has:link-none`, including negated conditions. Body text
-conditions use stored plain text, falling back to stored HTML if plain text is
-absent. Neither path fetches a missing body. For ordinary rules a missing body
+conditions read the message text without HTML markup: the stored plain part and
+the HTML part converted to text, the same text search matches. Tags, style
+rules and script contents never match. Neither path fetches a missing body. For ordinary rules a missing body
 makes a body predicate false, so its negation is true. Rules containing a
 sorting action instead keep missing body data unknown, even under `NOT`; they
 match only when the whole condition is known true. An empty stored string is

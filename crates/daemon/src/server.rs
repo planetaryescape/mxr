@@ -9,7 +9,7 @@
 use crate::cli_error::CliError;
 use crate::ipc_client::IpcClient;
 use crate::loops;
-use crate::reindex::{reindex, ReindexProgress};
+use crate::reindex::{reindex_for, ReindexProgress};
 use crate::serve::{
     drain_connection_tasks, serve_client_connection, BULK_CONCURRENCY_LIMIT,
     CONNECTION_DRAIN_TIMEOUT, REQUEST_CONCURRENCY_LIMIT,
@@ -2031,29 +2031,26 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
     let total_messages = state.store.count_all_messages().await.unwrap_or_default();
     let stale_content = state.lexical_content_stale.get();
     if total_messages == 0 && stale_content.is_none() {
-        state.search.clear_incomplete();
+        state.search.end_startup_rebuild(true);
         return Ok(());
     }
 
     let indexed_messages = state.search.num_docs().await.unwrap_or_default();
 
-    if stale_content.is_some() || indexed_messages != total_messages as u64 {
-        if stale_content.is_some() {
-            // The index holds text from before the reader-text change. Its
-            // marker is recorded only after this rebuild completes, so an
-            // interrupted rebuild runs again on the next start.
+    if crate::reindex::startup_rebuild_needed(
+        stale_content.is_some(),
+        total_messages,
+        indexed_messages,
+    ) {
+        // The index holds text from before the reader-text change. Its marker is
+        // recorded only after this rebuild completes, so an interrupted rebuild
+        // runs again on the next start.
+        let reason = if stale_content.is_some() {
             tracing::info!("Lexical index predates the current indexed text; rebuilding");
-            let _ = state
-                .store
-                .insert_event(
-                    "info",
-                    "search",
-                    "Lexical index rebuild started",
-                    None,
-                    Some("reason=content_version"),
-                )
-                .await;
-        }
+            crate::reindex::REASON_CONTENT_VERSION
+        } else {
+            crate::reindex::REASON_FULL_REINDEX
+        };
         // Startup maintenance only repairs the lexical Tantivy index from SQLite.
         // Semantic chunks/embeddings remain an optional platform layer and are not
         // part of this mandatory mail-readiness repair path.
@@ -2062,28 +2059,35 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
             total_messages,
             "Reindexing lexical index from SQLite"
         );
-        let _ = reindex(&state.search, &state.store, |progress| match progress {
-            ReindexProgress::Starting { total } => {
-                tracing::info!(total, "Lexical reindex started");
-            }
-            ReindexProgress::Indexing { indexed, total }
-                if indexed == total || indexed % 10_000 == 0 =>
-            {
-                tracing::info!(indexed, total, "Lexical reindex progress");
-            }
-            ReindexProgress::Indexing { .. } => {}
-            ReindexProgress::Complete { indexed } => {
-                tracing::info!(indexed, "Lexical reindex complete");
-            }
-        })
-        .await?;
+        let rebuilt = reindex_for(
+            &state.search,
+            &state.store,
+            reason,
+            |progress| match progress {
+                ReindexProgress::Starting { total } => {
+                    tracing::info!(total, "Lexical reindex started");
+                }
+                ReindexProgress::Indexing { indexed, total }
+                    if indexed == total || indexed % 10_000 == 0 =>
+                {
+                    tracing::info!(indexed, total, "Lexical reindex progress");
+                }
+                ReindexProgress::Indexing { .. } => {}
+                ReindexProgress::Complete { indexed } => {
+                    tracing::info!(indexed, "Lexical reindex complete");
+                }
+            },
+        )
+        .await;
+        state.search.end_startup_rebuild(rebuilt.is_ok());
+        rebuilt?;
         if let Some(index_path) = stale_content {
             mxr_search::record_lexical_content_version(index_path)?;
         }
     } else {
         // Sync may have filled a gap a short index had. Nothing needs rebuilding,
         // so the index is complete.
-        state.search.clear_incomplete();
+        state.search.end_startup_rebuild(true);
     }
 
     // The count check above cannot see a stale entry, only a missing one.

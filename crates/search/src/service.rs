@@ -30,6 +30,8 @@ pub struct SearchServiceHandle {
     /// on disk is stale or short. A failed rebuild leaves it set.
     incomplete: Arc<AtomicBool>,
     clean_fallbacks: Arc<AtomicU64>,
+    /// The rebuild that startup holds from open until its maintenance ends.
+    startup_hold: Arc<std::sync::Mutex<Option<RebuildGuard>>>,
 }
 
 /// Whether the lexical index can answer a search right now.
@@ -207,6 +209,7 @@ impl SearchServiceHandle {
                 rebuilds: Arc::new(AtomicU64::new(0)),
                 incomplete: Arc::new(AtomicBool::new(false)),
                 clean_fallbacks,
+                startup_hold: Arc::new(std::sync::Mutex::new(None)),
             },
             handle,
         )
@@ -226,8 +229,38 @@ impl SearchServiceHandle {
         }
     }
 
-    /// Marks the index incomplete without a rebuild running, for an index found
-    /// stale at startup. A rebuild that finishes clears it.
+    /// Reports the index as rebuilding from now until [`Self::end_startup_rebuild`],
+    /// for an index that startup found stale or short. The rebuild itself starts
+    /// later; searches in between answer from SQLite instead of the partial index.
+    pub fn hold_startup_rebuild(&self) {
+        let guard = self.begin_rebuild();
+        let previous = self
+            .startup_hold
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .replace(guard);
+        drop(previous);
+    }
+
+    /// Ends the hold from [`Self::hold_startup_rebuild`]. `complete` means the
+    /// index holds every message; otherwise it stays incomplete, as after a
+    /// failed rebuild. Without a hold, `complete` only clears any incomplete mark.
+    pub fn end_startup_rebuild(&self, complete: bool) {
+        let held = self
+            .startup_hold
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        match (held, complete) {
+            (Some(guard), true) => guard.finish(),
+            (Some(guard), false) => drop(guard),
+            (None, true) => self.clear_incomplete(),
+            (None, false) => {}
+        }
+    }
+
+    /// Marks the index incomplete without a rebuild running. A rebuild that
+    /// finishes clears it.
     pub fn mark_incomplete(&self) {
         self.incomplete.store(true, Ordering::Release);
     }
@@ -558,5 +591,32 @@ mod tests {
         let _ = worker.await;
 
         assert_eq!(handle.availability(), IndexAvailability::Stopped);
+    }
+
+    #[tokio::test]
+    async fn a_startup_hold_reads_as_rebuilding_until_it_ends() {
+        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+
+        handle.hold_startup_rebuild();
+        assert_eq!(handle.availability(), IndexAvailability::Rebuilding);
+
+        // A rebuild that runs and finishes inside the hold does not end it.
+        handle.begin_rebuild().finish();
+        assert_eq!(handle.availability(), IndexAvailability::Rebuilding);
+
+        handle.end_startup_rebuild(true);
+        assert!(matches!(
+            handle.availability(),
+            IndexAvailability::Ready { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_startup_hold_that_fails_leaves_the_index_incomplete() {
+        let (handle, _worker) = SearchServiceHandle::start(SearchIndex::in_memory().unwrap());
+
+        handle.hold_startup_rebuild();
+        handle.end_startup_rebuild(false);
+        assert_eq!(handle.availability(), IndexAvailability::Incomplete);
     }
 }

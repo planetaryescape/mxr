@@ -4533,6 +4533,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tui-textarea-2",
+ "unicode-normalization",
  "unicode-width",
  "url",
  "uuid",

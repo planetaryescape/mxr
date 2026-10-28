@@ -434,6 +434,7 @@ tower-http = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tui-textarea = { package = "tui-textarea-2", version = "0.10.2" }
+unicode-normalization = "0.1"
 unicode-width = { workspace = true }
 url = { workspace = true }
 percent-encoding = { workspace = true }

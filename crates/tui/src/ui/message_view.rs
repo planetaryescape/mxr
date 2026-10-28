@@ -924,19 +924,27 @@ fn render_html_blocks(
     remote_content_enabled: bool,
 ) -> Vec<RenderBlock> {
     let width = usize::from(width.max(20));
-    let render_tree = match html2text::parse(html.as_bytes()) {
-        Ok(render_tree) => render_tree,
-        Err(_) => {
+    let clamped = mxr_reader::clamp_table_spans(html);
+    let rendered = mxr_reader::guard_html2text("tui html body", || {
+        let render_tree = html2text::parse(clamped.as_bytes()).ok()?;
+        html2text::config::rich()
+            .render_to_lines(render_tree, width)
+            .ok()
+    });
+    let tagged_lines = match rendered {
+        Some(Some(lines)) => lines,
+        Some(None) => {
             return vec![RenderBlock::Text(process_body_lines(
                 html, theme, false, false,
             ))];
         }
-    };
-    let tagged_lines = match html2text::config::rich().render_to_lines(render_tree, width) {
-        Ok(lines) => lines,
-        Err(_) => {
+        // html2text panicked; show the tag-stripped text rather than raw markup.
+        None => {
             return vec![RenderBlock::Text(process_body_lines(
-                html, theme, false, false,
+                &mxr_reader::strip_html_tags(html),
+                theme,
+                false,
+                false,
             ))];
         }
     };
@@ -1315,6 +1323,27 @@ fn style_line_with_links(line: &str, theme: &Theme) -> Line<'static> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn html_body_with_a_malformed_table_span_still_renders_its_text() {
+        let html = r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#;
+        let blocks = render_html_blocks(
+            &mxr_core::MessageId::new(),
+            html,
+            80,
+            &Theme::default(),
+            false,
+        );
+        let text: String = blocks
+            .iter()
+            .filter_map(|block| match block {
+                RenderBlock::Text(lines) => Some(lines),
+                _ => None,
+            })
+            .flatten()
+            .flat_map(|line| line.spans.iter().map(|span| span.content.to_string()))
+            .collect();
+        assert!(text.contains('A') && text.contains('B'), "got {text:?}");
+    }
 
     /// The reader names the account a message came to, led by its chip, even
     /// when the view shows no row marks (blueprint 33).

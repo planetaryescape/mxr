@@ -1,8 +1,10 @@
 /* Sender history panel: recent emails, volume, storage and timeline. */
 
-import { Paperclip } from "lucide-react";
+import { Paperclip, UserSearch } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useModals } from "@/state/modalStore";
 import { ProfileRow, ProfileStat } from "./ProfileParts";
 import { extractSenderProfile } from "./railPayloads";
 import {
@@ -56,11 +58,25 @@ export function SenderProfilePanel({ payload }: { payload: unknown }) {
           </h3>
           <div className="break-all font-mono text-2xs text-muted-foreground">{profile.email}</div>
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {profile.is_list_sender ? <Badge variant="secondary">List sender</Badge> : null}
           {profile.open_thread_count > 0 ? (
             <Badge variant="outline">{profile.open_thread_count} open</Badge>
           ) : null}
+          {/* Whois lives on the person page (blueprint 35), and in the palette. */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto h-7 gap-1.5 px-2 text-xs"
+            onClick={() =>
+              useModals
+                .getState()
+                .openRightRail("whois", { entity: profile.email, accountId: profile.account_id })
+            }
+          >
+            <UserSearch className="size-3.5" />
+            Who is this?
+          </Button>
         </div>
       </div>
 

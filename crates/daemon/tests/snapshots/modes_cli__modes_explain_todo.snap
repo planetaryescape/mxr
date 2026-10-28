@@ -41,7 +41,7 @@ expression: "serde_json::to_string_pretty(&guides).unwrap()"
         "verb": "tick off"
       },
       {
-        "key": "Z",
+        "key": "b",
         "verb": "schedule"
       },
       {

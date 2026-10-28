@@ -15,7 +15,7 @@ import { KIND_LABELS, KIND_OPTIONS, kindOptionForKey, type KindOption } from "./
 import { correctSender } from "./senderKind";
 
 /**
- * "Move sender to…": one key per place. The current kind is marked; when
+ * "Move sender to…": one key per place, on the `g` letters. The current kind is marked; when
  * the user chose it, Automatic is how to undo the choice for good.
  */
 export function SenderKindDialog({
@@ -48,6 +48,17 @@ export function SenderKindDialog({
         data-testid="sender-kind-dialog"
         onKeyDown={(event) => {
           if (event.metaKey || event.ctrlKey || event.altKey) return;
+          // j, k and the arrows move the highlight; Enter (the focused
+          // button) runs it, as in every picker (blueprint 35).
+          if (["j", "k", "ArrowDown", "ArrowUp"].includes(event.key)) {
+            event.preventDefault();
+            const options = [...event.currentTarget.querySelectorAll<HTMLElement>("li > button")];
+            const at = options.indexOf(document.activeElement as HTMLElement);
+            const delta = event.key === "j" || event.key === "ArrowDown" ? 1 : -1;
+            const next = at < 0 ? 0 : Math.min(options.length - 1, Math.max(0, at + delta));
+            options[next]?.focus();
+            return;
+          }
           const option = kindOptionForKey(event.key);
           if (!option) return;
           event.preventDefault();

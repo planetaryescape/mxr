@@ -1,4 +1,4 @@
-//! Sorting shows its work in the TUI (D119): the move menu `X` and `K`
+//! Sorting shows its work in the TUI (D119): the move menu `X` and `P`
 //! open, the "Always for this sender?" ask after a move, the arrivals list a
 //! count on Now opens, and Inbox's mode chips. The daemon owns every count,
 //! line and reason; this state holds what came back and what the user is
@@ -6,22 +6,91 @@
 
 use chrono::{DateTime, Utc};
 use mxr_core::id::MessageId;
-use mxr_protocol::{ArrivalBucketData, ArrivalItemData, ArrivalListData, ModeKindData};
+use mxr_protocol::{
+    ArrivalBucketData, ArrivalItemData, ArrivalListData, ModeKindData, ScreenerQuestionData,
+    SenderKindData,
+};
 use std::collections::{HashMap, HashSet};
 
 /// The most emails one chip request names (the daemon's cap).
 pub const CHIP_BATCH: usize = 200;
 
-/// What `X` or `K` opened the menu for.
+/// What `X` or `P` opened the menu for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MoveMenu {
     pub message_id: MessageId,
     /// Who sent it, for the menu's title.
     pub display: String,
-    /// `K`: the sender's mode only (Messages, Updates or Reading).
+    /// `P`: the sender's mode only (Messages, Updates or Reading).
     pub sender_only: bool,
     /// Opened on a Not-sure question: the answer is stored as one.
     pub not_sure: bool,
+    /// Where a Not-sure question's email is for now: keeping it there is
+    /// an answer too, so the highlight starts on it.
+    pub current: Option<ModeKindData>,
+    /// A new sender's question on the row: the sender's options answer it
+    /// (`SetSenderKind`), and Block joins them.
+    pub new_sender: Option<ScreenerQuestionData>,
+    /// The highlighted option; Enter runs it.
+    pub selected: usize,
+}
+
+/// One option in the move menu, with the key printed on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveOption {
+    /// A lowercase `g` letter: this email.
+    Email(ModeKindData),
+    /// A capital: everything from this sender (`MoveMessage` with sender).
+    Sender(ModeKindData),
+    /// A capital on a new sender's row: the question's answer.
+    NewSender(SenderKindData),
+}
+
+impl MoveMenu {
+    /// The options in order: this email's five modes (not from `P`), then
+    /// the sender's.
+    pub fn options(&self) -> Vec<MoveOption> {
+        let mut options = Vec::new();
+        if !self.sender_only {
+            options.extend(
+                crate::app::MOVE_CHOICES
+                    .iter()
+                    .map(|(_, mode)| MoveOption::Email(*mode)),
+            );
+        }
+        match &self.new_sender {
+            Some(question) => options.extend(
+                question
+                    .choices
+                    .iter()
+                    .map(|choice| MoveOption::NewSender(choice.kind)),
+            ),
+            None => options.extend(
+                crate::app::MOVE_CHOICES
+                    .iter()
+                    .filter(|(_, mode)| crate::app::sender_mode(*mode))
+                    .map(|(_, mode)| MoveOption::Sender(*mode)),
+            ),
+        }
+        options
+    }
+}
+
+impl MoveOption {
+    /// The key that picks it, printed on it.
+    pub fn key(self) -> char {
+        let letter = |mode: ModeKindData| {
+            crate::app::MOVE_CHOICES
+                .iter()
+                .find(|(_, choice)| *choice == mode)
+                .map_or('?', |(letter, _)| *letter)
+        };
+        match self {
+            Self::Email(mode) => letter(mode),
+            Self::Sender(mode) => letter(mode).to_ascii_uppercase(),
+            Self::NewSender(kind) => crate::app::new_sender_key(kind),
+        }
+    }
 }
 
 /// "Always for this sender?" after a move or a Not-sure answer.

@@ -427,9 +427,21 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Mail".into(),
         },
         PaletteCommand {
-            label: "Snooze".into(),
-            shortcut: "Z".into(),
+            label: "Not Now (later or snooze)".into(),
+            shortcut: "b".into(),
             action: Action::Snooze,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
+            label: "Pass To A Mode (file in Archive)".into(),
+            shortcut: "palette".into(),
+            action: Action::PassToMode,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
+            label: "Who Is This Sender".into(),
+            shortcut: "palette".into(),
+            action: Action::OpenWhoisOnFocusedSender,
             category: "Mail".into(),
         },
         PaletteCommand {
@@ -452,7 +464,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Reply Later (at a time)".into(),
-            shortcut: "b".into(),
+            shortcut: "palette".into(),
             action: Action::FlagReplyLater,
             category: "Triage".into(),
         },

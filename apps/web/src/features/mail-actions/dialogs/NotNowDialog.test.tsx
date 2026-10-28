@@ -5,10 +5,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { SnoozeDialog } from "./SnoozeDialog";
+import { messageNotNow, type NotNowPicker } from "../notNow";
+import { NotNowDialog } from "./NotNowDialog";
 
 const api = vi.hoisted(() => ({
   fetchSnoozePresets: vi.fn<() => Promise<unknown>>(),
+  setReplyLater: vi.fn<(messageId: string, flag: boolean) => Promise<unknown>>(),
   performMailAction:
     vi.fn<
       (
@@ -34,8 +36,30 @@ vi.mock("@/features/time/api", async (importOriginal) => {
 
 vi.mock("../mailMutations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../mailMutations")>()),
+  setReplyLater: vi.fn<(messageId: string, flag: boolean) => Promise<unknown>>(),
   performMailAction: api.performMailAction,
 }));
+
+vi.mock("@/features/reply-queue/api", () => ({ setReplyLater: api.setReplyLater }));
+
+/** The mail Not-now picker for these messages, as `b` on a list row opens it. */
+function SnoozeDialog({
+  messageIds,
+  onOpenChange,
+  replyLaterId,
+}: {
+  open?: boolean;
+  messageIds: string[];
+  onOpenChange: (open: boolean) => void;
+  replyLaterId?: string;
+}) {
+  return (
+    <NotNowDialog
+      picker={messageNotNow({ messageIds, replyLaterId, subject: "Q4 plan" })}
+      onClose={() => onOpenChange(false)}
+    />
+  );
+}
 
 function renderWithQueryClient(children: ReactNode) {
   const queryClient = new QueryClient({
@@ -44,7 +68,7 @@ function renderWithQueryClient(children: ReactNode) {
   return render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>);
 }
 
-describe("SnoozeDialog", () => {
+describe("NotNowDialog", () => {
   beforeEach(() => {
     api.fetchSnoozePresets.mockResolvedValue({
       presets: [
@@ -56,6 +80,7 @@ describe("SnoozeDialog", () => {
       ],
     });
     api.performMailAction.mockResolvedValue({ ok: true });
+    api.setReplyLater.mockResolvedValue({});
   });
 
   afterEach(() => {
@@ -166,6 +191,55 @@ describe("SnoozeDialog", () => {
 
     expect(await screen.findByText("Tomorrow morning")).toBeVisible();
     expect(screen.queryByText("Tonight")).not.toBeInTheDocument();
+  });
+
+  test("Later comes first and starts lit, so Enter is the untimed reply later", async () => {
+    const onOpenChange = vi.fn<(open: boolean) => void>();
+    renderWithQueryClient(
+      <SnoozeDialog messageIds={["msg-7"]} replyLaterId="msg-7" onOpenChange={onOpenChange} />,
+    );
+    const later = screen.getByTestId("not-now-later");
+    await waitFor(() => expect(later).toHaveFocus());
+    // Enter on a focused button clicks it.
+    fireEvent.click(later);
+    await waitFor(() => expect(api.setReplyLater).toHaveBeenCalledWith("msg-7", true));
+    expect(api.performMailAction).not.toHaveBeenCalled();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  test("the arrows move the highlight from Later to the presets", async () => {
+    renderWithQueryClient(
+      <SnoozeDialog messageIds={["msg-8"]} replyLaterId="msg-8" onOpenChange={() => {}} />,
+    );
+    const preset = (await screen.findByText("Tomorrow morning")).closest("button");
+    const later = screen.getByTestId("not-now-later");
+    await waitFor(() => expect(later).toHaveFocus());
+    fireEvent.keyDown(later, { key: "ArrowDown" });
+    expect(preset).toHaveFocus();
+    fireEvent.keyDown(preset!, { key: "ArrowUp" });
+    expect(later).toHaveFocus();
+  });
+
+  test("with no untimed choice there is no Later, and the first preset is lit", async () => {
+    const at = vi.fn<NotNowPicker["at"]>();
+    renderWithQueryClient(
+      <NotNowDialog
+        picker={{
+          title: "Schedule",
+          description: "Pay rent shows up then.",
+          timeVerb: "Schedule",
+          at,
+        }}
+        onClose={() => {}}
+      />,
+    );
+    const preset = (await screen.findByText("Tomorrow morning")).closest("button");
+    expect(screen.queryByTestId("not-now-later")).toBeNull();
+    await waitFor(() => expect(preset).toHaveFocus());
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "1" });
+    await waitFor(() =>
+      expect(at).toHaveBeenCalledWith("2026-05-12T09:00:00Z", expect.stringMatching(/\d/)),
+    );
   });
 });
 

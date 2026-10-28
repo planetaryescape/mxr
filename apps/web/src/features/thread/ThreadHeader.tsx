@@ -105,13 +105,13 @@ export function ThreadHeader({
         {/*
           Persistent controls, each earning its place: Close, previous and
           next move through the queue (used on every thread); Archive is the
-          most frequent verb; Snooze is deferral, a first-class verb; the
+          most frequent verb; Not now is deferral, a first-class verb; the
           view switch shows which view is on. Everything else lives in More,
           with its key, and in the command palette. Reply sits at the end of
           the thread (ReplyField), where reading ends.
         */}
         <IconAction icon={Archive} label="Archive" keys="e" command="archive" />
-        <IconAction icon={Clock} label="Snooze" keys="Z" command="snooze" />
+        <IconAction icon={Clock} label="Not now" keys="b" command="snooze" />
         <span className="ml-auto flex items-center gap-1">
           <ViewSwitch view={view} />
           <MoreMenu
@@ -218,13 +218,13 @@ function moreItems(state: { starred: boolean; full: boolean }): MoreItem[] {
     { label: "Mark unread", command: "markUnread", keys: "U", icon: Mail },
     { label: "Mark read and archive", command: "readArchive", keys: "m", icon: Archive },
     { label: "Move to label…", command: "move", keys: "v", icon: ArrowRightCircle },
-    { label: "Reply later", command: "replyLater", keys: "b", icon: CornerDownRight },
+    { label: "Reply later at a time…", command: "replyLater", icon: CornerDownRight },
     { label: "Move to Trash", command: "trash", keys: "#", icon: Trash2 },
     { label: "Mark as spam", command: "spam", keys: "!", icon: ShieldAlert },
     { label: "Unsubscribe…", command: "unsubscribe", keys: "D", icon: MailX, divider: true },
     { label: "Summarize", command: "summarize", keys: "y", icon: TextQuote },
     { label: "Thread briefing", command: "briefing", keys: "B", icon: FileText },
-    { label: "Who is this sender?", command: "whois", keys: "W", icon: UserSearch },
+    { label: "Who is this sender?", command: "whois", icon: UserSearch },
     { label: "Sender profile", command: "senderProfile", keys: "p", icon: UserRound },
     { label: "Draft a reply", command: "draftAssist", icon: PenLine, divider: true },
     {

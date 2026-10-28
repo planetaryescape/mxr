@@ -295,7 +295,7 @@ export function ExportDialog({
 }
 
 /**
- * `T` on a conversation: pass it to another mode. This phase's one choice
+ * Pass to a mode (the palette) on a conversation. This phase's one choice
  * is Archive, which shows the card filing would make (the daemon's dry
  * run); Enter files exactly that.
  */

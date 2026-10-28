@@ -11,11 +11,15 @@ import type { RecordData, RecordFilter } from "@/features/archive/api";
 import type { MailKind, SweepScope } from "@/features/places/api";
 import type { Todo } from "@/features/todo/api";
 
+import type { NotNowPicker } from "./notNow";
 import type { MailAction } from "./pendingMailOps";
 import type { MailTarget } from "./target";
 
 export type MailDialog =
-  | { kind: "snooze"; target: MailTarget; onDone?: () => void }
+  /** Not now on mail (`b`): Later is the untimed reply later, a time snoozes. */
+  | { kind: "snooze"; target: MailTarget; onDone?: () => void; onLater?: () => void }
+  /** Not now anywhere else: the place says what Later and a time do there. */
+  | { kind: "not-now"; picker: NotNowPicker }
   | {
       /** Reply later at a time (`b`); on Waiting on, back if nobody replies. */
       kind: "reply-later";
@@ -50,9 +54,9 @@ export type MailDialog =
       senderLabel: string;
       current?: MailKind;
     }
-  /** Move one email (`X`) or its sender's mail (`K`) to a mode. */
+  /** Move one email (`X`) or its sender's mail (`P`) to a mode. */
   | { kind: "move-to-mode"; subject: MoveSubject; sender: boolean }
-  /** To do: show a row on your own day (`Z`). */
+  /** To do: show a row on your own day (`b`). */
   | { kind: "todo-schedule"; todo: Todo }
   /** To do: correct a row's fields (`,`). */
   | { kind: "todo-edit"; todo: Todo }
@@ -63,7 +67,7 @@ export type MailDialog =
   | { kind: "record-edit"; record: RecordData }
   /** Archive: preview the export of the records in view, then download it (Export in the palette). */
   | { kind: "record-export"; account: string | null; filter: RecordFilter }
-  /** Pass a conversation to another mode (`T`): this phase, file it in Archive. */
+  /** Pass a conversation to another mode (the palette): this phase, file it in Archive. */
   | { kind: "pass-to-mode"; messageId: string; subject?: string }
   /** To do's catch-up: preview letting go of every row, then do exactly that. */
   | { kind: "todo-let-go-all"; account: string | null }

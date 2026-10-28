@@ -295,9 +295,9 @@ A link to an email Messages doesn't hold opens it in All Mail.
 
 The reader names the other modes holding a conversation ("Also in To do:
 sign by Mon 5 Oct"). A row on Now or Messages shows a glyph per other mode
-instead, and a first-time person's row carries a `new` mark: light it and
-press `1` to `4` (Messages, Updates, Reading, Block) to say where their mail
-belongs.
+instead, and a first-time person's row carries a `new` mark: light it,
+press `X`, then `M`, `U`, `R` or `D` (Messages, Updates, Reading, Block) to
+say where their mail belongs.
 
 On a phone the sidebar gives way to five tabs at the bottom: Now, Messages,
 To do, Reading and More. **More** opens a sheet with Updates, Archive, Inbox
@@ -321,7 +321,8 @@ its documents and the emails it came from. `,` fixes a field or marks the
 card checked, `X` says it isn't a record, `p` opens the issuer's page, `{` and
 `}` step through years, and **Export…** in the palette writes a CSV after its
 preview. On any
-conversation, `T` files it in Archive after showing the card. On a phone,
+conversation, `X` then `e` files it in Archive; **Pass to a mode** in the
+palette shows the card first. On a phone,
 Archive is in **More**, and a record's card opens full screen.
 See [Archive](/guides/archive/).
 

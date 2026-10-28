@@ -349,11 +349,14 @@ fn sweep_confirm_label(confirm: &PendingSweepConfirm) -> String {
 
 /// The "move sender to…" menu. Its keys: p people, r Reading, t Paper
 /// trail, x screened out, a automatic.
+/// The sender-kind menu's options, on the `g` letters of the modes they
+/// feed (D168): People are Messages' `m`, Paper trail is Updates' `u`, and
+/// Screened out takes `d`, chapter 22's screen-out letter.
 pub const SENDER_KIND_CHOICES: [(char, Option<SenderKindData>, &str); 5] = [
-    ('p', Some(SenderKindData::People), "People: on the desk"),
+    ('m', Some(SenderKindData::People), "People: on the desk"),
     ('r', Some(SenderKindData::Reading), "Reading"),
-    ('t', Some(SenderKindData::PaperTrail), "Paper trail"),
-    ('x', Some(SenderKindData::ScreenedOut), "Screened out"),
+    ('u', Some(SenderKindData::PaperTrail), "Paper trail"),
+    ('d', Some(SenderKindData::ScreenedOut), "Screened out"),
     ('a', None, "Automatic: let the rules decide"),
 ];
 

@@ -121,8 +121,9 @@ totals; `·?` marks an amount nobody has confirmed. `Enter` on a row opens
 the record's document, and the record card shows every field with its
 source. `?` explains the mode; the first time the cursor reaches the first
 record, or an answer appears, a one-line hint in the status line names its
-key, and `Esc` dismisses it for good. `T` on a conversation files
-it as a record after showing the card. The keys are in the
+key, and `Esc` dismisses it for good. On a conversation, `X` then `e`
+files it as a record; **Pass to a mode** in the palette shows the card
+first. The keys are in the
 [keybindings reference](/reference/keybindings/#archive).
 
 Mailbox Archive is a separate provider action. Open the command palette with
@@ -251,9 +252,17 @@ Two cross-view interactions:
   still blocks sending until they are filled.
 - Bulk confirmation
 - Attachment modal
-- Snooze modal: preset list plus a **Custom…** entry that opens a
-  text prompt with a live preview of the resolved time, using the same
-  [time phrases](/reference/time-phrases/) as `mxr snooze --until`.
+- Not now (`b`): **Later** with no time first, then the presets on `1`–`4`,
+  then a **Custom…** entry that opens a text prompt with a live preview of
+  the resolved time, using the same
+  [time phrases](/reference/time-phrases/) as `mxr snooze --until`. Later is
+  the reply queue in mail and Messages and the Later shelf in Reading; a time
+  snoozes the email, takes a Messages conversation off until then, or
+  schedules a to-do. `Z` says where it went until 0.6.197.
+- Move to (`X`): a lowercase letter moves this email to a mode, a capital
+  moves the sender; on Now it also answers a Not-sure question and a new
+  sender's question (`D` blocks). `T` and the new-sender digits say where
+  they went until 0.6.197.
   Tab switches between readings of an ambiguous phrase such as `fri 3`;
   the send-at and remind prompts work the same way
 - Unsubscribe confirmation

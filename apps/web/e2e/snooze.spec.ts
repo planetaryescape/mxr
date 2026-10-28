@@ -12,7 +12,7 @@ import {
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-test("Z snoozes to a preset; the conversation waits on /snoozed until Wake now", async ({
+test("b snoozes to a preset; the conversation waits on /snoozed until Wake now", async ({
   page,
 }) => {
   await openList(page, "/m/inbox");
@@ -21,8 +21,8 @@ test("Z snoozes to a preset; the conversation waits on /snoozed until Wake now",
     .split(", ")
     .at(-1)!;
 
-  await page.keyboard.press("Z");
-  const dialog = page.getByRole("dialog", { name: "Snooze until…" });
+  await page.keyboard.press("b");
+  const dialog = page.getByRole("dialog", { name: "Not now" });
   await expect(dialog).toBeVisible();
   await presets(page).first().click();
 
@@ -54,8 +54,8 @@ test("Z snoozes to a preset; the conversation waits on /snoozed until Wake now",
 
 function presets(page: Page) {
   return page
-    .getByRole("dialog", { name: "Snooze until…" })
-    .getByRole("group", { name: "Snooze presets" })
+    .getByRole("dialog", { name: "Not now" })
+    .getByRole("group", { name: "Times" })
     .getByRole("button");
 }
 
@@ -78,11 +78,11 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-test("Z then 1 chooses the first preset", async ({ page }) => {
+test("b then 1 chooses the first preset", async ({ page }) => {
   await openList(page, "/m/inbox");
   const rowId = await cursorRowId(page);
-  await page.keyboard.press("Z");
-  const dialog = page.getByRole("dialog", { name: "Snooze until…" });
+  await page.keyboard.press("b");
+  const dialog = page.getByRole("dialog", { name: "Not now" });
   await expect(presets(page).first()).toBeVisible();
   await page.keyboard.press("1");
   await expect(dialog).toHaveCount(0);
@@ -92,7 +92,7 @@ test("Z then 1 chooses the first preset", async ({ page }) => {
 // The row's hover toolbar must not cover the Wake chip.
 test("Wake now is clickable with the mouse", async ({ page }) => {
   await openList(page, "/m/inbox");
-  await page.keyboard.press("Z");
+  await page.keyboard.press("b");
   await presets(page).first().click();
   await pressSequence(page, "g", "n");
   const wake = wakeChips(page).first();
@@ -114,7 +114,7 @@ test("waking a snoozed conversation wakes all of its messages", async ({ page })
     .replace(/^(re|fwd?):\s*/i, "");
   await row.click();
   await page.keyboard.press("Escape");
-  await page.keyboard.press("Z");
+  await page.keyboard.press("b");
   await presets(page).first().click();
   await pressSequence(page, "g", "n");
   // Other tests may leave their own snoozes; this conversation is one row.

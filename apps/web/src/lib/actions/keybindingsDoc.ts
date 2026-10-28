@@ -46,12 +46,12 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
   },
   {
     title: "Now",
-    intro: "On a lit new sender, `1` to `4` answer its question.",
+    intro: "On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.",
     match: (action) => inScope(action, "now"),
   },
   {
     title: "Messages",
-    intro: "On a lit new sender, `1` to `4` answer its question.",
+    intro: "On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.",
     match: (action) => inScope(action, "messages") || inScope(action, "messages-filters"),
   },
   { title: "To do", intro: "", match: (action) => inScope(action, "todo") },

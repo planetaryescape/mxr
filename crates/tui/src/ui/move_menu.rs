@@ -1,15 +1,16 @@
-//! The move menu `X` and `K` open, and the arrivals list Enter on Now's
+//! The move menu `X` and `P` open, and the arrivals list Enter on Now's
 //! line opens (D119). Pure render; wiring lives in `app/move_actions.rs`.
 
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-use crate::app::{ArrivalsListState, MoveMenu};
+use crate::app::{ArrivalsListState, MoveMenu, MoveOption};
 use crate::ui::centered_rect_fixed_height;
 use crate::ui::sanitize::{one_line, truncate};
 
-/// "Move to…": one key per mode; for the sender, only the modes a sender
-/// can live in.
+/// "Move to…": each option prints its key (D168), a lowercase letter for
+/// this email and a capital for its sender; the highlighted one runs on
+/// Enter. On a new sender's row the capitals answer its question.
 pub fn draw_move_menu(
     frame: &mut Frame,
     area: Rect,
@@ -19,7 +20,11 @@ pub fn draw_move_menu(
     let Some(menu) = menu else {
         return;
     };
-    let popup = centered_rect_fixed_height(52, if menu.sender_only { 10 } else { 13 }, area);
+    let options = menu.options();
+    let height = u16::try_from(options.len())
+        .unwrap_or(u16::MAX)
+        .saturating_add(7);
+    let popup = centered_rect_fixed_height(56, height, area);
     frame.render_widget(Clear, popup);
     let title = if menu.sender_only {
         " Everything from this sender goes to… "
@@ -35,28 +40,50 @@ pub fn draw_move_menu(
     frame.render_widget(block, popup);
     let mut lines = vec![
         Line::from(Span::styled(
-            truncate(&one_line(&menu.display), 46),
+            truncate(&one_line(&menu.display), 50),
             Style::default()
                 .fg(theme.text_primary)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
     ];
-    for (key, mode) in crate::app::MOVE_CHOICES {
-        if menu.sender_only && !crate::app::sender_mode(mode) {
-            continue;
-        }
-        lines.push(Line::from(vec![
-            Span::styled(format!("  {key}  "), Style::default().fg(theme.accent)),
-            Span::raw(mode.name()),
-        ]));
+    for (index, option) in options.iter().enumerate() {
+        let label = match option {
+            MoveOption::Email(mode) => {
+                if menu.current == Some(*mode) {
+                    format!("{} (keep it here)", mode.name())
+                } else {
+                    mode.name().to_string()
+                }
+            }
+            MoveOption::Sender(mode) => format!("{}: all their mail", mode.name()),
+            MoveOption::NewSender(kind) => menu
+                .new_sender
+                .as_ref()
+                .and_then(|question| question.choices.iter().find(|choice| choice.kind == *kind))
+                .map_or_else(String::new, |choice| {
+                    format!("New sender: {}", one_line(&choice.label))
+                }),
+        };
+        let row = Line::from(vec![
+            Span::styled(
+                format!("  {}  ", option.key()),
+                Style::default().fg(theme.accent),
+            ),
+            Span::raw(label),
+        ]);
+        lines.push(if index == menu.selected {
+            row.style(theme.highlight_style())
+        } else {
+            row
+        });
     }
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         if menu.sender_only {
-            "From now on, for all their mail. Esc closes."
+            "From now on, for all their mail. Enter picks, Esc closes."
         } else {
-            "This email only. M, U or R: all mail from this sender. Esc closes."
+            "Lowercase: this email. Capital: the sender. Enter picks, Esc closes."
         },
         Style::default().fg(theme.text_muted),
     )));
@@ -196,45 +223,97 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_menu_offers_one_key_per_mode_and_the_sender_menu_three() {
-        let menu = MoveMenu {
+    fn menu() -> MoveMenu {
+        MoveMenu {
             message_id: MessageId::new(),
             display: "Maya Ortiz".into(),
             sender_only: false,
             not_sure: false,
-        };
-        let rendered = render_to_string(80, 20, |frame| {
+            current: None,
+            new_sender: None,
+            selected: 0,
+        }
+    }
+
+    fn render(menu: &MoveMenu) -> String {
+        render_to_string(80, 24, |frame| {
             draw_move_menu(
                 frame,
-                Rect::new(0, 0, 80, 20),
-                Some(&menu),
+                Rect::new(0, 0, 80, 24),
+                Some(menu),
                 &crate::theme::Theme::default(),
             );
-        });
+        })
+    }
+
+    #[test]
+    fn the_menu_prints_each_options_key_and_the_sender_menu_three() {
+        let rendered = render(&menu());
         for line in [
             "m  Messages",
             "x  To do",
             "u  Updates",
             "r  Reading",
             "e  Archive",
+            "M  Messages: all their mail",
+            "U  Updates: all their mail",
+            "R  Reading: all their mail",
         ] {
             assert!(rendered.contains(line), "{line}\n{rendered}");
         }
         let sender = MoveMenu {
             sender_only: true,
-            ..menu
+            ..menu()
         };
-        let rendered = render_to_string(80, 20, |frame| {
-            draw_move_menu(
-                frame,
-                Rect::new(0, 0, 80, 20),
-                Some(&sender),
-                &crate::theme::Theme::default(),
-            );
-        });
+        let rendered = render(&sender);
         assert!(!rendered.contains("To do"), "{rendered}");
         assert!(!rendered.contains("Archive"), "{rendered}");
+        assert!(rendered.contains("M  Messages"), "{rendered}");
+    }
+
+    #[test]
+    fn a_new_sender_answers_with_capitals_and_block_on_d() {
+        let question = mxr_protocol::ScreenerQuestionData {
+            account_id: AccountId::new(),
+            sender_email: "iris@example.com".into(),
+            question: "New sender. Keep in Messages?".into(),
+            choices: [
+                (mxr_protocol::SenderKindData::People, "Messages"),
+                (mxr_protocol::SenderKindData::PaperTrail, "Updates"),
+                (mxr_protocol::SenderKindData::Reading, "Reading"),
+                (mxr_protocol::SenderKindData::ScreenedOut, "Block"),
+            ]
+            .into_iter()
+            .map(|(kind, label)| mxr_protocol::ScreenerChoiceData {
+                kind,
+                label: label.into(),
+            })
+            .collect(),
+        };
+        let rendered = render(&MoveMenu {
+            new_sender: Some(question),
+            ..menu()
+        });
+        for line in [
+            "m  Messages",
+            "M  New sender: Messages",
+            "U  New sender: Updates",
+            "R  New sender: Reading",
+            "D  New sender: Block",
+        ] {
+            assert!(rendered.contains(line), "{line}\n{rendered}");
+        }
+    }
+
+    #[test]
+    fn a_not_sure_question_marks_where_it_is_now() {
+        let rendered = render(&MoveMenu {
+            not_sure: true,
+            current: Some(mxr_protocol::ModeKindData::Updates),
+            selected: 2,
+            ..menu()
+        });
+        assert!(rendered.contains("u  Updates (keep it here)"), "{rendered}");
     }
 
     #[test]

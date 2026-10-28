@@ -31,7 +31,7 @@ If you only learn ten, learn these:
 | `r` | Reply |
 | `c` | Compose |
 | `s` | Star / unstar |
-| `Z` | Snooze (preset list + custom-time entry) |
+| `b` | Not now: Later with no time, a preset (`1`–`4`) or a typed time |
 | `/` | Search |
 
 Everything else is discoverable from the palette (`:`) and the
@@ -153,7 +153,6 @@ see whether it starts an `Alt` key; every key works without it.
 | `f` | Forward |
 | `p` | Sender profile |
 | `B` | Thread briefing (Summarize Thread is in the palette) |
-| `W` | Who is this sender? |
 | `L` | Links in the previewed message |
 | `u` | Undo the last change |
 | `e` | Archive (on the desk: Done, put it away) |
@@ -166,8 +165,9 @@ see whether it starts an `Alt` key; every key works without it.
 | `l` | Apply label |
 | `v` | Move to label |
 | `D` | Unsubscribe |
-| `Z` | Snooze |
-| `b` | Reply later, at a time (Enter with no time: the queue now) |
+| `b` | Not now: Later (the reply queue, no time) or snooze until a time |
+| `X` | Take it out of this mode: a picker of modes (see below) |
+| `P` | Send everything from this sender to a mode |
 | `O` | Open in browser |
 | `R` | Toggle reader mode |
 | `S` | Toggle signature display |
@@ -320,7 +320,8 @@ mode.
 | `o` | Open the email |
 | `t` | Make a to-do from the row's email |
 | `E` | Let go of the Updates digest on the card (previews first) |
-| `1`–`4` | Answer a new sender's question, on a row that asks one |
+| `X` | Move the row's email to another mode. On a Not-sure question it is the answer (`Enter` keeps it where it is); on a new sender's row, `M` `U` `R` `D` answer its question |
+| `b` | Not now: Later (no time) or snooze |
 | `Esc` | Dismiss the hint, when one shows |
 | `u` | Undo |
 
@@ -336,7 +337,7 @@ People as rows with their topics inside (`gm`). See
 | `.` | Got it: a short acknowledgement after a countdown; `u` cancels |
 | `e` | Done here, until they write again |
 | `t` | Make a to-do from the topic |
-| `b` | Reply later |
+| `b` | Not now: Later (the reply queue) or a time it comes back |
 | `s` | Pin or unpin the person |
 | `c` | New topic with this person |
 | `{` / `}` | Previous / next topic |
@@ -351,7 +352,7 @@ Open To do with `gx`. See [Act on To dos](/guides/todo/).
 |-----|--------|
 | `e` | Tick off the selected task |
 | `Enter` | Open the source email (TUI); use the row's primary action (web) |
-| `Z` (web) | Schedule when the task returns |
+| `b` | Not now: schedule when the task returns (a preset or a typed time) |
 | `,` (web) | Edit extracted fields |
 | `X` | Correct the selected to-do |
 | `o` | Open the source email |
@@ -401,7 +402,7 @@ reply don't apply here.
 |-----|--------|
 | `Enter` | Read the item |
 | `L` | Fetch the linked article |
-| `b` | Put the item on Later |
+| `b` | Not now: put the item on Later, or snooze its email until a time |
 | `B` | Open the Later shelf (`Esc` goes back) |
 | `e` | Let go of the item |
 | `E` | Let go of everything shown (asks first) |
@@ -440,9 +441,9 @@ The records lens (`ge`), with the answer box focused.
 Export is in the palette (`E` until K3): a CSV of the records in view, after a
 preview of rows, totals, unchecked rows and missing PDFs.
 
-On any conversation, in the mailbox or the reader, `T` passes it to
-another mode. This release offers Archive: it shows the card it would file,
-and `Enter` files it. `F` stays the full-width reader.
+On any conversation, in the mailbox or the reader, `X` then `e` files it in
+Archive. **Pass to a mode** in the palette shows the card it would file
+first, and `Enter` files it. `F` stays the full-width reader.
 
 ## Calendar invites lens
 
@@ -604,11 +605,13 @@ Open with `gP`. Lists [tracked packages](/guides/deliveries/) detected in your m
 | Label picker | typing, `j` / `k`, `Enter`, `Esc` |
 | Attachments | `j` / `k`, `Enter` / `o`, `d`, `Esc` |
 | Bulk confirm | `Enter` / `y` confirm, `Esc` / `n` cancel |
-| Snooze (preset list) | `j` / `k` move, `Enter` confirm, `Esc` close |
-| Snooze (custom mode) | typing (live preview), `Tab` other reading, `Enter` snooze, `Backspace`, `Esc` back to presets |
+| Not now (`b`) | Later first, then the presets on `1`–`4`, then Custom; `j` / `k` move, `Enter` picks, `Esc` / `q` close |
+| Not now (custom time) | typing (live preview), `Tab` other reading, `Enter` set, `Backspace`, `Esc` back to the list |
+| Move to (`X`, `P`) | `m` `x` `u` `r` `e` move this email, `M` `U` `R` the sender (on a new sender, `D` blocks); `j` / `k` move, `Enter` picks, `Esc` / `q` close |
+| Move sender to (Paper trail, Reading) | `m` People, `r` Reading, `u` Paper trail, `d` Screened out, `a` Automatic; `Esc` / `q` close |
 | Reply queue | `j` / `k`, `Enter` / `r` reply, `F` focus & reply, `Esc` close |
 | Snippets browser | `j` / `k`, `Esc` close |
-| Sender profile | `j` / `k` select other sender email, `Enter` / `o` open selected email, `Esc` close |
+| Sender profile | `j` / `k` select other sender email, `Enter` / `o` open selected email, `W` who is this sender, `Esc` close |
 | Screener queue | `j` / `k` navigate, `a` allow, `d` deny, `f` feed, `p` paper-trail, `Esc` close |
 | Welcome / setup | `d` demo, `g` Gmail, `i` IMAP, `Enter` open form, `Esc` dismiss |
 | Saved-search form | typing fields, `Tab` / `Shift-Tab` move, `Ctrl-s` save, `Esc` cancel |
@@ -712,16 +715,13 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `U` | Mark unread |  |
 | `l` | Labels… |  |
 | `v` | Move to label… |  |
-| `Z` | Snooze… |  |
+| `b` | Not now… |  |
 | `D` | Unsubscribe… |  |
-| `b` | Reply later… |  |
 | `t` | Make a to-do from this |  |
-| `T` | Pass to a mode… |  |
 | `r` | Reply |  |
 | `a` | Reply all |  |
 | `f` | Forward |  |
 | `B` | Thread briefing |  |
-| `W` | Who is this sender? |  |
 | `p` | Sender profile |  |
 | `L` | Links in this message |  |
 | `A` | Attachments |  |
@@ -825,7 +825,7 @@ One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out o
 | `⌘Enter / Ctrl+Enter` | Send and next |  |
 | `j` | Skip for now | Goes to the end of the queue |
 | `e` | Done, no reply needed | e on the desk in the TUI |
-| `Z` | Snooze… |  |
+| `b` | Not now… |  |
 | `w` | Send, remind me if nobody replies… |  |
 | `d` | Draft in your voice |  |
 | `r` | Back to the reply |  |
@@ -833,7 +833,7 @@ One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out o
 
 ### Now
 
-On a lit new sender, `1` to `4` answer its question.
+On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 
 | Key | Action | Note |
 |-----|--------|------|
@@ -850,15 +850,11 @@ On a lit new sender, `1` to `4` answer its question.
 | `o` | Open the email |  |
 | `E` | Let go of the Updates digest… | Previews the daemon's dry run first; undo afterwards |
 | `Esc` | Dismiss the hint |  |
-| `1` | New sender: keep in Messages |  |
-| `2` | New sender: keep in Updates |  |
-| `3` | New sender: keep in Reading |  |
-| `4` | New sender: block |  |
 | `P` | Send everything from this sender to… |  |
 
 ### Messages
 
-On a lit new sender, `1` to `4` answer its question.
+On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 
 | Key | Action | Note |
 |-----|--------|------|
@@ -874,7 +870,7 @@ On a lit new sender, `1` to `4` answer its question.
 | `.` | Got it: a short thanks, after a countdown | Shows the exact text and counts down; u cancels before it sends |
 | `e` | Done here |  |
 | `t` | Make it a to-do… |  |
-| `b` | Reply later… |  |
+| `b` | Not now: reply later… |  |
 | `s` | Pin or unpin this person |  |
 | `c` | New topic with this person |  |
 | `{` | Previous topic |  |
@@ -885,10 +881,6 @@ On a lit new sender, `1` to `4` answer its question.
 | `f` | Cycle Messages views | Needs attention, All conversations, Your turn, Waiting on them; keeps Unread and Past your pace |
 | `⌘Enter / Ctrl+Enter` | Send, then the next person whose turn it is |  |
 | `Esc` | Dismiss the hint, or back to the people |  |
-| `1` | New sender: keep in Messages |  |
-| `2` | New sender: keep in Updates |  |
-| `3` | New sender: keep in Reading |  |
-| `4` | New sender: block |  |
 | `P` | Send everything from this sender to… |  |
 
 ### To do
@@ -903,7 +895,7 @@ On a lit new sender, `1` to `4` answer its question.
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Do it: what the row's button says | The TUI opens the source email; the web opens it or a reply for a promise. Links stay in the email. |
 | `e` | Done |  |
-| `Z` | Schedule… |  |
+| `b` | Not now: schedule… |  |
 | `,` | Edit what mxr read… |  |
 | `X` | Correct to-do |  |
 | `o` | Open the email it came from |  |
@@ -979,7 +971,7 @@ Newsletters as an edition. `b`, `e`, `D` and `A` work on the item or link under 
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Read |  |
 | `L` | Fetch the linked article |  |
-| `b` | Save for later |  |
+| `b` | Not now: later or snooze… |  |
 | `e` | Let go |  |
 | `D` | Unsubscribe… | Shows the evidence and the method first; nothing is sent until you confirm |
 | `R` | Read in the sender's layout |  |
@@ -1000,7 +992,7 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `k`, `ArrowUp` | Scroll up |  |
 | `L` | Article: fetch and read it |  |
 | `I` | Issue: the email itself |  |
-| `b` | Save for later |  |
+| `b` | Not now: later or snooze… |  |
 | `e` | Let go and go back |  |
 | `n` | Next item |  |
 | `R` | Sender's layout or cleaned |  |

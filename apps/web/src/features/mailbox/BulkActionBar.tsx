@@ -36,7 +36,7 @@ const BUTTONS: BulkButton[] = [
   { command: "markUnread", label: "Unread", keys: "U", Icon: Mail },
   { command: "toggleStar", label: "Star", keys: "s", Icon: Star },
   { command: "label", label: "Label", keys: "l", Icon: Tag },
-  { command: "snooze", label: "Snooze", keys: "Z", Icon: Clock },
+  { command: "snooze", label: "Not now", keys: "b", Icon: Clock },
   { command: "spam", label: "Spam", keys: "!", Icon: ShieldAlert },
   { command: "trash", label: "Trash", keys: "#", Icon: Trash2 },
 ];

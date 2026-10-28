@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { ModeColumns, ModeFrame } from "@/components/ModeFrame";
 import { PageFrame } from "@/components/PageFrame";
@@ -14,7 +15,7 @@ import { withDoneHereHint } from "@/features/hints/doneHereHint";
 import { useActiveHintDismiss, useHint } from "@/features/hints/useHint";
 import { useModeGuide, type ModeGuide } from "@/features/modes/api";
 import { useThreadModesMap } from "@/features/modes/membership";
-import { NEW_SENDER_NOTE, newSenderCommands } from "@/features/modes/NewSenderChips";
+import { NEW_SENDER_NOTE } from "@/features/modes/NewSenderChips";
 import { doneToast, markModeDone, NONE_HIDDEN, useModeDone } from "@/features/modes/modeDone";
 import { useAdvanceOnRemoval } from "@/hooks/useAdvanceOnRemoval";
 import { tickOff } from "@/features/todo/todoVerbs";
@@ -24,6 +25,7 @@ import { useShortcutScope } from "@/hooks/useShortcutScope";
 import { useScopeController } from "@/lib/keys/controllers";
 import type { LampVia } from "@/components/Row";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
+import { messageNotNow } from "@/features/mail-actions/notNow";
 import { refuseWhileDaemonDown } from "@/lib/daemonAvailability";
 import { useLitReason } from "@/state/litReasonStore";
 import { stripKeys } from "@/lib/actions/definition";
@@ -270,6 +272,24 @@ function NowBody({ now }: { now: Now }) {
     },
     [setCursorKey],
   );
+  // `b`, Not now: a time snoozes the row's email; Later (a person's row
+  // only) is the untimed reply later. The digest card is many emails.
+  const notNow = useCallback((item: NowItem) => {
+    const subject = nowMoveSubject(item);
+    if (!subject) {
+      toast.info("This row has no single email to put off");
+      return;
+    }
+    if (refuseWhileDaemonDown("snooze")) return;
+    openMailDialog({
+      kind: "not-now",
+      picker: messageNotNow({
+        messageIds: [subject.messageId],
+        replyLaterId: item.kind === "person" ? subject.messageId : undefined,
+        subject: subject.label,
+      }),
+    });
+  }, []);
   const openFromRow = useCallback((item: NowItem) => open(item), [open]);
   const letGoDigest = useCallback(() => {
     dismissLetGo();
@@ -302,9 +322,9 @@ function NowBody({ now }: { now: Now }) {
     done: () => current && done(current, "key"),
     reply: () => current && reply(current),
     makeTodo: () => current && makeTodo(current),
+    snooze: () => current && notNow(current),
     letGoDigest: now.updates ? letGoDigest : undefined,
     closeHint,
-    ...newSenderCommands(litSender, litPerson ? rowPerson(litPerson.person.row) : ""),
     ...moveCommands(() => (current ? nowMoveSubject(current) : null)),
   });
 

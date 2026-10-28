@@ -274,24 +274,52 @@ fn esc_keeps_the_digest() {
 }
 
 #[test]
-fn a_new_senders_question_is_answered_on_its_row() {
+fn a_new_senders_question_is_answered_through_x() {
     let mut app = now_app(true);
     // Iris, the third person, is new.
     app.mailbox.selected_index = 2;
+    // The digits that answered moved into the X picker.
     press(&mut app, KeyCode::Char('2'));
+    assert_eq!(app.status_message.as_deref(), Some("New sender is now X"));
+    assert!(queued(&app).is_empty());
+    let x = app
+        .handle_key(KeyEvent::new(KeyCode::Char('X'), KeyModifiers::SHIFT))
+        .expect("X maps");
+    app.apply(x);
+    assert!(app
+        .mailbox
+        .trust
+        .move_menu
+        .as_ref()
+        .unwrap()
+        .new_sender
+        .is_some());
+    let u = app
+        .handle_key(KeyEvent::new(KeyCode::Char('U'), KeyModifiers::SHIFT))
+        .expect("U answers");
+    app.apply(u);
     assert!(matches!(
         queued(&app).as_slice(),
         [Request::SetSenderKind { sender_email, kind: Some(SenderKindData::PaperTrail), .. }]
             if sender_email == "iris.chen@example.com"
     ));
-    // On a row with no question a digit does nothing: the tabs moved to g.
+    // Block is D, in the sender's half from P too.
     app.pending_mutation_queue.clear();
-    app.mailbox.selected_index = 0;
-    assert_eq!(
-        app.handle_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE)),
-        None
-    );
-    assert!(queued(&app).is_empty());
+    let p = app
+        .handle_key(KeyEvent::new(KeyCode::Char('P'), KeyModifiers::SHIFT))
+        .expect("P maps");
+    app.apply(p);
+    let d = app
+        .handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE))
+        .expect("d answers in the sender's menu");
+    app.apply(d);
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::SetSenderKind {
+            kind: Some(SenderKindData::ScreenedOut),
+            ..
+        }]
+    ));
 }
 
 fn status_line(app: &App) -> String {

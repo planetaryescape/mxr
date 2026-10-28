@@ -502,7 +502,7 @@ fn action_display_name(action: &str) -> String {
         "mark_read" => "Mark Read".into(),
         "mark_unread" => "Mark Unread".into(),
         "unsubscribe" => "Unsubscribe".into(),
-        "snooze" => "Snooze".into(),
+        "snooze" => "Not now".into(),
         "visual_line_mode" => "Visual Line Mode".into(),
         "toggle_fullscreen" => "Full View".into(),
         "toggle_select" => "Toggle Select".into(),
@@ -782,9 +782,9 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("*t", "pattern_select_thread"),
     // mxr-specific
     ("D", "unsubscribe"),
-    ("b", "flag_reply_later"),
+    // Not now (D173): Later or a time, one picker.
+    ("b", "snooze"),
     ("t", "create_todo"),
-    ("Z", "snooze"),
     ("O", "open_in_browser"),
     ("R", "toggle_reader_mode"),
     ("S", "toggle_signature"),

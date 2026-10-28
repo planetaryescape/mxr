@@ -1,5 +1,5 @@
 /*
- * `X` and `K` on a mode's rows: the email each row stands for. Now's
+ * `X` and `P` on a mode's rows: the email each row stands for. Now's
  * Updates card is a digest of many emails, so it has none to move; a
  * sender's bundle in a place stands for its newest email.
  */
@@ -17,10 +17,13 @@ export function nowMoveSubject(item: NowItem): MoveSubject | null {
   switch (item.kind) {
     case "person": {
       const row = item.person.row;
+      const senderLabel = row.counterparty_name || row.counterparty_email;
+      const question = item.person.new_sender;
       return {
         messageId: row.message_id,
         label: row.subject || "(no subject)",
-        senderLabel: row.counterparty_name || row.counterparty_email,
+        senderLabel,
+        newSender: question ? { question, label: senderLabel } : undefined,
       };
     }
     case "todo": {
@@ -53,7 +56,7 @@ export function placeMoveSubject(bundle: PlaceBundle, message?: PlaceMessage): M
   };
 }
 
-/** An Updates line stands for its newest email; `K` stays "tune this source". */
+/** An Updates line stands for its newest email; `P` stays "tune this source". */
 export function updateMoveSubject(line: UpdateLine): MoveSubject | null {
   const messageId = line.latest_message_id ?? line.fact_message_id;
   if (!messageId) return null;
@@ -71,7 +74,7 @@ export function readingMoveSubject(entry: EditionEntry): MoveSubject | null {
   };
 }
 
-/** The controller commands a view registers for `X` and `K`. */
+/** The controller commands a view registers for `X` and `P`. */
 export function moveCommands(subject: () => MoveSubject | null) {
   const open = (sender: boolean) => {
     const found = subject();

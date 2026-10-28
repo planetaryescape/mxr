@@ -36,8 +36,8 @@ const defined = (keymap.action as DefinedAction[]).filter(
 );
 
 // The TUI's place view and the screens that still read their own keys have
-// no web scope.
-const TUI_ONLY_CONTEXTS = new Set(["place", "rules", "accounts", "invites"]);
+// no web scope; Not-sure rows announce their moved keys by hand.
+const TUI_ONLY_CONTEXTS = new Set(["place", "rules", "accounts", "invites", "not-sure"]);
 
 function definedBindings(): string[] {
   const bindings: string[] = [];

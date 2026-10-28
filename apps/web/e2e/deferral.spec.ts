@@ -5,7 +5,7 @@ import { openApp, readE2EState, restartDaemon } from "./helpers/state";
 import { freshWaitingConversations } from "./helpers/waiting-request";
 
 /**
- * Timed deferral from one key: `b` asks when, the exact time shows before
+ * Timed deferral from Not now (`b`): type when, the exact time shows before
  * anything is stored, the toast names it, and the conversation comes back
  * on its own at that time, across a daemon restart.
  */
@@ -65,11 +65,11 @@ test('b then "in 2d" shows the time before it is set, names it in the toast, and
   await expectCursorOn(page, domId(row));
 
   await page.keyboard.press("b");
-  const dialog = page.getByRole("dialog", { name: "Reply later" });
+  const dialog = page.getByRole("dialog", { name: "Not now" });
   await expect(dialog).toBeVisible();
-  // The field has focus: typing goes straight in.
+  // Letters type the time; Later stays the first option.
   await page.keyboard.type("in 2d");
-  const shown = await previewedTime(page, "Reply later", /· in 2 days$/);
+  const shown = await previewedTime(page, "Not now", /· in 2 days$/);
 
   const request = page.waitForRequest((r) => r.url().includes("/api/v1/mail/desk/later"));
   const response = page.waitForResponse("**/api/v1/mail/desk/later");

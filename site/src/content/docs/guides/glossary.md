@@ -52,9 +52,9 @@ See [Architecture](/guides/architecture/) for why this split matters.
 
 **Mutation ID**: an operation-specific token returned by some mutations. Use `mxr undo` only when that operation reports an undo ID and supports undo; the available effects and time window depend on the operation.
 
-**Reply-later** (a.k.a. **bookmark**): flag a thread to come back to. Hey's term is "Reply Later"; in the TUI the key is `b` for bookmark. The reply queue is browsed with `mxr replies` or `Ctrl-p → Reply Queue`.
+**Reply-later** (a.k.a. **bookmark**): flag a thread to come back to. Hey's term is "Reply Later"; it is the first choice, **Later**, in the `b` (Not now) picker. The reply queue is browsed with `mxr replies` or `Ctrl-p → Reply Queue`.
 
-**Snooze**: hide a thread until a time. Returns to inbox at the specified moment. Set with `mxr snooze --until '<time>'` (see [time phrases](/reference/time-phrases/)) or the `Z` key in the TUI.
+**Snooze**: hide a thread until a time. Returns to inbox at the specified moment. Set with `mxr snooze --until '<time>'` (see [time phrases](/reference/time-phrases/)) or a time in the `b` (Not now) picker.
 
 **Screener**: Hey-borrowed term for triaging unknown senders into Allow / Deny / Feed / Paper Trail. Anyone you have written to is never in the queue. Allow gives the sender Messages visibility, not automatic reply debt. A directed request can enter New from people until you write to them. Feed sends their mail to Reading; Paper Trail retains the older sender-bundle destination. These are sender decisions, not extra email modes. CLI: `mxr screener`.
 
@@ -189,7 +189,7 @@ it done there, so it never vanishes from every mode.
 the five modes.
 
 **Handoff**: passing an item from one mode to the next, such as making a
-to-do from a message (`t`), filing an email in Archive (`T`), or a ticked-off
+to-do from a message (`t`), filing an email in Archive (`X` then `e`), or a ticked-off
 bill or a delivered parcel's order filing itself in Archive. The toast names
 where the item went.
 

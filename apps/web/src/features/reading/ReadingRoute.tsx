@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { moveCommands, readingMoveSubject } from "@/features/arrivals/moveSubjects";
+import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
+import { READING_KEEP, READING_LATER, readingNotNow } from "@/features/mail-actions/notNow";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { Bookmark } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -454,10 +456,26 @@ function Bands({
         if (fetched && !fetched.error) read(current.key);
       });
     },
+    // Not now (`b`): Later first, then a time that snoozes the issue's email.
     later: () => {
       if (!current) return;
-      fadingHint.dismiss();
-      later(current.key);
+      const subject = readingMoveSubject(current);
+      if (!subject) return;
+      const key = current.key;
+      openMailDialog({
+        kind: "not-now",
+        picker: readingNotNow({
+          messageId: subject.messageId,
+          title: subject.label,
+          later: {
+            ...(view === "later" ? READING_KEEP : READING_LATER),
+            run: () => {
+              fadingHint.dismiss();
+              later(key);
+            },
+          },
+        }),
+      });
     },
     letGo: () => {
       fadingHint.dismiss();

@@ -1047,7 +1047,7 @@ phase (D113).
 
 ## One key map across Now and the modes
 
-> [Chapter 35](35-keyboard.md) keeps this table's verbs and moves some keys: let go of all to `E`, the sender menu to `P`, `T` into `X`, snooze and Later into one `b` picker, groups to `{` `}`, and Not-sure and new-sender answers into the `X` picker. Let go of all (`E`), the sender menu (`P`) and groups (`{` `}`) have already moved; for every other key, this table still describes today's keys until K3 ships.
+> [Chapter 35](35-keyboard.md) keeps this table's verbs and moves some keys: let go of all to `E`, the sender menu to `P`, `T` into `X`, snooze and Later into one `b` picker, groups to `{` `}`, and Not-sure and new-sender answers into the `X` picker. Let go of all (`E`), the sender menu (`P`), groups (`{` `}`), `T` into `X`, the Not-sure and new-sender answers into `X`, and snooze and Later into `b` have already moved; for every other key, this table still describes today's keys until K3 ships.
 
 Checked against `docs/reference/tui-keymap.json` and the web registry
 (`apps/web/src/lib/actions/`, `features/mail-actions/verbActions.ts`,

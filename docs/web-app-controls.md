@@ -119,7 +119,7 @@ and acted on with the same keys as a list.
 | Close | Frequency: every thread is closed. Shows Esc. |
 | Previous / next conversation | Frequency: moving through the queue. Shows N / n. |
 | Archive | Frequency: the most common verb. Shows e. |
-| Snooze | Deferral is a first-class verb (A5). Shows Z. |
+| Not now | Deferral is a first-class verb (A5): Later or a time, one picker (D173). Shows b. |
 | Formatted / Reader / Plain | Discoverability: which view is on. The shared segmented control. |
 | More | Everything else, each with its key. |
 | Per message: star, reply to this message, more | Replying to an earlier message and starring one message need a target the thread-level keys don't give. |

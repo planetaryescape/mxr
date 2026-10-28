@@ -95,9 +95,8 @@ function rowVerb(
     const before = rowStates(await rowLabel(page, rowId));
     for (const key of keys) {
       await page.keyboard.press(key);
-      // A dialog verb (snooze) takes its next key once the dialog is up.
-      if (key === "Z")
-        await expect(page.getByRole("dialog", { name: "Snooze until…" })).toBeVisible();
+      // A dialog verb (Not now) takes its next key once the dialog is up.
+      if (key === "b") await expect(page.getByRole("dialog", { name: "Not now" })).toBeVisible();
     }
     await expectToast(page, verb);
     if (options.leaves) await expect(rowById(page, rowId)).toHaveCount(0);
@@ -375,7 +374,7 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
   },
   read: rowVerb("read", ["I"], { pick: isUnread, leaves: false }),
   unread: rowVerb("unread", ["U"], { pick: (label) => !isUnread(label), leaves: false }),
-  snooze: rowVerb("snooze", ["Z", "1"], { pick: isSingleMessage, leaves: true }),
+  snooze: rowVerb("snooze", ["b", "1"], { pick: isSingleMessage, leaves: true }),
 
   move: async (page) => {
     await openList(page, "/m/inbox");
@@ -486,9 +485,10 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     const queued = async () =>
       (await bridge<{ messages: unknown[] }>(page, "/api/v1/mail/reply-later")).messages.length;
     const before = await queued();
-    // `b` asks when; Enter with no time is the plain reply later.
+    // `b` is Not now; Later starts lit, so Enter is the plain reply later.
     await page.keyboard.press("b");
-    await expect(page.getByRole("dialog", { name: "Reply later" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Not now" })).toBeVisible();
+    await expect(page.getByTestId("not-now-later")).toBeFocused();
     await page.keyboard.press("Enter");
     await expectToast(page, "reply-later");
     await expect.poll(queued).toBe(before + 1);
@@ -502,7 +502,11 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     await openApp(page, "/desk?lane=owed");
     await expect(mailRows(page).first()).toBeVisible();
     const rowId = await cursorRowId(page);
-    await page.keyboard.press("b");
+    // A typed reply-later time is in the palette; `b` (Not now) snoozes at a time.
+    await page.keyboard.press(":");
+    const palette = page.getByRole("dialog", { name: "Command palette" });
+    await palette.getByRole("combobox").fill("Reply later");
+    await palette.getByRole("option", { name: /^Reply later…/ }).click();
     const dialog = page.getByRole("dialog", { name: "Reply later" });
     await expect(dialog).toBeVisible();
     await page.keyboard.type("in 2d");
@@ -704,7 +708,7 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
 
   "todo-schedule": async (page) => {
     const row = await todoRow(page, "Fix payment for Spotify");
-    await page.keyboard.press("Z");
+    await page.keyboard.press("b");
     const dialog = page.getByRole("dialog", { name: "Schedule" });
     await dialog.getByRole("textbox").fill("in 3 days");
     await expect(dialog.getByRole("button", { name: "Schedule" })).toBeEnabled();
@@ -755,7 +759,11 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
   "record-file": async (page) => {
     await openList(page, "/m/inbox");
     await mailList(page).focus();
-    await page.keyboard.press("T");
+    // `T` moved into the X picker (blueprint 35); the preview stays in the palette.
+    await page.keyboard.press(":");
+    const palette = page.getByRole("dialog", { name: "Command palette" });
+    await palette.getByRole("combobox").fill("Pass to a mode");
+    await palette.getByRole("option", { name: /^Pass to a mode/ }).click();
     const dialog = page.getByTestId("pass-to-mode-dialog");
     await expect(dialog.getByTestId("file-preview")).toContainText("Would file in Archive");
     await dialog.getByRole("button", { name: "File in Archive" }).click();
@@ -792,7 +800,10 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
     if (!key) throw new Error("the demo edition has no item off Later");
     const saved = page.locator(`[data-testid='reading-item'][data-key='${key}']`).first();
     await saved.click({ position: { x: 5, y: 5 } });
+    // Not now opens on Later; Enter keeps it.
     await page.keyboard.press("b");
+    await expect(page.getByTestId("not-now-later")).toBeFocused();
+    await page.keyboard.press("Enter");
     await expectToast(page, "reading-later");
     // The lit row's verbs stand in for its marks, so the bookmark is in the DOM, not on screen.
     await expect(saved.getByLabel("On Later")).toHaveCount(1);
@@ -811,7 +822,7 @@ const JOURNEYS: Partial<Record<Verb, Journey>> = {
       );
       await issue.first().click({ position: { x: 5, y: 5 } });
       await page.keyboard.press("P");
-      await page.getByTestId("sender-kind-dialog").press("p");
+      await page.getByTestId("sender-kind-dialog").press("m");
       await expectToast(page, "move-sender");
       await expect(issue).toHaveCount(0);
       await page.keyboard.press("u");

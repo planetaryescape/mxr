@@ -182,7 +182,9 @@ yourself.
 
 ## Keep things on Later
 
-`b` puts an item on **Later**, the one shelf in Reading with a count.
+`b` (Not now) opens a picker whose first choice, **Later**, puts an item on
+the Later shelf, the one shelf in Reading with a count; `Enter` picks it. A
+time from the same picker snoozes the item's email instead.
 Putting a link on Later also fetches its article, so it is there on a
 plane. Later never fades. Something on it for more than 30 days asks once,
 "Still want it?", and keeping it stops the question.
@@ -286,7 +288,7 @@ makes no unsubscribe offers.
 |---|---|
 | `Enter` | Read |
 | `L` | Fetch the linked article |
-| `b` | Later |
+| `b` | Not now: Later (`Enter`), or a time |
 | `e` | Let go |
 | `D` | Unsubscribe, with evidence and a preview |
 | `R` | The sender's own layout |

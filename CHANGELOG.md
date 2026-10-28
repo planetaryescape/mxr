@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.178](https://github.com/planetaryescape/mxr/compare/v0.6.177...v0.6.178) (2026-10-28)
+
+
+### Bug Fixes
+
+* rebuild the search index in linear time ([#758](https://github.com/planetaryescape/mxr/issues/758)) ([3e77260](https://github.com/planetaryescape/mxr/commit/3e772608aecd90accf1ffb70b2e7e072f8f7b81f))
+
 ## [0.6.177](https://github.com/planetaryescape/mxr/compare/v0.6.176...v0.6.177) (2026-10-28)
 
 

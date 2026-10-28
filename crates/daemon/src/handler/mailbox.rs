@@ -14,7 +14,7 @@ use mxr_core::types::{
 use mxr_protocol::{
     AttachmentChunk, AttachmentTransferMetadata, BodyFailure, CalendarInviteActionData,
     CalendarInviteData, CalendarInviteResponsePreview, CalendarInviteResponseResult, ResponseData,
-    MAX_ATTACHMENT_CHUNK_BYTES,
+    SystemMailboxCount, MAX_ATTACHMENT_CHUNK_BYTES,
 };
 use scraper::{Html, Selector};
 use sha2::{Digest, Sha256};
@@ -88,18 +88,51 @@ async fn resolve_role_scope(
     };
     let role = Role::from_system_mailbox_wire_name(wire)
         .ok_or_else(|| format!("unknown mailbox role: {wire}"))?;
-    let accounts = match account_id {
-        Some(account_id) => vec![account_id.clone()],
-        None => state
-            .store
-            .list_cached_mail_accounts()
-            .await
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .map(|account| account.id)
-            .collect(),
-    };
-    Ok(Some((role, accounts)))
+    Ok(Some((
+        role,
+        enabled_accounts_in_scope(state, account_id).await?,
+    )))
+}
+
+/// The accounts a merged listing may read: the named account, or every
+/// enabled one, and only if it is enabled. A disabled account's mail stays
+/// out whether it is named or not.
+async fn enabled_accounts_in_scope(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+) -> Result<Vec<AccountId>, String> {
+    let enabled = state
+        .store
+        .list_cached_mail_accounts()
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|account| account.id);
+    Ok(match account_id {
+        Some(account_id) => enabled.filter(|id| id == account_id).collect(),
+        None => enabled.collect(),
+    })
+}
+
+pub(super) async fn system_mailbox_counts(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+) -> HandlerResult {
+    let accounts = enabled_accounts_in_scope(state, account_id).await?;
+    let mailboxes = state
+        .store
+        .system_mailbox_counts(&accounts)
+        .await?
+        .into_iter()
+        .filter_map(|(role, unread, total)| {
+            Some(SystemMailboxCount {
+                role: role.system_mailbox_wire_name()?.to_string(),
+                unread,
+                total,
+            })
+        })
+        .collect();
+    Ok(ResponseData::SystemMailboxCounts { mailboxes })
 }
 
 pub(super) async fn list_envelopes(

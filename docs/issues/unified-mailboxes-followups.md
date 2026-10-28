@@ -40,17 +40,24 @@ per account. Pinned by
 `a_thread_id_shared_across_accounts_is_listed_once` in
 `crates/store/src/system_mailbox.rs`.
 
-## Thread rows decide membership by provider label id
+## A role view drops a row it cannot place
 
-In a merged thread row, the web decides which of the thread's messages are "in
-the lens" by comparing each message's label provider ids with the default
-account's label (`envelope_has_label` in `crates/web/src/mailbox_threads.rs`).
-Gmail and the fake provider use `INBOX` as the provider id, and the IMAP mapping
-names its Inbox label `INBOX`, so these match across accounts. An account whose
-inbox message carries neither string would fail the match and the row falls back
-to the whole thread. Row counts and ordering come
-from the daemon and are right; only the thread-level action scope can be wider
-than the lens.
+In a merged web thread row, which of the thread's messages are "in the lens" is
+decided per message against the labels of the message's own account that have
+the mailbox's role (`Membership::Role` in `crates/web/src/mailbox_threads.rs`),
+by provider label id, plus the starred flag for Starred. A thread the daemon
+lists but none of whose messages match is left out of the page instead of
+falling back to the whole thread, because a thread-level action on the whole
+thread could reach messages outside the mailbox. If label provider ids ever
+drift from the store, such rows disappear rather than act too widely. The
+account-scoped views keep the older whole-thread fallback.
+
+## Starred needs a label to navigate to
+
+Starred lists IMAP flags and Gmail labels together, but the web sidebar and the
+TUI reach it through a system label with the Starred role. An account set where
+no account has one (IMAP only, no `\Flagged` special-use folder) has no Starred
+item; the list and count are right once an item exists.
 
 ## Label role is derived by name
 

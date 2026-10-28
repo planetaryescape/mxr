@@ -615,6 +615,10 @@ mod tests {
                 IpcCategory::CoreMail,
             ),
             (
+                Request::SystemMailboxCounts { account_id: None },
+                IpcCategory::CoreMail,
+            ),
+            (
                 Request::CreateLabel {
                     name: "todo".into(),
                     color: Some("#fff".into()),

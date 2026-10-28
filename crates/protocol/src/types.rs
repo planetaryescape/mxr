@@ -788,6 +788,12 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         all_accounts: bool,
     },
+    /// Unread and total for each system mailbox, summed over the named
+    /// account or, with none, every enabled account. A daemon that predates
+    /// it answers with an error and callers fall back to summing labels.
+    SystemMailboxCounts {
+        account_id: Option<AccountId>,
+    },
     CreateLabel {
         name: String,
         color: Option<String>,
@@ -3009,6 +3015,7 @@ impl Request {
             | Self::GetThread { .. }
             | Self::ListThreads { .. }
             | Self::ListLabels { .. }
+            | Self::SystemMailboxCounts { .. }
             | Self::CreateLabel { .. }
             | Self::DeleteLabel { .. }
             | Self::RenameLabel { .. }
@@ -3724,6 +3731,9 @@ pub enum ResponseData {
     },
     Labels {
         labels: Vec<Label>,
+    },
+    SystemMailboxCounts {
+        mailboxes: Vec<SystemMailboxCount>,
     },
     Label {
         label: Label,
@@ -4751,6 +4761,7 @@ impl ResponseData {
             | Self::Thread { .. }
             | Self::Threads { .. }
             | Self::Labels { .. }
+            | Self::SystemMailboxCounts { .. }
             | Self::Label { .. }
             | Self::Categories { .. }
             | Self::CategoryNamePreview { .. }
@@ -6120,6 +6131,16 @@ pub struct LabelCount {
     pub label_id: LabelId,
     pub unread_count: u32,
     pub total_count: u32,
+}
+
+/// One system mailbox's counts across a set of accounts. `role` is the wire
+/// name `label_role` uses (`inbox`, `starred`, ..., `all_mail`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SystemMailboxCount {
+    pub role: String,
+    pub unread: u32,
+    pub total: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

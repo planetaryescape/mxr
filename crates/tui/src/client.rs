@@ -34,15 +34,43 @@ pub(crate) fn unified_role_for(labels: &[Label], label_id: &LabelId) -> Option<S
         .map(str::to_string)
 }
 
-/// Replace each system label's unread/total with the sum over every
-/// account's label of the same mailbox. User labels are left alone.
-pub(crate) fn with_unified_system_counts(mut labels: Vec<Label>, all: &[Label]) -> Vec<Label> {
+/// Fold every account's system mailboxes into the default account's labels.
+///
+/// Each system label's unread/total becomes the mailbox's total across
+/// accounts, from the daemon's `counts` or, for a daemon without
+/// `SystemMailboxCounts`, the sum of the accounts' labels. A mailbox only
+/// another account has gets an entry too (its label as that account has it),
+/// so Sent on a second account is reachable when the default account has no
+/// Sent label. User labels are left alone.
+pub(crate) fn with_unified_system_counts(
+    mut labels: Vec<Label>,
+    all: &[Label],
+    counts: &[SystemMailboxCount],
+) -> Vec<Label> {
     let mut sums: std::collections::HashMap<Role, (u32, u32)> = std::collections::HashMap::new();
+    for count in counts {
+        if let Some(role) = Role::from_system_mailbox_wire_name(&count.role) {
+            sums.insert(role, (count.unread, count.total));
+        }
+    }
+    if sums.is_empty() {
+        for label in all {
+            if let Some(role) = label.system_mailbox_role() {
+                let entry = sums.entry(role).or_default();
+                entry.0 += label.unread_count;
+                entry.1 += label.total_count;
+            }
+        }
+    }
+    let mut have: std::collections::HashSet<Role> = labels
+        .iter()
+        .filter_map(Label::system_mailbox_role)
+        .collect();
     for label in all {
         if let Some(role) = label.system_mailbox_role() {
-            let entry = sums.entry(role).or_default();
-            entry.0 += label.unread_count;
-            entry.1 += label.total_count;
+            if have.insert(role) {
+                labels.push(label.clone());
+            }
         }
     }
     for label in &mut labels {
@@ -294,7 +322,16 @@ impl Client {
             }) => labels,
             _ => return Ok(labels),
         };
-        Ok(with_unified_system_counts(labels, &all))
+        let counts = match self
+            .request(Request::SystemMailboxCounts { account_id: None })
+            .await
+        {
+            Ok(Response::Ok {
+                data: ResponseData::SystemMailboxCounts { mailboxes },
+            }) => mailboxes,
+            _ => Vec::new(),
+        };
+        Ok(with_unified_system_counts(labels, &all, &counts))
     }
 
     /// Phase F: paginated thread list. Provides the TUI's read path

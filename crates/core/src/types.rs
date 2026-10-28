@@ -438,6 +438,21 @@ impl Role {
             .map(|(role, _, _)| *role)
     }
 
+    /// How a navigation surface names the mailbox, whatever the provider
+    /// calls its label (`DRAFT`, `Sent Items`, `[Gmail]/Spam`).
+    pub fn system_mailbox_title(self) -> Option<&'static str> {
+        Some(match self {
+            Role::Inbox => "Inbox",
+            Role::Starred => "Starred",
+            Role::Sent => "Sent",
+            Role::Drafts => "Drafts",
+            Role::Spam => "Spam",
+            Role::Trash => "Trash",
+            Role::AllMail => "All Mail",
+            _ => return None,
+        })
+    }
+
     /// Lowercase names a System label of this role carries (empty for roles
     /// without a system mailbox).
     pub fn system_label_names(self) -> &'static [&'static str] {

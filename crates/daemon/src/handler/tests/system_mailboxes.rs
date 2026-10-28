@@ -315,3 +315,108 @@ async fn scoped_profiles_cannot_use_the_role_path_to_reach_other_accounts() {
     .await
     .is_ok());
 }
+
+#[tokio::test]
+async fn system_mailbox_counts_add_up_enabled_accounts_only() {
+    let a = accounts().await;
+    let counts = |scope: Option<AccountId>| {
+        let fx = &a.fx;
+        async move {
+            let ResponseData::SystemMailboxCounts { mailboxes } =
+                request(fx, Request::SystemMailboxCounts { account_id: scope }).await
+            else {
+                panic!("expected counts")
+            };
+            mailboxes
+        }
+    };
+    let total = |mailboxes: &[mxr_protocol::SystemMailboxCount], role: &str| {
+        mailboxes.iter().find(|m| m.role == role).map(|m| m.total)
+    };
+    // All Mail is counted from messages: first (3) + second (1); the disabled
+    // account's message is not in scope.
+    let all = counts(None).await;
+    assert_eq!(total(&all, "all_mail"), Some(4));
+    assert_eq!(
+        total(&counts(Some(a.second.clone())).await, "all_mail"),
+        Some(1)
+    );
+    // A disabled account named directly has nothing in scope.
+    assert!(counts(Some(a.disabled.clone())).await.is_empty());
+}
+
+#[tokio::test]
+async fn starred_lists_imap_flags_and_gmail_labels_together_through_the_daemon() {
+    let a = accounts().await;
+    let starred_label = label(&a.fx, &a.first, "STARRED", LabelKind::System).await;
+    mail(&a.fx, &a.first, &starred_label, 2, "gmail-starred").await;
+    // IMAP-shaped second account: the flag only, no STARRED label.
+    let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .account_id(a.second.clone())
+        .provider_id("sysbox-imap-flag")
+        .subject("imap-flagged".to_string())
+        .flags(mxr_core::types::MessageFlags::STARRED)
+        .date(Utc::now() - Duration::minutes(3))
+        .build();
+    a.fx.state
+        .store
+        .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+        .await
+        .unwrap();
+    let req = list_threads(None, Some(starred_label), Some("starred"));
+    assert_eq!(
+        thread_subjects(&a, req).await,
+        vec!["gmail-starred", "imap-flagged"]
+    );
+}
+
+#[tokio::test]
+async fn a_disabled_accounts_message_in_a_shared_thread_never_reaches_a_merged_row() {
+    let a = accounts().await;
+    let shared = ThreadId::new();
+    let visible = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .account_id(a.second.clone())
+        .thread_id(shared.clone())
+        .provider_id("shared-visible")
+        .subject("Visible".to_string())
+        .snippet("visible snippet".to_string())
+        .date(Utc::now() - Duration::minutes(40))
+        .build();
+    let hidden = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .account_id(a.disabled.clone())
+        .thread_id(shared.clone())
+        .provider_id("shared-hidden")
+        .subject("Aaa hidden".to_string())
+        .snippet("hidden snippet".to_string())
+        .date(Utc::now() - Duration::minutes(1))
+        .build();
+    let store = &a.fx.state.store;
+    for env in [&visible, &hidden] {
+        store
+            .upsert_envelope_with_direction(env, MessageDirection::Inbound)
+            .await
+            .unwrap();
+    }
+    store
+        .set_message_labels(
+            &visible.id,
+            std::slice::from_ref(&a.second_inbox),
+            EventSource::Sync,
+        )
+        .await
+        .unwrap();
+    let ResponseData::Threads { threads } = request(
+        &a.fx,
+        list_threads(None, Some(a.first_inbox.clone()), Some("inbox")),
+    )
+    .await
+    else {
+        panic!("expected threads")
+    };
+    let thread = threads.iter().find(|t| t.id == shared).unwrap();
+    assert_eq!(thread.subject, "Visible");
+    assert_eq!(thread.snippet, "visible snippet");
+    assert_eq!(thread.account_id, a.second);
+    assert_eq!(thread.message_count, 1);
+    assert_eq!(thread.message_ids, vec![visible.id.clone()]);
+}

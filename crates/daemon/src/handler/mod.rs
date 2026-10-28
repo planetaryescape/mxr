@@ -790,6 +790,9 @@ async fn dispatch(
             account_id,
             all_accounts,
         } => mailbox::list_labels(state, account_id.as_ref(), *all_accounts).await,
+        Request::SystemMailboxCounts { account_id } => {
+            mailbox::system_mailbox_counts(state, account_id.as_ref()).await
+        }
         Request::CreateLabel {
             name,
             color,
@@ -2573,6 +2576,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::GetThread { .. }
         | Request::ListThreads { .. }
         | Request::ListLabels { .. }
+        | Request::SystemMailboxCounts { .. }
         | Request::ListCategories { .. }
         | Request::PreviewCategoryName { .. }
         | Request::ListCategoryMessages { .. }
@@ -3005,6 +3009,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetThread { .. } => "get_thread",
         Request::ListThreads { .. } => "list_threads",
         Request::ListLabels { .. } => "list_labels",
+        Request::SystemMailboxCounts { .. } => "system_mailbox_counts",
         Request::ListCategories { .. } => "list_categories",
         Request::ListCategoryMessages { .. } => "list_category_messages",
         Request::GetCategoryMemberships { .. } => "get_category_memberships",
@@ -3330,6 +3335,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         Request::ListEnvelopes { account_id, .. }
         | Request::ListThreads { account_id, .. }
         | Request::ListLabels { account_id, .. }
+        | Request::SystemMailboxCounts { account_id }
         | Request::DeleteLabel { account_id, .. }
         | Request::CreateLabel { account_id, .. }
         | Request::RenameLabel { account_id, .. }

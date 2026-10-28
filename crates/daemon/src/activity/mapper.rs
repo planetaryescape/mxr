@@ -743,6 +743,7 @@ pub fn map_request(
         | Request::ListBodies { .. }
         | Request::ListThreads { .. }
         | Request::ListLabels { .. }
+        | Request::SystemMailboxCounts { .. }
         | Request::ListAccounts
         | Request::ListAccountsConfig
         | Request::ListRules

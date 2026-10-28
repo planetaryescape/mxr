@@ -2103,7 +2103,7 @@ async fn apply_one_mutation(
 ) -> Result<(), String> {
     let already = state
         .store
-        .was_mutation_applied(mutation_id, dedup_key)
+        .was_mutation_applied(mutation_id, account_id, dedup_key)
         .await
         .map_err(|e| e.to_string())?;
     if already {
@@ -5498,7 +5498,7 @@ mod mutation_dedup_invariant_tests {
         let inbox = crate::test_fixtures::test_label(&account_id, "Inbox", "INBOX");
         state.store.upsert_label(&inbox).await.unwrap();
         let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
-            .account_id(account_id)
+            .account_id(account_id.clone())
             .provider_id("provider-1")
             .label_provider_ids(vec!["INBOX".to_string()])
             .build();
@@ -5549,10 +5549,75 @@ mod mutation_dedup_invariant_tests {
         assert!(
             state
                 .store
-                .was_mutation_applied(mutation_id, "provider-1")
+                .was_mutation_applied(mutation_id, &account_id, "provider-1")
                 .await
                 .unwrap(),
             "first apply must record the dedup row before the second check"
+        );
+    }
+
+    /// Provider ids repeat across accounts (two IMAP accounts both hold
+    /// `INBOX:42`), so one batch touching both must reach each provider.
+    #[tokio::test]
+    async fn same_provider_id_in_two_accounts_reaches_both_providers() {
+        let first_account = AccountId::new();
+        let second_account = AccountId::new();
+        let first_provider = Arc::new(SlowMutationProvider::new(first_account.clone()));
+        let second_provider = Arc::new(SlowMutationProvider::new(second_account.clone()));
+        let as_dyn: Arc<dyn mxr_core::MailSyncProvider> = first_provider.clone();
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(
+                crate::test_fixtures::test_account_with_id(first_account.clone()),
+                as_dyn,
+                None,
+            )
+            .await
+            .unwrap(),
+        );
+        state
+            .store
+            .insert_account(&crate::test_fixtures::test_account_with_id(
+                second_account.clone(),
+            ))
+            .await
+            .unwrap();
+
+        let mut envelopes = Vec::new();
+        for account in [&first_account, &second_account] {
+            let inbox = crate::test_fixtures::test_label(account, "Inbox", "INBOX");
+            state.store.upsert_label(&inbox).await.unwrap();
+            let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+                .account_id(account.clone())
+                .provider_id("INBOX:42")
+                .label_provider_ids(vec!["INBOX".to_string()])
+                .build();
+            state.store.upsert_envelope(&envelope).await.unwrap();
+            state
+                .store
+                .set_message_labels(
+                    &envelope.id,
+                    std::slice::from_ref(&inbox.id),
+                    mxr_core::EventSource::Sync,
+                )
+                .await
+                .unwrap();
+            envelopes.push(envelope);
+        }
+
+        let mutation_id = "two-accounts-one-provider-id";
+        for (envelope, provider) in envelopes.iter().zip([&first_provider, &second_provider]) {
+            let cmd = MutationCommand::Archive {
+                message_ids: vec![envelope.id.clone()],
+            };
+            apply_mutation_to_envelope(&state, provider.as_ref(), mutation_id, &cmd, envelope)
+                .await
+                .unwrap();
+        }
+        assert_eq!(first_provider.call_count(), 1);
+        assert_eq!(
+            second_provider.call_count(),
+            1,
+            "the second account's provider call was skipped as a duplicate"
         );
     }
 }

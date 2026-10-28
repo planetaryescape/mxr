@@ -4323,7 +4323,10 @@ async fn mutation_dedup_records_apply_and_detects_replay() {
     store.insert_account(&account).await.unwrap();
 
     assert!(
-        !store.was_mutation_applied("mut-1", "msg-1").await.unwrap(),
+        !store
+            .was_mutation_applied("mut-1", &account.id, "msg-1")
+            .await
+            .unwrap(),
         "unrecorded key must report not-applied"
     );
 
@@ -4333,7 +4336,10 @@ async fn mutation_dedup_records_apply_and_detects_replay() {
         .unwrap();
 
     assert!(
-        store.was_mutation_applied("mut-1", "msg-1").await.unwrap(),
+        store
+            .was_mutation_applied("mut-1", &account.id, "msg-1")
+            .await
+            .unwrap(),
         "recorded key must report applied"
     );
 
@@ -4349,14 +4355,46 @@ async fn mutation_dedup_records_apply_and_detects_replay() {
         .record_mutation_applied("mut-1", "msg-2", &account.id, 100)
         .await
         .unwrap();
-    assert!(store.was_mutation_applied("mut-1", "msg-2").await.unwrap());
+    assert!(store
+        .was_mutation_applied("mut-1", &account.id, "msg-2")
+        .await
+        .unwrap());
     assert!(
         !store
-            .was_mutation_applied("mut-other", "msg-1")
+            .was_mutation_applied("mut-other", &account.id, "msg-1")
             .await
             .unwrap(),
         "different mutation_id must not collide"
     );
+}
+
+/// Provider ids repeat across accounts; a mutation recorded for one account
+/// must not read as applied for another.
+#[tokio::test]
+async fn mutation_dedup_is_keyed_by_account() {
+    let store = Store::in_memory().await.unwrap();
+    let (first, second) = (test_account(), test_account());
+    store.insert_account(&first).await.unwrap();
+    store.insert_account(&second).await.unwrap();
+
+    store
+        .record_mutation_applied("mut-1", "INBOX:42", &first.id, 100)
+        .await
+        .unwrap();
+    assert!(store
+        .was_mutation_applied("mut-1", &first.id, "INBOX:42")
+        .await
+        .unwrap());
+    assert!(!store
+        .was_mutation_applied("mut-1", &second.id, "INBOX:42")
+        .await
+        .unwrap());
+
+    store
+        .record_mutation_applied("mut-1", "INBOX:42", &second.id, 100)
+        .await
+        .unwrap();
+    assert_eq!(store.count_mutation_dedup_rows().await.unwrap(), 2);
 }
 
 /// Phase D: prune drops only rows where expires_at <= now.
@@ -4389,11 +4427,11 @@ async fn prune_expired_mutation_dedup_drops_only_stale_rows() {
         .unwrap();
     assert_eq!(pruned, 1, "only the expired row must be dropped");
     assert!(!store
-        .was_mutation_applied("expired", "msg-expired")
+        .was_mutation_applied("expired", &account.id, "msg-expired")
         .await
         .unwrap());
     assert!(store
-        .was_mutation_applied("fresh", "msg-fresh")
+        .was_mutation_applied("fresh", &account.id, "msg-fresh")
         .await
         .unwrap());
 }

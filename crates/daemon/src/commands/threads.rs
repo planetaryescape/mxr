@@ -108,10 +108,12 @@ pub async fn run(
     Ok(())
 }
 
-/// What `--label` resolved to. Without `--account`, a system mailbox name
-/// (INBOX, SENT, ...) also sets `label_role`, so a daemon that knows it lists
-/// that mailbox across every account; `label_id` stays the default account's
-/// label for a daemon that does not.
+/// What `--label` resolved to. Without `--account`, a label that is a System
+/// label with a mailbox role (Inbox, Sent, ...) also sets `label_role`, so a
+/// daemon that knows it lists that mailbox across every account. `label_id`
+/// is always the default account's label for that role, which is what a
+/// daemon without `label_role` filters by. A user label or a plain folder
+/// that happens to be called "Sent" has no role and stays a label.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct LabelSelection {
     label_id: Option<LabelId>,
@@ -123,21 +125,45 @@ fn select_label(
     labels: &[mxr_core::Label],
     account_scoped: bool,
 ) -> anyhow::Result<LabelSelection> {
-    let label_id = labels.iter().find(|l| l.name == name).map(|l| l.id.clone());
-    let label_role = if account_scoped {
-        None
-    } else {
-        mxr_core::Role::from_system_label_name(name)
-            .and_then(mxr_core::Role::system_mailbox_wire_name)
-            .map(str::to_string)
-    };
-    if label_id.is_none() && label_role.is_none() {
-        anyhow::bail!("no label named '{name}'");
+    let named = labels
+        .iter()
+        .find(|l| l.name == name)
+        .or_else(|| labels.iter().find(|l| l.name.eq_ignore_ascii_case(name)));
+    if let Some(label) = named {
+        let label_role = if account_scoped {
+            None
+        } else {
+            label
+                .system_mailbox_role()
+                .and_then(mxr_core::Role::system_mailbox_wire_name)
+                .map(str::to_string)
+        };
+        return Ok(LabelSelection {
+            label_id: Some(label.id.clone()),
+            label_role,
+        });
     }
-    Ok(LabelSelection {
-        label_id,
-        label_role,
-    })
+    // Not a label of the default account by name: a canonical mailbox name
+    // still means that mailbox, through the default account's label for it.
+    if !account_scoped {
+        if let Some(role) = mxr_core::Role::from_system_label_name(name) {
+            let label = labels
+                .iter()
+                .find(|l| l.system_mailbox_role() == Some(role))
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "the default account has no {} mailbox, so '{name}' cannot be listed \
+                         across accounts; name an account with --account",
+                        role.system_mailbox_title().unwrap_or(name)
+                    )
+                })?;
+            return Ok(LabelSelection {
+                label_id: Some(label.id.clone()),
+                label_role: role.system_mailbox_wire_name().map(str::to_string),
+            });
+        }
+    }
+    anyhow::bail!("no label named '{name}'")
 }
 
 async fn fetch_threads(
@@ -187,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn system_name_without_account_selects_role_and_keeps_default_label_id() {
+    fn system_label_without_account_selects_role_and_keeps_default_label_id() {
         let inbox = label("INBOX", LabelKind::System);
         let selection = select_label("INBOX", std::slice::from_ref(&inbox), false).unwrap();
         assert_eq!(selection.label_role.as_deref(), Some("inbox"));
@@ -195,10 +221,42 @@ mod tests {
     }
 
     #[test]
-    fn system_name_is_a_role_even_when_the_default_account_lacks_it() {
-        let selection = select_label("SENT", &[], false).unwrap();
-        assert_eq!(selection.label_role.as_deref(), Some("sent"));
-        assert_eq!(selection.label_id, None);
+    fn a_lowercase_mailbox_name_still_sends_the_default_accounts_label_id() {
+        // `--label inbox` against a Gmail-style `INBOX`: the older-daemon
+        // fallback must not be an unfiltered request.
+        let inbox = label("INBOX", LabelKind::System);
+        let selection = select_label("inbox", std::slice::from_ref(&inbox), false).unwrap();
+        assert_eq!(selection.label_role.as_deref(), Some("inbox"));
+        assert_eq!(selection.label_id, Some(inbox.id));
+        // The default account calls it something else but has the role.
+        let mut drafts = label("DRAFT", LabelKind::System);
+        drafts.role = Some(mxr_core::Role::Drafts);
+        let selection = select_label("drafts", std::slice::from_ref(&drafts), false).unwrap();
+        assert_eq!(selection.label_role.as_deref(), Some("drafts"));
+        assert_eq!(selection.label_id, Some(drafts.id));
+    }
+
+    #[test]
+    fn a_mailbox_the_default_account_lacks_is_refused_not_sent_unfiltered() {
+        let work = label("Work", LabelKind::User);
+        let error = select_label("sent", &[work], false)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("no Sent mailbox"), "{error}");
+        assert!(error.contains("--account"), "{error}");
+    }
+
+    #[test]
+    fn a_plain_folder_called_sent_stays_a_folder() {
+        // IMAP folder with no special-use flag: kind Folder, no role.
+        let folder = label("Sent", LabelKind::Folder);
+        let selection = select_label("Sent", std::slice::from_ref(&folder), false).unwrap();
+        assert_eq!(selection.label_role, None);
+        assert_eq!(selection.label_id, Some(folder.id));
+        // A user label named "inbox" is not the Inbox either.
+        let user = label("inbox", LabelKind::User);
+        let selection = select_label("inbox", std::slice::from_ref(&user), false).unwrap();
+        assert_eq!(selection.label_role, None);
     }
 
     #[test]
@@ -207,13 +265,12 @@ mod tests {
         let selection = select_label("INBOX", std::slice::from_ref(&inbox), true).unwrap();
         assert_eq!(selection.label_role, None);
         assert_eq!(selection.label_id, Some(inbox.id));
+        assert!(select_label("sent", &[], true).is_err());
     }
 
     #[test]
-    fn user_label_never_becomes_a_role() {
+    fn unknown_label_is_an_error() {
         let work = label("Work", LabelKind::User);
-        let selection = select_label("Work", std::slice::from_ref(&work), false).unwrap();
-        assert_eq!(selection.label_role, None);
         assert!(select_label("Missing", &[work], false).is_err());
     }
 }

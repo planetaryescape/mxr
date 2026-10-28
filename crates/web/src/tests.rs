@@ -22,6 +22,7 @@ use tokio_util::codec::Framed;
 mod arrival_routes;
 mod compose_and_scheduling;
 mod draft_attachment_bytes;
+mod merged_mailboxes;
 mod place_routes;
 mod record_routes;
 mod recovery_attachments;
@@ -245,6 +246,9 @@ where
                                 Request::DeleteDraft { draft_id, expected_revision } => {
                                     if drafts.get(&draft_id).and_then(|draft| draft.revision) == expected_revision && expected_revision.is_some() { drafts.remove(&draft_id); Some(Response::Ok { data: ResponseData::Ack }) } else { Some(Response::error("Draft revision conflict")) }
                                 }
+                                // Like a daemon that predates the request: the bridge
+                                // falls back to the labels' own counts.
+                                Request::SystemMailboxCounts { .. } => Some(Response::error("unknown request")),
                                 _ => None,
                             }
                         }) else { continue; };
@@ -1961,8 +1965,10 @@ async fn mailbox_endpoint_without_an_account_merges_system_mailboxes() {
     let socket_path = temp.path().join("mxr.sock");
     let mut first = sample_envelope();
     first.subject = "From the first account".into();
+    first.label_provider_ids = vec!["INBOX".into()];
     let mut second = sample_envelope();
     second.subject = "From the second account".into();
+    second.label_provider_ids = vec!["INBOX".into()];
     let first_labels = sample_labels(&first.account_id);
     let mut second_labels = sample_labels(&second.account_id);
     second_labels.truncate(2);
@@ -1997,6 +2003,22 @@ async fn mailbox_endpoint_without_an_account_merges_system_mailboxes() {
                     } else {
                         first_labels.clone()
                     },
+                },
+            }),
+            Request::SystemMailboxCounts { account_id: None } => Some(Response::Ok {
+                data: ResponseData::SystemMailboxCounts {
+                    mailboxes: vec![
+                        mxr_protocol::SystemMailboxCount {
+                            role: "inbox".into(),
+                            unread: 15,
+                            total: 194,
+                        },
+                        mxr_protocol::SystemMailboxCount {
+                            role: "all_mail".into(),
+                            unread: 30,
+                            total: 9124,
+                        },
+                    ],
                 },
             }),
             Request::ListCategories { account_id: None } => Some(Response::Ok {
@@ -2143,11 +2165,13 @@ async fn mailbox_endpoint_shapes_thread_and_message_views() {
     let temp = TempDir::new().unwrap();
     let socket_path = temp.path().join("mxr.sock");
 
-    let first = sample_envelope();
+    let mut first = sample_envelope();
+    first.label_provider_ids = vec!["INBOX".into()];
     let mut second = sample_envelope();
     second.id = MessageId::new();
     second.account_id = first.account_id.clone();
     second.thread_id = first.thread_id.clone();
+    second.label_provider_ids = vec!["INBOX".into()];
     second.subject = "Mailroom follow-up".into();
     second.snippet = "Same thread, newer message".into();
     second.has_attachments = true;

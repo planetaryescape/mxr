@@ -1976,13 +1976,20 @@ pub async fn run() -> anyhow::Result<()> {
                     },
                 )
                 .await;
+                let counts =
+                    match ipc_call(&bg, Request::SystemMailboxCounts { account_id: None }).await {
+                        Ok(Response::Ok {
+                            data: ResponseData::SystemMailboxCounts { mailboxes },
+                        }) => mailboxes,
+                        _ => Vec::new(),
+                    };
                 let result = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Labels { labels },
                     }) => Ok(match all {
                         Ok(Response::Ok {
                             data: ResponseData::Labels { labels: all },
-                        }) => crate::client::with_unified_system_counts(labels, &all),
+                        }) => crate::client::with_unified_system_counts(labels, &all, &counts),
                         _ => labels,
                     }),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),

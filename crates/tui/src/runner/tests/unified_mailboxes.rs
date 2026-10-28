@@ -175,7 +175,55 @@ fn unified_counts_replace_system_counts_only() {
         work,
         other_work,
     ];
-    let merged = with_unified_system_counts(mine, &all);
+    let merged = with_unified_system_counts(mine, &all, &[]);
     assert_eq!((merged[0].unread_count, merged[0].total_count), (7, 30));
     assert_eq!((merged[1].unread_count, merged[1].total_count), (1, 2));
+}
+
+#[test]
+fn a_mailbox_only_another_account_has_gets_a_sidebar_entry_with_daemon_counts() {
+    // Default account is Gmail-shaped (INBOX, DRAFT); the second account is
+    // IMAP-shaped and alone has SENT, with the folder's own provider id.
+    let (gmail, imap) = (AccountId::new(), AccountId::new());
+    let mine = vec![
+        system_label(&gmail, "INBOX", 3, 10),
+        system_label(&gmail, "DRAFT", 0, 2),
+    ];
+    let mut sent = system_label(&imap, "SENT", 1, 8);
+    sent.provider_id = "Sent Items".into();
+    let all = vec![
+        mine[0].clone(),
+        mine[1].clone(),
+        system_label(&imap, "INBOX", 4, 20),
+        sent.clone(),
+    ];
+    let counts = vec![
+        mxr_protocol::SystemMailboxCount {
+            role: "inbox".into(),
+            unread: 9,
+            total: 99,
+        },
+        mxr_protocol::SystemMailboxCount {
+            role: "sent".into(),
+            unread: 2,
+            total: 30,
+        },
+    ];
+    let merged = with_unified_system_counts(mine, &all, &counts);
+    let named = |name: &str| merged.iter().find(|l| l.name == name).unwrap();
+    assert_eq!(merged.len(), 3, "INBOX, DRAFT and the IMAP SENT");
+    // Daemon counts win over the label sums (7, 30).
+    assert_eq!(
+        (named("INBOX").unread_count, named("INBOX").total_count),
+        (9, 99)
+    );
+    assert_eq!(named("SENT").id, sent.id);
+    assert_eq!(
+        (named("SENT").unread_count, named("SENT").total_count),
+        (2, 30)
+    );
+    // DRAFT has no daemon count here, so it is left as the account had it.
+    assert_eq!(named("DRAFT").total_count, 2);
+    // Selecting the IMAP entry lists Sent across accounts by role.
+    assert_eq!(unified_role_for(&merged, &sent.id).as_deref(), Some("sent"));
 }

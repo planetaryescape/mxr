@@ -8,9 +8,9 @@
 //! `.sqlx` cache entry.
 
 use crate::message::{future_date_cutoff_timestamp, sqlite_row_to_envelope};
-use crate::{decode_id, trace_query};
-use mxr_core::id::{AccountId, ThreadId};
-use mxr_core::types::{Envelope, Role, SortOrder, Thread};
+use crate::{decode_id, decode_timestamp, trace_query};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::types::{Address, Envelope, Role, SortOrder, Thread};
 use sqlx::Row;
 
 fn json_array(values: impl IntoIterator<Item = impl AsRef<str>>) -> Result<String, sqlx::Error> {
@@ -31,13 +31,24 @@ fn label_names_json(role: Role) -> Result<String, sqlx::Error> {
     json_array(role.system_label_names().iter().copied())
 }
 
-/// Messages that carry a System label of the role in one of the accounts
-/// (`?1` accounts, `?2` label names, `?3` = 1 for All Mail, which has no
-/// label to match: every message of the accounts counts). A macro so the
-/// final SQL stays a literal.
+/// How a role selects messages (`?3`): by System label (0), every message
+/// of the accounts for All Mail (1), or the starred flag as well as the label
+/// for Starred (2). IMAP keeps `\Flagged` only as `MessageFlags::STARRED`
+/// with no label, so a label match alone would miss those accounts.
+fn role_mode(role: Role) -> i64 {
+    match role {
+        Role::AllMail => 1,
+        Role::Starred => 2,
+        _ => 0,
+    }
+}
+
+/// Messages that belong to the role in one of the accounts (`?1` accounts,
+/// `?2` label names, `?3` the mode above). A macro so the final SQL stays a
+/// literal.
 macro_rules! role_filter {
     () => {
-        "(?3 = 1 OR m.id IN (
+        "(?3 = 1 OR (?3 = 2 AND (m.flags & 2) != 0) OR m.id IN (
             SELECT ml.message_id FROM message_labels ml
             JOIN labels l ON l.id = ml.label_id
             WHERE l.kind = 'system'
@@ -69,6 +80,175 @@ macro_rules! thread_ids_sql {
 }
 
 impl super::Store {
+    /// Hydrate threads from the messages of `account_ids` only. A legacy
+    /// thread id can span accounts, and `get_threads_batch` aggregates over
+    /// all of them, which would leak a disabled or out-of-scope account's
+    /// subject, snippet and counts into the row.
+    async fn hydrate_threads_in_accounts(
+        &self,
+        thread_ids: &[ThreadId],
+        account_ids: &[AccountId],
+    ) -> Result<Vec<Thread>, sqlx::Error> {
+        if thread_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let threads_json = json_array(thread_ids.iter().map(ThreadId::as_str))?;
+        let accounts_json = account_ids_json(account_ids)?;
+        let cutoff = future_date_cutoff_timestamp();
+
+        let aggregates = sqlx::query(
+            "SELECT thread_id, account_id,
+                    MIN(subject) AS subject,
+                    COUNT(*) AS message_count,
+                    SUM(CASE WHEN (flags & 1) = 0 THEN 1 ELSE 0 END) AS unread_count,
+                    MAX(CASE WHEN date > ?3 THEN 0 ELSE date END) AS latest_date,
+                    snippet
+             FROM messages
+             WHERE thread_id IN (SELECT value FROM json_each(?1))
+               AND account_id IN (SELECT value FROM json_each(?2))
+             GROUP BY thread_id",
+        )
+        .bind(&threads_json)
+        .bind(&accounts_json)
+        .bind(cutoff)
+        .fetch_all(self.reader())
+        .await?;
+
+        let participants = sqlx::query(
+            "SELECT DISTINCT thread_id, from_name, from_email
+             FROM messages
+             WHERE thread_id IN (SELECT value FROM json_each(?1))
+               AND account_id IN (SELECT value FROM json_each(?2))",
+        )
+        .bind(&threads_json)
+        .bind(&accounts_json)
+        .fetch_all(self.reader())
+        .await?;
+        let mut participants_by_thread: std::collections::HashMap<String, Vec<Address>> =
+            std::collections::HashMap::new();
+        for row in participants {
+            participants_by_thread
+                .entry(row.get::<String, _>("thread_id"))
+                .or_default()
+                .push(Address {
+                    name: row.get::<Option<String>, _>("from_name"),
+                    email: row.get::<String, _>("from_email"),
+                });
+        }
+
+        let members = sqlx::query(
+            "SELECT thread_id, id FROM messages
+             WHERE thread_id IN (SELECT value FROM json_each(?1))
+               AND account_id IN (SELECT value FROM json_each(?2))
+             ORDER BY thread_id ASC,
+                      CASE WHEN date > ?3 THEN 0 ELSE date END ASC,
+                      id ASC",
+        )
+        .bind(&threads_json)
+        .bind(&accounts_json)
+        .bind(cutoff)
+        .fetch_all(self.reader())
+        .await?;
+        let mut message_ids_by_thread: std::collections::HashMap<String, Vec<MessageId>> =
+            std::collections::HashMap::new();
+        for row in members {
+            message_ids_by_thread
+                .entry(row.get::<String, _>("thread_id"))
+                .or_default()
+                .push(decode_id(&row.get::<String, _>("id"))?);
+        }
+
+        aggregates
+            .into_iter()
+            .map(|row| {
+                let thread_id: String = row.get("thread_id");
+                Ok(Thread {
+                    id: decode_id(&thread_id)?,
+                    account_id: decode_id(&row.get::<String, _>("account_id"))?,
+                    subject: row.get("subject"),
+                    participants: participants_by_thread
+                        .remove(&thread_id)
+                        .unwrap_or_default(),
+                    message_count: row.get::<i64, _>("message_count") as u32,
+                    unread_count: row.get::<i64, _>("unread_count") as u32,
+                    latest_date: decode_timestamp(row.get::<i64, _>("latest_date"))?,
+                    snippet: row.get("snippet"),
+                    message_ids: message_ids_by_thread.remove(&thread_id).unwrap_or_default(),
+                })
+            })
+            .collect()
+    }
+
+    /// Unread and total per system mailbox, summed over `account_ids`.
+    /// Label-backed mailboxes add up the stored label counts, which is what
+    /// each account's sidebar already shows. All Mail and Starred have no
+    /// label to count on every provider (an account may have no All Mail
+    /// label; IMAP stars are a flag), so they are counted from the messages.
+    pub async fn system_mailbox_counts(
+        &self,
+        account_ids: &[AccountId],
+    ) -> Result<Vec<(Role, u32, u32)>, sqlx::Error> {
+        if account_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let accounts_json = account_ids_json(account_ids)?;
+        let mut counts: std::collections::HashMap<Role, (u32, u32)> =
+            std::collections::HashMap::new();
+
+        let labels = sqlx::query(
+            "SELECT name, unread_count, total_count FROM labels
+             WHERE kind = 'system'
+               AND account_id IN (SELECT value FROM json_each(?1))",
+        )
+        .bind(&accounts_json)
+        .fetch_all(self.reader())
+        .await?;
+        for row in labels {
+            let name: String = row.get("name");
+            let Some(role) = Role::from_system_label_name(&name) else {
+                continue;
+            };
+            if matches!(role, Role::AllMail | Role::Starred) {
+                continue;
+            }
+            let entry = counts.entry(role).or_default();
+            entry.0 += row.get::<i64, _>("unread_count") as u32;
+            entry.1 += row.get::<i64, _>("total_count") as u32;
+        }
+
+        for role in [Role::AllMail, Role::Starred] {
+            let started_at = std::time::Instant::now();
+            let row = sqlx::query(concat!(
+                "SELECT COUNT(*) AS total,
+                        COALESCE(SUM(CASE WHEN (m.flags & 1) = 0 THEN 1 ELSE 0 END), 0) AS unread
+                 FROM messages m
+                 WHERE m.account_id IN (SELECT value FROM json_each(?1))
+                   AND ",
+                role_filter!()
+            ))
+            .bind(&accounts_json)
+            .bind(label_names_json(role)?)
+            .bind(role_mode(role))
+            .fetch_one(self.reader())
+            .await?;
+            trace_query("system_mailbox.count", started_at, 1);
+            counts.insert(
+                role,
+                (
+                    row.get::<i64, _>("unread") as u32,
+                    row.get::<i64, _>("total") as u32,
+                ),
+            );
+        }
+
+        let mut counts = counts
+            .into_iter()
+            .map(|(role, (unread, total))| (role, unread, total))
+            .collect::<Vec<_>>();
+        counts.sort_by_key(|(role, _, _)| role.system_mailbox_wire_name());
+        Ok(counts)
+    }
+
     /// Paginated threads in a system mailbox across `account_ids`, ordered
     /// like `list_threads` (newest first, or oldest first for `DateAsc`).
     pub async fn list_threads_by_role(
@@ -91,7 +271,7 @@ impl super::Store {
         let rows = sqlx::query(sql)
             .bind(account_ids_json(account_ids)?)
             .bind(label_names_json(role)?)
-            .bind(i64::from(role == Role::AllMail))
+            .bind(role_mode(role))
             .bind(future_date_cutoff_timestamp())
             .bind(i64::from(limit))
             .bind(i64::from(offset))
@@ -107,7 +287,9 @@ impl super::Store {
             .iter()
             .map(|row| decode_id::<ThreadId>(&row.get::<String, _>("thread_id")))
             .collect::<Result<Vec<_>, _>>()?;
-        let mut threads = self.get_threads_batch(&thread_ids).await?;
+        let mut threads = self
+            .hydrate_threads_in_accounts(&thread_ids, account_ids)
+            .await?;
         threads.sort_by_key(|thread| {
             thread_ids
                 .iter()
@@ -152,7 +334,7 @@ impl super::Store {
         ))
         .bind(account_ids_json(account_ids)?)
         .bind(label_names_json(role)?)
-        .bind(i64::from(role == Role::AllMail))
+        .bind(role_mode(role))
         .bind(future_date_cutoff_timestamp())
         .bind(i64::from(limit))
         .bind(i64::from(offset))
@@ -185,7 +367,7 @@ mod tests {
     use crate::Store;
     use chrono::{Duration, Utc};
     use mxr_core::id::{AccountId, LabelId, ThreadId};
-    use mxr_core::types::{EventSource, Label, LabelKind, Role, SortOrder};
+    use mxr_core::types::{EventSource, Label, LabelKind, MessageFlags, Role, SortOrder};
     use mxr_core::Account;
 
     async fn account(store: &Store) -> Account {
@@ -478,5 +660,168 @@ mod tests {
             .unwrap();
         assert_eq!(threads.len(), 1);
         assert_eq!(threads[0].id, shared);
+    }
+
+    /// A message with `flags`, in `account_id`, carrying `labels`.
+    async fn flagged(
+        store: &Store,
+        account_id: &AccountId,
+        flags: MessageFlags,
+        labels: &[&Label],
+        subject: &str,
+    ) -> ThreadId {
+        let mut env = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .flags(flags)
+            .build();
+        env.provider_id = format!("flagged-{}", env.id);
+        env.subject = subject.to_string();
+        env.snippet = format!("snippet of {subject}");
+        store.upsert_envelope(&env).await.unwrap();
+        let ids = labels.iter().map(|l| l.id.clone()).collect::<Vec<_>>();
+        store
+            .set_message_labels(&env.id, &ids, EventSource::Sync)
+            .await
+            .unwrap();
+        env.thread_id
+    }
+
+    #[tokio::test]
+    async fn starred_selects_the_flag_as_well_as_the_label() {
+        // Gmail-shaped account: STARRED label (and flag). IMAP-shaped account:
+        // \Flagged is only the flag, there is no STARRED label.
+        let store = Store::in_memory().await.unwrap();
+        let gmail = account(&store).await;
+        let imap = account(&store).await;
+        let gmail_starred = label(&store, &gmail.id, "STARRED", LabelKind::System).await;
+        let label_only = flagged(
+            &store,
+            &gmail.id,
+            MessageFlags::empty(),
+            &[&gmail_starred],
+            "gmail starred by label",
+        )
+        .await;
+        let flag_only = flagged(&store, &imap.id, MessageFlags::STARRED, &[], "imap flagged").await;
+        flagged(&store, &imap.id, MessageFlags::empty(), &[], "imap plain").await;
+        let both = [gmail.id.clone(), imap.id.clone()];
+
+        let threads = store
+            .list_threads_by_role(&both, Role::Starred, 10, 0, SortOrder::DateDesc)
+            .await
+            .unwrap();
+        let mut got = threads.iter().map(|t| t.id.clone()).collect::<Vec<_>>();
+        got.sort_by_key(|id| id.as_str().clone());
+        let mut want = vec![label_only, flag_only];
+        want.sort_by_key(|id| id.as_str().clone());
+        assert_eq!(got, want);
+        let envs = store
+            .list_envelopes_by_role(&both, Role::Starred, 10, 0)
+            .await
+            .unwrap();
+        assert_eq!(envs.len(), 2);
+
+        let counts = store.system_mailbox_counts(&both).await.unwrap();
+        let starred = counts.iter().find(|(r, _, _)| *r == Role::Starred).unwrap();
+        assert_eq!((starred.1, starred.2), (2, 2), "unread, total");
+    }
+
+    #[tokio::test]
+    async fn counts_cover_accounts_without_an_all_mail_label() {
+        let t = two_accounts().await;
+        t.store
+            .update_label_counts(&t.a_inbox.id, 2, 5)
+            .await
+            .unwrap();
+        t.store
+            .update_label_counts(&t.b_inbox.id, 1, 7)
+            .await
+            .unwrap();
+        // Only account A has an All Mail label (and its stored count is stale).
+        let all = label(&t.store, &t.a.id, "ALL", LabelKind::System).await;
+        t.store.update_label_counts(&all.id, 0, 1).await.unwrap();
+        for _ in 0..3 {
+            message(&t.store, &t.a.id, 5, &[&t.a_inbox], None).await;
+        }
+        for _ in 0..4 {
+            message(&t.store, &t.b.id, 5, &[&t.b_inbox], None).await;
+        }
+        let both = [t.a.id.clone(), t.b.id.clone()];
+
+        let counts = t.store.system_mailbox_counts(&both).await.unwrap();
+        let get = |role| counts.iter().find(|(r, _, _)| *r == role).copied().unwrap();
+        assert_eq!((get(Role::Inbox).1, get(Role::Inbox).2), (3, 12));
+        // Every message of both accounts, whatever labels exist.
+        assert_eq!(get(Role::AllMail).2, 7);
+        // One account only counts that account.
+        let only_b = t
+            .store
+            .system_mailbox_counts(std::slice::from_ref(&t.b.id))
+            .await
+            .unwrap();
+        let b_all = only_b.iter().find(|(r, _, _)| *r == Role::AllMail).unwrap();
+        assert_eq!(b_all.2, 4);
+        assert!(t.store.system_mailbox_counts(&[]).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_shared_thread_id_never_leaks_an_out_of_scope_account() {
+        let t = two_accounts().await;
+        let outsider = account(&t.store).await;
+        let outsider_inbox = label(&t.store, &outsider.id, "INBOX", LabelKind::System).await;
+        let shared = ThreadId::new();
+        let mut visible = TestEnvelopeBuilder::new()
+            .account_id(t.a.id.clone())
+            .build();
+        visible.thread_id = shared.clone();
+        visible.provider_id = "visible".into();
+        visible.subject = "Visible subject".into();
+        visible.snippet = "visible snippet".into();
+        visible.date = Utc::now() - Duration::minutes(10);
+        t.store.upsert_envelope(&visible).await.unwrap();
+        t.store
+            .set_message_labels(&visible.id, &[t.a_inbox.id.clone()], EventSource::Sync)
+            .await
+            .unwrap();
+        let mut hidden = TestEnvelopeBuilder::new()
+            .account_id(outsider.id.clone())
+            .build();
+        hidden.thread_id = shared.clone();
+        hidden.provider_id = "hidden".into();
+        hidden.subject = "Aaa hidden subject".into();
+        hidden.snippet = "hidden snippet".into();
+        hidden.from = mxr_core::types::Address {
+            name: None,
+            email: "secret@outsider.example".into(),
+        };
+        hidden.date = Utc::now();
+        t.store.upsert_envelope(&hidden).await.unwrap();
+        t.store
+            .set_message_labels(&hidden.id, &[outsider_inbox.id.clone()], EventSource::Sync)
+            .await
+            .unwrap();
+
+        let threads = t
+            .store
+            .list_threads_by_role(
+                std::slice::from_ref(&t.a.id),
+                Role::Inbox,
+                10,
+                0,
+                SortOrder::DateDesc,
+            )
+            .await
+            .unwrap();
+        assert_eq!(threads.len(), 1);
+        let thread = &threads[0];
+        assert_eq!(thread.subject, "Visible subject");
+        assert_eq!(thread.snippet, "visible snippet");
+        assert_eq!(thread.account_id, t.a.id);
+        assert_eq!(thread.message_count, 1);
+        assert_eq!(thread.message_ids, vec![visible.id.clone()]);
+        assert!(thread
+            .participants
+            .iter()
+            .all(|p| p.email != "secret@outsider.example"));
     }
 }

@@ -32,15 +32,31 @@ fn stamp_senders(
                     0,
                 )
                 .expect("valid timestamp");
-                store
-                    .upsert_envelope(envelope)
-                    .await
-                    .expect("stamp the unsubscribe method");
+                stamp_envelope(store, envelope).await;
             }
             newest.push(messages.last().expect("sender has messages").id.clone());
         }
     });
     newest
+}
+
+/// Writes one envelope from the test process while the daemon may still be
+/// writing its post-sync work. SQLite returns "database is locked" at once,
+/// without waiting out the busy timeout, when a transaction that started as a
+/// read must upgrade to write while another process holds the writer. In
+/// production only the daemon writes, so only this test needs to retry.
+async fn stamp_envelope(store: &mxr_store::Store, envelope: &Envelope) {
+    let mut attempts = 0;
+    let written = loop {
+        match store.upsert_envelope(envelope).await {
+            Err(error) if attempts < 50 && error.to_string().contains("database is locked") => {
+                attempts += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            other => break other,
+        }
+    };
+    written.expect("stamp the unsubscribe method");
 }
 
 fn receipt_ids(

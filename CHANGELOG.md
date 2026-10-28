@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.176](https://github.com/planetaryescape/mxr/compare/v0.6.175...v0.6.176) (2026-10-28)
+
+
+### Features
+
+* put overlay keys in the key definition and close the web gaps behind the TUI's pass-through panes ([#754](https://github.com/planetaryescape/mxr/issues/754)) ([409a880](https://github.com/planetaryescape/mxr/commit/409a8807d577d4fe901fc851d5bb7ab76c729038))
+
+
+### Bug Fixes
+
+* keep search answering from SQLite when the lexical index is down ([#753](https://github.com/planetaryescape/mxr/issues/753)) ([8af42e1](https://github.com/planetaryescape/mxr/commit/8af42e156397da4466a186f31050cb51d350dc02))
+
 ## [0.6.175](https://github.com/planetaryescape/mxr/compare/v0.6.174...v0.6.175) (2026-10-28)
 
 

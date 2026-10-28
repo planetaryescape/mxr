@@ -77,9 +77,7 @@ async function modesOf(page: Page, threadId: string) {
   ).threads[0]!;
 }
 
-test("a first-time person carries a new mark; lit, their row offers keys 1 to 4", async ({
-  page,
-}) => {
+test("a first-time person carries a new mark; lit, X answers their question", async ({ page }) => {
   await waitForNow(page);
   await openApp(page, "/messages");
   const noor = page
@@ -93,13 +91,22 @@ test("a first-time person carries a new mark; lit, their row offers keys 1 to 4"
   await noor.getByTestId("messages-row").click();
   const question = noor.getByTestId("new-sender-question");
   await expect(question).toBeVisible();
-  await expect(question.getByRole("button").first()).toHaveAttribute("title", "Messages (1)");
+  await expect(question.getByRole("button").first()).toHaveAttribute(
+    "title",
+    "Messages (X then M)",
+  );
   await expect(question.getByRole("button")).toHaveCount(4);
   // The status bar says why, and spells out the keys.
   await expect(page.getByTestId("status-reason")).toContainText("Here because:");
   await expect(page.getByTestId("status-reason")).toContainText(
-    "New sender: 1 Messages · 2 Updates · 3 Reading · 4 Block",
+    "New sender: X then M Messages · U Updates · R Reading · D Block",
   );
+  // The answers are in the X picker, on the capitals (blueprint 35).
+  await page.keyboard.press("X");
+  const picker = page.getByTestId("move-to-mode-dialog");
+  await expect(picker.getByTestId("new-sender-choice-screened_out")).toContainText("D");
+  await page.keyboard.press("Escape");
+  await expect(picker).toHaveCount(0);
 });
 
 test("e in Messages leaves the to-do open, says where it still is, and u undoes it", async ({

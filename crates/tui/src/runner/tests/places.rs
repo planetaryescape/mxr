@@ -144,7 +144,8 @@ fn capital_p_moves_the_sender_and_the_menu_says_where_it_goes() {
             .map(|menu| menu.sender_email.as_str()),
         Some("receipts@shop.example")
     );
-    press(&mut app, KeyCode::Char('p'));
+    // The menu's letters are the `g` letters: People feed Messages (`m`).
+    press(&mut app, KeyCode::Char('m'));
     assert!(app.mailbox.sender_kind_menu.is_none());
     assert!(matches!(
         queued(&app).as_slice(),

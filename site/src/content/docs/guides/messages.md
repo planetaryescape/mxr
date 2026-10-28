@@ -264,7 +264,7 @@ emoji reaction. Because it sends mail on one key, mxr guards it:
 | `.` | Got it |
 | `e` | Done here, until they write again |
 | `t` | Make a to-do from this topic |
-| `b` | Reply later |
+| `b` | Not now: Later (the reply queue) first, or a time it comes back |
 | `s` | Pin or unpin the person |
 | `c` | New topic with this person |
 | `{` / `}` | Previous / next topic |

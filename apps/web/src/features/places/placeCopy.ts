@@ -28,22 +28,27 @@ export interface KindOption {
   hint: string;
 }
 
+/**
+ * Lettered on the `g` letters, as every picker of these destinations is
+ * (blueprint 35): People is Messages (`m`), Paper trail is Updates (`u`),
+ * Reading is `r`; Screened out is `d` and Automatic `a`.
+ */
 export const KIND_OPTIONS: readonly KindOption[] = [
-  { kind: "people", label: "People", key: "p", hint: "On the desk, like anyone you write to" },
+  { kind: "people", label: "People", key: "m", hint: "On the desk, like anyone you write to" },
   { kind: "reading", label: "Reading", key: "r", hint: "Newsletters and lists, read as a feed" },
   {
     kind: "paper_trail",
     label: "Paper trail",
-    key: "t",
+    key: "u",
     hint: "Receipts and notifications, bundled",
   },
-  { kind: "screened_out", label: "Screened out", key: "x", hint: "Off the desk and every place" },
+  { kind: "screened_out", label: "Screened out", key: "d", hint: "Off the desk and every place" },
   { kind: null, label: "Automatic", key: "a", hint: "Let the rules decide again" },
 ];
 
-/** The option a key picks in the kind menu, if any. */
+/** The option a key picks in the kind menu, if any. The menu is the sender's alone, so either case picks. */
 export function kindOptionForKey(key: string): KindOption | undefined {
-  return KIND_OPTIONS.find((option) => option.key === key);
+  return KIND_OPTIONS.find((option) => option.key === key.toLowerCase());
 }
 
 /** Who a bundle is from: the display name when there is one. */

@@ -136,7 +136,11 @@ describe("kind menu", () => {
       null,
     ]);
     expect(new Set(KIND_OPTIONS.map((option) => option.key)).size).toBe(KIND_OPTIONS.length);
-    expect(kindOptionForKey("t")?.kind).toBe("paper_trail");
+    // The g letters, either case: u is Updates, where Paper trail goes.
+    expect(kindOptionForKey("u")?.kind).toBe("paper_trail");
+    expect(kindOptionForKey("M")?.kind).toBe("people");
+    expect(kindOptionForKey("d")?.kind).toBe("screened_out");
+    expect(kindOptionForKey("t")).toBeUndefined();
     expect(kindOptionForKey("a")?.kind).toBeNull();
     expect(kindOptionForKey("z")).toBeUndefined();
   });

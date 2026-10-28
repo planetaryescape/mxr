@@ -23,17 +23,11 @@ struct Target {
     sender_email: String,
     source: String,
     domain: Option<String>,
-    on_later: bool,
-    link: bool,
 }
 
 impl From<ReadingRow<'_>> for Target {
     fn from(row: ReadingRow<'_>) -> Self {
         let issue = row.issue();
-        let on_later = match row {
-            ReadingRow::Item(item) => item.on_later,
-            ReadingRow::Link(_, link) => link.on_later,
-        };
         Self {
             key: row.key().to_string(),
             thread_id: issue.thread_id.clone(),
@@ -42,8 +36,6 @@ impl From<ReadingRow<'_>> for Target {
             sender_email: issue.sender_email.clone(),
             source: issue.source.clone(),
             domain: row.domain().map(str::to_string),
-            on_later,
-            link: row.is_link(),
         }
     }
 }
@@ -54,7 +46,7 @@ impl App {
             Action::OpenReading => self.open_reading(),
             Action::ReadingRead => self.reading_read(),
             Action::ReadingArticle => self.reading_article(),
-            Action::ReadingLater => self.reading_later(),
+            Action::ReadingLater => self.open_not_now(),
             Action::ReadingLetGo => self.reading_let_go(),
             Action::ReadingLetGoAll => self.reading_let_go_all(),
             Action::ReadingUnsubscribe => self.reading_unsubscribe(),
@@ -301,16 +293,18 @@ impl App {
         self.status_message = Some(format!("Fetching from {domain}\u{2026}"));
     }
 
-    /// `b`: on Later, or off it. A link's article is saved too, so Later
-    /// reads offline.
-    fn reading_later(&mut self) {
-        let Some(target) = self.reading_target() else {
-            return;
-        };
-        let later = !target.on_later;
+    /// Put an item on Later or take it off (`b`'s Later row). A link put
+    /// on Later has its article fetched, so it reads offline.
+    pub(super) fn set_reading_later(
+        &mut self,
+        key: String,
+        later: bool,
+        link: bool,
+        domain: Option<String>,
+    ) {
         self.queue_mutation(
             Request::SetReadingLater {
-                item_keys: vec![target.key.clone()],
+                item_keys: vec![key.clone()],
                 later,
                 dry_run: false,
             },
@@ -321,9 +315,9 @@ impl App {
                 "Taking it off Later...".into()
             },
         );
-        if later && target.link {
-            if let Some(domain) = target.domain {
-                self.mailbox.reading_page.pending_fetch = Some((target.key, false));
+        if later && link {
+            if let Some(domain) = domain {
+                self.mailbox.reading_page.pending_fetch = Some((key, false));
                 self.status_message = Some(format!(
                     "Saving to Later and fetching from {domain}\u{2026}"
                 ));

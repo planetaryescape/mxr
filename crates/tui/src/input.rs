@@ -553,11 +553,8 @@ impl InputHandler {
             }
             (KeyState::Normal, KeyCode::Esc, _) => Some(Action::Back),
             (KeyState::Normal, KeyCode::Char('q'), _) => Some(Action::QuitView),
-            // Reply later: `b` asks when (Enter with no time: the queue now).
-            // Local-only intent — never roundtrips to the provider.
-            (KeyState::Normal, KeyCode::Char('b'), KeyModifiers::NONE) => {
-                Some(Action::FlagReplyLater)
-            }
+            // Not now (D173): Later with no time, or a time.
+            (KeyState::Normal, KeyCode::Char('b'), KeyModifiers::NONE) => Some(Action::Snooze),
             // Search navigation
             (KeyState::Normal, KeyCode::Char('n'), KeyModifiers::NONE) => {
                 Some(Action::NextSearchResult)

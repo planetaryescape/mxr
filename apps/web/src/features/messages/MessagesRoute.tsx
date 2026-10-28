@@ -10,6 +10,8 @@ import {
 } from "@/features/compose/composeUiStore";
 import { onSendEvent } from "@/features/compose/session/sendEvents";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
+import { describeTarget } from "@/features/mail-actions/mailVerbs";
+import { conversationNotNow } from "@/features/mail-actions/notNow";
 import { ensureThread, targetFromThread } from "@/features/mail-actions/target";
 import { PageEmpty, PageError, PageSkeleton } from "@/components/PageParts";
 import { AnchoredHint } from "@/features/hints/AnchoredHint";
@@ -20,7 +22,7 @@ import { FinishingMoment } from "@/features/low-tide/FinishingMoment";
 import { useLowTide } from "@/features/low-tide/lowTideMemory";
 import { NextPlace } from "@/features/modes/NextPlace";
 import { useThreadModesMap } from "@/features/modes/membership";
-import { NEW_SENDER_NOTE, newSenderCommands } from "@/features/modes/NewSenderChips";
+import { NEW_SENDER_NOTE } from "@/features/modes/NewSenderChips";
 import type { LampVia } from "@/components/Row";
 import type { LeaveVia } from "@/lib/leaving";
 import { useLitReason } from "@/state/litReasonStore";
@@ -634,7 +636,17 @@ function MessagesBody({
   const replyLater = useCallback(async () => {
     if (refuseWhileDaemonDown("set reply later")) return;
     const found = await target();
-    if (found) openMailDialog({ kind: "reply-later", target: found, waiting: false });
+    if (!found?.threadId) return;
+    // Not now (`b`): Later is the untimed reply later, a time takes it off the desk until then.
+    openMailDialog({
+      kind: "not-now",
+      picker: conversationNotNow({
+        threadId: found.threadId,
+        messageId: found.primary?.id,
+        subject: describeTarget(found),
+        waiting: false,
+      }),
+    });
   }, [target]);
 
   const pin = useCallback(async () => {
@@ -734,8 +746,8 @@ function MessagesBody({
       if (closeHint) closeHint();
       else setPageOpen(false);
     },
-    // X and K act on the newest email the other side sent.
-    ...newSenderCommands(newSender, selected?.title ?? ""),
+    // X and P act on the newest email the other side sent; on a new
+    // sender's row their capitals answer its question.
     ...moveCommands(() => {
       const theirs = conversation?.messages.findLast((message) => !message.from_me);
       return theirs && conversation
@@ -743,6 +755,9 @@ function MessagesBody({
             messageId: theirs.message_id,
             label: conversation.subject || "(no subject)",
             senderLabel: theirs.from.name || theirs.from.email,
+            newSender: newSender
+              ? { question: newSender, label: selected?.title ?? "" }
+              : undefined,
           }
         : null;
     }),

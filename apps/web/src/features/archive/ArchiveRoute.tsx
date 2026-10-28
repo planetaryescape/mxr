@@ -566,7 +566,8 @@ function Ledger({
               </Link>
             </Button>
             <span className="type-meta text-text-3">
-              To file one by hand, light an email and press <KeyChip>T</KeyChip>.
+              To file one by hand, light an email and press <KeyChip>X</KeyChip> then{" "}
+              <KeyChip>e</KeyChip>.
             </span>
           </div>
         }

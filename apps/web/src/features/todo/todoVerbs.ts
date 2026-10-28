@@ -253,7 +253,7 @@ export async function restoreTodos(todos: readonly Todo[]): Promise<void> {
 }
 
 /**
- * `Z`: show the row on the chosen day. Undo puts back the date it had
+ * `b` (Not now): show the row on the chosen day. Undo puts back the date it had
  * (its own earlier date, or none).
  */
 export function scheduleRow(todo: Todo, at: string, label: string) {
@@ -272,16 +272,26 @@ export function editRow(todo: Todo, edits: { field: string; value: string }[]) {
   return correctRow(todo, "wrong_details", edits);
 }
 
-export function correctRow(todo: Todo, reason: "not_a_todo" | "not_mine" | "already_done" | "wrong_details", edits: { field: string; value: string }[] = []) {
+export function correctRow(
+  todo: Todo,
+  reason: "not_a_todo" | "not_mine" | "already_done" | "wrong_details",
+  edits: { field: string; value: string }[] = [],
+) {
   if (refuseWhileDaemonDown("correct it")) return;
-  return withUndo(reason === "wrong_details" ? "todo-edit" : "todo-dismiss", () => correctTodo(todo.id, reason, edits), {
-    message: (change) => change.summary,
-    reverse: (change) => {
-      const token = change.correction_undo;
-      return token ? undoBy(() => undoTodoCorrection(todo.id, token)) : () => Promise.resolve(false);
+  return withUndo(
+    reason === "wrong_details" ? "todo-edit" : "todo-dismiss",
+    () => correctTodo(todo.id, reason, edits),
+    {
+      message: (change) => change.summary,
+      reverse: (change) => {
+        const token = change.correction_undo;
+        return token
+          ? undoBy(() => undoTodoCorrection(todo.id, token))
+          : () => Promise.resolve(false);
+      },
+      failure: "Couldn't save that correction",
     },
-    failure: "Couldn't save that correction",
-  });
+  );
 }
 
 /** What an edit field holds now, in the form `UpdateTodo` reads back. */

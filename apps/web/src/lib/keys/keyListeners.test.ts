@@ -103,7 +103,7 @@ const ALLOWED = {
   },
   "features/arrivals/NotSureSection.tsx": {
     rule: "overlay with its own letters",
-    why: "a not-sure card's printed choice letters and its y/n ask, while focused",
+    why: "a not-sure card opens the X picker, says its old letters moved, and its y/n ask, while focused",
   },
   "features/assistant/AssistantSplit.tsx": {
     rule: "overlay with its own letters",
@@ -147,11 +147,11 @@ const ALLOWED = {
   },
   "features/mail-actions/dialogs/ReplyLaterDialog.tsx": {
     rule: "overlay with its own letters",
-    why: "Enter with no time is a plain reply later",
+    why: "Enter with no time is a plain reply later (the palette's Reply later…)",
   },
-  "features/mail-actions/dialogs/SnoozeDialog.tsx": {
+  "features/mail-actions/dialogs/NotNowDialog.tsx": {
     rule: "overlay with its own letters",
-    why: "digits pick the numbered snooze presets",
+    why: "digits pick the numbered presets, the arrows move the highlight",
   },
   "features/mail-actions/dialogs/UnsubscribeDialog.tsx": {
     rule: "overlay with its own letters",

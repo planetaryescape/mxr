@@ -19,7 +19,7 @@ export type RowQuickAction = "archive" | "trash" | "toggleRead" | "toggleStar" |
 /** The verbs a lit row offers, with their keys; the rest are one `?` away. */
 const QUICK_VERBS: readonly { action: RowQuickAction; keys: string; label: string }[] = [
   { action: "archive", keys: "e", label: "archive" },
-  { action: "snooze", keys: "Z", label: "snooze" },
+  { action: "snooze", keys: "b", label: "not now" },
   { action: "toggleStar", keys: "s", label: "star" },
 ];
 

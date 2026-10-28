@@ -111,7 +111,7 @@ impl App {
     }
 
     /// The untimed reply later: into the reply queue now.
-    fn flag_reply_later_now(&mut self, message_id: MessageId) {
+    pub(super) fn flag_reply_later_now(&mut self, message_id: MessageId) {
         let effect = MutationEffect::ReplyLater {
             message_id: message_id.clone(),
             flag: true,

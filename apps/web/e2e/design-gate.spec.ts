@@ -303,7 +303,7 @@ for (const theme of THEMES) {
           expect((await noor.boundingBox())?.height).toBe(before?.height);
           if (width >= 640) {
             await expect(page.getByTestId("status-reason")).toContainText(
-              "New sender: 1 Messages · 2 Updates · 3 Reading · 4 Block",
+              "New sender: X then M Messages · U Updates · R Reading · D Block",
             );
           }
           await attach(page, testInfo, `messages-newsender-${theme}-${width}`);

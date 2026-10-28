@@ -33,11 +33,15 @@ impl App {
                     | Action::MoveToLabel
                     | Action::RouteToLabel
                     | Action::Unsubscribe
-                    | Action::Snooze
                     | Action::ToggleSelect
                     | Action::VisualLineMode
                     | Action::PatternSelect(_)
-            ) {
+            ) || (matches!(action, Action::Snooze)
+                && self.place_list_focused()
+                && !self.modals.snooze_panel.visible)
+            {
+                // Not now (`b`) works on a desk row: it acts on the row's
+                // conversation, as reply later did.
                 self.status_message = Some(hint.into());
                 return;
             }
@@ -601,16 +605,12 @@ impl App {
                 self.modals.pending_unsubscribe_confirm = None;
                 self.status_message = Some("Unsubscribe cancelled".into());
             }
+            // `b`, Not now: Enter in the open picker comes back here.
             Action::Snooze => {
                 if self.modals.snooze_panel.visible {
-                    self.handle_snooze_panel_confirm();
-                } else if self.context_envelope().is_some() {
-                    self.modals.snooze_panel.visible = true;
-                    self.modals.snooze_panel.selected_index = 0;
-                    self.modals.snooze_panel.custom_input = None;
-                    self.modals.snooze_panel.custom_error = None;
+                    self.confirm_not_now();
                 } else {
-                    self.status_message = Some("No message selected".into());
+                    self.open_not_now();
                 }
             }
             Action::RespondInvite(action) => {

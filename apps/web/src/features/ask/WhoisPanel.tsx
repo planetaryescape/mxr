@@ -1,6 +1,6 @@
 /*
  * Right-rail "Who is this?": what the archive knows about a person or
- * term (TUI `W`). Works without a language model, which only adds the
+ * term (on the person page, `p`, and in the palette). Works without a language model, which only adds the
  * written summary and topics.
  */
 

@@ -162,8 +162,8 @@ from someone you've written to that only copied you:
 Sam Okafor copied you on "Boiler service at the flat". Updates for now.
 ```
 
-One key sends it (`m`, `x`, `u`, `r`, `e`); keeping it where it is counts as
-an answer. After the answer Now asks once, "Always for this sender?".
+`X` answers it: `m`, `x`, `u`, `r` or `e` sends it to that mode, and `Enter`
+keeps it where it is, which counts as an answer too. After the answer Now asks once, "Always for this sender?".
 
 Once you have moved mail, Now shows how sorting is going, counted from your
 own moves: "Last week mxr sorted 310 emails; you moved 2." It counts the
@@ -241,13 +241,13 @@ mxr modes why MESSAGE_ID          # or --thread THREAD_ID
 
 When a person writes to you for the first time, their row carries a `new`
 mark. Put the lamp on it (`j`, or a click) and the row's actions give way to
-four glyph buttons, one per answer, with the keys `1` Messages, `2` Updates,
-`3` Reading and `4` Block; hover a glyph for its name. The status bar spells
-it out while the row is lit: "New sender: 1 Messages · 2 Updates · 3 Reading
-· 4 Block". Answering moves the sender for their future mail too, and undo
-puts it back. The digits only answer while a new sender is lit; everywhere
-else they stay the numbered tabs, and they never fire while you type in a
-field. Automated senders are never asked: their mail goes to Updates or
+four glyph buttons, one per answer; hover a glyph for its name. On the
+keyboard, `X` opens the move picker, where `M` Messages, `U` Updates,
+`R` Reading and `D` Block answer for the sender (`P` opens just those four).
+The status bar spells it out while the row is lit: "New sender: X then
+M Messages · U Updates · R Reading · D Block". Answering moves the sender for
+their future mail too, and undo puts it back. The digits `1` to `4` that used
+to answer say where answering went until 0.6.197. Automated senders are never asked: their mail goes to Updates or
 Reading, and the row's why line names the rule. The
 [Screener](/guides/triage-flow/) page, under More, has a queue of the new
 senders its badge counts and a tab of every sender you have decided on.

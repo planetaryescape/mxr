@@ -90,7 +90,6 @@ impl App {
             Action::NowOpenEmail => self.now_open(true),
             Action::NowDone => self.now_done(),
             Action::NowLetGoDigest => self.now_let_go_digest(),
-            Action::NowAnswerSender(choice) => self.answer_new_sender(choice),
             _ => {}
         }
     }
@@ -347,34 +346,6 @@ impl App {
         self.mailbox.now_page.digest_preview = Some(preview);
     }
 
-    /// A digit on a new sender's row answers its question with that choice.
-    fn answer_new_sender(&mut self, choice: usize) {
-        let Some(NowRow::Person(person)) = self.selected_now_row() else {
-            return;
-        };
-        let Some(question) = person.new_sender.as_ref() else {
-            return;
-        };
-        let Some(answer) = choice.checked_sub(1).and_then(|i| question.choices.get(i)) else {
-            return;
-        };
-        let request = Request::SetSenderKind {
-            account_id: question.account_id.clone(),
-            sender_email: question.sender_email.clone(),
-            kind: Some(answer.kind),
-        };
-        let status = format!(
-            "{} goes to {} from now on",
-            crate::ui::sanitize::one_line(&question.sender_email),
-            answer.label
-        );
-        self.queue_mutation(
-            request,
-            MutationEffect::ModeDone(status),
-            "Saving...".into(),
-        );
-    }
-
     /// Key handling for the Now lens: its verbs and navigation. Mail verbs
     /// need an email, so they open the row first.
     pub(super) fn now_lens_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
@@ -395,26 +366,15 @@ impl App {
             let defined = self.defined_key("now", key);
             return self.run_defined_key(defined);
         }
-        let plain = key.modifiers == KeyModifiers::NONE;
-        let asks = matches!(
-            self.selected_now_row(),
-            Some(NowRow::Person(person)) if person.new_sender.is_some()
-        );
-        // A Not-sure question takes its answer in one key: the mode's
-        // `g` letter, before e, u and r mean done, undo and reply.
-        if plain && matches!(self.selected_now_row(), Some(NowRow::NotSure(_))) {
-            if let KeyCode::Char(c) = key.code {
-                if let Some((_, mode)) = crate::app::MOVE_CHOICES
-                    .iter()
-                    .find(|(letter, _)| *letter == c)
-                {
-                    return Some(Action::NowAnswerNotSure(*mode));
-                }
-            }
-        }
-        if let KeyCode::Char(digit @ '1'..='4') = key.code {
-            if plain && asks {
-                return Some(Action::NowAnswerSender(digit as usize - '0' as usize));
+        // A Not-sure question answers through `X` now (blueprint 35); its
+        // old one-key answers say so instead of doing done or reply here.
+        // `u` stays undo, as everywhere.
+        if key.modifiers == KeyModifiers::NONE
+            && matches!(self.selected_now_row(), Some(NowRow::NotSure(_)))
+        {
+            if let KeyCode::Char(c @ ('m' | 'x' | 'r' | 'e')) = key.code {
+                self.announce_moved("not-sure", &c.to_string());
+                return None;
             }
         }
         let defined = self.defined_key("now", key);

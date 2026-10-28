@@ -177,7 +177,7 @@ export function previewEdit(record: RecordData, edit: RecordEdit, applyToSender 
   return setRecordField(record.id, edit, { dryRun: true, applyToSender });
 }
 
-/** `T` then Archive: the card filing would make, from the daemon's dry run. */
+/** Pass to a mode (the palette) then Archive: the card filing would make, from the daemon's dry run. */
 export function previewFile(messageId: string) {
   return fileRecord(messageId, true);
 }

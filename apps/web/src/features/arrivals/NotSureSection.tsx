@@ -4,7 +4,10 @@ import { KeyChip } from "@/components/KeyChip";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { performMove } from "./moves";
+import { definedShortcut } from "@/lib/actions/definition";
+import { useKeyScope } from "@/state/keyScopeStore";
+
+import { openMovePicker, performMove } from "./moves";
 import { modeForKey, SENDER_MODES, type ModeId, type NotSure } from "./types";
 import { useTrustHint } from "./useTrustHint";
 
@@ -16,10 +19,10 @@ interface PendingAsk {
 
 /**
  * "2 emails I wasn't sure about. Where should these go?" At most three a
- * day, chosen by the daemon: emails two of its rules disagreed about. One
- * key answers (the mode's `g` letter); keeping it where it is answers too.
- * After a move to Messages, Updates or Reading, one question: always for
- * this sender?
+ * day, chosen by the daemon: emails two of its rules disagreed about. `X`
+ * on a row answers in the move picker, on the mode's `g` letter (blueprint
+ * 35); keeping it where it is answers too. After a move to Messages,
+ * Updates or Reading, one question: always for this sender?
  */
 export function NotSureSection({
   questions,
@@ -46,11 +49,11 @@ export function NotSureSection({
   const shown = questions.filter((question) => !answered.has(question.message_id));
   const firstHint = useTrustHint("now.not_sure", hint, shown.length > 0);
 
-  const answer = (question: NotSure, mode: ModeId) => {
+  const answer = (question: NotSure, mode: ModeId, sender = false) => {
     firstHint.dismiss();
     setAnswered((current) => new Set(current).add(question.message_id));
     void performMove(
-      { messageId: question.message_id, mode, source: "not_sure" },
+      { messageId: question.message_id, mode, sender, source: "not_sure" },
       { askInToast: false },
     ).then((outcome) => {
       // A move that failed (the toast says why) answered nothing: the
@@ -69,7 +72,7 @@ export function NotSureSection({
       setAnswered((current) => new Set(current));
       // Keeping it where it was moved nothing, so there is nothing to repeat.
       const moved = outcome.correction_id != null && outcome.from !== outcome.to;
-      if (moved && SENDER_MODES.includes(mode)) {
+      if (moved && !sender && SENDER_MODES.includes(mode)) {
         setAsk({ question, mode });
       }
     });
@@ -112,19 +115,38 @@ export function NotSureSection({
   );
 }
 
+/** The move picker's key, which answers a question now. */
+const MOVE_KEY = definedShortcut("modes.move");
+
 function NotSureRow({
   question,
   onAnswer,
 }: {
   question: NotSure;
-  onAnswer: (question: NotSure, mode: ModeId) => void;
+  onAnswer: (question: NotSure, mode: ModeId, sender: boolean) => void;
 }) {
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-    const mode = modeForKey(event.key);
-    if (!mode) return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    // The row owns its keys, so it opens the move picker itself, as the
+    // answer (blueprint 35: Not-sure answers go through `X`).
+    if (event.key === MOVE_KEY) {
+      event.preventDefault();
+      openMovePicker({
+        messageId: question.message_id,
+        label: question.subject || "(no subject)",
+        senderLabel: question.sender_name || question.sender_email,
+        notSure: {
+          mode: question.mode,
+          answer: (mode, sender) => onAnswer(question, mode, sender),
+        },
+      });
+      return;
+    }
+    // The old one-key answers say where they went until 0.6.197. `u` is
+    // undo everywhere, so it can't be announced.
+    if (event.shiftKey || event.key === "u" || !modeForKey(event.key)) return;
     event.preventDefault();
-    onAnswer(question, mode);
+    useKeyScope.getState().showMoved("Move", MOVE_KEY);
   };
   return (
     <div
@@ -145,13 +167,12 @@ function NotSureRow({
             variant="ghost"
             data-testid={`not-sure-${choice.mode}`}
             aria-current={choice.mode === question.mode ? "true" : undefined}
-            onClick={() => onAnswer(question, choice.mode)}
+            onClick={() => onAnswer(question, choice.mode, false)}
             className={cn(
               "h-7 gap-1.5 px-2 text-xs",
               choice.mode === question.mode && "text-muted-foreground",
             )}
           >
-            <KeyChip>{choice.key}</KeyChip>
             {choice.label}
           </Button>
         ))}
@@ -160,7 +181,7 @@ function NotSureRow({
   );
 }
 
-/** "Always for this sender?", once per answer: y or n. */
+/** "Always for this sender?", once per answer: y or Enter, n or Esc. */
 function SenderAsk({ ask, onDone }: { ask: PendingAsk; onDone: () => void }) {
   const who = ask.question.sender_name || ask.question.sender_email;
   const yes = () => {
@@ -176,7 +197,7 @@ function SenderAsk({ ask, onDone }: { ask: PendingAsk; onDone: () => void }) {
       data-testid="not-sure-sender-ask"
       ref={(node) => node?.focus()}
       onKeyDown={(event) => {
-        if (event.key === "y") {
+        if (event.key === "y" || event.key === "Enter") {
           event.preventDefault();
           yes();
         } else if (event.key === "n" || event.key === "Escape") {

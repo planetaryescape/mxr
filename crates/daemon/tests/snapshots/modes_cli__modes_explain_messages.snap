@@ -72,7 +72,7 @@ expression: "serde_json::to_string_pretty(&guide).unwrap()"
       },
       {
         "key": "b",
-        "verb": "reply later"
+        "verb": "not now"
       },
       {
         "key": "s",

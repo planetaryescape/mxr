@@ -31,8 +31,8 @@ impl App {
                 }
             }
             Action::TodoRestore => self.set_selected_todo_state(TodoStateActionData::Undo),
-            Action::TodoSchedule => self.open_todo_prompt(false),
-            Action::TodoEdit => self.open_todo_prompt(true),
+            Action::TodoSchedule => self.open_not_now(),
+            Action::TodoEdit => self.open_todo_edit_prompt(),
             Action::TodoOpenEmail => self.open_selected_todo_email(),
             Action::TodoReviewResolution => self.review_selected_resolution(),
             Action::TodoSendToMicrosoft => self.microsoft_todo_request(false),
@@ -373,15 +373,12 @@ impl App {
         self.mailbox.todo_link = link.map(|link| (id, link));
     }
 
-    fn open_todo_prompt(&mut self, edit: bool) {
+    fn open_todo_edit_prompt(&mut self) {
         let Some(todo) = self.selected_todo() else {
             return;
         };
-        let todo_id = todo.id.clone();
-        let kind = if edit {
-            TodoPromptKind::Edit { todo_id }
-        } else {
-            TodoPromptKind::Schedule { todo_id }
+        let kind = TodoPromptKind::Edit {
+            todo_id: todo.id.clone(),
         };
         self.mailbox.todo_page.prompt = Some(TodoPromptState::new(kind, String::new()));
     }
@@ -450,27 +447,20 @@ impl App {
         ));
     }
 
-    /// Keys while the prompt is open: typing, Tab for another reading of
-    /// a time, Enter to send, Esc to cancel.
+    /// Keys while the prompt is open: typing, Enter to send, Esc to cancel.
     pub(super) fn todo_prompt_key(&mut self, code: KeyCode, modifiers: KeyModifiers) {
-        let config = &self.modals.snooze_config;
         let Some(prompt) = self.mailbox.todo_page.prompt.as_mut() else {
             return;
         };
         if prompt.pending.is_some() && code != KeyCode::Esc {
             return;
         }
-        let is_schedule = matches!(prompt.kind, TodoPromptKind::Schedule { .. });
         match code {
             KeyCode::Enter => self.confirm_todo_prompt(),
             KeyCode::Esc => self.mailbox.todo_page.prompt = None,
-            KeyCode::Tab if is_schedule => prompt.time.next_choice(),
             KeyCode::Backspace => {
                 prompt.input.pop();
                 prompt.error = None;
-                if is_schedule {
-                    prompt.time.update(&prompt.input, config);
-                }
             }
             KeyCode::Char(c)
                 if !modifiers.contains(KeyModifiers::CONTROL)
@@ -478,9 +468,6 @@ impl App {
             {
                 prompt.input.push(c);
                 prompt.error = None;
-                if is_schedule {
-                    prompt.time.update(&prompt.input, config);
-                }
             }
             _ => {}
         }
@@ -492,22 +479,6 @@ impl App {
         };
         let input = prompt.input.trim().to_string();
         let request = match &prompt.kind {
-            TodoPromptKind::Schedule { todo_id } => match prompt.time.chosen() {
-                // The previewed instant, so what was shown is what is stored.
-                Ok(at) => (
-                    Request::ScheduleTodo {
-                        todo_id: todo_id.clone(),
-                        when: Some(at.to_rfc3339()),
-                        time_zone: None,
-                        dry_run: false,
-                    },
-                    "Scheduled. It shows up then".to_string(),
-                ),
-                Err(message) => {
-                    prompt.error = Some(message);
-                    return;
-                }
-            },
             TodoPromptKind::Correct { todo_id } => {
                 let reason = match input.as_str() {
                     "1" => mxr_protocol::TodoCorrectionData::NotATodo,

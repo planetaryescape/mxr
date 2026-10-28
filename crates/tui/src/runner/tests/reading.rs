@@ -86,7 +86,10 @@ fn b_on_a_digest_link_saves_it_to_later_and_fetches_its_article() {
     key(&mut app, 'j');
     let link_key = app.selected_reading_row().expect("a row").key().to_string();
     assert!(link_key.ends_with(":1"), "{link_key}");
+    // `b` opens Not now; Enter on its first row, Later, saves it.
     key(&mut app, 'b');
+    assert!(app.modals.snooze_panel.visible);
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
     assert!(queued(&app).iter().any(|request| matches!(
         request,
         Request::SetReadingLater { item_keys, later: true, dry_run: false } if *item_keys == [link_key.clone()]
@@ -100,6 +103,24 @@ fn b_on_a_digest_link_saves_it_to_later_and_fetches_its_article() {
         .status_message
         .as_deref()
         .is_some_and(|status| status.contains("links.demo.mxr.local")));
+}
+
+#[test]
+fn a_time_in_not_now_snoozes_the_items_issue() {
+    let mut app = reading_app();
+    let issue = app
+        .selected_reading_row()
+        .expect("a row")
+        .issue()
+        .message_id
+        .clone();
+    key(&mut app, 'b');
+    key(&mut app, '1');
+    assert!(!app.modals.snooze_panel.visible);
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::Snooze { message_id, .. }] if *message_id == issue
+    ));
 }
 
 #[test]

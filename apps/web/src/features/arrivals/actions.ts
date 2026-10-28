@@ -1,8 +1,7 @@
 /*
- * Move to another mode (blueprint 22's key table, D119): `X` moves this
- * email, `K` sends everything from its sender. Each view's controller
- * decides what "this email" is. In the reader `K` stays the previous
- * message and Updates and Reading keep their own `K`, so there the
+ * Move to another mode (blueprint 35, D119): `X` moves this email, `P`
+ * sends everything from its sender. Each view's controller decides what
+ * "this email" is. Updates and Reading keep their own `P`, so there the
  * sender is a capital in the `X` picker.
  */
 

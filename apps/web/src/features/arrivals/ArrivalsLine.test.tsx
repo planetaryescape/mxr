@@ -2,6 +2,9 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
+import { useKeyScope } from "@/state/keyScopeStore";
+
 import { ArrivalsView } from "./ArrivalsLine";
 import { arrivals, notSure, outcome } from "./testing";
 import { resetHintsForTests } from "./useTrustHint";
@@ -160,7 +163,7 @@ describe("Not sure", () => {
       not_sure_hint: "Two of mxr's rules disagreed about this one.",
     });
 
-  test("asks with one key per mode and a hint under the first question only", () => {
+  test("asks with one choice per mode and a hint under the first question only", () => {
     render(<ArrivalsView arrivals={withQuestions()} nowWaiting />);
     openSortingDetails();
     expect(screen.getByRole("heading", { name: /wasn't sure/ })).toBeVisible();
@@ -168,11 +171,11 @@ describe("Not sure", () => {
     expect(screen.getAllByTestId("not-sure-hint")).toHaveLength(1);
   });
 
-  test("a key answers it, then asks once whether to do the same for the sender", async () => {
+  test("a choice answers it, then asks once whether to do the same for the sender", async () => {
     fetchMock.mockResolvedValueOnce({ kind: "MessageMoved", outcome: outcome({ to: "messages" }) });
     render(<ArrivalsView arrivals={withQuestions()} nowWaiting />);
     openSortingDetails();
-    fireEvent.keyDown(screen.getAllByTestId("not-sure-row")[0]!, { key: "m" });
+    fireEvent.click(screen.getAllByTestId("not-sure-messages")[0]!);
 
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/mail/messages/msg-1/move", {
       method: "POST",
@@ -188,7 +191,8 @@ describe("Not sure", () => {
       kind: "MessageMoved",
       outcome: outcome({ to: "messages", sender: true, ask_sender: null }),
     });
-    fireEvent.keyDown(ask, { key: "y" });
+    // Enter is yes, as y is, in every yes/no question (blueprint 35).
+    fireEvent.keyDown(ask, { key: "Enter" });
     expect(fetchMock).toHaveBeenLastCalledWith("/api/v1/mail/messages/msg-1/move", {
       method: "POST",
       body: { mode: "messages", sender: true, dry_run: false },
@@ -214,11 +218,35 @@ describe("Not sure", () => {
     expect(screen.queryByTestId("not-sure-sender-ask")).toBeNull();
   });
 
+  test("X on a question opens the move picker as its answer; the old letters say so", () => {
+    useMailDialogs.getState().close();
+    render(<ArrivalsView arrivals={withQuestions()} nowWaiting />);
+    openSortingDetails();
+    const row = screen.getAllByTestId("not-sure-row")[0]!;
+    fireEvent.keyDown(row, { key: "m" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useKeyScope.getState().moved).toEqual({ label: "Move", key: "X" });
+
+    fireEvent.keyDown(row, { key: "X", shiftKey: true });
+    const dialog = useMailDialogs.getState().dialog;
+    expect(dialog?.kind).toBe("move-to-mode");
+    if (dialog?.kind !== "move-to-mode") return;
+    expect(dialog.subject.messageId).toBe("msg-1");
+    // The picker's answer is the question's: sent with `source: "not_sure"`.
+    fetchMock.mockResolvedValueOnce({ kind: "MessageMoved", outcome: outcome({ to: "todo" }) });
+    dialog.subject.notSure?.answer("todo", false);
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/mail/messages/msg-1/move", {
+      method: "POST",
+      body: { mode: "todo", sender: false, dry_run: false, source: "not_sure" },
+    });
+    useMailDialogs.getState().close();
+  });
+
   test("n declines the sender question", async () => {
     fetchMock.mockResolvedValueOnce({ kind: "MessageMoved", outcome: outcome() });
     render(<ArrivalsView arrivals={withQuestions()} nowWaiting />);
     openSortingDetails();
-    fireEvent.keyDown(screen.getAllByTestId("not-sure-row")[0]!, { key: "r" });
+    fireEvent.click(screen.getAllByTestId("not-sure-reading")[0]!);
     fireEvent.keyDown(await screen.findByTestId("not-sure-sender-ask"), { key: "n" });
     expect(screen.queryByTestId("not-sure-sender-ask")).toBeNull();
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -233,7 +261,7 @@ describe("Not sure: failures and the last answer", () => {
     fetchMock.mockRejectedValueOnce(new Error("daemon said no"));
     render(<ArrivalsView arrivals={one()} nowWaiting />);
     openSortingDetails();
-    fireEvent.keyDown(screen.getByTestId("not-sure-row"), { key: "m" });
+    fireEvent.click(screen.getByTestId("not-sure-messages"));
     expect(screen.queryByTestId("not-sure-row")).toBeNull();
     expect(await screen.findByTestId("not-sure-row")).toBeVisible();
     expect(screen.queryByTestId("not-sure-sender-ask")).toBeNull();
@@ -243,7 +271,7 @@ describe("Not sure: failures and the last answer", () => {
     fetchMock.mockResolvedValueOnce({ kind: "MessageMoved", outcome: outcome({ to: "messages" }) });
     const view = render(<ArrivalsView arrivals={one()} nowWaiting />);
     openSortingDetails();
-    fireEvent.keyDown(screen.getByTestId("not-sure-row"), { key: "m" });
+    fireEvent.click(screen.getByTestId("not-sure-messages"));
     fireEvent.click(screen.getByTestId("arrivals-summary"));
     expect(screen.getByTestId("arrivals")).not.toHaveAttribute("open");
     // The answer refreshes the line: no questions left.
@@ -262,7 +290,7 @@ describe("Not sure: failures and the last answer", () => {
     });
     const view = render(<ArrivalsView arrivals={one()} nowWaiting />);
     openSortingDetails();
-    fireEvent.keyDown(screen.getByTestId("not-sure-row"), { key: "m" });
+    fireEvent.click(screen.getByTestId("not-sure-messages"));
     expect(screen.queryByTestId("not-sure-row")).toBeNull();
     // The answer refreshes the line without it, then Undo lists it again.
     view.rerender(<ArrivalsView arrivals={arrivals({ not_sure: [] })} nowWaiting />);

@@ -100,10 +100,9 @@
   },
   "focus.snooze": {
     "modifiers": [
-      "cmd",
-      "shift"
+      "cmd"
     ],
-    "key": "z"
+    "key": "b"
   },
   "list.bottom": {
     "modifiers": [
@@ -214,13 +213,6 @@
     ],
     "key": "v"
   },
-  "mail.pass-to-mode": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "t"
-  },
   "mail.read-archive": {
     "modifiers": [
       "cmd"
@@ -240,12 +232,6 @@
     ],
     "key": "r"
   },
-  "mail.reply-later": {
-    "modifiers": [
-      "cmd"
-    ],
-    "key": "b"
-  },
   "mail.sender-profile": {
     "modifiers": [
       "cmd"
@@ -254,10 +240,9 @@
   },
   "mail.snooze": {
     "modifiers": [
-      "cmd",
-      "shift"
+      "cmd"
     ],
-    "key": "z"
+    "key": "b"
   },
   "mail.star": {
     "modifiers": [
@@ -277,13 +262,6 @@
       "shift"
     ],
     "key": "d"
-  },
-  "mail.whois": {
-    "modifiers": [
-      "cmd",
-      "shift"
-    ],
-    "key": "w"
   },
   "messages.as-sent": {
     "modifiers": [
@@ -763,10 +741,9 @@
   },
   "todo.schedule": {
     "modifiers": [
-      "cmd",
-      "shift"
+      "cmd"
     ],
-    "key": "z"
+    "key": "b"
   },
   "updates.copy-code": {
     "modifiers": [

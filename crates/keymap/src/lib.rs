@@ -37,13 +37,16 @@ pub const TUI_CONTEXTS: [&str; 14] = [
     "updates",
 ];
 
-/// TUI screens and overlays that read keys outside the mail-context probe.
-pub const SCREEN_CONTEXTS: [&str; 9] = [
+/// TUI screens and overlays, and web rows, that read keys outside the
+/// mail-context probe. A moved key there is announced by name from the
+/// handler (`App::announce_moved`).
+pub const SCREEN_CONTEXTS: [&str; 10] = [
     "accounts",
     "assistant",
     "categories",
     "drafts",
     "invites",
+    "not-sure",
     "rules",
     "saved-searches",
     "todo-microsoft",

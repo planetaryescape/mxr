@@ -3,15 +3,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { definedShortcut } from "@/lib/actions/definition";
-
 import type { ScreenerQuestion } from "./membership";
-import {
-  NEW_SENDER_NOTE,
-  NewSenderChips,
-  newSenderCommands,
-  SENDER_CHOICES,
-} from "./NewSenderChips";
+import { NEW_SENDER_ANSWERS, NEW_SENDER_NOTE, NewSenderChips } from "./NewSenderChips";
 
 const correct = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<boolean>>());
 vi.mock("@/features/places/senderKind", () => ({ correctSender: correct }));
@@ -26,21 +19,24 @@ const question: ScreenerQuestion = {
 beforeEach(() => correct.mockReset().mockResolvedValue(true));
 
 describe("new sender choice", () => {
-  test("four chips with keys 1 to 4, in a fixed order, named in their tooltips", () => {
+  test("four chips in a fixed order, named in their tooltips with the X picker's capitals", () => {
     render(<NewSenderChips question={question} label="Uma" />);
     expect(screen.getAllByRole("button").map((button) => button.getAttribute("title"))).toEqual([
-      "Messages (1)",
-      "Updates (2)",
-      "Reading (3)",
-      "Block (4)",
+      "Messages (X then M)",
+      "Updates (X then U)",
+      "Reading (X then R)",
+      "Block (X then D)",
     ]);
-    expect(NEW_SENDER_NOTE).toBe("New sender: 1 Messages · 2 Updates · 3 Reading · 4 Block");
+    expect(NEW_SENDER_NOTE).toBe("New sender: X then M Messages · U Updates · R Reading · D Block");
   });
 
-  test("Messages answers on Now's keys, since the same chips show in both", () => {
-    for (const { slot, key } of SENDER_CHOICES) {
-      expect(definedShortcut(`messages.sender-${slot}`)).toBe(key);
-    }
+  test("the answers are the g letters' capitals, as every picker of these places", () => {
+    expect(NEW_SENDER_ANSWERS.map(({ kind, key }) => [kind, key])).toEqual([
+      ["people", "M"],
+      ["paper_trail", "U"],
+      ["reading", "R"],
+      ["screened_out", "D"],
+    ]);
   });
 
   test("a chip answers with that sender kind, once, without lighting the row under it", () => {
@@ -57,14 +53,5 @@ describe("new sender choice", () => {
       "screened_out",
     );
     expect(onRow).not.toHaveBeenCalled();
-  });
-
-  test("the key commands exist only while a new sender is lit, so the digits stay tabs elsewhere", () => {
-    expect(newSenderCommands(null, "Uma")).toEqual({});
-    expect(newSenderCommands(undefined, "Uma")).toEqual({});
-    const commands = newSenderCommands(question, "Uma");
-    expect(Object.keys(commands)).toEqual(SENDER_CHOICES.map(({ slot }) => `senderChoice${slot}`));
-    commands.senderChoice3?.();
-    expect(correct).toHaveBeenCalledWith(expect.anything(), "reading");
   });
 });

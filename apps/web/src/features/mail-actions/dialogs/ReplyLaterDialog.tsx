@@ -1,6 +1,4 @@
 import { useRef } from "react";
-import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,14 +9,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { deferThreads } from "@/features/desk/deskLater";
-import { setReplyLater } from "@/features/reply-queue/api";
 import type { TimeChoice } from "@/features/time/api";
 import { NaturalTimeInput } from "@/features/time/NaturalTimeInput";
 import { useNaturalTime } from "@/features/time/useNaturalTime";
 
-import { invalidateMailQueries } from "../mailQueryInvalidation";
+import { replyLaterNow } from "../notNow";
 import type { MailTarget } from "../target";
-import { toneFor, VERB_FEEDBACK } from "../verbFeedback";
 
 interface ReplyLaterDialogProps {
   target: MailTarget;
@@ -29,7 +25,7 @@ interface ReplyLaterDialogProps {
 }
 
 /**
- * Reply later from one key (`b`): type when ("tue 9", "in 2d"), see the
+ * Reply later at a time, from the palette (`b` is Not now): type when ("tue 9", "in 2d"), see the
  * exact time before anything is stored, and the conversation comes back
  * then. On a thread you wrote last it comes back only if nobody replied.
  * Enter with no time is the plain reply later: the queue, now.
@@ -45,26 +41,12 @@ export function ReplyLaterDialog({ target, subject, waiting, onClose }: ReplyLat
     return deferThreads([target.threadId], choice).then(() => undefined);
   }
 
-  /** No time: the untimed flag, as `b` always did. */
+  /** No time: the untimed flag, as Later in the Not-now picker. */
   async function untimed(): Promise<void> {
     const messageId = target.primary?.id;
     if (!messageId) return;
     onClose();
-    try {
-      await setReplyLater(messageId, true);
-    } catch (error) {
-      toast.error("Reply later failed", {
-        description: error instanceof Error ? error.message : String(error),
-      });
-      return;
-    }
-    void invalidateMailQueries();
-    toast[toneFor("reply-later")](VERB_FEEDBACK["reply-later"].pastTense, {
-      action: {
-        label: "Undo",
-        onClick: () => void setReplyLater(messageId, false).then(() => invalidateMailQueries()),
-      },
-    });
+    await replyLaterNow(messageId);
   }
 
   return (

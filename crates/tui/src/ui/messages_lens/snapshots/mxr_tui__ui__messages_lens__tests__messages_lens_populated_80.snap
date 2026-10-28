@@ -1,5 +1,6 @@
 ---
 source: crates/tui/src/ui/messages_lens/tests.rs
+assertion_line: 287
 expression: rendered
 ---
 "╭ Messages ─ All conversations, including archived and sent-only history. ─────╮"
@@ -35,4 +36,4 @@ expression: rendered
 "│                                                                              │"
 "╰──────────────────────────────────────────────────────────────────────────────╯"
 " Here because: Samir Patel replied to your message, and you write to each other…"
-" f cycle views  r reply  . got it  e done here  t make it a to-do  b reply lat… "
+" f cycle views  r reply  . got it  e done here  t make it a to-do  b not now  … "

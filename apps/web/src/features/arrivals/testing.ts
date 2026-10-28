@@ -57,7 +57,7 @@ export function outcome(overrides: Partial<MoveOutcome> = {}): MoveOutcome {
     dry_run: false,
     copy: "Moved to Reading.",
     ask_sender: "Always for this sender? (P)",
-    hint: "X moves just this email. K sends everything from this sender there from now on.",
+    hint: "X moves just this email. P sends everything from this sender there from now on.",
     correction_id: 7,
     ...overrides,
   };

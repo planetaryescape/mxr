@@ -21,10 +21,10 @@ pub mod arrivals_copy {
     /// The most "Not sure" questions Now asks in one day.
     pub const NOT_SURE_DAILY_CAP: usize = 3;
     /// The hint on the first Not-sure item (contextual, never a card).
-    pub const NOT_SURE_HINT: &str = "The rules disagreed or left its purpose unknown. One key sends it where it belongs: m Messages, x To do, u Updates, r Reading, e Archive.";
+    pub const NOT_SURE_HINT: &str = "The rules disagreed or left its purpose unknown. X sends it where it belongs: m Messages, x To do, u Updates, r Reading, e Archive.";
     /// The hint on the first move's toast.
     pub const MOVE_HINT: &str =
-        "X moves just this email. K sends everything from this sender there from now on.";
+        "X moves just this email. P sends everything from this sender there from now on.";
 }
 
 /// Where an arrival is counted: a mode, or one of the buckets that make

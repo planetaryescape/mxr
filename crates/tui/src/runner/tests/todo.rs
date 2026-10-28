@@ -3,7 +3,7 @@
 //! their row, and `t` makes a to-do from a conversation.
 
 use super::*;
-use crate::app::{TodoPanel, TodoPromptKind};
+use crate::app::TodoPanel;
 use crate::ui::todo_lens::tests::{council_tax, page, runway, todo};
 use mxr_protocol::{ResponseData, TodoCatchupDecisionData, TodoChangeData, TodoStateActionData};
 
@@ -716,27 +716,46 @@ fn a_failed_dismissal_brings_the_hint_back() {
 }
 
 #[test]
-fn schedule_sends_the_previewed_time() {
+fn not_now_schedules_a_to_do_at_a_preset_and_z_says_where_it_went() {
     let mut app = todo_app(true);
     press_shifted(&mut app, 'Z');
+    assert_eq!(app.status_message.as_deref(), Some("Schedule is now b"));
+    assert!(!app.modals.snooze_panel.visible);
+    press(&mut app, KeyCode::Char('b'));
+    assert_eq!(
+        app.modals.snooze_panel.target,
+        Some(crate::app::NotNowTarget::Todo {
+            todo_id: "todo_1".into()
+        })
+    );
+    // A to-do has no untimed Later, so 1 is the first preset.
+    let first = crate::app::resolve_snooze_preset(
+        crate::app::snooze_presets()[0],
+        &app.modals.snooze_config,
+    );
+    press(&mut app, KeyCode::Char('1'));
+    assert!(!app.modals.snooze_panel.visible);
     assert!(matches!(
-        app.mailbox.todo_page.prompt.as_ref().map(|p| &p.kind),
-        Some(TodoPromptKind::Schedule { todo_id }) if todo_id == "todo_1"
+        queued(&app).as_slice(),
+        [Request::ScheduleTodo { todo_id, when: Some(when), .. }]
+            if todo_id == "todo_1" && *when == first.to_rfc3339()
     ));
+}
+
+#[test]
+fn not_now_schedules_a_typed_time_as_previewed() {
+    let mut app = todo_app(true);
+    press(&mut app, KeyCode::Char('b'));
+    // The last row types a time.
+    for _ in 0..crate::app::snooze_presets().len() {
+        press(&mut app, KeyCode::Char('j'));
+    }
+    press(&mut app, KeyCode::Enter);
     for c in "in 3d".chars() {
         press(&mut app, KeyCode::Char(c));
     }
-    let previewed = app
-        .mailbox
-        .todo_page
-        .prompt
-        .as_ref()
-        .unwrap()
-        .time
-        .chosen()
-        .unwrap();
+    let previewed = app.modals.snooze_panel.custom_time.chosen().unwrap();
     press(&mut app, KeyCode::Enter);
-    assert!(app.mailbox.todo_page.prompt.is_none());
     assert!(matches!(
         queued(&app).as_slice(),
         [Request::ScheduleTodo { when: Some(when), .. }] if *when == previewed.to_rfc3339()
@@ -1118,7 +1137,7 @@ fn the_hint_bar_offers_to_dos_verbs_for_a_lit_task() {
         vec![
             ("e", "Done"),
             ("o", "Email"),
-            ("Z", "Schedule"),
+            ("b", "Schedule"),
             ("X", "Correct…"),
             (",", "Edit"),
         ]

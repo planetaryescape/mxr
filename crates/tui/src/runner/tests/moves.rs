@@ -1,7 +1,7 @@
-//! Sorting shows its work in the TUI (D119): `X` moves one email and `K`
+//! Sorting shows its work in the TUI (D119): `X` moves one email and `P`
 //! its sender through `MoveMessage`, `u` undoes a move with its correction
-//! id, a Not-sure question on Now takes one key and then asks "Always for
-//! this sender? y/n" once, Enter on the arrivals line lists the emails
+//! id, a Not-sure question on Now answers through `X` and then asks "Always
+//! for this sender? y/n" once, Enter on the arrivals line lists the emails
 //! behind it, and Inbox rows carry their mode.
 
 use super::*;
@@ -360,7 +360,7 @@ fn navigation_chords_on_a_not_sure_question_never_answer_it() {
 }
 
 #[test]
-fn a_not_sure_question_takes_one_key_then_asks_about_the_sender_once() {
+fn a_not_sure_question_answers_through_x_then_asks_about_the_sender_once() {
     let mut app = now_with_questions();
     // The line, its two questions, then Now's own rows.
     assert!(matches!(
@@ -377,7 +377,14 @@ fn a_not_sure_question_takes_one_key_then_asks_about_the_sender_once() {
         Some(NowRow::NotSure(question)) => question.message_id.clone(),
         other => panic!("expected a question, got {other:?}"),
     };
-    // u is Updates here, not undo; r is Reading, not reply.
+    // The old one-key answers say where answering went and move nothing.
+    press(&mut app, KeyCode::Char('r'));
+    assert_eq!(app.status_message.as_deref(), Some("Move is now X"));
+    assert!(queued(&app).is_empty());
+
+    press(&mut app, KeyCode::Char('X'));
+    let menu = app.mailbox.trust.move_menu.as_ref().expect("the picker");
+    assert!(menu.not_sure);
     press(&mut app, KeyCode::Char('u'));
     assert_eq!(
         queued(&app).iter().filter_map(moved).collect::<Vec<_>>(),
@@ -401,7 +408,8 @@ fn a_not_sure_question_takes_one_key_then_asks_about_the_sender_once() {
     );
     let ask = app.mailbox.trust.sender_ask.clone().expect("asks once");
     assert!(ask.yes_no);
-    press(&mut app, KeyCode::Char('y'));
+    // Enter is yes (D168).
+    press(&mut app, KeyCode::Enter);
     assert_eq!(
         queued(&app).iter().filter_map(moved).next_back(),
         Some((first, ModeKindData::Updates, true, None))
@@ -411,6 +419,7 @@ fn a_not_sure_question_takes_one_key_then_asks_about_the_sender_once() {
     // n answers no: nothing more is sent.
     let mut app = now_with_questions();
     app.mailbox.selected_index = 1;
+    press(&mut app, KeyCode::Char('X'));
     press(&mut app, KeyCode::Char('m'));
     press(&mut app, KeyCode::Char('n'));
     assert_eq!(queued(&app).len(), 1);
@@ -419,8 +428,55 @@ fn a_not_sure_question_takes_one_key_then_asks_about_the_sender_once() {
     // To do and Archive never ask about the sender.
     let mut app = now_with_questions();
     app.mailbox.selected_index = 1;
+    press(&mut app, KeyCode::Char('X'));
     press(&mut app, KeyCode::Char('x'));
     assert!(app.mailbox.trust.sender_ask.is_none());
+}
+
+#[test]
+fn enter_on_a_not_sure_question_keeps_it_where_it_is() {
+    let mut app = now_with_questions();
+    app.mailbox.selected_index = 1;
+    let (first, current) = match app.selected_now_row() {
+        Some(NowRow::NotSure(question)) => (question.message_id.clone(), question.mode),
+        other => panic!("expected a question, got {other:?}"),
+    };
+    press(&mut app, KeyCode::Char('X'));
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(
+        queued(&app).iter().filter_map(moved).collect::<Vec<_>>(),
+        vec![(first, current, false, Some("not_sure"))]
+    );
+}
+
+#[test]
+fn the_move_picker_moves_its_highlight_with_j_and_closes_on_q() {
+    let mut app = inbox_app();
+    press(&mut app, KeyCode::Char('X'));
+    press(&mut app, KeyCode::Char('j'));
+    assert_eq!(app.mailbox.trust.move_menu.as_ref().unwrap().selected, 1);
+    press(&mut app, KeyCode::Char('q'));
+    assert!(app.mailbox.trust.move_menu.is_none());
+    assert!(queued(&app).is_empty());
+    press(&mut app, KeyCode::Char('X'));
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Enter);
+    assert!(matches!(
+        queued(&app)
+            .iter()
+            .filter_map(moved)
+            .collect::<Vec<_>>()
+            .as_slice(),
+        [(_, ModeKindData::Todo, false, None)]
+    ));
+}
+
+#[test]
+fn pass_to_mode_and_its_old_key_point_at_x() {
+    let mut app = inbox_app();
+    press(&mut app, KeyCode::Char('T'));
+    assert_eq!(app.status_message.as_deref(), Some("Pass to is now X"));
+    assert!(app.mailbox.records_page.pass_menu.is_none());
 }
 
 #[test]

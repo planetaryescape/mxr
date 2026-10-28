@@ -21,10 +21,11 @@ import { LabelsDialog } from "./dialogs/LabelsDialog";
 import { LinksDialog } from "./dialogs/LinksDialog";
 import { MoveDialog } from "./dialogs/MoveDialog";
 import { ReplyLaterDialog } from "./dialogs/ReplyLaterDialog";
-import { SnoozeDialog } from "./dialogs/SnoozeDialog";
+import { NotNowDialog } from "./dialogs/NotNowDialog";
 import { UnsubscribeDialog } from "./dialogs/UnsubscribeDialog";
 import { useMailDialogs } from "./mailDialogStore";
 import { describeTarget } from "./mailVerbs";
+import { mailNotNow } from "./notNow";
 
 /** Mounted once in the shell; renders whichever mail dialog is open. */
 export function MailDialogs() {
@@ -36,14 +37,17 @@ export function MailDialogs() {
   switch (dialog.kind) {
     case "snooze":
       return (
-        <SnoozeDialog
-          open
-          messageIds={dialog.target.messageIds}
-          subject={describeTarget(dialog.target)}
-          onOpenChange={(open) => !open && close()}
-          onSnoozed={dialog.onDone}
+        <NotNowDialog
+          picker={mailNotNow(dialog.target, describeTarget(dialog.target), {
+            onSnoozed: dialog.onDone,
+            onLater: dialog.onLater,
+            onDesk: pathname.startsWith("/desk"),
+          })}
+          onClose={close}
         />
       );
+    case "not-now":
+      return <NotNowDialog picker={dialog.picker} onClose={close} />;
     case "reply-later":
       return (
         <ReplyLaterDialog

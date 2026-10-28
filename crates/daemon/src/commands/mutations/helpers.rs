@@ -148,12 +148,12 @@ pub(super) fn print_selection_preview(action: &str, selection: &MutationSelectio
 
 #[derive(Clone, Copy, Serialize)]
 pub(super) struct SelectionCounts {
-    selected_messages: usize,
-    selected_threads: usize,
+    pub(super) selected_messages: usize,
+    pub(super) selected_threads: usize,
 }
 
 impl SelectionCounts {
-    fn selection_line(self) -> String {
+    pub(super) fn selection_line(self) -> String {
         format!(
             "Selection: {} thread(s) / {} message(s)",
             self.selected_threads, self.selected_messages
@@ -386,6 +386,24 @@ pub(super) fn confirm_action(action: &str, selection: &MutationSelection) -> any
     }
 
     print_selection_preview(action, selection);
+    prompt_to_continue()
+}
+
+/// Confirms a mutation whose preview the caller has already rendered as lines.
+pub(super) fn confirm_prompt(preview_lines: &[String]) -> anyhow::Result<()> {
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        anyhow::bail!(
+            "Confirmation required for `unsubscribe`. Re-run with --yes or inspect with --dry-run."
+        );
+    }
+
+    for line in preview_lines {
+        println!("{line}");
+    }
+    prompt_to_continue()
+}
+
+fn prompt_to_continue() -> anyhow::Result<()> {
     print!("\nContinue? [y/N] ");
     std::io::stdout().flush()?;
 

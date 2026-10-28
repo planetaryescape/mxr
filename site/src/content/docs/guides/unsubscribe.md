@@ -44,19 +44,28 @@ mxr unsubscribe newsletter@example.com --dry-run
 mxr unsubscribe newsletter@example.com --yes
 ```
 
-An address selects every message from that sender, as
-`--search 'from:newsletter@example.com'` does, and mxr tries each one. The dry
-run says how many it found:
+An address sends one request per sender, not one per message. mxr finds the
+messages from that sender (narrowed by `--search`, if you pass one), then sends
+one request for each distinct List-Unsubscribe target among them: a one-click
+URL, an http(s) link or a mailto address. Each request uses the newest message
+that carries its target. A sender whose mail names one list gets one request.
+A sender whose messages name several lists gets one request per list.
+
+The dry run lists those requests before anything is sent:
 
 ```bash
 mxr unsubscribe newsletter@example.com --dry-run --format json \
-  | jq '{requested, selected_messages}'
+  | jq '{selected_messages, request_count, requests}'
 ```
 
-What you get: the number of messages mxr will try, for example
-`{"requested": 354, "selected_messages": 354}` for a promotional sender in the
-demo mailbox. To send one request, pass a message id instead:
-`mxr unsubscribe MESSAGE_ID --dry-run`, then `--yes`.
+What you get: how many messages matched, how many requests will be sent, and
+for each request the message it uses and its method (`one-click`, `http-link`,
+`body-link` or `mailto:<address>`). A target whose newest message already has a
+receipt is counted in `already_unsubscribed` and not sent again. In the demo
+mailbox (`mxr demo --messages 2000`), `offers@promo.demo.mxr.local` has 15
+messages and 8 requests: its campaigns carry different tokens in the unsubscribe
+URL, and each URL is its own target. To unsubscribe from one specific message,
+pass its id instead: `mxr unsubscribe MESSAGE_ID --dry-run`, then `--yes`.
 
 What happens after confirmation depends on the stored method:
 

@@ -4,6 +4,7 @@ mod attachments;
 mod compose;
 mod compose_html;
 mod helpers;
+mod unsubscribe_address;
 
 pub use attachments::{attachments_download, attachments_list, attachments_open};
 pub use compose::{
@@ -1005,11 +1006,22 @@ pub async fn unsubscribe(
         .await;
     }
 
+    let by_address = message_ids.iter().any(|arg| looks_like_email(arg));
     let (message_ids, search) = rewrite_unsubscribe_positional(message_ids, search);
     let selection =
         resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
     if selection.ids.is_empty() {
         anyhow::bail!("No messages matched");
+    }
+    if by_address {
+        return unsubscribe_address::unsubscribe_by_address(
+            &mut client,
+            &selection,
+            yes,
+            dry_run,
+            format,
+        )
+        .await;
     }
     if dry_run {
         print_dry_run_output("unsubscribe", &selection, format)?;

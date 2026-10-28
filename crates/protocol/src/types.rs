@@ -1312,6 +1312,13 @@ pub enum Request {
         #[serde(default)]
         archive_on_no_method: bool,
     },
+    /// Plans the unsubscribe requests for messages picked by an email
+    /// address: one per distinct List-Unsubscribe target, each from the newest
+    /// message carrying it. Read-only. The CLI then sends each planned message
+    /// through `Unsubscribe`, so the per-message receipt still applies.
+    PlanUnsubscribe {
+        message_ids: Vec<MessageId>,
+    },
     Snooze {
         message_id: MessageId,
         wake_at: chrono::DateTime<chrono::Utc>,
@@ -2973,6 +2980,7 @@ impl Request {
         match self {
             Self::ListEnvelopes { .. }
             | Self::ListEnvelopesByIds { .. }
+            | Self::PlanUnsubscribe { .. }
             | Self::GetEnvelope { .. }
             | Self::GetBody { .. }
             | Self::GetInvite { .. }
@@ -3481,6 +3489,27 @@ pub struct UnsubscribePurgeResultData {
     pub preview_token: Option<String>,
 }
 
+/// What `PlanUnsubscribe` will send: one request per entry.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UnsubscribePlanData {
+    /// Newest target first.
+    #[serde(default)]
+    pub requests: Vec<UnsubscribePlanRequestData>,
+    /// Targets whose newest message already has a receipt. Nothing is sent
+    /// for them.
+    #[serde(default)]
+    pub already_unsubscribed: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UnsubscribePlanRequestData {
+    /// The message whose List-Unsubscribe header the request uses.
+    pub message_id: MessageId,
+    pub method: UnsubscribeMethod,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "status")]
@@ -3975,6 +4004,9 @@ pub enum ResponseData {
     },
     UnsubscribePurgeResult {
         result: UnsubscribePurgeResultData,
+    },
+    UnsubscribePlan {
+        plan: UnsubscribePlanData,
     },
 
     // mxr app/platform responses.
@@ -4800,6 +4832,7 @@ impl ResponseData {
             | Self::Jobs { .. }
             | Self::Job { .. }
             | Self::UnsubscribePurgeResult { .. }
+            | Self::UnsubscribePlan { .. }
             | Self::SendOutcome { .. }
             | Self::SendRecoveryPreview { .. }
             | Self::SendReceipt { .. }

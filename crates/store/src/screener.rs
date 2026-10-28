@@ -9,6 +9,7 @@
 use crate::{decode_id, decode_timestamp, trace_lookup, trace_query};
 use chrono::{DateTime, Utc};
 use mxr_core::id::AccountId;
+use mxr_core::types::MessageFlags;
 use sqlx::Row;
 
 /// User-set classification of a sender. Mirrored 1:1 in the
@@ -234,6 +235,7 @@ impl super::Store {
             .bind(account_id.as_str())
             .bind(limit)
             .bind(only)
+            .bind(i64::from(MessageFlags::SENT.bits()))
             .fetch_all(self.reader())
             .await?;
         trace_query("screener.list_queue", started_at, rows.len());
@@ -252,15 +254,16 @@ impl super::Store {
 }
 
 /// Parameters: ?1 account, ?2 limit, ?3 a JSON array of lowercased
-/// senders to keep, or NULL for everyone.
+/// senders to keep, or NULL for everyone, ?4 the SENT flag bit
+/// (`MessageFlags::SENT`).
 const SCREENER_QUEUE_SQL: &str = r#"WITH own AS (
         SELECT LOWER(email) AS email FROM accounts WHERE id = ?1
         UNION
         SELECT LOWER(email) FROM account_addresses WHERE account_id = ?1
     ),
-    -- Your sent mail by the desk's rule: stored as outbound, or of unknown
-    -- direction and from one of the account's own addresses (an alias
-    -- synced before its address was known).
+    -- Your sent mail by the direction rule: stored as outbound, or of unknown
+    -- direction and either from one of the account's own addresses (an alias
+    -- synced before its address was known) or filed by the provider as sent.
     -- Two index lookups on (account_id, direction), read once for the
     -- three recipient lists below.
     sent AS MATERIALIZED (
@@ -271,7 +274,8 @@ const SCREENER_QUEUE_SQL: &str = r#"WITH own AS (
         SELECT to_addrs, cc_addrs, bcc_addrs
         FROM messages
         WHERE account_id = ?1 AND direction = 'unknown'
-          AND LOWER(from_email) IN (SELECT email FROM own)
+          AND (LOWER(from_email) IN (SELECT email FROM own)
+               OR (flags & ?4) != 0)
     ),
     written_to AS (
         SELECT LOWER(json_extract(recipient.value, '$.email')) AS email
@@ -296,12 +300,14 @@ const SCREENER_QUEUE_SQL: &str = r#"WITH own AS (
             COUNT(*) AS message_count,
             MAX(m.date) AS latest_at
         FROM messages m
-        -- Inbound by the desk's rule: stored as inbound, or of unknown
-        -- direction and not from one of the account's own addresses.
+        -- Inbound by the direction rule: stored as inbound, or of unknown
+        -- direction, not from one of the account's own addresses and not
+        -- filed by the provider as sent.
         WHERE m.account_id = ?1
           AND (m.direction = 'inbound'
                OR (m.direction NOT IN ('inbound', 'outbound')
-                   AND LOWER(m.from_email) NOT IN (SELECT email FROM own)))
+                   AND LOWER(m.from_email) NOT IN (SELECT email FROM own)
+                   AND (m.flags & ?4) = 0))
           AND (?3 IS NULL OR LOWER(m.from_email) IN (SELECT value FROM json_each(?3)))
         GROUP BY LOWER(m.from_email)
     )
@@ -324,7 +330,7 @@ mod tests {
     use super::{ScreenerDecision, ScreenerDisposition};
     use chrono::{TimeZone, Utc};
     use mxr_core::id::{AccountId, MessageId};
-    use mxr_core::types::MessageDirection;
+    use mxr_core::types::{MessageDirection, MessageFlags};
 
     fn anchor() -> chrono::DateTime<chrono::Utc> {
         Utc.with_ymd_and_hms(2024, 5, 7, 14, 0, 0).unwrap()
@@ -620,5 +626,35 @@ mod tests {
             queued(&store, &aid).await,
             vec!["dave@example.com", "someone@else.example"]
         );
+    }
+
+    #[tokio::test]
+    async fn screener_queue_treats_provider_sent_unknown_mail_as_sent() {
+        // An alias synced before it was registered, filed by the provider as
+        // sent: its recipient is one you have written to, and the alias is not
+        // a sender waiting in the queue.
+        let store = Store::in_memory().await.unwrap();
+        let aid = make_account(&store).await;
+        for (n, email) in (1..).zip(["carol@example.com", "dave@example.com"]) {
+            store_message(&store, &aid, n, sender(email), [&[ME.0], &[], &[]]).await;
+        }
+        let mut sent = TestEnvelopeBuilder::new().account_id(aid.clone()).build();
+        sent.provider_id = "sent-via-alias".into();
+        sent.from = mxr_core::types::Address {
+            name: None,
+            email: "me@send-as.example".into(),
+        };
+        sent.to = vec![mxr_core::types::Address {
+            name: None,
+            email: "carol@example.com".into(),
+        }];
+        sent.flags = MessageFlags::SENT;
+        sent.date = anchor() + chrono::Duration::minutes(9);
+        store
+            .upsert_envelope_with_direction(&sent, MessageDirection::Unknown)
+            .await
+            .unwrap();
+
+        assert_eq!(queued(&store, &aid).await, vec!["dave@example.com"]);
     }
 }

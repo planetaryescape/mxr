@@ -91,9 +91,9 @@ pub struct AccountAddress {
     pub is_primary: bool,
 }
 
-/// Inbound vs outbound classification for a message. Computed at sync time
-/// from `from_email` against the account's owned addresses — `MessageFlags::SENT`
-/// is provider-unreliable (Gmail label-based, IMAP fuzzy mailbox-name-based).
+/// Inbound vs outbound classification for a message. Computed by
+/// [`MessageDirection::for_message`] from the account's owned addresses and
+/// the provider's `MessageFlags::SENT`.
 ///
 /// Named `MessageDirection` rather than `Direction` to avoid colliding with
 /// ratatui's `Direction` in clients that glob-import this module.
@@ -109,6 +109,22 @@ pub enum MessageDirection {
 }
 
 impl MessageDirection {
+    /// The direction rule. A message is outbound when its From is an owned
+    /// address, or when the provider set `MessageFlags::SENT`. Gmail send-as
+    /// aliases are often not registered in mxr, yet Gmail still labels that
+    /// mail SENT. IMAP sets SENT from Gmail's labels and from an English
+    /// leaf-folder name (`Sent`, `Sent Items`, `Sent Mail`, `Sent Messages`).
+    /// It does not carry the `\Sent` special-use attribute into the flag, so a
+    /// localised Sent folder does not set it. Screening does not use this rule:
+    /// it follows owned addresses only.
+    pub fn for_message(from_owned: bool, flags: MessageFlags) -> Self {
+        if from_owned || flags.contains(MessageFlags::SENT) {
+            Self::Outbound
+        } else {
+            Self::Inbound
+        }
+    }
+
     pub fn as_db_str(self) -> &'static str {
         match self {
             Self::Inbound => "inbound",

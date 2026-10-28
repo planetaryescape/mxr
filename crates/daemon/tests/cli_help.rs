@@ -518,6 +518,12 @@ fn help_cases() -> &'static [(&'static str, &'static [&'static str])] {
         ("cli_help_keys", &["keys", "--help"]),
         ("cli_help_keys_explain", &["keys", "explain", "--help"]),
         ("cli_help_keys_check", &["keys", "check", "--help"]),
+        ("cli_help_keys_set", &["keys", "set", "--help"]),
+        ("cli_help_keys_reset", &["keys", "reset", "--help"]),
+        (
+            "cli_help_keys_single_keys",
+            &["keys", "single-keys", "--help"],
+        ),
         ("cli_help_modes", &["modes", "--help"]),
         ("cli_help_modes_explain", &["modes", "explain", "--help"]),
         ("cli_help_modes_hint", &["modes", "hint", "--help"]),

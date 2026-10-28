@@ -75,7 +75,7 @@ use utoipa::{
         account_addresses_primary, auth_session_start, auth_session_get,
         auth_session_cancel, auth_session_complete, subscriptions_list,
         llm_status, llm_config_get, llm_config_update, notification_chimes_get,
-        notification_chimes_update, semantic_status, semantic_reindex, semantic_enable,
+        notification_chimes_update, platform_keymap_get, platform_keymap_update, semantic_status, semantic_reindex, semantic_enable,
         semantic_profile_install, semantic_profile_use, semantic_backfill, analytics_wrapped,
         analytics_storage_breakdown, analytics_largest_messages,
         analytics_stale_threads, analytics_contact_asymmetry,
@@ -1971,6 +1971,8 @@ endpoint!(get llm_config_get "/api/v1/platform/llm/config", "Get LLM configurati
 endpoint!(post llm_config_update "/api/v1/platform/llm/config", "Update LLM configuration");
 endpoint!(get notification_chimes_get "/api/v1/platform/notifications/chimes", "Get the notification chime setting");
 endpoint!(post notification_chimes_update "/api/v1/platform/notifications/chimes", "Change fields of the notification chime setting (the body is a NotificationChimesPatchData)");
+endpoint!(get platform_keymap_get "/api/v1/platform/keymap", "Every key in every client, with the person's keys.toml applied (the Keymap variant)");
+endpoint!(post platform_keymap_update "/api/v1/platform/keymap", "Change keys.toml: an action's keys or the single-key switch; {change: KeysChangeData, dry_run} previews (the KeysUpdate variant)");
 endpoint!(get semantic_status "/api/v1/platform/semantic/status", "Semantic index status");
 endpoint!(post semantic_reindex "/api/v1/platform/semantic/reindex", "Reindex semantic search");
 endpoint!(post semantic_enable "/api/v1/platform/semantic/enable", "Enable semantic search");

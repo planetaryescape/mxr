@@ -4,6 +4,7 @@ import { registerSW } from "virtual:pwa-register";
 
 import App from "@/App";
 import { listenForInstallPrompt } from "@/features/install/installPrompt";
+import { loadServedKeymap } from "@/lib/actions/servedKeymap";
 import { bootstrapFromHash } from "@/lib/tokenStorage";
 import {
   applyDensityAttribute,
@@ -41,8 +42,12 @@ listenForInstallPrompt();
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");
 
-createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// The person's keys (keys.toml) before the first render, so no view shows a
+// default key that is about to change.
+void loadServedKeymap().finally(() => {
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+});

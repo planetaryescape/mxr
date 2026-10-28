@@ -4129,6 +4129,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/keymap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every key in every client, with the person's keys.toml applied (the Keymap variant) */
+        get: operations["platform_keymap_get"];
+        put?: never;
+        /** Change keys.toml: an action's keys or the single-key switch; {change: KeysChangeData, dry_run} previews (the KeysUpdate variant) */
+        post: operations["platform_keymap_update"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/llm/config": {
         parameters: {
             query?: never;
@@ -8076,9 +8094,54 @@ export interface components {
             scopes?: string[];
             tui?: components["schemas"]["TuiKeysData"][];
         };
-        /** @description Returned in `ResponseData::Keymap`. */
+        /**
+         * @description Returned in `ResponseData::Keymap`: the definition with the person's
+         *     `keys.toml` applied.
+         */
         KeymapData: {
             actions: components["schemas"]["KeyActionData"][];
+            /** @description What in `keys.toml` mxr is ignoring, as sentences. */
+            problems?: string[];
+            /** @description Ids of the actions whose keys the person changed (`[actions]`). */
+            remapped?: string[];
+            /**
+             * @description False when the person turned off every shortcut made of single
+             *     characters (`single_keys = false`, WCAG 2.1.4). Clients then ignore
+             *     those keys outside text fields and overlays.
+             */
+            single_keys?: boolean;
+        };
+        /** @description A change to `keys.toml` (`Request::UpdateKeys`). */
+        KeysChangeData:
+            | {
+                  id: string;
+                  keys: string[];
+                  /** @enum {string} */
+                  kind: "set_action";
+              }
+            | {
+                  id: string;
+                  /** @enum {string} */
+                  kind: "reset_action";
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "single_keys";
+                  on: boolean;
+              };
+        /** @description Returned in `ResponseData::KeysUpdate`. */
+        KeysUpdateData: {
+            /** @description The `keys.toml` that was, or would be, written. */
+            file: string;
+            /** @description The key map with the change applied (when it has no problems). */
+            keymap: components["schemas"]["KeymapData"];
+            /**
+             * @description Why the change can't be saved: a key another action has, a key a
+             *     client can't receive. Empty when it can.
+             */
+            problems: string[];
+            /** @description True when `keys.toml` was written: not a dry run, and no problems. */
+            saved: boolean;
         };
         /**
          * @description Which rule decided a message's kind, most decisive first. `Decision`
@@ -12507,6 +12570,12 @@ export interface components {
                   cmd: "GetKeymap";
               }
             | {
+                  change: components["schemas"]["KeysChangeData"];
+                  /** @enum {string} */
+                  cmd: "UpdateKeys";
+                  dry_run?: boolean;
+              }
+            | {
                   /** @enum {string} */
                   cmd: "GetModeGuide";
                   mode?: string | null;
@@ -14067,6 +14136,11 @@ export interface components {
                   keymap: components["schemas"]["KeymapData"];
                   /** @enum {string} */
                   kind: "Keymap";
+              }
+            | {
+                  /** @enum {string} */
+                  kind: "KeysUpdate";
+                  update: components["schemas"]["KeysUpdateData"];
               }
             | {
                   guides: components["schemas"]["ModeGuideData"][];
@@ -24608,6 +24682,56 @@ export interface operations {
         };
     };
     cadence_watch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    platform_keymap_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bridge token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    platform_keymap_update: {
         parameters: {
             query?: never;
             header?: never;

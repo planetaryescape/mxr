@@ -5,6 +5,7 @@ import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
 import { getRegistry, snapshotActionContext } from "@/lib/actions";
 import { installKeyDispatcher } from "@/lib/keys/dispatcher";
 import { useKeyScope } from "@/state/keyScopeStore";
+import { useKeymapStore } from "@/state/keymapStore";
 import { useModals } from "@/state/modalStore";
 
 /**
@@ -35,6 +36,7 @@ export function useKeyDispatcher(): void {
           if (compose.intent && compose.surface !== "inline") return true;
           return window.location.pathname.startsWith("/compose");
         },
+        singleKeysOff: () => !useKeymapStore.getState().singleKeys,
       }),
     [],
   );

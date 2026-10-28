@@ -2953,6 +2953,43 @@ pub enum KeysAction {
         /// The file to check; defaults to keys.toml beside your config.
         file: Option<std::path::PathBuf>,
     },
+    /// Give an action its own keys in the TUI and the web app, in keys.toml.
+    /// Writes nothing when a key belongs to another action.
+    Set {
+        /// The action id, such as mail.archive; `mxr keys` lists them.
+        action: String,
+        /// Its keys, primary first, spelled as `mxr keys` prints them.
+        #[arg(required_unless_present = "none")]
+        keys: Vec<String>,
+        /// Leave the action without a key; the palette still runs it.
+        #[arg(long, conflicts_with = "keys")]
+        none: bool,
+        /// Show the change and any conflict; write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Give an action back its default keys.
+    Reset {
+        /// The action id, such as mail.archive.
+        action: String,
+        /// Show the change and any conflict; write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Turn every single-character shortcut on or off (WCAG 2.1.4).
+    /// Modifier chords such as Mod+k, Escape, Enter and the arrows keep working.
+    SingleKeys {
+        state: SwitchArg,
+        /// Show the change; write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum SwitchArg {
+    On,
+    Off,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

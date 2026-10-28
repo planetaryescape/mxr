@@ -1119,8 +1119,11 @@ pub fn map_request(
                 "teaching copy and its seen state are not activity"
             );
         }
-        Request::GetKeymap => {
-            skip_activity!("keymap", "reading the key definition is not activity");
+        Request::GetKeymap | Request::UpdateKeys { .. } => {
+            skip_activity!(
+                "keymap",
+                "the key definition and keys.toml are settings, not activity"
+            );
         }
         Request::ResolveCommitment { .. }
         | Request::RecordPromise { .. }

@@ -2222,8 +2222,17 @@ pub enum Request {
     },
     // ----- Keys -----
     /// Every keyboard shortcut in every client, from the one definition
-    /// (blueprint chapter 35). Returns `ResponseData::Keymap`.
+    /// with the person's `keys.toml` applied (blueprint chapter 35).
+    /// Returns `ResponseData::Keymap`.
     GetKeymap,
+    /// Change `keys.toml`: an action's keys, or the single-key switch.
+    /// Nothing is written on a dry run or when the change has problems
+    /// (a key another action has). Returns `ResponseData::KeysUpdate`.
+    UpdateKeys {
+        change: KeysChangeData,
+        #[serde(default)]
+        dry_run: bool,
+    },
     // ----- Teaching in place -----
     /// How a mode explains itself: header, empty states, why template,
     /// keys, the `?` explanation and its hints with whether each was
@@ -3292,7 +3301,8 @@ impl Request {
             | Self::UpdateSavedSearch { .. }
             | Self::RunSavedSearch { .. }
             | Self::ResolveTime { .. }
-            | Self::GetKeymap => IpcCategory::MxrPlatform,
+            | Self::GetKeymap
+            | Self::UpdateKeys { .. } => IpcCategory::MxrPlatform,
             Self::PreviewDraft { .. }
             | Self::RemoteRead { .. }
             | Self::GetRemoteReady
@@ -4406,6 +4416,10 @@ pub enum ResponseData {
     Keymap {
         keymap: KeymapData,
     },
+    /// Returned by `Request::UpdateKeys`.
+    KeysUpdate {
+        update: KeysUpdateData,
+    },
     /// Returned by `Request::GetModeGuide` and `Request::SetHintSeen`.
     ModeGuides {
         guides: Vec<ModeGuideData>,
@@ -4948,7 +4962,8 @@ impl ResponseData {
             | Self::SemanticStatus { .. }
             | Self::SavedSearchData { .. }
             | Self::ResolvedTime { .. }
-            | Self::Keymap { .. } => IpcCategory::MxrPlatform,
+            | Self::Keymap { .. }
+            | Self::KeysUpdate { .. } => IpcCategory::MxrPlatform,
             Self::DraftPreview { .. }
             | Self::RemoteReady { .. }
             | Self::RemoteAuthority { .. }

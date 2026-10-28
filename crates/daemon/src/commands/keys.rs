@@ -1,11 +1,11 @@
 //! `mxr keys`: every keyboard shortcut in every client, from the daemon's
 //! one key definition (blueprint chapter 35).
 
-use crate::cli::{KeyClientArg, KeysAction, OutputFormat};
+use crate::cli::{KeyClientArg, KeysAction, OutputFormat, SwitchArg};
 use crate::commands::expect_response;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
-use mxr_protocol::{KeymapData, Request, Response, ResponseData};
+use mxr_protocol::{KeymapData, KeysChangeData, KeysUpdateData, Request, Response, ResponseData};
 use serde::Serialize;
 
 /// One key in one place in one client.
@@ -22,6 +22,12 @@ pub(crate) struct KeyRow {
     pub tui_action: Option<String>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub mac_only: bool,
+    /// The person gave this action its keys in keys.toml.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub custom: bool,
+    /// Single-character shortcuts are off, so this key does nothing.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub off: bool,
 }
 
 pub async fn run(
@@ -31,6 +37,45 @@ pub async fn run(
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut ipc = IpcClient::connect().await?;
+    let change = match &action {
+        Some(KeysAction::Set {
+            action, keys, none, ..
+        }) => Some(KeysChangeData::SetAction {
+            id: action.clone(),
+            keys: if *none { Vec::new() } else { keys.clone() },
+        }),
+        Some(KeysAction::Reset { action, .. }) => {
+            Some(KeysChangeData::ResetAction { id: action.clone() })
+        }
+        Some(KeysAction::SingleKeys { state, .. }) => Some(KeysChangeData::SingleKeys {
+            on: *state == SwitchArg::On,
+        }),
+        _ => None,
+    };
+    if let Some(change) = change {
+        let dry_run = matches!(
+            action,
+            Some(
+                KeysAction::Set { dry_run: true, .. }
+                    | KeysAction::Reset { dry_run: true, .. }
+                    | KeysAction::SingleKeys { dry_run: true, .. }
+            )
+        );
+        let update = expect_response(
+            ipc.request(Request::UpdateKeys {
+                change: change.clone(),
+                dry_run,
+            })
+            .await?,
+            |response| match response {
+                Response::Ok {
+                    data: ResponseData::KeysUpdate { update },
+                } => Some(update),
+                _ => None,
+            },
+        )?;
+        return report_update(&change, &update, dry_run, format);
+    }
     let keymap = expect_response(
         ipc.request(Request::GetKeymap).await?,
         |response| match response {
@@ -44,14 +89,128 @@ pub async fn run(
         None => list(&keymap, client, context.as_deref()),
         Some(KeysAction::Explain { key }) => explain(&keymap, &key, client, context.as_deref()),
         Some(KeysAction::Check { file }) => return check(file, format),
+        Some(KeysAction::Set { .. } | KeysAction::Reset { .. } | KeysAction::SingleKeys { .. }) => {
+            unreachable!("changes return above")
+        }
     };
     match resolve_format(format) {
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&rows)?),
         OutputFormat::Jsonl => println!("{}", jsonl(&rows)?),
         _ if rows.is_empty() => println!("No keys match."),
-        _ => print!("{}", table(&rows)),
+        _ => {
+            if !keymap.single_keys {
+                println!(
+                    "Single-character shortcuts are off (single_keys = false in keys.toml); keys marked (off) do nothing."
+                );
+            }
+            print!("{}", table(&rows));
+        }
     }
     Ok(())
+}
+
+/// What `mxr keys set`, `reset` and `single-keys` print.
+#[derive(Serialize)]
+struct UpdateReport<'a> {
+    saved: bool,
+    dry_run: bool,
+    file: &'a str,
+    problems: &'a [String],
+    single_keys: bool,
+    /// The changed action and its keys after the change.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    action: Option<ChangedAction>,
+}
+
+#[derive(Serialize)]
+struct ChangedAction {
+    id: String,
+    label: String,
+    /// The web app's keys, or the TUI's for a TUI-only action.
+    keys: Vec<String>,
+}
+
+fn report_update(
+    change: &KeysChangeData,
+    update: &KeysUpdateData,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let action = match change {
+        KeysChangeData::SetAction { id, .. } | KeysChangeData::ResetAction { id } => update
+            .keymap
+            .actions
+            .iter()
+            .find(|action| &action.id == id)
+            .map(|action| ChangedAction {
+                id: action.id.clone(),
+                label: action.label.clone(),
+                keys: if action.clients.iter().any(|client| client == "web") {
+                    action.keys.clone()
+                } else {
+                    action
+                        .tui
+                        .first()
+                        .map(|binding| binding.keys.clone())
+                        .unwrap_or_default()
+                },
+            }),
+        KeysChangeData::SingleKeys { .. } => None,
+    };
+    let report = UpdateReport {
+        saved: update.saved,
+        dry_run,
+        file: &update.file,
+        problems: &update.problems,
+        single_keys: update.keymap.single_keys,
+        action,
+    };
+    match resolve_format(format) {
+        OutputFormat::Json | OutputFormat::Jsonl => {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        _ => print!("{}", update_text(&report)),
+    }
+    if !update.problems.is_empty() {
+        anyhow::bail!("nothing written to {}", update.file);
+    }
+    Ok(())
+}
+
+fn update_text(report: &UpdateReport) -> String {
+    if !report.problems.is_empty() {
+        let mut text = String::from("Can't save:\n");
+        for problem in report.problems {
+            text.push_str(&format!("  {problem}\n"));
+        }
+        return text;
+    }
+    let what = match &report.action {
+        Some(action) if action.keys.is_empty() => {
+            format!(
+                "{} ({}) has no key; the palette runs it",
+                action.label, action.id
+            )
+        }
+        Some(action) => format!(
+            "{} ({}) is {}",
+            action.label,
+            action.id,
+            action.keys.join(", ")
+        ),
+        None if report.single_keys => "Single-character shortcuts are on".to_string(),
+        None => "Single-character shortcuts are off".to_string(),
+    };
+    if report.dry_run {
+        format!("Dry run: {what}. Nothing written to {}.\n", report.file)
+    } else if report.saved {
+        format!(
+            "{what}. Saved {}; restart the TUI and reload the web app to use it.\n",
+            report.file
+        )
+    } else {
+        format!("{what} already; {} is unchanged.\n", report.file)
+    }
 }
 
 #[derive(Serialize)]
@@ -112,7 +271,9 @@ pub fn check(file: Option<std::path::PathBuf>, format: Option<OutputFormat>) -> 
 
 fn all_rows(keymap: &KeymapData) -> Vec<KeyRow> {
     let mut rows = Vec::new();
+    let off = |key: &str| !keymap.single_keys && mxr_keymap::is_character_key(key);
     for action in &keymap.actions {
+        let custom = keymap.remapped.contains(&action.id);
         for binding in &action.tui {
             for context in &binding.contexts {
                 for key in &binding.keys {
@@ -124,6 +285,8 @@ fn all_rows(keymap: &KeymapData) -> Vec<KeyRow> {
                         label: action.label.clone(),
                         tui_action: Some(binding.name.clone()),
                         mac_only: false,
+                        custom,
+                        off: off(key),
                     });
                 }
             }
@@ -139,6 +302,8 @@ fn all_rows(keymap: &KeymapData) -> Vec<KeyRow> {
                     label: action.label.clone(),
                     tui_action: None,
                     mac_only,
+                    custom,
+                    off: off(key),
                 });
             }
         }
@@ -217,6 +382,12 @@ fn table(rows: &[KeyRow]) -> String {
             if row.mac_only {
                 note.push_str("  (macOS)");
             }
+            if row.custom {
+                note.push_str("  (yours)");
+            }
+            if row.off {
+                note.push_str("  (off)");
+            }
             format!(
                 "{:<3}  {:<cw$}  {:<kw$}  {:<aw$}  {}{note}\n",
                 row.client, row.context, row.key, row.action, row.label
@@ -261,6 +432,9 @@ mod tests {
 
     fn fixture() -> KeymapData {
         KeymapData {
+            single_keys: true,
+            remapped: Vec::new(),
+            problems: Vec::new(),
             actions: vec![
                 action(
                     "mail.archive",
@@ -297,6 +471,48 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].action, "shell.help");
         assert!(explain(&fixture(), "?", Some(KeyClientArg::Web), Some("screener")).is_empty());
+    }
+
+    #[test]
+    fn rows_mark_the_persons_keys_and_keys_the_switch_turns_off() {
+        let mut keymap = fixture();
+        keymap.single_keys = false;
+        keymap.remapped = vec!["mail.archive".into()];
+        let rows = list(&keymap, Some(KeyClientArg::Tui), Some("list"));
+        let archive = rows
+            .iter()
+            .find(|row| row.action == "mail.archive")
+            .unwrap();
+        assert!(archive.custom && archive.off);
+        let text = table(&rows);
+        assert!(text.contains("(yours)  (off)"), "{text}");
+    }
+
+    #[test]
+    fn a_change_says_what_it_did_or_why_it_didnt() {
+        let action = || {
+            Some(ChangedAction {
+                id: "mail.archive".into(),
+                label: "Archive".into(),
+                keys: vec![";".into()],
+            })
+        };
+        let report = |saved, dry_run, problems: &'static [String]| UpdateReport {
+            saved,
+            dry_run,
+            file: "/c/keys.toml",
+            problems,
+            single_keys: true,
+            action: action(),
+        };
+        assert_eq!(
+            update_text(&report(false, true, &[])),
+            "Dry run: Archive (mail.archive) is ;. Nothing written to /c/keys.toml.\n"
+        );
+        assert!(update_text(&report(true, false, &[])).contains("Saved /c/keys.toml"));
+        static CLASH: std::sync::LazyLock<Vec<String>> =
+            std::sync::LazyLock::new(|| vec!["mail.archive: `s` is bound to mail.star".into()]);
+        assert!(update_text(&report(false, false, &CLASH)).starts_with("Can't save:"));
     }
 
     #[test]

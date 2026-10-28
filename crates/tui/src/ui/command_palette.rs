@@ -26,16 +26,6 @@ pub struct PaletteCommand {
     pub category: String,
 }
 
-impl PaletteCommand {
-    /// The key to name for it here, if it has one.
-    pub fn first_key(&self) -> Option<&str> {
-        self.shortcut
-            .split(" / ")
-            .next()
-            .filter(|key| !key.is_empty())
-    }
-}
-
 pub struct CommandPalette {
     pub(crate) keybindings: KeybindingConfig,
     pub(crate) binding_context: Option<ViewContext>,

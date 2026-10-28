@@ -347,6 +347,8 @@ dirs = "7"
 
 # Config
 toml = "1.1"
+# Edits keys.toml in place, keeping the person's comments and order.
+toml_edit = "0.25"
 
 # Gmail/OAuth
 yup-oauth2 = "12"

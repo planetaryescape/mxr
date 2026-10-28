@@ -13,8 +13,13 @@ pub struct KeybindingConfig {
     // Explicit keys and retired defaults must not reach hardcoded fallbacks.
     overrides: [HashSet<KeyBinding>; 3],
     /// The `[now]`, `[todo]` and other mode sections, keyed by the key
-    /// definition's action ids.
+    /// definition's action ids, with `[actions]` folded in.
     pub modes: mxr_keymap::ModeRemaps,
+    /// False when `keys.toml` turns single-character shortcuts off
+    /// (`single_keys = false`, WCAG 2.1.4).
+    pub single_keys: bool,
+    /// The definition with `[actions]` applied, when it has any.
+    remapped: Option<mxr_keymap::Keymap>,
 }
 
 impl ViewContext {
@@ -28,6 +33,13 @@ impl ViewContext {
 }
 
 impl KeybindingConfig {
+    /// The key definition as this person has it: `[actions]` applied.
+    pub(crate) fn keymap(&self) -> &mxr_keymap::Keymap {
+        self.remapped
+            .as_ref()
+            .unwrap_or_else(|| mxr_keymap::defaults())
+    }
+
     pub(crate) fn bindings(&self, context: ViewContext) -> &HashMap<KeyBinding, String> {
         match context {
             ViewContext::MailList => &self.mail_list,
@@ -626,6 +638,15 @@ pub fn check_keys_toml(text: &str) -> Vec<String> {
     }
     let (_, mode_problems) = mxr_keymap::ModeRemaps::from_table(&table, mxr_keymap::defaults());
     problems.extend(mode_problems);
+    let (file, file_problems) = mxr_keymap::KeysFile::from_table(&table, mxr_keymap::defaults());
+    problems.extend(file_problems);
+    problems.extend(
+        mxr_keymap::defaults()
+            .remapped(&file.actions)
+            .problems
+            .into_iter()
+            .map(|problem| format!("[{}] {problem}", mxr_keymap::ACTIONS_SECTION)),
+    );
     problems
 }
 
@@ -649,12 +670,25 @@ pub fn load_keybindings(config_dir: &std::path::Path) -> KeybindingConfig {
         .and_then(|s| toml::from_str::<KeysToml>(s).ok());
 
     let mut config = default_keybindings();
+    let mut user_config = user_config;
     if let Some(table) = text.as_deref().and_then(|s| s.parse::<toml::Table>().ok()) {
-        let (modes, problems) = mxr_keymap::ModeRemaps::from_table(&table, mxr_keymap::defaults());
+        let defaults = mxr_keymap::defaults();
+        let (modes, mut problems) = mxr_keymap::ModeRemaps::from_table(&table, defaults);
+        let (file, file_problems) = mxr_keymap::KeysFile::from_table(&table, defaults);
+        problems.extend(file_problems);
+        let remapped = defaults.remapped(&file.actions);
+        problems.extend(remapped.problems);
         for problem in problems {
             tracing::warn!(%problem, "Ignoring part of keys.toml; `mxr keys check` lists it");
         }
-        config.modes = modes;
+        config.single_keys = file.single_keys;
+        config.modes = modes.with_actions(&remapped.applied, defaults);
+        if let Some(user) = user_config.as_mut() {
+            fold_action_keys(user, &remapped.applied);
+        }
+        if !remapped.applied.is_empty() {
+            config.remapped = Some(remapped.keymap);
+        }
     }
 
     if let Some(user) = user_config {
@@ -711,6 +745,124 @@ pub fn load_keybindings(config_dir: &std::path::Path) -> KeybindingConfig {
     }
 
     config
+}
+
+/// Put `[actions]` keys into the mail list and reader sections, under the
+/// person's own entries there: each action's new keys run the name its
+/// default key ran in that table, so the merge below retires the defaults
+/// exactly as a hand-written `[mail_list]` entry would.
+fn fold_action_keys(
+    user: &mut KeysToml,
+    actions: &std::collections::BTreeMap<String, Vec<String>>,
+) {
+    let defaults = shown_keybindings();
+    for (id, keys) in actions {
+        let Some(action) = mxr_keymap::defaults().get(id) else {
+            continue;
+        };
+        for binding in &action.tui {
+            for (context, views) in [
+                ("list", &[ViewContext::MailList][..]),
+                ("place", &[ViewContext::MailList][..]),
+                (
+                    "reader",
+                    &[ViewContext::MessageView, ViewContext::ThreadView][..],
+                ),
+            ] {
+                if !binding.contexts.includes(context) {
+                    continue;
+                }
+                for view in views {
+                    let table = defaults.bindings(*view);
+                    let default_keys: Vec<String> = binding
+                        .keys
+                        .iter()
+                        .filter_map(|key| legacy_key(key))
+                        .collect();
+                    let Some(name) = default_keys
+                        .iter()
+                        .find_map(|key| table.get(&parse_key_string(key).ok()?).cloned())
+                    else {
+                        continue;
+                    };
+                    let section = match view {
+                        ViewContext::MailList => &mut user.mail_list,
+                        ViewContext::MessageView => &mut user.message_view,
+                        ViewContext::ThreadView => &mut user.thread_view,
+                    };
+                    if keys.is_empty() {
+                        for key in default_keys {
+                            section.entry(key).or_default();
+                        }
+                    } else {
+                        for key in keys.iter().filter_map(|key| legacy_key(key)) {
+                            section.entry(key).or_insert_with(|| name.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A definition key as `parse_key_string` reads it: `g x` → `gx`,
+/// `Ctrl+d` and `Mod+d` → `Ctrl-d`, `ArrowUp` → `Up`. `None` for a sequence
+/// the TUI's tables can't hold.
+fn legacy_key(key: &str) -> Option<String> {
+    let chords: Vec<&str> = key.split(' ').collect();
+    if chords.len() > 1 {
+        return chords
+            .iter()
+            .all(|chord| chord.chars().count() == 1)
+            .then(|| chords.concat());
+    }
+    let key = mxr_keymap::tui_key(key);
+    if key == "+" {
+        return Some(key);
+    }
+    Some(
+        key.split('+')
+            .map(|part| match part {
+                "ArrowUp" => "Up",
+                "ArrowDown" => "Down",
+                "ArrowLeft" => "Left",
+                "ArrowRight" => "Right",
+                part => part,
+            })
+            .collect::<Vec<_>>()
+            .join("-"),
+    )
+}
+
+/// True for a key, as the TUI shows keys (`gx`, `Ctrl-d`, `Esc`), that the
+/// single-key switch turns off: a character typed on its own.
+pub(crate) fn is_character_shortcut(key: &str) -> bool {
+    const NAMED: [&str; 18] = [
+        "Esc",
+        "Escape",
+        "Enter",
+        "Tab",
+        "Space",
+        "Up",
+        "Down",
+        "Left",
+        "Right",
+        "Home",
+        "End",
+        "PageUp",
+        "PageDown",
+        "Backspace",
+        "Delete",
+        "↑",
+        "↓",
+        "←",
+    ];
+    let key = key.trim_start_matches("Shift-");
+    !(key.starts_with("Ctrl-")
+        || key.starts_with("Alt-")
+        || NAMED.contains(&key)
+        || key == "→"
+        || key.is_empty())
 }
 
 fn same_binding_action(left: &str, right: &str) -> bool {
@@ -949,6 +1101,8 @@ pub fn default_keybindings() -> KeybindingConfig {
     KeybindingConfig {
         overrides: Default::default(),
         modes: mxr_keymap::ModeRemaps::default(),
+        single_keys: true,
+        remapped: None,
         mail_list,
         message_view,
         thread_view,

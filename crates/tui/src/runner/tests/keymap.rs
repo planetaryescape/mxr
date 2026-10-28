@@ -1555,3 +1555,114 @@ fn the_palette_names_a_keyed_actions_key_next_time() {
         .iter()
         .any(|toast| toast.text == "Catch-up. Next time: 2"));
 }
+
+#[test]
+fn action_keys_from_keys_toml_apply_in_the_mail_panes_and_the_modes() {
+    let toml = "[actions]\n\"mail.archive\" = \"%\"\n\"todo.done\" = \"%\"\n";
+    for context in ["list", "reader"] {
+        let mut app = remapped_app(context, toml);
+        app.mailbox.viewed_thread_messages = make_test_envelopes(1);
+        assert_eq!(
+            press_char(&mut app, '%'),
+            Some(Action::Archive),
+            "{context}"
+        );
+        assert_eq!(press_char(&mut app, 'e'), None, "{context}: e is retired");
+    }
+    let mut app = remapped_app("todo", toml);
+    assert_eq!(press_char(&mut app, '%'), Some(Action::TodoDone));
+    assert_eq!(press_char(&mut app, 'e'), None);
+    // An action left to the palette loses its keys.
+    let mut app = remapped_app("list", "[actions]\n\"mail.star\" = []\n");
+    assert_eq!(press_char(&mut app, 's'), None);
+    assert_eq!(press_char(&mut app, 'e'), Some(Action::Archive));
+}
+
+#[test]
+fn with_single_keys_off_e_does_nothing_and_the_palette_still_archives() {
+    for context in ["list", "reader", "todo", "now"] {
+        let mut app = remapped_app(context, "single_keys = false\n");
+        app.mailbox.viewed_thread_messages = make_test_envelopes(1);
+        assert_eq!(press_char(&mut app, 'e'), None, "{context}");
+        assert_eq!(press_char(&mut app, 'g'), None, "{context}");
+        assert!(!app.input_pending(), "{context}: no prefix starts");
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL)),
+            Some(Action::OpenCommandPalette),
+            "{context}: modifier chords still work"
+        );
+    }
+    let mut app = remapped_app("list", "single_keys = false\n");
+    app.mailbox.envelopes = make_test_envelopes(2);
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
+        Some(Action::MoveDown),
+        "named keys still work"
+    );
+    app.command_palette.palette.visible = true;
+    app.apply(Action::OpenCommandPalette);
+    app.command_palette
+        .palette
+        .toggle_with_archive_operations(app.current_ui_context(), &[]);
+    for c in "archive".chars() {
+        assert_eq!(
+            press_char(&mut app, c),
+            None,
+            "letters type into the palette"
+        );
+    }
+    assert_eq!(app.command_palette.palette.input, "archive");
+    let position = app
+        .command_palette
+        .palette
+        .visible_commands()
+        .position(|command| command.action == Action::Archive)
+        .expect("the palette offers Archive");
+    app.command_palette.palette.selected = position;
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+        Some(Action::Archive)
+    );
+}
+
+#[test]
+fn a_moved_key_names_the_key_the_person_gave_its_action() {
+    let keymap = mxr_keymap::defaults();
+    let (place, key, target) = keymap
+        .actions
+        .iter()
+        .filter(|action| {
+            action
+                .tui
+                .iter()
+                .any(|binding| binding.contexts.includes("todo") && !binding.keys.is_empty())
+        })
+        .find_map(|action| {
+            let moved = action.moved.iter().find(|moved| {
+                moved.to.is_none()
+                    && moved.to_key.is_none()
+                    && moved.contexts.iter().any(|c| c == "todo")
+            })?;
+            Some(("todo", moved.key.clone(), action.id.clone()))
+        })
+        .expect("a key moved within To do");
+    let mut app = remapped_app(place, &format!("[actions]\n\"{target}\" = \"%\"\n"));
+    press_char(&mut app, key.chars().next().unwrap());
+    if let Some(second) = key.split(' ').nth(1).and_then(|k| k.chars().next()) {
+        press_char(&mut app, second);
+    }
+    let status = app.status_message.clone().unwrap_or_default();
+    assert!(status.ends_with("is now %"), "{key} in {place}: {status}");
+}
+
+#[test]
+fn with_single_keys_off_a_tool_screen_ignores_its_letters() {
+    let mut app = remapped_app("list", "single_keys = false\n");
+    app.screen = Screen::Rules;
+    assert_eq!(press_char(&mut app, 'c'), None);
+    assert!(!app.rules.page.form.visible, "c no longer opens a new rule");
+    assert_eq!(
+        app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL)),
+        Some(Action::OpenCommandPalette)
+    );
+}

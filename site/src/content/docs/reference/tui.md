@@ -30,8 +30,11 @@ The TUI has seven top-level screens. Tools open with `g` and a capital:
 The digits that used to open them say where each went until 0.6.180. The
 command palette (`:` or `Ctrl-k`) opens each by name too. Rebind the keys in
 `keys.toml` next to the file printed by `mxr config path` (see
-[Custom keybindings](/reference/config/#custom-keybindings)).
-Restart the TUI to load changes. Mail lists, single-message readers and
+[Custom keybindings](/reference/config/#custom-keybindings)), or with
+`mxr keys set` or the web app's **Settings → Keyboard**, which change both
+clients. With `single_keys = false` a character typed on its own does nothing
+outside text fields and open menus; `Ctrl-k` opens the palette, and help says
+the switch is off. Restart the TUI to load changes. Mail lists, single-message readers and
 multi-message threads each have their own binding section. Help, the palette
 and mail-pane hints use those effective keys; typing in a search or compose
 field still enters text.

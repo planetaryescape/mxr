@@ -88,6 +88,19 @@ export class ActionRegistry {
     for (const action of actions) this.define(action);
   }
 
+  /**
+   * Swap every action for `actions`, as one step: a set that fails
+   * validation throws and leaves the registry as it was. Holders of this
+   * registry (the key dispatcher) see the new keys at once.
+   */
+  replaceAll(actions: Action[]): void {
+    const next = new ActionRegistry();
+    next.defineMany(actions);
+    this.#actions = next.#actions;
+    this.#ids = next.#ids;
+    this.#bindings = next.#bindings;
+  }
+
   all(): readonly Action[] {
     return this.#actions;
   }

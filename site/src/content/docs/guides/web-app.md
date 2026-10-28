@@ -213,7 +213,10 @@ Settings is one page with one navigation. On a wide screen its sections
 (Appearance, Reader, Marginalia, Keyboard and the rest) are the tabs under the
 title, the current one underlined; the app's rail is the only left-hand menu.
 On a phone, **More > Settings** opens a list of sections, each of which opens
-on its own page with a **Settings** link back to the list.
+on its own page with a **Settings** link back to the list. **Keyboard** lists
+every key, changes an action's keys for the web app and the TUI together, and
+turns single-character shortcuts off
+([how](/reference/keybindings/#customization)).
 
 ## Now and the rail
 

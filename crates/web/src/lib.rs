@@ -15,6 +15,7 @@ mod compose_assist_routes;
 mod envelope_list;
 mod freshness_routes;
 mod insight_routes;
+mod keymap_routes;
 mod legacy;
 mod mailbox_threads;
 mod messages_routes;

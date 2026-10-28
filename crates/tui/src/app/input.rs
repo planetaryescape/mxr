@@ -1586,6 +1586,20 @@ impl App {
             return action;
         }
 
+        // With single-character shortcuts off (WCAG 2.1.4), a character
+        // typed on its own does nothing outside a text field. The overlays
+        // above keep their letters: they act only while they are open.
+        if !self.keybindings.single_keys
+            && matches!(key.code, KeyCode::Char(c) if c != ' ')
+            && plain_or_shift(key.modifiers)
+            && !self.text_input_focused()
+        {
+            self.input.reset();
+            self.status_message =
+                Some("Single-key shortcuts are off; Ctrl-k opens the palette".into());
+            return None;
+        }
+
         // A key that moved away from the list, reader or sidebar says where
         // it went (the modes do this in `defined_key`).
         if self.announce_moved_key(key) {

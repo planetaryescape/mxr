@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { formatChord } from "@/lib/keys/chord";
+import { useKeymapStore } from "@/state/keymapStore";
 
 import { createNextTime, HINT_GAP_MS, type KeyHint } from "./keyHints";
 import type { Action } from "./types";
@@ -100,5 +103,21 @@ describe("Next time", () => {
     };
     await nextTime.offer(rowAction, "Done");
     expect(shown[0]?.text).toBe("Done. Next time: w");
+  });
+});
+
+describe("Next time with single-key shortcuts off", () => {
+  afterEach(() => {
+    useKeymapStore.setState({ singleKeys: true });
+  });
+
+  it("names a key that still works, or none", async () => {
+    useKeymapStore.setState({ singleKeys: false });
+    const { nextTime, shown, advance } = setup();
+    await nextTime.offer({ ...archive, aliases: ["Mod+e"] });
+    expect(shown.map((hint) => hint.text)).toEqual([`Archive. Next time: ${formatChord("Mod+e")}`]);
+    advance(HINT_GAP_MS);
+    await nextTime.offer(trash);
+    expect(shown).toHaveLength(1);
   });
 });

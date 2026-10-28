@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { postNextTimeSeen } from "@/features/hints/api";
 import { formatChord } from "@/lib/keys/chord";
 import { runCommand } from "@/lib/keys/controllers";
+import { isSwitchedOff } from "@/state/keymapStore";
 
 import { chordsOf, getRegistry, onActionInvoked, scopesOf } from "./registry";
 import type { Action, ActionScope } from "./types";
@@ -44,7 +45,8 @@ export function createNextTime({ ask, show, now }: NextTimeDeps) {
   let inFlight = false;
   return {
     async offer(action: Action, name?: string): Promise<void> {
-      const keys = chordsOf(action)[0];
+      // With single-character shortcuts off, teach a key that still works.
+      const keys = chordsOf(action).find((chord) => !isSwitchedOff(chord));
       if (!keys || action.paletteOnly || asked.has(action.id)) return;
       if (inFlight || now() - lastShownAt < HINT_GAP_MS) return;
       asked.add(action.id);

@@ -870,7 +870,41 @@ marginalia_url = "https://reader.example.com/"
 
 ## Custom keybindings
 
-Run `mxr config path`, then create `keys.toml` in the same directory. Restart the TUI after editing it. These bindings apply to mail panes, including Search results and preview; they do not replace text-field, modal, sidebar, or other screens' controls.
+`keys.toml` sits beside the file `mxr config path` prints. Two parts of it apply in the TUI and the web app alike: `[actions]`, which gives an action its own keys, and `single_keys`, which turns single-character shortcuts off. The daemon reads the file each time a client asks for its keys, so the web app uses a change when it next loads and the TUI when it next starts. The other sections are the TUI's own.
+
+You don't have to edit the file by hand. **Settings → Keyboard** in the web app and `mxr keys set`, `mxr keys reset` and `mxr keys single-keys` write it through the daemon, check the change first, and keep your comments.
+
+### Keys for every client
+
+`[actions]` names an action id from `mxr keys` and the keys it should have, primary first. They replace the action's default keys wherever it has keys: every web scope, and in the TUI the mail list, the reader and the modes. `[]` leaves the action to the palette.
+
+```toml
+[actions]
+"mail.archive" = "%"                # one key
+"mail.star" = ["s", "Mod+Shift+s"]  # several; Mod is Cmd on a Mac, Ctrl elsewhere and in the TUI
+"mail.trash" = []                   # no key; the palette still runs it
+```
+
+```bash
+mxr keys set mail.archive % --dry-run   # what would change, and any conflict
+mxr keys set mail.archive %
+mxr keys set mail.trash --none
+mxr keys reset mail.archive             # back to e
+```
+
+A key another action already has in the same place is a conflict: nothing is written, and the message names the other action, so you can give it another key first. Keys the browser keeps (`Mod+w`, `Mod+t`, `Mod+f` and the rest) and keys a terminal can't send (`Ctrl+i`, `Ctrl+Shift+…`) are refused too. The sidebar, the screener and overlays keep their own keys. A mode section or a `[mail_list]` entry below wins over `[actions]` for that key in the TUI.
+
+### Turning single-key shortcuts off
+
+```toml
+single_keys = false
+```
+
+This turns off every shortcut that starts with a single character, such as `e`, `E`, `#` and `g i`, in both clients ([WCAG 2.1.4](https://www.w3.org/WAI/WCAG21/Understanding/character-key-shortcuts.html)). Use it with speech input, or if you press keys by accident. Modifier chords (`Mod+k`, `Ctrl-d`), `Esc`, `Enter`, `Space`, `Tab` and the arrows keep working, text fields keep their letters, and an open menu or picker still takes its letters. The palette (`Mod+k`, or `Ctrl-k` in the TUI) runs every action. `mxr keys single-keys off` and the **Single-key shortcuts** switch in **Settings → Keyboard** set it; `mxr keys` marks the keys it turns off.
+
+### The TUI's mail-pane sections
+
+These sections apply to the TUI's mail panes, including Search results and preview; they do not replace text-field, modal, sidebar, or other screens' controls.
 
 Use `[mail_list]` for lists, `[message_view]` for a reader containing one message, and `[thread_view]` for a reader containing multiple messages:
 
@@ -921,7 +955,7 @@ Moving an action to a new key retires its default keys in that mode only. The hi
 
 Bindings reference names registered in `crates/tui/src/keybindings.rs`. These include navigation, mail mutations, screen switching (`open_tab_1`–`open_tab_6`), reader-mode toggles, and the standard chords. Deferred pattern-selection and count-prefix features are not enabled by this file.
 
-Unknown action names and invalid key strings are ignored, leaving their defaults unchanged. `mxr keys check` lists everything the TUI would ignore, and exits non-zero when it finds something. If the file is malformed TOML or contains a non-string action value, the TUI uses defaults for the whole file. The daemon does not load this file.
+Unknown action names and invalid key strings are ignored, leaving their defaults unchanged. `mxr keys check` lists everything mxr would ignore, and exits non-zero when it finds something. If the file is malformed TOML or contains a non-string action value, the TUI uses defaults for the whole file. The daemon reads `single_keys` and `[actions]` from it; the pane and mode sections stay with the TUI.
 
 ### Reading what's bound
 
@@ -932,7 +966,7 @@ mxr --help                 # command surface
 : (or Ctrl-k)              # command palette searches by action name
 ```
 
-Help, the command palette and mail-pane hints show the effective bindings for the focused view. After restarting with the example above, help in a mail list shows `;` for Archive and `wq` for Trash; `e` and `#` no longer run those actions there. The [keybindings reference](/reference/keybindings/) and `mxr keys` list defaults, not your local remaps. Web shortcuts are unchanged by this TUI-only file.
+Help, the command palette and mail-pane hints show the effective bindings for the focused view. After restarting with the example above, help in a mail list shows `;` for Archive and `wq` for Trash; `e` and `#` no longer run those actions there. `mxr keys` lists the keys with `[actions]` applied and marks yours `(yours)`; the [keybindings reference](/reference/keybindings/) lists the defaults. The web app follows `[actions]` and `single_keys`, not the TUI's pane and mode sections.
 
 ## Notes
 

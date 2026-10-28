@@ -609,6 +609,7 @@ fn request_scope(req: &Request) -> RequestScope<'_> {
         | Request::ResolveTime { .. }
         | Request::GetModeGuide { .. }
         | Request::GetKeymap
+        | Request::UpdateKeys { .. }
         | Request::SetHintSeen { .. } => Unscoped,
     }
 }

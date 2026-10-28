@@ -9,7 +9,7 @@
 import keymap from "./keymap.generated.json";
 import type { Action, ActionBehavior, ActionGroup, ActionScope } from "./types";
 
-interface DefinedAction {
+export interface DefinedAction {
   id: string;
   label: string;
   short_label?: string;
@@ -70,11 +70,71 @@ const SCOPES: Record<ActionScope, true> = {
 };
 
 /** The definition's web actions by id. Actions without "web" in `clients` are the TUI's alone. */
-const webActions = new Map(
+const definedActions = new Map(
   (keymap.action as DefinedAction[])
     .filter((action) => !action.clients || action.clients.includes("web"))
     .map((action) => [action.id, action]),
 );
+
+/** The definition with the person's keys, once the daemon has served them. */
+let webActions = definedActions;
+
+/** What the daemon serves (`GetKeymap`): the key map with `keys.toml` applied. */
+export interface ServedKeymap {
+  actions: { id: string; keys?: string[]; mac_keys?: string[] }[];
+  single_keys?: boolean;
+  remapped?: string[];
+  problems?: string[];
+}
+
+/**
+ * The definition with the daemon's keys for each action the person
+ * remapped. The generated JSON stays the source of everything else (labels,
+ * moved keys, retired aliases), so an older daemon can't blank the app. A
+ * moved-key notice on a key the person now uses goes, as the daemon drops it.
+ */
+export function withServedKeys(
+  defined: ReadonlyMap<string, DefinedAction>,
+  served: ServedKeymap,
+): Map<string, DefinedAction> {
+  const result = new Map(defined);
+  const servedById = new Map(served.actions.map((action) => [action.id, action]));
+  for (const id of served.remapped ?? []) {
+    const own = result.get(id);
+    const keys = servedById.get(id)?.keys;
+    if (!own || !keys) continue;
+    result.set(id, { ...own, keys, mac_keys: [], retired_keys: [] });
+  }
+  if (!served.remapped?.length) return result;
+  const bound: { scope: string; chord: string }[] = [];
+  for (const action of result.values()) {
+    for (const scope of action.scopes?.length ? action.scopes : ["global"]) {
+      for (const chord of action.keys ?? []) bound.push({ scope, chord });
+    }
+  }
+  const shadowed = (scope: string, key: string) =>
+    bound.some(
+      ({ scope: where, chord }) =>
+        (where === scope || where === "global") &&
+        (chord === key || chord.startsWith(`${key} `) || key.startsWith(`${chord} `)),
+    );
+  for (const [id, action] of result) {
+    if (!action.moved?.length) continue;
+    const moved = action.moved
+      .map((entry) => ({
+        ...entry,
+        contexts: entry.contexts.filter((context) => !shadowed(context, entry.key)),
+      }))
+      .filter((entry) => entry.contexts.length > 0);
+    result.set(id, { ...action, moved });
+  }
+  return result;
+}
+
+/** Use the daemon's keys from now on; `null` goes back to the definition's. */
+export function setServedKeys(served: ServedKeymap | null): void {
+  webActions = served ? withServedKeys(definedActions, served) : definedActions;
+}
 
 function isGroup(group: string): group is ActionGroup {
   return Object.hasOwn(GROUPS, group);

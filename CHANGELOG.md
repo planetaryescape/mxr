@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.174](https://github.com/planetaryescape/mxr/compare/v0.6.173...v0.6.174) (2026-10-28)
+
+
+### Bug Fixes
+
+* exit 3 when the daemon is unavailable and 4 on auth errors ([#750](https://github.com/planetaryescape/mxr/issues/750)) ([c7d7977](https://github.com/planetaryescape/mxr/commit/c7d7977652c31b84a092bd8062e5e7d9611f6a06))
+
 ## [0.6.173](https://github.com/planetaryescape/mxr/compare/v0.6.172...v0.6.173) (2026-10-28)
 
 

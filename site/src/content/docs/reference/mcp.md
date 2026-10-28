@@ -26,7 +26,7 @@ The command speaks MCP over stdin/stdout. It retains the selected daemon for eve
 MXR_DAEMON_ADDR='cmd://ssh -T host mxr daemon dial-stdio' mxr mcp serve
 ```
 
-`MXR_DAEMON_ADDR` accepts `unix://`, `cmd://` and authenticated loopback `tcp://` targets. TCP uses `MXR_DAEMON_TOKEN` or the client profile's daemon-token file and authenticates before status. Remote setup must complete within five seconds and report IPC protocol 26; different daemon package versions and build IDs are accepted. Unsupported protocol, authentication and transport failures never fall back to a local daemon. The MCP access profile belongs on the selected daemon host.
+`MXR_DAEMON_ADDR` accepts `unix://`, `cmd://` and authenticated loopback `tcp://` targets. TCP uses `MXR_DAEMON_TOKEN` or the client profile's daemon-token file and authenticates before status. Remote setup must complete within five seconds and report IPC protocol 27; different daemon package versions and build IDs are accepted. Unsupported protocol, authentication and transport failures never fall back to a local daemon. The MCP access profile belongs on the selected daemon host.
 
 Keep the original `expected_workspace` returned by `mxr_workspace` or a draft review through subsequent tools and recovery. A replacement workspace or recovery generation cannot adopt retained private work. Account provisioning through remote selections is unsupported; perform setup on the daemon host.
 

@@ -521,6 +521,56 @@ impl IpcConnection {
                 _ => return Err(ClientError::Io(std::io::Error::other("Unexpected GetStatus response while checking category-rule support"))),
             }
         }
+        if matches!(request, Request::SystemMailboxCounts { .. }) {
+            // A daemon that predates the variant cannot decode it and closes
+            // the connection, so ask its version first and answer
+            // "unsupported" without sending. Callers fall back to label counts.
+            let status = self
+                .request_response_unchecked(
+                    if self.is_paired_remote() {
+                        Request::GetRemoteReady
+                    } else {
+                        Request::GetStatus
+                    },
+                    &mut on_event,
+                    request_timeout,
+                )
+                .await?;
+            match status {
+                error @ Response::Error { .. } => return Ok(error),
+                Response::Ok {
+                    data:
+                        ResponseData::Status {
+                            protocol_version, ..
+                        }
+                        | ResponseData::RemoteReady {
+                            protocol_version, ..
+                        },
+                } if protocol_version >= mxr_protocol::SYSTEM_MAILBOX_COUNTS_PROTOCOL => {}
+                Response::Ok {
+                    data:
+                        ResponseData::Status {
+                            protocol_version, ..
+                        }
+                        | ResponseData::RemoteReady {
+                            protocol_version, ..
+                        },
+                } => {
+                    return Ok(Response::error_kinded(
+                        format!(
+                            "System mailbox counts need daemon IPC protocol {}; running daemon uses {protocol_version}",
+                            mxr_protocol::SYSTEM_MAILBOX_COUNTS_PROTOCOL
+                        ),
+                        IpcErrorKind::Unsupported,
+                    ));
+                }
+                _ => {
+                    return Err(ClientError::Io(std::io::Error::other(
+                        "Unexpected GetStatus response while checking system mailbox count support",
+                    )));
+                }
+            }
+        }
         if matches!(
             request,
             Request::GetAttachmentTransferMetadata { .. } | Request::ReadAttachmentChunk { .. }
@@ -1136,6 +1186,86 @@ mod tests {
         assert!(matches!(
             conn.request(Request::Ping).await.unwrap(),
             ResponseData::Pong
+        ));
+    }
+
+    /// A daemon older than the request would fail to decode it and drop the
+    /// connection, so the client must not send it: it answers "unsupported"
+    /// itself and the connection stays usable.
+    #[tokio::test]
+    async fn system_mailbox_counts_are_not_sent_to_a_daemon_that_predates_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        let delivered = Arc::new(std::sync::Mutex::new(0usize));
+        let delivered_writer = delivered.clone();
+        let _server = spawn_fake_daemon(&sock, Vec::new(), move |message| match &message.payload {
+            IpcPayload::Request(Request::GetStatus) => Some(status_response(
+                mxr_protocol::SYSTEM_MAILBOX_COUNTS_PROTOCOL - 1,
+                Some("old"),
+                None,
+            )),
+            IpcPayload::Request(Request::SystemMailboxCounts { .. }) => {
+                *delivered_writer.lock().unwrap() += 1;
+                None
+            }
+            IpcPayload::Request(Request::Ping) => Some(Response::Ok {
+                data: ResponseData::Pong,
+            }),
+            _ => None,
+        })
+        .await;
+
+        let mut conn = IpcConnection::connect(&sock, ClientKind::Tui)
+            .await
+            .unwrap();
+        let response = conn
+            .request_response(
+                Request::SystemMailboxCounts { account_id: None },
+                drop_event,
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                response,
+                Response::Error {
+                    kind: IpcErrorKind::Unsupported,
+                    ..
+                }
+            ),
+            "{response:?}"
+        );
+        assert_eq!(*delivered.lock().unwrap(), 0, "the request was sent");
+        // The connection is still good for the next call.
+        assert!(matches!(
+            conn.request(Request::Ping).await.unwrap(),
+            ResponseData::Pong
+        ));
+    }
+
+    #[tokio::test]
+    async fn system_mailbox_counts_are_sent_to_a_daemon_that_supports_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("mxr.sock");
+        let _server = spawn_fake_daemon(&sock, Vec::new(), |message| match &message.payload {
+            IpcPayload::Request(Request::GetStatus) => Some(status_identity()),
+            IpcPayload::Request(Request::SystemMailboxCounts { .. }) => Some(Response::Ok {
+                data: ResponseData::SystemMailboxCounts {
+                    mailboxes: Vec::new(),
+                },
+            }),
+            _ => None,
+        })
+        .await;
+        let mut conn = IpcConnection::connect(&sock, ClientKind::Tui)
+            .await
+            .unwrap();
+        assert!(matches!(
+            conn.request(Request::SystemMailboxCounts { account_id: None })
+                .await
+                .unwrap(),
+            ResponseData::SystemMailboxCounts { .. }
         ));
     }
 

@@ -1465,16 +1465,24 @@ pub(super) async fn list_bodies(state: &AppState, message_ids: &[MessageId]) -> 
 }
 
 pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
+    // A legacy thread id can span accounts. Only enabled accounts' messages
+    // are read, so a disabled account's subject, snippet, participants and
+    // message ids never reach a reader (which would go on to fetch bodies).
+    let accounts = enabled_accounts_in_scope(state, None).await?;
     let thread = state
         .store
-        .get_thread(thread_id)
+        .hydrate_threads_in_accounts(std::slice::from_ref(thread_id), &accounts)
         .await?
+        .pop()
         .ok_or_else(|| "Thread not found".to_string())?;
     let messages = state
         .store
         .get_thread_envelopes(thread_id)
         .await
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|message| accounts.contains(&message.account_id))
+        .collect::<Vec<_>>();
     let summary = super::summarize::valid_cached_summary(&state.store, thread_id, &messages).await;
     Ok(ResponseData::Thread {
         thread,

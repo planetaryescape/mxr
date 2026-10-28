@@ -32,9 +32,11 @@ fn label_names_json(role: Role) -> Result<String, sqlx::Error> {
 }
 
 /// How a role selects messages (`?3`): by System label (0), every message
-/// of the accounts for All Mail (1), or the starred flag as well as the label
-/// for Starred (2). IMAP keeps `\Flagged` only as `MessageFlags::STARRED`
-/// with no label, so a label match alone would miss those accounts.
+/// of the accounts for All Mail (1), or the starred flag for Starred (2).
+/// IMAP keeps `\Flagged` only as `MessageFlags::STARRED` with no label, so a
+/// label match would miss those accounts. Gmail sync sets the same flag from
+/// the STARRED label, and a local star or unstar changes only the flag, so the
+/// flag is the one truth for every provider.
 fn role_mode(role: Role) -> i64 {
     match role {
         Role::AllMail => 1,
@@ -48,13 +50,13 @@ fn role_mode(role: Role) -> i64 {
 /// literal.
 macro_rules! role_filter {
     () => {
-        "(?3 = 1 OR (?3 = 2 AND (m.flags & 2) != 0) OR m.id IN (
+        "(?3 = 1 OR (?3 = 2 AND (m.flags & 2) != 0) OR (?3 = 0 AND m.id IN (
             SELECT ml.message_id FROM message_labels ml
             JOIN labels l ON l.id = ml.label_id
             WHERE l.kind = 'system'
               AND l.account_id IN (SELECT value FROM json_each(?1))
               AND lower(l.name) IN (SELECT value FROM json_each(?2))
-        ))"
+        )))"
     };
 }
 
@@ -84,7 +86,7 @@ impl super::Store {
     /// thread id can span accounts, and `get_threads_batch` aggregates over
     /// all of them, which would leak a disabled or out-of-scope account's
     /// subject, snippet and counts into the row.
-    async fn hydrate_threads_in_accounts(
+    pub async fn hydrate_threads_in_accounts(
         &self,
         thread_ids: &[ThreadId],
         account_ids: &[AccountId],
@@ -687,43 +689,63 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn starred_selects_the_flag_as_well_as_the_label() {
-        // Gmail-shaped account: STARRED label (and flag). IMAP-shaped account:
-        // \Flagged is only the flag, there is no STARRED label.
+    async fn starred_is_the_flag_for_gmail_and_imap_alike_and_unstar_removes_the_row() {
+        // Gmail-shaped account: the STARRED label and, from sync, the flag.
+        // IMAP-shaped account: \Flagged is only the flag, no STARRED label.
         let store = Store::in_memory().await.unwrap();
         let gmail = account(&store).await;
         let imap = account(&store).await;
         let gmail_starred = label(&store, &gmail.id, "STARRED", LabelKind::System).await;
-        let label_only = flagged(
+        let gmail_thread = flagged(
             &store,
             &gmail.id,
-            MessageFlags::empty(),
+            MessageFlags::STARRED,
             &[&gmail_starred],
-            "gmail starred by label",
+            "gmail starred",
         )
         .await;
-        let flag_only = flagged(&store, &imap.id, MessageFlags::STARRED, &[], "imap flagged").await;
+        let imap_thread =
+            flagged(&store, &imap.id, MessageFlags::STARRED, &[], "imap flagged").await;
         flagged(&store, &imap.id, MessageFlags::empty(), &[], "imap plain").await;
         let both = [gmail.id.clone(), imap.id.clone()];
-
-        let threads = store
-            .list_threads_by_role(&both, Role::Starred, 10, 0, SortOrder::DateDesc)
-            .await
-            .unwrap();
-        let mut got = threads.iter().map(|t| t.id.clone()).collect::<Vec<_>>();
-        got.sort_by_key(|id| id.as_str().clone());
-        let mut want = vec![label_only, flag_only];
+        let listed = || async {
+            let threads = store
+                .list_threads_by_role(&both, Role::Starred, 10, 0, SortOrder::DateDesc)
+                .await
+                .unwrap();
+            let mut ids = threads.iter().map(|t| t.id.clone()).collect::<Vec<_>>();
+            ids.sort_by_key(|id| id.as_str().clone());
+            ids
+        };
+        let mut want = vec![gmail_thread.clone(), imap_thread.clone()];
         want.sort_by_key(|id| id.as_str().clone());
-        assert_eq!(got, want);
-        let envs = store
-            .list_envelopes_by_role(&both, Role::Starred, 10, 0)
-            .await
-            .unwrap();
-        assert_eq!(envs.len(), 2);
-
+        assert_eq!(listed().await, want);
+        assert_eq!(
+            store
+                .list_envelopes_by_role(&both, Role::Starred, 10, 0)
+                .await
+                .unwrap()
+                .len(),
+            2
+        );
         let counts = store.system_mailbox_counts(&both).await.unwrap();
         let starred = counts.iter().find(|(r, _, _)| *r == Role::Starred).unwrap();
         assert_eq!((starred.1, starred.2), (2, 2), "unread, total");
+
+        // A local unstar clears only the flag. The Gmail message still has
+        // its STARRED label association until the next sync, and must leave
+        // the merged Starred list anyway.
+        for thread in [&gmail_thread, &imap_thread] {
+            let message = store.get_thread_envelopes(thread).await.unwrap().remove(0);
+            store
+                .set_starred(&message.id, false, EventSource::User)
+                .await
+                .unwrap();
+        }
+        assert!(listed().await.is_empty());
+        let counts = store.system_mailbox_counts(&both).await.unwrap();
+        let starred = counts.iter().find(|(r, _, _)| *r == Role::Starred).unwrap();
+        assert_eq!(starred.2, 0);
     }
 
     #[tokio::test]

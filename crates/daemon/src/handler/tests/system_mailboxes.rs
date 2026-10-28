@@ -349,7 +349,13 @@ async fn system_mailbox_counts_add_up_enabled_accounts_only() {
 async fn starred_lists_imap_flags_and_gmail_labels_together_through_the_daemon() {
     let a = accounts().await;
     let starred_label = label(&a.fx, &a.first, "STARRED", LabelKind::System).await;
-    mail(&a.fx, &a.first, &starred_label, 2, "gmail-starred").await;
+    let gmail_message = mail(&a.fx, &a.first, &starred_label, 2, "gmail-starred").await;
+    // Gmail sync sets the starred flag from the STARRED label.
+    a.fx.state
+        .store
+        .set_starred(&gmail_message, true, EventSource::Sync)
+        .await
+        .unwrap();
     // IMAP-shaped second account: the flag only, no STARRED label.
     let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
         .account_id(a.second.clone())
@@ -419,4 +425,74 @@ async fn a_disabled_accounts_message_in_a_shared_thread_never_reaches_a_merged_r
     assert_eq!(thread.account_id, a.second);
     assert_eq!(thread.message_count, 1);
     assert_eq!(thread.message_ids, vec![visible.id.clone()]);
+}
+
+#[tokio::test]
+async fn opening_a_shared_thread_reads_only_enabled_accounts_messages() {
+    let a = accounts().await;
+    let shared = ThreadId::new();
+    let store = &a.fx.state.store;
+    let mut ids = Vec::new();
+    for (account, tag, minutes) in [(&a.second, "visible", 30), (&a.disabled, "hidden", 1)] {
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account.clone())
+            .thread_id(shared.clone())
+            .provider_id(format!("reader-{tag}"))
+            .subject(format!("Aaa {tag}"))
+            .snippet(format!("{tag} snippet"))
+            .date(Utc::now() - Duration::minutes(minutes))
+            .build();
+        store
+            .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        ids.push(envelope.id);
+    }
+    let ResponseData::Thread {
+        thread, messages, ..
+    } = request(
+        &a.fx,
+        Request::GetThread {
+            thread_id: shared.clone(),
+        },
+    )
+    .await
+    else {
+        panic!("expected a thread")
+    };
+    // Subject, snippet and counts come from the enabled account alone, and
+    // the message list the reader fetches bodies for has no hidden message.
+    assert_eq!(thread.subject, "Aaa visible");
+    assert_eq!(thread.snippet, "visible snippet");
+    assert_eq!(thread.account_id, a.second);
+    assert_eq!(thread.message_count, 1);
+    assert_eq!(thread.message_ids, vec![ids[0].clone()]);
+    assert_eq!(
+        messages.iter().map(|m| m.id.clone()).collect::<Vec<_>>(),
+        vec![ids[0].clone()]
+    );
+
+    // A thread only a disabled account holds is not found at all.
+    let only_hidden = ThreadId::new();
+    let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+        .account_id(a.disabled.clone())
+        .thread_id(only_hidden.clone())
+        .provider_id("reader-only-hidden")
+        .build();
+    store
+        .upsert_envelope_with_direction(&envelope, MessageDirection::Inbound)
+        .await
+        .unwrap();
+    let msg = IpcMessage {
+        expected_workspace: None,
+        id: 9,
+        source: ::mxr_protocol::ClientKind::default(),
+        payload: IpcPayload::Request(Request::GetThread {
+            thread_id: only_hidden,
+        }),
+    };
+    assert!(matches!(
+        handle_request(&a.fx.state, &msg).await.payload,
+        IpcPayload::Response(Response::Error { .. })
+    ));
 }

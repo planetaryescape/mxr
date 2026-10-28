@@ -52,13 +52,17 @@ impl Membership<'_> {
             Membership::Label(Some(label)) => envelope_has_label(envelope, label),
             Membership::Label(None) | Membership::Everything => true,
             Membership::Role { role, labels } => {
-                // IMAP keeps a star only as a flag, with no label.
-                (*role == Role::Starred && envelope.flags.contains(MessageFlags::STARRED))
-                    || labels.iter().any(|label| {
-                        label.account_id == envelope.account_id
-                            && label.system_mailbox_role() == Some(*role)
-                            && envelope_has_label(envelope, label)
-                    })
+                // A star is the flag on every provider (Gmail sync sets it
+                // from the label; IMAP has no label), and a local unstar
+                // clears only the flag.
+                if *role == Role::Starred {
+                    return envelope.flags.contains(MessageFlags::STARRED);
+                }
+                labels.iter().any(|label| {
+                    label.account_id == envelope.account_id
+                        && label.system_mailbox_role() == Some(*role)
+                        && envelope_has_label(envelope, label)
+                })
             }
         }
     }

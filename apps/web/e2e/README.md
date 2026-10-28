@@ -14,6 +14,7 @@ This directory contains Playwright end-to-end tests for the mxr web application.
    - CSS animation keyframe counts / polling `document.getAnimations()` (test in Vitest or lint rules).
    - Milestone or sprint relics (`w6-*.spec.ts`, `milestone-*.spec.ts`, `spike-*.spec.ts`).
 4. **PR vs Main Tiering**:
-   - `npm run e2e:engine` and `npm run e2e:webkit:engine`: Focused suite running ~15 core journey specs on pull requests.
-   - `npm run e2e` and `npm run e2e:webkit`: Full regression matrix including multi-theme visual gates, running on `main` post-merge.
+   - `npm run e2e:engine`: Focused suite running ~15 core journey specs on pull requests.
+   - `npm run e2e`: Full regression matrix including multi-theme visual gates, running on `main` post-merge.
+   - `npm run e2e:webkit:engine` and `npm run e2e:webkit`: the same two on WebKit. CI runs Chromium only, so these are manual runs.
 5. **Running beside another suite**: each run starts its own daemon on `MXR_E2E_BRIDGE_PORT` (default 17777, control port one above) and Vite on `MXR_E2E_APP_PORT` (default 5173), with its state in `MXR_E2E_RUNTIME_DIR`. Give a second checkout its own ports and directory. `scripts/e2e-server.mjs` refuses to start when the bridge or control port is taken, because a daemon that can't bind its bridge keeps running without it and the suite would otherwise run against the other daemon.

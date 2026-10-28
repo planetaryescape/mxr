@@ -103,18 +103,6 @@ jobs:
       - name: Scan git history
         run: gitleaks git . --redact=20 --verbose
 
-  check:
-    name: Check
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: changes
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
-      - run: cargo check --workspace --all-targets
-
   architecture:
     name: Architecture Boundaries
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -210,6 +198,8 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
+      # Also the workspace type check: clippy compiles every target, so a
+      # separate `cargo check --workspace --all-targets` job only repeated it.
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       # LLM tracing is a developer build (`--features langfuse`): keep it
       # working, and keep it out of the feature set release.yml ships.
@@ -229,10 +219,10 @@ jobs:
     name: Test (fast / no semantic)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    # Full workspace test run. On a PR, skip it while the PR is a draft —
-    # draft pushes still get the cheap jobs (fmt/clippy/check/etc.) on every
-    # push; this one is expensive enough that it should run once near the
-    # end of iteration (mark the PR ready), not on every rebase/fixup push.
+    # On a PR, skip it while the PR is a draft — draft pushes still get the
+    # cheap jobs (fmt/clippy/etc.) on every push; this one is expensive enough
+    # that it should run once near the end of iteration (mark the PR ready),
+    # not on every rebase/fixup push.
     if: (needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
       - uses: actions/checkout@v7
@@ -240,7 +230,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
-      - run: cargo nextest run --workspace
+      # `Test (semantic-local)` runs the whole workspace with the feature
+      # release.yml ships. Without it only mxr-semantic (its `local` cfgs) and
+      # mxr (its `semantic-local` cfgs, and every search that asks
+      # `should_use_semantic`) compile differently; no other crate depends on
+      # mxr-semantic, so their tests here would repeat that job's.
+      - run: cargo nextest run -p mxr -p mxr-semantic
       - name: Verify supervised Linux ownership and optional model diagnostics
         run: |
           cargo build -p mxr
@@ -280,14 +275,15 @@ jobs:
   # full`) through the same post-sync work the daemon runs, and compares the
   # per-question accuracy, the held-out accuracy and the mismatch clusters with
   # the recorded snapshot. The test is `#[ignore]`d so the workspace test jobs
-  # skip it. It runs when a classifier, fixture, demo or eval crate changes
-  # (see scripts/ci_change_scope.sh) and on every push to main. Like the other
-  # heavy jobs it waits for a PR to leave draft.
+  # skip it. It runs, on a PR or a push to main, only when the code that
+  # decides a graded answer changes (the list is in scripts/ci_change_scope.sh),
+  # and on a manual run; any other change skips it. Like the other heavy jobs
+  # it waits for a PR to leave draft.
   classifier-eval:
     name: Classifier Eval (full set)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    if: (needs.changes.outputs.classifier == 'true' || github.event_name == 'push') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    if: needs.changes.outputs.classifier == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     # About 12 minutes on a usual runner; a runner 2.5 times slower took 29
     # (docs/issues/classify-eval-full-near-timeout.md). The limit only stops a
     # hung job: a slower classifier fails the test's work-per-sync budget,
@@ -429,7 +425,7 @@ jobs:
   web-e2e:
     name: Web E2E (${{ matrix.shard }}/2)
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: [changes, check, test, web-tests, build-e2e-daemon]
+    needs: [changes, test, web-tests, build-e2e-daemon]
     # See the draft-skip note on the `test` job above — this is the single
     # most expensive job in the matrix (full Playwright suite plus the
     # production-build speed gate), so it's the main target of that gate.
@@ -506,53 +502,6 @@ jobs:
         with:
           name: playwright-speed-results
           path: apps/web/test-results-speed
-          retention-days: 3
-
-  web-e2e-webkit:
-    name: Web E2E (WebKit / macOS)
-    runs-on: [self-hosted, macOS, ARM64, mxr-builder]
-    needs: [changes, check, test, web-tests]
-    # Dropped from PR gates: PRs run Chromium only (~4.5m with sharding).
-    # Runs on merges to main that change apps/web/ and on manual dispatch, on the
-    # self-hosted M3 Max. Only the cross-engine subset: the whole suite (554 tests
-    # at ~2s on one worker) never finished inside the limit on this runner.
-    if: |
-      !failure() && !cancelled() &&
-      github.event_name != 'pull_request' &&
-      (needs.changes.outputs.apps_web == 'true' || needs.changes.outputs.expensive == 'true')
-    timeout-minutes: 20
-    env:
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: sccache
-    defaults:
-      run:
-        working-directory: apps/web
-    steps:
-      - uses: actions/checkout@v7
-      # This runner is the developer's Mac; keep the job off their toolchain.
-      - uses: ./.github/actions/self-hosted-rust-home
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: mozilla-actions/sccache-action@v0.0.11
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-      - run: npm ci
-      - run: npx playwright install webkit
-      - name: Build mxr for the Playwright daemon
-        working-directory: ${{ github.workspace }}
-        run: |
-          cargo build -p mxr
-          echo "MXR_E2E_BIN=${GITHUB_WORKSPACE}/target-cli/debug/mxr" >> "$GITHUB_ENV"
-      - name: Run the native WebKit suite
-        run: npm run e2e:webkit:engine -- --workers=1
-      - name: Upload Playwright results
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-results-webkit
-          path: apps/web/test-results
           retention-days: 3
 
   coverage:

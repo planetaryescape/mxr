@@ -2,6 +2,8 @@
 
 Status: open. Found 2026-10-28 on fix/ci-health while working out why the WebKit job failed `compose-send.spec.ts` "an inline reply keeps its text and audience when closed and resumed" on main (run 40672677511, both attempts).
 
+WebKit no longer runs in CI (2026-10-28: CI runs Chromium only), so nothing catches this gap or a regression of it except a manual `npm run e2e:webkit` run.
+
 ## What happens
 
 Open a conversation whose message renders as HTML, click in the middle of the message, then press `r`. Chromium opens the inline reply. WebKit does nothing.

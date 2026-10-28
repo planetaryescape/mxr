@@ -173,10 +173,10 @@ export function PersonPane(props: PersonPaneProps) {
               <OtherAccountLine accountId={conversation.account_id} />
               <ConversationView
                 key={props.topic ?? conversation.thread_id}
-              conversation={conversation}
-              asSent={props.asSent}
-              onToggleAsSent={props.onToggleAsSent}
-              disclosuresEnabled={!props.loading}
+                conversation={conversation}
+                asSent={props.asSent}
+                onToggleAsSent={props.onToggleAsSent}
+                disclosuresEnabled={!props.loading}
               />
             </>
           ) : (

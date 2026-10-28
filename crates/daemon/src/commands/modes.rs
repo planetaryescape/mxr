@@ -55,12 +55,28 @@ pub async fn run(action: ModesAction, format: Option<OutputFormat>) -> anyhow::R
             return done(&mut client, request, format).await;
         }
     };
-    let guides = expect_response(client.request(request).await?, |response| match response {
+    let answer = expect_response(client.request(request).await?, |response| match response {
         Response::Ok {
             data: ResponseData::ModeGuides { guides },
-        } => Some(guides),
+        } => Some(HintAnswer::Guides(guides)),
+        Response::Ok {
+            data: ResponseData::HintSeen { hint, newly_seen },
+        } => Some(HintAnswer::NextTime { hint, newly_seen }),
         _ => None,
     })?;
+    let guides = match answer {
+        HintAnswer::Guides(guides) => guides,
+        HintAnswer::NextTime { hint, newly_seen } => {
+            let seen = serde_json::json!({ "hint": hint, "newly_seen": newly_seen });
+            match format {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&seen)?),
+                OutputFormat::Jsonl => println!("{seen}"),
+                _ if newly_seen => println!("{hint}: marked seen"),
+                _ => println!("{hint}: no change"),
+            }
+            return Ok(());
+        }
+    };
     match format {
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&guides)?),
         OutputFormat::Jsonl => println!("{}", jsonl(&guides)?),
@@ -70,6 +86,13 @@ pub async fn run(action: ModesAction, format: Option<OutputFormat>) -> anyhow::R
         ),
     }
     Ok(())
+}
+
+/// What `mxr modes explain` and `mxr modes hint` print: mode guides, or a
+/// "Next time" hint's seen state.
+enum HintAnswer {
+    Guides(Vec<ModeGuideData>),
+    NextTime { hint: String, newly_seen: bool },
 }
 
 async fn rail(

@@ -1053,9 +1053,20 @@ mod tests {
         assert!(titles
             .iter()
             .any(|title| title.starts_with("Commands: Accounts")));
-        assert!(!titles
-            .iter()
-            .any(|title| title.starts_with("Commands: Mail")));
+        // Mail verbs stay with the mail; Sync now (in the Mail group) is
+        // fine here.
+        let rows: Vec<String> = help_sections(&state)
+            .into_iter()
+            .filter(|section| section.title.starts_with("Commands: Mail"))
+            .flat_map(|section| section.entries)
+            .map(|(_, label)| label)
+            .collect();
+        assert!(
+            !rows
+                .iter()
+                .any(|label| ["Archive", "Reply"].contains(&label.as_str())),
+            "{rows:?}"
+        );
     }
 
     #[test]

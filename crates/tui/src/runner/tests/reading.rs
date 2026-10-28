@@ -451,7 +451,7 @@ fn highlights_app() -> App {
     );
     press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
     app.pending_mutation_queue.clear();
-    key(&mut app, 'H');
+    key(&mut app, '3');
     assert!(app.mailbox.reading_page.highlights.is_some());
     app
 }
@@ -516,9 +516,9 @@ fn a_highlight_made_in_marginalia_is_not_edited_or_removed_here() {
 }
 
 #[test]
-fn shift_h_with_no_highlights_says_how_to_make_one() {
+fn the_highlights_tab_with_none_says_how_to_make_one() {
     let mut app = reading_app();
-    key(&mut app, 'H');
+    key(&mut app, '3');
     assert!(app.mailbox.reading_page.highlights.is_none());
 }
 
@@ -534,16 +534,47 @@ fn shift_o_sends_the_item_under_the_cursor_to_marginalia() {
 }
 
 #[test]
-fn shift_b_opens_the_later_shelf_and_esc_comes_back() {
+fn the_digits_pick_reading_tabs_and_esc_comes_back_from_later() {
     let mut app = reading_app();
-    key(&mut app, 'B');
+    key(&mut app, '2');
     assert!(app.mailbox.reading_page.later_shelf);
     assert_eq!(
         app.mailbox.reading_page.row_count(),
         0,
         "the fixture shelf is empty"
     );
+    key(&mut app, '2');
+    assert!(
+        app.mailbox.reading_page.later_shelf,
+        "a tab key picks its tab; it does not toggle"
+    );
+    key(&mut app, '1');
+    assert!(!app.mailbox.reading_page.later_shelf);
+    key(&mut app, '2');
     press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
+    assert!(!app.mailbox.reading_page.later_shelf);
+}
+
+/// `B` is Brief me's key now; in Reading it says where Later went and
+/// changes nothing.
+#[test]
+fn shift_b_says_later_moved_to_a_digit() {
+    let mut app = reading_app();
+    key(&mut app, 'B');
+    assert!(!app.mailbox.reading_page.later_shelf);
+    assert_eq!(app.status_message.as_deref(), Some("Later is now 2"));
+}
+
+/// The reader's `1` leaves the reader for the edition, as Esc does.
+#[test]
+fn one_in_the_reader_goes_back_to_the_edition() {
+    let mut app = reading_app();
+    press(&mut app, KeyCode::Enter, KeyModifiers::NONE);
+    app.mailbox.reading_page.reader_focused = true;
+    key(&mut app, '2');
+    assert!(!app.mailbox.reading_page.reader_focused);
+    assert!(app.mailbox.reading_page.later_shelf);
+    key(&mut app, '1');
     assert!(!app.mailbox.reading_page.later_shelf);
 }
 

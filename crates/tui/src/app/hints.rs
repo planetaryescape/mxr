@@ -38,6 +38,9 @@ pub struct HintState {
     key_on: Option<MailboxView>,
     /// Where the cursor was when the last hint left.
     quiet_at: Option<HintSpot>,
+    /// Actions whose "Next time" this session already asked the daemon
+    /// about, so a repeat run from the palette asks nothing.
+    next_time_asked: HashSet<&'static str>,
 }
 
 /// The hints that can attach where the cursor is, in the order they win,
@@ -291,6 +294,27 @@ impl App {
             String::new(),
         );
         self.hints.pending.insert(mutation, id);
+    }
+
+    /// An action with a key here ran from the palette: name its key, once
+    /// per action and profile (D171). The daemon says whether this run is
+    /// the first; only then does the toast show.
+    pub(crate) fn offer_next_time(&mut self, command: &crate::ui::command_palette::PaletteCommand) {
+        let (Some(id), Some(key)) = (command.id, command.first_key()) else {
+            return;
+        };
+        if !self.hints.next_time_asked.insert(id) {
+            return;
+        }
+        let label = command.label.trim_end_matches('\u{2026}');
+        self.queue_best_effort_mutation(
+            Request::SetHintSeen {
+                hint: mxr_protocol::next_time_hint(id),
+                seen: true,
+            },
+            MutationEffect::NextTime(format!("{label}. Next time: {key}")),
+            String::new(),
+        );
     }
 
     /// The daemon didn't store a dismissal: the hint shows again at its

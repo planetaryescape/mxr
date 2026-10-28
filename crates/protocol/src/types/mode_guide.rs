@@ -503,6 +503,16 @@ pub fn mode_guide(mode: &str) -> Option<&'static ModeGuideCopy> {
     MODE_GUIDES.iter().find(|guide| guide.mode == wanted)
 }
 
+/// The prefix of a "Next time" hint's id. When an action that has a key
+/// runs from the palette or a click, the client names the key once per
+/// action and profile (D171), keeping the seen state with the mode hints'.
+pub const NEXT_TIME_HINT_PREFIX: &str = "next-time.";
+
+/// The hint id for `action_id`'s "Next time" line (`next-time.mail.archive`).
+pub fn next_time_hint(action_id: &str) -> String {
+    format!("{NEXT_TIME_HINT_PREFIX}{action_id}")
+}
+
 /// A hint by id, wherever it attaches. Shared hints, like done here,
 /// appear in more than one mode's table with one id and one seen state.
 pub fn hint(id: &str) -> Option<&'static HintCopy> {

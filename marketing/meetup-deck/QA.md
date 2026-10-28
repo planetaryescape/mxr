@@ -51,7 +51,7 @@ Both themes are designed independently rather than inverted. The theme toggle st
 - **PDFs omit video playback.** The embedded demo appears as its poster frame in the PDF handouts. The recording remains available in the HTML deck.
 - **Fullscreen and projector legibility.** Headless testing only confirms the fullscreen call does not throw. Real fullscreen, projector, and video-call legibility should be checked live before the talk.
 - **Contrast over non-solid backgrounds.** The automated checker skips text over gradients/images (the title hero wash and the striped "context left free" block). Those were reviewed visually and read clearly in both themes, but they are not machine-measured.
-- **Palette provenance.** The Impeccable palette generator was not run; the palette was composed by hand in OKLCH. Superseded by Revision 3, which replaced the palette entirely.
+- **Palette provenance.** The palette was composed by hand in OKLCH. Superseded by Revision 3, which replaced the palette entirely.
 
 ---
 

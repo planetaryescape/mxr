@@ -18,6 +18,13 @@ import { useCatchupQuery, useExpiredQuery, type Todo, type TodoRunway } from "./
 import { openCount, rowParty } from "./todoRows";
 import { decideCatchup, restoreTodos, useTodoHidden } from "./todoVerbs";
 
+/** To do's tabs, `1` `2` `3`, from the catch-up and the Expired list. */
+const todoTabs = {
+  runway: () => getRuntimeNavigate().navigate("/todo"),
+  catchup: () => getRuntimeNavigate().navigate("/todo?view=catchup"),
+  expired: () => getRuntimeNavigate().navigate("/todo?view=expired"),
+};
+
 function useCursor(rows: readonly Todo[]) {
   const [cursorId, setCursorId] = useState<string | null>(null);
   const index = Math.max(
@@ -121,6 +128,7 @@ export function TodoCatchupView({ runway }: { runway: TodoRunway | undefined }) 
     letGo: () => current && void decideCatchup(account, [current], "let_go"),
     letGoAll: () => rows.length > 0 && openMailDialog({ kind: "todo-let-go-all", account }),
     back: () => getRuntimeNavigate().navigate("/todo"),
+    ...todoTabs,
   });
 
   const open = runway ? openCount(runway) : 0;
@@ -235,6 +243,7 @@ export function TodoExpiredView() {
     ...listMotions(move),
     restore: () => current && void restoreTodos([current]),
     back: () => getRuntimeNavigate().navigate("/todo"),
+    ...todoTabs,
   });
 
   return (

@@ -112,6 +112,7 @@ impl App {
                 MutationEffect::RefreshList
                 | MutationEffect::RefreshUpdates(_)
                 | MutationEffect::StatusOnly(_)
+                | MutationEffect::NextTime(_)
                 | MutationEffect::RefreshPlaces(_)
                 | MutationEffect::SenderMoved(_)
                 | MutationEffect::Todo(_)

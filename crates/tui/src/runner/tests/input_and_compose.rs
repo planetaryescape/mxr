@@ -1442,7 +1442,7 @@ fn command_palette_shortcut_filter_finds_accounts() {
         .iter()
         .map(|&i| p.commands[i].label.as_str())
         .collect();
-    assert!(labels.contains(&"Open Accounts Tab"));
+    assert!(labels.contains(&"Settings"));
 }
 
 #[test]

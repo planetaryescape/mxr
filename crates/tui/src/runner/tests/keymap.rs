@@ -1482,3 +1482,72 @@ fn tool_screen_keys_that_moved_say_so() {
         assert_eq!(app.status_message.as_deref(), Some(notice));
     }
 }
+
+/// D171: an action with a key run from the palette names its key, once per
+/// action and profile. The daemon keeps the seen state with the mode hints;
+/// a second run in this session asks it nothing.
+#[test]
+fn the_palette_names_a_keyed_actions_key_next_time() {
+    let mut app = app_in("todo");
+    app.command_palette.palette.visible = true;
+    app.apply(Action::OpenCommandPalette);
+    app.command_palette
+        .palette
+        .toggle_with_archive_operations(app.current_ui_context(), &[]);
+    for c in "catch-up".chars() {
+        app.command_palette.palette.on_char(c);
+    }
+    let pressed = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(pressed, Some(Action::TodoOpenCatchup));
+    let asked: Vec<_> = app
+        .pending_mutation_queue
+        .iter()
+        .filter_map(|queued| match (&queued.request, &queued.effect) {
+            (Request::SetHintSeen { hint, seen: true }, MutationEffect::NextTime(text)) => {
+                Some((hint.clone(), text.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        asked,
+        vec![(
+            "next-time.todo.catchup".to_string(),
+            "Catch-up. Next time: 2".to_string()
+        )]
+    );
+
+    let catchup = app
+        .command_palette
+        .palette
+        .commands
+        .iter()
+        .find(|command| command.id == Some("todo.catchup"))
+        .cloned()
+        .unwrap();
+    let before = app.pending_mutation_queue.len();
+    app.offer_next_time(&catchup);
+    assert_eq!(app.pending_mutation_queue.len(), before, "asked once");
+
+    // A palette-only action has no key to teach.
+    let config = app
+        .command_palette
+        .palette
+        .commands
+        .iter()
+        .find(|command| command.id == Some("tui.edit-config"))
+        .cloned()
+        .unwrap();
+    app.offer_next_time(&config);
+    assert_eq!(app.pending_mutation_queue.len(), before);
+
+    app.apply_mutation_completion(
+        MutationEffect::NextTime("Catch-up. Next time: 2".into()),
+        false,
+    );
+    assert!(app
+        .toasts
+        .visible(std::time::Instant::now())
+        .iter()
+        .any(|toast| toast.text == "Catch-up. Next time: 2"));
+}

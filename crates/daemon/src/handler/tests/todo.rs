@@ -1843,6 +1843,46 @@ async fn a_shared_hint_is_one_hint_in_every_mode_it_attaches_in() {
     assert_eq!(hint_seen(&guides, "now", "now.from_mode"), Some(false));
 }
 
+/// D171: "Next time" shows once per action and profile, so only the first
+/// request that marks it is told it was new; an unknown action is refused.
+#[tokio::test]
+async fn a_next_time_hint_is_new_once_per_action() {
+    let fx = Fixture::new().await;
+    let set = |hint: &str, seen| Request::SetHintSeen {
+        hint: hint.to_string(),
+        seen,
+    };
+    let archive = mxr_protocol::next_time_hint("mail.archive");
+    for (seen, expected) in [(true, true), (true, false), (false, false), (true, true)] {
+        let ResponseData::HintSeen { hint, newly_seen } = request(&fx, set(&archive, seen)).await
+        else {
+            panic!("a Next time hint answers with its seen state")
+        };
+        assert_eq!(hint, archive);
+        assert_eq!(newly_seen, expected, "seen: {seen}");
+    }
+    let ResponseData::HintSeen { newly_seen, .. } =
+        request(&fx, set(&mxr_protocol::next_time_hint("mail.trash"), true)).await
+    else {
+        panic!()
+    };
+    assert!(newly_seen, "each action has its own");
+    let refused = handle_request(
+        &fx.state,
+        &IpcMessage {
+            expected_workspace: None,
+            id: 1,
+            source: ::mxr_protocol::ClientKind::default(),
+            payload: IpcPayload::Request(set("next-time.mail.nope", true)),
+        },
+    )
+    .await;
+    let IpcPayload::Response(Response::Error { message, .. }) = refused.payload else {
+        panic!("an unknown action is refused")
+    };
+    assert!(message.contains("No action \"mail.nope\""), "{message}");
+}
+
 #[tokio::test]
 async fn an_unknown_hint_is_refused_with_the_known_ids() {
     let fx = Fixture::new().await;

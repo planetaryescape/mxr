@@ -93,6 +93,12 @@ impl KeybindingConfig {
         context: ViewContext,
         action: &Action,
     ) -> Option<String> {
+        self.key_displays(context, action).into_iter().next()
+    }
+
+    /// Every key bound to `action` in `context`, the person's own first,
+    /// then shortest.
+    pub(crate) fn key_displays(&self, context: ViewContext, action: &Action) -> Vec<String> {
         let mut matches: Vec<_> = self
             .bindings(context)
             .iter()
@@ -110,7 +116,7 @@ impl KeybindingConfig {
                 .then_with(|| a.len().cmp(&b.len()))
                 .then_with(|| a.cmp(b))
         });
-        matches.into_iter().next().map(|(_, key)| key)
+        matches.into_iter().map(|(_, key)| key).collect()
     }
 
     pub(crate) fn has_action_override(&self, context: ViewContext, action: &Action) -> bool {
@@ -451,17 +457,9 @@ pub fn format_keybinding(kb: &KeyBinding) -> String {
         .join("")
 }
 
-/// Shortest formatted mail-list key chord for [`Action`], sourced from the
-/// default bindings registry (`default_keybindings` mail list map). Used so
-/// the command palette shortcuts stay aligned with canonical keybindings.
-pub(crate) fn primary_mail_list_key_display(action: &Action) -> Option<String> {
-    primary_key_display(ViewContext::MailList, action)
-}
-
-/// Shortest formatted key chord bound to [`Action`] in `context`, sourced
-/// from the bindings registry. Context-aware sibling of
-/// [`primary_mail_list_key_display`] so the command palette can show the
-/// key that actually fires in the focused view.
+/// Shortest formatted key chord bound to [`Action`] in `context`, from the
+/// default bindings.
+#[cfg(test)]
 pub(crate) fn primary_key_display(context: ViewContext, action: &Action) -> Option<String> {
     shown_keybindings().primary_key_display(context, action)
 }

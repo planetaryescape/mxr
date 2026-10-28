@@ -10,7 +10,7 @@ async function exportFromPalette(page: Page) {
   await page.keyboard.press(":");
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByRole("combobox").fill("Export");
-  await palette.getByRole("option", { name: /^Export…/ }).click();
+  await palette.getByRole("option", { name: /^Export the records in view…/ }).click();
 }
 
 test.use({ viewport: { width: 1440, height: 900 } });

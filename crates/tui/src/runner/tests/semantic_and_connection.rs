@@ -780,7 +780,7 @@ fn analytics_palette_entries_present_in_default_commands() {
         "Analytics: Contacts",
         "Analytics: Response Time",
         "Analytics: Subscriptions",
-        "Analytics: Wrapped",
+        "Open Wrapped",
     ] {
         assert!(
             labels.contains(&needle),

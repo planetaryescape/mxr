@@ -913,10 +913,10 @@ fn semantic_palette_entries_present_in_default_commands() {
     let commands = crate::ui::command_palette::default_commands();
     let labels: Vec<&str> = commands.iter().map(|c| c.label.as_str()).collect();
     for needle in [
-        "Semantic: Enable",
-        "Semantic: Disable",
-        "Semantic: Reindex",
-        "Semantic: Backfill Missing",
+        "Enable semantic search",
+        "Disable semantic search",
+        "Reindex semantic now",
+        "Backfill semantic now",
         "Semantic: Install Profile (BGE Small EN)",
         "Semantic: Install Profile (Multilingual E5)",
         "Semantic: Install Profile (BGE-M3)",
@@ -933,11 +933,11 @@ fn platform_palette_entries_present_in_default_commands() {
     let commands = crate::ui::command_palette::default_commands();
     let labels: Vec<&str> = commands.iter().map(|c| c.label.as_str()).collect();
     for needle in [
-        "Draft: Assist Current Thread",
-        "Draft: New For Sender",
-        "Voice: Show Profile",
-        "Voice: Rebuild Profile",
-        "Commitments: Show Open",
+        "Draft a reply",
+        "Draft: new for sender",
+        "Voice: show profile",
+        "Voice: rebuild profile",
+        "Commitments: show open",
     ] {
         assert!(
             labels.contains(&needle),

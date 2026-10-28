@@ -180,6 +180,7 @@ impl App {
             | Action::ReadingHighlights
             | Action::ReadingOpenEmail
             | Action::ReadingBack
+            | Action::ReadingEdition
             | Action::ReadingLaterShelf
             | Action::ReadingMarginalia => self.apply_reading_action(action),
             Action::OpenMoveMenu

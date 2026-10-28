@@ -133,7 +133,7 @@ pub struct ReadingPageState {
     pub confirm: Option<ReadingConfirm>,
     /// `H`: the reader's highlights, to edit a note or remove one.
     pub highlights: Option<HighlightsPanel>,
-    /// `B`: the Later shelf instead of the edition.
+    /// The Later tab (`2`) instead of the edition.
     pub later_shelf: bool,
     /// The keyboard is in the reader pane (Enter), not the list.
     pub reader_focused: bool,

@@ -15,6 +15,19 @@ import { getActiveQueryClient } from "@/lib/queryClient";
 type Schemas = components["schemas"];
 export type Hint = Schemas["HintData"];
 type ModeGuides = Extract<Schemas["ResponseData"], { kind: "ModeGuides" }>;
+type HintSeen = Extract<Schemas["ResponseData"], { kind: "HintSeen" }>;
+
+/**
+ * Mark an action's "Next time" hint seen (D171). True only for the request
+ * that marked it, so one client names the key once per profile.
+ */
+export async function postNextTimeSeen(actionId: string): Promise<boolean> {
+  const answer = await apiFetch<HintSeen>(
+    `/api/v1/mail/hints/${encodeURIComponent(`next-time.${actionId}`)}`,
+    { method: "POST", body: { seen: true } },
+  );
+  return answer.newly_seen;
+}
 
 function cachedGuides(qc: QueryClient): [readonly unknown[], ModeGuide][] {
   return qc

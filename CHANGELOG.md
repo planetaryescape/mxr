@@ -2421,7 +2421,7 @@
 * drop ghost flags, lead with mxr accounts add for IMAP/SMTP ([58ea627](https://github.com/planetaryescape/mxr/commit/58ea627e007bc3f8465e08dcb89359aed9d49213))
 * expand Gmail setup guide with full walkthrough ([b2e7c44](https://github.com/planetaryescape/mxr/commit/b2e7c4499b18840cf4564b3b282980a81817b4bf))
 * fix install instructions to match shipped reality ([1d4fbc9](https://github.com/planetaryescape/mxr/commit/1d4fbc9e8973559f115cd7b013f8685d9022213b))
-* flagship polish on landing page (impeccable pass) ([5b5eda1](https://github.com/planetaryescape/mxr/commit/5b5eda1db95739cefa55aca9c64b4b01c4d9fe12))
+* flagship polish on landing page ([5b5eda1](https://github.com/planetaryescape/mxr/commit/5b5eda1db95739cefa55aca9c64b4b01c4d9fe12))
 * install path, quick-start, troubleshooting, release-please drift ([b5e982d](https://github.com/planetaryescape/mxr/commit/b5e982d305970a0c6931a31a0e304bba1f56abf3))
 * Mail Sync Protocol (MSP) spike — spec, alignment audit, blog draft ([ccdef99](https://github.com/planetaryescape/mxr/commit/ccdef992c9b9dd7721e724f3139159c4c2c15e7f))
 * mark list-unsubscribe extraction complete ([c1c2bea](https://github.com/planetaryescape/mxr/commit/c1c2bea168428607f2cd13a129c4bf037c82ad03))

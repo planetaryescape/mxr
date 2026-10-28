@@ -87,13 +87,15 @@ nothing plays.
 ## Learn keys from hints
 
 Every action with a key shows it in tooltips, menus, the command palette and
-the keyboard help. If you click the same toolbar or row button three times, a
-quiet hint names its key once, for example **Tip: press e for Archive.**
+the keyboard help. The first time you run one from the palette or with a
+toolbar or row button, a quiet hint names its key, for example **Archive. Next
+time: e**. The TUI does the same from its palette.
 
-- Each action's hint shows once.
-- No hint shows while you type, or within ten seconds of pressing a key.
-- At most one hint every five minutes.
-- The counts live in this browser.
+- Each action's hint shows once on your profile, in whichever client you
+  use first; mxr keeps that with the mode hints, so the other client doesn't
+  repeat it.
+- A key press never shows one.
+- At most one hint every five minutes; one skipped for that shows next time.
 
 The full list is in the [keybindings reference](/reference/keybindings/#web-app).
 

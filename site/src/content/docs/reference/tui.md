@@ -41,7 +41,7 @@ field still enters text.
 Three places to find a key without memorising:
 
 - **`?`** opens the help modal, which shows every key bound in the current view.
-- **`:`** (or `Ctrl-k`) opens the command palette, which fuzzy-matches every action by name.
+- **`:`** (or `Ctrl-k`) opens the command palette, which fuzzy-matches every action that works where you are, by name, with all of its keys there (your `keys.toml` remaps included). The first time you run an action that has a key from the palette, a toast names the key: **Catch-up. Next time: 2**. That shows once per action on your profile, shared with the web app.
 - **The hint bar at the bottom** of every screen surfaces the most relevant shortcuts for the current selection.
 
 The keybindings reference page lists every default; the help modal is faster while you're using the TUI.
@@ -94,7 +94,7 @@ email. The keys are in the [keybindings reference](/reference/keybindings/#updat
 ## Reading and Paper trail
 
 Reading (`gr`) is the [edition](/guides/reading/): the bands, a reader, the
-Later shelf (`B`) and highlights (`"` and `H` in the reader). Its keys are in
+tabs `1` Edition, `2` Later and `3` Highlights, and `"` to highlight in the reader. Its keys are in
 the [keybindings reference](/reference/keybindings/#reading).
 
 Paper trail is a lens
@@ -145,7 +145,7 @@ not ask the model about every row. The CLI equivalent is
 
 ## Thread summaries
 
-Run `:` → **Summarize Thread** from the mailbox, message, or thread view. Its
+Run `:` → **Summarize thread** from the mailbox, message, or thread view. Its
 old key, `y`, now points you at the thread briefing (`B`). The LLM request runs in the background, so navigation, body loads,
 and other mail actions keep working.
 
@@ -268,10 +268,10 @@ Two cross-view interactions:
 - Unsubscribe confirmation
 - Analytics filter modal
 - Reply-later queue browser: list of flagged messages and due reminders,
-  opened with **Reply queue** (`gq`) or `Ctrl-p → Reply Queue`. `F` there replies to each queued
+  opened with **Reply queue** (`gq`). `F` there replies to each queued
   message in turn, from the selected one: sending one reply opens the next
   ([Focus & reply](/guides/focus-and-reply/)). Cancel a pending reminder
-  from the focused sent message with `Ctrl-p → Cancel Reminder`
+  from the focused sent message with the palette (`:`) → **Cancel no-reply reminder**
 - Promise prompt: after a send whose message promises something with a
   date, a toast asks "Remind me …?"; `y` keeps it as a reminder, `n` or
   `Esc` lets it go
@@ -279,7 +279,7 @@ Two cross-view interactions:
   through `mxr snippets`
 - Sender profile: volume, cadence, open commitments, and other recent
   emails from the focused message's sender, opened with
-  `Ctrl-p → Sender View`. Inside the modal, `j` / `k` selects another
+  the palette (`:`) → **Sender profile**. Inside the modal, `j` / `k` selects another
   email and `Enter` / `o` opens it.
 - Screener queue: triage list with `a`/`d`/`f`/`p` disposition keys
   (allow / deny / feed / paper-trail) wired to `Request::SetScreenerDecision`
@@ -314,4 +314,4 @@ Two cross-view interactions:
 - Command palette: broad action surface
 - Help modal: context-aware keybinding reference
 - Hint bar: context-sensitive shortcuts, including selection-aware actions
-- `gC`: accounts and settings; **Edit Config** in the palette opens `config.toml` in `$EDITOR`
+- `gC`: accounts and settings; **Edit config** in the palette opens `config.toml` in `$EDITOR`

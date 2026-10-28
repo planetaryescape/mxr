@@ -152,7 +152,7 @@ see whether it starts an `Alt` key; every key works without it.
 | `a` | Reply all |
 | `f` | Forward |
 | `p` | Sender profile |
-| `B` | Thread briefing (Summarize Thread is in the palette) |
+| `B` | Thread briefing (Summarize thread is in the palette) |
 | `L` | Links in the previewed message |
 | `u` | Undo the last change |
 | `e` | Archive (on the desk: Done, put it away) |
@@ -231,8 +231,8 @@ where each went until 0.6.180.
 | `g 0` | Return to default inbox (clear saved-search filter) |
 
 Draft assist, a new draft for this sender, commitments and the voice
-profile are in the command palette only (`:`), and so is **Edit Config**
-(`$EDITOR` on `config.toml`), and so is **Export Thread** (`E` until K3).
+profile are in the command palette only (`:`), and so is **Edit config**
+(`$EDITOR` on `config.toml`), and so is **Export as Markdown** (`E` until K3).
 
 ## Message view
 
@@ -252,7 +252,7 @@ profile are in the command palette only (`:`), and so is **Edit Config**
 | `r` | Reply |
 | `a` | Reply all |
 | `f` | Forward |
-| `B` | Thread briefing (Summarize Thread is in the palette) |
+| `B` | Thread briefing (Summarize thread is in the palette) |
 | `p` | Sender profile |
 | `e` | Archive |
 | `m` | Mark read + archive |
@@ -274,7 +274,7 @@ profile are in the command palette only (`:`), and so is **Edit Config**
 | `r` | Reply to focused message |
 | `a` | Reply all to focused message |
 | `f` | Forward focused message |
-| `B` | Thread briefing (Summarize Thread is in the palette) |
+| `B` | Thread briefing (Summarize thread is in the palette) |
 | `A` | Open attachment modal |
 | `L` | Open links modal |
 | `F` | Toggle fullscreen / full reader layout |
@@ -356,12 +356,13 @@ Open To do with `gx`. See [Act on To dos](/guides/todo/).
 | `,` (web) | Edit extracted fields |
 | `X` | Correct the selected to-do |
 | `o` | Open the source email |
-| `E` (web) | Open Expired |
-| `C` (web) | Open Catch-up |
+| `1` | The runway (`Esc` from Catch-up or Expired too) |
+| `2` | Catch-up (`C` until 0.6.197) |
+| `3` | Expired (`E` until 0.6.197) |
 | `j` / `k`, Page Up / Down (Microsoft link review) | Scroll outgoing context without changing task selection; `Enter` sends, `Esc` cancels |
 
-Microsoft To Do is in the TUI's palette (`:`): **To do: send to Microsoft To
-Do** previews the link and `Enter` confirms it; **To do: sync the linked
+Microsoft To Do is in the TUI's palette (`:`) while To do is open: **Send to
+Microsoft To Do** previews the link and `Enter` confirms it; **Sync the linked
 Microsoft To Do task** previews the sync and `Enter` syncs. They were `M` and
 `S` until K3.
 
@@ -390,8 +391,7 @@ cut below.
 | `u` | Undo |
 | `?` | What Updates is for, then its keys |
 
-A sender sweep is in the palette: **Updates: sweep this sender out** in the
-TUI, **Sweep this sender out of Updates** on the web (`S` until K3).
+A sender sweep is in the palette: **Sweep this sender out of Updates** (`S` until K3).
 
 ## Reading
 
@@ -403,7 +403,9 @@ reply don't apply here.
 | `Enter` | Read the item |
 | `L` | Fetch the linked article |
 | `b` | Not now: put the item on Later, or snooze its email until a time |
-| `B` | Open the Later shelf (`Esc` goes back) |
+| `1` | The edition (from Later or the reader) |
+| `2` | Later (`Esc` goes back; `B` until 0.6.197) |
+| `3` | Highlights: the open item's highlights; in the TUI `e` edits a note, `x` removes one (it asks first), `u` undoes (`H` until 0.6.197) |
 | `e` | Let go of the item |
 | `E` | Let go of everything shown (asks first) |
 | `D` | Unsubscribe, with the evidence first |
@@ -415,7 +417,6 @@ reply don't apply here.
 | `O` | Open the item in [Marginalia](/guides/marginalia/), sending it the first time |
 | `u` | Undo |
 | `"` | In the reader: highlight the paragraph at the top |
-| `H` | In the reader: list the item's highlights; `e` edits a note, `x` removes one (it asks first), `u` undoes |
 | `Esc` | In the reader: back to the edition |
 
 ## Archive
@@ -569,7 +570,7 @@ Open with `gP`. Lists [tracked packages](/guides/deliveries/) detected in your m
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Move account selection |
-| `c` | New IMAP/SMTP account (`n` until K3; Edit Config is in the palette) |
+| `c` | New IMAP/SMTP account (`n` until K3; Edit config is in the palette) |
 | `Enter` / `o` | Edit selected account |
 | `t` | Test selected account |
 | `d` | Set selected account as default |
@@ -899,8 +900,9 @@ On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 | `,` | Edit what mxr read… |  |
 | `X` | Correct to-do |  |
 | `o` | Open the email it came from |  |
-| `E` | Expired list |  |
-| `C` | Catch-up |  |
+| `1` | Runway |  |
+| `3` | Expired list |  |
+| `2` | Catch-up |  |
 | `Esc` | Dismiss the hint |  |
 
 ### To do: catch-up
@@ -913,6 +915,9 @@ The first run's older undated tasks: keep each one, or let it go to the Expired 
 | `G`, `End` | Last conversation |  |
 | `Ctrl+D`, `PageDown` | Half page down |  |
 | `Ctrl+U`, `PageUp` | Half page up |  |
+| `1` | Runway |  |
+| `3` | Expired list |  |
+| `2` | Catch-up |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Keep: it still needs me |  |
@@ -930,6 +935,9 @@ Tasks that expired or were let go. `E` on To do opens it.
 | `G`, `End` | Last conversation |  |
 | `Ctrl+D`, `PageDown` | Half page down |  |
 | `Ctrl+U`, `PageUp` | Half page up |  |
+| `1` | Runway |  |
+| `3` | Expired list |  |
+| `2` | Catch-up |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Restore to To do |  |
@@ -978,7 +986,9 @@ Newsletters as an edition. `b`, `e`, `D` and `A` work on the item or link under 
 | `E` | Let go of everything shown… | Previews the daemon's dry run first; undo afterwards |
 | `o` | Open the email as sent |  |
 | `P` | This sender here: move to… |  |
-| `B` | Open Later |  |
+| `1` | Edition |  |
+| `2` | Later |  |
+| `3` | Highlights |  |
 | `O` | Open in Marginalia |  |
 | `Esc` | Dismiss the hint |  |
 
@@ -988,10 +998,12 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 
 | Key | Action | Note |
 |-----|--------|------|
+| `1` | Edition |  |
+| `2` | Later |  |
+| `3` | Highlights |  |
 | `j`, `ArrowDown` | Scroll down |  |
 | `k`, `ArrowUp` | Scroll up |  |
-| `L` | Article: fetch and read it |  |
-| `I` | Issue: the email itself |  |
+| `L` | Article or issue: switch between them |  |
 | `b` | Not now: later or snooze… |  |
 | `e` | Let go and go back |  |
 | `n` | Next item |  |

@@ -1,9 +1,9 @@
 /*
- * Reading's keys, per blueprint 22's one key map: Enter read, L the linked
- * article, b later, e let go, D unsubscribe, R the sender's layout, A let
- * go of everything shown, M open in Marginalia. The mounted edition and
- * reader register what each command does (`useScopeController`); `g r`
- * opens Reading from anywhere.
+ * Reading's keys, per blueprint 35's verb table: Enter read, L the linked
+ * article, b later, e let go, D unsubscribe, R the sender's layout, E let
+ * go of everything shown, O open in Marginalia, and the tabs 1 Edition,
+ * 2 Later, 3 Highlights. The mounted edition and reader register what each
+ * command does (`useScopeController`); `g r` opens Reading from anywhere.
  */
 
 import {
@@ -30,7 +30,9 @@ export const readingActions: ActionBehavior[] = [
   { id: "reading.let-go-all", command: "letGoAll" },
   { id: "reading.open-email", command: "openEmail" },
   { id: "reading.move-sender", command: "moveSender" },
+  { id: "reading.edition", command: "edition" },
   { id: "reading.later-shelf", command: "laterShelf" },
+  { id: "reading.highlights", command: "highlights", icon: Highlighter },
   { id: "reading.marginalia", command: "marginalia", icon: BookOpenText },
   { id: "reading.close-hint", command: "closeHint" },
   // The reader.

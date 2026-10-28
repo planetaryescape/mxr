@@ -12,6 +12,7 @@ import {
   MailX,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { Segmented } from "@/components/Segmented";
 import { PageFrame } from "@/components/PageFrame";
@@ -230,14 +231,46 @@ function Reader({ detail }: { detail: ReadingDetail }) {
     if (sentArticle) void refreshMarginaliaHighlights(item.item_key);
   }, [item.item_key, sentArticle]);
 
+  // The Highlights tab (`3`) lands on this item's highlights; there is no
+  // page of every highlight yet.
+  const highlightsRef = useRef<HTMLElement>(null);
+  const highlightCount = detail.highlights.length;
+  const showHighlights = useCallback(() => {
+    if (highlightCount === 0) {
+      toast(
+        `No highlights in this issue yet: select a passage and press ${definedShortcut("reading.reader-highlight")}.`,
+      );
+      return;
+    }
+    highlightsRef.current?.scrollIntoView({ block: "start" });
+  }, [highlightCount]);
+  const [at, setAt] = useSearchParam("at");
+  useEffect(() => {
+    if (at !== "highlights") return;
+    setAt(null);
+    showHighlights();
+  }, [at, setAt, showHighlights]);
+
   useShortcutScope("reading-reader");
   useScopeController("reading-reader", {
     down: () => columnRef.current?.scrollBy({ top: 80 }),
     up: () => columnRef.current?.scrollBy({ top: -80 }),
-    article: () => void openArticle(),
+    // `L` switches between the issue and its article, as in the TUI.
+    article: () => (showingArticle ? setView("issue") : void openArticle()),
     issue: () => {
       setView("issue");
     },
+    edition: () =>
+      void navigate({
+        to: "/reading",
+        search: (prev) => ({
+          ...pickSearch(prev, READING_LIST_SEARCH),
+          view: undefined,
+          row: item.item_key,
+        }),
+      }),
+    laterShelf: () => void navigate({ to: "/reading", search: { view: "later" } }),
+    highlights: showHighlights,
     // Not now (`b`): Later first, then a time that snoozes the issue's email.
     later: () =>
       openMailDialog({
@@ -292,8 +325,9 @@ function Reader({ detail }: { detail: ReadingDetail }) {
             <Segmented
               label="What to read"
               value={view}
+              // `L` switches between the two, as in the TUI.
               keys={{
-                issue: definedShortcut("reading.reader-issue"),
+                issue: definedShortcut("reading.reader-article"),
                 article: definedShortcut("reading.reader-article"),
               }}
               options={[
@@ -471,7 +505,11 @@ function Reader({ detail }: { detail: ReadingDetail }) {
                 <IssueLinks detail={detail} />
               ) : null}
               {highlights.length > 0 ? (
-                <section aria-label="Your highlights" className="mt-10 border-t border-border pt-4">
+                <section
+                  ref={highlightsRef}
+                  aria-label="Your highlights"
+                  className="mt-10 scroll-mt-4 border-t border-border pt-4"
+                >
                   <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Your highlights
                   </h2>

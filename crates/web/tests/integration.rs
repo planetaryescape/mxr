@@ -427,6 +427,9 @@ async fn one_route_per_bucket_dispatches() {
             Request::ListSavedSearches => Some(Response::Ok {
                 data: ResponseData::SavedSearches { searches: vec![] },
             }),
+            Request::SystemMailboxCounts { .. } => Some(Response::Ok {
+                data: ResponseData::SystemMailboxCounts { mailboxes: vec![] },
+            }),
             _ => None,
         },
         vec![],

@@ -33,6 +33,7 @@ async fn serve_two_accounts(
     second: Label,
     envelopes: [Envelope; 2],
     seen_roles: Arc<Mutex<Vec<Option<String>>>>,
+    close_on_counts: bool,
 ) -> mxr_client::SelectedDaemonTarget {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let target = mxr_client::SelectedDaemonTarget::new(
@@ -40,58 +41,68 @@ async fn serve_two_accounts(
         None,
     );
     tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.unwrap();
-        let mut framed = Framed::new(stream, IpcCodec::new());
-        while let Some(Ok(message)) = framed.next().await {
-            let IpcPayload::Request(request) = message.payload else {
-                panic!("request")
-            };
-            let response = match request {
-                Request::GetStatus => Response::Ok { data: status() },
-                Request::GetArchiveWorkspace => Response::Ok {
-                    data: ResponseData::ArchiveWorkspace {
-                        workspace: mxr_protocol::ArchiveWorkspaceData {
-                            workspace_id: "w".into(),
-                            recovery_generation: "g".into(),
-                        },
-                    },
-                },
-                Request::ListLabels { all_accounts, .. } => Response::Ok {
-                    data: ResponseData::Labels {
-                        labels: if all_accounts {
-                            vec![first.clone(), second.clone()]
-                        } else {
-                            vec![first.clone()]
-                        },
-                    },
-                },
-                Request::ListEnvelopes {
-                    label_role,
-                    label_id,
-                    ..
-                } => {
-                    seen_roles.lock().unwrap().push(label_role.clone());
-                    let listed = match label_role.as_deref() {
-                        Some("inbox") | Some("all_mail") => envelopes.to_vec(),
-                        // An older daemon: the default account's label only.
-                        _ if label_id.as_ref() == Some(&first.id) => vec![envelopes[0].clone()],
-                        _ => vec![envelopes[0].clone()],
+        // A client may reconnect, so serve every connection.
+        while let Ok((stream, _)) = listener.accept().await {
+            let (first, second) = (first.clone(), second.clone());
+            let (envelopes, seen_roles) = (envelopes.clone(), seen_roles.clone());
+            tokio::spawn(async move {
+                let mut framed = Framed::new(stream, IpcCodec::new());
+                while let Some(Ok(message)) = framed.next().await {
+                    let IpcPayload::Request(request) = message.payload else {
+                        panic!("request")
                     };
-                    Response::Ok {
-                        data: ResponseData::Envelopes { envelopes: listed },
-                    }
+                    let response = match request {
+                        Request::GetStatus => Response::Ok { data: status() },
+                        Request::GetArchiveWorkspace => Response::Ok {
+                            data: ResponseData::ArchiveWorkspace {
+                                workspace: mxr_protocol::ArchiveWorkspaceData {
+                                    workspace_id: "w".into(),
+                                    recovery_generation: "g".into(),
+                                },
+                            },
+                        },
+                        Request::ListLabels { all_accounts, .. } => Response::Ok {
+                            data: ResponseData::Labels {
+                                labels: if all_accounts {
+                                    vec![first.clone(), second.clone()]
+                                } else {
+                                    vec![first.clone()]
+                                },
+                            },
+                        },
+                        Request::ListEnvelopes {
+                            label_role,
+                            label_id,
+                            ..
+                        } => {
+                            seen_roles.lock().unwrap().push(label_role.clone());
+                            let listed = match label_role.as_deref() {
+                                Some("inbox") | Some("all_mail") => envelopes.to_vec(),
+                                // An older daemon: the default account's label only.
+                                _ if label_id.as_ref() == Some(&first.id) => {
+                                    vec![envelopes[0].clone()]
+                                }
+                                _ => vec![envelopes[0].clone()],
+                            };
+                            Response::Ok {
+                                data: ResponseData::Envelopes { envelopes: listed },
+                            }
+                        }
+                        // An older daemon cannot decode this and drops the connection.
+                        Request::SystemMailboxCounts { .. } if close_on_counts => return,
+                        _ => Response::error("unexpected request"),
+                    };
+                    framed
+                        .send(IpcMessage {
+                            id: message.id,
+                            expected_workspace: None,
+                            source: ClientKind::Daemon,
+                            payload: IpcPayload::Response(response),
+                        })
+                        .await
+                        .unwrap();
                 }
-                _ => Response::error("unexpected request"),
-            };
-            framed
-                .send(IpcMessage {
-                    id: message.id,
-                    expected_workspace: None,
-                    source: ClientKind::Daemon,
-                    payload: IpcPayload::Response(response),
-                })
-                .await
-                .unwrap();
+            });
         }
     });
     target
@@ -113,7 +124,8 @@ async fn app_load_lists_every_accounts_inbox_and_sums_the_counts() {
             .build(),
     ];
     let seen_roles = Arc::new(Mutex::new(Vec::new()));
-    let target = serve_two_accounts(first.clone(), second, envelopes, seen_roles.clone()).await;
+    let target =
+        serve_two_accounts(first.clone(), second, envelopes, seen_roles.clone(), false).await;
     let mut client = Client::connect_target(&target).await.unwrap();
 
     let mut app = App::new();
@@ -226,4 +238,43 @@ fn a_mailbox_only_another_account_has_gets_a_sidebar_entry_with_daemon_counts() 
     assert_eq!(named("DRAFT").total_count, 2);
     // Selecting the IMAP entry lists Sent across accounts by role.
     assert_eq!(unified_role_for(&merged, &sent.id).as_deref(), Some("sent"));
+}
+
+/// An older daemon drops the connection on `SystemMailboxCounts`. Loading the
+/// app must still succeed, the sidebar keeps the labels' own counts, and the
+/// requests after the failed one run on a healthy connection.
+#[tokio::test]
+async fn app_load_survives_a_daemon_that_closes_on_system_mailbox_counts() {
+    let (first_account, second_account) = (AccountId::new(), AccountId::new());
+    let first = system_label(&first_account, "INBOX", 3, 10);
+    let second = system_label(&second_account, "INBOX", 4, 20);
+    let envelopes = [
+        TestEnvelopeBuilder::new()
+            .account_id(first_account)
+            .subject("first account".to_string())
+            .build(),
+        TestEnvelopeBuilder::new()
+            .account_id(second_account)
+            .subject("second account".to_string())
+            .build(),
+    ];
+    let seen_roles = Arc::new(Mutex::new(Vec::new()));
+    let target = serve_two_accounts(first.clone(), second, envelopes, seen_roles, true).await;
+    let mut client = Client::connect_target(&target).await.unwrap();
+
+    let mut app = App::new();
+    app.load(&mut client).await.unwrap();
+
+    // Counts fell back to summing the labels (7, 30), and the inbox, listed
+    // after the failure, holds both accounts' mail.
+    let inbox = app
+        .mailbox
+        .labels
+        .iter()
+        .find(|label| label.name == "INBOX")
+        .unwrap();
+    assert_eq!((inbox.unread_count, inbox.total_count), (7, 30));
+    assert_eq!(app.mailbox.envelopes.len(), 2);
+    // A request on the same client afterwards still works.
+    assert_eq!(client.list_envelopes(10, 0).await.unwrap().len(), 2);
 }

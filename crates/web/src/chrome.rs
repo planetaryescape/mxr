@@ -271,15 +271,9 @@ pub(crate) async fn build_bridge_chrome(
     // Counts come from the daemon so All Mail and Starred (no label on some
     // providers) and accounts without a given label still add up. A daemon
     // that predates the request errors; the label's own counts stand in.
-    let unified_counts = match ipc_request(
-        socket_path,
-        Request::SystemMailboxCounts {
-            account_id: account_id.cloned(),
-        },
-    )
-    .await
+    let unified_counts = match system_mailbox_counts_request(socket_path, account_id.cloned()).await
     {
-        Ok(ResponseData::SystemMailboxCounts { mailboxes }) => mailboxes
+        Ok(Some(mailboxes)) => mailboxes
             .into_iter()
             .filter_map(|mailbox| {
                 Some((
@@ -288,7 +282,7 @@ pub(crate) async fn build_bridge_chrome(
                 ))
             })
             .collect::<HashMap<_, _>>(),
-        Ok(_) => return Err(BridgeError::UnexpectedResponse),
+        Ok(None) => HashMap::new(),
         Err(error) => {
             tracing::debug!(%error, "system mailbox counts unavailable; using label counts");
             HashMap::new()

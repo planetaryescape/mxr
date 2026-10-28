@@ -16,6 +16,8 @@ pub(crate) struct DaemonSession {
 pub struct Client {
     conn: IpcConnection,
     event_tx: Option<mpsc::UnboundedSender<DaemonEvent>>,
+    // How to reconnect, for requests that may leave the connection unusable.
+    target: mxr_client::SelectedDaemonTarget,
 }
 
 /// `label_role` that lists every enabled account's mail.
@@ -133,6 +135,7 @@ impl Client {
         Ok(Self {
             conn,
             event_tx: None,
+            target: target.clone(),
         })
     }
 
@@ -233,6 +236,9 @@ impl Client {
         req: Request,
         owner: Option<&mxr_protocol::ArchiveWorkspaceData>,
     ) -> Result<Response, MxrError> {
+        if let Request::SystemMailboxCounts { account_id } = req {
+            return self.system_mailbox_counts(account_id).await;
+        }
         let event_tx = self.event_tx.clone();
         self.conn
             .request_response_owned(
@@ -249,7 +255,36 @@ impl Client {
             .map_err(map_request_error)
     }
 
+    /// `SystemMailboxCounts` through the shared client helper: a daemon that
+    /// does not know it yields an `Unsupported` response on a connection that
+    /// is already healthy again, so the labels' own counts stand in.
+    async fn system_mailbox_counts(
+        &mut self,
+        account_id: Option<AccountId>,
+    ) -> Result<Response, MxrError> {
+        let target = self.target.clone();
+        match self
+            .conn
+            .system_mailbox_counts(account_id, || async move {
+                target.connect(ClientKind::Tui).await
+            })
+            .await
+            .map_err(map_request_error)?
+        {
+            Some(mailboxes) => Ok(Response::Ok {
+                data: ResponseData::SystemMailboxCounts { mailboxes },
+            }),
+            None => Ok(Response::error_kinded(
+                "This daemon does not provide system mailbox counts",
+                IpcErrorKind::Unsupported,
+            )),
+        }
+    }
+
     async fn request(&mut self, req: Request) -> Result<Response, MxrError> {
+        if let Request::SystemMailboxCounts { account_id } = req {
+            return self.system_mailbox_counts(account_id).await;
+        }
         // No connection-level timeout: the IPC worker bounds every request
         // (see `ipc::IPC_REQUEST_TIMEOUT`) and owns the reconnect-on-timeout
         // policy, so the mechanism here stays a plain awaited exchange.

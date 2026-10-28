@@ -180,12 +180,12 @@ struct MutationPreviewOutput {
 }
 
 #[derive(Clone, Serialize)]
-struct MutationPreviewRecord {
-    message_id: String,
-    from: String,
-    subject: String,
+pub(super) struct MutationPreviewRecord {
+    pub(super) message_id: String,
+    pub(super) from: String,
+    pub(super) subject: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    unsubscribe_method: Option<String>,
+    pub(super) unsubscribe_method: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -312,7 +312,7 @@ fn selection_message_ids(selection: &MutationSelection) -> Vec<String> {
     selection.ids.iter().map(|id| id.as_str().clone()).collect()
 }
 
-fn preview_records(
+pub(super) fn preview_records(
     selection: &MutationSelection,
     include_unsubscribe_method: bool,
 ) -> Vec<MutationPreviewRecord> {

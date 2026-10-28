@@ -1312,10 +1312,11 @@ pub enum Request {
         #[serde(default)]
         archive_on_no_method: bool,
     },
-    /// Plans the one unsubscribe request for messages picked by an email
-    /// address: the newest message with a usable method, preferring one-click,
-    /// then an http(s) link, then mailto. Read-only. The CLI sends that message
-    /// through `Unsubscribe`, so the per-message receipt still applies.
+    /// Plans the one unsubscribe request for messages picked by one email
+    /// address: the newest message with a usable method. On the same date, a
+    /// one-click link beats an http(s) link, which beats mailto. Read-only. The
+    /// CLI sends that message through `Unsubscribe`, so the per-message receipt
+    /// still applies.
     PlanUnsubscribe {
         message_ids: Vec<MessageId>,
     },

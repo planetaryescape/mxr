@@ -1,8 +1,10 @@
 //! Plans the one unsubscribe request for the messages an email address selected.
 //!
-//! An address sends one request. It comes from the newest message with a usable
-//! List-Unsubscribe method, preferring one-click, then an http(s) link, then
-//! mailto. A body-link fallback is the last resort. A sender that runs several
+//! An address sends one request. It comes from the newest message that has any
+//! usable List-Unsubscribe method. Date decides first, so a current mailto
+//! supersedes an old one-click token that may have expired. Method rank only
+//! breaks a tie between messages with the same date: one-click, then an
+//! http(s) link, then mailto, then a body link. A sender that runs several
 //! lists is unsubscribed per message id instead.
 //!
 //! The dry run and the real run both call this plan, so the preview is the
@@ -59,16 +61,16 @@ fn method_rank(method: &UnsubscribeMethod) -> Option<u8> {
     }
 }
 
-/// The newest message whose method ranks best. Ties on rank go to the newest
-/// date, then to the lower message id so the choice is stable.
+/// The newest message with a usable method. Among messages with the same date,
+/// the better method wins, then the lower message id so the choice is stable.
 fn choose_message(envelopes: Vec<Envelope>) -> Option<Envelope> {
     envelopes
         .into_iter()
         .filter(|envelope| method_rank(&envelope.unsubscribe).is_some())
         .min_by(|a, b| {
-            method_rank(&a.unsubscribe)
-                .cmp(&method_rank(&b.unsubscribe))
-                .then_with(|| b.date.cmp(&a.date))
+            b.date
+                .cmp(&a.date)
+                .then_with(|| method_rank(&a.unsubscribe).cmp(&method_rank(&b.unsubscribe)))
                 .then_with(|| a.id.as_str().cmp(&b.id.as_str()))
         })
 }
@@ -106,16 +108,18 @@ mod tests {
     }
 
     #[test]
-    fn the_newest_one_click_wins_over_a_newer_mailto() {
+    fn a_newer_mailto_supersedes_an_old_one_click_token() {
+        // The one-click URL may have expired (HTTP 410). The current mailto
+        // is the newest usable method, so it is chosen.
         let envelopes = vec![
             envelope(ONE, one_click("https://a/u/1"), 1),
             envelope(TWO, mailto("unsub@a.example"), 9),
         ];
-        assert_eq!(chosen(envelopes).as_deref(), Some(ONE));
+        assert_eq!(chosen(envelopes).as_deref(), Some(TWO));
     }
 
     #[test]
-    fn an_http_link_wins_over_mailto_and_a_body_link_ranks_last() {
+    fn a_newer_body_link_beats_an_older_http_link_because_date_comes_first() {
         let envelopes = vec![
             envelope(
                 ONE,
@@ -133,7 +137,38 @@ mod tests {
                 1,
             ),
         ];
+        assert_eq!(chosen(envelopes).as_deref(), Some(ONE));
+    }
+
+    #[test]
+    fn on_the_same_date_the_better_method_wins_in_rank_order() {
+        let body = UnsubscribeMethod::BodyLink {
+            url: "https://a/body".into(),
+        };
+        let link = UnsubscribeMethod::HttpLink {
+            url: "https://a/link".into(),
+        };
+        let envelopes = vec![
+            envelope(ONE, body, 4),
+            envelope(TWO, mailto("unsub@a.example"), 4),
+            envelope(THREE, link, 4),
+        ];
         assert_eq!(chosen(envelopes).as_deref(), Some(THREE));
+
+        let envelopes = vec![
+            envelope(ONE, mailto("unsub@a.example"), 4),
+            envelope(TWO, one_click("https://a/u/2"), 4),
+        ];
+        assert_eq!(chosen(envelopes).as_deref(), Some(TWO));
+    }
+
+    #[test]
+    fn on_the_same_date_and_method_the_lower_id_wins() {
+        let envelopes = vec![
+            envelope(TWO, one_click("https://a/u/2"), 4),
+            envelope(ONE, one_click("https://a/u/1"), 4),
+        ];
+        assert_eq!(chosen(envelopes).as_deref(), Some(ONE));
     }
 
     #[test]

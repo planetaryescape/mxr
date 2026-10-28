@@ -1006,22 +1006,31 @@ pub async fn unsubscribe(
         .await;
     }
 
-    let by_address = message_ids.iter().any(|arg| looks_like_email(arg));
-    let (message_ids, search) = rewrite_unsubscribe_positional(message_ids, search);
-    let selection =
-        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
-    if selection.ids.is_empty() {
-        anyhow::bail!("No messages matched");
-    }
-    if by_address {
+    let addresses = unique_addresses(&message_ids);
+    if !addresses.is_empty() {
+        if addresses.len()
+            != message_ids
+                .iter()
+                .filter(|arg| looks_like_email(arg))
+                .count()
+        {
+            anyhow::bail!("Pass message ids or email addresses, not both");
+        }
         return unsubscribe_address::unsubscribe_by_address(
             &mut client,
-            &selection,
+            &addresses,
+            search.as_deref(),
+            account_id.as_ref(),
             yes,
             dry_run,
             format,
         )
         .await;
+    }
+    let selection =
+        resolve_mutation_selection(&mut client, message_ids, search, account_id.as_ref()).await?;
+    if selection.ids.is_empty() {
+        anyhow::bail!("No messages matched");
     }
     if dry_run {
         print_dry_run_output("unsubscribe", &selection, format)?;
@@ -1353,45 +1362,16 @@ fn unsubscribe_purge_status_text(status: UnsubscribePurgeStatusData) -> &'static
     }
 }
 
-/// Translate positional `EMAIL_ADDRESS` arguments to `mxr unsubscribe`
-/// into a synthetic `--search "from:<addr>"` query, so that
-/// `mxr unsubscribe alice@example.com` does what a user expects
-/// (unsubscribe from that sender's most recent message).
-///
-/// Positional arguments that look like message IDs (no `@`) are left
-/// alone; an explicit `--search` flag also wins, in which case the
-/// positional addresses are merged into the same query as additional
-/// `from:` terms.
-fn rewrite_unsubscribe_positional(
-    positional: Vec<String>,
-    search: Option<String>,
-) -> (Vec<String>, Option<String>) {
-    let mut ids = Vec::with_capacity(positional.len());
-    let mut addresses = Vec::with_capacity(positional.len());
-    for arg in positional {
-        if looks_like_email(&arg) {
-            addresses.push(arg);
-        } else {
-            ids.push(arg);
-        }
-    }
-    if addresses.is_empty() {
-        return (ids, search);
-    }
-    let addr_query = addresses
+/// The distinct addresses among the positional arguments. A repeat that differs
+/// only in case is dropped, and the first spelling is kept.
+fn unique_addresses(arguments: &[String]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    arguments
         .iter()
-        .map(|addr| format!("from:{addr}"))
-        .collect::<Vec<_>>()
-        .join(" OR ");
-    let combined = match search {
-        Some(existing) if !existing.trim().is_empty() => {
-            // Combine the user's explicit search with the synthetic
-            // address query. AND-style: both must match.
-            format!("({existing}) AND ({addr_query})")
-        }
-        _ => addr_query,
-    };
-    (ids, Some(combined))
+        .filter(|arg| looks_like_email(arg))
+        .filter(|arg| seen.insert(arg.to_ascii_lowercase()))
+        .cloned()
+        .collect()
 }
 
 fn looks_like_email(value: &str) -> bool {
@@ -1612,78 +1592,19 @@ mod tests {
     use super::*;
     use std::time::{Duration as StdDuration, SystemTime};
 
-    /// Phase 2.6: `mxr unsubscribe alice@example.com` is the shape a
-    /// user will reach for. We rewrite the positional address into a
-    /// `from:` search query so the existing search→mutate pipeline does
-    /// the rest. The address must NOT survive as a message-id, which
-    /// the daemon would then fail to resolve.
     #[test]
-    fn unsubscribe_positional_address_becomes_from_search() {
-        let (ids, search) = rewrite_unsubscribe_positional(vec!["alice@example.com".into()], None);
-
-        assert!(ids.is_empty(), "address positional is consumed");
-        assert_eq!(search.as_deref(), Some("from:alice@example.com"));
-    }
-
-    /// Two addresses (or more) combine with `OR` so the user can
-    /// unsubscribe from multiple senders in one invocation. This is the
-    /// power-user shape; same call as Gmail's bulk-select but keyboard-
-    /// driven.
-    #[test]
-    fn unsubscribe_multiple_addresses_combine_with_or() {
-        let (ids, search) = rewrite_unsubscribe_positional(
-            vec!["alice@example.com".into(), "bob@example.com".into()],
-            None,
-        );
-
-        assert!(ids.is_empty());
+    fn repeated_addresses_are_planned_once_and_message_ids_are_not_addresses() {
+        let args = vec![
+            "Alice@Example.com".to_owned(),
+            "alice@example.com".to_owned(),
+            "bob@example.com".to_owned(),
+            "8c9d3a02-2e9a-4af6-bf80-4b0d7bb6a4e2".to_owned(),
+        ];
         assert_eq!(
-            search.as_deref(),
-            Some("from:alice@example.com OR from:bob@example.com")
+            unique_addresses(&args),
+            vec!["Alice@Example.com".to_owned(), "bob@example.com".to_owned()]
         );
-    }
-
-    /// Message-ID-shaped positionals (no `@` / no domain dot) are left
-    /// untouched. The address shorthand is additive; it must not
-    /// regress the existing `mxr unsubscribe <MESSAGE_ID>` shape.
-    #[test]
-    fn unsubscribe_message_id_positionals_pass_through_unchanged() {
-        let (ids, search) =
-            rewrite_unsubscribe_positional(vec!["abc-123".into(), "xyz-789".into()], None);
-
-        assert_eq!(ids, vec!["abc-123".to_string(), "xyz-789".to_string()]);
-        assert!(search.is_none(), "no synthesized search for plain ids");
-    }
-
-    /// A user-supplied `--search` and a positional address combine via
-    /// `AND` so the user can scope an address-wide unsubscribe to a
-    /// label or date range (e.g. `--search "label:promos"` +
-    /// `marketing@x.com`).
-    #[test]
-    fn unsubscribe_positional_address_intersects_explicit_search() {
-        let (ids, search) = rewrite_unsubscribe_positional(
-            vec!["marketing@example.com".into()],
-            Some("label:promos".into()),
-        );
-
-        assert!(ids.is_empty());
-        assert_eq!(
-            search.as_deref(),
-            Some("(label:promos) AND (from:marketing@example.com)")
-        );
-    }
-
-    /// Addresses without a domain dot (`foo@bar`) — including the dummy
-    /// addresses the test fixtures sometimes use — should not be
-    /// classified as email; that would silently turn a typo'd ID into a
-    /// no-match search. The fallback path errs on the side of "treat as
-    /// id and let the daemon raise No-Match if needed".
-    #[test]
-    fn unsubscribe_local_only_handle_is_not_treated_as_email() {
-        let (ids, search) = rewrite_unsubscribe_positional(vec!["foo@bar".into()], None);
-
-        assert_eq!(ids, vec!["foo@bar".to_string()]);
-        assert!(search.is_none());
+        assert!(unique_addresses(&["abc-123".to_owned()]).is_empty());
     }
 
     /// A bare `@`-less message id is plainly not an email even if it

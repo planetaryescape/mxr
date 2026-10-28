@@ -29141,7 +29141,7 @@
           },
           {
             "type": "object",
-            "description": "Plans the one unsubscribe request for messages picked by an email\naddress: the newest message with a usable method, preferring one-click,\nthen an http(s) link, then mailto. Read-only. The CLI sends that message\nthrough `Unsubscribe`, so the per-message receipt still applies.",
+            "description": "Plans the one unsubscribe request for messages picked by one email\naddress: the newest message with a usable method. On the same date, a\none-click link beats an http(s) link, which beats mailto. Read-only. The\nCLI sends that message through `Unsubscribe`, so the per-message receipt\nstill applies.",
             "required": [
               "message_ids",
               "cmd"

@@ -30,19 +30,31 @@ async fn stamp_messages(
     count: usize,
     method: impl Fn(usize) -> UnsubscribeMethod,
 ) -> Vec<MessageId> {
+    stamp_range(state, 0, count, method).await
+}
+
+/// As `stamp_messages`, for `count` messages starting at synced index `start`,
+/// so two senders can occupy disjoint messages of one mailbox.
+async fn stamp_range(
+    state: &AppState,
+    start: usize,
+    count: usize,
+    method: impl Fn(usize) -> UnsubscribeMethod,
+) -> Vec<MessageId> {
     let account = state.default_account_id();
     let mut envelopes = state
         .store
         .list_envelopes_by_account(&account, SYNCED_FOR_TEST as u32, 0)
         .await
         .unwrap();
-    envelopes.truncate(count);
+    let mut envelopes: Vec<_> = envelopes.drain(start..).take(count).collect();
     assert_eq!(
         envelopes.len(),
         count,
-        "the fake mailbox must hold at least {count} messages"
+        "the fake mailbox must hold at least {} messages",
+        start + count
     );
-    let base = 1_700_000_000i64;
+    let base = 1_700_000_000i64 + start as i64 * 3_600;
     for (index, envelope) in envelopes.iter_mut().enumerate() {
         envelope.unsubscribe = method(index);
         envelope.date = chrono::Utc
@@ -215,4 +227,74 @@ async fn messages_without_a_usable_method_plan_nothing_to_send() {
     assert!(plan.request.is_none());
     assert!(!plan.already_unsubscribed);
     assert!(fake.sent_drafts().is_empty());
+}
+
+/// The CLI plans each address on its own and sends each planned request. These
+/// tests replay that sequence against the daemon.
+#[tokio::test]
+async fn two_addresses_each_get_their_own_request() {
+    let (state, fake) = synced_state().await;
+    let alice = stamp_range(&state, 0, 3, |_| mailto("alice-news@list.example")).await;
+    let bob = stamp_range(&state, 3, 3, |_| mailto("bob-news@list.example")).await;
+
+    let alice_plan = plan(&state, &alice).await;
+    let bob_plan = plan(&state, &bob).await;
+    assert_eq!(alice_plan.request.as_ref().unwrap().message_id, alice[2]);
+    assert_eq!(bob_plan.request.as_ref().unwrap().message_id, bob[2]);
+
+    for request in [&alice_plan.request, &bob_plan.request] {
+        let request = request.as_ref().unwrap();
+        assert!(matches!(
+            send_unsubscribe(&state, &request.message_id).await,
+            Response::Ok { .. }
+        ));
+    }
+    assert_eq!(fake.sent_drafts().len(), 2);
+}
+
+#[tokio::test]
+async fn an_already_unsubscribed_address_does_not_block_a_new_one() {
+    let (state, fake) = synced_state().await;
+    let alice = stamp_range(&state, 0, 3, |_| mailto("alice-news@list.example")).await;
+    let bob = stamp_range(&state, 3, 3, |_| mailto("bob-news@list.example")).await;
+
+    // Alice was unsubscribed earlier, through her newest message.
+    assert!(matches!(
+        send_unsubscribe(&state, &alice[2]).await,
+        Response::Ok { .. }
+    ));
+
+    let alice_plan = plan(&state, &alice).await;
+    assert!(alice_plan.request.is_none());
+    assert!(alice_plan.already_unsubscribed);
+
+    let bob_plan = plan(&state, &bob).await;
+    let request = bob_plan.request.expect("bob's request is still planned");
+    assert_eq!(request.message_id, bob[2]);
+    assert!(!bob_plan.already_unsubscribed);
+    assert!(matches!(
+        send_unsubscribe(&state, &request.message_id).await,
+        Response::Ok { .. }
+    ));
+    assert_eq!(fake.sent_drafts().len(), 2, "alice once, bob once");
+}
+
+#[tokio::test]
+async fn a_newer_mailto_is_planned_over_an_old_one_click_token() {
+    let (state, _fake) = synced_state().await;
+    let ids = stamp_messages(&state, 2, |index| {
+        if index == 0 {
+            UnsubscribeMethod::OneClick {
+                url: "https://promo.example/unsubscribe/old".into(),
+            }
+        } else {
+            mailto("news@list.example")
+        }
+    })
+    .await;
+
+    let plan = plan(&state, &ids).await;
+    let request = plan.request.expect("one request is planned");
+    assert_eq!(request.message_id, ids[1]);
+    assert_eq!(request.method, mailto("news@list.example"));
 }

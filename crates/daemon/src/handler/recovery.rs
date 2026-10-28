@@ -250,6 +250,7 @@ pub(super) fn allowed_while_paused(request: &mxr_protocol::Request) -> bool {
             | GetThread { .. }
             | ListThreads { .. }
             | ListLabels { .. }
+            | SystemMailboxCounts { .. }
             | ListAccounts
             | ListAccountsConfig
             | Count { .. }

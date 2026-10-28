@@ -1313,6 +1313,7 @@ async fn seed_demo_message_state(client: &mut IpcClient) -> anyhow::Result<()> {
             account_id: Some(personal),
             limit: 20,
             offset: 0,
+            label_role: None,
         })
         .await?
     {

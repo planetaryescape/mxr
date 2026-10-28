@@ -16,6 +16,75 @@ pub(crate) struct DaemonSession {
 pub struct Client {
     conn: IpcConnection,
     event_tx: Option<mpsc::UnboundedSender<DaemonEvent>>,
+    // How to reconnect, for requests that may leave the connection unusable.
+    target: mxr_client::SelectedDaemonTarget,
+}
+
+/// `label_role` that lists every enabled account's mail.
+pub(crate) fn all_mail_role() -> Option<String> {
+    Role::AllMail.system_mailbox_wire_name().map(str::to_string)
+}
+
+/// `label_role` for listing `label` across every account, for a System
+/// label; `None` for user labels and folders, which stay per label id.
+pub(crate) fn unified_role_for(labels: &[Label], label_id: &LabelId) -> Option<String> {
+    labels
+        .iter()
+        .find(|label| &label.id == label_id)?
+        .system_mailbox_role()
+        .and_then(Role::system_mailbox_wire_name)
+        .map(str::to_string)
+}
+
+/// Fold every account's system mailboxes into the default account's labels.
+///
+/// Each system label's unread/total becomes the mailbox's total across
+/// accounts, from the daemon's `counts` or, for a daemon without
+/// `SystemMailboxCounts`, the sum of the accounts' labels. A mailbox only
+/// another account has gets an entry too (its label as that account has it),
+/// so Sent on a second account is reachable when the default account has no
+/// Sent label. User labels are left alone.
+pub(crate) fn with_unified_system_counts(
+    mut labels: Vec<Label>,
+    all: &[Label],
+    counts: &[SystemMailboxCount],
+) -> Vec<Label> {
+    let mut sums: std::collections::HashMap<Role, (u32, u32)> = std::collections::HashMap::new();
+    for count in counts {
+        if let Some(role) = Role::from_system_mailbox_wire_name(&count.role) {
+            sums.insert(role, (count.unread, count.total));
+        }
+    }
+    if sums.is_empty() {
+        for label in all {
+            if let Some(role) = label.system_mailbox_role() {
+                let entry = sums.entry(role).or_default();
+                entry.0 += label.unread_count;
+                entry.1 += label.total_count;
+            }
+        }
+    }
+    let mut have: std::collections::HashSet<Role> = labels
+        .iter()
+        .filter_map(Label::system_mailbox_role)
+        .collect();
+    for label in all {
+        if let Some(role) = label.system_mailbox_role() {
+            if have.insert(role) {
+                labels.push(label.clone());
+            }
+        }
+    }
+    for label in &mut labels {
+        if let Some((unread, total)) = label
+            .system_mailbox_role()
+            .and_then(|role| sums.get(&role).copied())
+        {
+            label.unread_count = unread;
+            label.total_count = total;
+        }
+    }
+    labels
 }
 
 impl Client {
@@ -66,6 +135,7 @@ impl Client {
         Ok(Self {
             conn,
             event_tx: None,
+            target: target.clone(),
         })
     }
 
@@ -166,6 +236,9 @@ impl Client {
         req: Request,
         owner: Option<&mxr_protocol::ArchiveWorkspaceData>,
     ) -> Result<Response, MxrError> {
+        if let Request::SystemMailboxCounts { account_id } = req {
+            return self.system_mailbox_counts(account_id).await;
+        }
         let event_tx = self.event_tx.clone();
         self.conn
             .request_response_owned(
@@ -182,7 +255,36 @@ impl Client {
             .map_err(map_request_error)
     }
 
+    /// `SystemMailboxCounts` through the shared client helper: a daemon that
+    /// does not know it yields an `Unsupported` response on a connection that
+    /// is already healthy again, so the labels' own counts stand in.
+    async fn system_mailbox_counts(
+        &mut self,
+        account_id: Option<AccountId>,
+    ) -> Result<Response, MxrError> {
+        let target = self.target.clone();
+        match self
+            .conn
+            .system_mailbox_counts(account_id, || async move {
+                target.connect(ClientKind::Tui).await
+            })
+            .await
+            .map_err(map_request_error)?
+        {
+            Some(mailboxes) => Ok(Response::Ok {
+                data: ResponseData::SystemMailboxCounts { mailboxes },
+            }),
+            None => Ok(Response::error_kinded(
+                "This daemon does not provide system mailbox counts",
+                IpcErrorKind::Unsupported,
+            )),
+        }
+    }
+
     async fn request(&mut self, req: Request) -> Result<Response, MxrError> {
+        if let Request::SystemMailboxCounts { account_id } = req {
+            return self.system_mailbox_counts(account_id).await;
+        }
         // No connection-level timeout: the IPC worker bounds every request
         // (see `ipc::IPC_REQUEST_TIMEOUT`) and owns the reconnect-on-timeout
         // policy, so the mechanism here stays a plain awaited exchange.
@@ -201,6 +303,7 @@ impl Client {
             .map_err(map_request_error)
     }
 
+    /// Every enabled account's mail (the All Mail mailbox), newest first.
     pub async fn list_envelopes(
         &mut self,
         limit: u32,
@@ -212,6 +315,7 @@ impl Client {
                 account_id: None,
                 limit,
                 offset,
+                label_role: all_mail_role(),
             })
             .await?;
 
@@ -224,17 +328,45 @@ impl Client {
         }
     }
 
+    /// The default account's labels, with each system mailbox's counts
+    /// summed over every account. A failed sum request keeps the default
+    /// account's counts: the sidebar still renders.
     pub async fn list_labels(&mut self) -> Result<Vec<Label>, MxrError> {
         let resp = self
-            .request(Request::ListLabels { account_id: None })
+            .request(Request::ListLabels {
+                account_id: None,
+                all_accounts: false,
+            })
             .await?;
-        match resp {
+        let labels = match resp {
             Response::Ok {
                 data: ResponseData::Labels { labels },
-            } => Ok(labels),
-            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
-            _ => Err(MxrError::Ipc("Unexpected response".into())),
-        }
+            } => labels,
+            Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
+            _ => return Err(MxrError::Ipc("Unexpected response".into())),
+        };
+        let all = match self
+            .request(Request::ListLabels {
+                account_id: None,
+                all_accounts: true,
+            })
+            .await
+        {
+            Ok(Response::Ok {
+                data: ResponseData::Labels { labels },
+            }) => labels,
+            _ => return Ok(labels),
+        };
+        let counts = match self
+            .request(Request::SystemMailboxCounts { account_id: None })
+            .await
+        {
+            Ok(Response::Ok {
+                data: ResponseData::SystemMailboxCounts { mailboxes },
+            }) => mailboxes,
+            _ => Vec::new(),
+        };
+        Ok(with_unified_system_counts(labels, &all, &counts))
     }
 
     /// Phase F: paginated thread list. Provides the TUI's read path
@@ -254,6 +386,7 @@ impl Client {
                 limit,
                 offset,
                 sort: None,
+                label_role: all_mail_role(),
             })
             .await?;
         match resp {

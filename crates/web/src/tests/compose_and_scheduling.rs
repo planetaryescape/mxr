@@ -770,7 +770,7 @@ async fn thread_reader_resolves_labels_from_the_threads_own_account() {
                 messages: vec![envelope.clone()],
                 summary: None,
             }),
-            Request::ListLabels { account_id } => {
+            Request::ListLabels { account_id, .. } => {
                 scopes_seen.lock().unwrap().push(account_id.clone());
                 let labels = if account_id.as_ref() == Some(&thread_account) {
                     thread_labels.clone()

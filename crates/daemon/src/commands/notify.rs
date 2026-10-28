@@ -37,7 +37,10 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
     loop {
         let mut client = IpcClient::connect().await?;
         let resp = client
-            .request(Request::ListLabels { account_id: None })
+            .request(Request::ListLabels {
+                account_id: None,
+                all_accounts: false,
+            })
             .await?;
         match resp {
             Response::Ok {

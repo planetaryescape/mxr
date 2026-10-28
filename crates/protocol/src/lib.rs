@@ -137,6 +137,112 @@ mod tests {
         }
     }
 
+    /// The request shapes before `label_role` / `all_accounts` existed.
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "cmd")]
+    #[allow(dead_code, reason = "fields are read through the decode only")]
+    #[allow(
+        clippy::enum_variant_names,
+        reason = "variant names are the wire commands"
+    )]
+    enum PreLabelRoleRequest {
+        ListEnvelopes {
+            label_id: Option<LabelId>,
+            account_id: Option<AccountId>,
+            limit: u32,
+            offset: u32,
+        },
+        ListThreads {
+            account_id: Option<AccountId>,
+            label_id: Option<LabelId>,
+            limit: u32,
+            offset: u32,
+            #[serde(default)]
+            sort: Option<SortOrder>,
+        },
+        ListLabels {
+            account_id: Option<AccountId>,
+        },
+    }
+
+    #[test]
+    fn label_role_stays_off_the_wire_unless_set_and_old_clients_still_decode() {
+        let list = |label_role: Option<&str>| Request::ListEnvelopes {
+            label_id: Some(LabelId::new()),
+            account_id: None,
+            limit: 10,
+            offset: 0,
+            label_role: label_role.map(str::to_string),
+        };
+        let off = serde_json::to_value(list(None)).unwrap();
+        assert!(!off.to_string().contains("label_role"), "{off}");
+        // An old client's request decodes on the new type with no role.
+        let decoded: Request = serde_json::from_value(off).unwrap();
+        assert!(matches!(
+            decoded,
+            Request::ListEnvelopes {
+                label_role: None,
+                ..
+            }
+        ));
+
+        let on = serde_json::to_value(list(Some("inbox"))).unwrap();
+        let decoded: Request = serde_json::from_value(on.clone()).unwrap();
+        assert!(matches!(
+            &decoded,
+            Request::ListEnvelopes { label_role: Some(role), .. } if role == "inbox"
+        ));
+        // A daemon that predates the field ignores it and lists `label_id`.
+        let legacy: PreLabelRoleRequest = serde_json::from_value(on).unwrap();
+        assert!(matches!(
+            legacy,
+            PreLabelRoleRequest::ListEnvelopes {
+                label_id: Some(_),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn list_threads_and_list_labels_gain_their_fields_compatibly() {
+        let threads = serde_json::to_value(Request::ListThreads {
+            account_id: None,
+            label_id: None,
+            limit: 5,
+            offset: 0,
+            sort: None,
+            label_role: Some("sent".into()),
+        })
+        .unwrap();
+        let decoded: Request = serde_json::from_value(threads.clone()).unwrap();
+        assert!(matches!(
+            decoded,
+            Request::ListThreads { label_role: Some(ref role), .. } if role == "sent"
+        ));
+        assert!(serde_json::from_value::<PreLabelRoleRequest>(threads).is_ok());
+
+        let plain = serde_json::to_value(Request::ListLabels {
+            account_id: None,
+            all_accounts: false,
+        })
+        .unwrap();
+        assert!(!plain.to_string().contains("all_accounts"), "{plain}");
+        let decoded: Request = serde_json::from_value(plain).unwrap();
+        assert!(matches!(
+            decoded,
+            Request::ListLabels {
+                all_accounts: false,
+                ..
+            }
+        ));
+        let all = serde_json::to_value(Request::ListLabels {
+            account_id: None,
+            all_accounts: true,
+        })
+        .unwrap();
+        assert!(serde_json::from_value::<PreLabelRoleRequest>(all).is_ok());
+    }
+
     #[test]
     fn a_provider_key_in_a_request_never_shows_in_debug_output_and_roundtrips() {
         let request = Request::SetLlmKey {
@@ -449,6 +555,7 @@ mod tests {
                     account_id: None,
                     limit: 10,
                     offset: 0,
+                    label_role: None,
                 },
                 IpcCategory::CoreMail,
             ),
@@ -507,7 +614,12 @@ mod tests {
             (
                 Request::ListLabels {
                     account_id: Some(AccountId::new()),
+                    all_accounts: false,
                 },
+                IpcCategory::CoreMail,
+            ),
+            (
+                Request::SystemMailboxCounts { account_id: None },
                 IpcCategory::CoreMail,
             ),
             (
@@ -1473,6 +1585,7 @@ mod tests {
                 account_id: None,
                 limit: 50,
                 offset: 0,
+                label_role: None,
             },
             Request::GetEnvelope {
                 message_id: MessageId::new(),

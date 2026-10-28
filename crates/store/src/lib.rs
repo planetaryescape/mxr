@@ -113,6 +113,7 @@ mod sync_cursor;
 mod sync_log;
 mod sync_runtime_status;
 mod sync_upsert;
+mod system_mailbox;
 #[cfg(test)]
 mod test_fixtures;
 mod thread;

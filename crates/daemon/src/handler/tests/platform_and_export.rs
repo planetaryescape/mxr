@@ -2076,6 +2076,7 @@ async fn dispatch_export_thread_markdown() {
             account_id: None,
             limit: 1,
             offset: 0,
+            label_role: None,
         }),
     };
     let resp = handle_request(&state, &list_msg).await;
@@ -2152,6 +2153,7 @@ async fn dispatch_export_thread_json_is_valid() {
             account_id: None,
             limit: 1,
             offset: 0,
+            label_role: None,
         }),
     };
     let resp = handle_request(&state, &list_msg).await;

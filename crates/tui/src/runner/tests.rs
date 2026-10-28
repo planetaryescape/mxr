@@ -162,6 +162,7 @@ mod reading;
 mod records;
 mod semantic_and_connection;
 mod todo;
+mod unified_mailboxes;
 mod updates;
 
 mod rules;

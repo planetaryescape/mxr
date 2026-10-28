@@ -357,6 +357,7 @@ async fn thread(
                 &state.config.socket_path,
                 Request::ListLabels {
                     account_id: Some(thread.account_id.clone()),
+                    all_accounts: false,
                 },
             )
             .await?
@@ -2650,6 +2651,26 @@ async fn ipc_request_with_id(
                 details,
             }),
         })
+        .map_err(map_bridge_error)
+}
+
+/// Per-mailbox counts over the accounts in scope, or `None` when the daemon
+/// does not provide them (callers use the labels' own counts). The bridge
+/// opens a connection per request, and the shared client helper reconnects
+/// after an older daemon refuses the request, so nothing is left poisoned.
+async fn system_mailbox_counts_request(
+    socket_path: &Path,
+    account_id: Option<AccountId>,
+) -> Result<Option<Vec<mxr_protocol::SystemMailboxCount>>, BridgeError> {
+    let connect = || async {
+        IpcConnection::connect(socket_path, mxr_protocol::ClientKind::Web)
+            .await
+            .map(|connection| connection.with_start_id(next_bridge_request_id()))
+    };
+    let mut connection = connect().await.map_err(map_bridge_error)?;
+    connection
+        .system_mailbox_counts(account_id, connect)
+        .await
         .map_err(map_bridge_error)
 }
 

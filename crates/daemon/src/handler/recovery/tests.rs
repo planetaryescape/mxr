@@ -396,6 +396,7 @@ async fn restored_cached_mail_is_visible_while_paused_and_after_activation_witho
                     label_id,
                     limit: 100,
                     offset: 0,
+                    label_role: None,
                 },
             )
             .await;
@@ -528,6 +529,7 @@ async fn restored_cached_mail_is_visible_while_paused_and_after_activation_witho
             label_id: None,
             limit: 100,
             offset: 0,
+            label_role: None,
         },
     )
     .await;
@@ -559,7 +561,7 @@ fn restored_default_account_selection_changes_only_local_selection() {
             assert!(state.runtime_account_ids().is_empty());
             assert!(state.get_provider(Some(&account.id)).is_err());
             assert!(state.send_provider_for_account(&account.id).is_err());
-            let response=super::super::dispatch(&state,mxr_protocol::ClientKind::Cli,&mxr_transport::PeerInfo::local(),&Request::ListEnvelopes{account_id:None,label_id:None,limit:100,offset:0}).await;
+            let response=super::super::dispatch(&state,mxr_protocol::ClientKind::Cli,&mxr_transport::PeerInfo::local(),&Request::ListEnvelopes{account_id:None,label_id:None,limit:100,offset:0, label_role: None }).await;
             assert!(matches!(response,mxr_protocol::Response::Ok{data:ResponseData::Envelopes{envelopes}} if !envelopes.is_empty()));
             assert!(fake.sent_drafts().is_empty());
             assert!(fake.mutations().is_empty());

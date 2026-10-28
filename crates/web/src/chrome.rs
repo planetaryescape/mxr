@@ -3,8 +3,11 @@ use super::envelope_list::{
     sorted_saved_searches,
 };
 use super::*;
-use mxr_core::{LabelKind, MessageFlags, PersonalCategory, SavedSearch, SubscriptionSummary};
+use mxr_core::{
+    Label, LabelKind, MessageFlags, PersonalCategory, Role, SavedSearch, SubscriptionSummary,
+};
 use serde_json::json;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub(crate) struct BridgeChrome {
@@ -17,6 +20,71 @@ pub(crate) struct BridgeChrome {
     pub(crate) inbox_label_id: Option<mxr_core::LabelId>,
     pub(crate) searches: Vec<SavedSearch>,
     pub(crate) subscriptions: Vec<SubscriptionSummary>,
+    /// Every system label of every account in scope: all enabled accounts'
+    /// without an account scope, the named account's otherwise. `labels`
+    /// holds only the default (or named) account's, for user labels.
+    pub(crate) scope_labels: Vec<Label>,
+    /// Unread and total per system mailbox over the accounts in scope, from
+    /// the daemon. Empty when the daemon predates `SystemMailboxCounts`, so
+    /// callers fall back to the label's own counts.
+    pub(crate) unified_counts: HashMap<Role, (u32, u32)>,
+    /// All messages across accounts, used for All Mail only when the daemon
+    /// sends no counts and no account is chosen.
+    pub(crate) all_accounts_total: Option<u32>,
+}
+
+impl BridgeChrome {
+    /// The label a system mailbox is reached through: the default (or named)
+    /// account's, else any in-scope account's. Navigation is built from
+    /// roles, not from one account's label names.
+    pub(crate) fn mailbox_label(&self, role: Role) -> Option<&Label> {
+        self.labels
+            .iter()
+            .chain(self.scope_labels.iter())
+            .find(|label| label.system_mailbox_role() == Some(role))
+    }
+
+    /// A label by id from any account in scope.
+    pub(crate) fn label_by_id(&self, id: &mxr_core::LabelId) -> Option<&Label> {
+        self.labels
+            .iter()
+            .chain(self.scope_labels.iter())
+            .find(|label| &label.id == id)
+    }
+
+    /// Counts for a system mailbox: the daemon's sum over the accounts in
+    /// scope, else the label's own. `None` when neither is known.
+    pub(crate) fn role_counts(&self, role: Role) -> Option<(u32, u32)> {
+        self.unified_counts.get(&role).copied().or_else(|| {
+            self.mailbox_label(role)
+                .map(|label| (label.unread_count, label.total_count))
+        })
+    }
+
+    /// Counts to show for `label`: the mailbox's counts for a system label,
+    /// the label's own otherwise.
+    pub(crate) fn label_counts(&self, label: &Label) -> (u32, u32) {
+        label
+            .system_mailbox_role()
+            .and_then(|role| self.unified_counts.get(&role).copied())
+            .unwrap_or((label.unread_count, label.total_count))
+    }
+}
+
+/// `label_role` for listing `label` when no account is chosen: its system
+/// mailbox across every account. `None` with an account (the label id is
+/// already that account's) or for user labels.
+pub(crate) fn unscoped_label_role(
+    account_id: Option<&AccountId>,
+    label: Option<&Label>,
+) -> Option<String> {
+    if account_id.is_some() {
+        return None;
+    }
+    label?
+        .system_mailbox_role()
+        .and_then(Role::system_mailbox_wire_name)
+        .map(str::to_string)
 }
 
 #[derive(Debug, Serialize)]
@@ -170,12 +238,55 @@ pub(crate) async fn build_bridge_chrome(
         socket_path,
         Request::ListLabels {
             account_id: account_id.cloned(),
+            all_accounts: false,
         },
     )
     .await?
     {
         ResponseData::Labels { labels } => labels,
         _ => return Err(BridgeError::UnexpectedResponse),
+    };
+
+    // Navigation is built from roles, so it needs every in-scope account's
+    // system labels, not just the default account's. An older daemon that
+    // ignores `all_accounts` returns the default account's, which is the
+    // old behaviour.
+    let scope_labels = if account_id.is_none() {
+        match ipc_request(
+            socket_path,
+            Request::ListLabels {
+                account_id: None,
+                all_accounts: true,
+            },
+        )
+        .await?
+        {
+            ResponseData::Labels { labels } => labels,
+            _ => return Err(BridgeError::UnexpectedResponse),
+        }
+    } else {
+        labels.clone()
+    };
+
+    // Counts come from the daemon so All Mail and Starred (no label on some
+    // providers) and accounts without a given label still add up. A daemon
+    // that predates the request errors; the label's own counts stand in.
+    let unified_counts = match system_mailbox_counts_request(socket_path, account_id.cloned()).await
+    {
+        Ok(Some(mailboxes)) => mailboxes
+            .into_iter()
+            .filter_map(|mailbox| {
+                Some((
+                    Role::from_system_mailbox_wire_name(&mailbox.role)?,
+                    (mailbox.unread, mailbox.total),
+                ))
+            })
+            .collect::<HashMap<_, _>>(),
+        Ok(None) => HashMap::new(),
+        Err(error) => {
+            tracing::debug!(%error, "system mailbox counts unavailable; using label counts");
+            HashMap::new()
+        }
     };
 
     let categories = match ipc_request(
@@ -218,12 +329,15 @@ pub(crate) async fn build_bridge_chrome(
             "statusMessage": status_message,
             "commandHint": "Ctrl-p",
         }),
-        sidebar: json!({ "sections": build_sidebar_sections(&labels, &categories, &searches, &subscriptions, total_messages, active_lens) }),
-        inbox_label_id: find_inbox_label(&labels).map(|label| label.id.clone()),
+        sidebar: json!({ "sections": build_sidebar_sections(&labels, &scope_labels, &categories, &searches, &subscriptions, total_messages, active_lens, &unified_counts) }),
+        inbox_label_id: inbox_label_id(&labels, &scope_labels),
         labels,
         categories,
         searches,
         subscriptions,
+        scope_labels,
+        unified_counts,
+        all_accounts_total: account_id.is_none().then_some(total_messages),
     })
 }
 
@@ -251,31 +365,45 @@ pub(crate) async fn ack_request(
     }
 }
 
-pub(crate) fn find_inbox_label(labels: &[Label]) -> Option<&Label> {
+/// The Inbox label to send as `label_id`: the default (or named) account's,
+/// else any in-scope account's.
+fn inbox_label_id(labels: &[Label], scope_labels: &[Label]) -> Option<mxr_core::LabelId> {
     labels
         .iter()
-        .find(|label| matches_system_label(label, "Inbox"))
+        .chain(scope_labels)
+        .find(|label| label.system_mailbox_role() == Some(Role::Inbox))
+        .map(|label| label.id.clone())
 }
 
-pub(crate) fn matches_system_label(label: &Label, expected: &str) -> bool {
-    matches!(label.kind, LabelKind::System) && label.name.eq_ignore_ascii_case(expected)
-}
-
-pub(crate) fn mailbox_counts(labels: &[Label], envelopes: &[Envelope]) -> serde_json::Value {
-    if let Some(inbox) = find_inbox_label(labels) {
+pub(crate) fn mailbox_counts(chrome: &BridgeChrome, envelopes: &[Envelope]) -> serde_json::Value {
+    if let Some((unread, total)) = chrome.role_counts(Role::Inbox) {
         json!({
-            "unread": inbox.unread_count,
-            "total": inbox.total_count,
+            "unread": unread,
+            "total": total,
         })
     } else {
-        json!({
-            "unread": envelopes
-                .iter()
-                .filter(|envelope| !envelope.flags.contains(MessageFlags::READ))
-                .count(),
-            "total": envelopes.len(),
-        })
+        derived_counts(envelopes)
     }
+}
+
+/// Counts for the All Mail lens: the daemon's per-account message counts.
+/// Never the page size. Without them (an older daemon), the account's All
+/// Mail label if it has one, else all messages across accounts when no
+/// account is chosen.
+fn all_mail_counts(chrome: &BridgeChrome) -> serde_json::Value {
+    let (unread, total) = chrome
+        .role_counts(Role::AllMail)
+        .unwrap_or_else(|| (0, chrome.all_accounts_total.unwrap_or(0)));
+    json!({ "unread": unread, "total": total })
+}
+
+/// A system label shows under its mailbox's title (`DRAFT` reads "Drafts");
+/// other labels keep their own name.
+pub(crate) fn lens_label_name(label: &Label) -> String {
+    label
+        .system_mailbox_role()
+        .and_then(Role::system_mailbox_title)
+        .map_or_else(|| label.name.clone(), str::to_string)
 }
 
 pub(crate) fn derived_counts(envelopes: &[Envelope]) -> serde_json::Value {
@@ -288,41 +416,64 @@ pub(crate) fn derived_counts(envelopes: &[Envelope]) -> serde_json::Value {
     })
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one call site assembles the sidebar"
+)]
 pub(crate) fn build_sidebar_sections(
     labels: &[Label],
+    scope_labels: &[Label],
     categories: &[PersonalCategory],
     searches: &[SavedSearch],
     subscriptions: &[SubscriptionSummary],
     total_messages: u32,
     active_lens: &MailboxLensRequest,
+    unified_counts: &HashMap<Role, (u32, u32)>,
 ) -> Vec<serde_json::Value> {
-    let all_mail_total = labels
-        .iter()
-        .find(|label| matches_system_label(label, "All Mail"))
-        .map_or(total_messages, |label| label.total_count);
-    let all_mail_unread = labels
-        .iter()
-        .find(|label| matches_system_label(label, "All Mail"))
-        .map(|label| label.unread_count)
-        .unwrap_or_default();
+    // The label a role is reached through: the default (or named) account's,
+    // else any in-scope account's. A mailbox only another account has still
+    // gets an item.
+    let label_for = |role: Role| {
+        labels
+            .iter()
+            .chain(scope_labels)
+            .find(|label| label.system_mailbox_role() == Some(role))
+    };
+    let counts_for = |role: Role, label: Option<&Label>| {
+        unified_counts
+            .get(&role)
+            .copied()
+            .or_else(|| label.map(|label| (label.unread_count, label.total_count)))
+    };
+    let (all_mail_unread, all_mail_total) =
+        counts_for(Role::AllMail, label_for(Role::AllMail)).unwrap_or((0, total_messages));
 
     let mut system_items = Vec::new();
-    for name in ["Inbox", "Starred", "Sent", "Drafts", "Spam", "Trash"] {
-        if let Some(label) = labels
-            .iter()
-            .find(|label| matches_system_label(label, name))
-        {
+    for role in [
+        Role::Inbox,
+        Role::Starred,
+        Role::Sent,
+        Role::Drafts,
+        Role::Spam,
+        Role::Trash,
+    ] {
+        let Some(title) = role.system_mailbox_title() else {
+            continue;
+        };
+        if let Some(label) = label_for(role) {
+            let (unread, total) = counts_for(role, Some(label)).unwrap_or_default();
+            let is_inbox = role == Role::Inbox;
             system_items.push(json!({
-                "id": slugify(&label.name),
-                "label": label.name,
-                "unread": label.unread_count,
-                "total": label.total_count,
+                "id": slugify(title),
+                "label": title,
+                "unread": unread,
+                "total": total,
                 "active": active_lens.kind == MailboxLensKind::Label
                     && active_lens.label_id.as_deref() == Some(&label.id.to_string())
-                    || active_lens.kind == MailboxLensKind::Inbox && name == "Inbox",
+                    || active_lens.kind == MailboxLensKind::Inbox && is_inbox,
                 "lens": {
-                    "kind": if name == "Inbox" { "inbox" } else { "label" },
-                    "labelId": if name == "Inbox" {
+                    "kind": if is_inbox { "inbox" } else { "label" },
+                    "labelId": if is_inbox {
                         None::<String>
                     } else {
                         Some(label.id.to_string())
@@ -441,30 +592,32 @@ pub(crate) async fn load_mailbox_selection(
                 account_id,
                 limit,
                 offset,
+                account_id
+                    .is_none()
+                    .then(|| Role::Inbox.system_mailbox_wire_name().map(str::to_string))
+                    .flatten(),
             )
             .await?;
             Ok(MailboxSelection {
-                lens_label: find_inbox_label(&chrome.labels)
-                    .map_or_else(|| "Inbox".to_string(), |label| label.name.clone()),
-                counts: mailbox_counts(&chrome.labels, &envelopes),
+                lens_label: "Inbox".to_string(),
+                counts: mailbox_counts(chrome, &envelopes),
                 envelopes,
             })
         }
         MailboxLensKind::AllMail => {
-            let envelopes = list_envelopes(socket_path, None, account_id, limit, offset).await?;
-            let counts = chrome
-                .labels
-                .iter()
-                .find(|label| matches_system_label(label, "All Mail"))
-                .map_or_else(
-                    || derived_counts(&envelopes),
-                    |label| {
-                        json!({
-                            "unread": label.unread_count,
-                            "total": label.total_count,
-                        })
-                    },
-                );
+            let envelopes = list_envelopes(
+                socket_path,
+                None,
+                account_id,
+                limit,
+                offset,
+                account_id
+                    .is_none()
+                    .then(|| Role::AllMail.system_mailbox_wire_name().map(str::to_string))
+                    .flatten(),
+            )
+            .await?;
+            let counts = all_mail_counts(chrome);
             Ok(MailboxSelection {
                 lens_label: "All Mail".to_string(),
                 counts,
@@ -477,26 +630,25 @@ pub(crate) async fn load_mailbox_selection(
                 .as_deref()
                 .ok_or_else(|| BridgeError::BadRequest("label lens missing label_id".into()))
                 .and_then(parse_label_id)?;
+            let label = chrome.label_by_id(&label_id);
             let envelopes = list_envelopes(
                 socket_path,
                 Some(label_id.clone()),
                 account_id,
                 limit,
                 offset,
+                unscoped_label_role(account_id, label),
             )
             .await?;
-            let label = chrome
-                .labels
-                .iter()
-                .find(|candidate| candidate.id == label_id);
             Ok(MailboxSelection {
-                lens_label: label.map_or_else(|| "Label".to_string(), |label| label.name.clone()),
+                lens_label: label.map_or_else(|| "Label".to_string(), lens_label_name),
                 counts: label.map_or_else(
                     || derived_counts(&envelopes),
                     |label| {
+                        let (unread, total) = chrome.label_counts(label);
                         json!({
-                            "unread": label.unread_count,
-                            "total": label.total_count,
+                            "unread": unread,
+                            "total": total,
                         })
                     },
                 ),

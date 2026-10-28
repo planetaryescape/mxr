@@ -601,6 +601,7 @@ async fn undo_bulk_archive_restores_all_messages() {
             account_id: None,
             limit: 3,
             offset: 0,
+            label_role: None,
         }),
     };
     let envelopes = match handle_request(&state, &list_msg).await.payload {
@@ -1477,12 +1478,14 @@ async fn envelope_pages_and_id_lookups_include_message_label_provider_ids() {
             account_id: None,
             limit: 200,
             offset: 0,
+            label_role: None,
         },
         Request::ListEnvelopes {
             label_id: Some(label.id.clone()),
             account_id: None,
             limit: 200,
             offset: 0,
+            label_role: None,
         },
         Request::ListEnvelopesByIds {
             message_ids: vec![id.clone(), mxr_core::MessageId::new()],

@@ -11,6 +11,7 @@ pub(crate) async fn list_envelopes(
     account_id: Option<&AccountId>,
     limit: u32,
     offset: u32,
+    label_role: Option<String>,
 ) -> Result<Vec<Envelope>, BridgeError> {
     match ipc_request(
         socket_path,
@@ -19,6 +20,7 @@ pub(crate) async fn list_envelopes(
             account_id: account_id.cloned(),
             limit,
             offset,
+            label_role,
         },
     )
     .await?

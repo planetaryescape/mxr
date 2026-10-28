@@ -4323,7 +4323,10 @@ async fn mutation_dedup_records_apply_and_detects_replay() {
     store.insert_account(&account).await.unwrap();
 
     assert!(
-        !store.was_mutation_applied("mut-1", "msg-1").await.unwrap(),
+        !store
+            .was_mutation_applied("mut-1", &account.id, "msg-1")
+            .await
+            .unwrap(),
         "unrecorded key must report not-applied"
     );
 
@@ -4333,7 +4336,10 @@ async fn mutation_dedup_records_apply_and_detects_replay() {
         .unwrap();
 
     assert!(
-        store.was_mutation_applied("mut-1", "msg-1").await.unwrap(),
+        store
+            .was_mutation_applied("mut-1", &account.id, "msg-1")
+            .await
+            .unwrap(),
         "recorded key must report applied"
     );
 
@@ -4349,14 +4355,83 @@ async fn mutation_dedup_records_apply_and_detects_replay() {
         .record_mutation_applied("mut-1", "msg-2", &account.id, 100)
         .await
         .unwrap();
-    assert!(store.was_mutation_applied("mut-1", "msg-2").await.unwrap());
+    assert!(store
+        .was_mutation_applied("mut-1", &account.id, "msg-2")
+        .await
+        .unwrap());
     assert!(
         !store
-            .was_mutation_applied("mut-other", "msg-1")
+            .was_mutation_applied("mut-other", &account.id, "msg-1")
             .await
             .unwrap(),
         "different mutation_id must not collide"
     );
+}
+
+/// Provider ids repeat across accounts; a mutation recorded for one account
+/// must not read as applied for another.
+#[tokio::test]
+async fn mutation_dedup_is_keyed_by_account() {
+    let store = Store::in_memory().await.unwrap();
+    let (first, second) = (test_account(), test_account());
+    store.insert_account(&first).await.unwrap();
+    store.insert_account(&second).await.unwrap();
+
+    store
+        .record_mutation_applied("mut-1", "INBOX:42", &first.id, 100)
+        .await
+        .unwrap();
+    assert!(store
+        .was_mutation_applied("mut-1", &first.id, "INBOX:42")
+        .await
+        .unwrap());
+    assert!(!store
+        .was_mutation_applied("mut-1", &second.id, "INBOX:42")
+        .await
+        .unwrap());
+
+    store
+        .record_mutation_applied("mut-1", "INBOX:42", &second.id, 100)
+        .await
+        .unwrap();
+    assert_eq!(store.count_mutation_dedup_rows().await.unwrap(), 2);
+}
+
+/// A receipt written before the key carried the account sits under the bare
+/// provider id. A replay after the upgrade must still find it, for its own
+/// account only.
+#[tokio::test]
+async fn mutation_dedup_finds_a_receipt_from_before_the_account_was_in_the_key() {
+    let store = Store::in_memory().await.unwrap();
+    let (first, second) = (test_account(), test_account());
+    store.insert_account(&first).await.unwrap();
+    store.insert_account(&second).await.unwrap();
+
+    sqlx::query(
+        "INSERT INTO mutation_dedup_log
+         (mutation_id, provider_message_id, account_id, applied_at, expires_at)
+         VALUES ('legacy-mut', 'INBOX:42', ?, 100, 9999999999)",
+    )
+    .bind(first.id.as_str())
+    .execute(store.writer())
+    .await
+    .unwrap();
+
+    assert!(store
+        .was_mutation_applied("legacy-mut", &first.id, "INBOX:42")
+        .await
+        .unwrap());
+    assert!(
+        !store
+            .was_mutation_applied("legacy-mut", &second.id, "INBOX:42")
+            .await
+            .unwrap(),
+        "an old receipt belongs to the account on its row"
+    );
+    assert!(!store
+        .was_mutation_applied("legacy-mut", &first.id, "INBOX:43")
+        .await
+        .unwrap());
 }
 
 /// Phase D: prune drops only rows where expires_at <= now.
@@ -4389,11 +4464,11 @@ async fn prune_expired_mutation_dedup_drops_only_stale_rows() {
         .unwrap();
     assert_eq!(pruned, 1, "only the expired row must be dropped");
     assert!(!store
-        .was_mutation_applied("expired", "msg-expired")
+        .was_mutation_applied("expired", &account.id, "msg-expired")
         .await
         .unwrap());
     assert!(store
-        .was_mutation_applied("fresh", "msg-fresh")
+        .was_mutation_applied("fresh", &account.id, "msg-fresh")
         .await
         .unwrap());
 }

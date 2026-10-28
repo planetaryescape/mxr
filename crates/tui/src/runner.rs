@@ -1958,11 +1958,40 @@ pub async fn run() -> anyhow::Result<()> {
             app.mailbox.pending_labels_refresh = false;
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
-                let resp = ipc_call(&bg, Request::ListLabels { account_id: None }).await;
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListLabels {
+                        account_id: None,
+                        all_accounts: false,
+                    },
+                )
+                .await;
+                // System mailbox counts add up every account; if that second
+                // request fails the default account's own counts stay.
+                let all = ipc_call(
+                    &bg,
+                    Request::ListLabels {
+                        account_id: None,
+                        all_accounts: true,
+                    },
+                )
+                .await;
+                let counts =
+                    match ipc_call(&bg, Request::SystemMailboxCounts { account_id: None }).await {
+                        Ok(Response::Ok {
+                            data: ResponseData::SystemMailboxCounts { mailboxes },
+                        }) => mailboxes,
+                        _ => Vec::new(),
+                    };
                 let result = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Labels { labels },
-                    }) => Ok(labels),
+                    }) => Ok(match all {
+                        Ok(Response::Ok {
+                            data: ResponseData::Labels { labels: all },
+                        }) => crate::client::with_unified_system_counts(labels, &all, &counts),
+                        _ => labels,
+                    }),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response to ListLabels".into())),
@@ -1982,6 +2011,7 @@ pub async fn run() -> anyhow::Result<()> {
                         account_id: None,
                         limit: 5000,
                         offset: 0,
+                        label_role: crate::client::all_mail_role(),
                     },
                 )
                 .await;
@@ -2886,6 +2916,7 @@ pub async fn run() -> anyhow::Result<()> {
         // Spawn non-blocking label envelope fetch
         if let Some(label_id) = app.mailbox.pending_label_fetch.take() {
             let bg = bg.clone();
+            let label_role = crate::client::unified_role_for(&app.mailbox.labels, &label_id);
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
                     &bg,
@@ -2894,6 +2925,7 @@ pub async fn run() -> anyhow::Result<()> {
                         account_id: None,
                         limit: 5000,
                         offset: 0,
+                        label_role,
                     },
                 )
                 .await;

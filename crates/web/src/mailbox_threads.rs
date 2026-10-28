@@ -7,12 +7,12 @@
 //! thread's envelopes. Saved-search and subscription lenses have no thread
 //! listing in the daemon, so they keep the envelope path.
 
-use super::chrome::{derived_counts, find_inbox_label, matches_system_label, BridgeChrome};
+use super::chrome::{derived_counts, lens_label_name, unscoped_label_role, BridgeChrome};
 use super::chrome::{MessageRowView, THREAD_ROW_PARTICIPANT_LIMIT};
 use super::envelope_list::{list_envelopes_by_message_ids, message_row_view};
 use super::row_labels::{annotate_row_labels, LabelCatalog};
 use super::*;
-use mxr_core::{MessageFlags, Thread};
+use mxr_core::{MessageFlags, Role, Thread};
 
 /// Envelope lookups are batched so a page of very long threads never builds
 /// one oversized IPC frame.
@@ -28,37 +28,96 @@ pub(crate) struct ThreadPage {
     pub(crate) thread_count: usize,
 }
 
+/// Which of a thread's messages sit in the lens, for choosing a row's
+/// mutation targets.
+enum Membership<'a> {
+    /// One label (an account-scoped Inbox, or a label lens). When no
+    /// envelope carries it (label ids out of step with the store) the whole
+    /// thread is used rather than an empty row.
+    Label(Option<&'a Label>),
+    /// Every message belongs (All Mail).
+    Everything,
+    /// A system mailbox across accounts. Each message is judged against the
+    /// labels of its own account that have this role, because providers name
+    /// the same mailbox differently (`SENT` on Gmail, `Sent Items` on IMAP).
+    /// A message no such label matches is not in the lens, and a thread with
+    /// none is not a row: a thread-level action must never reach a message
+    /// that is not in the mailbox the user is looking at.
+    Role { role: Role, labels: &'a [Label] },
+}
+
+impl Membership<'_> {
+    fn contains(&self, envelope: &Envelope) -> bool {
+        match self {
+            Membership::Label(Some(label)) => envelope_has_label(envelope, label),
+            Membership::Label(None) | Membership::Everything => true,
+            Membership::Role { role, labels } => {
+                // A star is the flag on every provider (Gmail sync sets it
+                // from the label; IMAP has no label), and a local unstar
+                // clears only the flag.
+                if *role == Role::Starred {
+                    return envelope.flags.contains(MessageFlags::STARRED);
+                }
+                labels.iter().any(|label| {
+                    label.account_id == envelope.account_id
+                        && label.system_mailbox_role() == Some(*role)
+                        && envelope_has_label(envelope, label)
+                })
+            }
+        }
+    }
+}
+
 /// The lens-specific inputs to a thread listing.
 struct ThreadLens<'a> {
     label_filter: Option<LabelId>,
-    /// Label whose members count as "in the lens". `None` means every message
-    /// of the thread belongs (All Mail, or an account with no inbox label).
-    member_label: Option<&'a Label>,
-    count_label: Option<&'a Label>,
+    /// System mailbox to list across every account; set only without an
+    /// account scope.
+    label_role: Option<String>,
+    membership: Membership<'a>,
+    /// Unread and total to show; `None` falls back to the page.
+    counts: Option<(u32, u32)>,
     lens_label: String,
 }
 
 fn thread_lens<'a>(
     chrome: &'a BridgeChrome,
     lens: &MailboxLensRequest,
+    account_id: Option<&AccountId>,
 ) -> Result<Option<ThreadLens<'a>>, BridgeError> {
-    Ok(Some(match lens.kind {
-        MailboxLensKind::Inbox => {
-            let inbox = find_inbox_label(&chrome.labels);
-            ThreadLens {
-                label_filter: chrome.inbox_label_id.clone(),
-                member_label: inbox,
-                count_label: inbox,
-                lens_label: inbox.map_or_else(|| "Inbox".to_string(), |label| label.name.clone()),
+    let role_membership = |role: Role| {
+        if account_id.is_none() {
+            Membership::Role {
+                role,
+                labels: &chrome.scope_labels,
             }
+        } else {
+            Membership::Label(chrome.mailbox_label(role))
         }
+    };
+    Ok(Some(match lens.kind {
+        MailboxLensKind::Inbox => ThreadLens {
+            label_filter: chrome.inbox_label_id.clone(),
+            label_role: account_id
+                .is_none()
+                .then(|| Role::Inbox.system_mailbox_wire_name().map(str::to_string))
+                .flatten(),
+            membership: role_membership(Role::Inbox),
+            counts: chrome.role_counts(Role::Inbox),
+            lens_label: "Inbox".to_string(),
+        },
         MailboxLensKind::AllMail => ThreadLens {
             label_filter: None,
-            member_label: None,
-            count_label: chrome
-                .labels
-                .iter()
-                .find(|label| matches_system_label(label, "All Mail")),
+            label_role: account_id
+                .is_none()
+                .then(|| Role::AllMail.system_mailbox_wire_name().map(str::to_string))
+                .flatten(),
+            membership: Membership::Everything,
+            counts: Some(
+                chrome
+                    .role_counts(Role::AllMail)
+                    .unwrap_or_else(|| (0, chrome.all_accounts_total.unwrap_or(0))),
+            ),
             lens_label: "All Mail".to_string(),
         },
         MailboxLensKind::Label => {
@@ -67,15 +126,21 @@ fn thread_lens<'a>(
                 .as_deref()
                 .ok_or_else(|| BridgeError::BadRequest("label lens missing label_id".into()))
                 .and_then(parse_label_id)?;
-            let label = chrome
-                .labels
-                .iter()
-                .find(|candidate| candidate.id == label_id);
+            let label = chrome.label_by_id(&label_id);
+            let label_role = unscoped_label_role(account_id, label);
+            let membership = match (
+                label_role.is_some(),
+                label.and_then(Label::system_mailbox_role),
+            ) {
+                (true, Some(role)) => role_membership(role),
+                _ => Membership::Label(label),
+            };
             ThreadLens {
                 label_filter: Some(label_id),
-                member_label: label,
-                count_label: label,
-                lens_label: label.map_or_else(|| "Label".to_string(), |label| label.name.clone()),
+                label_role,
+                membership,
+                counts: label.map(|label| chrome.label_counts(label)),
+                lens_label: label.map_or_else(|| "Label".to_string(), lens_label_name),
             }
         }
         MailboxLensKind::Category
@@ -94,7 +159,7 @@ pub(crate) async fn load_thread_page(
     limit: u32,
     offset: u32,
 ) -> Result<Option<ThreadPage>, BridgeError> {
-    let Some(thread_lens) = thread_lens(chrome, lens)? else {
+    let Some(thread_lens) = thread_lens(chrome, lens, account_id)? else {
         return Ok(None);
     };
     let threads = match ipc_request(
@@ -105,6 +170,7 @@ pub(crate) async fn load_thread_page(
             limit,
             offset,
             sort: Some(SortOrder::DateDesc),
+            label_role: thread_lens.label_role.clone(),
         },
     )
     .await?
@@ -132,7 +198,7 @@ pub(crate) async fn load_thread_page(
             .iter()
             .filter_map(|id| envelopes_by_id.get(id))
             .collect::<Vec<_>>();
-        match thread_row(thread, &envelopes, thread_lens.member_label) {
+        match thread_row(thread, &envelopes, &thread_lens.membership) {
             Some((date, row, latest)) => {
                 rows.push((date, row));
                 row_envelopes.push(latest.clone());
@@ -148,14 +214,9 @@ pub(crate) async fn load_thread_page(
     let catalog = LabelCatalog::load(socket_path, &page_envelopes, &chrome.labels).await;
     annotate_row_labels(&mut rows, &page_envelopes, &catalog);
 
-    let counts = thread_lens.count_label.map_or_else(
+    let counts = thread_lens.counts.map_or_else(
         || derived_counts(&page_envelopes),
-        |label| {
-            json!({
-                "unread": label.unread_count,
-                "total": label.total_count,
-            })
-        },
+        |(unread, total)| json!({ "unread": unread, "total": total }),
     );
 
     Ok(Some(ThreadPage {
@@ -175,27 +236,25 @@ fn envelope_has_label(envelope: &Envelope, label: &Label) -> bool {
 }
 
 /// Build one thread row. `message_ids` lists the thread's messages that sit
-/// in the lens (for Inbox: the ones still carrying the inbox label), so a
-/// thread-level action touches exactly what the row represents. When no
-/// envelope carries the lens label (label ids out of step with the store)
-/// the whole thread is used rather than an empty row. The row's id, sender,
-/// subject, snippet and date come from the newest in-lens message, which is
-/// also what the daemon sorted the page by.
+/// in the lens, so a thread-level action touches exactly what the row
+/// represents. The row's id, sender, subject, snippet and date come from the
+/// newest in-lens message, which is also what the daemon sorted the page by.
+/// `None` when a role view finds no in-lens message (see `Membership::Role`).
 fn thread_row<'a>(
     thread: &Thread,
     envelopes: &[&'a Envelope],
-    member_label: Option<&Label>,
+    membership: &Membership<'_>,
 ) -> Option<(DateTime<Utc>, MessageRowView, &'a Envelope)> {
-    let in_lens = member_label
-        .map(|label| {
-            envelopes
-                .iter()
-                .copied()
-                .filter(|envelope| envelope_has_label(envelope, label))
-                .collect::<Vec<_>>()
-        })
-        .filter(|members| !members.is_empty())
-        .unwrap_or_else(|| envelopes.to_vec());
+    let members = envelopes
+        .iter()
+        .copied()
+        .filter(|envelope| membership.contains(envelope))
+        .collect::<Vec<_>>();
+    let in_lens = if members.is_empty() && matches!(membership, Membership::Label(_)) {
+        envelopes.to_vec()
+    } else {
+        members
+    };
     // `max_by_key` keeps the last of equal dates, matching the store's
     // `date ASC, id ASC` member order.
     let latest = *in_lens.iter().max_by_key(|envelope| envelope.date)?;

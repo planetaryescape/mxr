@@ -69,6 +69,7 @@ impl App {
                 account_id: None,
                 limit: 5000,
                 offset: 0,
+                label_role: crate::client::unified_role_for(&self.mailbox.labels, &inbox_id),
             })
             .await
         {

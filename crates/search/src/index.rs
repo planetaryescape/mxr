@@ -771,7 +771,8 @@ impl SearchIndex {
 mod reader_text_tests {
     #![expect(
         clippy::unwrap_used,
-        reason = "tests unwrap fixture setup for direct failures"
+        clippy::panic,
+        reason = "tests unwrap fixture setup for direct failures and simulate a converter panic"
     )]
 
     use super::*;

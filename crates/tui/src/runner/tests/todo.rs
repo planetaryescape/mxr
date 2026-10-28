@@ -78,7 +78,7 @@ fn microsoft_sync_preview_must_be_rendered_on_the_runway_before_confirmation() {
         app.mailbox.todo_page.pending_microsoft.take(),
         Some(Request::SyncMicrosoftTodos { dry_run: true, .. })
     ));
-    press_shifted(&mut app, 'E');
+    press(&mut app, KeyCode::Char('3'));
     assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Expired);
     // The same task can appear on another panel while a request is in flight.
     app.mailbox.todo_page.expired = vec![council_tax()];
@@ -863,7 +863,7 @@ fn t_on_a_conversation_makes_a_to_do_titled_from_the_sender() {
 #[test]
 fn the_catch_up_keeps_lets_go_and_lets_go_of_exactly_the_preview() {
     let mut app = todo_app(true);
-    press_shifted(&mut app, 'C');
+    press(&mut app, KeyCode::Char('2'));
     assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Catchup);
     assert_eq!(
         app.mailbox.todo_page.pending_list,
@@ -920,10 +920,32 @@ fn the_catch_up_keeps_lets_go_and_lets_go_of_exactly_the_preview() {
     assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Runway);
 }
 
+/// To do's tabs are `1` `2` `3` from any of them; the old `C` and `E`
+/// say where they went and switch nothing.
+#[test]
+fn the_digits_pick_to_dos_tabs_and_the_old_letters_say_so() {
+    let mut app = todo_app(true);
+    press_shifted(&mut app, 'C');
+    assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Runway);
+    assert_eq!(app.status_message.as_deref(), Some("Catch-up is now 2"));
+    press_shifted(&mut app, 'E');
+    assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Runway);
+    assert_eq!(app.status_message.as_deref(), Some("Expired is now 3"));
+    for (key, panel) in [
+        ('3', TodoPanel::Expired),
+        ('2', TodoPanel::Catchup),
+        ('3', TodoPanel::Expired),
+        ('1', TodoPanel::Runway),
+    ] {
+        press(&mut app, KeyCode::Char(key));
+        assert_eq!(app.mailbox.todo_page.panel, panel, "{key}");
+    }
+}
+
 #[test]
 fn the_expired_list_restores_with_enter() {
     let mut app = todo_app(true);
-    press_shifted(&mut app, 'E');
+    press(&mut app, KeyCode::Char('3'));
     assert_eq!(app.mailbox.todo_page.panel, TodoPanel::Expired);
     app.set_todo_expired(vec![todo("todo_old", "Renew passport")]);
     press(&mut app, KeyCode::Enter);

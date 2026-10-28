@@ -2205,7 +2205,9 @@ pub enum Request {
     },
     /// Dismiss a hint on this profile, so it never shows again in any
     /// client; `seen: false` brings it back. Returns
-    /// `ResponseData::ModeGuides` with every mode the hint attaches in.
+    /// `ResponseData::ModeGuides` with every mode the hint attaches in, or
+    /// `ResponseData::HintSeen` for a "Next time" hint
+    /// (`next-time.<action id>`, D171).
     SetHintSeen {
         hint: String,
         #[serde(default = "default_true")]
@@ -4374,6 +4376,13 @@ pub enum ResponseData {
     ModeGuides {
         guides: Vec<ModeGuideData>,
     },
+    /// Returned by `Request::SetHintSeen` for a "Next time" hint: whether
+    /// this request is the one that marked it seen, so a client names the
+    /// key exactly once per profile, whichever client runs the action first.
+    HintSeen {
+        hint: String,
+        newly_seen: bool,
+    },
     /// Returned by `Request::GetNow`.
     Now {
         now: NowData,
@@ -4821,6 +4830,7 @@ impl ResponseData {
             | Self::TodoChange { .. }
             | Self::TodoCatchup { .. }
             | Self::ModeGuides { .. }
+            | Self::HintSeen { .. }
             | Self::Now { .. }
             | Self::Arrivals { .. }
             | Self::ArrivalList { .. }

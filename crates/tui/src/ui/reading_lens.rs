@@ -41,8 +41,48 @@ const TWO_PANE_MIN_WIDTH: u16 = 100;
 const PROGRESS_CELLS: usize = 20;
 const DEFAULT_WPM: u32 = 230;
 
-const LIST_KEYS: &str = "Enter read \u{b7} L article \u{b7} b later \u{b7} e let go \u{b7} D unsubscribe \u{b7} A let go all \u{b7} B Later shelf \u{b7} M Marginalia \u{b7} ? help";
-const READER_KEYS: &str = "Esc back \u{b7} j/k scroll \u{b7} h highlight \u{b7} H highlights \u{b7} L article \u{b7} b later \u{b7} e let go \u{b7} D unsubscribe \u{b7} R original \u{b7} M Marginalia \u{b7} o email";
+/// The footer's keys for the list and the reader, as action ids and words;
+/// the keys come from the definition, so a moved key moves here too.
+const LIST_KEYS: &[(&str, &str)] = &[
+    ("reading.read", "read"),
+    ("reading.article", "article"),
+    ("reading.later", "later"),
+    ("reading.let-go", "let go"),
+    ("reading.unsubscribe", "unsubscribe"),
+    ("reading.let-go-all", "let go all"),
+    ("reading.edition", "edition"),
+    ("reading.later-shelf", "Later"),
+    ("reading.highlights", "highlights"),
+    ("reading.marginalia", "Marginalia"),
+    ("shell.help", "help"),
+];
+const READER_KEYS: &[(&str, &str)] = &[
+    ("reading.reader-back", "back"),
+    ("reading.reader-highlight", "highlight"),
+    ("reading.highlights", "highlights"),
+    ("reading.article", "article"),
+    ("reading.later", "later"),
+    ("reading.let-go", "let go"),
+    ("reading.unsubscribe", "unsubscribe"),
+    ("reading.original", "original"),
+    ("reading.marginalia", "Marginalia"),
+    ("reading.open-email", "email"),
+];
+
+fn footer_keys(keys: &[(&str, &str)]) -> String {
+    keys.iter()
+        .filter_map(|(id, word)| {
+            let key = mxr_keymap::guide_key(id)?;
+            let key = if key == "Escape" {
+                "Esc".to_string()
+            } else {
+                key
+            };
+            Some(format!("{key} {word}"))
+        })
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
+}
 
 /// As many whole "key verb" items as fit in `width`.
 fn fit_keys(keys: &str, width: usize) -> String {
@@ -650,7 +690,17 @@ pub fn draw(
         .get(view.selected_index)
         .map(|row| one_line(&row.issue().why))
         .unwrap_or_default();
-    let keys = if reading { READER_KEYS } else { LIST_KEYS };
+    let keys = if reading {
+        // j and k scroll in place, so no action carries them.
+        let (back, rest) = READER_KEYS.split_at(1);
+        format!(
+            "{} \u{b7} j/k scroll \u{b7} {}",
+            footer_keys(back),
+            footer_keys(rest)
+        )
+    } else {
+        footer_keys(LIST_KEYS)
+    };
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(Span::styled(
@@ -658,7 +708,7 @@ pub fn draw(
                 Style::default().fg(theme.text_secondary),
             )),
             Line::from(Span::styled(
-                format!(" {}", fit_keys(keys, width.saturating_sub(2))),
+                format!(" {}", fit_keys(&keys, width.saturating_sub(2))),
                 Style::default().fg(theme.text_muted),
             )),
         ]),

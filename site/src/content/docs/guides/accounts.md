@@ -17,7 +17,7 @@ The TUI Accounts page is built from runtime inventory, not from config file entr
 Open it with:
 
 - `g` then `C`
-- `Ctrl-p` then `Open Accounts Page`
+- `gC`, or `:` then **Settings**
 
 Actions:
 

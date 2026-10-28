@@ -12,7 +12,7 @@ expression: snapshot
 "      │╭ Matches ───────────────────────────────────────────────────────────────────────────╮│      "
 "      ││gC                   Accounts and settings                  Start Here              ││      "
 "      ││gC                   Accounts Page                          Mailbox List            ││      "
-"      ││gC                   Open Accounts Tab                      Commands: Navigation    ││      "
+"      ││gC                   Settings                               Commands: Settings      ││      "
 "      ││Add an account       g C → c (or palette: New IMAP/SMTP Acc How do I…               ││      "
 "      ││Repair an unhealthy  g C → select account → r when [unhealt How do I…               ││      "
 "      ││                                                                                    ││      "

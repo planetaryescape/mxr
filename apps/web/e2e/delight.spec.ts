@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 import { mailRows, openList, pressSequence } from "./helpers/mail";
-import { openApp, readE2EState } from "./helpers/state";
+import { bridge, openApp, readE2EState } from "./helpers/state";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -207,18 +207,17 @@ async function pointerArchiveAndUndo(page: Page): Promise<void> {
   await expect(row).toBeVisible();
 }
 
-test("three pointer archives earn one key hint, and it never comes back", async ({ page }) => {
+test("a pointer archive names its key once, and it never comes back", async ({ page }) => {
   await openList(page, "/m/inbox");
-  const hint = page.getByText("Tip: press e for Archive.");
-  await pointerArchiveAndUndo(page);
-  await pointerArchiveAndUndo(page);
-  await expect(hint).toHaveCount(0);
+  // Whatever ran before, Archive's key starts untaught on this profile.
+  await bridge(page, "/api/v1/mail/hints/next-time.mail.archive", { seen: false });
+  const hint = page.getByText("Archive. Next time: e");
   await pointerArchiveAndUndo(page);
   await expect(hint).toBeVisible();
 
   await page.reload();
   await expect(mailRows(page).first()).toBeVisible();
-  for (let use = 0; use < 3; use += 1) await pointerArchiveAndUndo(page);
+  for (let use = 0; use < 2; use += 1) await pointerArchiveAndUndo(page);
   await expect(hint).toHaveCount(0);
 });
 

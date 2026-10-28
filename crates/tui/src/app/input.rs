@@ -701,13 +701,12 @@ impl App {
         if self.command_palette.palette.visible {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, _) => {
-                    let action = self.command_palette.palette.confirm();
-                    if action.is_some() {
-                        // Recents changed; flag for async save by the
-                        // local-IO worker on the next tick.
-                        self.pending_local_state_save = true;
-                    }
-                    return action;
+                    let command = self.command_palette.palette.confirm_command()?;
+                    // Recents changed; flag for async save by the
+                    // local-IO worker on the next tick.
+                    self.pending_local_state_save = true;
+                    self.offer_next_time(&command);
+                    return Some(command.action);
                 }
                 (KeyCode::Esc, _) => return Some(Action::CloseCommandPalette),
                 (KeyCode::Backspace, _) => {

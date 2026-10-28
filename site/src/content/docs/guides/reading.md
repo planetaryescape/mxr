@@ -184,7 +184,8 @@ yourself.
 
 `b` (Not now) opens a picker whose first choice, **Later**, puts an item on
 the Later shelf, the one shelf in Reading with a count; `Enter` picks it. A
-time from the same picker snoozes the item's email instead.
+time from the same picker snoozes the item's email instead. `2` opens
+Later, and `1` comes back to the edition.
 Putting a link on Later also fetches its article, so it is there on a
 plane. Later never fades. Something on it for more than 30 days asks once,
 "Still want it?", and keeping it stops the question.
@@ -243,8 +244,10 @@ listed under the article with their notes.
 To change one, click it in the article or use its row in the list: edit
 its note (a blank note clears it) or remove it. Removing a highlight, or
 changing its note, can be undone for about a minute with `u` or `mxr undo`.
-In the TUI, `H` in the reader lists the item's highlights: `e` edits the
-note, `x` removes (it asks first).
+`3`, the Highlights tab, goes to the open item's highlights: on the web it
+opens the item at its list, and in the TUI it lists them, where `e` edits the
+note and `x` removes one (it asks first). There is no page of every
+highlight yet.
 
 Highlights you made in Marginalia are read-only here: they are read back
 from Marginalia, so a change here would be undone by the next read. They are
@@ -294,7 +297,7 @@ makes no unsubscribe offers.
 | `R` | The sender's own layout |
 | `E` | Let go of everything shown, with a preview |
 | `"` | Highlight the selection |
-| `H` | The TUI reader's highlights: edit a note, remove one |
+| `1` `2` `3` | The tabs: the edition, Later, the open item's highlights |
 | `o` | Open the email itself |
 | `O` | Open in Marginalia, sending it the first time |
 | `?` | Help, starting with Reading |

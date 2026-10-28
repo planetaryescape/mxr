@@ -393,6 +393,11 @@ group = "Triage"
 scopes = ["global"]
 palette_only = true
 
+[[action.tui]]
+name = "OpenSubscriptions"
+keys = []
+contexts = "all"
+
 [[action]]
 id = "nav.screener"
 label = "Screener"
@@ -428,7 +433,7 @@ hide_in_palette = true
 
 [[action.moved]]
 key = "1"
-contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "archive", "reading", "reading-reader", "updates"]
+contexts = ["global", "list", "reader", "sidebar", "place", "archive", "updates"]
 until = "0.6.180"
 to = "nav.inbox"
 
@@ -436,13 +441,19 @@ to = "nav.inbox"
 id = "nav.search-page"
 label = "Search page"
 group = "Search"
+palette_only = true
 scopes = ["global"]
 
 [[action.moved]]
 key = "2"
-contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "archive", "reading", "reading-reader", "updates"]
+contexts = ["global", "list", "reader", "sidebar", "place", "archive", "updates"]
 until = "0.6.180"
 to = "shell.search-palette"
+
+[[action.tui]]
+name = "OpenSearchScreen"
+keys = []
+contexts = "all"
 
 [[action]]
 id = "nav.rules"
@@ -458,7 +469,7 @@ contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", 
 
 [[action.moved]]
 key = "3"
-contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "archive", "reading", "reading-reader", "updates"]
+contexts = ["global", "list", "reader", "sidebar", "place", "archive", "updates"]
 until = "0.6.180"
 
 [[action]]
@@ -1017,6 +1028,11 @@ group = "Mail"
 scopes = ["list", "reader"]
 palette_only = true
 
+[[action.tui]]
+name = "FlagReplyLater"
+keys = []
+contexts = ["list", "reader"]
+
 [[action]]
 id = "mail.make-todo"
 label = "Make a to-do from this"
@@ -1045,6 +1061,11 @@ key = "T"
 contexts = ["list", "reader", "place"]
 until = "0.6.197"
 to = "modes.move"
+
+[[action.tui]]
+name = "PassToMode"
+keys = []
+contexts = ["list", "reader", "place"]
 
 [[action]]
 id = "mail.reply"
@@ -1096,6 +1117,11 @@ key = "E"
 contexts = ["list", "reader", "sidebar"]
 until = "0.6.185"
 
+[[action.tui]]
+name = "ExportThread"
+keys = []
+contexts = ["list", "reader"]
+
 [[action]]
 id = "mail.briefing"
 label = "Thread briefing"
@@ -1122,6 +1148,11 @@ key = "W"
 contexts = ["list", "reader", "place"]
 until = "0.6.197"
 to = "mail.sender-profile"
+
+[[action.tui]]
+name = "OpenWhoisOnFocusedSender"
+keys = []
+contexts = ["list", "reader", "place"]
 
 [[action]]
 id = "mail.sender-profile"
@@ -1279,6 +1310,11 @@ group = "Mail"
 scopes = ["list", "reader"]
 palette_only = true
 
+[[action.tui]]
+name = "CancelAutoReminder"
+keys = []
+contexts = ["list", "reader"]
+
 [[action]]
 id = "mail.compose-to-sender"
 label = "Write to sender"
@@ -1294,6 +1330,11 @@ group = "Mail"
 scopes = ["list", "reader"]
 palette_only = true
 
+[[action.tui]]
+name = "RouteToLabel"
+keys = []
+contexts = ["list", "reader"]
+
 [[action]]
 id = "mail.draft-assist"
 label = "Draft a reply"
@@ -1301,6 +1342,11 @@ description = "Generate a reply body for this conversation"
 group = "Compose"
 scopes = ["reader"]
 palette_only = true
+
+[[action.tui]]
+name = "DraftAssistCurrentThread"
+keys = []
+contexts = ["list", "reader"]
 
 [[action]]
 id = "mail.find-expert"
@@ -1310,6 +1356,11 @@ group = "Mail"
 scopes = ["global"]
 palette_only = true
 
+[[action.tui]]
+name = "FindExpertOnFocusedMessage"
+keys = []
+contexts = ["list", "reader"]
+
 [[action]]
 id = "mail.sync"
 label = "Sync now"
@@ -1317,6 +1368,11 @@ description = "Fetch new mail from every account"
 group = "Mail"
 scopes = ["global"]
 palette_only = true
+
+[[action.tui]]
+name = "SyncNow"
+keys = []
+contexts = "all"
 
 [[action]]
 id = "sidebar.down"
@@ -1518,25 +1574,35 @@ contexts = ["list", "sidebar", "place", "todo", "catchup", "expired", "now", "me
 id = "list.viewport-top"
 label = "Top of screen"
 group = "Move"
+palette_only = true
 scopes = ["list"]
-hide_in_palette = true
 
 [[action.moved]]
 key = "H"
 contexts = ["list", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "updates"]
 until = "0.6.180"
 
+[[action.tui]]
+name = "ViewportTop"
+keys = []
+contexts = ["list"]
+
 [[action]]
 id = "list.viewport-middle"
 label = "Middle of screen"
 group = "Move"
+palette_only = true
 scopes = ["list"]
-hide_in_palette = true
 
 [[action.moved]]
 key = "M"
 contexts = ["list", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "updates"]
 until = "0.6.180"
+
+[[action.tui]]
+name = "ViewportMiddle"
+keys = []
+contexts = ["list"]
 
 [[action]]
 id = "list.open"
@@ -1709,6 +1775,11 @@ description = "Group the list by conversation or show single messages"
 group = "View"
 scopes = ["list", "reader"]
 palette_only = true
+
+[[action.tui]]
+name = "ToggleMailListMode"
+keys = []
+contexts = ["list", "reader"]
 
 [[action]]
 id = "reader.scroll-down"
@@ -2016,6 +2087,7 @@ to = "reader.open-original"
 id = "reader.summary"
 label = "Summarize thread"
 group = "Read"
+palette_only = true
 scopes = ["reader"]
 
 [[action.moved]]
@@ -2023,6 +2095,11 @@ key = "y"
 contexts = ["list", "reader", "place"]
 until = "0.6.180"
 to = "mail.briefing"
+
+[[action.tui]]
+name = "SummarizeCurrentThread"
+keys = []
+contexts = ["list", "reader"]
 
 [[action]]
 id = "reader.fullscreen"
@@ -2268,12 +2345,18 @@ id = "place.sweep-bundle"
 label = "Sweep this sender's bundle…"
 short_label = "Sweep sender"
 group = "Triage"
+palette_only = true
 clients = ["tui"]
 
 [[action.moved]]
 key = "S"
 contexts = ["place"]
 until = "0.6.185"
+
+[[action.tui]]
+name = "SweepBundle"
+keys = []
+contexts = ["place"]
 
 [[action]]
 id = "place.sweep-all"
@@ -2471,31 +2554,55 @@ contexts = ["todo"]
 until = "0.6.185"
 to = "todo.edit"
 
+# To do's tabs are digits, in the order they show (blueprint 35, D166).
+[[action]]
+id = "todo.runway"
+label = "Runway"
+short_label = "Runway"
+group = "Triage"
+scopes = ["todo", "catchup", "expired"]
+keys = ["1"]
+
+[[action.tui]]
+name = "TodoShowRunway"
+keys = ["1"]
+contexts = ["todo", "catchup", "expired"]
+
 [[action]]
 id = "todo.expired"
 label = "Expired list"
 short_label = "Expired"
 group = "Triage"
-scopes = ["todo"]
-keys = ["E"]
+scopes = ["todo", "catchup", "expired"]
+keys = ["3"]
 
 [[action.tui]]
 name = "TodoOpenExpired"
-keys = ["E"]
+keys = ["3"]
+contexts = ["todo", "catchup", "expired"]
+
+[[action.moved]]
+key = "E"
 contexts = ["todo"]
+until = "0.6.197"
 
 [[action]]
 id = "todo.catchup"
 label = "Catch-up"
 short_label = "Catch-up"
 group = "Triage"
-scopes = ["todo"]
-keys = ["C"]
+scopes = ["todo", "catchup", "expired"]
+keys = ["2"]
 
 [[action.tui]]
 name = "TodoOpenCatchup"
-keys = ["C"]
+keys = ["2"]
+contexts = ["todo", "catchup", "expired"]
+
+[[action.moved]]
+key = "C"
 contexts = ["todo"]
+until = "0.6.197"
 
 [[action]]
 id = "todo.close-hint"
@@ -2802,7 +2909,7 @@ contexts = ["archive"]
 
 [[action]]
 id = "archive.check"
-label = "Mark checked"
+label = "Mark this record checked"
 short_label = "Checked"
 group = "Triage"
 scopes = ["archive"]
@@ -2813,6 +2920,11 @@ key = "v"
 contexts = ["archive"]
 until = "0.6.185"
 to = "archive.edit"
+
+[[action.tui]]
+name = "RecordsMarkChecked"
+keys = []
+contexts = ["archive"]
 
 [[action]]
 id = "archive.dismiss"
@@ -2829,7 +2941,7 @@ contexts = ["archive"]
 
 [[action]]
 id = "archive.export"
-label = "Export…"
+label = "Export the records in view…"
 short_label = "Export"
 description = "CSV of the records in view, after a preview of what it holds"
 group = "Triage"
@@ -2840,6 +2952,11 @@ palette_only = true
 key = "E"
 contexts = ["archive"]
 until = "0.6.185"
+
+[[action.tui]]
+name = "RecordsExport"
+keys = []
+contexts = ["archive"]
 
 [[action]]
 id = "archive.make-todo"
@@ -3031,18 +3148,57 @@ key = "K"
 contexts = ["reading", "reading-reader"]
 until = "0.6.180"
 
+# Reading's tabs are digits, in the order they show (blueprint 35, D166).
+[[action]]
+id = "reading.edition"
+label = "Edition"
+short_label = "Edition"
+group = "Read"
+scopes = ["reading", "reading-reader"]
+keys = ["1"]
+
+[[action.tui]]
+name = "ReadingEdition"
+keys = ["1"]
+contexts = ["reading", "reading-reader"]
+
 [[action]]
 id = "reading.later-shelf"
-label = "Open Later"
-short_label = "Later shelf"
+label = "Later"
+short_label = "Later"
+description = "What you kept with b; Later never fades"
 group = "Read"
-scopes = ["reading"]
-keys = ["B"]
+scopes = ["reading", "reading-reader"]
+keys = ["2"]
 
 [[action.tui]]
 name = "ReadingLaterShelf"
-keys = ["B"]
+keys = ["2"]
 contexts = ["reading", "reading-reader"]
+
+[[action.moved]]
+key = "B"
+contexts = ["reading", "reading-reader"]
+until = "0.6.197"
+
+[[action]]
+id = "reading.highlights"
+label = "Highlights"
+short_label = "Highlights"
+description = "Your highlights in the open issue"
+group = "Read"
+scopes = ["reading", "reading-reader"]
+keys = ["3"]
+
+[[action.tui]]
+name = "ReadingHighlights"
+keys = ["3"]
+contexts = ["reading", "reading-reader"]
+
+[[action.moved]]
+key = "H"
+contexts = ["reading-reader"]
+until = "0.6.197"
 
 [[action]]
 id = "reading.marginalia"
@@ -3089,19 +3245,27 @@ hide_in_palette = true
 
 [[action]]
 id = "reading.reader-article"
-label = "Article: fetch and read it"
+label = "Article or issue: switch between them"
 short_label = "Article"
 group = "Read"
 scopes = ["reading-reader"]
 keys = ["L"]
 
+# The reader's Issue and Article are its own two tabs; L switches between
+# them, and I stays Gmail's mark read (blueprint 35's verb table).
 [[action]]
 id = "reading.reader-issue"
 label = "Issue: the email itself"
 short_label = "Issue"
 group = "Read"
 scopes = ["reading-reader"]
-keys = ["I"]
+palette_only = true
+
+[[action.moved]]
+key = "I"
+contexts = ["reading-reader"]
+until = "0.6.197"
+to = "reading.reader-article"
 
 [[action]]
 id = "reading.reader-later"
@@ -3194,19 +3358,6 @@ hide_in_palette = true
 [[action.tui]]
 name = "ReadingBack"
 keys = ["ArrowLeft", "Escape", "q"]
-contexts = ["reading-reader"]
-
-# The TUI's list of an issue's highlights; the web app shows them in the
-# reader instead, so it has no key for the list yet.
-[[action]]
-id = "tui.reading-highlights"
-label = "Your highlights in this issue"
-group = "TUI"
-clients = ["tui"]
-
-[[action.tui]]
-name = "ReadingHighlights"
-keys = ["H"]
 contexts = ["reading-reader"]
 
 [[action]]
@@ -3902,6 +4053,11 @@ key = "S"
 contexts = ["updates"]
 until = "0.6.185"
 
+[[action.tui]]
+name = "UpdatesSweep"
+keys = []
+contexts = ["updates"]
+
 [[action]]
 id = "updates.close-hint"
 label = "Dismiss the hint"
@@ -4006,6 +4162,11 @@ group = "Semantic"
 scopes = ["global"]
 palette_only = true
 
+[[action.tui]]
+name = "BackfillSemantic"
+keys = []
+contexts = "all"
+
 [[action]]
 id = "semantic.enable"
 label = "Enable semantic search"
@@ -4013,6 +4174,11 @@ description = "Toggle hybrid and semantic retrieval locally"
 group = "Semantic"
 scopes = ["global"]
 palette_only = true
+
+[[action.tui]]
+name = "EnableSemantic"
+keys = []
+contexts = "all"
 
 [[action]]
 id = "semantic.disable"
@@ -4022,6 +4188,11 @@ group = "Semantic"
 scopes = ["global"]
 palette_only = true
 
+[[action.tui]]
+name = "DisableSemantic"
+keys = []
+contexts = "all"
+
 [[action]]
 id = "semantic.reindex"
 label = "Reindex semantic now"
@@ -4029,6 +4200,11 @@ description = "Rebuild embeddings for the active semantic profile"
 group = "Semantic"
 scopes = ["global"]
 palette_only = true
+
+[[action.tui]]
+name = "ReindexSemantic"
+keys = []
+contexts = "all"
 
 [[action]]
 id = "rules.new"
@@ -4044,6 +4220,11 @@ contexts = ["rules"]
 until = "0.6.185"
 to_key = "c"
 
+[[action.tui]]
+name = "OpenRuleFormNew"
+keys = []
+contexts = "all"
+
 [[action]]
 id = "accounts.new"
 label = "Add account"
@@ -4057,6 +4238,11 @@ key = "n"
 contexts = ["accounts"]
 until = "0.6.185"
 to_key = "c"
+
+[[action.tui]]
+name = "OpenAccountFormNew"
+keys = []
+contexts = "all"
 
 [[action]]
 id = "analytics.refresh-contacts"
@@ -4073,6 +4259,11 @@ description = "View year-in-review summary"
 group = "Analytics"
 scopes = ["global"]
 palette_only = true
+
+[[action.tui]]
+name = "OpenAnalyticsView(Wrapped)"
+keys = []
+contexts = "all"
 
 [[action]]
 id = "ask.archive"
@@ -4103,6 +4294,11 @@ label = "New assistant conversation"
 group = "View"
 scopes = ["global"]
 palette_only = true
+
+[[action.tui]]
+name = "NewAssistantConversation"
+keys = []
+contexts = "all"
 
 [[action]]
 id = "tui.pattern-select-thread"
@@ -4175,6 +4371,7 @@ contexts = ["list", "sidebar", "place", "todo", "now", "messages", "archive", "r
 id = "tui.center-current"
 label = "Center current"
 group = "TUI"
+palette_only = true
 clients = ["tui"]
 
 [[action.moved]]
@@ -4182,16 +4379,27 @@ key = "z z"
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
 until = "0.6.180"
 
+[[action.tui]]
+name = "CenterCurrent"
+keys = []
+contexts = ["list"]
+
 [[action]]
 id = "tui.viewport-bottom"
 label = "Viewport bottom"
 group = "TUI"
+palette_only = true
 clients = ["tui"]
 
 [[action.moved]]
 key = "L"
 contexts = ["sidebar", "todo", "catchup", "expired", "now", "messages", "archive"]
 until = "0.6.180"
+
+[[action.tui]]
+name = "ViewportBottom"
+keys = []
+contexts = ["list"]
 
 [[action]]
 id = "tui.open-saved-search-form-new"
@@ -4213,6 +4421,7 @@ until = "0.6.185"
 id = "tui.more-from-sender"
 label = "More from this sender"
 group = "TUI"
+palette_only = true
 clients = ["tui"]
 
 [[action.moved]]
@@ -4220,16 +4429,27 @@ key = "+"
 contexts = ["place"]
 until = "0.6.185"
 
+[[action.tui]]
+name = "MoreFromSender"
+keys = []
+contexts = ["place"]
+
 [[action]]
 id = "tui.more-place-senders"
 label = "More senders in this place"
 group = "TUI"
+palette_only = true
 clients = ["tui"]
 
 [[action.moved]]
 key = ">"
 contexts = ["place"]
 until = "0.6.185"
+
+[[action.tui]]
+name = "MorePlaceSenders"
+keys = []
+contexts = ["place"]
 
 [[action]]
 id = "tui.close-screener-modal"
@@ -4272,6 +4492,7 @@ contexts = ["archive"]
 id = "tui.todo-microsoft-send"
 label = "Send to Microsoft To Do"
 group = "Triage"
+palette_only = true
 clients = ["tui"]
 
 [[action.moved]]
@@ -4279,16 +4500,27 @@ key = "M"
 contexts = ["todo-microsoft"]
 until = "0.6.185"
 
+[[action.tui]]
+name = "TodoSendToMicrosoft"
+keys = []
+contexts = ["todo"]
+
 [[action]]
 id = "tui.todo-microsoft-sync"
 label = "Sync the linked Microsoft To Do task"
 group = "Triage"
+palette_only = true
 clients = ["tui"]
 
 [[action.moved]]
 key = "S"
 contexts = ["todo-microsoft"]
 until = "0.6.185"
+
+[[action.tui]]
+name = "TodoSyncMicrosoft"
+keys = []
+contexts = ["todo"]
 
 [[action]]
 id = "tui.drafts-delete"
@@ -4354,6 +4586,7 @@ to_key = "#"
 id = "tui.delete-assistant-conversation"
 label = "Delete conversation"
 group = "Mail"
+palette_only = true
 clients = ["tui"]
 
 [[action.moved]]
@@ -4361,6 +4594,531 @@ key = "D"
 contexts = ["assistant"]
 until = "0.6.185"
 to_key = "#"
+
+[[action.tui]]
+name = "DeleteAssistantConversation"
+keys = []
+contexts = "all"
+
+# The TUI's palette commands with no key and no web counterpart. Each names
+# its TUI action with a binding that has no keys, so the palette lists it
+# where those contexts are live (blueprint 35, rule 9).
+
+[[action]]
+id = "tui.mailbox"
+label = "Mailbox"
+group = "Navigate"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenMailboxScreen"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.categories"
+label = "Categories"
+group = "Navigate"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenPersonalCategories"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.assign-category"
+label = "Assign a category"
+group = "Mail"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "AssignPersonalCategory"
+keys = []
+contexts = ["list", "reader"]
+
+[[action]]
+id = "tui.clear-selection"
+label = "Clear selection"
+group = "Select"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "ClearSelection"
+keys = []
+contexts = ["list"]
+
+[[action]]
+id = "tui.snippets"
+label = "Snippets"
+group = "Compose"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenSnippets"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.local-drafts"
+label = "Drafts saved on this computer"
+group = "Compose"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenStoredDrafts"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.reopen-send-draft"
+label = "Reopen last send draft"
+group = "Compose"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "ReopenLastSendDraft"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.check-send-outcome"
+label = "Check last send outcome"
+group = "Compose"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "CheckLastSendOutcome"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.preview-send-recovery"
+label = "Preview last send recovery"
+group = "Compose"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "PreviewLastSendRecovery"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.resume-previewed-send"
+label = "Resume previewed approved send"
+group = "Compose"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "ResumePreviewedSend"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.draft-options"
+label = "Draft: reply with tone and length…"
+group = "Compose"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "DraftWithOptions"
+keys = []
+contexts = ["list", "reader"]
+
+[[action]]
+id = "tui.draft-new-for-sender"
+label = "Draft: new for sender"
+group = "Compose"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "DraftNewForSender"
+keys = []
+contexts = ["list", "reader"]
+
+[[action]]
+id = "tui.voice-profile"
+label = "Voice: show profile"
+group = "Settings"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenVoiceProfile"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.voice-rebuild"
+label = "Voice: rebuild profile"
+group = "Settings"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "RebuildUserVoice"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.commitments"
+label = "Commitments: show open"
+group = "Compose"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenCommitments"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.edit-config"
+label = "Edit config"
+group = "Settings"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "EditConfig"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.assistant-conversations"
+label = "Assistant: past conversations"
+group = "View"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenAssistantConversations"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.assistant-models"
+label = "Assistant: choose the model (local or cloud)"
+group = "View"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenAssistantModels"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.assistant-trust"
+label = "Assistant: approve reversible changes automatically (on/off)"
+group = "View"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "ToggleAssistantTrust"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.rules-refresh"
+label = "Refresh rules"
+group = "Rules"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "RefreshRules"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.rule-edit"
+label = "Edit rule"
+group = "Rules"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenRuleFormEdit"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.rule-toggle"
+label = "Turn rule on or off"
+group = "Rules"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "ToggleRuleEnabled"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.rule-dry-run"
+label = "Rule dry run"
+group = "Rules"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "ShowRuleDryRun"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.rule-history"
+label = "Rule history"
+group = "Rules"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "ShowRuleHistory"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.rule-delete"
+label = "Delete rule"
+group = "Rules"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "DeleteRule"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.diagnostics-refresh"
+label = "Refresh diagnostics"
+group = "Diagnostics"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "RefreshDiagnostics"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.bug-report"
+label = "Generate bug report"
+group = "Diagnostics"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "GenerateBugReport"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.diagnostics-details"
+label = "Open diagnostics details"
+group = "Diagnostics"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenDiagnosticsPaneDetails"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.accounts-refresh"
+label = "Refresh accounts"
+group = "Accounts"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "RefreshAccounts"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.account-test"
+label = "Test account"
+group = "Accounts"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "TestAccountForm"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.account-default"
+label = "Set default account"
+group = "Accounts"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "SetDefaultAccount"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.analytics-storage"
+label = "Analytics: Storage"
+group = "Analytics"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenAnalyticsView(Storage)"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.analytics-stale"
+label = "Analytics: Stale Threads"
+group = "Analytics"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenAnalyticsView(StaleThreads)"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.analytics-contacts"
+label = "Analytics: Contacts"
+group = "Analytics"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenAnalyticsView(Contacts)"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.analytics-cadence"
+label = "Analytics: Cadence Drift"
+group = "Analytics"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenAnalyticsView(CadenceDrift)"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.analytics-response-time"
+label = "Analytics: Response Time"
+group = "Analytics"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenAnalyticsView(ResponseTime)"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.analytics-subscriptions"
+label = "Analytics: Subscriptions"
+group = "Analytics"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "OpenAnalyticsView(Subscriptions)"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.semantic-install-bge-small"
+label = "Semantic: Install Profile (BGE Small EN)"
+group = "Semantic"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "InstallSemanticProfile(BgeSmallEnV15)"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.semantic-install-e5"
+label = "Semantic: Install Profile (Multilingual E5)"
+group = "Semantic"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "InstallSemanticProfile(MultilingualE5Small)"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.semantic-install-bge-m3"
+label = "Semantic: Install Profile (BGE-M3)"
+group = "Semantic"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "InstallSemanticProfile(BgeM3)"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.semantic-use-bge-small"
+label = "Semantic: Use Profile (BGE Small EN)"
+group = "Semantic"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "UseSemanticProfile(BgeSmallEnV15)"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.semantic-use-e5"
+label = "Semantic: Use Profile (Multilingual E5)"
+group = "Semantic"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "UseSemanticProfile(MultilingualE5Small)"
+keys = []
+contexts = "all"
+
+[[action]]
+id = "tui.semantic-use-bge-m3"
+label = "Semantic: Use Profile (BGE-M3)"
+group = "Semantic"
+clients = ["tui"]
+palette_only = true
+
+[[action.tui]]
+name = "UseSemanticProfile(BgeM3)"
+keys = []
+contexts = "all"
 
 # Status strips: the three to five verbs the status bar offers for what is lit
 # (D130). Each client picks the strip for its state and drops a member that

@@ -1,5 +1,6 @@
 ---
 source: crates/daemon/tests/modes_cli.rs
+assertion_line: 161
 expression: "serde_json::to_string_pretty(&guides).unwrap()"
 ---
 [
@@ -24,11 +25,11 @@ expression: "serde_json::to_string_pretty(&guides).unwrap()"
         "anchor": "The first catch-up line",
         "id": "todo.catchup",
         "key": {
-          "key": "C",
+          "key": "2",
           "verb": "catch up"
         },
         "seen": false,
-        "text": "These came in before mxr sorted your mail. C goes through them: keep or let go of each."
+        "text": "These came in before mxr sorted your mail. 2 goes through them: keep or let go of each."
       }
     ],
     "keys": [
@@ -61,7 +62,7 @@ expression: "serde_json::to_string_pretty(&guides).unwrap()"
         "verb": "undo"
       },
       {
-        "key": "C",
+        "key": "2",
         "verb": "catch up"
       },
       {

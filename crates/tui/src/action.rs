@@ -291,13 +291,16 @@ pub enum Action {
     ReadingOriginal,
     /// `h`: save the paragraph at the top of the reader as a highlight.
     ReadingHighlight,
-    /// `H`: the item's highlights, to edit a note or remove one.
+    /// `3`, the Highlights tab: the open item's highlights, to edit a
+    /// note or remove one.
     ReadingHighlights,
     /// `o`: open the email itself.
     ReadingOpenEmail,
     /// Esc in the reader: back to the edition.
     ReadingBack,
-    /// `B`: the Later shelf, or back to the edition from it.
+    /// `1`, the Edition tab: the edition, from Later or the reader.
+    ReadingEdition,
+    /// `2`, the Later tab: what was kept for later.
     ReadingLaterShelf,
     /// `M`: open the item in Marginalia, sending its text there the first
     /// time (`Request::SendReadingToMarginalia`).

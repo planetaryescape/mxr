@@ -328,7 +328,7 @@ describe("MailboxList palette actions", () => {
     type({ key: "j" });
     const context = snapshotActionContext();
     expect(isAvailable(route, context)).toBe(true);
-    act(() => invokeAction(route, context));
+    act(() => invokeAction(route, context, "key"));
 
     expect(useMailDialogs.getState().dialog).toMatchObject({
       kind: "move",

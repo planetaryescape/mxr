@@ -32443,7 +32443,7 @@
           },
           {
             "type": "object",
-            "description": "Dismiss a hint on this profile, so it never shows again in any\nclient; `seen: false` brings it back. Returns\n`ResponseData::ModeGuides` with every mode the hint attaches in.",
+            "description": "Dismiss a hint on this profile, so it never shows again in any\nclient; `seen: false` brings it back. Returns\n`ResponseData::ModeGuides` with every mode the hint attaches in, or\n`ResponseData::HintSeen` for a \"Next time\" hint\n(`next-time.<action id>`, D171).",
             "required": [
               "hint",
               "cmd"
@@ -38387,6 +38387,29 @@
                 "enum": [
                   "ModeGuides"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::SetHintSeen` for a \"Next time\" hint: whether\nthis request is the one that marked it seen, so a client names the\nkey exactly once per profile, whichever client runs the action first.",
+            "required": [
+              "hint",
+              "newly_seen",
+              "kind"
+            ],
+            "properties": {
+              "hint": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "HintSeen"
+                ]
+              },
+              "newly_seen": {
+                "type": "boolean"
               }
             }
           },

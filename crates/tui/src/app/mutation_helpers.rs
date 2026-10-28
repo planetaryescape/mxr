@@ -114,6 +114,7 @@ impl App {
             MutationEffect::RefreshUpdates(_) | MutationEffect::UpdatesPin { .. } => {}
             MutationEffect::RefreshList
             | MutationEffect::StatusOnly(_)
+            | MutationEffect::NextTime(_)
             | MutationEffect::RefreshPlaces(_)
             | MutationEffect::SenderMoved(_)
             | MutationEffect::Todo(_)
@@ -232,6 +233,7 @@ impl App {
                     self.push_toast(Toast::success(msg));
                 }
             }
+            MutationEffect::NextTime(msg) => self.push_toast(Toast::info(msg)),
             MutationEffect::RefreshUpdates(msg) => {
                 self.mailbox.updates_page.pending_refresh = true;
                 if show_completion_status && !msg.is_empty() {
@@ -478,6 +480,7 @@ impl App {
             }
             MutationEffect::RefreshList
             | MutationEffect::StatusOnly(_)
+            | MutationEffect::NextTime(_)
             | MutationEffect::RefreshPlaces(_)
             | MutationEffect::SenderMoved(_)
             | MutationEffect::Todo(_)

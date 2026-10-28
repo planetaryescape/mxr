@@ -173,6 +173,17 @@ test("b on a digest link puts it on Later and names the site it saves the articl
   await expect(items(page).filter({ hasText: "WAL checkpoints" })).toHaveCount(0);
 });
 
+test("1 and 2 pick Reading's tabs, and B says where Later went", async ({ page }) => {
+  await openEdition(page);
+  await page.keyboard.press("2");
+  await expect(page).toHaveURL(/view=later/);
+  await page.keyboard.press("1");
+  await expect(page).not.toHaveURL(/view=later/);
+  await page.keyboard.press("Shift+B");
+  await expect(page.getByText("Later is now 2")).toBeVisible();
+  await expect(page).not.toHaveURL(/view=later/);
+});
+
 test("L names the site before fetching, and a saved article reads offline", async ({ page }) => {
   await openEdition(page);
   const teaser = items(page).filter({ hasText: "Shipping a sync engine in 2026" }).first();

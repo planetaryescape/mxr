@@ -3135,6 +3135,16 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::ModeGuides { .. },
                     }) => Ok(effect),
+                    // A "Next time" hint another run or client already
+                    // showed says nothing.
+                    Ok(Response::Ok {
+                        data: ResponseData::HintSeen { newly_seen, .. },
+                    }) => Ok(match effect {
+                        app::MutationEffect::NextTime(_) if !newly_seen => {
+                            app::MutationEffect::StatusOnly(String::new())
+                        }
+                        effect => effect,
+                    }),
                     // Reading: the daemon's own words where it has them.
                     Ok(Response::Ok {
                         data: ResponseData::ReadingLater { copy, .. },

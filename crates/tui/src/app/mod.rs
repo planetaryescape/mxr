@@ -155,6 +155,9 @@ pub enum MutationEffect {
     },
     RefreshList,
     StatusOnly(String),
+    /// A "Next time" key hint (D171): shown when the daemon says this was
+    /// the first time, and as its own toast, so it survives a batch.
+    NextTime(String),
     /// A pin or a sender-kind change: refetch the place on screen and the
     /// desk, then say what happened.
     RefreshPlaces(String),

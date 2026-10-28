@@ -26,6 +26,7 @@ import {
 import { fetchShell } from "@/features/mailbox/api";
 import { lensesFromShell, type MailLens } from "@/features/mailbox/lenses";
 import {
+  chordsOf,
   formatChord,
   invokeAction,
   useActionContext,
@@ -33,6 +34,7 @@ import {
   type Action,
   type ActionGroup,
 } from "@/lib/actions";
+import { isMacPlatform } from "@/lib/keys/chord";
 import { useModals } from "@/state/modalStore";
 
 const GROUP_ORDER: ActionGroup[] = [
@@ -153,7 +155,7 @@ export function CommandPaletteMount() {
                   value={`${action.label} ${action.description ?? ""}`}
                   onSelect={() => {
                     setOpen(false);
-                    invokeAction(action, ctx);
+                    invokeAction(action, ctx, "palette");
                   }}
                 >
                   {renderIcon(action)}
@@ -163,8 +165,13 @@ export function CommandPaletteMount() {
                       <div className="text-2xs text-muted-foreground">{action.description}</div>
                     ) : null}
                   </div>
+                  {/* Every key it has, not only the first (blueprint 35). */}
                   {action.shortcut && !action.paletteOnly ? (
-                    <CommandShortcut>{formatChord(action.shortcut)}</CommandShortcut>
+                    <CommandShortcut>
+                      {chordsOf(action, isMacPlatform())
+                        .map((chord) => formatChord(chord))
+                        .join(" / ")}
+                    </CommandShortcut>
                   ) : null}
                 </CommandItem>
               ))}
@@ -179,7 +186,7 @@ export function CommandPaletteMount() {
                 <CommandItem
                   key={action.id}
                   value={`${action.label} ${action.description ?? ""}`}
-                  onSelect={() => invokeAction(action, ctx)}
+                  onSelect={() => invokeAction(action, ctx, "palette")}
                 >
                   <div>
                     <div>{action.label}</div>

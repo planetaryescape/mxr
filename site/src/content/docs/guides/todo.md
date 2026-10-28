@@ -99,7 +99,8 @@ mxr todo catchup --let-go TODO_ID
 ```
 
 The first run offers older undated tasks in a bounded catch-up rather than
-putting every historical task on your runway. Keep the ones that still
+putting every historical task on your runway. To do's tabs are digits in
+both clients: `1` the runway, `2` the catch-up, `3` the Expired list. Keep the ones that still
 matter, or let them go to the Expired list without archiving their email.
 Use `--undecide TODO_ID` to return a decision to this review, previewing it
 with `--dry-run` first. `--let-go-all --dry-run` previews the remaining
@@ -191,7 +192,7 @@ participates. External MCP/agent profiles
 with no explicit account check only their allowed enabled accounts.
 A sync preview reads ms-todo's cache; a real sync asks ms-todo to refresh first.
 In the web details, use **Preview sync**
-or **Sync now**. In the TUI, **To do: sync the linked Microsoft To Do task** in
+or **Sync now**. In the TUI, **Sync the linked Microsoft To Do task** in
 the palette previews the selected link, and `Enter` syncs it.
 
 If both apps changed the same field differently, sync pauses and reports the

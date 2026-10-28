@@ -6,7 +6,9 @@
 use super::{HandlerError, HandlerResult};
 use crate::state::AppState;
 use chrono::Utc;
-use mxr_protocol::{hint, mode_guide, ModeGuideCopy, ResponseData, MODE_GUIDES};
+use mxr_protocol::{
+    hint, mode_guide, ModeGuideCopy, ResponseData, MODE_GUIDES, NEXT_TIME_HINT_PREFIX,
+};
 
 fn find(mode: &str) -> Result<&'static ModeGuideCopy, HandlerError> {
     mode_guide(mode).ok_or_else(|| {
@@ -42,6 +44,9 @@ pub(super) async fn get(state: &AppState, mode: Option<&str>) -> HandlerResult {
 /// Answers with every mode the hint attaches in, so a client holding any
 /// of those guides can take the new state from the answer.
 pub(super) async fn set_seen(state: &AppState, id: &str, seen: bool) -> HandlerResult {
+    if let Some(action) = id.strip_prefix(NEXT_TIME_HINT_PREFIX) {
+        return next_time_seen(state, id, action, seen).await;
+    }
     let Some(found) = hint(id) else {
         let known: Vec<&str> = MODE_GUIDES
             .iter()
@@ -62,6 +67,22 @@ pub(super) async fn set_seen(state: &AppState, id: &str, seen: bool) -> HandlerR
         .filter(|guide| guide.hints.iter().any(|h| h.id == found.id))
         .collect();
     guides(state, attached).await
+}
+
+/// A "Next time" hint (D171): one per action in the key definition. The
+/// answer says whether this request marked it, so the client that ran the
+/// action first is the only one that names the key.
+async fn next_time_seen(state: &AppState, id: &str, action: &str, seen: bool) -> HandlerResult {
+    if mxr_keymap::defaults().get(action).is_none() {
+        return Err(HandlerError::InvalidRequest(format!(
+            "No action \"{action}\" in the key definition; `mxr keys` lists them."
+        )));
+    }
+    let newly_seen = state.store.set_hint_seen(id, seen.then(Utc::now)).await?;
+    Ok(ResponseData::HintSeen {
+        hint: id.to_string(),
+        newly_seen,
+    })
 }
 
 /// Acting on the element a hint explains dismisses it: a hint about

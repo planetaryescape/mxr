@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createHintTracker,
-  HINT_GAP_MS,
-  KEYBOARD_QUIET_MS,
-  parseHintMemory,
-  type HintStore,
-} from "./keyHints";
+import { createNextTime, HINT_GAP_MS, type KeyHint } from "./keyHints";
 import type { Action } from "./types";
 
 const archive: Action = {
@@ -19,88 +13,92 @@ const archive: Action = {
 };
 const trash: Action = { ...archive, id: "mail.trash", label: "Move to Trash", shortcut: "#" };
 const keyless: Action = { ...archive, id: "mail.keyless", shortcut: undefined };
+const paletteOnly: Action = { ...archive, id: "mail.export", paletteOnly: true };
 
-function memoryStore(): HintStore & { raw: () => unknown } {
-  let saved: ReturnType<HintStore["load"]> = null;
-  return {
-    load: () => structuredClone(saved) ?? { counts: {}, shown: [], lastShownAt: 0 },
-    save: (memory) => {
-      saved = structuredClone(memory);
-    },
-    raw: () => saved,
-  };
-}
-
-function setup() {
+/** A daemon that marks each hint seen once, like `SetHintSeen`. */
+function setup(seenElsewhere: string[] = []) {
   let time = 1_000_000;
-  const store = memoryStore();
-  const tracker = createHintTracker(store, () => time);
+  const seen = new Set(seenElsewhere);
+  const asked: string[] = [];
+  const shown: KeyHint[] = [];
+  let failing = false;
+  const nextTime = createNextTime({
+    ask: async (id) => {
+      asked.push(id);
+      if (failing) throw new Error("daemon down");
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    },
+    show: (hint) => shown.push(hint),
+    now: () => time,
+  });
   return {
-    tracker,
-    store,
+    nextTime,
+    asked,
+    shown,
     advance: (ms: number) => {
       time += ms;
     },
+    fail: (value: boolean) => {
+      failing = value;
+    },
   };
 }
 
-describe("key hints", () => {
-  it("names the key after the third pointer use, once ever", () => {
-    const { tracker, advance } = setup();
-    expect(tracker.pointer(archive)).toBeNull();
-    expect(tracker.pointer(archive)).toBeNull();
-    const hint = tracker.pointer(archive);
-    expect(hint?.text).toBe("Tip: press e for Archive.");
+describe("Next time", () => {
+  it("names the key on the first palette or pointer run, once per profile", async () => {
+    const { nextTime, shown, asked, advance } = setup();
+    await nextTime.offer(archive);
+    expect(shown.map((hint) => hint.text)).toEqual(["Archive. Next time: e"]);
     advance(HINT_GAP_MS * 10);
-    for (let use = 0; use < 10; use += 1) expect(tracker.pointer(archive)).toBeNull();
+    await nextTime.offer(archive);
+    await nextTime.offer(archive);
+    expect(shown).toHaveLength(1);
+    expect(asked).toEqual(["mail.archive"]);
   });
 
-  it("never shows while the keyboard is in use, and shows once it rests", () => {
-    const { tracker, advance } = setup();
-    tracker.pointer(archive);
-    tracker.pointer(archive);
-    tracker.keyboard();
-    expect(tracker.pointer(archive)).toBeNull();
-    advance(KEYBOARD_QUIET_MS);
-    expect(tracker.pointer(archive)?.actionId).toBe("mail.archive");
+  it("says nothing when another client already taught the key", async () => {
+    const { nextTime, shown } = setup(["mail.archive"]);
+    await nextTime.offer(archive);
+    expect(shown).toEqual([]);
   });
 
-  it("shows at most one hint every few minutes", () => {
-    const { tracker, advance } = setup();
-    for (let use = 0; use < 3; use += 1) tracker.pointer(archive);
-    for (let use = 0; use < 3; use += 1) expect(tracker.pointer(trash)).toBeNull();
+  it("shows at most one every few minutes and offers the skipped one again", async () => {
+    const { nextTime, shown, asked, advance } = setup();
+    await nextTime.offer(archive);
+    await nextTime.offer(trash);
+    expect(asked).toEqual(["mail.archive"]);
     advance(HINT_GAP_MS);
-    expect(tracker.pointer(trash)?.text).toBe("Tip: press # for Move to Trash.");
+    await nextTime.offer(trash);
+    expect(shown.map((hint) => hint.text)).toEqual([
+      "Archive. Next time: e",
+      "Move to Trash. Next time: #",
+    ]);
   });
 
-  it("ignores actions without a key, and survives missing storage", () => {
-    const { tracker } = setup();
-    for (let use = 0; use < 5; use += 1) expect(tracker.pointer(keyless)).toBeNull();
-    const blind = createHintTracker({ load: () => null, save: () => undefined }, () => 0);
-    for (let use = 0; use < 5; use += 1) expect(blind.pointer(archive)).toBeNull();
+  it("ignores actions without a key, and asks again after a failed write", async () => {
+    const { nextTime, shown, asked, fail } = setup();
+    await nextTime.offer(keyless);
+    await nextTime.offer(paletteOnly);
+    expect(asked).toEqual([]);
+    fail(true);
+    await nextTime.offer(archive);
+    expect(shown).toEqual([]);
+    fail(false);
+    await nextTime.offer(archive);
+    expect(shown.map((hint) => hint.actionId)).toEqual(["mail.archive"]);
   });
 
-  it("uses the button's own words when the action's label is generic", () => {
-    const { tracker } = setup();
+  it("uses the button's own words when the action's label is generic", async () => {
+    const { nextTime, shown } = setup();
     const rowAction: Action = {
       ...archive,
       id: "list.row-action",
       label: "This list's row action",
       shortcut: "w",
     };
-    tracker.pointer(rowAction, "Done");
-    tracker.pointer(rowAction, "Done");
-    expect(tracker.pointer(rowAction, "Done")?.text).toBe("Tip: press w for Done.");
-  });
-
-  it("starts over from stored memory that isn't what it wrote", () => {
-    expect(parseHintMemory("nonsense")).toEqual({ counts: {}, shown: [], lastShownAt: 0 });
-    expect(
-      parseHintMemory({ counts: { a: "3", b: 2 }, shown: "mail.archive", lastShownAt: null }),
-    ).toEqual({
-      counts: { b: 2 },
-      shown: [],
-      lastShownAt: 0,
-    });
+    await nextTime.offer(rowAction, "Done");
+    expect(shown[0]?.text).toBe("Done. Next time: w");
   });
 });

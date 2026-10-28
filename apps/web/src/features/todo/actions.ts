@@ -26,6 +26,7 @@ export const todoActions: ActionBehavior[] = [
   { id: "todo.dismiss", command: "dismiss", icon: X },
   { id: "todo.open-email", command: "openEmail" },
   { id: "todo.details", command: "details" },
+  { id: "todo.runway", command: "runway" },
   { id: "todo.expired", command: "expired" },
   { id: "todo.catchup", command: "catchup" },
   { id: "todo.close-hint", command: "closeHint" },

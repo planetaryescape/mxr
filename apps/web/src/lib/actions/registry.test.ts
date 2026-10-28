@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { setController } from "@/lib/keys/controllers";
 
-import { ActionRegistry, chordsOf, invokeAction, isAvailable } from "./registry";
+import { ActionRegistry, chordsOf, invokeAction, isAvailable, onActionInvoked } from "./registry";
 import type { Action, ActionContext, ActionScope } from "./types";
 
 function ctx(scopes: ActionScope[], overrides: Partial<ActionContext> = {}): ActionContext {
@@ -142,26 +142,43 @@ describe("invokeAction", () => {
     setController("reader", { archive: readerArchive });
     const archive = command("mail.archive", "archive", "e", ["list", "reader"]);
 
-    invokeAction(archive, ctx(["reader", "list", "global"]));
+    invokeAction(archive, ctx(["reader", "list", "global"]), "key");
     expect(readerArchive).toHaveBeenCalledTimes(1);
 
     setController("reader", null);
-    invokeAction(archive, ctx(["reader", "list", "global"]));
+    invokeAction(archive, ctx(["reader", "list", "global"]), "key");
     expect(listArchive).toHaveBeenCalledTimes(1);
   });
 
   test("a command with no live controller is a no-op", () => {
     const archive = command("mail.archive", "archive", "e", ["list"]);
-    expect(() => invokeAction(archive, ctx(["list", "global"]))).not.toThrow();
+    expect(() => invokeAction(archive, ctx(["list", "global"]), "key")).not.toThrow();
   });
 
   test("a run action receives the context", () => {
     const runner = vi.fn<(context: ActionContext) => void>();
     const context = ctx(["global"], { selectionCount: 3 });
 
-    invokeAction(run({ id: "go", run: runner }), context);
+    invokeAction(run({ id: "go", run: runner }), context, "palette");
 
     expect(runner).toHaveBeenCalledWith(context);
+  });
+
+  test("tells listeners where an action that ran came from", () => {
+    const heard: [string, string][] = [];
+    const stop = onActionInvoked((action, source) => heard.push([action.id, source]));
+    setController("list", { archive: () => undefined });
+    const archive = command("mail.archive", "archive", "e", ["list"]);
+    invokeAction(archive, ctx(["list", "global"]), "palette");
+    invokeAction(archive, ctx(["list", "global"]), "key");
+    // Nothing ran, so nothing is heard.
+    invokeAction(archive, ctx(["reader", "global"]), "pointer");
+    stop();
+    invokeAction(archive, ctx(["list", "global"]), "palette");
+    expect(heard).toEqual([
+      ["mail.archive", "palette"],
+      ["mail.archive", "key"],
+    ]);
   });
 });
 

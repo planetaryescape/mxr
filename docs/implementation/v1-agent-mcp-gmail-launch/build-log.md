@@ -39,9 +39,9 @@ Do not revert those existing edits. Task 005 must inspect and preserve/reconcile
 - Do not use `pe-default-local-coder`; current local route is TypeScript-tuned and this plan is high-blast-radius Rust/product work.
 - Worker skills checked under `/Users/bhekanik/.dotfiles/.skills`.
 - Selected skills:
-  - Code tasks: `build-and-fix`, `code-review`, `tdd`, `mxr`, `security-best-practices`
+  - Code tasks: `verify checks`, `pull-requests review`, `tdd`, `mxr`, `security-best-practices`
   - MCP task additionally: `sdk`
-  - Launch proof: `build-and-fix`, `code-review`, `tdd`, `mxr`, `deployment`
+  - Launch proof: `verify checks`, `pull-requests review`, `tdd`, `mxr`, `deployment`
   - Docs task: `documentation-refiner`, `writing-docs`, `mxr`, `readme-optimizer`
 
 ### MCP library decision

@@ -4,6 +4,8 @@
 //! so a test can check every arm against the definition.
 
 use crate::action::{Action, PatternKind};
+use crate::app::AnalyticsView;
+use mxr_core::types::SemanticProfile;
 use mxr_protocol::CalendarInviteActionData as Invite;
 
 /// The action a definition name stands for. `inline:` names are keys a pane
@@ -118,6 +120,7 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
         "QuitView" => Action::QuitView,
         "ReadingArticle" => Action::ReadingArticle,
         "ReadingLater" => Action::ReadingLater,
+        "ReadingEdition" => Action::ReadingEdition,
         "ReadingLaterShelf" => Action::ReadingLaterShelf,
         "ReadingLetGo" => Action::ReadingLetGo,
         "ReadingLetGoAll" => Action::ReadingLetGoAll,
@@ -204,6 +207,76 @@ pub(crate) fn action_named(name: &str) -> Option<Action> {
         "ReadingBack" => Action::ReadingBack,
         "ReadingHighlight" => Action::ReadingHighlight,
         "ReadingHighlights" => Action::ReadingHighlights,
+        "AssignPersonalCategory" => Action::AssignPersonalCategory,
+        "BackfillSemantic" => Action::BackfillSemantic,
+        "CancelAutoReminder" => Action::CancelAutoReminder,
+        "CheckLastSendOutcome" => Action::CheckLastSendOutcome,
+        "ClearSelection" => Action::ClearSelection,
+        "DeleteAssistantConversation" => Action::DeleteAssistantConversation,
+        "DeleteRule" => Action::DeleteRule,
+        "DisableSemantic" => Action::DisableSemantic,
+        "DraftAssistCurrentThread" => Action::DraftAssistCurrentThread,
+        "DraftNewForSender" => Action::DraftNewForSender,
+        "DraftWithOptions" => Action::DraftWithOptions,
+        "EnableSemantic" => Action::EnableSemantic,
+        "FindExpertOnFocusedMessage" => Action::FindExpertOnFocusedMessage,
+        "GenerateBugReport" => Action::GenerateBugReport,
+        "NewAssistantConversation" => Action::NewAssistantConversation,
+        "OpenAccountFormNew" => Action::OpenAccountFormNew,
+        "OpenAssistantConversations" => Action::OpenAssistantConversations,
+        "OpenAssistantModels" => Action::OpenAssistantModels,
+        "OpenCommitments" => Action::OpenCommitments,
+        "OpenDiagnosticsPaneDetails" => Action::OpenDiagnosticsPaneDetails,
+        "OpenMailboxScreen" => Action::OpenMailboxScreen,
+        "OpenPersonalCategories" => Action::OpenPersonalCategories,
+        "OpenRuleFormEdit" => Action::OpenRuleFormEdit,
+        "OpenRuleFormNew" => Action::OpenRuleFormNew,
+        "OpenSearchScreen" => Action::OpenSearchScreen,
+        "OpenSnippets" => Action::OpenSnippets,
+        "OpenSubscriptions" => Action::OpenSubscriptions,
+        "OpenVoiceProfile" => Action::OpenVoiceProfile,
+        "PreviewLastSendRecovery" => Action::PreviewLastSendRecovery,
+        "RebuildUserVoice" => Action::RebuildUserVoice,
+        "RefreshAccounts" => Action::RefreshAccounts,
+        "RefreshDiagnostics" => Action::RefreshDiagnostics,
+        "RefreshRules" => Action::RefreshRules,
+        "ReindexSemantic" => Action::ReindexSemantic,
+        "ReopenLastSendDraft" => Action::ReopenLastSendDraft,
+        "ResumePreviewedSend" => Action::ResumePreviewedSend,
+        "RouteToLabel" => Action::RouteToLabel,
+        "SetDefaultAccount" => Action::SetDefaultAccount,
+        "ShowRuleDryRun" => Action::ShowRuleDryRun,
+        "ShowRuleHistory" => Action::ShowRuleHistory,
+        "SyncNow" => Action::SyncNow,
+        "TestAccountForm" => Action::TestAccountForm,
+        "TodoSendToMicrosoft" => Action::TodoSendToMicrosoft,
+        "TodoSyncMicrosoft" => Action::TodoSyncMicrosoft,
+        "ToggleAssistantTrust" => Action::ToggleAssistantTrust,
+        "ToggleMailListMode" => Action::ToggleMailListMode,
+        "ToggleRuleEnabled" => Action::ToggleRuleEnabled,
+        "OpenAnalyticsView(Storage)" => Action::OpenAnalyticsView(AnalyticsView::Storage),
+        "OpenAnalyticsView(StaleThreads)" => Action::OpenAnalyticsView(AnalyticsView::StaleThreads),
+        "OpenAnalyticsView(Contacts)" => Action::OpenAnalyticsView(AnalyticsView::Contacts),
+        "OpenAnalyticsView(CadenceDrift)" => Action::OpenAnalyticsView(AnalyticsView::CadenceDrift),
+        "OpenAnalyticsView(ResponseTime)" => Action::OpenAnalyticsView(AnalyticsView::ResponseTime),
+        "OpenAnalyticsView(Subscriptions)" => {
+            Action::OpenAnalyticsView(AnalyticsView::Subscriptions)
+        }
+        "OpenAnalyticsView(Wrapped)" => Action::OpenAnalyticsView(AnalyticsView::Wrapped),
+        "InstallSemanticProfile(BgeSmallEnV15)" => {
+            Action::InstallSemanticProfile(SemanticProfile::BgeSmallEnV15)
+        }
+        "InstallSemanticProfile(MultilingualE5Small)" => {
+            Action::InstallSemanticProfile(SemanticProfile::MultilingualE5Small)
+        }
+        "InstallSemanticProfile(BgeM3)" => Action::InstallSemanticProfile(SemanticProfile::BgeM3),
+        "UseSemanticProfile(BgeSmallEnV15)" => {
+            Action::UseSemanticProfile(SemanticProfile::BgeSmallEnV15)
+        }
+        "UseSemanticProfile(MultilingualE5Small)" => {
+            Action::UseSemanticProfile(SemanticProfile::MultilingualE5Small)
+        }
+        "UseSemanticProfile(BgeM3)" => Action::UseSemanticProfile(SemanticProfile::BgeM3),
         _ => return None,
     })
 }

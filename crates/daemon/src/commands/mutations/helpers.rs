@@ -1006,7 +1006,7 @@ mod tests {
     use crate::test_fixtures::{FakeBulkDaemon, TestEnvelopeBuilder};
 
     const NOTICE: &str =
-        "notice: Selected 1,000 of 1,523 matching messages (the newest 1,000); narrow the search to reach the rest.";
+        "notice: More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest.";
 
     fn run_options(yes: bool, dry_run: bool) -> MutationRunOptions<'static> {
         MutationRunOptions {
@@ -1087,7 +1087,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(preview["matched_total"], 1_523);
+        assert!(preview.get("matched_total").is_none());
         assert_eq!(preview["capped"], true);
         assert_eq!(
             preview["message_ids"],
@@ -1138,10 +1138,7 @@ mod tests {
             ids: vec![envelope.id.clone()],
             envelopes: vec![envelope],
             used_search: true,
-            capped: Some(CappedSelection {
-                matched_total: 1_523,
-                selected: 1_000,
-            }),
+            capped: Some(CappedSelection { selected: 1_000 }),
         };
 
         // The same lines are the dry-run table and the confirmation prompt.
@@ -1155,10 +1152,7 @@ mod tests {
 
     #[test]
     fn capped_fields_reach_every_output_built_from_the_counts_and_only_then() {
-        let capped = CappedSelection {
-            matched_total: 1_523,
-            selected: 1_000,
-        };
+        let capped = CappedSelection { selected: 1_000 };
         let uncapped_counts = SelectionCounts {
             selected_threads: 2,
             selected_messages: 3,
@@ -1184,13 +1178,11 @@ mod tests {
         let with = ack(capped_counts);
         let without = ack(uncapped_counts);
 
-        assert_eq!(with["matched_total"], 1_523);
         assert_eq!(with["capped"], true);
         assert_eq!(
             with["selected_messages"], 3,
             "existing fields keep their names"
         );
-        assert!(without.get("matched_total").is_none());
         assert!(without.get("capped").is_none());
     }
 

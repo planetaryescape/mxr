@@ -133,9 +133,9 @@ Core mail mutations accept either explicit message IDs as positional args, `--se
 search whatever `search.default_mode` is, so a typo like `--search '*'` cannot
 fan out across the whole mailbox. When more than 1,000 match, the dry run, the
 confirmation prompt and (with `--yes`) stderr all say so before anything
-changes, and JSON output gains `matched_total` and `capped: true`
+changes, and JSON output gains `capped: true`
 ([schema](/reference/json-output/#searches-that-match-more-than-1000-messages)).
-Narrow the query to reach the rest. Explicit and piped IDs have no cap.
+Narrow the query to reach the rest. Explicit and piped IDs have no cap. `mxr unsubscribe <address>` says the same per address.
 
 Account-scoped mutations use the same target set for preview and apply:
 

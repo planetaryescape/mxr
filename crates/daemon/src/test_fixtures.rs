@@ -314,9 +314,10 @@ pub(crate) fn make_empty_body(message_id: &MessageId) -> MessageBody {
 // -- Fake daemon for bulk selection -------------------------------------------
 
 /// A daemon that answers only what a `--search` bulk command sends: the
-/// search, the envelope lookup and the mutation. It holds `matching` messages
-/// newest first and returns the first `limit` of them with `total = matching`,
-/// the way the real daemon pages a search. Tests drive the production
+/// search, the envelope lookup, the unsubscribe plan and the mutation. It holds
+/// `matching` messages newest first and returns the first `limit` of them,
+/// with `has_more` set when more remain, the way the real daemon pages a
+/// search. Tests drive the production
 /// selection and mutation code through a real `IpcClient` against it.
 pub(crate) struct FakeBulkDaemon {
     _dir: tempfile::TempDir,
@@ -335,8 +336,9 @@ impl FakeBulkDaemon {
         Self::start_with_total(matching, matching)
     }
 
-    /// Like [`Self::start`], but the search reports `total` matches while
-    /// holding only `matching` of them, as the real total can overcount.
+    /// Like [`Self::start`], but the search reports `total` as its match count
+    /// whatever `matching` is. The real total is an estimate; `has_more` is the
+    /// exact signal and always follows `matching`.
     pub(crate) fn start_with_total(matching: usize, total: usize) -> Self {
         use futures::{SinkExt, StreamExt};
         use mxr_protocol::{ClientKind, IpcCodec, IpcMessage, IpcPayload, Request, Response};
@@ -402,6 +404,31 @@ impl FakeBulkDaemon {
                                     })
                                     .collect(),
                             },
+                        },
+                    ),
+                    Request::PlanUnsubscribe { message_ids } => (
+                        "plan",
+                        Response::Ok {
+                            data: mxr_protocol::ResponseData::UnsubscribePlan {
+                                plan: mxr_protocol::UnsubscribePlanData {
+                                    matched_messages: message_ids.len() as u32,
+                                    request: message_ids.first().map(|id| {
+                                        mxr_protocol::UnsubscribePlanRequestData {
+                                            message_id: id.clone(),
+                                            method: UnsubscribeMethod::HttpLink {
+                                                url: "https://example.com/unsubscribe".into(),
+                                            },
+                                        }
+                                    }),
+                                    already_unsubscribed: false,
+                                },
+                            },
+                        },
+                    ),
+                    Request::Unsubscribe { .. } => (
+                        "unsubscribe",
+                        Response::Ok {
+                            data: mxr_protocol::ResponseData::Ack,
                         },
                     ),
                     Request::Mutation { .. } => (

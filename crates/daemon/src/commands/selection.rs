@@ -26,48 +26,45 @@ use std::io::{IsTerminal, Read, Write};
 /// piped/positional IDs are passed through verbatim.
 pub const SEARCH_HARD_CAP: u32 = 1000;
 
-/// A `--search` that matched more than `SEARCH_HARD_CAP` messages, so the
-/// selection holds only the newest ones. Callers say so before they act.
+/// A `--search` the daemon says has more matches than the selection holds,
+/// because the hard cap cut the page. Callers say so before they act.
+///
+/// This comes from the daemon's `has_more` (is there at least one more visible
+/// match beyond the page?), never from its `total`: `total` is an estimate that
+/// can count hits the user cannot see.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CappedSelection {
-    /// Every message the search matched, as the daemon counted them.
-    pub matched_total: u32,
-    /// How many of them the selection holds.
+    /// How many of the newest matches the selection holds.
     pub selected: usize,
 }
 
-/// The fields a capped selection adds to JSON and JSONL output. They appear
-/// only when the cap applied, and never replace an existing field.
+/// The field a capped selection adds to JSON and JSONL output. It appears only
+/// when the cap applied, and never replaces an existing field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct CappedFields {
-    pub matched_total: u32,
     pub capped: bool,
 }
 
 impl CappedSelection {
     /// The one sentence every surface uses: dry-run preview, confirmation
-    /// prompt, `--yes` stderr notice and read-only commands.
+    /// prompt, `--yes` stderr notice and read-only commands. It states no total
+    /// because the daemon has no exact one.
     pub fn notice(&self) -> String {
         format!(
-            "Selected {} of {} matching messages (the newest {}); narrow the search to reach the rest.",
-            format_thousands(self.selected),
-            format_thousands(self.matched_total),
+            "More than {} messages match; only the newest {} are selected. Narrow the search to reach the rest.",
+            format_thousands(SEARCH_HARD_CAP),
             format_thousands(self.selected),
         )
     }
 
     pub fn fields(&self) -> CappedFields {
-        CappedFields {
-            matched_total: self.matched_total,
-            capped: true,
-        }
+        CappedFields { capped: true }
     }
 
-    /// Adds the capped fields to an output object that is serialised from a
+    /// Adds the capped field to an output object that is serialised from a
     /// type this crate does not own.
     pub fn merge_into(&self, value: &mut serde_json::Value) {
         if let serde_json::Value::Object(object) = value {
-            object.insert("matched_total".to_owned(), self.matched_total.into());
             object.insert("capped".to_owned(), true.into());
         }
     }
@@ -213,35 +210,22 @@ impl SelectionLimit {
         }
     }
 
-    /// `Some` when the hard cap cut off matches the search counted. `fetched`
-    /// is how many results came back and `fetch_limit` how many the search
-    /// asked for. The daemon's total can overcount (hits in accounts the user
-    /// cannot see), so a page that did not fill the request was not cut.
-    fn capped(
-        self,
-        matched_total: u32,
-        fetched: usize,
-        fetch_limit: u32,
-    ) -> Option<CappedSelection> {
-        (self.bound_by_hard_cap()
-            && fetched >= fetch_limit as usize
-            && matched_total as usize > fetched)
-            .then_some(CappedSelection {
-                matched_total,
-                selected: fetched,
-            })
+    /// `Some` when the hard cap cut the page: the daemon found at least one
+    /// more visible match than it returned. `fetched` is how many came back.
+    fn capped(self, has_more: bool, fetched: usize) -> Option<CappedSelection> {
+        (self.bound_by_hard_cap() && has_more).then_some(CappedSelection { selected: fetched })
     }
 }
 
-/// Runs the selection search and returns its results with the daemon's match
-/// count. The search is refused when the daemon answered from the limited
+/// Runs the selection search and returns its results with the daemon's
+/// `has_more`. The search is refused when the daemon answered from the limited
 /// SQLite fallback.
 async fn run_selection_search(
     client: &mut IpcClient,
     query: String,
     fetch_limit: u32,
     account_id: Option<&AccountId>,
-) -> anyhow::Result<(Vec<SearchResultItem>, u32)> {
+) -> anyhow::Result<(Vec<SearchResultItem>, bool)> {
     let resp = client
         .request(selection_search_request(query, fetch_limit, account_id))
         .await?;
@@ -250,13 +234,13 @@ async fn run_selection_search(
             data:
                 ResponseData::SearchResults {
                     results,
-                    total,
+                    has_more,
                     degraded,
                     ..
                 },
         } => {
             require_indexed_selection(degraded.as_ref())?;
-            Ok((results, total))
+            Ok((results, has_more))
         }
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response from search"),
@@ -287,9 +271,9 @@ pub async fn resolve_message_selection(
         }),
         (false, Some(_)) => anyhow::bail!("Provide message ID(s) or --search, not both"),
         (true, Some(query)) => {
-            let (results, total) =
+            let (results, has_more) =
                 run_selection_search(client, query, limit.cap(), account_id).await?;
-            let capped = limit.capped(total, results.len(), limit.cap());
+            let capped = limit.capped(has_more, results.len());
             Ok(MessageSelection {
                 ids: results.into_iter().map(|r| r.message_id).collect(),
                 capped,
@@ -350,9 +334,9 @@ pub async fn resolve_thread_selection(
             // up front. The cap protects against runaway over-fetch.
             let raw_cap = limit.cap();
             let fetch_cap = raw_cap.saturating_mul(4).min(SEARCH_HARD_CAP);
-            let (results, total) =
+            let (results, has_more) =
                 run_selection_search(client, query, fetch_cap, account_id).await?;
-            let capped = limit.capped(total, results.len(), fetch_cap);
+            let capped = limit.capped(has_more, results.len());
             // Dedup-preserving-order: the first occurrence of each
             // thread_id wins, which (because results are date-desc) is
             // the most recent message in that thread.
@@ -478,7 +462,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn more_matches_than_the_cap_keep_the_newest_and_report_the_total() {
+    async fn more_matches_than_the_cap_keep_the_newest_and_say_so() {
         let daemon = FakeBulkDaemon::start(1_523);
         let mut client = daemon.client().await;
 
@@ -493,17 +477,11 @@ mod tests {
         .unwrap();
 
         assert_eq!(selection.ids, daemon.message_ids[..1_000]);
-        assert_eq!(
-            selection.capped,
-            Some(CappedSelection {
-                matched_total: 1_523,
-                selected: 1_000
-            })
-        );
+        assert_eq!(selection.capped, Some(CappedSelection { selected: 1_000 }));
     }
 
     #[tokio::test]
-    async fn matches_within_the_cap_report_nothing() {
+    async fn exactly_the_cap_of_matches_reports_nothing() {
         let daemon = FakeBulkDaemon::start(1_000);
         let mut client = daemon.client().await;
 
@@ -522,8 +500,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_total_that_overcounts_a_page_that_was_not_cut_reports_nothing() {
-        // 990 visible matches but a total of 1,010: nothing was cut off.
+    async fn a_total_is_never_the_signal_for_a_cap() {
+        // The daemon says no further visible match exists, so nothing was cut,
+        // whatever its estimate of the total says.
         let daemon = FakeBulkDaemon::start_with_total(990, 1_010);
         let mut client = daemon.client().await;
 
@@ -549,6 +528,20 @@ mod tests {
         assert_eq!(messages.ids.len(), 990);
         assert_eq!(messages.capped, None);
         assert_eq!(threads.capped, None);
+
+        // And the reverse: more visible matches exist, but the estimate is 0.
+        let daemon = FakeBulkDaemon::start_with_total(1_523, 0);
+        let mut client = daemon.client().await;
+        let selection = resolve_message_selection(
+            &mut client,
+            Vec::new(),
+            Some("*".into()),
+            None,
+            SelectionLimit::Unbounded,
+        )
+        .await
+        .unwrap();
+        assert_eq!(selection.capped, Some(CappedSelection { selected: 1_000 }));
     }
 
     #[tokio::test]
@@ -598,13 +591,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(
-            selection.capped,
-            Some(CappedSelection {
-                matched_total: 1_523,
-                selected: 1_000
-            })
-        );
+        assert_eq!(selection.capped, Some(CappedSelection { selected: 1_000 }));
     }
 
     #[tokio::test]
@@ -627,15 +614,12 @@ mod tests {
     }
 
     #[test]
-    fn the_notice_names_how_many_were_selected_out_of_how_many_matched() {
-        let capped = CappedSelection {
-            matched_total: 1_523,
-            selected: 1_000,
-        };
+    fn the_notice_says_more_than_the_cap_match_and_how_many_were_selected() {
+        let capped = CappedSelection { selected: 1_000 };
 
         assert_eq!(
             capped.notice(),
-            "Selected 1,000 of 1,523 matching messages (the newest 1,000); narrow the search to reach the rest."
+            "More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest."
         );
         let mut out = Vec::new();
         capped.announce(&mut out).unwrap();
@@ -646,22 +630,19 @@ mod tests {
     }
 
     #[test]
-    fn the_capped_fields_are_added_to_an_existing_object() {
-        let capped = CappedSelection {
-            matched_total: 1_523,
-            selected: 1_000,
-        };
+    fn the_capped_field_is_added_to_an_existing_object() {
+        let capped = CappedSelection { selected: 1_000 };
         let mut value = serde_json::json!({ "identity": "kept" });
 
         capped.merge_into(&mut value);
 
         assert_eq!(
             value,
-            serde_json::json!({ "identity": "kept", "matched_total": 1_523, "capped": true })
+            serde_json::json!({ "identity": "kept", "capped": true })
         );
         assert_eq!(
             serde_json::to_value(capped.fields()).unwrap(),
-            serde_json::json!({ "matched_total": 1_523, "capped": true })
+            serde_json::json!({ "capped": true })
         );
     }
 

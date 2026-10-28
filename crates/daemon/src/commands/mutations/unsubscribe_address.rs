@@ -13,7 +13,9 @@ use super::helpers::{
     SelectionCounts,
 };
 use super::{unsubscribe_method_text, IpcClient, OutputFormat};
-use crate::commands::selection::{selection_search_request, SEARCH_HARD_CAP};
+use crate::commands::selection::{
+    selection_search_request, CappedFields, CappedSelection, SEARCH_HARD_CAP,
+};
 use crate::output::resolve_format;
 use mxr_core::id::MessageId;
 use mxr_core::AccountId;
@@ -61,6 +63,8 @@ struct AddressOutput {
     failed: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     errors: Option<Vec<BatchMutationError>>,
+    #[serde(flatten)]
+    capped: Option<CappedFields>,
 }
 
 /// Top-level totals across addresses. The fields keep the meaning they have
@@ -86,6 +90,9 @@ struct TotalsOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     errors: Option<Vec<BatchMutationError>>,
     addresses: Vec<AddressOutput>,
+    /// Present when any address's search was cut by the cap.
+    #[serde(flatten)]
+    capped: Option<CappedFields>,
 }
 
 /// One line of the dry-run JSONL stream, one per matched message.
@@ -106,6 +113,35 @@ pub(super) async fn unsubscribe_by_address(
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
+    unsubscribe_by_address_to(
+        client,
+        addresses,
+        search,
+        account_id,
+        yes,
+        dry_run,
+        format,
+        &mut std::io::stderr(),
+    )
+    .await
+}
+
+/// [`unsubscribe_by_address`] with the sink for the `--yes` cap notice
+/// injected, so a test can see it land before the first request.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors the user-facing flags plus the notice sink"
+)]
+async fn unsubscribe_by_address_to(
+    client: &mut IpcClient,
+    addresses: &[String],
+    search: Option<&str>,
+    account_id: Option<&AccountId>,
+    yes: bool,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+    notices: &mut dyn std::io::Write,
+) -> anyhow::Result<()> {
     let mut plans = plan_addresses(client, addresses, search, account_id).await?;
     if plans.iter().all(|plan| plan.selection.ids.is_empty()) {
         anyhow::bail!("No messages matched");
@@ -118,8 +154,13 @@ pub(super) async fn unsubscribe_by_address(
     if planned == 0 && !plans.iter().any(|plan| plan.plan.already_unsubscribed) {
         anyhow::bail!("No matched message has a usable List-Unsubscribe method");
     }
-    if planned > 0 && requires_confirmation(true, true, planned, yes) {
-        confirm_prompt(&summary_lines(&plans))?;
+    if planned > 0 {
+        if requires_confirmation(true, true, planned, yes) {
+            // The summary carries each capped address's notice.
+            confirm_prompt(&summary_lines(&plans))?;
+        } else {
+            announce_caps(&plans, notices)?;
+        }
     }
 
     for plan in &mut plans {
@@ -212,13 +253,22 @@ async fn address_selection(
     let resp = client
         .request(address_search_request(address, search, account_id))
         .await?;
+    // From the daemon's `has_more`, as for every other `--search` selection.
+    let capped;
     let ids: Vec<String> = match resp {
         Response::Ok {
-            data: ResponseData::SearchResults {
-                results, degraded, ..
-            },
+            data:
+                ResponseData::SearchResults {
+                    results,
+                    has_more,
+                    degraded,
+                    ..
+                },
         } => {
             crate::commands::selection::require_indexed_selection(degraded.as_ref())?;
+            capped = has_more.then_some(CappedSelection {
+                selected: results.len(),
+            });
             results
                 .into_iter()
                 .map(|result| result.message_id.as_str())
@@ -237,6 +287,7 @@ async fn address_selection(
     }
     let mut selection = resolve_mutation_selection(client, ids, None, account_id).await?;
     selection.used_search = true;
+    selection.capped = capped;
     Ok(selection)
 }
 
@@ -302,6 +353,16 @@ fn request_record(
     }
 }
 
+/// Writes each capped address's notice, for the paths with no prompt to show it.
+fn announce_caps(plans: &[AddressPlan], out: &mut dyn std::io::Write) -> std::io::Result<()> {
+    for plan in plans {
+        if let Some(capped) = plan.selection.capped {
+            writeln!(out, "{}: {}", plan.address, capped.notice())?;
+        }
+    }
+    Ok(())
+}
+
 fn selected_ids(selection: &MutationSelection) -> Vec<String> {
     selection.ids.iter().map(MessageId::as_str).collect()
 }
@@ -325,6 +386,9 @@ fn address_lines(plan: &AddressPlan, ran: bool) -> Vec<String> {
         plan.address,
         plan.selection.ids.len()
     )];
+    if let Some(capped) = plan.selection.capped {
+        lines.push(format!("  {}", capped.notice()));
+    }
     match (&plan.planned, plan.plan.already_unsubscribed) {
         _ if plan.selection.ids.is_empty() => lines.push("  no messages matched".to_owned()),
         (Some(request), _) => {
@@ -365,6 +429,7 @@ fn address_output(plan: &AddressPlan, run: bool) -> AddressOutput {
         succeeded: run.then_some(plan.succeeded),
         failed: run.then_some(plan.errors.len()),
         errors: run.then(|| plan.errors.clone()),
+        capped: plan.selection.capped.map(|capped| capped.fields()),
     }
 }
 
@@ -393,6 +458,7 @@ fn totals(plans: &[AddressPlan], run: bool) -> TotalsOutput {
                 .flat_map(|a| a.errors.clone().unwrap_or_default())
                 .collect()
         }),
+        capped: addresses.iter().find_map(|a| a.capped),
         addresses,
     }
 }
@@ -419,6 +485,7 @@ fn print_preview(plans: &[AddressPlan], format: Option<OutputFormat>) -> anyhow:
             }
         }
         OutputFormat::Csv => {
+            announce_caps(plans, &mut std::io::stderr())?;
             let mut writer = csv::Writer::from_writer(Vec::new());
             writer.write_record(["action", "dry_run", "message_id", "from", "subject"])?;
             for record in &output.messages {
@@ -433,6 +500,7 @@ fn print_preview(plans: &[AddressPlan], format: Option<OutputFormat>) -> anyhow:
             println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
         }
         OutputFormat::Ids => {
+            announce_caps(plans, &mut std::io::stderr())?;
             for id in &output.message_ids {
                 println!("{id}");
             }
@@ -514,6 +582,7 @@ fn print_run(plans: &[AddressPlan], format: Option<OutputFormat>) -> anyhow::Res
 mod tests {
     use super::*;
     use crate::commands::mutations::helpers::MutationSelection;
+    use crate::test_fixtures::FakeBulkDaemon;
     use mxr_core::types::{SearchMode, SortOrder, UnsubscribeMethod};
 
     #[test]
@@ -597,6 +666,105 @@ mod tests {
         assert_eq!(
             address_query("alice@example.com", Some("  ")),
             "from:alice@example.com"
+        );
+    }
+
+    const ALICE: &str = "alice@example.com";
+    const NOTICE: &str = "More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest.";
+
+    #[tokio::test]
+    async fn a_capped_address_search_is_reported_in_the_preview_and_the_json() {
+        let daemon = FakeBulkDaemon::start(1_523);
+        let mut client = daemon.client().await;
+
+        let plans = plan_addresses(&mut client, &[ALICE.to_owned()], None, None)
+            .await
+            .unwrap();
+
+        // The search is capped, the request is still the newest message.
+        assert_eq!(plans[0].selection.ids, daemon.message_ids[..1_000]);
+        assert_eq!(
+            plans[0].plan.request.as_ref().map(|r| r.message_id.clone()),
+            Some(daemon.message_ids[0].clone())
+        );
+        let lines = summary_lines(&plans);
+        assert!(lines.contains(&format!("  {NOTICE}")), "{lines:?}");
+        let json = serde_json::to_value(totals(&plans, false)).unwrap();
+        assert_eq!(json["capped"], true);
+        assert_eq!(json["addresses"][0]["capped"], true);
+        assert!(json.get("matched_total").is_none());
+    }
+
+    #[tokio::test]
+    async fn an_address_search_under_the_cap_reports_nothing() {
+        let daemon = FakeBulkDaemon::start_with_total(300, 1_500);
+        let mut client = daemon.client().await;
+
+        let plans = plan_addresses(&mut client, &[ALICE.to_owned()], None, None)
+            .await
+            .unwrap();
+
+        let lines = summary_lines(&plans);
+        assert!(
+            !lines.iter().any(|line| line.contains("More than")),
+            "{lines:?}"
+        );
+        let json = serde_json::to_value(totals(&plans, false)).unwrap();
+        assert!(json.get("capped").is_none());
+        assert!(json["addresses"][0].get("capped").is_none());
+    }
+
+    #[tokio::test]
+    async fn with_yes_the_cap_notice_is_written_before_the_unsubscribe_request() {
+        let daemon = FakeBulkDaemon::start(1_523);
+        let mut client = daemon.client().await;
+
+        unsubscribe_by_address_to(
+            &mut client,
+            &[ALICE.to_owned()],
+            None,
+            None,
+            true,
+            false,
+            Some(OutputFormat::Json),
+            &mut daemon.notice_sink(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            daemon.events.lock().unwrap().clone(),
+            [
+                "search".to_owned(),
+                "envelopes".to_owned(),
+                "plan".to_owned(),
+                format!("notice: {ALICE}: {NOTICE}"),
+                "unsubscribe".to_owned(),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dry_run_sends_no_request_and_needs_no_stderr_notice() {
+        let daemon = FakeBulkDaemon::start(1_523);
+        let mut client = daemon.client().await;
+
+        unsubscribe_by_address_to(
+            &mut client,
+            &[ALICE.to_owned()],
+            None,
+            None,
+            false,
+            true,
+            Some(OutputFormat::Json),
+            &mut daemon.notice_sink(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            daemon.events.lock().unwrap().clone(),
+            ["search", "envelopes", "plan"]
         );
     }
 }

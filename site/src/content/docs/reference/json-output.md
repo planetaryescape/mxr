@@ -332,23 +332,27 @@ records, for every message whose envelope resolved. The value is `OneClick`,
 
 A `--search` selection holds at most the newest 1,000 matches, whatever
 `search.default_mode` is: it always searches lexically, newest first. When the
-search matched more, the dry-run preview, the result and the archive object
-gain two fields, in addition to the ones shown here (`--format jsonl` repeats
-them on each line):
+daemon reports more visible matches than that, the dry-run preview, the result
+and the archive object gain one field, in addition to the ones shown here
+(`--format jsonl` repeats it on each line):
 
 ```json
-{ "matched_total": 1523, "capped": true }
+{ "capped": true }
 ```
 
-`matched_total` is how many messages the search matched. The fields are
-absent when the selection holds every match and for explicit or piped IDs,
-which have no cap. The same notice goes to
-stderr before any change, or into the dry-run preview and confirmation prompt
-in table output:
+The field is absent when the selection holds every match and for explicit or
+piped IDs, which have no cap. There is no count of the matches left out: the
+daemon can tell whether another visible match exists, not how many. The same
+notice goes to stderr before any change, or into the dry-run preview and
+confirmation prompt in table output:
 
 ```text
-Selected 1,000 of 1,523 matching messages (the newest 1,000); narrow the search to reach the rest.
+More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest.
 ```
+
+`mxr unsubscribe <address>` reports it per address: the address's entry in
+`addresses` carries `capped`, and the top level carries it when any address
+does. The request it sends still comes from the newest message.
 
 ## Mutation result
 

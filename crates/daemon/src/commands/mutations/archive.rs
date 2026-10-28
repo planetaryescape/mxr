@@ -199,7 +199,7 @@ pub(super) fn print_operation(
 }
 
 /// Prints an archive operation for a selection. A capped `--search` adds
-/// `matched_total` and `capped` to the JSON object (the operation type is a
+/// `capped: true` to the JSON object (the operation type is a
 /// protocol type, so the fields are merged in here, not added to it). A
 /// preview says so as well in table output, or on stderr for the formats that
 /// cannot carry fields. A real run already said it before submission.

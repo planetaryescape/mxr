@@ -263,10 +263,10 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
         QueryNode::Near { .. } => {
             anyhow::bail!("AROUND is not supported in rules conditions yet")
         }
+        QueryNode::Exact(value) => Conditions::Field(FieldCondition::BodyContains {
+            pattern: StringMatch::whole_word(&value),
+        }),
         // Forward-compat: any future mail-query AST variant.
-        QueryNode::Exact(_) => {
-            anyhow::bail!("+word exact-match is not supported in rules conditions yet")
-        }
         _ => anyhow::bail!("unknown query node is not supported in rules conditions yet"),
     })
 }
@@ -696,6 +696,19 @@ mod tests {
         match conditions {
             Conditions::Field(FieldCondition::HasLabel { label }) => {
                 assert_eq!(label, "newsletters");
+            }
+            other => panic!("unexpected conditions: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn query_to_conditions_exact_word_is_whole_word_body_match() {
+        let ast = parse_query("+invoice").unwrap();
+        let conditions = query_to_conditions(ast).unwrap();
+        match conditions {
+            Conditions::Field(FieldCondition::BodyContains { pattern }) => {
+                assert!(pattern.matches("Your invoice"));
+                assert!(!pattern.matches("Your invoices"));
             }
             other => panic!("unexpected conditions: {other:?}"),
         }

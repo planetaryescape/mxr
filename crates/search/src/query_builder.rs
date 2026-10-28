@@ -92,11 +92,10 @@ impl QueryBuilder {
     pub fn build(&self, node: &QueryNode) -> Box<dyn Query> {
         match node {
             QueryNode::Text(text) => self.build_text_query(text),
-            // `+word` (Exact) means "no stemming". Tantivy's default
-            // analyzer already does light stemming on indexed terms, so
-            // there's no precise way to disable it post-index; we treat
-            // Exact like Text for now and document the limitation. A
-            // future schema change could index a non-stemmed mirror.
+            // No stemmer runs on the text fields (see schema.rs), so a word
+            // already matches whole tokens only and Exact is the same lookup
+            // as Text. A future stemmed field would need an unstemmed mirror
+            // to keep this promise.
             QueryNode::Exact(text) => self.build_text_query(text),
             QueryNode::Phrase(phrase) => self.build_phrase_query(phrase),
             QueryNode::Field { field, value } => self.build_field_query(field, value),
@@ -975,6 +974,62 @@ mod tests {
         let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
         assert_eq!(results.results.len(), 1);
         assert_eq!(results.results[0].message_id, envelopes[0].id.as_str());
+    }
+
+    fn exact_search_subjects(subjects: &[&str], query_str: &str) -> Vec<String> {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let envelopes: Vec<Envelope> = subjects
+            .iter()
+            .map(|subject| {
+                make_test_envelope(
+                    subject,
+                    "alice@example.com",
+                    "Alice",
+                    MessageFlags::empty(),
+                    false,
+                )
+            })
+            .collect();
+        for env in &envelopes {
+            idx.index_envelope(env).unwrap();
+        }
+        idx.commit().unwrap();
+
+        let schema = MxrSchema::build();
+        let qb = QueryBuilder::new(&schema);
+        let ast = parse_query(query_str).unwrap();
+        let results = idx
+            .search_ast(qb.build(&ast), 10, 0, SortOrder::Relevance)
+            .unwrap();
+        results
+            .results
+            .into_iter()
+            .map(|hit| {
+                envelopes
+                    .iter()
+                    .find(|env| env.id.as_str() == hit.message_id)
+                    .map(|env| env.subject.clone())
+                    .unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn exact_word_matches_the_token_and_not_its_inflections() {
+        let subjects = ["Running late", "Run the report", "Runs daily", "Runner up"];
+        assert_eq!(
+            exact_search_subjects(&subjects, "+running"),
+            vec!["Running late".to_string()]
+        );
+    }
+
+    #[test]
+    fn exact_word_is_case_insensitive_and_skips_plurals() {
+        let subjects = ["Invoice ready", "Your invoices", "Reinvoiced"];
+        assert_eq!(
+            exact_search_subjects(&subjects, "+invoice"),
+            vec!["Invoice ready".to_string()]
+        );
     }
 
     #[test]

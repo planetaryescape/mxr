@@ -4086,9 +4086,9 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
             _ => return Err("unknown size op is not supported in rules form".to_string()),
         },
         QueryNode::Near { .. } => return Err("AROUND is not supported in rules form".to_string()),
-        QueryNode::Exact(_) => {
-            return Err("+word exact-match is not supported in rules form".to_string())
-        }
+        QueryNode::Exact(value) => Conditions::Field(FieldCondition::BodyContains {
+            pattern: StringMatch::whole_word(&value),
+        }),
         _ => return Err("unknown query node is not supported in rules form".to_string()),
     })
 }
@@ -4278,7 +4278,10 @@ fn field_condition_to_query(field: &FieldCondition) -> Result<String, String> {
         FieldCondition::DateBefore { date } => Ok(format!("before:{}", date.format("%Y-%m-%d"))),
         FieldCondition::IsUnread => Ok("is:unread".to_string()),
         FieldCondition::IsStarred => Ok("is:starred".to_string()),
-        FieldCondition::BodyContains { pattern } => string_match_to_query("", pattern),
+        FieldCondition::BodyContains { pattern } => match pattern.whole_word_term() {
+            Some(word) => Ok(format!("+{word}")),
+            None => string_match_to_query("", pattern),
+        },
         FieldCondition::LinkDensity { match_kind } => Ok(match match_kind {
             mxr_rules::LinkDensityMatch::Any => "has:link".to_string(),
             mxr_rules::LinkDensityMatch::Heavy => "has:link-heavy".to_string(),

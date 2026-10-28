@@ -373,9 +373,20 @@ test.describe("at 390px", () => {
     await page.keyboard.type("drafted on the bus");
     await page.keyboard.press("Escape");
 
+    // Leaving the person removes the reply's inline slot, so the session
+    // moves to its sheet, which covers a phone. Closing it saves the draft,
+    // and replying again resumes it inline.
     await page.getByRole("button", { name: "Back to the people" }).click();
+    const sheet = page.getByRole("dialog", { name: /^Reply · / });
+    await expect(sheet.locator(".cm-content")).toContainText("drafted on the bus");
+    await sheet.getByRole("button", { name: "Close composer (saves draft)" }).click();
+    await expect(sheet).toHaveCount(0);
     await expect(row).toBeVisible();
     await row.click();
+    await page
+      .getByRole("button", { name: /^Reply to / })
+      .first()
+      .click();
 
     await expect(body).toBeVisible();
     await expect(body).toContainText("drafted on the bus");

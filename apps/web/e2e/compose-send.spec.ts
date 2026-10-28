@@ -35,6 +35,10 @@ test("a sent message appears in Sent after the undo window", async ({ page }) =>
   await expect(page.getByText(/^Sending in \d+s/)).toBeVisible();
   await expect(page.getByText(/To alice@example\.com, from alex@demo\.mxr\.local/)).toBeVisible();
   expect((await sendResponse).ok()).toBe(true);
+  // The composer owns the keyboard until the app has handled the send's
+  // response and closed it; a "g" typed before that is dropped, and "t" alone
+  // goes nowhere.
+  await expect(composer(page)).toHaveCount(0);
 
   await page.keyboard.press("g");
   await page.keyboard.press("t");

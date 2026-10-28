@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.171](https://github.com/planetaryescape/mxr/compare/v0.6.170...v0.6.171) (2026-10-28)
+
+
+### Features
+
+* build TUI help and the keybindings reference from the key definition ([#740](https://github.com/planetaryescape/mxr/issues/740)) ([e192f92](https://github.com/planetaryescape/mxr/commit/e192f924e5ee1cc04b8bbe5728ba4bc3bcd16a30))
+
+
+### Documentation
+
+* record the full classifier eval running up against its CI timeout ([b834e15](https://github.com/planetaryescape/mxr/commit/b834e151bc6cf459bc0a10fa34614e58436955a2))
+
 ## [0.6.170](https://github.com/planetaryescape/mxr/compare/v0.6.169...v0.6.170) (2026-10-28)
 
 

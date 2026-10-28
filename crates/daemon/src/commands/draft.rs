@@ -47,14 +47,25 @@ pub async fn run(
                 .await?;
             print_draft_response(resp, fmt)
         }
-        Some(DraftAction::Eval { limit, set }) => match set {
+        Some(DraftAction::Eval {
+            limit,
+            set,
+            rewrite,
+        }) => match set {
             DraftEvalSetArg::Mine => {
                 let account_id = match account.as_deref() {
                     Some(account) => Some(resolve_account(&mut client, Some(account)).await?),
                     None => None,
                 };
                 let resp = client
-                    .request(Request::DraftEval { account_id, limit })
+                    .request_with_events(
+                        Request::DraftEval {
+                            account_id,
+                            limit,
+                            rewrite,
+                        },
+                        |_| {},
+                    )
                     .await?;
                 match resp {
                     Response::Ok {
@@ -65,6 +76,9 @@ pub async fn run(
                 }
             }
             DraftEvalSetArg::Quick => {
+                if rewrite {
+                    anyhow::bail!("--rewrite only applies to `mxr draft eval --set mine`");
+                }
                 // Quick makes one model call per case, so the whole run can
                 // take minutes: it takes the no-deadline path that long
                 // operations use (`request_with_events`, which passes no

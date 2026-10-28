@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.6.168"
+    "version": "0.6.169"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -30365,13 +30365,17 @@
               "cmd": {
                 "type": "string",
                 "enum": [
-                  "DraftEval"
+                  "DraftEvalWithPolicy"
                 ]
               },
               "limit": {
                 "type": "integer",
                 "format": "int32",
                 "minimum": 0
+              },
+              "rewrite": {
+                "type": "boolean",
+                "description": "Also run the configured humanizer rewrite model for each replay.\nKept off by default so `--set mine` measures the drafting model."
               }
             }
           },

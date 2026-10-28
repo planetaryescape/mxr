@@ -293,6 +293,7 @@ mod tests {
             "ComposeProofRevise",
             "ComposeProofModel",
             "ComposeProofKeep",
+            "ComposeProofOpenSource",
             "ComposeProofPrevious",
             "ComposeProofNext",
             "ComposeProofScrollUp",

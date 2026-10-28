@@ -2461,23 +2461,30 @@ mod tests {
         assert_eq!(back, identity);
     }
 
-    /// Mine is the request every older daemon already understands. Its JSON
-    /// must not change, so a new CLI and an old daemon agree on it.
+    /// New clients name the replay policy explicitly; old clients still decode.
     #[test]
-    fn legacy_draft_eval_json_round_trips_unchanged() {
-        let wire = r#"{"cmd":"DraftEval","limit":10}"#;
-        let request: Request = serde_json::from_str(wire).unwrap();
-        assert!(matches!(
-            request,
-            Request::DraftEval {
+    fn replay_policy_is_not_silently_ignored_by_older_daemons() {
+        let old: Request = serde_json::from_str(r#"{"cmd":"DraftEval","limit":10}"#).unwrap();
+        assert!(matches!(old, Request::DraftEval { rewrite: false, .. }));
+        #[derive(serde::Deserialize)]
+        #[serde(tag = "cmd")]
+        #[expect(dead_code, reason = "only decode compatibility is checked")]
+        enum LegacyRequest {
+            DraftEval { limit: u32 },
+        }
+        for rewrite in [false, true] {
+            let request = Request::DraftEval {
                 account_id: None,
-                limit: 10
-            }
-        ));
-        assert_eq!(
-            serde_json::to_value(&request).unwrap(),
-            serde_json::from_str::<serde_json::Value>(wire).unwrap()
-        );
+                limit: 10,
+                rewrite,
+            };
+            let wire = serde_json::to_value(&request).unwrap();
+            assert_eq!(wire["cmd"], "DraftEvalWithPolicy");
+            assert!(serde_json::from_value::<LegacyRequest>(wire.clone()).is_err());
+            assert!(
+                matches!(serde_json::from_value::<Request>(wire).unwrap(), Request::DraftEval { rewrite: actual, .. } if actual == rewrite)
+            );
+        }
     }
 
     /// Quick is a command of its own. A daemon that predates it fails to decode

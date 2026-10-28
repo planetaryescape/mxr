@@ -127,6 +127,7 @@ struct Ask<'a> {
     instruction: Option<&'a str>,
     revise: Option<&'a str>,
     model: Option<&'a str>,
+    adjust: AssistAdjustData,
 }
 
 impl<'a> Ask<'a> {
@@ -138,6 +139,7 @@ impl<'a> Ask<'a> {
             instruction: None,
             revise: None,
             model: None,
+            adjust: AssistAdjustData::default(),
         }
     }
 }
@@ -158,7 +160,7 @@ async fn assist(
                 .map(|(start, end)| TextRangeData { start, end }),
             action: ask.action,
             instruction: ask.instruction,
-            adjust: AssistAdjustData::default(),
+            adjust: ask.adjust,
             model: ask.model,
             revise: ask.revise,
         },
@@ -559,6 +561,152 @@ async fn a_cloud_model_without_the_opt_in_refuses_text_an_earlier_suggestion_wro
         mxr_protocol::AiLocalityData::Cloud
     );
     assert!(!proposal.provenance.history_used);
+}
+
+async fn seed_voice_style(state: &AppState, email: &str, formality: f64) {
+    let account_id = state.default_account_id();
+    let metrics = mxr_relationship::stylometry::StylometryMetrics {
+        formality_score: formality,
+        avg_sentence_len: 18.0,
+        word_count: 42,
+        ..Default::default()
+    };
+    state
+        .store
+        .upsert_contact_style(&mxr_store::ContactStyleRecord {
+            account_id,
+            email: email.to_string(),
+            formality_score: formality,
+            formality_score_theirs: formality,
+            avg_sentence_len: 18.0,
+            avg_sentence_len_theirs: 18.0,
+            msg_count_used: 12,
+            msg_count_used_theirs: 8,
+            metrics_json: serde_json::to_string(&metrics).unwrap(),
+            metrics_json_theirs: "{}".to_string(),
+            computed_at: chrono::Utc::now(),
+            source_hash: "voice-test".to_string(),
+            drift_detected: false,
+            drift_reason: None,
+            drift_detected_at: None,
+        })
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn no_style_history_does_not_claim_default_values_are_writing_habits() {
+    let state = AppState::in_memory().await.unwrap();
+    let model = Scripted::new("Thursday works.");
+    state.llm.replace(model.clone());
+    assist(&state, &new_message(&state), &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+    let prompt = model.user_prompt();
+    assert!(!prompt.contains("My usual register"), "{prompt}");
+    assert!(!prompt.contains("My usual email length"), "{prompt}");
+    state
+        .store
+        .upsert_contact_relationship_summary(&mxr_store::ContactRelationshipSummaryRecord {
+            account_id: state.default_account_id(),
+            email: "sam@example.com".into(),
+            text: "We discussed Thursday.".into(),
+            model: "test".into(),
+            known_topics: vec![],
+            computed_at: chrono::Utc::now(),
+            source_hash: "summary-only".into(),
+            last_error: None,
+        })
+        .await
+        .unwrap();
+    assist(&state, &new_message(&state), &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+    let summary_prompt = model.user_prompt();
+    assert!(
+        !summary_prompt.contains("My usual email length"),
+        "{summary_prompt}"
+    );
+    assert!(
+        summary_prompt.contains("Aim for about 70 words"),
+        "{summary_prompt}"
+    );
+}
+
+#[tokio::test]
+async fn refreshed_relationship_voice_shapes_the_assist_prompt() {
+    let state = AppState::in_memory().await.unwrap();
+    seed_voice_style(&state, "sam@example.com", 0.9).await;
+    let model = Scripted::new("Dear Sam,\n\nThursday works.\n\nRegards");
+    state.llm.replace(model.clone());
+
+    let proposal = assist(&state, &new_message(&state), &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+
+    let prompt = model.user_prompt();
+    assert!(prompt.contains("Tone: formal and polished"), "{prompt}");
+    assert!(prompt.contains("My usual register is formal."), "{prompt}");
+    assert!(
+        prompt.contains("My usual email length is medium."),
+        "{prompt}"
+    );
+    assert!(prompt.contains("Aim for about 90 words"), "{prompt}");
+    assert!(proposal.provenance.history_used);
+    assert!(proposal.provenance.voice_examples.is_empty());
+}
+
+#[tokio::test]
+async fn the_explicit_shorter_chip_overrides_the_inferred_voice_length() {
+    let state = AppState::in_memory().await.unwrap();
+    seed_voice_style(&state, "sam@example.com", 0.9).await;
+    let model = Scripted::new("Thursday works.");
+    state.llm.replace(model.clone());
+    let mut ask = Ask::text("Thursday works.");
+    ask.adjust.shorter = true;
+
+    assist(&state, &new_message(&state), &ask).await.unwrap();
+
+    assert!(model.user_prompt().contains("Aim for about 45 words"));
+}
+
+#[tokio::test]
+async fn the_explicit_formal_chip_overrides_the_inferred_register() {
+    let state = AppState::in_memory().await.unwrap();
+    seed_voice_style(&state, "sam@example.com", 0.2).await;
+    let model = Scripted::new("Dear Sam,\n\nThursday works.\n\nRegards");
+    state.llm.replace(model.clone());
+    let mut ask = Ask::text("Thursday works.");
+    ask.adjust.more_formal = true;
+
+    assist(&state, &new_message(&state), &ask).await.unwrap();
+
+    let prompt = model.user_prompt();
+    assert!(prompt.contains("Tone: formal and polished"), "{prompt}");
+    assert!(prompt.contains("My usual register is formal."), "{prompt}");
+    assert!(!prompt.contains("casual"), "{prompt}");
+}
+
+#[tokio::test]
+async fn a_cloud_assist_without_history_opt_in_gets_no_stylometry_or_voice_provenance() {
+    let state = AppState::in_memory().await.unwrap();
+    seed_voice_style(&state, "sam@example.com", 0.9).await;
+    let mut config = state.config_snapshot();
+    config.llm.base_url = "https://api.example-cloud.com/v1".into();
+    config.llm.allow_cloud_relationship_data = false;
+    state.set_config_for_test(config).await;
+    let model = Scripted::cloud("Thursday works.");
+    state.llm.replace(model.clone());
+
+    let proposal = assist(&state, &new_message(&state), &Ask::text("Thursday works."))
+        .await
+        .unwrap();
+
+    let prompt = model.user_prompt();
+    assert!(!prompt.contains("usual register"), "{prompt}");
+    assert!(!prompt.contains("usual email length"), "{prompt}");
+    assert!(!proposal.provenance.history_used);
+    assert!(proposal.provenance.voice_examples.is_empty());
 }
 
 #[tokio::test]

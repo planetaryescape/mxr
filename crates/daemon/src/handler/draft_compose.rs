@@ -11,7 +11,7 @@
 use super::draft_prompt::{self, DraftMode, Help, Me, PromptInput};
 use super::draft_provenance::DraftPolicy;
 use super::draft_voice::{self, Counterparty, VoiceMaterial};
-use super::{draft_context, draft_output, relationship_profile, HandlerResult};
+use super::{draft_context, draft_output, HandlerResult};
 use crate::state::AppState;
 use chrono::{DateTime, Utc};
 use draft_context::DraftContext;
@@ -52,6 +52,7 @@ pub(super) async fn draft_compose(
         register,
         length_hint,
         before: None,
+        rewrite_policy: DraftRewritePolicy::Configured,
     };
 
     // Reply to an explicit thread (reader / quick-reply).
@@ -108,6 +109,14 @@ pub(crate) struct DraftRequest<'a> {
     pub register: Option<VoiceRegisterData>,
     pub length_hint: Option<DraftLengthHintData>,
     pub before: Option<DateTime<Utc>>,
+    pub rewrite_policy: DraftRewritePolicy,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DraftRewritePolicy {
+    Configured,
+    Disabled,
+    Enabled,
 }
 
 /// The account a reply drafts as: the conversation's own. A request naming
@@ -233,41 +242,61 @@ async fn draft_with(
             draft_context::ensure_contact_fresh(state, account_id, email).await;
         }
     }
-    // Tone/length inference, the voice-match baseline and the UI note.
-    let context = draft_context::build_relationship_block(
-        state,
-        account_id,
-        &contact_emails,
-        request.instruction,
-        request.register,
-        request.length_hint,
-    )
-    .await;
     // The user's other mail only reaches a cloud model with their opt-in.
     let policy = DraftPolicy::pin(state, feature);
     let share = policy.share_history;
-    let (background, material) = voice_inputs(
+    let snapshot = draft_voice::snapshot(
         state,
         account_id,
-        &policy,
         counterparty.as_ref(),
         thread_id,
         request.before,
+        draft_voice::VoiceSnapshotOptions {
+            share_history: share,
+            purpose: request.instruction,
+            register: request.register,
+            length_hint: request.length_hint,
+        },
     )
     .await;
-    let target_words = target_words(request.length_hint, &material);
+    let material = snapshot.material;
+    let context = snapshot.context;
+    let background = share.then_some(context.background.as_deref()).flatten();
+    let inferred_length = context.style_used.then_some(context.inferred_length);
+    let target_words = target_words(request.length_hint.or(inferred_length), &material);
     let max_tokens = max_tokens_for_words(target_words);
     let budget_chars = prompt_budget_chars(policy.llm.context_window(), max_tokens);
     let today = draft_voice::today();
+    let mut prompt_habits = material.habits.clone();
+    if let Some(words) = material
+        .median_words
+        .filter(|_| request.length_hint.is_none())
+    {
+        prompt_habits.push(format!("I usually write about {words} words."));
+    }
+    if share && context.style_used && request.register.is_none() {
+        prompt_habits.push(format!(
+            "My usual register is {}.",
+            draft_context::register_label(context.inferred_register)
+        ));
+    }
+    if share && context.style_used && request.length_hint.is_none() {
+        prompt_habits.push(format!(
+            "My usual email length is {}.",
+            draft_context::length_label(context.inferred_length)
+        ));
+    }
     let prompt = draft_prompt::build(&PromptInput {
         mode,
         me,
         today: &today,
-        habits: &material.habits,
+        habits: &prompt_habits,
         examples: &material.examples,
-        background: background.as_deref(),
+        background,
         turns: &turns,
-        tone: request.register,
+        tone: request
+            .register
+            .or_else(|| (share && context.style_used).then_some(context.inferred_register)),
         target_words,
         instruction: request.instruction,
         subject: "",
@@ -292,8 +321,10 @@ async fn draft_with(
     } else {
         Some(CLOUD_NOTE.to_string())
     };
-    let history_used =
-        !examples_used.is_empty() || !material.habits.is_empty() || prompt.background_used;
+    let history_used = !examples_used.is_empty()
+        || !material.habits.is_empty()
+        || prompt.background_used
+        || (share && context.history_used);
     let provenance = policy.provenance(
         &model,
         history_used,
@@ -317,37 +348,9 @@ async fn draft_with(
         context.inferred_register,
         context.inferred_length,
         note,
+        request.rewrite_policy,
     )
     .await
-}
-
-/// The relationship summary and the voice material (examples and habits) a
-/// prompt may carry. Both are empty unless the policy lets the user's other
-/// mail reach this model.
-pub(crate) async fn voice_inputs(
-    state: &AppState,
-    account_id: &AccountId,
-    policy: &DraftPolicy,
-    counterparty: Option<&Counterparty>,
-    thread_id: Option<&ThreadId>,
-    before: Option<DateTime<Utc>>,
-) -> (Option<String>, VoiceMaterial) {
-    if !policy.share_history {
-        return (None, VoiceMaterial::none());
-    }
-    let background = match counterparty {
-        Some(person) => {
-            relationship_profile::load_relationship_profile(state, account_id, &person.email)
-                .await
-                .ok()
-                .flatten()
-                .and_then(|profile| profile.summary.map(|summary| summary.text))
-        }
-        None => None,
-    };
-    let material =
-        draft_voice::voice_material(state, account_id, counterparty, thread_id, before).await;
-    (background, material)
 }
 
 pub(crate) const CLOUD_NOTE: &str = "Your LLM is a cloud endpoint, so this draft saw only the \

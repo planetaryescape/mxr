@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.169](https://github.com/planetaryescape/mxr/compare/v0.6.168...v0.6.169) (2026-10-28)
+
+
+### Features
+
+* one X picker and one Not-now picker in both clients ([#732](https://github.com/planetaryescape/mxr/issues/732)) ([0377c08](https://github.com/planetaryescape/mxr/commit/0377c08489e4c8abc4ae959684aed69b9c33acdd))
+
+
+### Bug Fixes
+
+* count provider-sent mail as sent even when its From isn't a registered address ([#731](https://github.com/planetaryescape/mxr/issues/731)) ([9e9343b](https://github.com/planetaryescape/mxr/commit/9e9343b562624a8a5960de1351f22b9e15062b02))
+* update pulldown-cmark to 0.13.5 for RUSTSEC-2026-0414 ([#734](https://github.com/planetaryescape/mxr/issues/734)) ([2be37e9](https://github.com/planetaryescape/mxr/commit/2be37e94336a8e6bfbe41e426b3e80d96ccde74a))
+
+
+### Documentation
+
+* point blueprint 17 at the real release workflow and fix drifted compose and issue notes ([#730](https://github.com/planetaryescape/mxr/issues/730)) ([b256d5e](https://github.com/planetaryescape/mxr/commit/b256d5e7957322531bd59bccaef5cced5833d5e3))
+
 ## [0.6.168](https://github.com/planetaryescape/mxr/compare/v0.6.167...v0.6.168) (2026-10-28)
 
 

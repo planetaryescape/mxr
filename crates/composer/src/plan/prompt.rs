@@ -705,6 +705,30 @@ mod tests {
     }
 
     #[test]
+    fn example_budget_keeps_a_source_identity_prefix() {
+        let examples: Vec<_> = (0..3)
+            .map(|index| VoiceExample {
+                to: "Alice <alice@x.com>".into(),
+                their_message: None,
+                my_email: format!("Example {index}: {}", "word ".repeat(150)),
+                source: source(true),
+            })
+            .collect();
+        let budget = 1_200;
+
+        let (rendered, used) = render_examples(&examples, budget);
+
+        assert_eq!(used, 1, "budget {budget}; rendered {rendered:?}");
+        assert!(rendered.contains("Example 0:"));
+        assert!(!rendered.contains("Example 1:"));
+        let cited_sources: Vec<_> = examples[..used]
+            .iter()
+            .map(|example| example.source.message_id.clone())
+            .collect();
+        assert_eq!(cited_sources, vec![examples[0].source.message_id.clone()]);
+    }
+
+    #[test]
     fn over_budget_drops_the_oldest_turns_and_keeps_the_target() {
         let me = me();
         let long = "x".repeat(1_400);

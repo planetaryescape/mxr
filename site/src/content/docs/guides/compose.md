@@ -210,6 +210,12 @@ Home/End move farther. A proof can include gaps: the warning style marks those
 ranges, and send safety blocks sending until you fill them in the editor.
 Acceptance applies through the daemon and reruns send safety.
 
+The provenance line counts the voice examples actually included in the prompt.
+In web and Raycast, open a listed source to read that email. In the TUI proof,
+press `o` to read the next voice example, scroll with arrows or PageUp/PageDown,
+and press `Esc` to return to the same proof. No examples are listed when the
+model did not receive any.
+
 Compose proofs also show a local style score and underline detected style
 spans. Open **Style** in the web proof for pattern names and context; Raycast
 and the TUI list the detected names beside their context. These marks are

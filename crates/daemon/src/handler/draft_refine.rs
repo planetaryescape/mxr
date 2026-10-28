@@ -4,7 +4,7 @@
 
 use super::draft_provenance::DraftPolicy;
 use super::draft_voice::{self, Counterparty};
-use super::{draft_context, draft_output, relationship_profile, HandlerResult};
+use super::{draft_context, draft_output, HandlerResult};
 use crate::state::AppState;
 use mxr_humanizer::email_writing_constraints;
 use mxr_llm::{
@@ -44,24 +44,15 @@ pub(super) async fn draft_refine(
         .to
         .first()
         .ok_or_else(|| "Draft has no recipient to refine against".to_string())?;
-    let context = draft_context::build_relationship_block(
-        state,
-        &draft.account_id,
-        std::slice::from_ref(&recipient.email),
-        knobs.add_context.as_deref().unwrap_or("refine draft"),
-        None,
-        None,
-    )
-    .await;
+    // The user's other mail only reaches a cloud model with their opt-in.
+    let policy = DraftPolicy::pin(state, LlmFeature::DraftRefine);
+    let share = policy.share_history;
     let me = draft_voice::me(state, &draft.account_id).await;
     let name = me.name.clone().unwrap_or_else(|| "the user".to_string());
     let person = Counterparty {
         email: recipient.email.to_ascii_lowercase(),
         name: recipient.name.clone(),
     };
-    // The user's other mail only reaches a cloud model with their opt-in.
-    let policy = DraftPolicy::pin(state, LlmFeature::DraftRefine);
-    let share = policy.share_history;
     let text = live_body
         .filter(|body| !body.trim().is_empty())
         .unwrap_or_else(|| draft.content.analysis_text());
@@ -75,20 +66,25 @@ pub(super) async fn draft_refine(
             HISTORY_BODY_REFUSAL.to_string(),
         ));
     }
-    let material = if share {
-        draft_voice::voice_material(state, &draft.account_id, Some(&person), None, None).await
-    } else {
-        draft_voice::VoiceMaterial::none()
-    };
-    let background = if share {
-        relationship_profile::load_relationship_profile(state, &draft.account_id, &person.email)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|profile| profile.summary.map(|summary| summary.text))
-    } else {
-        None
-    };
+    let snapshot = draft_voice::snapshot(
+        state,
+        &draft.account_id,
+        Some(&person),
+        None,
+        None,
+        draft_voice::VoiceSnapshotOptions {
+            share_history: share,
+            purpose: knobs.add_context.as_deref().unwrap_or("refine draft"),
+            register: knobs
+                .more_formal
+                .then_some(mxr_protocol::VoiceRegisterData::Formal),
+            length_hint: None,
+        },
+    )
+    .await;
+    let material = snapshot.material;
+    let context = snapshot.context;
+    let background = context.background.clone();
 
     let background = background.filter(|text| !text.trim().is_empty());
 
@@ -111,6 +107,13 @@ pub(super) async fn draft_refine(
             prompt.push_str(&format!("- {habit}\n"));
         }
         prompt.push('\n');
+    }
+    if share && context.style_used {
+        prompt.push_str(&format!(
+            "This draft uses a {} register and {} length.\n\n",
+            draft_context::register_label(context.inferred_register),
+            draft_context::length_label(context.inferred_length),
+        ));
     }
     if let Some(text) = background.as_deref() {
         // Derived from stored mail: delimit it as untrusted content.
@@ -197,7 +200,8 @@ pub(super) async fn draft_refine(
     let history_used = body_from_history
         || !material.examples.is_empty()
         || !material.habits.is_empty()
-        || background.is_some();
+        || background.is_some()
+        || context.history_used;
     let provenance = policy.provenance(
         &response.model,
         history_used,
@@ -218,6 +222,7 @@ pub(super) async fn draft_refine(
         context.inferred_register,
         context.inferred_length,
         context.context_note,
+        super::draft_compose::DraftRewritePolicy::Configured,
     )
     .await
 }

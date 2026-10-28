@@ -292,132 +292,16 @@ Each archive contains:
 
 ### Build workflow
 
-```yaml
-name: Release binaries
-on:
-  push:
-    tags: ['v*']
+`.github/workflows/release.yml` runs on each `v*` tag, which release-please pushes after its release PR merges. Read the workflow for the exact steps; in order, its jobs are:
 
-permissions:
-  contents: write
+1. `plan` (Plan Release) checks that the tag matches the Cargo version and builds the target matrix.
+2. `release-smoke` (Release CLI Smoke) runs the release-blocking CLI tests and the fake-provider launch proof, plus the live Gmail smoke when the CLI changed and its test credentials are set.
+3. `build-binaries` (Build `<target>`) builds `cargo build --release --locked --target <target> -p mxr -p mxr-mailmerge --features semantic-local,web-ui` with the web SPA embedded. Linux x86_64 builds on `ubuntu-latest`. macOS Apple Silicon builds on the self-hosted `mxr-builder` runner, where `.github/actions/self-hosted-rust-home` gives the job its own `CARGO_HOME`, `RUSTUP_HOME` and sccache port so it never touches the developer's toolchain. The macOS binary is signed and notarized, then archived with its SHA256.
+4. `desktop` calls `desktop-signed.yml` to build the signed desktop app.
+5. `github-release` verifies the archive checksums, uploads the assets to the draft release release-please created, and only then publishes it.
+6. `homebrew` renders and pushes the formula and cask, then installs both to check them.
 
-jobs:
-  build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            archive: linux-x86_64.tar.gz
-          - target: aarch64-apple-darwin
-            os: macos-15
-            archive: macos-aarch64.tar.gz
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      # For Linux native build dependencies
-      - name: Install system dependencies
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libssl-dev libasound2-dev pkg-config
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-
-      - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }} -p mxr --features semantic-local,web-ui
-
-      - name: Package
-        run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          ARCHIVE="mxr-v${VERSION}-${{ matrix.archive }}"
-          mkdir -p release
-          cp target/${{ matrix.target }}/release/mxr release/
-          cp target/${{ matrix.target }}/release/mxr-chime-player release/
-          cp LICENSE-MIT LICENSE-APACHE README.md release/
-          cd release
-          tar czf "../${ARCHIVE}" *
-          cd ..
-          echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
-
-      - name: Generate SHA256 checksum
-        run: |
-          sha256sum "${{ env.ARCHIVE }}" > "${{ env.ARCHIVE }}.sha256"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.target }}
-          path: |
-            ${{ env.ARCHIVE }}
-            ${{ env.ARCHIVE }}.sha256
-
-  release:
-    name: Create GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: Generate changelog for this release
-        id: changelog
-        run: |
-          # Get commits since last tag
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREV_TAG" ]; then
-            CHANGES=$(git log --pretty=format:"- %s (%h)" "${PREV_TAG}..HEAD")
-          else
-            CHANGES=$(git log --pretty=format:"- %s (%h)")
-          fi
-          echo "changes<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*
-          generate_release_notes: false
-          body: |
-            ## Installation
-
-            **Cargo (from source):**
-            ```bash
-            cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
-            ```
-
-            **Pre-built binaries:**
-            Download the appropriate binary for your platform below, extract, and place `mxr` in your `$PATH`.
-
-            **Homebrew (macOS/Linux):**
-            ```bash
-            brew install planetaryescape/mxr/mxr
-            ```
-
-            ## Checksums
-            SHA256 checksums are provided alongside each binary. Verify with:
-            ```bash
-            sha256sum -c mxr-v*.sha256
-            ```
-
-            ## What's changed
-            ${{ steps.changelog.outputs.changes }}
-```
+The build job has no Rust cache step: each release runs on a new tag, and a tag cannot restore another tag's cache, so it never restored one.
 
 ---
 

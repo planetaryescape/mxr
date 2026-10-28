@@ -31,8 +31,8 @@ promise you made follows it, if one is open.
 
 The TUI has no animation. It says **Low tide. Nobody's waiting on you.** in
 the status bar and on the desk when the desk or the owed-replies list
-clears, and "Low tide. That's everyone in the reply queue" when a focus run
-ends.
+clears, and Focus & reply's last page says "Low tide. That's everyone you
+write with." when you have answered everyone.
 
 ## Turn sound on
 

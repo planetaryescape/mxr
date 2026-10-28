@@ -223,6 +223,13 @@ impl App {
             | Action::UpdatesOpenLink
             | Action::UpdatesCopyCode
             | Action::UpdatesClose => self.apply_updates_action(action),
+            Action::OpenFocus
+            | Action::FocusSkip
+            | Action::FocusDone
+            | Action::FocusReply
+            | Action::FocusRemind
+            | Action::FocusDraft
+            | Action::FocusLeave => self.apply_focus_action(action),
             Action::OpenMailboxScreen
             | Action::OpenSearchScreen
             | Action::OpenGlobalSearch

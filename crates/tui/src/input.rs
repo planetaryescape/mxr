@@ -45,6 +45,7 @@ fn g_view_chord(second: char) -> Option<Action> {
         // chord.
         'u' => Some(Action::OpenUpdates),
         'S' => Some(Action::OpenScreenerQueue),
+        'F' => Some(Action::OpenFocus),
         'x' => Some(Action::OpenTodo),
         'm' => Some(Action::OpenMessages),
         'e' => Some(Action::OpenArchiveMode),

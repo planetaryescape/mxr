@@ -400,6 +400,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "open_now" => Some(Action::OpenNow),
         "open_messages" => Some(Action::OpenMessages),
         "open_updates" => Some(Action::OpenUpdates),
+        "open_focus" => Some(Action::OpenFocus),
         "open_archive" => Some(Action::OpenArchiveMode),
         "open_todo" => Some(Action::OpenTodo),
         "create_todo" => Some(Action::CreateTodoFromMessage),
@@ -530,6 +531,7 @@ fn action_display_name(action: &str) -> String {
         "open_now" => "Now".into(),
         "open_messages" => "Messages".into(),
         "open_updates" => "Updates".into(),
+        "open_focus" => "Focus & reply".into(),
         "open_archive" => "Archive".into(),
         "open_todo" => "To do".into(),
         "create_todo" => "Make a to-do".into(),
@@ -973,6 +975,7 @@ const ML_DEFAULTS: &[(&str, &str)] = &[
     ("gv", "open_calendar_invites"),
     ("gu", "open_updates"),
     ("gS", "open_screener"),
+    ("gF", "open_focus"),
 ];
 
 // Message view defaults

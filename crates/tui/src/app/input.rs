@@ -384,6 +384,7 @@ impl App {
             MailboxView::ArchiveMode => {
                 mailbox.records_page.answer.is_some() || mailbox.records_page.card.is_some()
             }
+            MailboxView::Focus => true,
             _ => false,
         }
     }
@@ -1841,6 +1842,9 @@ impl App {
             }
             ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::Updates => {
                 self.updates_lens_key(key)
+            }
+            ActivePane::MailList if self.mailbox.mailbox_view == MailboxView::Focus => {
+                self.focus_page_key(key)
             }
             ActivePane::MailList => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),

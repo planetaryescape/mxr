@@ -2199,6 +2199,40 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if std::mem::take(&mut app.mailbox.focus_page.pending_refresh) {
+            let owed_only = app.mailbox.focus_page.owed_only;
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let owed = async {
+                    match ipc_call(&bg, crate::app::focus_desk_request()).await {
+                        Ok(Response::Ok {
+                            data: ResponseData::Desk { owed, people, .. },
+                        }) => Ok((owed, people)),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Ok(_) => Err(MxrError::Ipc("unexpected response to GetDesk".into())),
+                        Err(e) => Err(e),
+                    }
+                };
+                let reply_later = async {
+                    if owed_only {
+                        return Ok(Vec::new());
+                    }
+                    match ipc_call(&bg, Request::ListReplyQueue).await {
+                        Ok(Response::Ok {
+                            data: ResponseData::ReplyQueue { messages },
+                        }) => Ok(messages),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Ok(_) => Err(MxrError::Ipc(
+                            "unexpected response to ListReplyQueue".into(),
+                        )),
+                        Err(e) => Err(e),
+                    }
+                };
+                let (owed, reply_later) = futures::join!(owed, reply_later);
+                AsyncResult::FocusQueue { owed, reply_later }
+            });
+        }
+
         if std::mem::take(&mut app.mailbox.now_page.pending_refresh) {
             let now_bg = bg.clone();
             let _ = submit_task(&queued, async move {
@@ -4492,6 +4526,7 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::ComposeReady(Err(e)) => {
                             app.compose.assist_after_editor = false;
+                            app.compose.remind_after_editor = false;
                             app.status_message = Some(format!("Compose error: {e}"));
                         }
                         AsyncResult::DraftEditReady(Ok(data)) => {
@@ -4761,6 +4796,9 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::TodoResolutionPreview(_, _, Err(e)) => {
                             app.status_message = Some(format!("Couldn't review that resolution: {e}"));
+                        }
+                        AsyncResult::FocusQueue { owed, reply_later } => {
+                            app.set_focus_sources(owed, reply_later);
                         }
                         AsyncResult::Desk(Ok(desk)) => app.set_desk(desk),
                         AsyncResult::Desk(Err(e)) => {

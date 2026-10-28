@@ -25,7 +25,7 @@ note = "Ctrl+P works on macOS only, where it is not the browser's Print; the TUI
 [[action.tui]]
 name = "OpenCommandPalette"
 keys = [":", "Ctrl+k", "Ctrl+p"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "shell.search-palette"
@@ -38,7 +38,7 @@ keys = ["/"]
 [[action.tui]]
 name = "OpenGlobalSearch"
 keys = ["/"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "shell.help"
@@ -51,7 +51,7 @@ keys = ["?"]
 [[action.tui]]
 name = "Help"
 keys = ["?"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "shell.compose"
@@ -64,7 +64,7 @@ keys = ["c"]
 [[action.tui]]
 name = "Compose"
 keys = ["c"]
-contexts = ["list", "reader", "place", "todo", "catchup", "expired", "now", "archive", "reading", "reading-reader", "updates", "search", "search-preview"]
+contexts = ["list", "reader", "place", "todo", "catchup", "expired", "now", "archive", "reading", "reading-reader", "updates", "search", "search-preview", "focus"]
 
 [[action]]
 id = "mail.undo"
@@ -80,7 +80,14 @@ note = "z also undoes, for Gmail muscle memory"
 [[action.tui]]
 name = "UndoLastMutation"
 keys = ["u"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "now", "messages", "archive", "reading", "reading-reader", "updates", "search", "search-preview", "arrivals-list"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "now", "messages", "archive", "reading", "reading-reader", "updates", "search", "search-preview", "arrivals-list", "focus"]
+
+# The TUI holds z elsewhere while `z z` says where it went; Focus & reply
+# never had it, so z undoes there as on the web.
+[[action.tui]]
+name = "UndoLastMutation"
+keys = ["z"]
+contexts = ["focus"]
 
 # Now and the modes, in rail order. g + letter, as in the TUI.
 [[action]]
@@ -94,7 +101,7 @@ keys = ["g h"]
 [[action.tui]]
 name = "OpenNow"
 keys = ["g h"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.messages"
@@ -107,7 +114,7 @@ keys = ["g m"]
 [[action.tui]]
 name = "OpenMessages"
 keys = ["g m"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.updates"
@@ -120,7 +127,7 @@ keys = ["g u"]
 [[action.tui]]
 name = "OpenUpdates"
 keys = ["g u"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action.moved]]
 key = "g p"
@@ -138,7 +145,7 @@ keys = ["g e"]
 [[action.tui]]
 name = "OpenArchiveMode"
 keys = ["g e"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.desk"
@@ -160,7 +167,7 @@ note = "Waiting on lives in Messages in the TUI, so g w opens that"
 [[action.tui]]
 name = "OpenMessages"
 keys = ["g w"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.inbox"
@@ -172,12 +179,12 @@ keys = ["g i", "g 0"]
 [[action.tui]]
 name = "GoToInbox"
 keys = ["g i"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action.tui]]
 name = "OpenSavedSearchByIndex(0)"
 keys = ["g 0"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.starred"
@@ -189,7 +196,7 @@ keys = ["g s"]
 [[action.tui]]
 name = "GoToStarred"
 keys = ["g s"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.sent"
@@ -201,7 +208,7 @@ keys = ["g t"]
 [[action.tui]]
 name = "GoToSent"
 keys = ["g t"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.drafts"
@@ -214,7 +221,7 @@ note = "One page here; in the TUI g d is the Drafts mailbox, and its local draft
 [[action.tui]]
 name = "GoToDrafts"
 keys = ["g d"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action.moved]]
 key = "g E"
@@ -231,7 +238,7 @@ keys = ["g a"]
 [[action.tui]]
 name = "GoToAllMail"
 keys = ["g a"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.labels"
@@ -244,7 +251,7 @@ keys = ["g l"]
 [[action.tui]]
 name = "GoToLabel"
 keys = ["g l"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.analytics"
@@ -256,7 +263,7 @@ keys = ["g A"]
 [[action.tui]]
 name = "OpenAnalyticsScreen"
 keys = ["g A"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.activity"
@@ -268,7 +275,7 @@ keys = ["g Y"]
 [[action.tui]]
 name = "OpenActivityScreen"
 keys = ["g Y"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action.moved]]
 key = "g y"
@@ -285,7 +292,7 @@ keys = ["g L"]
 [[action.tui]]
 name = "OpenLogs"
 keys = ["g L"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.settings"
@@ -298,7 +305,7 @@ note = "The TUI opens its Accounts screen, where its settings live; Edit config 
 [[action.tui]]
 name = "OpenTab4"
 keys = ["g C"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action.moved]]
 key = "g c"
@@ -330,7 +337,7 @@ keys = ["g #"]
 [[action.tui]]
 name = "GoToTrash"
 keys = ["g #"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.spam"
@@ -342,7 +349,7 @@ keys = ["g !"]
 [[action.tui]]
 name = "GoToSpam"
 keys = ["g !"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 # Triage views. The same chords open the TUI's lenses and modals.
 [[action]]
@@ -355,7 +362,7 @@ keys = ["g q"]
 [[action.tui]]
 name = "OpenReplyQueue"
 keys = ["g q"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.owed"
@@ -367,7 +374,7 @@ keys = ["g o"]
 [[action.tui]]
 name = "OpenOwedReplies"
 keys = ["g o"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.invites"
@@ -379,7 +386,7 @@ keys = ["g v"]
 [[action.tui]]
 name = "OpenCalendarInvites"
 keys = ["g v"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action.moved]]
 key = "9"
@@ -397,7 +404,7 @@ keys = ["g r"]
 [[action.tui]]
 name = "OpenReading"
 keys = ["g r"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 # g u opens Updates now; Subscriptions lives under More and the palette.
 [[action]]
@@ -422,7 +429,7 @@ keys = ["g S"]
 [[action.tui]]
 name = "OpenScreenerQueue"
 keys = ["g S"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action.moved]]
 key = "8"
@@ -479,7 +486,7 @@ keys = ["g R"]
 [[action.tui]]
 name = "OpenTab3"
 keys = ["g R"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action.moved]]
 key = "3"
@@ -508,7 +515,7 @@ keys = ["g D"]
 [[action.tui]]
 name = "OpenTab5"
 keys = ["g D"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action.moved]]
 key = "5"
@@ -539,7 +546,7 @@ keys = ["g P"]
 [[action.tui]]
 name = "OpenTab7"
 keys = ["g P"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action.moved]]
 key = "7"
@@ -557,7 +564,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "OpenSavedSearchByIndex(1)"
 keys = ["g 1"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.saved-search-2"
@@ -570,7 +577,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "OpenSavedSearchByIndex(2)"
 keys = ["g 2"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.saved-search-3"
@@ -583,7 +590,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "OpenSavedSearchByIndex(3)"
 keys = ["g 3"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.saved-search-4"
@@ -596,7 +603,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "OpenSavedSearchByIndex(4)"
 keys = ["g 4"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.saved-search-5"
@@ -609,7 +616,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "OpenSavedSearchByIndex(5)"
 keys = ["g 5"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.saved-search-6"
@@ -622,7 +629,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "OpenSavedSearchByIndex(6)"
 keys = ["g 6"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.saved-search-7"
@@ -635,7 +642,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "OpenSavedSearchByIndex(7)"
 keys = ["g 7"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.saved-search-8"
@@ -648,7 +655,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "OpenSavedSearchByIndex(8)"
 keys = ["g 8"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "nav.saved-search-9"
@@ -661,7 +668,7 @@ hide_in_palette = true
 [[action.tui]]
 name = "OpenSavedSearchByIndex(9)"
 keys = ["g 9"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "settings.theme"
@@ -2276,10 +2283,13 @@ label = "Focus & reply"
 description = "Reply to everyone waiting on you, one conversation at a time"
 group = "Compose"
 scopes = ["global"]
-# The TUI leaves g+F free; lower-case f is forward.
+# Capital F: lower-case f is forward.
 keys = ["g F"]
-clients = ["web"]
-note = "The TUI has no Focus page; it starts Focus & reply from the reply queue (g q, then F)"
+
+[[action.tui]]
+name = "OpenFocus"
+keys = ["g F"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "focus.send"
@@ -2298,6 +2308,11 @@ scopes = ["focus"]
 keys = ["j"]
 note = "Goes to the end of the queue"
 
+[[action.tui]]
+name = "FocusSkip"
+keys = ["j"]
+contexts = ["focus"]
+
 [[action.moved]]
 key = "s"
 contexts = ["focus"]
@@ -2309,7 +2324,11 @@ label = "Done, no reply needed"
 group = "Compose"
 scopes = ["focus"]
 keys = ["e"]
-note = "e on the desk in the TUI"
+
+[[action.tui]]
+name = "FocusDone"
+keys = ["e"]
+contexts = ["focus"]
 
 [[action]]
 id = "focus.snooze"
@@ -2318,6 +2337,11 @@ short_label = "Not now"
 group = "Compose"
 scopes = ["focus"]
 keys = ["b"]
+
+[[action.tui]]
+name = "Snooze"
+keys = ["b"]
+contexts = ["focus"]
 
 [[action.moved]]
 key = "Z"
@@ -2330,7 +2354,19 @@ label = "Send, remind me if nobody replies…"
 short_label = "Send, remind"
 group = "Compose"
 scopes = ["focus"]
-keys = ["w"]
+# w is Wake (blueprint 35). The web's button and the TUI send review's n
+# still reach it.
+palette_only = true
+
+[[action.tui]]
+name = "FocusRemind"
+keys = []
+contexts = ["focus"]
+
+[[action.moved]]
+key = "w"
+contexts = ["focus"]
+until = "0.6.206"
 
 [[action]]
 id = "focus.draft"
@@ -2340,21 +2376,40 @@ group = "Compose"
 scopes = ["focus"]
 keys = ["d"]
 
+[[action.tui]]
+name = "FocusDraft"
+keys = ["d"]
+contexts = ["focus"]
+
 [[action]]
 id = "focus.reply"
 label = "Back to the reply"
+# The TUI's r writes the reply in $EDITOR; "Reply" is true in both.
+short_label = "Reply"
 group = "Compose"
 scopes = ["focus"]
 keys = ["r"]
 hide_in_palette = true
 
+[[action.tui]]
+name = "FocusReply"
+keys = ["r"]
+contexts = ["focus"]
+
 [[action]]
 id = "focus.leave"
+# Raycast: none; Cmd+Q would quit.
+raycast_key = ""
 label = "Leave focus mode"
 group = "Compose"
 scopes = ["focus"]
-keys = ["Escape"]
+keys = ["Escape", "q"]
 hide_in_palette = true
+
+[[action.tui]]
+name = "FocusLeave"
+keys = ["Escape", "q"]
+contexts = ["focus"]
 
 [[action]]
 id = "place.down"
@@ -2504,7 +2559,7 @@ keys = ["g x"]
 [[action.tui]]
 name = "OpenTodo"
 keys = ["g x"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "todo.down"
@@ -4396,7 +4451,7 @@ note = "Mod+. also works from a text field; terminals don't pass it through"
 [[action.tui]]
 name = "ToggleAssistant"
 keys = ["@"]
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
+contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
 [[action]]
 id = "assistant.new"
@@ -5271,6 +5326,10 @@ actions = ["todo.primary"]
 [[strip]]
 id = "catchup"
 actions = ["todo.catchup-keep", "todo.catchup-let-go", "todo.catchup-let-go-all", "todo.catchup-back"]
+
+[[strip]]
+id = "focus"
+actions = ["focus.reply", "focus.skip", "focus.done", "focus.snooze", "focus.draft", "focus.leave"]
 
 [[strip]]
 id = "expired"

@@ -148,6 +148,7 @@ mod accounts_and_delivery;
 mod assistant;
 mod back_and_quit;
 mod export;
+mod focus;
 mod input_and_compose;
 mod keymap;
 mod mailbox_views;

@@ -147,6 +147,22 @@ pub enum Action {
     UpdatesCopyCode,
     /// Esc on Updates: close a menu or retire the first-encounter card.
     UpdatesClose,
+    /// `g F`: Focus & reply, everyone you owe a reply one conversation at
+    /// a time.
+    OpenFocus,
+    /// `j` in Focus & reply: this one goes to the end of the queue.
+    FocusSkip,
+    /// `e` in Focus & reply: done, no reply needed (the desk's Done).
+    FocusDone,
+    /// `r` in Focus & reply: write the reply in `$EDITOR`.
+    FocusReply,
+    /// `w` in Focus & reply: write the reply, then send with a reminder if
+    /// nobody replies.
+    FocusRemind,
+    /// `d` in Focus & reply: write the reply, then draft it in your voice.
+    FocusDraft,
+    /// Esc in Focus & reply: back to where it was opened from.
+    FocusLeave,
     /// `X`: "Move to…" for the selected email: one key per mode
     /// (`MoveMessage`), Shift for the sender's mode.
     OpenMoveMenu,
@@ -355,8 +371,7 @@ pub enum Action {
     ReplyQueueModalPrev,
     /// Start the normal reply compose flow for the selected queued message.
     ReplyQueueModalReply,
-    /// Focus & reply: reply to each queued message in turn, from the
-    /// selected one; the next reply opens after each send.
+    /// Focus & reply, starting at the selected queued message.
     ReplyQueueModalFocus,
     /// Open the screener queue — senders waiting for a classification.
     OpenScreenerQueue,

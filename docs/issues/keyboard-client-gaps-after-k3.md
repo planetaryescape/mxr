@@ -19,7 +19,7 @@ None of the keys that left the TUI got a moved-key entry: none of them did anyth
 
 These are features, not keys. They are marked web-only in the definition, each with a `note`, because the TUI has no matching screen or behaviour:
 
-- The Focus page (`g F`). The TUI starts focus from the reply queue.
+- The Focus page (`g F`): done. The TUI's Focus & reply page has the web's queue (the desk's You owe lane, then the reply-later queue), its keys and its requests, and the reply queue's `F` opens it on the selected message. `focus` is a shared place in `parity.rs`, so its keys are compared. `Ctrl+Enter` (Send and next) is the web's alone because a terminal can't deliver it; the TUI's send review Send moves on instead. `q` leaves in both clients.
 - The Snoozed list (`g n`).
 - Folding quoted text and collapsing messages in the reader (`o`, `[`, `]`).
 - Archive and step to the next one in the reader (`Q`, `;`).

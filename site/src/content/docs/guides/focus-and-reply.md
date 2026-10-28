@@ -11,10 +11,10 @@ right. Send it and the next one comes up.
 
 ## Start a focus session
 
-In the web app, open **Focus & reply** from the command palette (`⌘K`), or
-use **Reply to all 14 in focus mode** in the header of the desk's You owe lane.
-The key for each is in the
-[keybindings reference](/reference/keybindings/#focus--reply).
+Press `g F` in the web app or the TUI. In the web app you can also open
+**Focus & reply** from the command palette (`⌘K`), or use **Reply to all 14
+in focus mode** in the header of the desk's You owe lane. The keys inside it
+are in the [keybindings reference](/reference/keybindings/#focus--reply).
 
 - From anywhere else, the queue is the You owe lane, furthest past your
   usual reply time first, then your reply-later queue, one entry per
@@ -26,12 +26,14 @@ The key for each is in the
   Mail that arrives meanwhile joins the end.
 
 Newsletters, notifications, screened-out senders and snoozed conversations
-never appear. Leaving focus mode takes you back to where you were.
+never appear. `Esc` or `q` leaves focus mode and takes you back to where you
+were.
 
 ## Work through the queue
 
-For each conversation, do one of these. Each is a button under the reply and
-has a key:
+For each conversation, do one of these. Each is a button under the reply,
+and all but **Send, remind me if nobody replies** have a key (it is in the
+palette):
 
 | Action | What happens |
 |---|---|
@@ -180,15 +182,31 @@ auto-responder does not. For the command line (`mxr send --remind-after`,
 
 ## In the TUI
 
-Open the reply queue, then start **Focus & reply** from it (both keys are in
-the [keybindings reference](/reference/keybindings/#everywhere-in-mail)). The TUI
-run differs from the web app's:
+`g F` opens the same queue, with the same keys and the same requests to the
+daemon. `F` in the reply queue (`g q`) opens it on the selected message.
+Opened from the desk, it is the You owe lane alone, as in the web app. The
+TUI has no account picker, so the queue covers every account.
 
-- It works through the reply-later queue only, not the You owe lane.
-- It starts at the selected row and wraps round. The status bar reads
-  "Focus 2 of 5: replying to ...".
-- Sending one reply opens the next. Discarding a reply pauses the run.
-- There is no skip, Done or snooze inside the run.
+The conversation shows why it is here and its newest message from them. The
+reply is written in `$EDITOR`, so a few things work differently:
+
+- `r` opens the reply. When you save and quit, the send review opens, and
+  **Send** there sends and brings up the next conversation. Another send, a
+  failed send or a discarded reply leaves the queue where it is. A terminal
+  can't deliver `Ctrl+Enter`, so the review's Send is the TUI's Send and
+  next.
+- **Send, remind me if nobody replies** is in the palette (`:`). It opens the
+  reply, and the review then asks when to remind you. In any send review,
+  `n` does the same.
+- `d` opens the reply. When you save and quit, you pick a writing model and
+  mxr drafts the reply in your voice, as **Refine with the assistant** in
+  the review does.
+- `j`, `e` and `b` work as in the web app. After `e`, `u` or `z` puts the
+  conversation back at the front of the queue.
+- At the end, the TUI says what you handled, how many more are waiting and
+  who is in Messages. `j` brings back the ones you skipped, and `g F` starts
+  a new session, which also retries a queue that failed to load. There is no
+  next-promise line.
 
 ## From the command line
 

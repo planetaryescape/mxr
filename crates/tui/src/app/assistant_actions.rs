@@ -725,6 +725,7 @@ impl App {
                 MailboxView::Updates => "updates".into(),
                 MailboxView::ArchiveMode => "archive".into(),
                 MailboxView::People => "messages".into(),
+                MailboxView::Focus => "focus".into(),
             },
             Screen::Search => "search".into(),
             Screen::Rules => "rules".into(),

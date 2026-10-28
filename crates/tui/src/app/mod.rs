@@ -14,7 +14,7 @@ mod compose_helpers;
 mod diagnostics_actions;
 mod draw;
 mod export_helpers;
-mod focus_run;
+mod focus_actions;
 mod hints;
 mod input;
 mod key_dispatch;
@@ -89,7 +89,7 @@ use throbber_widgets_tui::ThrobberState;
 use tui_textarea::TextArea;
 
 pub(in crate::app) use crate::ui::label_picker::LabelPickerMode;
-pub use focus_run::FocusRun;
+pub(crate) use focus_actions::focus_desk_request;
 pub(crate) use mailbox_helpers::auto_summary_eligible;
 pub(crate) use messages_actions::MESSAGES_MODE;
 pub(crate) use move_actions::{chip_label, move_status, new_sender_key, sender_mode, MOVE_CHOICES};
@@ -179,6 +179,11 @@ pub enum MutationEffect {
     /// Something in Messages changed (Got it sent, a pin): refetch the
     /// bands, the page, Now and the rail, and say what happened.
     Messages(String),
+    /// An undone Done in Focus & reply: the conversation is back in
+    /// front of the queue.
+    FocusRestore {
+        thread_id: mxr_core::ThreadId,
+    },
     /// Successful SendDraft. Refreshes the active label so a Sent-view user
     /// sees the just-sent message immediately (no manual sync), and shows
     /// `status` in the status bar.
@@ -516,9 +521,6 @@ pub struct App {
     /// goes out). `tick_pending_invite_send` promotes it into the mutation
     /// queue once `dispatch_at` arrives.
     pub pending_invite_send: Option<PendingInviteSend>,
-    /// Focus & reply over the reply-later queue: the next reply opens after
-    /// each send (see `focus_run`).
-    pub focus_run: Option<FocusRun>,
     /// Sent message the runtime should check for promises
     /// (`DetectPromises`); set on every successful send.
     pub pending_promise_check: Option<MessageId>,
@@ -663,7 +665,6 @@ impl App {
             pending_screener_decisions: Vec::new(),
             pending_undo: None,
             pending_invite_send: None,
-            focus_run: None,
             pending_promise_check: None,
             promise_prompts: VecDeque::new(),
             download_dir: dirs::download_dir().unwrap_or_else(|| {

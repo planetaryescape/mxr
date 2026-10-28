@@ -219,6 +219,7 @@ In the mail list, the reader, the sidebar and every mode.
 | `g R` | Rules |
 | `g D` | Diagnostics |
 | `g P` | Deliveries |
+| `g F` | Focus & reply |
 | `g x` | To do |
 | `@` | Show or hide the assistant |
 | `* t` | Pattern select thread |
@@ -641,6 +642,22 @@ The records lens, with the answer box focused.
 | `Esc` | Close |
 | `q` | Quit view |
 | `→` | Records open card |
+
+### Focus & reply
+
+`g F`: everyone you owe a reply, one conversation at a time. `r` writes the reply in `$EDITOR`, and Send in the review moves on to the next. The navigation keys above work here too.
+
+| Key | Action |
+|-----|--------|
+| `/` | Search mail |
+| `c` | Compose |
+| `u`, `z` | Undo last action |
+| `j` | Skip for now |
+| `e` | Done, no reply needed |
+| `b` | Not now… |
+| `d` | Draft in your voice |
+| `r` | Back to the reply |
+| `Esc`, `q` | Leave focus mode |
 
 ### Screener queue
 
@@ -1668,7 +1685,7 @@ Work on every page except while typing in a field or compose.
 | `g R` | Rules |  |
 | `g D` | Diagnostics |  |
 | `g P` | Deliveries |  |
-| `g F` | Focus & reply | The TUI has no Focus page; it starts Focus & reply from the reply queue (g q, then F) |
+| `g F` | Focus & reply |  |
 | `g x` | To do |  |
 
 ### Mail actions
@@ -1834,12 +1851,11 @@ One conversation at a time. In the reply, ⌘Enter sends and moves on; Tab out o
 |-----|--------|------|
 | `⌘Enter / Ctrl+Enter` | Send and next |  |
 | `j` | Skip for now | Goes to the end of the queue |
-| `e` | Done, no reply needed | e on the desk in the TUI |
+| `e` | Done, no reply needed |  |
 | `b` | Not now… |  |
-| `w` | Send, remind me if nobody replies… |  |
 | `d` | Draft in your voice |  |
 | `r` | Back to the reply |  |
-| `Esc` | Leave focus mode |  |
+| `Esc`, `q` | Leave focus mode |  |
 
 ### Now
 

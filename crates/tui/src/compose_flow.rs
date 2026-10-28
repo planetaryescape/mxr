@@ -656,6 +656,7 @@ pub(crate) async fn handle_compose_editor_status(
     bg: &mpsc::UnboundedSender<IpcRequest>,
 ) {
     let assist_after_editor = std::mem::take(&mut app.compose.assist_after_editor);
+    let remind_after_editor = std::mem::take(&mut app.compose.remind_after_editor);
     match status {
         Ok(s) if s.success() => match pending_send_from_edited_draft(data).await {
             Ok(mut pending) => {
@@ -682,7 +683,16 @@ pub(crate) async fn handle_compose_editor_status(
                 // from seeing their draft, just from the safety hint.
                 stamp_safety_report(&mut pending, bg).await;
                 stamp_suggestions(&mut pending, bg).await;
+                // The same gate as `n` in the review: only a draft that
+                // can go as it is gets the reminder prompt.
+                let remind = remind_after_editor
+                    && pending.mode == PendingSendMode::SendOrSave
+                    && !pending.is_blocked();
                 app.compose.pending_send_confirm = Some(pending);
+                if remind {
+                    app.compose.pending_remind_at_input = Some(String::new());
+                    app.compose.pending_time.clear();
+                }
                 if assist_after_editor {
                     app.apply(crate::action::Action::RefinePendingDraft);
                 }

@@ -9,6 +9,11 @@ use crate::app::state::NotNowTarget;
 impl App {
     /// What `b` acts on where the cursor is, or `None` with nothing to act on.
     pub(crate) fn not_now_target(&self) -> Option<NotNowTarget> {
+        if self.mailbox.mailbox_view == MailboxView::Focus {
+            return self
+                .focus_not_now_message()
+                .map(|message_id| NotNowTarget::Mail { message_id });
+        }
         if self.screen == Screen::Mailbox && self.mailbox.mailbox_view == MailboxView::Todo {
             return self.selected_todo().map(|todo| NotNowTarget::Todo {
                 todo_id: todo.id.clone(),
@@ -150,6 +155,9 @@ impl App {
 
     /// Later, with no time.
     fn not_now_later(&mut self, target: NotNowTarget) {
+        if let NotNowTarget::Mail { message_id } = &target {
+            self.focus_put_off(message_id);
+        }
         match target {
             NotNowTarget::Mail { message_id }
             | NotNowTarget::Conversation {
@@ -171,6 +179,9 @@ impl App {
 
     /// Off until `at`, by the request this place always used.
     fn not_now_until(&mut self, target: NotNowTarget, at: chrono::DateTime<chrono::Utc>) {
+        if let NotNowTarget::Mail { message_id } = &target {
+            self.focus_put_off(message_id);
+        }
         match target {
             NotNowTarget::Mail { message_id } | NotNowTarget::Reading { message_id, .. } => {
                 self.queue_mutation(

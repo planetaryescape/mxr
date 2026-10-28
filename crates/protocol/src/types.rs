@@ -133,6 +133,10 @@ fn is_true(value: &bool) -> bool {
     *value
 }
 
+fn is_false(value: &bool) -> bool {
+    !value
+}
+
 fn default_true() -> bool {
     true
 }
@@ -1616,6 +1620,10 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,
         limit: u32,
+        /// Also run the configured humanizer rewrite model for each replay.
+        /// Kept off by default so `--set mine` measures the drafting model.
+        #[serde(default, skip_serializing_if = "is_false")]
+        rewrite: bool,
     },
     /// Draft the labelled compose corpus with the configured LLM and grade
     /// each draft against what its case required. Nothing is saved or sent.

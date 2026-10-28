@@ -2567,7 +2567,8 @@ pub enum DraftAction {
     /// (greeting, sign-off, length, invented numbers). With --set quick, draft
     /// each labelled compose case and grade it against what that case required
     /// (kept sentences, answers, gaps, invented numbers, length, leftovers).
-    /// Calls your LLM once per case. Uses --account with --set mine.
+    /// Calls your drafting LLM once per case. --rewrite also runs the configured
+    /// humanizer rewrite model for each replay. Uses --account with --set mine.
     Eval {
         /// How many replies to replay, at most 50 (--set mine only).
         #[arg(long, default_value_t = 10)]
@@ -2575,6 +2576,9 @@ pub enum DraftAction {
         /// Which cases to draft.
         #[arg(long, value_enum, default_value_t = DraftEvalSetArg::Mine)]
         set: DraftEvalSetArg,
+        /// Also run the configured humanizer rewrite model for each replay.
+        #[arg(long)]
+        rewrite: bool,
     },
 }
 

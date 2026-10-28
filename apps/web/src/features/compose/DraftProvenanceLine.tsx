@@ -36,6 +36,8 @@ export function DraftProvenanceLine({
           <ModelMark model={provenance.model} leavesMachine={provenance.locality === "cloud"} />
           {" · "}
           {draftProvenanceDetail(provenance)}
+          {" · "}
+          <span data-testid="draft-voice-example-count">Voice examples: {voice.length}</span>
         </span>
         {count > 0 ? (
           <button

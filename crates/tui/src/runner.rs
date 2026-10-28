@@ -4753,9 +4753,19 @@ pub async fn run() -> anyhow::Result<()> {
                             app.status_message = Some(format!("Open email failed: {e}"));
                         }
                         AsyncResult::InviteEnvelopeOpened(Ok(envelope)) => {
+                            if app.compose.assist_review.is_some() && !app.compose.viewing_voice_source {
+                                continue;
+                            }
+                            if app.compose.viewing_voice_source {
+                                app.screen = crate::app::Screen::Mailbox;
+                            }
                             app.open_invite_envelope(envelope);
+                            if app.compose.viewing_voice_source {
+                                app.status_message = Some("Esc returns to the writing proof".into());
+                            }
                         }
                         AsyncResult::InviteEnvelopeOpened(Err(e)) => {
+                            app.compose.viewing_voice_source = false;
                             app.status_message = Some(format!("Open invite failed: {e}"));
                         }
                         AsyncResult::Briefing(Ok(briefing)) => {
@@ -4905,6 +4915,7 @@ pub async fn run() -> anyhow::Result<()> {
                                             current_index: 0,
                                             note_input: None,
                                             proof_scroll_offset: 0,
+                                            voice_source_index: 0,
                                             request_pending: false,
                                         });
                                     }

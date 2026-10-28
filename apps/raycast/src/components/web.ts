@@ -7,6 +7,8 @@ export const web = {
   mode: (mode: "now" | "messages" | "todo" | "updates" | "reading" | "archive") => `/${mode}`,
   thread: (mode: "messages" | "todo" | "updates" | "reading" | "archive", threadId: string) =>
     `/${mode}/${encodeURIComponent(threadId)}`,
+  sourceMessage: (source: { from_me: boolean; thread_id: string; message_id: string }) =>
+    `/m/${source.from_me ? "sent" : "archive"}/${encodeURIComponent(source.thread_id)}?${new URLSearchParams({ message: source.message_id })}`,
   person: (personId: string, topic?: string) =>
     `/messages?${new URLSearchParams({ person: personId, ...(topic ? { topic } : {}) })}`,
   todo: (todoId: string) => `/todo?${new URLSearchParams({ row: todoId })}`,

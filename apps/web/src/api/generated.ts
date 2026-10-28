@@ -11965,6 +11965,11 @@ export interface components {
                   cmd: "DraftEval";
                   /** Format: int32 */
                   limit: number;
+                  /**
+                   * @description Also run the configured humanizer rewrite model for each replay.
+                   *     Kept off by default so `--set mine` measures the drafting model.
+                   */
+                  rewrite?: boolean;
               }
             | {
                   /** @enum {string} */

@@ -10,7 +10,7 @@ use crate::state::AppState;
 use chrono::{DateTime, Local, Utc};
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::Envelope;
-use mxr_protocol::DraftSourceData;
+use mxr_protocol::{DraftLengthHintData, DraftSourceData, VoiceRegisterData};
 use mxr_relationship::{analyse_habits, clean_for_voice};
 use std::collections::BTreeSet;
 
@@ -27,6 +27,62 @@ pub(crate) struct VoiceMaterial {
     /// Median length of the user's own emails in the sample.
     pub median_words: Option<u32>,
     pub samples: usize,
+}
+
+/// Evidence gathered once for a draft operation. Style rates remain local;
+/// only the material may be passed to a model, subject to the history policy.
+pub(crate) struct VoiceSnapshot {
+    pub material: VoiceMaterial,
+    pub pattern_rates: mxr_humanizer::PatternRates,
+    pub context: super::draft_context::DraftContext,
+}
+
+pub(crate) struct VoiceSnapshotOptions<'a> {
+    pub share_history: bool,
+    pub purpose: &'a str,
+    pub register: Option<VoiceRegisterData>,
+    pub length_hint: Option<DraftLengthHintData>,
+}
+
+pub(crate) async fn snapshot(
+    state: &AppState,
+    account_id: &AccountId,
+    counterparty: Option<&Counterparty>,
+    exclude_thread: Option<&ThreadId>,
+    before: Option<DateTime<Utc>>,
+    options: VoiceSnapshotOptions<'_>,
+) -> VoiceSnapshot {
+    let (material, pattern_rates, context) = tokio::join!(
+        async {
+            if options.share_history {
+                voice_material(state, account_id, counterparty, exclude_thread, before).await
+            } else {
+                VoiceMaterial::none()
+            }
+        },
+        pattern_rates(state, account_id, exclude_thread, before),
+        async {
+            let emails: Vec<String> = counterparty
+                .iter()
+                .map(|person| person.email.clone())
+                .collect();
+            super::draft_context::build_relationship_block(
+                state,
+                account_id,
+                &emails,
+                options.purpose,
+                options.register,
+                options.length_hint,
+                options.share_history && before.is_none(),
+            )
+            .await
+        },
+    );
+    VoiceSnapshot {
+        material,
+        pattern_rates,
+        context,
+    }
 }
 
 impl VoiceMaterial {

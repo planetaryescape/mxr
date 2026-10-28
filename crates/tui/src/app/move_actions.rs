@@ -551,11 +551,6 @@ impl App {
     pub(super) fn arrivals_list_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let plain = key.modifiers == KeyModifiers::NONE;
         let shifted = plain_or_shift(key.modifiers);
-        // The sender menu moved to `P` (blueprint 35).
-        if key.code == KeyCode::Char('K') && shifted {
-            self.announce_moved("arrivals-list", "K");
-            return None;
-        }
         let list = self.mailbox.trust.arrivals_list.as_mut()?;
         let count = list.list.as_ref().map_or(0, |list| list.items.len());
         match key.code {
@@ -571,7 +566,7 @@ impl App {
             }
             KeyCode::Char('X') if shifted => Some(Action::OpenMoveMenu),
             KeyCode::Char('P') if shifted => Some(Action::OpenSenderMoveMenu),
-            KeyCode::Char('u') if plain => Some(Action::UndoLastMutation),
+            KeyCode::Char('u' | 'z') if plain => Some(Action::UndoLastMutation),
             KeyCode::Enter | KeyCode::Char('o') => {
                 let message_id = list.selected_item()?.message_id.clone();
                 self.mailbox.trust.arrivals_list = None;

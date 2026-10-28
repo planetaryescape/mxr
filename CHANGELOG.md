@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.181](https://github.com/planetaryescape/mxr/compare/v0.6.180...v0.6.181) (2026-10-28)
+
+
+### Bug Fixes
+
+* keep malformed email HTML from crashing the reader ([#767](https://github.com/planetaryescape/mxr/issues/767)) ([4fe5d04](https://github.com/planetaryescape/mxr/commit/4fe5d04eeafb9e49bc65099ad606045e5cbc2e12))
+* take the newest 1,000 matches for --search bulk commands and say when more match ([#765](https://github.com/planetaryescape/mxr/issues/765)) ([6627f32](https://github.com/planetaryescape/mxr/commit/6627f32cf8699faf36cab015aab86d291d5664c5))
+
+## [0.6.180](https://github.com/planetaryescape/mxr/compare/v0.6.179...v0.6.180) (2026-10-28)
+
+
+### Features
+
+* the Focus & reply page in the TUI, on g F as on the web ([#761](https://github.com/planetaryescape/mxr/issues/761)) ([263268b](https://github.com/planetaryescape/mxr/commit/263268b8d7813a71a5a23ddea2abc3aa3ffee92a))
+
+
+### Bug Fixes
+
+* let main's CI finish, bring the full e2e matrix in line with the app, and time the classifier eval against sync ([#764](https://github.com/planetaryescape/mxr/issues/764)) ([f0150d8](https://github.com/planetaryescape/mxr/commit/f0150d8645928522bc64396e498e82b5f5d07792))
+
 ## [0.6.179](https://github.com/planetaryescape/mxr/compare/v0.6.178...v0.6.179) (2026-10-28)
 
 

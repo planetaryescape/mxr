@@ -306,7 +306,8 @@ impl App {
             // The web app's Delete and Backspace trash too (with undo).
             (KeyCode::Delete | KeyCode::Backspace, KeyModifiers::NONE) => Some(Action::Trash),
             (KeyCode::Char('!'), _) => Some(Action::Spam),
-            (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
+            // z too, Gmail's undo, as in the web app (blueprint 35).
+            (KeyCode::Char('u' | 'z'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
             (KeyCode::Char('s'), KeyModifiers::NONE) => Some(Action::Star),
             (KeyCode::Char('I'), modifiers) if plain_or_shift(modifiers) => Some(Action::MarkRead),
             (KeyCode::Char('U'), modifiers) if plain_or_shift(modifiers) => {
@@ -354,7 +355,6 @@ impl App {
             self.input.reset();
         }
         self.input_context = Some(context);
-        let was_waiting = self.input.is_pending();
         self.input.begin_turn();
         let mut action = self.handle_key_press(key);
         // `q` closes the innermost layer and quits only at the root
@@ -368,9 +368,6 @@ impl App {
             self.status_message = Some(format!("{keys} is not a shortcut"));
         }
         self.input.end_turn();
-        if !was_waiting {
-            self.shorten_bare_prefix();
-        }
         action
     }
 
@@ -1838,7 +1835,7 @@ impl App {
                 (KeyCode::Enter | KeyCode::Char('o'), _) => self.sidebar_select(),
                 // l = select label and move to mail list
                 (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE) => self.sidebar_select(),
-                (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
+                (KeyCode::Char('u' | 'z'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
                 _ => {
                     let action = self.contextual_input_action(key);
                     self.sidebar_ends(action)

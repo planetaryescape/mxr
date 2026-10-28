@@ -79,15 +79,8 @@ note = "z also undoes, for Gmail muscle memory"
 
 [[action.tui]]
 name = "UndoLastMutation"
-keys = ["u"]
+keys = ["u", "z"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "now", "messages", "archive", "reading", "reading-reader", "updates", "search", "search-preview", "arrivals-list", "focus"]
-
-# The TUI holds z elsewhere while `z z` says where it went; Focus & reply
-# never had it, so z undoes there as on the web.
-[[action.tui]]
-name = "UndoLastMutation"
-keys = ["z"]
-contexts = ["focus"]
 
 # Now and the modes, in rail order. g + letter, as in the TUI.
 [[action]]
@@ -128,11 +121,6 @@ keys = ["g u"]
 name = "OpenUpdates"
 keys = ["g u"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
-
-[[action.moved]]
-key = "g p"
-contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
-until = "0.6.180"
 
 [[action]]
 id = "nav.archive-mode"
@@ -223,11 +211,6 @@ name = "GoToDrafts"
 keys = ["g d"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
-[[action.moved]]
-key = "g E"
-contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
-until = "0.6.180"
-
 [[action]]
 id = "nav.archive"
 label = "Go to All Mail"
@@ -277,11 +260,6 @@ name = "OpenActivityScreen"
 keys = ["g Y"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
-[[action.moved]]
-key = "g y"
-contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
-until = "0.6.180"
-
 [[action]]
 id = "nav.logs"
 label = "Daemon logs"
@@ -306,16 +284,6 @@ note = "The TUI opens its Accounts screen, where its settings live; Edit config 
 name = "OpenTab4"
 keys = ["g C"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
-
-[[action.moved]]
-key = "g c"
-contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
-until = "0.6.180"
-
-[[action.moved]]
-key = "0"
-contexts = ["global"]
-until = "0.6.180"
 
 [[action]]
 id = "nav.snoozed"
@@ -390,11 +358,6 @@ name = "OpenCalendarInvites"
 keys = ["g v"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
-[[action.moved]]
-key = "9"
-contexts = ["global"]
-until = "0.6.180"
-
 [[action]]
 id = "nav.reading"
 label = "Reading"
@@ -433,11 +396,6 @@ name = "OpenScreenerQueue"
 keys = ["g S"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
-[[action.moved]]
-key = "8"
-contexts = ["global"]
-until = "0.6.180"
-
 [[action]]
 id = "nav.jobs"
 label = "Background jobs"
@@ -448,30 +406,11 @@ palette_only = true
 # The TUI's tabs. Tools open with g + a capital (blueprint 35, D166); the
 # digits that opened them retired.
 [[action]]
-id = "nav.tab-mail"
-label = "Mail"
-group = "Navigate"
-scopes = ["global"]
-hide_in_palette = true
-
-[[action.moved]]
-key = "1"
-contexts = ["global", "list", "reader", "sidebar", "place", "archive", "updates"]
-until = "0.6.180"
-to = "nav.inbox"
-
-[[action]]
 id = "nav.search-page"
 label = "Search page"
 group = "Search"
 palette_only = true
 scopes = ["global"]
-
-[[action.moved]]
-key = "2"
-contexts = ["global", "list", "reader", "sidebar", "place", "archive", "updates"]
-until = "0.6.180"
-to = "shell.search-palette"
 
 [[action.tui]]
 name = "OpenSearchScreen"
@@ -490,22 +429,11 @@ name = "OpenTab3"
 keys = ["g R"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
-[[action.moved]]
-key = "3"
-contexts = ["global", "list", "reader", "sidebar", "place", "archive", "updates"]
-until = "0.6.180"
-
 [[action]]
 id = "nav.accounts"
 label = "Accounts"
 group = "Accounts"
 scopes = ["global"]
-
-[[action.moved]]
-key = "4"
-contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "archive", "reading", "reading-reader", "updates"]
-until = "0.6.180"
-to = "nav.settings"
 
 [[action]]
 id = "nav.diagnostics"
@@ -519,25 +447,6 @@ name = "OpenTab5"
 keys = ["g D"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
 
-[[action.moved]]
-key = "5"
-contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
-until = "0.6.180"
-
-[[action]]
-id = "nav.tab-analytics"
-label = "Analytics (tab)"
-short_label = "Analytics"
-group = "Analytics"
-scopes = ["global"]
-hide_in_palette = true
-
-[[action.moved]]
-key = "6"
-contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
-until = "0.6.180"
-to = "nav.analytics"
-
 [[action]]
 id = "nav.deliveries"
 label = "Deliveries"
@@ -549,11 +458,6 @@ keys = ["g P"]
 name = "OpenTab7"
 keys = ["g P"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates", "focus"]
-
-[[action.moved]]
-key = "7"
-contexts = ["global", "list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
-until = "0.6.180"
 
 [[action]]
 id = "nav.saved-search-1"
@@ -1628,11 +1532,6 @@ group = "Move"
 palette_only = true
 scopes = ["list"]
 
-[[action.moved]]
-key = "H"
-contexts = ["list", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "updates"]
-until = "0.6.180"
-
 [[action.tui]]
 name = "ViewportTop"
 keys = []
@@ -1644,11 +1543,6 @@ label = "Middle of screen"
 group = "Move"
 palette_only = true
 scopes = ["list"]
-
-[[action.moved]]
-key = "M"
-contexts = ["list", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "updates"]
-until = "0.6.180"
 
 [[action.tui]]
 name = "ViewportMiddle"
@@ -2145,11 +2039,6 @@ scopes = ["reader"]
 palette_only = true
 note = "CLI `mxr cat --view headers`; not in the TUI"
 
-[[action.moved]]
-key = "g H"
-contexts = ["reader"]
-until = "0.6.180"
-
 [[action]]
 id = "reader.open-original"
 label = "Open original in a new tab"
@@ -2171,12 +2060,6 @@ label = "Summarize thread"
 group = "Read"
 palette_only = true
 scopes = ["reader"]
-
-[[action.moved]]
-key = "y"
-contexts = ["list", "reader", "place"]
-until = "0.6.180"
-to = "mail.briefing"
 
 [[action.tui]]
 name = "SummarizeCurrentThread"
@@ -2629,11 +2512,6 @@ name = "TodoDone"
 keys = ["e"]
 contexts = ["todo"]
 
-[[action.moved]]
-key = "Space"
-contexts = ["todo"]
-until = "0.6.180"
-
 [[action]]
 id = "todo.schedule"
 label = "Not now: schedule…"
@@ -2834,11 +2712,6 @@ name = "CatchupLetGoAll"
 keys = ["E"]
 contexts = ["catchup"]
 
-[[action.moved]]
-key = "A"
-contexts = ["catchup"]
-until = "0.6.180"
-
 [[action]]
 id = "todo.catchup-back"
 label = "Back to To do"
@@ -2998,11 +2871,6 @@ name = "RecordsOpenEmail"
 keys = ["o"]
 contexts = ["archive"]
 
-[[action.moved]]
-key = "e"
-contexts = ["archive"]
-until = "0.6.180"
-
 [[action]]
 id = "archive.issuer"
 label = "This issuer's records"
@@ -3028,11 +2896,6 @@ name = "RecordsPrevYear"
 keys = ["{"]
 contexts = ["archive"]
 
-[[action.moved]]
-key = "["
-contexts = ["archive"]
-until = "0.6.180"
-
 [[action]]
 id = "archive.next-year"
 label = "Next year"
@@ -3044,11 +2907,6 @@ keys = ["}"]
 name = "RecordsNextYear"
 keys = ["}"]
 contexts = ["archive"]
-
-[[action.moved]]
-key = "]"
-contexts = ["archive"]
-until = "0.6.180"
 
 [[action]]
 id = "archive.edit"
@@ -3274,11 +3132,6 @@ name = "ReadingLetGoAll"
 keys = ["E"]
 contexts = ["reading", "reading-reader"]
 
-[[action.moved]]
-key = "A"
-contexts = ["reading", "reading-reader"]
-until = "0.6.180"
-
 [[action]]
 id = "reading.open-email"
 label = "Open the email as sent"
@@ -3304,11 +3157,6 @@ keys = ["P"]
 name = "OpenSenderKindMenu"
 keys = ["P"]
 contexts = ["reading", "reading-reader"]
-
-[[action.moved]]
-key = "K"
-contexts = ["reading", "reading-reader"]
-until = "0.6.180"
 
 # Reading's tabs are digits, in the order they show (blueprint 35, D166).
 [[action]]
@@ -3375,11 +3223,6 @@ keys = ["O"]
 name = "ReadingMarginalia"
 keys = ["O"]
 contexts = ["reading", "reading-reader"]
-
-[[action.moved]]
-key = "M"
-contexts = ["reading"]
-until = "0.6.180"
 
 [[action]]
 id = "reading.close-hint"
@@ -3479,11 +3322,6 @@ name = "ReadingHighlight"
 keys = ["\""]
 contexts = ["reading-reader"]
 
-[[action.moved]]
-key = "h"
-contexts = ["reading-reader"]
-until = "0.6.180"
-
 [[action]]
 id = "reading.reader-unsubscribe"
 label = "Unsubscribe…"
@@ -3508,11 +3346,6 @@ description = "Sends the item's text to Marginalia the first time, then opens it
 group = "Read"
 scopes = ["reading-reader"]
 keys = ["O"]
-
-[[action.moved]]
-key = "M"
-contexts = ["reading-reader"]
-until = "0.6.180"
 
 [[action]]
 id = "reading.reader-back"
@@ -3631,11 +3464,6 @@ note = "Previews the daemon's dry run first; undo afterwards"
 name = "NowLetGoDigest"
 keys = ["E"]
 contexts = ["now"]
-
-[[action.moved]]
-key = "A"
-contexts = ["now"]
-until = "0.6.180"
 
 [[action]]
 id = "now.close-hint"
@@ -3866,11 +3694,6 @@ name = "MessagesPrevTopic"
 keys = ["{"]
 contexts = ["messages"]
 
-[[action.moved]]
-key = "["
-contexts = ["messages"]
-until = "0.6.180"
-
 [[action]]
 id = "messages.next-topic"
 label = "Next topic"
@@ -3882,11 +3705,6 @@ keys = ["}"]
 name = "MessagesNextTopic"
 keys = ["}"]
 contexts = ["messages"]
-
-[[action.moved]]
-key = "]"
-contexts = ["messages"]
-until = "0.6.180"
 
 [[action]]
 id = "messages.person-page"
@@ -3912,11 +3730,6 @@ keys = ["o"]
 name = "MessagesAsSent"
 keys = ["o"]
 contexts = ["messages"]
-
-[[action.moved]]
-key = "v"
-contexts = ["messages"]
-until = "0.6.180"
 
 [[action]]
 id = "page.controls"
@@ -4089,11 +3902,6 @@ name = "UpdatesLetGoAll"
 keys = ["E"]
 contexts = ["updates"]
 
-[[action.moved]]
-key = "A"
-contexts = ["updates"]
-until = "0.6.180"
-
 [[action]]
 id = "updates.let-go-source"
 label = "Let go of this source"
@@ -4132,11 +3940,6 @@ keys = ["P"]
 name = "UpdatesTune"
 keys = ["P"]
 contexts = ["updates"]
-
-[[action.moved]]
-key = "K"
-contexts = ["updates"]
-until = "0.6.180"
 
 [[action]]
 id = "updates.link"
@@ -4206,11 +4009,6 @@ keys = ["s"]
 name = "TogglePin"
 keys = ["s"]
 contexts = ["updates"]
-
-[[action.moved]]
-key = "p"
-contexts = ["updates"]
-until = "0.6.180"
 
 [[action]]
 id = "updates.sweep"
@@ -4294,11 +4092,6 @@ contexts = ["list", "now", "messages", "arrivals-list"]
 
 # The emails behind one count of Now's arrivals line (/now/arrivals). The TUI
 # has no such page, so these are the web's alone; X and P above work there too.
-
-[[action.moved]]
-key = "K"
-contexts = ["arrivals", "arrivals-list", "list", "messages", "now"]
-until = "0.6.180"
 [[action]]
 id = "arrivals.down"
 label = "Next"
@@ -4495,18 +4288,6 @@ keys = ["* t"]
 contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
 
 [[action]]
-id = "tui.toggle-assistant"
-label = "Toggle assistant"
-group = "TUI"
-clients = ["tui"]
-
-[[action.moved]]
-key = "Ctrl+a"
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
-until = "0.6.180"
-to = "assistant.toggle"
-
-[[action]]
 id = "tui.prev-search-result"
 label = "Prev search result"
 group = "TUI"
@@ -4561,11 +4342,6 @@ group = "TUI"
 palette_only = true
 clients = ["tui"]
 
-[[action.moved]]
-key = "z z"
-contexts = ["list", "reader", "sidebar", "place", "todo", "catchup", "expired", "now", "messages", "archive", "reading", "reading-reader", "updates"]
-until = "0.6.180"
-
 [[action.tui]]
 name = "CenterCurrent"
 keys = []
@@ -4577,11 +4353,6 @@ label = "Viewport bottom"
 group = "TUI"
 palette_only = true
 clients = ["tui"]
-
-[[action.moved]]
-key = "L"
-contexts = ["sidebar", "todo", "catchup", "expired", "now", "messages", "archive"]
-until = "0.6.180"
 
 [[action.tui]]
 name = "ViewportBottom"

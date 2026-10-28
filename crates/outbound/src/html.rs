@@ -400,9 +400,61 @@ pub fn validate_html(html: &str) -> Result<(), HtmlValidationError> {
 /// (`crates/reader/src/html.rs`), so the text a recipient gets matches what
 /// mxr itself would show. Reads the HTML; never mutates it.
 pub fn generate_text_alternative(html: &str) -> String {
-    html2text::config::plain_no_decorate()
-        .string_from_read(html.as_bytes(), 80)
-        .unwrap_or_default()
+    // Guarded like the reader's call (html2text panics on some malformed
+    // tables). mxr-outbound cannot depend on mxr-reader, so the span clamp and
+    // the fallback are local copies; keep them in step with
+    // `mxr_reader::clamp_table_spans`. A sent message always gets its text,
+    // even if it is rougher.
+    let clamped = clamp_table_spans(html);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        html2text::config::plain_no_decorate().string_from_read(clamped.as_bytes(), 80)
+    }))
+    .ok()
+    .and_then(Result::ok)
+    .unwrap_or_else(|| strip_tags_fallback(html))
+}
+
+/// Largest colspan/rowspan html2text is given. Matches
+/// `mxr_reader::MAX_TABLE_SPAN`.
+const MAX_TABLE_SPAN: u64 = 1000;
+
+static TABLE_SPAN_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r#"(?i)\b(colspan|rowspan)(\s*=\s*["']?\s*)(\d+)"#)
+        .expect("table span regex should compile")
+});
+
+/// Copy of `mxr_reader::clamp_table_spans`; see `generate_text_alternative`.
+fn clamp_table_spans(html: &str) -> std::borrow::Cow<'_, str> {
+    TABLE_SPAN_RE.replace_all(html, |caps: &regex::Captures<'_>| {
+        let value = caps[3]
+            .parse::<u64>()
+            .map_or(MAX_TABLE_SPAN, |n| n.min(MAX_TABLE_SPAN));
+        format!("{}{}{value}", &caps[1], &caps[2])
+    })
+}
+
+/// Tag-stripping fallback for `generate_text_alternative` when html2text
+/// panics. Drops `<...>` runs and decodes the common entities.
+fn strip_tags_fallback(html: &str) -> String {
+    let mut text = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => text.push(ch),
+            _ => {}
+        }
+    }
+    text.replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Inline handlers and unsafe URLs carried by one element's attributes.
@@ -880,6 +932,24 @@ fn truncate(value: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn text_alternative_renders_a_huge_span_without_the_fallback() {
+        let html = r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#;
+        let text = html2text::config::plain_no_decorate()
+            .string_from_read(clamp_table_spans(html).as_bytes(), 80)
+            .expect("clamped table should render");
+        assert!(text.contains('A') && text.contains('B'), "got {text:?}");
+    }
+
+    #[test]
+    fn text_alternative_survives_a_malformed_table_span() {
+        // html2text panics on this colspan; the alternative must still carry the text.
+        let text = generate_text_alternative(
+            r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#,
+        );
+        assert!(text.contains('A') && text.contains('B'), "got {text:?}");
+    }
+
     use super::*;
 
     /// The whole point of the feature: a designed email survives untouched.

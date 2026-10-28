@@ -12,17 +12,107 @@
 //! `--limit` are presentation modifiers applied after the daemon
 //! returns its sorted (date-desc) results.
 
+use crate::commands::progress::format_thousands;
 use crate::ipc_client::IpcClient;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::SortOrder;
+use mxr_core::types::{SearchMode, SortOrder};
 use mxr_protocol::*;
-use std::io::{IsTerminal, Read};
+use serde::Serialize;
+use std::io::{IsTerminal, Read, Write};
 
 /// Maximum number of search-resolved IDs to fan out across, no matter
 /// what the user typed. Saves the operator from `--search '*'` typos
 /// turning into 50k command invocations. Only applies to `--search`;
 /// piped/positional IDs are passed through verbatim.
 pub const SEARCH_HARD_CAP: u32 = 1000;
+
+/// A `--search` the daemon says has more matches than the selection holds,
+/// because the hard cap cut the page. Callers say so before they act.
+///
+/// This comes from the daemon's `has_more` (is there at least one more visible
+/// match beyond the page?), never from its `total`: `total` is an estimate that
+/// can count hits the user cannot see.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CappedSelection {
+    /// How many of the newest matches the selection holds.
+    pub selected: usize,
+}
+
+/// The field a capped selection adds to JSON and JSONL output. It appears only
+/// when the cap applied, and never replaces an existing field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct CappedFields {
+    pub capped: bool,
+}
+
+impl CappedSelection {
+    /// The one sentence every surface uses: dry-run preview, confirmation
+    /// prompt, `--yes` stderr notice and read-only commands. It states no total
+    /// because the daemon has no exact one.
+    pub fn notice(&self) -> String {
+        format!(
+            "More than {} messages match; only the newest {} are selected. Narrow the search to reach the rest.",
+            format_thousands(SEARCH_HARD_CAP),
+            format_thousands(self.selected),
+        )
+    }
+
+    pub fn fields(&self) -> CappedFields {
+        CappedFields { capped: true }
+    }
+
+    /// Adds the capped field to an output object that is serialised from a
+    /// type this crate does not own.
+    pub fn merge_into(&self, value: &mut serde_json::Value) {
+        if let serde_json::Value::Object(object) = value {
+            object.insert("capped".to_owned(), true.into());
+        }
+    }
+
+    /// Writes the notice as one line. Commands call this before any mutation
+    /// request goes out when no prompt will show it.
+    pub fn announce(&self, out: &mut dyn Write) -> std::io::Result<()> {
+        writeln!(out, "{}", self.notice())
+    }
+}
+
+/// Message IDs a `--search` resolved to, plus whether the hard cap cut them.
+#[derive(Debug)]
+pub struct MessageSelection {
+    pub ids: Vec<MessageId>,
+    pub capped: Option<CappedSelection>,
+}
+
+/// Thread IDs a `--search` resolved to, plus whether the hard cap cut the
+/// messages they were drawn from.
+#[derive(Debug)]
+pub struct ThreadSelection {
+    pub ids: Vec<ThreadId>,
+    pub capped: Option<CappedSelection>,
+}
+
+/// The search every `--search` selection sends. It is always lexical and
+/// newest first, whatever `search.default_mode` is: hybrid and semantic modes
+/// rank by relevance and ignore the sort, so past the cap a bulk command would
+/// act on a relevance-picked slice instead of the newest mail. Lexical is also
+/// deterministic, which is what a mutation wants from "the messages this query
+/// matches".
+pub(crate) fn selection_search_request(
+    query: String,
+    limit: u32,
+    account_id: Option<&AccountId>,
+) -> Request {
+    Request::Search {
+        query,
+        limit,
+        offset: 0,
+        account_id: account_id.cloned(),
+        mode: Some(SearchMode::Lexical),
+        sort: Some(SortOrder::DateDesc),
+        explain: false,
+        limit_from_config: false,
+    }
+}
 
 /// Parse a single message ID string into a typed `MessageId`. Surfaces
 /// the offending input verbatim so users get an actionable error.
@@ -109,6 +199,52 @@ impl SelectionLimit {
             Self::Unbounded => SEARCH_HARD_CAP,
         }
     }
+
+    /// Whether the hard cap, not the user's `--first` / `--limit`, decides
+    /// how much a search may return.
+    fn bound_by_hard_cap(self) -> bool {
+        match self {
+            Self::First => false,
+            Self::AtMost(n) => n > SEARCH_HARD_CAP,
+            Self::Unbounded => true,
+        }
+    }
+
+    /// `Some` when the hard cap cut the page: the daemon found at least one
+    /// more visible match than it returned. `fetched` is how many came back.
+    fn capped(self, has_more: bool, fetched: usize) -> Option<CappedSelection> {
+        (self.bound_by_hard_cap() && has_more).then_some(CappedSelection { selected: fetched })
+    }
+}
+
+/// Runs the selection search and returns its results with the daemon's
+/// `has_more`. The search is refused when the daemon answered from the limited
+/// SQLite fallback.
+async fn run_selection_search(
+    client: &mut IpcClient,
+    query: String,
+    fetch_limit: u32,
+    account_id: Option<&AccountId>,
+) -> anyhow::Result<(Vec<SearchResultItem>, bool)> {
+    let resp = client
+        .request(selection_search_request(query, fetch_limit, account_id))
+        .await?;
+    match resp {
+        Response::Ok {
+            data:
+                ResponseData::SearchResults {
+                    results,
+                    has_more,
+                    degraded,
+                    ..
+                },
+        } => {
+            require_indexed_selection(degraded.as_ref())?;
+            Ok((results, has_more))
+        }
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response from search"),
+    }
 }
 
 /// Resolve a list of message IDs from positional args / `--search` /
@@ -118,6 +254,44 @@ impl SelectionLimit {
 /// `limit` only applies to the `--search` path; positional and piped
 /// IDs are returned verbatim because the operator already typed them
 /// and we shouldn't second-guess the count.
+///
+/// Mutations use this form: the selection says when the hard cap cut it, so
+/// the command can tell the user before it acts.
+pub async fn resolve_message_selection(
+    client: &mut IpcClient,
+    positional: Vec<String>,
+    search: Option<String>,
+    account_id: Option<&AccountId>,
+    limit: SelectionLimit,
+) -> anyhow::Result<MessageSelection> {
+    match (positional.is_empty(), search) {
+        (false, None) => Ok(MessageSelection {
+            ids: parse_message_ids(&positional)?,
+            capped: None,
+        }),
+        (false, Some(_)) => anyhow::bail!("Provide message ID(s) or --search, not both"),
+        (true, Some(query)) => {
+            let (results, has_more) =
+                run_selection_search(client, query, limit.cap(), account_id).await?;
+            let capped = limit.capped(has_more, results.len());
+            Ok(MessageSelection {
+                ids: results.into_iter().map(|r| r.message_id).collect(),
+                capped,
+            })
+        }
+        (true, None) => match read_piped_ids()? {
+            Some(ids) if ids.is_empty() => anyhow::bail!("No message IDs provided on stdin"),
+            Some(ids) => Ok(MessageSelection {
+                ids: parse_message_ids(&ids)?,
+                capped: None,
+            }),
+            None => anyhow::bail!("Provide message ID(s), pipe IDs on stdin, or pass --search"),
+        },
+    }
+}
+
+/// [`resolve_message_selection`] for commands that only read. A capped
+/// selection is reported on stderr, so stdout stays the command's output.
 pub async fn resolve_message_ids(
     client: &mut IpcClient,
     positional: Vec<String>,
@@ -125,42 +299,12 @@ pub async fn resolve_message_ids(
     account_id: Option<&AccountId>,
     limit: SelectionLimit,
 ) -> anyhow::Result<Vec<MessageId>> {
-    match (positional.is_empty(), search) {
-        (false, None) => parse_message_ids(&positional),
-        (false, Some(_)) => anyhow::bail!("Provide message ID(s) or --search, not both"),
-        (true, Some(query)) => {
-            let resp = client
-                .request(Request::Search {
-                    query,
-                    limit: limit.cap(),
-                    offset: 0,
-                    account_id: account_id.cloned(),
-                    mode: None,
-                    sort: Some(SortOrder::DateDesc),
-                    explain: false,
-                    limit_from_config: false,
-                })
-                .await?;
-            match resp {
-                Response::Ok {
-                    data:
-                        ResponseData::SearchResults {
-                            results, degraded, ..
-                        },
-                } => {
-                    require_indexed_selection(degraded.as_ref())?;
-                    Ok(results.into_iter().map(|r| r.message_id).collect())
-                }
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
-                _ => anyhow::bail!("Unexpected response from search"),
-            }
-        }
-        (true, None) => match read_piped_ids()? {
-            Some(ids) if ids.is_empty() => anyhow::bail!("No message IDs provided on stdin"),
-            Some(ids) => parse_message_ids(&ids),
-            None => anyhow::bail!("Provide message ID(s), pipe IDs on stdin, or pass --search"),
-        },
+    let selection =
+        resolve_message_selection(client, positional, search, account_id, limit).await?;
+    if let Some(capped) = selection.capped {
+        capped.announce(&mut std::io::stderr())?;
     }
+    Ok(selection.ids)
 }
 
 /// Resolve a list of unique thread IDs from positional args /
@@ -168,15 +312,21 @@ pub async fn resolve_message_ids(
 /// search results are deduplicated to thread IDs while preserving the
 /// daemon's date-desc ordering — important for `--first` to mean
 /// "most recent matching thread".
-pub async fn resolve_thread_ids(
+pub async fn resolve_thread_selection(
     client: &mut IpcClient,
     positional: Vec<String>,
     search: Option<String>,
     account_id: Option<&AccountId>,
     limit: SelectionLimit,
-) -> anyhow::Result<Vec<ThreadId>> {
+) -> anyhow::Result<ThreadSelection> {
     match (positional.is_empty(), search) {
-        (false, None) => positional.iter().map(|id| parse_thread_id(id)).collect(),
+        (false, None) => Ok(ThreadSelection {
+            ids: positional
+                .iter()
+                .map(|id| parse_thread_id(id))
+                .collect::<anyhow::Result<_>>()?,
+            capped: None,
+        }),
         (false, Some(_)) => anyhow::bail!("Provide thread ID(s) or --search, not both"),
         (true, Some(query)) => {
             // Pull a margin: dedup-by-thread shrinks the result set, so
@@ -184,31 +334,9 @@ pub async fn resolve_thread_ids(
             // up front. The cap protects against runaway over-fetch.
             let raw_cap = limit.cap();
             let fetch_cap = raw_cap.saturating_mul(4).min(SEARCH_HARD_CAP);
-            let resp = client
-                .request(Request::Search {
-                    query,
-                    limit: fetch_cap,
-                    offset: 0,
-                    account_id: account_id.cloned(),
-                    mode: None,
-                    sort: Some(SortOrder::DateDesc),
-                    explain: false,
-                    limit_from_config: false,
-                })
-                .await?;
-            let results = match resp {
-                Response::Ok {
-                    data:
-                        ResponseData::SearchResults {
-                            results, degraded, ..
-                        },
-                } => {
-                    require_indexed_selection(degraded.as_ref())?;
-                    results
-                }
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
-                _ => anyhow::bail!("Unexpected response from search"),
-            };
+            let (results, has_more) =
+                run_selection_search(client, query, fetch_cap, account_id).await?;
+            let capped = limit.capped(has_more, results.len());
             // Dedup-preserving-order: the first occurrence of each
             // thread_id wins, which (because results are date-desc) is
             // the most recent message in that thread.
@@ -222,19 +350,301 @@ pub async fn resolve_thread_ids(
                     }
                 }
             }
-            Ok(threads)
+            Ok(ThreadSelection {
+                ids: threads,
+                capped,
+            })
         }
         (true, None) => match read_piped_ids()? {
             Some(ids) if ids.is_empty() => anyhow::bail!("No thread IDs provided on stdin"),
-            Some(ids) => ids.iter().map(|id| parse_thread_id(id)).collect(),
+            Some(ids) => Ok(ThreadSelection {
+                ids: ids
+                    .iter()
+                    .map(|id| parse_thread_id(id))
+                    .collect::<anyhow::Result<_>>()?,
+                capped: None,
+            }),
             None => anyhow::bail!("Provide thread ID(s), pipe IDs on stdin, or pass --search"),
         },
     }
 }
 
+/// [`resolve_thread_selection`] for commands that only read; the notice goes
+/// to stderr.
+pub async fn resolve_thread_ids(
+    client: &mut IpcClient,
+    positional: Vec<String>,
+    search: Option<String>,
+    account_id: Option<&AccountId>,
+    limit: SelectionLimit,
+) -> anyhow::Result<Vec<ThreadId>> {
+    let selection = resolve_thread_selection(client, positional, search, account_id, limit).await?;
+    if let Some(capped) = selection.capped {
+        capped.announce(&mut std::io::stderr())?;
+    }
+    Ok(selection.ids)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_fixtures::FakeBulkDaemon;
+
+    fn search_shape(request: &Request) -> (&str, u32, Option<SearchMode>, Option<SortOrder>) {
+        let Request::Search {
+            query,
+            limit,
+            mode,
+            sort,
+            ..
+        } = request
+        else {
+            unreachable!("expected a search request, got {request:?}");
+        };
+        (query, *limit, *mode, sort.clone())
+    }
+
+    #[tokio::test]
+    async fn a_search_selection_asks_for_the_newest_matches_in_lexical_mode() {
+        let daemon = FakeBulkDaemon::start(3);
+        let mut client = daemon.client().await;
+
+        resolve_message_selection(
+            &mut client,
+            Vec::new(),
+            Some("label:news".into()),
+            None,
+            SelectionLimit::Unbounded,
+        )
+        .await
+        .unwrap();
+
+        let searches = daemon.search_requests();
+        assert_eq!(searches.len(), 1);
+        // `mode: None` would follow `search.default_mode`, and hybrid ranks by
+        // relevance and ignores the sort.
+        assert_eq!(
+            search_shape(&searches[0]),
+            (
+                "label:news",
+                SEARCH_HARD_CAP,
+                Some(SearchMode::Lexical),
+                Some(SortOrder::DateDesc)
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn a_thread_selection_searches_the_same_way() {
+        let daemon = FakeBulkDaemon::start(3);
+        let mut client = daemon.client().await;
+
+        resolve_thread_selection(
+            &mut client,
+            Vec::new(),
+            Some("label:news".into()),
+            None,
+            SelectionLimit::AtMost(10),
+        )
+        .await
+        .unwrap();
+
+        // 10 threads fetch 40 messages as a margin for dedup.
+        assert_eq!(
+            search_shape(&daemon.search_requests()[0]),
+            (
+                "label:news",
+                40,
+                Some(SearchMode::Lexical),
+                Some(SortOrder::DateDesc)
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn more_matches_than_the_cap_keep_the_newest_and_say_so() {
+        let daemon = FakeBulkDaemon::start(1_523);
+        let mut client = daemon.client().await;
+
+        let selection = resolve_message_selection(
+            &mut client,
+            Vec::new(),
+            Some("*".into()),
+            None,
+            SelectionLimit::Unbounded,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(selection.ids, daemon.message_ids[..1_000]);
+        assert_eq!(selection.capped, Some(CappedSelection { selected: 1_000 }));
+    }
+
+    #[tokio::test]
+    async fn exactly_the_cap_of_matches_reports_nothing() {
+        let daemon = FakeBulkDaemon::start(1_000);
+        let mut client = daemon.client().await;
+
+        let selection = resolve_message_selection(
+            &mut client,
+            Vec::new(),
+            Some("*".into()),
+            None,
+            SelectionLimit::Unbounded,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(selection.ids.len(), 1_000);
+        assert_eq!(selection.capped, None);
+    }
+
+    #[tokio::test]
+    async fn a_total_is_never_the_signal_for_a_cap() {
+        // The daemon says no further visible match exists, so nothing was cut,
+        // whatever its estimate of the total says.
+        let daemon = FakeBulkDaemon::start_with_total(990, 1_010);
+        let mut client = daemon.client().await;
+
+        let messages = resolve_message_selection(
+            &mut client,
+            Vec::new(),
+            Some("*".into()),
+            None,
+            SelectionLimit::Unbounded,
+        )
+        .await
+        .unwrap();
+        let threads = resolve_thread_selection(
+            &mut client,
+            Vec::new(),
+            Some("*".into()),
+            None,
+            SelectionLimit::Unbounded,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(messages.ids.len(), 990);
+        assert_eq!(messages.capped, None);
+        assert_eq!(threads.capped, None);
+
+        // And the reverse: more visible matches exist, but the estimate is 0.
+        let daemon = FakeBulkDaemon::start_with_total(1_523, 0);
+        let mut client = daemon.client().await;
+        let selection = resolve_message_selection(
+            &mut client,
+            Vec::new(),
+            Some("*".into()),
+            None,
+            SelectionLimit::Unbounded,
+        )
+        .await
+        .unwrap();
+        assert_eq!(selection.capped, Some(CappedSelection { selected: 1_000 }));
+    }
+
+    #[tokio::test]
+    async fn a_limit_the_user_asked_for_is_not_reported_as_a_cap() {
+        let daemon = FakeBulkDaemon::start(1_523);
+        let mut client = daemon.client().await;
+        for limit in [SelectionLimit::First, SelectionLimit::AtMost(50)] {
+            let selection =
+                resolve_message_selection(&mut client, Vec::new(), Some("*".into()), None, limit)
+                    .await
+                    .unwrap();
+            assert_eq!(selection.capped, None, "{limit:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_limit_above_the_cap_is_cut_by_the_cap_and_says_so() {
+        let daemon = FakeBulkDaemon::start(1_523);
+        let mut client = daemon.client().await;
+
+        let selection = resolve_message_selection(
+            &mut client,
+            Vec::new(),
+            Some("*".into()),
+            None,
+            SelectionLimit::AtMost(5_000),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(selection.ids.len(), 1_000);
+        assert!(selection.capped.is_some());
+    }
+
+    #[tokio::test]
+    async fn thread_selection_reports_the_cap_on_the_messages_it_searched() {
+        let daemon = FakeBulkDaemon::start(1_523);
+        let mut client = daemon.client().await;
+
+        let selection = resolve_thread_selection(
+            &mut client,
+            Vec::new(),
+            Some("*".into()),
+            None,
+            SelectionLimit::Unbounded,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(selection.capped, Some(CappedSelection { selected: 1_000 }));
+    }
+
+    #[tokio::test]
+    async fn explicit_ids_skip_the_search_and_the_cap() {
+        let daemon = FakeBulkDaemon::start(5_000);
+        let mut client = daemon.client().await;
+        let ids: Vec<String> = daemon.message_ids[..1_200]
+            .iter()
+            .map(MessageId::as_str)
+            .collect();
+
+        let selection =
+            resolve_message_selection(&mut client, ids, None, None, SelectionLimit::Unbounded)
+                .await
+                .unwrap();
+
+        assert_eq!(selection.ids.len(), 1_200);
+        assert_eq!(selection.capped, None);
+        assert!(daemon.search_requests().is_empty());
+    }
+
+    #[test]
+    fn the_notice_says_more_than_the_cap_match_and_how_many_were_selected() {
+        let capped = CappedSelection { selected: 1_000 };
+
+        assert_eq!(
+            capped.notice(),
+            "More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest."
+        );
+        let mut out = Vec::new();
+        capped.announce(&mut out).unwrap();
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            format!("{}\n", capped.notice())
+        );
+    }
+
+    #[test]
+    fn the_capped_field_is_added_to_an_existing_object() {
+        let capped = CappedSelection { selected: 1_000 };
+        let mut value = serde_json::json!({ "identity": "kept" });
+
+        capped.merge_into(&mut value);
+
+        assert_eq!(
+            value,
+            serde_json::json!({ "identity": "kept", "capped": true })
+        );
+        assert_eq!(
+            serde_json::to_value(capped.fields()).unwrap(),
+            serde_json::json!({ "capped": true })
+        );
+    }
 
     #[test]
     fn a_selection_from_the_limited_search_is_refused() {

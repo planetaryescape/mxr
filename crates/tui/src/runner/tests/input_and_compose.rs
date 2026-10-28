@@ -929,17 +929,13 @@ fn input_gg_jumps_top() {
 }
 
 #[test]
-fn input_zz_no_longer_centers() {
+fn input_z_is_no_prefix() {
     let mut h = InputHandler::new();
     assert_eq!(
         h.handle_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)),
         None
     );
-    assert!(h.is_pending(), "z waits so z z can say it moved");
-    assert_eq!(
-        h.handle_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE)),
-        None
-    );
+    assert!(!h.is_pending(), "z z retired, so z waits for nothing");
 }
 
 #[test]

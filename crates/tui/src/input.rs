@@ -7,11 +7,6 @@ use std::time::{Duration, Instant};
 /// waits, so the prefix guide that opens after [`PREFIX_GUIDE_DELAY`] can be
 /// read (blueprint 35, 26 October); a fast sequence never waits on it.
 pub(crate) const MULTI_KEY_TIMEOUT: Duration = Duration::from_millis(4000);
-/// How long a prefix with nothing to list waits instead (today `z`, kept so
-/// the retired `z z` can say where it went): no guide needs reading, and a
-/// stray press must not swallow the next key for four seconds. Vim's
-/// `timeoutlen`.
-pub(crate) const BARE_PREFIX_TIMEOUT: Duration = Duration::from_millis(1000);
 /// How long a prefix waits before the guide lists the keys that can follow.
 pub(crate) const PREFIX_GUIDE_DELAY: Duration = Duration::from_millis(300);
 
@@ -86,9 +81,6 @@ pub struct InputHandler {
     used_this_turn: bool,
     /// A sequence that completed nothing, spelled for the status line.
     dead_end: Option<String>,
-    /// The waiting prefix's whole wait: [`MULTI_KEY_TIMEOUT`], or less once
-    /// [`Self::cap_wait`] shortened it.
-    wait: Duration,
 }
 
 struct ConfiguredChord {
@@ -110,7 +102,6 @@ impl InputHandler {
             configured: None,
             used_this_turn: false,
             dead_end: None,
-            wait: MULTI_KEY_TIMEOUT,
         }
     }
 
@@ -179,25 +170,13 @@ impl InputHandler {
             (None, KeyState::WaitingForSecond { deadline, .. }) => *deadline,
             (None, KeyState::Normal) => return None,
         };
-        (now <= deadline).then(|| self.wait.saturating_sub(deadline - now))
+        (now <= deadline).then(|| MULTI_KEY_TIMEOUT.saturating_sub(deadline - now))
     }
 
     /// How long the waiting prefix has left before it times out.
     pub(crate) fn prefix_left(&self, now: Instant) -> Option<Duration> {
         self.prefix_waited(now)
-            .map(|waited| self.wait.saturating_sub(waited))
-    }
-
-    /// Shorten the prefix that has just started waiting to `wait` in all.
-    pub(crate) fn cap_wait(&mut self, wait: Duration) {
-        let cut = self.wait.saturating_sub(wait);
-        if let Some(chord) = &mut self.configured {
-            chord.deadline -= cut;
-        }
-        if let KeyState::WaitingForSecond { deadline, .. } = &mut self.state {
-            *deadline -= cut;
-        }
-        self.wait = self.wait.min(wait);
+            .map(|waited| MULTI_KEY_TIMEOUT.saturating_sub(waited))
     }
 
     /// Test-only: as if the waiting prefix was pressed `by` earlier.
@@ -240,9 +219,6 @@ impl InputHandler {
 
     pub(crate) fn begin_turn(&mut self) {
         self.used_this_turn = false;
-        if !self.is_pending() {
-            self.wait = MULTI_KEY_TIMEOUT;
-        }
     }
 
     pub(crate) fn end_turn(&mut self) {
@@ -489,16 +465,6 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 let index = c.to_digit(10).unwrap_or(0) as usize;
                 Some(Action::OpenSavedSearchByIndex(index))
-            }
-
-            // `z z` retired (blueprint 35). `z` still waits until 0.6.180 so
-            // the whole `z z` reaches the moved-key notice; it runs nothing.
-            (KeyState::Normal, KeyCode::Char('z'), KeyModifiers::NONE) => {
-                self.state = KeyState::WaitingForSecond {
-                    first: 'z',
-                    deadline: Instant::now() + MULTI_KEY_TIMEOUT,
-                };
-                None
             }
 
             // Multi-key: i-prefix for iCal invite responses.

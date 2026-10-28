@@ -73,6 +73,7 @@
     "t": "RecordsMakeTodo",
     "u": "UndoLastMutation",
     "y": "RecordsCopyReference",
+    "z": "UndoLastMutation",
     "{": "RecordsPrevYear",
     "}": "RecordsNextYear"
   },
@@ -144,7 +145,8 @@
     "k": "MoveUp",
     "o": "TodoOpenEmail",
     "q": "TodoShowRunway",
-    "u": "UndoLastMutation"
+    "u": "UndoLastMutation",
+    "z": "UndoLastMutation"
   },
   "expired": {
     "* t": "PatternSelect(Thread)",
@@ -380,7 +382,8 @@
     "u": "UndoLastMutation",
     "v": "MoveToLabel",
     "w": "Wake",
-    "x": "ToggleSelect"
+    "x": "ToggleSelect",
+    "z": "UndoLastMutation"
   },
   "messages": {
     "* t": "PatternSelect(Thread)",
@@ -461,6 +464,7 @@
     "s": "MessagesPin",
     "t": "CreateTodoFromMessage",
     "u": "UndoLastMutation",
+    "z": "UndoLastMutation",
     "{": "MessagesPrevTopic",
     "}": "MessagesNextTopic"
   },
@@ -536,7 +540,8 @@
     "q": "QuitView",
     "r": "Reply",
     "t": "CreateTodoFromMessage",
-    "u": "UndoLastMutation"
+    "u": "UndoLastMutation",
+    "z": "UndoLastMutation"
   },
   "place": {
     "!": "Spam",
@@ -644,7 +649,8 @@
     "t": "CreateTodoFromMessage",
     "u": "UndoLastMutation",
     "v": "MoveToLabel",
-    "x": "ToggleSelect"
+    "x": "ToggleSelect",
+    "z": "UndoLastMutation"
   },
   "reader": {
     "!": "Spam",
@@ -763,7 +769,8 @@
     "t": "CreateTodoFromMessage",
     "u": "UndoLastMutation",
     "v": "MoveToLabel",
-    "x": "ToggleSelect"
+    "x": "ToggleSelect",
+    "z": "UndoLastMutation"
   },
   "reading": {
     "* t": "PatternSelect(Thread)",
@@ -843,7 +850,8 @@
     "o": "ReadingOpenEmail",
     "q": "QuitView",
     "t": "CreateTodoFromMessage",
-    "u": "UndoLastMutation"
+    "u": "UndoLastMutation",
+    "z": "UndoLastMutation"
   },
   "reading-reader": {
     "\"": "ReadingHighlight",
@@ -917,7 +925,8 @@
     "o": "ReadingOpenEmail",
     "q": "ReadingBack",
     "t": "CreateTodoFromMessage",
-    "u": "UndoLastMutation"
+    "u": "UndoLastMutation",
+    "z": "UndoLastMutation"
   },
   "screener": {
     "ArrowDown": "ScreenerModalNext",
@@ -1016,6 +1025,7 @@
     "q": "QuitView",
     "u": "UndoLastMutation",
     "x": "ToggleSelect",
+    "z": "UndoLastMutation",
     "{": "inline:prev_section",
     "}": "inline:next_section"
   },
@@ -1091,7 +1101,8 @@
     "k": "MoveUp",
     "o": "TodoOpenEmail",
     "q": "QuitView",
-    "u": "UndoLastMutation"
+    "u": "UndoLastMutation",
+    "z": "UndoLastMutation"
   },
   "updates": {
     "* t": "PatternSelect(Thread)",
@@ -1167,6 +1178,7 @@
     "s": "TogglePin",
     "t": "UpdatesNeedsMe",
     "u": "UndoLastMutation",
-    "y": "UpdatesCopyCode"
+    "y": "UpdatesCopyCode",
+    "z": "UndoLastMutation"
   }
 }

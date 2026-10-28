@@ -1,5 +1,7 @@
 use crate::cli::OutputFormat;
-use crate::commands::selection::{parse_message_id as selection_parse_id, SelectionLimit};
+use crate::commands::selection::{
+    parse_message_id as selection_parse_id, CappedFields, CappedSelection, SelectionLimit,
+};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::id::{MessageId, ThreadId};
@@ -17,6 +19,8 @@ pub(super) struct MutationSelection {
     pub(super) ids: Vec<MessageId>,
     pub(super) envelopes: Vec<Envelope>,
     pub(super) used_search: bool,
+    /// Set when the search matched more than the hard cap let through.
+    pub(super) capped: Option<CappedSelection>,
 }
 
 pub(super) async fn resolve_mutation_selection(
@@ -43,14 +47,15 @@ pub(super) async fn resolve_mutation_selection_with_limit(
     limit: SelectionLimit,
 ) -> anyhow::Result<MutationSelection> {
     let used_search = message_ids.is_empty() && search.is_some();
-    let ids = crate::commands::selection::resolve_message_ids(
-        client,
-        message_ids,
-        search,
-        account_id,
-        limit,
-    )
-    .await?;
+    let crate::commands::selection::MessageSelection { ids, capped } =
+        crate::commands::selection::resolve_message_selection(
+            client,
+            message_ids,
+            search,
+            account_id,
+            limit,
+        )
+        .await?;
     let envelopes = if ids.is_empty() {
         Vec::new()
     } else {
@@ -80,6 +85,7 @@ pub(super) async fn resolve_mutation_selection_with_limit(
         ids,
         envelopes,
         used_search,
+        capped,
     })
 }
 
@@ -99,6 +105,9 @@ pub(super) fn render_selection_preview_lines(
     let preview_limit = 8usize;
     let mut lines = vec![format!("Would {action} {} message(s)", selection.ids.len())];
     lines.push(selection_counts(selection).selection_line());
+    if let Some(capped) = selection.capped {
+        lines.push(capped.notice());
+    }
 
     if !selection.envelopes.is_empty() {
         lines.push(String::new());
@@ -150,6 +159,10 @@ pub(super) fn print_selection_preview(action: &str, selection: &MutationSelectio
 pub(super) struct SelectionCounts {
     pub(super) selected_messages: usize,
     pub(super) selected_threads: usize,
+    /// Carried so every output built from the counts can add the capped
+    /// fields; the counts themselves serialise without it.
+    #[serde(skip)]
+    pub(super) capped: Option<CappedFields>,
 }
 
 impl SelectionCounts {
@@ -177,6 +190,8 @@ struct MutationPreviewOutput {
     selected_threads: usize,
     message_ids: Vec<String>,
     messages: Vec<MutationPreviewRecord>,
+    #[serde(flatten)]
+    capped: Option<CappedFields>,
 }
 
 #[derive(Clone, Serialize)]
@@ -197,6 +212,8 @@ struct MutationPreviewLine {
     subject: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     unsubscribe_method: Option<String>,
+    #[serde(flatten)]
+    capped: Option<CappedFields>,
 }
 
 #[derive(Serialize)]
@@ -207,6 +224,8 @@ struct MutationResultOutput {
     selected_threads: usize,
     message_ids: Vec<String>,
     result: MutationResultData,
+    #[serde(flatten)]
+    capped: Option<CappedFields>,
 }
 
 #[derive(Serialize)]
@@ -215,6 +234,8 @@ struct MutationJobOutput {
     dry_run: bool,
     message_ids: Vec<String>,
     job: JobData,
+    #[serde(flatten)]
+    capped: Option<CappedFields>,
 }
 
 #[derive(Serialize)]
@@ -225,6 +246,8 @@ struct MutationAckOutput {
     selected_threads: usize,
     message_ids: Vec<String>,
     ok: bool,
+    #[serde(flatten)]
+    capped: Option<CappedFields>,
 }
 
 #[derive(Clone, Serialize)]
@@ -246,6 +269,8 @@ struct BatchMutationOutput {
     selected_threads: Option<usize>,
     message_ids: Vec<String>,
     errors: Vec<BatchMutationError>,
+    #[serde(flatten)]
+    capped: Option<CappedFields>,
 }
 
 pub(super) fn print_dry_run_output(
@@ -261,15 +286,7 @@ pub(super) fn print_dry_run_output(
         OutputFormat::Table => print_selection_preview(action, selection),
         OutputFormat::Json => println!(
             "{}",
-            serde_json::to_string_pretty(&MutationPreviewOutput {
-                action: action.to_owned(),
-                dry_run: true,
-                requested: selection.ids.len(),
-                selected_messages: counts.selected_messages,
-                selected_threads: counts.selected_threads,
-                message_ids,
-                messages,
-            })?
+            serde_json::to_string_pretty(&preview_output(action, selection, messages))?
         ),
         OutputFormat::Jsonl => {
             let lines: Vec<_> = messages
@@ -281,11 +298,13 @@ pub(super) fn print_dry_run_output(
                     from: message.from,
                     subject: message.subject,
                     unsubscribe_method: message.unsubscribe_method,
+                    capped: counts.capped,
                 })
                 .collect();
             println!("{}", jsonl(&lines)?);
         }
         OutputFormat::Csv => {
+            announce_cap_on_stderr(selection)?;
             let mut writer = csv::Writer::from_writer(Vec::new());
             writer.write_record(["action", "dry_run", "message_id", "from", "subject"])?;
             for message in messages {
@@ -300,12 +319,39 @@ pub(super) fn print_dry_run_output(
             println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
         }
         OutputFormat::Ids => {
+            announce_cap_on_stderr(selection)?;
             for id in message_ids {
                 println!("{id}");
             }
         }
     }
     Ok(())
+}
+
+/// Formats with no room for extra fields get the cap notice on stderr.
+fn announce_cap_on_stderr(selection: &MutationSelection) -> anyhow::Result<()> {
+    if let Some(capped) = selection.capped {
+        capped.announce(&mut std::io::stderr())?;
+    }
+    Ok(())
+}
+
+fn preview_output(
+    action: &str,
+    selection: &MutationSelection,
+    messages: Vec<MutationPreviewRecord>,
+) -> MutationPreviewOutput {
+    let counts = selection_counts(selection);
+    MutationPreviewOutput {
+        action: action.to_owned(),
+        dry_run: true,
+        requested: selection.ids.len(),
+        selected_messages: counts.selected_messages,
+        selected_threads: counts.selected_threads,
+        message_ids: selection_message_ids(selection),
+        messages,
+        capped: counts.capped,
+    }
 }
 
 fn selection_message_ids(selection: &MutationSelection) -> Vec<String> {
@@ -365,6 +411,7 @@ pub(super) fn selection_counts(selection: &MutationSelection) -> SelectionCounts
         } else {
             threads.len()
         },
+        capped: selection.capped.map(|capped| capped.fields()),
     }
 }
 
@@ -387,6 +434,34 @@ pub(super) fn confirm_action(action: &str, selection: &MutationSelection) -> any
 
     print_selection_preview(action, selection);
     prompt_to_continue()
+}
+
+/// The gate every `--search` mutation passes before it sends a request:
+/// confirms with a prompt that shows the preview (cap notice included), or,
+/// when `--yes` skips the prompt, writes the cap notice to `notices` first.
+pub(super) fn confirm_selection_to(
+    action: &str,
+    selection: &MutationSelection,
+    destructive: bool,
+    yes: bool,
+    notices: &mut dyn Write,
+) -> anyhow::Result<()> {
+    if requires_confirmation(destructive, selection.used_search, selection.ids.len(), yes) {
+        return confirm_action(action, selection);
+    }
+    if let Some(capped) = selection.capped {
+        capped.announce(notices)?;
+    }
+    Ok(())
+}
+
+pub(super) fn confirm_selection(
+    action: &str,
+    selection: &MutationSelection,
+    destructive: bool,
+    yes: bool,
+) -> anyhow::Result<()> {
+    confirm_selection_to(action, selection, destructive, yes, &mut std::io::stderr())
 }
 
 /// Confirms a mutation whose preview the caller has already rendered as lines.
@@ -426,6 +501,28 @@ pub(super) async fn run_simple_mutation<F>(
 where
     F: FnOnce(Vec<MessageId>) -> Request,
 {
+    run_simple_mutation_to(
+        client,
+        selection,
+        options,
+        build_request,
+        &mut std::io::stderr(),
+    )
+    .await
+}
+
+/// [`run_simple_mutation`] with the sink for the `--yes` cap notice injected,
+/// so a test can see the notice land before the mutation request.
+pub(super) async fn run_simple_mutation_to<F>(
+    client: &mut IpcClient,
+    selection: MutationSelection,
+    options: MutationRunOptions<'_>,
+    build_request: F,
+    notices: &mut dyn Write,
+) -> anyhow::Result<()>
+where
+    F: FnOnce(Vec<MessageId>) -> Request,
+{
     if selection.ids.is_empty() {
         anyhow::bail!("No messages matched");
     }
@@ -435,14 +532,13 @@ where
         return Ok(());
     }
 
-    if requires_confirmation(
+    confirm_selection_to(
+        options.action,
+        &selection,
         options.destructive,
-        selection.used_search,
-        selection.ids.len(),
         options.yes,
-    ) {
-        confirm_action(options.action, &selection)?;
-    }
+        notices,
+    )?;
 
     let counts = selection_counts(&selection);
     let message_ids = selection.ids.clone();
@@ -512,7 +608,7 @@ pub(super) fn handle_mutation_response(
         }
         Response::Ok {
             data: ResponseData::JobStarted { job },
-        } => print_job_started_output(action, message_ids, job, format)?,
+        } => print_job_started_output(action, message_ids, counts, job, format)?,
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
@@ -522,6 +618,7 @@ pub(super) fn handle_mutation_response(
 fn print_job_started_output(
     action: &str,
     message_ids: &[MessageId],
+    counts: SelectionCounts,
     job: JobData,
     format: OutputFormat,
 ) -> anyhow::Result<()> {
@@ -540,6 +637,7 @@ fn print_job_started_output(
                 dry_run: false,
                 message_ids: message_ids_to_strings(message_ids),
                 job,
+                capped: counts.capped,
             })?
         ),
         OutputFormat::Jsonl => println!(
@@ -549,6 +647,7 @@ fn print_job_started_output(
                 dry_run: false,
                 message_ids: message_ids_to_strings(message_ids),
                 job,
+                capped: counts.capped,
             })?
         ),
         OutputFormat::Csv => {
@@ -589,6 +688,7 @@ fn print_ack_output(
                 selected_threads: counts.selected_threads,
                 message_ids: message_ids_to_strings(message_ids),
                 ok: true,
+                capped: counts.capped,
             })?
         ),
         OutputFormat::Jsonl => println!(
@@ -600,6 +700,7 @@ fn print_ack_output(
                 selected_threads: counts.selected_threads,
                 message_ids: message_ids_to_strings(message_ids),
                 ok: true,
+                capped: counts.capped,
             })?
         ),
         OutputFormat::Csv => {
@@ -672,6 +773,7 @@ fn print_mutation_result_output(
                 selected_threads: counts.selected_threads,
                 message_ids: message_ids_to_strings(message_ids),
                 result,
+                capped: counts.capped,
             })?
         ),
         OutputFormat::Jsonl => println!(
@@ -683,6 +785,7 @@ fn print_mutation_result_output(
                 selected_threads: counts.selected_threads,
                 message_ids: message_ids_to_strings(message_ids),
                 result,
+                capped: counts.capped,
             })?
         ),
         OutputFormat::Csv => {
@@ -775,6 +878,7 @@ pub(super) fn print_batch_mutation_output(
                 selected_threads: selection_counts.map(|counts| counts.selected_threads),
                 message_ids: message_ids_to_strings(message_ids),
                 errors,
+                capped: selection_counts.and_then(|counts| counts.capped),
             })?
         ),
         OutputFormat::Jsonl => println!(
@@ -789,6 +893,7 @@ pub(super) fn print_batch_mutation_output(
                 selected_threads: selection_counts.map(|counts| counts.selected_threads),
                 message_ids: message_ids_to_strings(message_ids),
                 errors,
+                capped: selection_counts.and_then(|counts| counts.capped),
             })?
         ),
         OutputFormat::Csv => {
@@ -897,7 +1002,189 @@ pub(super) fn attachment_by_index(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_fixtures::TestEnvelopeBuilder;
+    use crate::commands::selection::CappedSelection;
+    use crate::test_fixtures::{FakeBulkDaemon, TestEnvelopeBuilder};
+
+    const NOTICE: &str =
+        "notice: More than 1,000 messages match; only the newest 1,000 are selected. Narrow the search to reach the rest.";
+
+    fn run_options(yes: bool, dry_run: bool) -> MutationRunOptions<'static> {
+        MutationRunOptions {
+            action: "trash",
+            success_message: "Trashed",
+            yes,
+            dry_run,
+            format: Some(OutputFormat::Json),
+            destructive: true,
+            async_job: false,
+        }
+    }
+
+    fn trash_request(ids: Vec<MessageId>) -> Request {
+        Request::mutation(MutationCommand::Trash { message_ids: ids })
+    }
+
+    #[tokio::test]
+    async fn the_cap_notice_is_written_before_any_mutation_request_with_yes() {
+        let daemon = FakeBulkDaemon::start(1_523);
+        let mut client = daemon.client().await;
+        let selection = resolve_mutation_selection(&mut client, Vec::new(), Some("*".into()), None)
+            .await
+            .unwrap();
+        let selected_ids = selection.ids.clone();
+        assert_eq!(selected_ids, daemon.message_ids[..1_000]);
+
+        run_simple_mutation_to(
+            &mut client,
+            selection,
+            run_options(true, false),
+            trash_request,
+            &mut daemon.notice_sink(),
+        )
+        .await
+        .unwrap();
+
+        let events = daemon.events.lock().unwrap().clone();
+        assert_eq!(
+            events,
+            ["search", "envelopes", NOTICE, "mutation"],
+            "the user is told about the cap after the selection and before anything changes"
+        );
+        // The run changes exactly the messages the selection holds, which are
+        // the ones the dry run lists.
+        let requests = daemon.requests.lock().unwrap().clone();
+        let Some(Request::StartMutationJob {
+            mutation: MutationCommand::Trash { message_ids },
+            ..
+        }) = requests.last()
+        else {
+            unreachable!("expected a trash job, got {requests:?}");
+        };
+        assert_eq!(message_ids, &selected_ids);
+    }
+
+    #[tokio::test]
+    async fn a_dry_run_sends_no_mutation_and_lists_the_ids_a_real_run_would_use() {
+        let daemon = FakeBulkDaemon::start(1_523);
+        let mut client = daemon.client().await;
+        let selection = resolve_mutation_selection(&mut client, Vec::new(), Some("*".into()), None)
+            .await
+            .unwrap();
+
+        let preview = serde_json::to_value(preview_output(
+            "trash",
+            &selection,
+            preview_records(&selection, false),
+        ))
+        .unwrap();
+        run_simple_mutation_to(
+            &mut client,
+            selection,
+            run_options(false, true),
+            trash_request,
+            &mut daemon.notice_sink(),
+        )
+        .await
+        .unwrap();
+
+        assert!(preview.get("matched_total").is_none());
+        assert_eq!(preview["capped"], true);
+        assert_eq!(
+            preview["message_ids"],
+            serde_json::to_value(
+                daemon.message_ids[..1_000]
+                    .iter()
+                    .map(MessageId::as_str)
+                    .collect::<Vec<_>>()
+            )
+            .unwrap()
+        );
+        // The dry run says so in its own output, not through the notice, and
+        // changes nothing.
+        assert_eq!(
+            daemon.events.lock().unwrap().clone(),
+            ["search", "envelopes"]
+        );
+    }
+
+    #[tokio::test]
+    async fn no_notice_is_written_when_the_search_fits_under_the_cap() {
+        let daemon = FakeBulkDaemon::start(300);
+        let mut client = daemon.client().await;
+        let selection = resolve_mutation_selection(&mut client, Vec::new(), Some("*".into()), None)
+            .await
+            .unwrap();
+
+        run_simple_mutation_to(
+            &mut client,
+            selection,
+            run_options(true, false),
+            trash_request,
+            &mut daemon.notice_sink(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            daemon.events.lock().unwrap().clone(),
+            ["search", "envelopes", "mutation"]
+        );
+    }
+
+    #[test]
+    fn the_preview_and_the_prompt_carry_the_cap_notice() {
+        let envelope = TestEnvelopeBuilder::new().build();
+        let selection = MutationSelection {
+            ids: vec![envelope.id.clone()],
+            envelopes: vec![envelope],
+            used_search: true,
+            capped: Some(CappedSelection { selected: 1_000 }),
+        };
+
+        // The same lines are the dry-run table and the confirmation prompt.
+        let lines = render_selection_preview_lines("trash", &selection);
+
+        assert!(
+            lines.contains(&NOTICE.trim_start_matches("notice: ").to_owned()),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn capped_fields_reach_every_output_built_from_the_counts_and_only_then() {
+        let capped = CappedSelection { selected: 1_000 };
+        let uncapped_counts = SelectionCounts {
+            selected_threads: 2,
+            selected_messages: 3,
+            capped: None,
+        };
+        let capped_counts = SelectionCounts {
+            capped: Some(capped.fields()),
+            ..uncapped_counts
+        };
+        let ack = |counts: SelectionCounts| {
+            serde_json::to_value(MutationAckOutput {
+                action: "trash".into(),
+                dry_run: false,
+                selected_messages: counts.selected_messages,
+                selected_threads: counts.selected_threads,
+                message_ids: Vec::new(),
+                ok: true,
+                capped: counts.capped,
+            })
+            .unwrap()
+        };
+
+        let with = ack(capped_counts);
+        let without = ack(uncapped_counts);
+
+        assert_eq!(with["capped"], true);
+        assert_eq!(
+            with["selected_messages"], 3,
+            "existing fields keep their names"
+        );
+        assert!(without.get("capped").is_none());
+    }
 
     #[test]
     fn dry_run_preview_labels_threads_and_messages_separately() {
@@ -914,6 +1201,7 @@ mod tests {
             ids: vec![first.id.clone(), second.id.clone()],
             envelopes: vec![first, second],
             used_search: true,
+            capped: None,
         };
 
         let lines = render_selection_preview_lines("archive", &selection);
@@ -930,6 +1218,7 @@ mod tests {
         let counts = SelectionCounts {
             selected_threads: 5,
             selected_messages: 7,
+            capped: None,
         };
 
         assert_eq!(
@@ -954,6 +1243,7 @@ mod tests {
             ids: vec![with_method.id.clone(), without_method.id.clone()],
             envelopes: vec![with_method, without_method],
             used_search: true,
+            capped: None,
         };
 
         let rendered = render_selection_preview_lines("unsubscribe", &selection).join("\n");

@@ -168,7 +168,8 @@
         {
           "name": "UndoLastMutation",
           "keys": [
-            "u"
+            "u",
+            "z"
           ],
           "contexts": [
             "list",
@@ -186,15 +187,6 @@
             "search",
             "search-preview",
             "arrivals-list",
-            "focus"
-          ]
-        },
-        {
-          "name": "UndoLastMutation",
-          "keys": [
-            "z"
-          ],
-          "contexts": [
             "focus"
           ]
         }
@@ -306,28 +298,6 @@
             "updates",
             "focus"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "g p",
-          "contexts": [
-            "global",
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
-          ],
-          "until": "0.6.180"
         }
       ]
     },
@@ -576,28 +546,6 @@
             "focus"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "g E",
-          "contexts": [
-            "global",
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -739,28 +687,6 @@
             "focus"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "g y",
-          "contexts": [
-            "global",
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -831,35 +757,6 @@
             "updates",
             "focus"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "g c",
-          "contexts": [
-            "global",
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
-          ],
-          "until": "0.6.180"
-        },
-        {
-          "key": "0",
-          "contexts": [
-            "global"
-          ],
-          "until": "0.6.180"
         }
       ]
     },
@@ -1071,15 +968,6 @@
             "focus"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "9",
-          "contexts": [
-            "global"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -1167,15 +1055,6 @@
             "focus"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "8",
-          "contexts": [
-            "global"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -1186,31 +1065,6 @@
         "global"
       ],
       "palette_only": true
-    },
-    {
-      "id": "nav.tab-mail",
-      "label": "Mail",
-      "group": "Navigate",
-      "scopes": [
-        "global"
-      ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "1",
-          "contexts": [
-            "global",
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "archive",
-            "updates"
-          ],
-          "until": "0.6.180",
-          "to": "nav.inbox"
-        }
-      ]
     },
     {
       "id": "nav.search-page",
@@ -1225,22 +1079,6 @@
           "name": "OpenSearchScreen",
           "keys": [],
           "contexts": "all"
-        }
-      ],
-      "moved": [
-        {
-          "key": "2",
-          "contexts": [
-            "global",
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "archive",
-            "updates"
-          ],
-          "until": "0.6.180",
-          "to": "shell.search-palette"
         }
       ]
     },
@@ -1277,21 +1115,6 @@
             "focus"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "3",
-          "contexts": [
-            "global",
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "archive",
-            "updates"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -1300,27 +1123,6 @@
       "group": "Accounts",
       "scopes": [
         "global"
-      ],
-      "moved": [
-        {
-          "key": "4",
-          "contexts": [
-            "global",
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
-          ],
-          "until": "0.6.180",
-          "to": "nav.settings"
-        }
       ]
     },
     {
@@ -1356,61 +1158,6 @@
             "focus"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "5",
-          "contexts": [
-            "global",
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
-          ],
-          "until": "0.6.180"
-        }
-      ]
-    },
-    {
-      "id": "nav.tab-analytics",
-      "label": "Analytics (tab)",
-      "short_label": "Analytics",
-      "group": "Analytics",
-      "scopes": [
-        "global"
-      ],
-      "hide_in_palette": true,
-      "moved": [
-        {
-          "key": "6",
-          "contexts": [
-            "global",
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
-          ],
-          "until": "0.6.180",
-          "to": "nav.analytics"
-        }
       ]
     },
     {
@@ -1445,28 +1192,6 @@
             "updates",
             "focus"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "7",
-          "contexts": [
-            "global",
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
-          ],
-          "until": "0.6.180"
         }
       ]
     },
@@ -3608,25 +3333,6 @@
             "list"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "H",
-          "contexts": [
-            "list",
-            "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "updates"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -3644,24 +3350,6 @@
           "contexts": [
             "list"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "M",
-          "contexts": [
-            "list",
-            "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "updates"
-          ],
-          "until": "0.6.180"
         }
       ]
     },
@@ -4602,16 +4290,7 @@
         "reader"
       ],
       "palette_only": true,
-      "note": "CLI `mxr cat --view headers`; not in the TUI",
-      "moved": [
-        {
-          "key": "g H",
-          "contexts": [
-            "reader"
-          ],
-          "until": "0.6.180"
-        }
-      ]
+      "note": "CLI `mxr cat --view headers`; not in the TUI"
     },
     {
       "id": "reader.open-original",
@@ -4657,18 +4336,6 @@
             "list",
             "reader"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "y",
-          "contexts": [
-            "list",
-            "reader",
-            "place"
-          ],
-          "until": "0.6.180",
-          "to": "mail.briefing"
         }
       ]
     },
@@ -5469,15 +5136,6 @@
             "todo"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "Space",
-          "contexts": [
-            "todo"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -5843,15 +5501,6 @@
             "catchup"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "A",
-          "contexts": [
-            "catchup"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -6141,15 +5790,6 @@
             "archive"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "e",
-          "contexts": [
-            "archive"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -6195,15 +5835,6 @@
             "archive"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "[",
-          "contexts": [
-            "archive"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -6225,15 +5856,6 @@
           "contexts": [
             "archive"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "]",
-          "contexts": [
-            "archive"
-          ],
-          "until": "0.6.180"
         }
       ]
     },
@@ -6629,16 +6251,6 @@
             "reading-reader"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "A",
-          "contexts": [
-            "reading",
-            "reading-reader"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -6686,16 +6298,6 @@
             "reading",
             "reading-reader"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "K",
-          "contexts": [
-            "reading",
-            "reading-reader"
-          ],
-          "until": "0.6.180"
         }
       ]
     },
@@ -6817,15 +6419,6 @@
             "reading",
             "reading-reader"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "M",
-          "contexts": [
-            "reading"
-          ],
-          "until": "0.6.180"
         }
       ]
     },
@@ -6979,15 +6572,6 @@
             "reading-reader"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "h",
-          "contexts": [
-            "reading-reader"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -7025,15 +6609,6 @@
       ],
       "keys": [
         "O"
-      ],
-      "moved": [
-        {
-          "key": "M",
-          "contexts": [
-            "reading-reader"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -7247,15 +6822,6 @@
           "contexts": [
             "now"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "A",
-          "contexts": [
-            "now"
-          ],
-          "until": "0.6.180"
         }
       ]
     },
@@ -7642,15 +7208,6 @@
             "messages"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "[",
-          "contexts": [
-            "messages"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -7672,15 +7229,6 @@
           "contexts": [
             "messages"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "]",
-          "contexts": [
-            "messages"
-          ],
-          "until": "0.6.180"
         }
       ]
     },
@@ -7726,15 +7274,6 @@
           "contexts": [
             "messages"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "v",
-          "contexts": [
-            "messages"
-          ],
-          "until": "0.6.180"
         }
       ]
     },
@@ -8020,15 +7559,6 @@
             "updates"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "A",
-          "contexts": [
-            "updates"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -8097,15 +7627,6 @@
           "contexts": [
             "updates"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "K",
-          "contexts": [
-            "updates"
-          ],
-          "until": "0.6.180"
         }
       ]
     },
@@ -8222,15 +7743,6 @@
           "contexts": [
             "updates"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "p",
-          "contexts": [
-            "updates"
-          ],
-          "until": "0.6.180"
         }
       ],
       "raycast_key": "Cmd+."
@@ -8382,19 +7894,6 @@
             "messages",
             "arrivals-list"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "K",
-          "contexts": [
-            "arrivals",
-            "arrivals-list",
-            "list",
-            "messages",
-            "now"
-          ],
-          "until": "0.6.180"
         }
       ]
     },
@@ -8721,36 +8220,6 @@
       ]
     },
     {
-      "id": "tui.toggle-assistant",
-      "label": "Toggle assistant",
-      "group": "TUI",
-      "clients": [
-        "tui"
-      ],
-      "moved": [
-        {
-          "key": "Ctrl+a",
-          "contexts": [
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
-          ],
-          "until": "0.6.180",
-          "to": "assistant.toggle"
-        }
-      ]
-    },
-    {
       "id": "tui.prev-search-result",
       "label": "Prev search result",
       "group": "TUI",
@@ -8858,27 +8327,6 @@
             "list"
           ]
         }
-      ],
-      "moved": [
-        {
-          "key": "z z",
-          "contexts": [
-            "list",
-            "reader",
-            "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
-          ],
-          "until": "0.6.180"
-        }
       ]
     },
     {
@@ -8896,21 +8344,6 @@
           "contexts": [
             "list"
           ]
-        }
-      ],
-      "moved": [
-        {
-          "key": "L",
-          "contexts": [
-            "sidebar",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive"
-          ],
-          "until": "0.6.180"
         }
       ]
     },

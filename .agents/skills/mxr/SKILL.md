@@ -38,7 +38,7 @@ results, `cat`/`thread` views, summaries, exports).
    flight status, gate, availability, provider policy, claim outcome, or current
    account balance. Check the provider's system for current information.
 3. Message IDs are UUIDs. Get them with `mxr search "<query>" --format ids`.
-4. Batch mutations accept positional IDs, stdin IDs, or `--search "<query>"`; use `--yes` for non-interactive commits.
+4. Batch mutations accept positional IDs, stdin IDs, or `--search "<query>"`; use `--yes` for non-interactive commits. `--search` holds at most the newest 1,000 matches (lexical, newest first); when more match, the dry run and JSON carry `capped: true` and a notice goes to stderr, so tell the user and narrow the query instead of assuming the batch is everything.
 5. Dry-run first for mutations, compose flows, rules, reset, and undo.
 6. Commands auto-start the daemon; use `mxr restart` only when you need a fresh daemon after local code changes.
 7. Compose uses `$EDITOR` unless `--body` or `--body-stdin` is supplied.

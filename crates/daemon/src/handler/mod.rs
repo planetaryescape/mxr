@@ -3561,14 +3561,35 @@ pub(crate) fn render_reply_quoted_text(body: &mxr_core::types::MessageBody) -> S
     }
     if let Some(html) = body.text_html.as_deref() {
         if !html.is_empty() {
-            // plain_no_decorate keeps the pre-0.17 behavior: no
-            // markdown-style emphasis markers in rendered context.
-            return html2text::config::plain_no_decorate()
-                .string_from_read(html.as_bytes(), 80)
-                .unwrap_or_default();
+            return mxr_reader::html_to_plain_text(html, "reply quote");
         }
     }
     String::new()
+}
+
+#[cfg(test)]
+mod reply_quote_tests {
+    use super::render_reply_quoted_text;
+
+    #[test]
+    fn reply_quote_of_a_malformed_table_span_keeps_its_text() {
+        let body = mxr_core::types::MessageBody {
+            message_id: mxr_core::MessageId::new(),
+            text_plain: None,
+            text_html: Some(
+                r#"<table><tr><td colspan="18446744073709551615">A</td><td>B</td></tr></table>"#
+                    .into(),
+            ),
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        };
+        let quoted = render_reply_quoted_text(&body);
+        assert!(
+            quoted.contains('A') && quoted.contains('B'),
+            "got {quoted:?}"
+        );
+    }
 }
 
 /// Memoized render of the reply quoted text for `message_id`. Bodies

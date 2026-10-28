@@ -1,4 +1,5 @@
 use super::{IpcClient, OutputFormat};
+use crate::commands::selection::CappedSelection;
 use crate::output::resolve_format;
 use mxr_protocol::{ArchiveOperationData, Request, Response, ResponseData};
 
@@ -195,6 +196,41 @@ pub(super) fn print_operation(
         }
     }
     Ok(())
+}
+
+/// Prints an archive operation for a selection. A capped `--search` adds
+/// `capped: true` to the JSON object (the operation type is a
+/// protocol type, so the fields are merged in here, not added to it). A
+/// preview says so as well in table output, or on stderr for the formats that
+/// cannot carry fields. A real run already said it before submission.
+pub(super) fn print_selected_operation(
+    operation: &ArchiveOperationData,
+    format: Option<OutputFormat>,
+    capped: Option<CappedSelection>,
+    preview: bool,
+) -> anyhow::Result<()> {
+    let Some(capped) = capped else {
+        return print_operation(operation, format);
+    };
+    let resolved = resolve_format(format.clone());
+    match resolved {
+        OutputFormat::Json | OutputFormat::Jsonl => {
+            let mut value = serde_json::to_value(operation)?;
+            capped.merge_into(&mut value);
+            if matches!(resolved, OutputFormat::Json) {
+                println!("{}", serde_json::to_string_pretty(&value)?);
+            } else {
+                println!("{}", serde_json::to_string(&value)?);
+            }
+            return Ok(());
+        }
+        OutputFormat::Table if preview => println!("{}", capped.notice()),
+        OutputFormat::Ids | OutputFormat::Csv if preview => {
+            capped.announce(&mut std::io::stderr())?;
+        }
+        _ => {}
+    }
+    print_operation(operation, format)
 }
 
 pub(super) fn print_recovery_error(

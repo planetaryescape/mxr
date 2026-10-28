@@ -109,7 +109,7 @@ Two search flows:
 
 - `x`: toggle one row into selection
 - `V`: visual line selection mode. Type a count first to move by that many rows: `V`, `1`, `0`, `j` selects 11 rows
-- `* a`, `* n`: select all or none in the mail list and search results
+- `* a`, `* n`: select all or none in the mail list and search results. These, `x` and `V` also work from the sidebar and the open conversation beside the list, in both the TUI and the web app
 - `* r`, `* u`, `* s`, `* t`: select read, unread, starred, or this thread
 - `Esc`: clear selection
 

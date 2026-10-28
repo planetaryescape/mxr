@@ -924,6 +924,19 @@ impl App {
                 }
             }
             match (key.code, key.modifiers) {
+                // Enter runs the lit option (blueprint 35's overlay grammar).
+                (KeyCode::Enter, _) => {
+                    let send = self
+                        .compose
+                        .pending_send_confirm
+                        .as_ref()
+                        .is_some_and(PendingSend::opens_on_send);
+                    let lit = if send { 's' } else { 'e' };
+                    return self.handle_key_press(crossterm::event::KeyEvent::new(
+                        KeyCode::Char(lit),
+                        KeyModifiers::NONE,
+                    ));
+                }
                 (KeyCode::Char('s'), KeyModifiers::NONE) => {
                     // Send. Suppressed when the safety verdict is
                     // Blocked — the user must use Ctrl-O (with the
@@ -1121,12 +1134,26 @@ impl App {
             return self.arrivals_list_key(key);
         }
 
-        if self.mailbox.sender_kind_menu.is_some() {
+        if let Some(menu) = self.mailbox.sender_kind_menu.as_mut() {
+            let choices = crate::ui::place_lens::SENDER_KIND_CHOICES;
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc, _) | (KeyCode::Char('q'), KeyModifiers::NONE) => {
                     self.mailbox.sender_kind_menu = None;
                     None
                 }
+                // A picker moves with j, k and the arrows, and Enter runs
+                // the lit choice (blueprint 35's overlay grammar).
+                (KeyCode::Char('j') | KeyCode::Down, KeyModifiers::NONE) => {
+                    menu.selected = (menu.selected + 1).min(choices.len() - 1);
+                    None
+                }
+                (KeyCode::Char('k') | KeyCode::Up, KeyModifiers::NONE) => {
+                    menu.selected = menu.selected.saturating_sub(1);
+                    None
+                }
+                (KeyCode::Enter, _) => choices
+                    .get(menu.selected)
+                    .map(|(_, kind, _)| Action::SetSenderKind(*kind)),
                 // A sender's menu: either case picks.
                 (KeyCode::Char(c), modifiers) if plain_or_shift(modifiers) => {
                     let c = c.to_ascii_lowercase();
@@ -1174,11 +1201,16 @@ impl App {
                 (KeyCode::Char('U'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::ConfirmUnsubscribeOnly)
                 }
-                (KeyCode::Char('a'), KeyModifiers::NONE) => {
+                // `e` is Archive's letter (blueprint 35's Pick rule).
+                (KeyCode::Char('e'), KeyModifiers::NONE) => {
                     Some(Action::ConfirmUnsubscribeAndArchiveSender)
                 }
-                (KeyCode::Char('A'), modifiers) if plain_or_shift(modifiers) => {
+                (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::ConfirmUnsubscribeAndArchiveSender)
+                }
+                (KeyCode::Char(c @ ('a' | 'A')), modifiers) if plain_or_shift(modifiers) => {
+                    self.announce_moved("unsubscribe", &c.to_string());
+                    None
                 }
                 // A yes or no question: n is Esc, and q closes too.
                 (KeyCode::Esc | KeyCode::Char('n' | 'q'), _) => Some(Action::CancelUnsubscribe),
@@ -1260,12 +1292,16 @@ impl App {
                     self.not_now_preset(digit as usize - '0' as usize);
                     return None;
                 }
-                (KeyCode::Char('j') | KeyCode::Down, _) => {
+                // Ctrl-n and Ctrl-p move too, as in the web's Not now, whose
+                // letters type a time.
+                (KeyCode::Char('n'), KeyModifiers::CONTROL)
+                | (KeyCode::Char('j') | KeyCode::Down, _) => {
                     self.modals.snooze_panel.selected_index =
                         (self.modals.snooze_panel.selected_index + 1) % total;
                     return None;
                 }
-                (KeyCode::Char('k') | KeyCode::Up, _) => {
+                (KeyCode::Char('p'), KeyModifiers::CONTROL)
+                | (KeyCode::Char('k') | KeyCode::Up, _) => {
                     self.modals.snooze_panel.selected_index = self
                         .modals
                         .snooze_panel
@@ -1297,8 +1333,9 @@ impl App {
                         .selected_url()
                         .map(std::string::ToString::to_string)
                     {
-                        // Copy to clipboard via pbcopy (macOS) or xclip (Linux)
-                        #[cfg(target_os = "macos")]
+                        // Copy to clipboard via pbcopy (macOS) or xclip (Linux);
+                        // tests press `y` without touching the real clipboard.
+                        #[cfg(all(target_os = "macos", not(test)))]
                         {
                             use std::io::Write;
                             if let Ok(mut child) = std::process::Command::new("pbcopy")
@@ -1311,7 +1348,7 @@ impl App {
                                 let _ = child.wait();
                             }
                         }
-                        #[cfg(target_os = "linux")]
+                        #[cfg(all(target_os = "linux", not(test)))]
                         {
                             use std::io::Write;
                             if let Ok(mut child) = std::process::Command::new("xclip")
@@ -1430,7 +1467,9 @@ impl App {
                     self.modals.save_attachment.awaiting_overwrite_confirm = false;
                     return None;
                 }
-                (KeyCode::Char(c), _) => {
+                (KeyCode::Char(c), m)
+                    if !m.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                {
                     self.modals.save_attachment.input.push(c);
                     self.modals.save_attachment.error = None;
                     self.modals.save_attachment.awaiting_overwrite_confirm = false;
@@ -1719,6 +1758,10 @@ impl App {
                 (KeyCode::Char('X'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::OpenMoveMenu)
                 }
+                // Enter only reopened the conversation already open here, and
+                // the web reader leaves Enter to its buttons (blueprint 35's
+                // same keys in both clients).
+                (KeyCode::Enter, _) => None,
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },
@@ -1881,11 +1924,24 @@ impl App {
 
     fn handle_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         // The palette's Ctrl-k, before a screen's `k` (which ignores
-        // modifiers) moves; a text field keeps it.
+        // modifiers) moves; a text field keeps it, and so does an open
+        // overlay (blueprint 35: it owns every key).
         let typing = (self.screen == Screen::Rules && self.rules.page.form.visible)
             || (self.screen == Screen::Accounts && self.accounts.page.form.editing_field)
             || (self.screen == Screen::Search && self.search.page.editing);
-        if key.code == KeyCode::Char('k') && key.modifiers == KeyModifiers::CONTROL && !typing {
+        let page = &self.accounts.page;
+        let overlay = (self.screen == Screen::Rules && self.rules.page.delete_confirm.is_some())
+            || (self.screen == Screen::Analytics && self.modals.analytics_filter.is_some())
+            || (self.screen == Screen::Accounts
+                && (page.resume_new_account_draft_prompt_open
+                    || page.identity_editor.is_some()
+                    || page.active_auth_session.is_some()
+                    || page.form.pending_mode_switch.is_some()));
+        if key.code == KeyCode::Char('k')
+            && key.modifiers == KeyModifiers::CONTROL
+            && !typing
+            && !overlay
+        {
             return Some(Action::OpenCommandPalette);
         }
         match self.screen {
@@ -2675,23 +2731,26 @@ impl App {
             return None;
         }
 
+        // "Resume draft" is lit and "Discard draft" is named (blueprint 35's
+        // Destroy rule): only `y`, or Enter on "Discard draft", throws the
+        // form away. `n`, Esc and `q` keep it for later.
         if self.accounts.page.resume_new_account_draft_prompt_open {
-            return match (key.code, key.modifiers) {
-                (KeyCode::Enter | KeyCode::Char('c'), _) => {
-                    self.restore_new_account_form_draft();
-                    None
-                }
-                (KeyCode::Char('n'), _) => {
-                    self.accounts.page.new_account_draft = None;
-                    self.open_new_account_form();
-                    None
-                }
-                (KeyCode::Esc, _) => {
-                    self.accounts.page.resume_new_account_draft_prompt_open = false;
-                    None
-                }
-                _ => None,
-            };
+            let choice = &mut self.accounts.page.resume_draft_choice;
+            match key.code {
+                KeyCode::Char('c') => self.restore_new_account_form_draft(),
+                KeyCode::Enter if !choice.on_action => self.restore_new_account_form_draft(),
+                code => match choice.key(code) {
+                    ConfirmKey::Confirm => {
+                        self.accounts.page.new_account_draft = None;
+                        self.open_new_account_form();
+                    }
+                    ConfirmKey::Keep => {
+                        self.accounts.page.resume_new_account_draft_prompt_open = false;
+                    }
+                    ConfirmKey::Moved | ConfirmKey::Ignored => {}
+                },
+            }
+            return None;
         }
 
         if self.accounts.page.identity_editor.is_some() {

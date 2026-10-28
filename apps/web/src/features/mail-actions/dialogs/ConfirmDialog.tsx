@@ -42,7 +42,7 @@ export function ConfirmDialog({
   const preview = target.rows.slice(0, 6);
   return (
     <AlertDialog open onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent>
+      <AlertDialogContent yesNo>
         <AlertDialogHeader>
           <AlertDialogTitle>
             {verb} {plural(target.conversations, "conversation")}?

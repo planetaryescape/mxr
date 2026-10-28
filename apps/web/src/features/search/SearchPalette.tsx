@@ -13,6 +13,7 @@ import { isComposingKey } from "@/lib/keys/composition";
 import { runReplaceableQuery } from "@/lib/requestCoordinator";
 import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 export function SearchPalette() {
   const navigate = useNavigate();
@@ -89,24 +90,25 @@ export function SearchPalette() {
 
   function handleKeyDown(event: KeyboardEvent) {
     if (isComposingKey(event)) return;
-    if (event.key === "ArrowDown" || (event.ctrlKey && event.key.toLowerCase() === "j")) {
+    if (pressedOverlayKey(event, "search-palette.down")) {
       event.preventDefault();
       event.stopPropagation();
       move(1);
-    } else if (event.key === "ArrowUp" || (event.ctrlKey && event.key.toLowerCase() === "k")) {
+    } else if (pressedOverlayKey(event, "search-palette.up")) {
       event.preventDefault();
       event.stopPropagation();
       move(-1);
-    } else if (event.key === "Enter") {
+    } else if (pressedOverlayKey(event, "search-palette.all")) {
+      // Mod+Enter always opens the full search page, even when a quick
+      // result is highlighted.
       event.preventDefault();
       event.stopPropagation();
-      // Cmd/Ctrl+Enter always opens the full search page, even when a
-      // quick result is highlighted. Plain Enter opens the highlighted
-      // result (or falls back to full search when nothing is selected).
-      if (event.metaKey || event.ctrlKey) {
-        goToSearch();
-        return;
-      }
+      goToSearch();
+    } else if (pressedOverlayKey(event, "search-palette.open")) {
+      event.preventDefault();
+      event.stopPropagation();
+      // Enter opens the highlighted result, or falls back to full search
+      // when nothing is selected.
       const row = activeIndex >= 0 ? rows[activeIndex] : undefined;
       if (row) openRow(row);
       else goToSearch();

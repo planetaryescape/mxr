@@ -7,6 +7,8 @@
 import { parseChord } from "@/lib/keys/chord";
 
 import "./catalog";
+import { isOverlayKey, type DefinedAction } from "./definition";
+import keymap from "./keymap.generated.json";
 import { chordsOf, getRegistry, scopesOf } from "./registry";
 import type { Action, ActionScope } from "./types";
 
@@ -28,9 +30,23 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
       "In the mail list they act on the selection or the row under the cursor; in the reader, on the open conversation.",
     match: isMailAction,
   },
-  { title: "Mail list", intro: "", match: (action) => inScope(action, "list") },
-  { title: "Reader", intro: "", match: (action) => inScope(action, "reader") },
-  { title: "Sidebar", intro: "", match: (action) => inScope(action, "sidebar") },
+  {
+    title: "Mail list",
+    intro: "With a conversation open beside the list, the reader's view keys work from here too.",
+    match: (action) => inScope(action, "list"),
+  },
+  {
+    title: "Reader",
+    intro: "Selection and filter keys act on the mail list beside the reader.",
+    match: (action) => inScope(action, "reader"),
+  },
+  {
+    title: "Sidebar",
+    intro:
+      "Keys for the mail list and the reader reach them from here, as in the TUI: mail verbs act on the list's selection or its lit row.",
+    // Every key that works from the sidebar, mail verbs included.
+    match: (action) => scopesOf(action).includes("sidebar"),
+  },
   {
     title: "Page controls",
     intro:
@@ -93,6 +109,120 @@ const SECTIONS: { title: string; intro: string; match: (action: Action) => boole
   },
 ];
 
+/**
+ * The dialogs, in page order. An open dialog owns every key and reads its
+ * own from the key definition (`isOverlayKey`), so these keys are no
+ * registry binding; their tables come from the definition itself.
+ */
+const OVERLAYS: { scope: string; title: string; intro: string }[] = [
+  { scope: "help", title: "Help", intro: "`?` opens it. Letters type into its filter." },
+  {
+    scope: "palette",
+    title: "Command palette",
+    intro: "`⌘K` / `Ctrl+K` or `:` opens it. Letters type into its filter.",
+  },
+  {
+    scope: "search-palette",
+    title: "Search palette",
+    intro: "`/` opens it. Letters type the search.",
+  },
+  {
+    scope: "label-picker",
+    title: "Labels",
+    intro: "`l` labels and `v` moves. Letters type into its filter, and `Enter` ticks a label.",
+  },
+  { scope: "links", title: "Links", intro: "`L` opens it." },
+  { scope: "unsubscribe", title: "Unsubscribe", intro: "`D` opens it." },
+  {
+    scope: "move-picker",
+    title: "Move to",
+    intro: "`X` moves this email; a capital moves everything from its sender.",
+  },
+  {
+    scope: "move-picker-sender",
+    title: "Move the sender to",
+    intro: "`P` moves everything from the sender. Either case picks.",
+  },
+  {
+    scope: "new-sender-picker",
+    title: "Move to: a new sender",
+    intro:
+      "`X` or `P` on a new sender: a capital answers its question (from `P`, either case does).",
+  },
+  {
+    scope: "sender-kind-picker",
+    title: "Move sender to",
+    intro: "`P` in Reading. Either case picks.",
+  },
+  {
+    scope: "not-now",
+    title: "Not now",
+    intro: "`b` opens it on Later. Letters type a time of your own.",
+  },
+  { scope: "correct-todo", title: "Correct a to-do", intro: "`X` on a to-do." },
+  { scope: "sender-ask", title: "Always for this sender?", intro: "After a Not-sure answer." },
+  {
+    scope: "reply-later",
+    title: "Reply later",
+    intro:
+      "Letters type when to bring it back; with nothing typed, `Enter` flags it for reply later.",
+  },
+  {
+    scope: "delete-confirm",
+    title: "Delete confirms",
+    intro:
+      "Deleting a draft, rule, saved search or label. It opens on Keep, so a bare `Enter` deletes nothing.",
+  },
+  {
+    scope: "bulk-confirm",
+    title: "Bulk action preview",
+    intro: "A batch action over many conversations shows them first.",
+  },
+  {
+    scope: "sweep-confirm",
+    title: "Sweep preview",
+    intro: "Sweeping a sender or a whole place. A whole place's sweep opens on Cancel.",
+  },
+  {
+    scope: "let-go-preview",
+    title: "Let go preview",
+    intro: "Letting go of everything in To do's catch-up or in Updates.",
+  },
+  {
+    scope: "send-confirm",
+    title: "Send confirm",
+    intro: "When the safety check found something. It opens on Cancel.",
+  },
+  {
+    scope: "compose-discard",
+    title: "Discard draft",
+    intro: "Discarding a draft from the composer. It opens on Keep.",
+  },
+];
+
+/** The definition's keys for the web's dialogs, by dialog. */
+function overlayActions(scope: string): DefinedAction[] {
+  return (keymap.action as DefinedAction[]).filter(
+    (action) =>
+      (!action.clients || action.clients.includes("web")) &&
+      isOverlayKey(action) &&
+      (action.keys?.length ?? 0) > 0 &&
+      action.scopes?.includes(scope),
+  );
+}
+
+/** Dialogs with web keys that no table lists. */
+export function undocumentedOverlays(): string[] {
+  const scopes = new Set(
+    (keymap.action as DefinedAction[])
+      .filter(
+        (action) => (!action.clients || action.clients.includes("web")) && isOverlayKey(action),
+      )
+      .flatMap((action) => action.scopes ?? []),
+  );
+  return [...scopes].filter((scope) => !OVERLAYS.some((overlay) => overlay.scope === scope));
+}
+
 function isGlobal(action: Action): boolean {
   return scopesOf(action).includes("global");
 }
@@ -101,7 +231,9 @@ function isGoTo(action: Action): boolean {
   return action.id.startsWith("nav.");
 }
 
+/** A mail verb: in both the list and the reader, and not a pane's own key. */
 function isMailAction(action: Action): boolean {
+  if (action.id.startsWith("list.") || action.id.startsWith("reader.")) return false;
   return scopesOf(action).includes("list") && scopesOf(action).includes("reader");
 }
 
@@ -166,6 +298,28 @@ export function renderKeybindingsMarkdown(): string {
         .map((chord) => `\`${escapeCell(docChord(chord))}\``)
         .join(", ");
       out.push(`| ${keys} | ${escapeCell(action.label)} | ${escapeCell(action.tuiNote ?? "")} |`);
+    }
+    out.push("");
+  }
+  out.push(
+    "### Dialogs",
+    "",
+    "An open dialog takes every key until it closes. `Esc` closes any of them without changing anything, and so does `q` where nothing is typed; `Enter` presses the highlighted button, and in a yes-or-no question `y` is yes and `n` is no.",
+    "",
+  );
+  for (const overlay of OVERLAYS) {
+    const rows = overlayActions(overlay.scope);
+    if (rows.length === 0) continue;
+    out.push(`#### ${overlay.title}`, "");
+    if (overlay.intro) out.push(overlay.intro, "");
+    out.push("| Key | Action | Note |", "|-----|--------|------|");
+    for (const action of rows) {
+      const keys = [
+        ...(action.keys ?? []).map((chord) => `\`${escapeCell(docChord(chord))}\``),
+        ...(action.mac_keys ?? []).map((chord) => `\`${escapeCell(docChord(chord))}\` (macOS)`),
+      ].join(", ");
+      const note = action.note ?? (action.web_native ? "The browser's own key" : "");
+      out.push(`| ${keys} | ${escapeCell(action.label)} | ${escapeCell(note)} |`);
     }
     out.push("");
   }

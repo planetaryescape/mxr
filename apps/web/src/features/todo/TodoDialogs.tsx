@@ -41,6 +41,7 @@ import {
   previewLetGoAll,
   scheduleRow,
 } from "./todoVerbs";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 /**
  * Not now in To do (`b`): show the row on your own day. The Not-now picker
@@ -276,10 +277,10 @@ export function LetGoAllDialog({
         onKeyDown={(event) => {
           if (event.ctrlKey || event.metaKey || event.altKey) return;
           // A preview's yes or no, as in the TUI (blueprint 35).
-          if (event.key === "y" && rows.length > 0) {
+          if (pressedOverlayKey(event, "overlay.yes") && rows.length > 0) {
             event.preventDefault();
             commit();
-          } else if (event.key === "n") {
+          } else if (pressedOverlayKey(event, "overlay.no")) {
             event.preventDefault();
             onClose();
           }

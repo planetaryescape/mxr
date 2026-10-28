@@ -10,6 +10,8 @@
 //! - a `[[tui_pass_through]]` entry lets the key reach a pane beside the
 //!   focused one in the TUI, where it does what both clients do there.
 //!
+//! The overlays both clients have are compared the same way.
+//!
 //! The web's `Mod` is the TUI's `Ctrl`, so `Mod+k` and `Ctrl+k` are one key.
 
 use crate::{Client, KeyAction, Keymap, TuiBinding};
@@ -30,6 +32,25 @@ const SHARED_PLACES: [(&str, &[&str]); 10] = [
     ("reading", &["reading", "global"]),
     // The TUI's screener is a modal that takes every key.
     ("screener", &["screener"]),
+];
+
+/// The overlays both clients have, with the same grammar. An overlay owns
+/// every key while it is open, so only its own keys are live there. Help,
+/// the palette, the label picker, Categories and Reply later are filter
+/// lists on the web, where letters type, and the web's bulk and sweep
+/// previews are two-button dialogs while the TUI's are scrolling sheets, so
+/// those are listed per client and not compared.
+const SHARED_OVERLAYS: [&str; 10] = [
+    "links",
+    "unsubscribe",
+    "move-picker",
+    "move-picker-sender",
+    "new-sender-picker",
+    "sender-kind-picker",
+    "correct-todo",
+    "not-now",
+    "delete-confirm",
+    "sender-ask",
 ];
 
 /// Keys TUI defaults never use, because a terminal sends something else
@@ -164,7 +185,10 @@ impl Keymap {
         let mut problems = Vec::new();
         let mut used_passes = BTreeSet::new();
         let mut unexplained_one_client = BTreeSet::new();
-        for (place, scopes) in SHARED_PLACES {
+        let overlays = SHARED_OVERLAYS
+            .iter()
+            .map(|overlay| (*overlay, std::slice::from_ref(overlay)));
+        for (place, scopes) in SHARED_PLACES.into_iter().chain(overlays) {
             let web = self.web_keys_in(scopes);
             let tui = self.tui_keys_in(place);
             let keys: BTreeSet<&String> = web.keys().chain(tui.keys()).collect();

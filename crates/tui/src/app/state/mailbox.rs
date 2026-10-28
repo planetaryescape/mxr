@@ -540,6 +540,8 @@ pub struct SenderKindMenu {
     pub sender_email: String,
     pub display: String,
     pub current: mxr_protocol::MailKindData,
+    /// The highlighted choice, which Enter runs.
+    pub selected: usize,
 }
 
 #[derive(Debug, Clone, Default)]

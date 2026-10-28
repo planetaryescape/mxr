@@ -29,9 +29,10 @@ impl App {
     /// results, or the plain message list with its pane focused.
     pub(super) fn pattern_select_applies(&self) -> bool {
         self.screen == Screen::Search
+            // From the sidebar and the reader too: both sit beside the list,
+            // and the web's `*` reaches the list from them the same way.
             || (self.screen == Screen::Mailbox
-                && self.mailbox.mailbox_view == MailboxView::Messages
-                && self.mailbox.active_pane == ActivePane::MailList)
+                && self.mailbox.mailbox_view == MailboxView::Messages)
     }
 
     /// Without this, `*a` or `V` in one label and then `gs` would leave the

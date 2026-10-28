@@ -19,7 +19,7 @@ expression: rendered
 "        │       cite msg=msg-99 field=body                                                                     │        "
 "        │                                                                                                      │        "
 "        │[s] send   [a] send at   [n] remind   [d] save draft                                                  │        "
-"        │[r] draft for me   [e/Esc] edit again   [#] discard draft                                             │        "
+"        │[r] draft for me   › [e/Esc] edit again   [#] discard draft                                           │        "
 "        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯        "
 "                                                                                                                        "
 "                                                                                                                        "

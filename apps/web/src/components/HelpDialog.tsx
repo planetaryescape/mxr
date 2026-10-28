@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { ModeHelp, modeOfScopes } from "@/features/modes/ModeHelp";
 import { type ShortcutHint, useActionContext, useShortcutSections } from "@/lib/actions";
 import { useKeymapStore } from "@/state/keymapStore";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 interface HelpDialogProps {
   open: boolean;
@@ -88,7 +89,9 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
           // `?` opened help, so it closes it while nothing is typed
           // (blueprint 35's toggle); in a filter it types.
           onKeyDown={(event) => {
-            if (event.key !== "?" || query !== "") return;
+            // Esc closes the dialog itself; `?` closes it only from here.
+            if (event.key === "Escape" || !pressedOverlayKey(event, "help.close")) return;
+            if (query !== "") return;
             event.preventDefault();
             onOpenChange(false);
           }}

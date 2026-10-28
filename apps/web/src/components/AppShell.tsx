@@ -29,6 +29,7 @@ import { useComposeUi } from "@/features/compose/composeUiStore";
 import { useNewMessageEvent } from "@/features/compose/useNewMessageEvent";
 import { useMailDialogs } from "@/features/mail-actions/mailDialogStore";
 import { usePromiseOffers } from "@/features/promises/promiseOffers";
+import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 import { routeTitleForPath } from "@/lib/routePresentation";
@@ -248,7 +249,16 @@ export function AppShell() {
                   <header className="app-shell-topbar">
                     <Topbar />
                   </header>
-                  <main id="main" className="app-shell-main">
+                  {/* A press in a page takes the keys back from the sidebar
+                      (`h` gave it them); the list and reader name themselves. */}
+                  <main
+                    id="main"
+                    className="app-shell-main"
+                    onMouseDown={() => {
+                      const pane = useMailboxPane.getState();
+                      if (pane.activePane === "sidebar") pane.setActivePane("mailbox");
+                    }}
+                  >
                     <RecoveryNotice />
                     <OfflineBanner />
                     <ErrorBoundary resetKey={path}>

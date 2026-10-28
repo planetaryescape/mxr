@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { UnsubscribePurgeResponse } from "@/features/mailbox/api";
 import type { MessageRowView } from "@/features/mailbox/types";
+import { useKeyScope } from "@/state/keyScopeStore";
 import { useUndo } from "@/state/undoStore";
 
 import { targetFromRows } from "../target";
@@ -111,14 +112,14 @@ describe("UnsubscribeDialog", () => {
     });
   });
 
-  test("a archives everything from the sender, with undo", async () => {
+  test("e archives everything from the sender, with undo", async () => {
     api.unsubscribeAndClearSender
       .mockResolvedValueOnce(preview())
       .mockResolvedValueOnce(preview({ archived_count: 12, mutation_id: "mut-7" }));
     renderDialog();
     await screen.findByText("Unsubscribe and archive 12 messages");
 
-    press("a");
+    press("e");
 
     expect(onClose).toHaveBeenCalled();
     expect(onDone).toHaveBeenCalled();
@@ -153,14 +154,29 @@ describe("UnsubscribeDialog", () => {
     );
   });
 
-  test("a waits for the preview before archiving", async () => {
+  test("e waits for the preview before archiving", async () => {
     api.unsubscribeAndClearSender.mockReturnValue(new Promise(() => undefined));
     renderDialog();
+
+    press("e");
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(api.unsubscribeAndClearSender).toHaveBeenCalledTimes(1);
+  });
+
+  test("a, archive's old letter, says where it went and archives nothing", async () => {
+    api.unsubscribeAndClearSender.mockResolvedValue(preview());
+    renderDialog();
+    await screen.findByText("Unsubscribe and archive 12 messages");
 
     press("a");
 
     expect(onClose).not.toHaveBeenCalled();
     expect(api.unsubscribeAndClearSender).toHaveBeenCalledTimes(1);
+    expect(useKeyScope.getState().moved).toEqual({
+      label: "Unsubscribe and archive their mail",
+      key: "e",
+    });
   });
 
   test("a sender with no unsubscribe method says archiving is all it does", async () => {
@@ -170,7 +186,7 @@ describe("UnsubscribeDialog", () => {
     renderDialog();
 
     expect(await screen.findByText(/No unsubscribe link found/)).toBeVisible();
-    press("a");
+    press("e");
 
     expect(api.unsubscribeAndClearSender).toHaveBeenLastCalledWith(
       expect.objectContaining({ archiveOnNoMethod: true }),

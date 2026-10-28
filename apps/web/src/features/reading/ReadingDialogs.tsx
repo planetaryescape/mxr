@@ -20,6 +20,7 @@ import { plural } from "@/lib/format";
 import type { ReadingSource } from "./api";
 import { unsubscribeMethodLine, unsubscribePreview } from "./readingView";
 import { letGo, refreshReading } from "./readingVerbs";
+import { announceMovedOverlayKey, optionLetter, pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 const IRREVERSIBLE = "This can't be undone from mxr; you'd resubscribe on their site.";
 
@@ -97,16 +98,18 @@ export function ReadingUnsubscribeDialog({
         onKeyDown={(event) => {
           // Enter on a focused button is that button's click, not a shortcut.
           if (event.key === "Enter" && event.target instanceof HTMLButtonElement) return;
-          if (event.key === "u" || event.key === "Enter") {
+          if (pressedOverlayKey(event, "unsubscribe.confirm")) {
             event.preventDefault();
             void commitUnsubscribe(false);
-          } else if (event.key === "a") {
+          } else if (pressedOverlayKey(event, "unsubscribe.and-archive")) {
             event.preventDefault();
             void commitUnsubscribe(true);
-          } else if (event.key === "n") {
+          } else if (pressedOverlayKey(event, "overlay.no")) {
             // n is Esc, as in the TUI (blueprint 35).
             event.preventDefault();
             onClose();
+          } else if (announceMovedOverlayKey(event, "unsubscribe")) {
+            event.preventDefault();
           }
         }}
       >
@@ -153,7 +156,7 @@ export function ReadingUnsubscribeDialog({
                 Just unsubscribe — keep what you have
               </span>
             </span>
-            <KeyChip>u</KeyChip>
+            <KeyChip>{optionLetter("unsubscribe.confirm")}</KeyChip>
           </button>
           <button
             type="button"
@@ -173,7 +176,7 @@ export function ReadingUnsubscribeDialog({
                 Marks them read and archives them
               </span>
             </span>
-            <KeyChip>a</KeyChip>
+            <KeyChip>{optionLetter("unsubscribe.and-archive")}</KeyChip>
           </button>
         </div>
         <DialogFooter>

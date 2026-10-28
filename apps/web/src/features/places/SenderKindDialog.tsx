@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import type { MailKind } from "./api";
 import { KIND_LABELS, KIND_OPTIONS, kindOptionForKey, type KindOption } from "./placeCopy";
 import { correctSender } from "./senderKind";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 /**
  * "Move sender to…": one key per place, on the `g` letters. The current kind is marked; when
@@ -50,11 +51,12 @@ export function SenderKindDialog({
           if (event.metaKey || event.ctrlKey || event.altKey) return;
           // j, k and the arrows move the highlight; Enter (the focused
           // button) runs it, as in every picker (blueprint 35).
-          if (["j", "k", "ArrowDown", "ArrowUp"].includes(event.key)) {
+          const down = pressedOverlayKey(event, "overlay.down");
+          if (down || pressedOverlayKey(event, "overlay.up")) {
             event.preventDefault();
             const options = [...event.currentTarget.querySelectorAll<HTMLElement>("li > button")];
             const at = options.indexOf(document.activeElement as HTMLElement);
-            const delta = event.key === "j" || event.key === "ArrowDown" ? 1 : -1;
+            const delta = down ? 1 : -1;
             const next = at < 0 ? 0 : Math.min(options.length - 1, Math.max(0, at + delta));
             options[next]?.focus();
             return;

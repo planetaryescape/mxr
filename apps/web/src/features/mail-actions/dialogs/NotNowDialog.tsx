@@ -19,6 +19,8 @@ import { useNaturalTime } from "@/features/time/useNaturalTime";
 import { formatLongDate } from "@/lib/format";
 
 import type { NotNowPicker } from "../notNow";
+import { definedKeys } from "@/lib/actions/definition";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 /** Marks the options ArrowUp and ArrowDown step through. */
 const OPTION = "data-not-now-option";
@@ -41,6 +43,7 @@ export function NotNowDialog({ picker, onClose }: { picker: NotNowPicker; onClos
     staleTime: 0,
   });
   const choices = (presets.data?.presets ?? []).filter(isDisplayablePreset);
+  const presetKeys = definedKeys("not-now.preset");
 
   // With no Later, the first preset is the highlighted option once it loads,
   // unless focus already moved somewhere of its own.
@@ -110,20 +113,17 @@ export function NotNowDialog({ picker, onClose }: { picker: NotNowPicker; onClos
         }}
         onKeyDown={(event) => {
           if (event.target instanceof HTMLInputElement) return;
-          const ctrlStep =
-            event.ctrlKey &&
-            !event.metaKey &&
-            !event.altKey &&
-            (event.key === "n" || event.key === "p");
-          if (event.key === "ArrowDown" || event.key === "ArrowUp" || ctrlStep) {
+          const down = pressedOverlayKey(event, "overlay.filter-down");
+          if (down || pressedOverlayKey(event, "overlay.filter-up")) {
             event.preventDefault();
-            step(event.key === "ArrowDown" || event.key === "n" ? 1 : -1);
+            step(down ? 1 : -1);
             return;
           }
           if (event.metaKey || event.ctrlKey || event.altKey) return;
-          if (/^[1-9]$/.test(event.key)) {
+          const nth = definedKeys("not-now.preset").indexOf(event.key);
+          if (nth >= 0) {
             event.preventDefault();
-            const preset = choices[Number(event.key) - 1];
+            const preset = choices[nth];
             if (preset) void pickPreset(preset);
             return;
           }
@@ -184,7 +184,7 @@ export function NotNowDialog({ picker, onClose }: { picker: NotNowPicker; onClos
                       </span>
                     ) : null}
                   </span>
-                  {index < 9 ? <KeyChip>{index + 1}</KeyChip> : null}
+                  {presetKeys[index] ? <KeyChip>{presetKeys[index]}</KeyChip> : null}
                 </button>
               );
             })}

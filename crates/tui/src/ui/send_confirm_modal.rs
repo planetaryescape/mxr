@@ -168,6 +168,12 @@ fn modal_lines(
         Some(DraftSafetyVerdict::Blocked)
     );
 
+    // `›` marks the option a bare Enter runs, as in every confirm.
+    let (send, edit) = if pending.opens_on_send() {
+        ("\u{203a} [s] send", "[e/Esc] edit again")
+    } else {
+        ("[s] send", "\u{203a} [e/Esc] edit again")
+    };
     match pending.mode {
         PendingSendMode::SendOrSave if blocked => {
             let override_action = if pending.override_token.is_some() {
@@ -175,19 +181,19 @@ fn modal_lines(
             } else {
                 ""
             };
-            lines.push(format!(
-                "[e/Esc] edit again{override_action}   [#] discard draft"
-            ));
+            lines.push(format!("{edit}{override_action}   [#] discard draft"));
         }
         PendingSendMode::SendOrSave => {
-            lines.push("[s] send   [a] send at   [n] remind   [d] save draft".to_string());
-            lines.push("[r] draft for me   [e/Esc] edit again   [#] discard draft".to_string());
+            lines.push(format!(
+                "{send}   [a] send at   [n] remind   [d] save draft"
+            ));
+            lines.push(format!("[r] draft for me   {edit}   [#] discard draft"));
         }
         PendingSendMode::DraftOnlyNoRecipients => {
-            lines.push("[d] save draft   [e/Esc] edit again   [#] discard draft".to_string());
+            lines.push(format!("[d] save draft   {edit}   [#] discard draft"));
         }
         PendingSendMode::Unchanged => {
-            lines.push("[e/Esc] edit again   [#] discard draft".to_string());
+            lines.push(format!("{edit}   [#] discard draft"));
         }
     }
     lines
@@ -397,7 +403,7 @@ mod tests {
         assert!(rendered.contains("Subject: Hello"));
         assert!(rendered.contains("Voice match: not scored for manual edits"));
         assert!(rendered.contains("Humanizer: scored on AI draft outputs"));
-        assert!(rendered.contains("[s] send   [a] send at   [n] remind   [d] save draft"));
+        assert!(rendered.contains("\u{203a} [s] send   [a] send at   [n] remind   [d] save draft"));
         assert!(rendered.contains("[r] draft for me"));
         assert!(rendered.contains("[#] discard draft"));
     }
@@ -424,7 +430,7 @@ mod tests {
         });
         assert!(rendered.contains("Safety: BLOCKED"));
         assert!(rendered.contains("Fill in the meeting time"));
-        assert!(rendered.contains("[e/Esc] edit again"));
+        assert!(rendered.contains("\u{203a} [e/Esc] edit again"));
         assert!(!rendered.contains("[s] send"));
         assert!(!rendered.contains("[O] override + send"));
     }
@@ -503,7 +509,9 @@ mod tests {
         });
 
         assert!(rendered.contains("No recipients yet. Save as draft?"));
-        assert!(rendered.contains("[d] save draft   [e/Esc] edit again   [#] discard draft"));
+        assert!(
+            rendered.contains("[d] save draft   \u{203a} [e/Esc] edit again   [#] discard draft")
+        );
         assert!(!rendered.contains("[s] send"));
     }
 
@@ -540,7 +548,7 @@ mod tests {
 
         assert!(rendered.contains("Safety: SAFE"));
         assert!(rendered.contains("no issues"));
-        assert!(rendered.contains("[s] send"));
+        assert!(rendered.contains("\u{203a} [s] send"));
         assert!(!rendered.contains("override"));
         // Snapshot lock: any visible drift forces an insta review.
         // The contains asserts above catch specific removals; the
@@ -691,7 +699,7 @@ mod tests {
         assert!(rendered.contains("Safety: SAFE"));
         assert!(!rendered.contains("BLOCKED"));
         assert!(!rendered.contains("Override token:"));
-        assert!(rendered.contains("[s] send"));
+        assert!(rendered.contains("\u{203a} [s] send"));
         insta::assert_snapshot!("safety_modal_after_edit_rerun", rendered);
     }
 
@@ -711,7 +719,7 @@ mod tests {
         });
 
         assert!(rendered.contains("Draft unchanged. Discard or keep editing?"));
-        assert!(rendered.contains("[e/Esc] edit again   [#] discard draft"));
+        assert!(rendered.contains("\u{203a} [e/Esc] edit again   [#] discard draft"));
         assert!(!rendered.contains("[s] send"));
         assert!(!rendered.contains("[d] save draft"));
     }

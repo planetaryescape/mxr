@@ -313,7 +313,7 @@ function RuleEditor({ id, saved }: { id: string; saved: RuleForm | null }) {
       }
     >
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent yesNo>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {saved?.name}?</AlertDialogTitle>
             <AlertDialogDescription>

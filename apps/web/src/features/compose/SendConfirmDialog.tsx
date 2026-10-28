@@ -26,6 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { ComposeFrontmatter, DraftSafetyReport, SuggestedCollaborator } from "./api";
 import { splitAddresses } from "./session/composeDraft";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 interface SendConfirmDialogProps {
   open: boolean;
@@ -85,34 +86,27 @@ export function SendConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent
         onKeyDown={(event) => {
-          const plain = !event.ctrlKey && !event.metaKey && !event.altKey;
           // Enter on Cancel keeps its own meaning (blueprint 35: Enter runs
           // the highlighted option).
           const onCancel =
             event.target instanceof Element && event.target.closest("[data-send-cancel]");
           if (
-            (event.key === "Enter" && !event.shiftKey && !onCancel) ||
-            (plain && event.key === "y")
+            (pressedOverlayKey(event, "overlay.run") && !onCancel) ||
+            pressedOverlayKey(event, "overlay.yes")
           ) {
             event.preventDefault();
             if (canSend) confirm(overridden);
             return;
           }
           // A yes or no question: n is Esc.
-          if (plain && event.key === "n") {
+          if (pressedOverlayKey(event, "overlay.no")) {
             event.preventDefault();
             onOpenChange(false);
             return;
           }
           // The dialog traps focus and holds no text field, so a bare letter
           // is safe, and Ctrl+O is the browser's Open File.
-          if (
-            overridable &&
-            !event.ctrlKey &&
-            !event.metaKey &&
-            !event.altKey &&
-            event.key.toLowerCase() === "o"
-          ) {
+          if (overridable && pressedOverlayKey(event, "send-confirm.override")) {
             event.preventDefault();
             setOverridden(true);
             confirm(true);

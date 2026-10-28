@@ -104,6 +104,8 @@ pub struct AccountsPageState {
     pub onboarding_modal_open: bool,
     pub new_account_draft: Option<AccountFormState>,
     pub resume_new_account_draft_prompt_open: bool,
+    /// The resume prompt's lit option: "Resume draft", or "Discard draft".
+    pub resume_draft_choice: super::ConfirmChoice,
     pub form: AccountFormState,
     /// In-flight Outlook device-code session; shown as overlay while user completes browser auth.
     pub active_auth_session: Option<mxr_protocol::AuthSessionData>,

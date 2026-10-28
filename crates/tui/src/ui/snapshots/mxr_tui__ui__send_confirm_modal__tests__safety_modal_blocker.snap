@@ -19,7 +19,7 @@ expression: rendered
 "        │Override token: tok-abc-123                                                                           │        "
 "        │Press O to override and send (single use).                                                            │        "
 "        │                                                                                                      │        "
-"        │[e/Esc] edit again   [O] override + send   [#] discard draft                                          │        "
+"        │› [e/Esc] edit again   [O] override + send   [#] discard draft                                        │        "
 "        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯        "
 "                                                                                                                        "
 "                                                                                                                        "

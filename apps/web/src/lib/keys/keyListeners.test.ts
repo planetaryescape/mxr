@@ -97,6 +97,10 @@ const ALLOWED = {
   },
 
   // Overlays that print their option letters, or close on Esc.
+  "components/ui/alert-dialog.tsx": {
+    rule: "overlay with its own letters",
+    why: "a yes-or-no confirm's y and n, read from the key definition",
+  },
   "components/RightRail.tsx": {
     rule: "overlay with its own letters",
     why: "Esc closes the rail before it reaches the conversation underneath",

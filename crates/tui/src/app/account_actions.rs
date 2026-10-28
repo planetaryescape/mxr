@@ -9,6 +9,7 @@ impl App {
             Action::OpenAccountFormNew => {
                 if self.accounts.page.new_account_draft.is_some() {
                     self.accounts.page.resume_new_account_draft_prompt_open = true;
+                    self.accounts.page.resume_draft_choice = ConfirmChoice::default();
                     self.accounts.page.onboarding_modal_open = false;
                     self.screen = Screen::Accounts;
                     return;

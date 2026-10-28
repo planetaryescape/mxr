@@ -439,11 +439,19 @@ fn assert_search_help_matches_dispatch(source: &str, archive_key: char) {
             "missing effective archive key in {pane:?}: {lines:?}"
         );
         if archive_key != 'e' {
+            // The label column, not the Move picker's "Move this email to Archive".
+            let label = |line: &str| {
+                line.split("  ")
+                    .map(str::trim)
+                    .filter(|part| !part.is_empty())
+                    .nth(1)
+                    .map(str::to_string)
+            };
             assert!(
                 !lines
                     .iter()
                     .any(|line| line.split_whitespace().next() == Some("e")
-                        && line.contains("Archive")),
+                        && label(line).as_deref() == Some("Archive")),
                 "retired e must not be advertised: {lines:?}"
             );
         }

@@ -182,6 +182,68 @@ describe("invokeAction", () => {
   });
 });
 
+describe("a key pressed beside the pane that owns it", () => {
+  test("reaches the action's own pane when that pane sits beside the focused one", () => {
+    const reg = new ActionRegistry();
+    const toggle = vi.fn<() => void>();
+    const select = command("list.toggle-select", "toggleSelect", "x", [
+      "list",
+      "reader",
+      "sidebar",
+    ]);
+    reg.define(select);
+    setController("reader", { scrollDown: () => {} });
+    setController("sidebar", { down: () => {} });
+
+    // No list mounted: the key can't be swallowed by a pane that can't run it.
+    expect(reg.resolve("x", ["reader", "global"])).toBeUndefined();
+
+    setController("list", { toggleSelect: toggle });
+    expect(reg.resolve("x", ["reader", "global"])?.action.id).toBe("list.toggle-select");
+    invokeAction(select, ctx(["reader", "global"]), "key");
+    invokeAction(select, ctx(["sidebar", "global"]), "key");
+    expect(toggle).toHaveBeenCalledTimes(2);
+  });
+
+  test("the list reaches the reader beside it, and the sidebar reaches both", () => {
+    const fullscreen = vi.fn<() => void>();
+    setController("list", {});
+    setController("reader", { fullscreen });
+    const wide = command("reader.fullscreen", "fullscreen", "F", ["reader", "list", "sidebar"]);
+    invokeAction(wide, ctx(["list", "global"]), "key");
+    invokeAction(wide, ctx(["sidebar", "global"]), "key");
+    expect(fullscreen).toHaveBeenCalledTimes(2);
+  });
+
+  test("a pane's own command wins, and only the action's own pane is reached", () => {
+    const listArchive = vi.fn<() => void>();
+    const readerArchive = vi.fn<() => void>();
+    setController("list", { archive: listArchive });
+    setController("reader", { archive: readerArchive });
+    // A read-only list has no archive; the reader beside it isn't archive's own pane.
+    const archive = command("mail.archive", "archive", "e", ["list", "reader"]);
+    invokeAction(archive, ctx(["reader", "global"]), "key");
+    expect(readerArchive).toHaveBeenCalledTimes(1);
+    setController("list", {});
+    invokeAction(archive, ctx(["list", "global"]), "key");
+    expect(readerArchive).toHaveBeenCalledTimes(1);
+    expect(listArchive).not.toHaveBeenCalled();
+  });
+
+  test("a pane that isn't beside the action's own pane falls through to the next scope", () => {
+    const reg = new ActionRegistry();
+    const pageDown = vi.fn<() => void>();
+    const page = command("list.page-down", "pageDown", "Ctrl+d", ["list", "now", "sidebar"]);
+    reg.define(page);
+    setController("sidebar", { down: () => {} });
+    setController("now", { pageDown });
+    expect(reg.resolve("Ctrl+d", ["sidebar", "now", "global"])?.scope).toBe("now");
+    invokeAction(page, ctx(["sidebar", "now", "global"]), "key");
+    expect(pageDown).toHaveBeenCalledTimes(1);
+    setController("now", null);
+  });
+});
+
 describe("getVisibleActions", () => {
   test("hides command actions until their view registers the command", () => {
     const reg = new ActionRegistry();

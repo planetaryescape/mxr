@@ -219,17 +219,6 @@ In the mail list, the reader, the sidebar and every mode.
 | `g R` | Rules |
 | `g D` | Diagnostics |
 | `g P` | Deliveries |
-| `i a` | Accept invite |
-| `i m` | Maybe (invite) |
-| `i d` | Decline invite |
-| `i A` | Accept with comment |
-| `i M` | Maybe with comment |
-| `i D` | Decline with comment |
-| `* a` | Select all |
-| `* n` | Select none |
-| `* r` | Select read |
-| `* u` | Select unread |
-| `* s` | Select starred |
 | `g x` | To do |
 | `@` | Show or hide the assistant |
 | `* t` | Pattern select thread |
@@ -258,8 +247,19 @@ In the mail list, the reader, and the Reading and Paper trail lists. Mail verbs 
 | `f` | Forward |
 | `B` | Thread briefing |
 | `L` | Links in this message |
+| `i a` | Accept invite |
+| `i m` | Maybe (invite) |
+| `i d` | Decline invite |
+| `i A` | Accept with comment |
+| `i M` | Maybe with comment |
+| `i D` | Decline with comment |
 | `x` | Select and move down |
 | `V` | Visual line mode |
+| `* a` | Select all |
+| `* n` | Select none |
+| `* r` | Select read |
+| `* u` | Select unread |
+| `* s` | Select starred |
 | `g f` | Filter this list |
 | `R` | Reader view, or back to plain |
 | `O` | Open original in a new tab |
@@ -303,7 +303,6 @@ An open conversation.
 | `D` | Unsubscribe… |
 | `p` | Sender profile |
 | `A` | Attachments |
-| `Enter` | Open conversation |
 | `Ctrl+f` | Filter this list |
 | `↓`, `j` | Scroll down |
 | `↑`, `k` | Scroll up |
@@ -331,6 +330,12 @@ Places, labels and saved searches, on the left.
 | `u` | Undo last action |
 | `b` | Not now… |
 | `A` | Attachments |
+| `i a` | Accept invite |
+| `i m` | Maybe (invite) |
+| `i d` | Decline invite |
+| `i A` | Accept with comment |
+| `i M` | Maybe with comment |
+| `i D` | Decline with comment |
 | `↓`, `j` | Next item |
 | `↑`, `k` | Previous item |
 | `Home`, `g g` | First item |
@@ -342,6 +347,11 @@ Places, labels and saved searches, on the left.
 | `Ctrl+u`, `PageUp` | Half page up |
 | `x` | Select and move down |
 | `V` | Visual line mode |
+| `* a` | Select all |
+| `* n` | Select none |
+| `* r` | Select read |
+| `* u` | Select unread |
+| `* s` | Select starred |
 | `Esc` | Clear selection, then close |
 | `g f`, `Ctrl+f` | Filter this list |
 | `F` | Full-width reader |
@@ -990,36 +1000,591 @@ The proof shown for a draft written in your voice, before it goes into your edit
 | `Home` | Top of writing proof |
 | `End` | Bottom of writing proof |
 
-<!-- tui-keys:end -->
-
 ### Overlays
 
-Pickers, confirms and other overlays still read their own keys, so they are
-not in the generated tables yet. Each one prints its keys in its footer.
+An open overlay takes every key until it closes. Each one closes with `Esc` without changing anything, and with `q` where nothing is typed; `Enter` runs the highlighted option, and in a yes-or-no question `y` is `Enter` and `n` is `Esc`. Each prints its keys in its footer too.
 
-| Context | Keys |
-|---------|------|
-| Help | `j` / `k`, `Ctrl-d`, `Ctrl-u`, `o`, `Esc`; `?` or `q` closes while nothing is typed in the filter |
-| Command palette | typing, `j` / `k`, `Enter`, `Esc` |
-| Label picker | typing, `j` / `k`, `Enter`, `Esc` |
-| Attachments | `j` / `k`, `Enter` / `o`, `d`, `Esc` / `q` |
-| Bulk confirm | `Enter` / `y` confirm, `Esc` / `n` / `q` cancel |
-| Not now (`b`) | Later first, then the presets on `1`–`4`, then Custom; `j` / `k` move, `Enter` picks, `Esc` / `q` close |
-| Not now (custom time) | typing (live preview), `Tab` other reading, `Enter` set, `Backspace`, `Esc` back to the list |
-| Move to (`X`, `P`) | `m` `x` `u` `r` `e` move this email, `M` `U` `R` the sender (on a new sender, `D` blocks); `j` / `k` move, `Enter` picks, `Esc` / `q` close |
-| Move sender to (Paper trail, Reading) | `m` People, `r` Reading, `u` Paper trail, `d` Screened out, `a` Automatic; `Esc` / `q` close |
-| Reply queue | `j` / `k`, `Enter` / `r` reply, `F` focus & reply, `Esc` close |
-| Snippets browser | `j` / `k`, `Esc` close |
-| Sender profile | `j` / `k` select other sender email, `Enter` / `o` open selected email, `W` who is this sender, `Esc` close |
-| Welcome / setup | `d` demo, `g` Gmail, `i` IMAP, `Enter` open form, `Esc` dismiss |
-| Saved-search form | typing fields, `Tab` / `Shift-Tab` move, `Ctrl-s` save, `Esc` cancel |
-| Saved-search, rule, category, draft and assistant-conversation delete; cancel a scheduled send | Opens on **Keep it**, so a bare `Enter` changes nothing. `y` does what the other option names; `j` / `k` (or the arrows, `Tab`) light it for `Enter`; `Esc` / `n` / `q` keep |
-| Draft sync | Opens on the sync, so `Enter` or `y` syncs; `Esc` / `n` / `q` keep the draft as it is |
-| Correct to-do (`X`) | `j` / `k` move, `Enter` picks, or the reason's digit (`1` Not a to-do, `2` Not mine, `3` Already done, `4` Wrong details); `Esc` / `q` close |
-| Compose send-confirm | `s` send, `d` save as draft, `e` re-edit, `Esc` cancel; on a blocked draft, `O` overrides and sends once (`Ctrl-O` also works) |
-| Unsubscribe confirm | `Enter` / `u` / `U` unsubscribe, `a` / `A` unsubscribe and archive the sender's mail, `Esc` / `n` / `q` cancel |
-| Analytics filter modal | typing fields, `Tab` / `Shift-Tab` move, `Enter` apply, `Esc` cancel |
-| Error modal | `j` / `k`, `Ctrl-d` / `Ctrl-u` scroll, `q` / `x` / `Esc` close |
+#### Help
+
+`?` opens it. Letters type into its filter.
+
+| Key | Action |
+|-----|--------|
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Ctrl+d` | Page down |
+| `Ctrl+u` | Page up |
+| `Esc`, `?`, `Enter`, `q` | Close help |
+| `Tab` | Show the next place's keys first |
+
+#### Command palette
+
+`:` or `Ctrl-k` opens it. Letters type into its filter.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `↓`, `Ctrl+n` | Move down |
+| `↑`, `Ctrl+p` | Move up |
+| `Enter` | Run the highlighted option |
+
+#### Label picker
+
+`l` labels and `v` moves. Letters type into its filter.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `↓`, `Ctrl+n` | Move down |
+| `↑`, `Ctrl+p` | Move up |
+| `Enter` | Run the highlighted option |
+
+#### Links
+
+`L` opens it.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter`, `o` | Open the link |
+| `y` | Copy the link |
+
+#### Unsubscribe
+
+`D` opens it.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `n` | No |
+| `Enter`, `u`, `U` | Unsubscribe |
+| `e`, `E` | Unsubscribe and archive their mail |
+
+#### Move to
+
+`X` moves this email; a capital moves everything from its sender.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter` | Run the highlighted option |
+| `m` | Move this email to Messages |
+| `x` | Move this email to To do |
+| `u` | Move this email to Updates |
+| `r` | Move this email to Reading |
+| `e` | Move this email to Archive |
+| `M` | Move the sender to Messages |
+| `U` | Move the sender to Updates |
+| `R` | Move the sender to Reading |
+
+#### Move the sender to
+
+`P` moves everything from the sender. Either case picks.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter` | Run the highlighted option |
+| `m`, `M` | Move the sender to Messages |
+| `u`, `U` | Move the sender to Updates |
+| `r`, `R` | Move the sender to Reading |
+
+#### Move to: a new sender
+
+`X` or `P` on a new sender: a capital answers its question (from `P`, either case does).
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter` | Run the highlighted option |
+| `m` | Move this email to Messages |
+| `x` | Move this email to To do |
+| `u` | Move this email to Updates |
+| `r` | Move this email to Reading |
+| `e` | Move this email to Archive |
+| `M` | Answer: People |
+| `U` | Answer: Paper trail |
+| `R` | Answer: Reading |
+| `D` | Answer: Screened out |
+
+#### Move sender to
+
+`P` in Reading and Paper trail. Either case picks.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter` | Run the highlighted option |
+| `m`, `M` | Move the sender to People |
+| `r`, `R` | Move the sender to Reading |
+| `u`, `U` | Move the sender to Paper trail |
+| `d`, `D` | Move the sender to Screened out |
+| `a`, `A` | Automatic: let the rules decide |
+
+#### Not now
+
+`b` opens it on Later; the digits pick the presets.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `↓`, `Ctrl+n` | Move down |
+| `↑`, `Ctrl+p` | Move up |
+| `j` | Move down |
+| `k` | Move up |
+| `Enter` | Run the highlighted option |
+| `1`–`4` | Pick that time |
+
+#### Not now: a time of your own
+
+Letters type the time, read as you type.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Back |
+| `Enter` | Run the highlighted option |
+| `Tab` | Use the other reading of the time |
+
+#### Correct a to-do
+
+`X` on a to-do.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter` | Run the highlighted option |
+| `1` | Not a to-do |
+| `2` | Not mine |
+| `3` | Already done |
+| `4` | Wrong details |
+
+#### Delete and cancel confirms
+
+Deleting a saved search, rule, category, draft or assistant conversation, and cancelling a scheduled send. It opens on Keep, so a bare `Enter` changes nothing.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `Enter` | Run the highlighted option |
+| `y` | Yes |
+| `n` | No |
+| `Tab`, `Shift+Tab` | Light the other option |
+| `j`, `k`, `h`, `l`, `↑`, `↓`, `←`, `→` | Light the other option |
+
+#### Bulk action preview
+
+A batch action over many conversations shows them first.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter` | Run the highlighted option |
+| `y`, `Y` | Yes |
+| `n` | No |
+
+#### Sweep preview
+
+`E` in Reading and Paper trail. A whole place's sweep opens on Cancel.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `Enter` | Run the highlighted option |
+| `y` | Yes |
+| `n` | No |
+| `Tab`, `Shift+Tab` | Light the other option |
+
+#### Reply later
+
+Letters type when to bring it back; with nothing typed, `Enter` flags it for reply later.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `Enter` | Run the highlighted option |
+| `Tab` | Use the other reading of the time |
+
+#### Always for this sender?
+
+After a Not-sure answer. Any other key drops the question and does what it always does.
+
+| Key | Action |
+|-----|--------|
+| `y`, `Enter` | Yes, always for this sender |
+| `n`, `Esc` | No, this email only |
+
+#### Categories
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter` | Run the highlighted option |
+| `w` | Why is this here? |
+| `/` | Filter |
+| `c` | New category |
+| `r` | Rename |
+| `#` | Delete the category |
+
+#### Send review
+
+After you save and quit `$EDITOR`. It opens on Send.
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Run the highlighted option |
+| `O`, `Ctrl+o` | Override the block and send once |
+| `s` | Send |
+| `a` | Send later |
+| `n` | Send, and remind me if nobody replies |
+| `d` | Save as a draft on the server |
+| `e`, `Esc` | Edit again |
+| `r` | Refine with the assistant |
+| `#` | Discard draft |
+| `Ctrl+a` | Add the suggested person to Cc |
+
+#### Send later or remind me: the time
+
+Letters type the time, read as you type.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Back |
+| `Enter` | Run the highlighted option |
+| `Tab` | Use the other reading of the time |
+
+#### Drafts
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter` | Edit the draft |
+| `#` | Delete the draft |
+| `c` | Cancel the scheduled send |
+| `p` | Sync the draft to the server |
+
+#### New message: who and what
+
+`c` opens it. Letters type into its fields.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `↓`, `Ctrl+n` | Move down |
+| `↑`, `Ctrl+p` | Move up |
+| `Enter` | Next field: the subject |
+| `Tab` | Add the highlighted person |
+
+#### Compose model
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter` | Run the highlighted option |
+
+#### Draft in my voice
+
+Letters type into the instruction field.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `Enter` | Run the highlighted option |
+| `Tab`, `↑`, `↓`, `j`, `k` | Next field |
+| `←`, `→`, `h`, `l` | Next or previous choice |
+
+#### Voice source
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `PageDown` | Page down |
+| `PageUp` | Page up |
+
+#### Attachments
+
+`A` opens it.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q`, `A` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter`, `o` | Open the attachment |
+| `d` | Save it somewhere |
+
+#### Save attachment
+
+Letters type the path.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `Enter` | Run the highlighted option |
+| `1`–`3` | Downloads, Desktop or here |
+
+#### Export: format
+
+Export, from the palette.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `Enter` | Run the highlighted option |
+| `↓` | Move down |
+| `↑` | Move up |
+| `m` | Markdown |
+| `j` | JSON |
+| `x` | Mbox |
+| `l` | LLM context |
+
+#### Export: where
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `c` | Copy to the clipboard |
+| `s` | Save to a file |
+
+#### Export: file path
+
+Letters type the path.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `Enter` | Run the highlighted option |
+
+#### Filter this list
+
+`Ctrl-f` or `g f` opens it. Letters type the filter.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `Enter` | Run the highlighted option |
+| `Tab` | Next search mode |
+
+#### Messages filter
+
+`g f` or `Ctrl-f` in Messages.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q`, `Ctrl+f` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter` | Run the highlighted option |
+| `Space` | Pick it |
+
+#### Saved search form
+
+Letters type into the field.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `Enter`, `Ctrl+s` | Run the highlighted option |
+| `Tab` | Next field |
+| `Shift+Tab` | Previous field |
+| `Space` | Next search mode |
+
+#### Analytics filter
+
+Letters type into the field.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `Enter` | Run the highlighted option |
+| `Tab` | Next field |
+| `Shift+Tab` | Previous field |
+| `←`, `→` | Next or previous choice |
+
+#### To do: write a to-do
+
+Letters type the to-do, or `field=value` to fix one.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `Enter` | Run the highlighted option |
+
+#### Archive: fix a field
+
+Letters type `field=value`.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `Enter` | Run the highlighted option |
+
+#### Archive: file this email
+
+Pass to a mode, from the palette.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `Enter` | Run the highlighted option |
+| `a` | See what filing would make |
+
+#### Arrivals
+
+The emails behind Now's arrivals line.
+
+| Key | Action |
+|-----|--------|
+| `u` | Undo last action |
+| `X` | Move to… |
+| `P` | Send everything from this sender to… |
+| `j`, `↓` | Next |
+| `k`, `↑` | Previous |
+| `Enter`, `o` | Open conversation |
+| `Esc`, `q` | Close |
+| `Tab` | Next kind of arrival |
+
+#### Snippets
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+
+#### Sender profile
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `1` | Overview |
+| `2` | Relationship |
+| `3` | Their emails |
+| `Enter`, `o` | Open the email |
+| `W` | Who is this? |
+
+#### Reply queue
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Enter`, `r` | Reply |
+| `F` | Focus and reply, one at a time |
+
+#### Summary, briefing, whois and expert
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+
+#### Details
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q`, `Enter`, `x` | Close |
+
+#### Error
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q`, `Enter`, `x` | Close |
+| `j`, `↓` | Move down |
+| `k`, `↑` | Move up |
+| `Ctrl+d`, `PageDown` | Page down |
+| `Ctrl+u`, `PageUp` | Page up |
+
+#### Welcome
+
+On first run, before an account exists.
+
+| Key | Action |
+|-----|--------|
+| `Enter`, `Space` | Start setting up |
+| `d` | Try the demo |
+| `g` | Add Gmail |
+| `i` | Add IMAP and SMTP |
+| `Esc` | Not now |
+| `q` | Quit |
+
+#### Unsaved account form
+
+Adding an account while an unsaved account form is kept.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `q` | Close |
+| `Enter` | Run the highlighted option |
+| `y` | Yes |
+| `n` | No |
+| `Tab`, `Shift+Tab` | Light the other option |
+| `j`, `k`, `h`, `l`, `↑`, `↓`, `←`, `→` | Light the other option |
+| `c` | Resume the form |
+
+#### Account form: switch type
+
+Changing an account form's type drops what doesn't fit the new one.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `Enter` | Run the highlighted option |
+| `y` | Yes |
+| `n` | No |
+
+#### Account colour and tag
+
+`i` on the Accounts screen. Letters type the tag.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+| `Enter` | Run the highlighted option |
+| `Tab`, `Shift+Tab`, `↑`, `↓` | Other field |
+| `←`, `→`, `Space` | Next or previous colour |
+
+#### Microsoft sign-in
+
+While Microsoft sign-in waits for the code.
+
+| Key | Action |
+|-----|--------|
+| `Esc` | Close |
+
+#### Promise check
+
+Any other key works as usual and leaves the question for later.
+
+| Key | Action |
+|-----|--------|
+| `y` | Yes, remind me |
+| `n`, `Esc` | No, let it go |
+
+<!-- tui-keys:end -->
 
 ## Web app
 
@@ -1050,6 +1615,9 @@ with `#` (was `d`). Every mode now takes `g g`, `G`, `Ctrl+d` and `Ctrl+u`.
 
 Until 0.6.200: the Screener decides with its letters, `a` `d` `f` `p`, in
 both clients (the digits `1` to `4` say so).
+
+Until 0.6.204: in the Unsubscribe dialog, "and archive their mail" is `e`,
+Archive's letter, in both clients; `a` says so.
 :::
 
 <!-- web-keys:start (generated from the action registry; run UPDATE_KEY_DOCS=1 npm test) -->
@@ -1138,6 +1706,8 @@ In the mail list they act on the selection or the row under the cursor; in the r
 
 ### Mail list
 
+With a conversation open beside the list, the reader's view keys work from here too.
+
 | Key | Action | Note |
 |-----|--------|------|
 | `j`, `ArrowDown` | Next conversation |  |
@@ -1151,19 +1721,34 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `w` | This list's row action | The row action of the web's Snoozed and reply-queue pages; the TUI has no Snoozed list and its reply queue is a modal with its own keys |
 | `x` | Select and move down |  |
 | `V` | Visual line mode |  |
-| `* a`, `⌘A / Ctrl+A` | Select all |  |
+| `* a` | Select all |  |
+| `⌘A / Ctrl+A` | Select all | Only in the mail list: in the reader and the sidebar ⌘A / Ctrl+A stays the browser's select-all, and a terminal can't send Ctrl+A |
 | `* n` | Select none |  |
 | `* r` | Select read |  |
 | `* u` | Select unread |  |
 | `* s` | Select starred |  |
 | `Esc` | Clear selection, then close |  |
 | `g f`, `Ctrl+F` | Filter this list | Ctrl+F works on macOS only, where it is not the browser's Find |
+| `R` | Reader view, or back to plain |  |
+| `S` | Show or hide signatures |  |
+| `O` | Open original in a new tab |  |
+| `F` | Full-width reader |  |
 | `P` | Send everything from this sender to… |  |
 
 ### Reader
 
+Selection and filter keys act on the mail list beside the reader.
+
 | Key | Action | Note |
 |-----|--------|------|
+| `x` | Select and move down |  |
+| `V` | Visual line mode |  |
+| `* a` | Select all |  |
+| `* n` | Select none |  |
+| `* r` | Select read |  |
+| `* u` | Select unread |  |
+| `* s` | Select starred |  |
+| `g f`, `Ctrl+F` | Filter this list | Ctrl+F works on macOS only, where it is not the browser's Find |
 | `j`, `ArrowDown` | Scroll down |  |
 | `k`, `ArrowUp` | Scroll up |  |
 | `Ctrl+D`, `PageDown`, `Space` | Page down |  |
@@ -1190,8 +1775,18 @@ In the mail list they act on the selection or the row under the cursor; in the r
 
 ### Sidebar
 
+Keys for the mail list and the reader reach them from here, as in the TUI: mail verbs act on the list's selection or its lit row.
+
 | Key | Action | Note |
 |-----|--------|------|
+| `b` | Not now… |  |
+| `A` | Attachments |  |
+| `i a` | Accept invite |  |
+| `i m` | Maybe (invite) |  |
+| `i d` | Decline invite |  |
+| `i A` | Accept with comment |  |
+| `i M` | Maybe with comment |  |
+| `i D` | Decline with comment |  |
 | `j`, `ArrowDown` | Next item |  |
 | `k`, `ArrowUp` | Previous item |  |
 | `g g`, `Home` | First item |  |
@@ -1199,6 +1794,18 @@ In the mail list they act on the selection or the row under the cursor; in the r
 | `Enter`, `o`, `l`, `ArrowRight` | Open |  |
 | `{` | Previous section |  |
 | `}` | Next section |  |
+| `Ctrl+D`, `PageDown` | Half page down |  |
+| `Ctrl+U`, `PageUp` | Half page up |  |
+| `x` | Select and move down |  |
+| `V` | Visual line mode |  |
+| `* a` | Select all |  |
+| `* n` | Select none |  |
+| `* r` | Select read |  |
+| `* u` | Select unread |  |
+| `* s` | Select starred |  |
+| `Esc` | Clear selection, then close |  |
+| `g f`, `Ctrl+F` | Filter this list | Ctrl+F works on macOS only, where it is not the browser's Find |
+| `F` | Full-width reader |  |
 
 ### Page controls
 
@@ -1244,6 +1851,7 @@ On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 | `G`, `End` | Last conversation |  |
 | `Ctrl+D`, `PageDown` | Half page down |  |
 | `Ctrl+U`, `PageUp` | Half page up |  |
+| `h`, `ArrowLeft` | Go to sidebar |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Open in its mode |  |
@@ -1265,6 +1873,7 @@ On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 | `G`, `End` | Last conversation |  |
 | `Ctrl+D`, `PageDown` | Half page down |  |
 | `Ctrl+U`, `PageUp` | Half page up |  |
+| `h`, `ArrowLeft` | Go to sidebar |  |
 | `j`, `ArrowDown` | Next person |  |
 | `k`, `ArrowUp` | Previous person |  |
 | `Enter` | Open the person |  |
@@ -1294,6 +1903,7 @@ On a lit new sender, `X` then `M`, `U`, `R` or `D` answers its question.
 | `G`, `End` | Last conversation |  |
 | `Ctrl+D`, `PageDown` | Half page down |  |
 | `Ctrl+U`, `PageUp` | Half page up |  |
+| `h`, `ArrowLeft` | Go to sidebar |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Do it: what the row's button says | The TUI opens the source email; the web opens it or a reply for a promise. Links stay in the email. |
@@ -1353,6 +1963,7 @@ Tasks that expired or were let go. `E` on To do opens it.
 | `G`, `End` | Last conversation |  |
 | `Ctrl+D`, `PageDown` | Half page down |  |
 | `Ctrl+U`, `PageUp` | Half page up |  |
+| `h`, `ArrowLeft` | Go to sidebar |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Show routine |  |
@@ -1377,6 +1988,7 @@ Newsletters as an edition. `b`, `e`, `D` and `A` work on the item or link under 
 | `G`, `End` | Last conversation |  |
 | `Ctrl+D`, `PageDown` | Half page down |  |
 | `Ctrl+U`, `PageUp` | Half page up |  |
+| `h`, `ArrowLeft` | Go to sidebar |  |
 | `j`, `ArrowDown` | Next |  |
 | `k`, `ArrowUp` | Previous |  |
 | `Enter` | Read |  |
@@ -1424,6 +2036,7 @@ One item in a 66-character column. The article is fetched only on `L` or the Art
 | `G`, `End` | Last conversation |  |
 | `Ctrl+D`, `PageDown` | Half page down |  |
 | `Ctrl+U`, `PageUp` | Half page up |  |
+| `h`, `ArrowLeft` | Go to sidebar |  |
 | `j`, `ArrowDown` | Next record |  |
 | `k`, `ArrowUp` | Previous record |  |
 | `/` | Ask Archive |  |
@@ -1471,6 +2084,255 @@ While writing a message. ⌘ and Ctrl both work, on every platform.
 | `⌘; / Ctrl+;` | Insert snippet |  |
 | `⌘J / Ctrl+J` | Draft for me |  |
 | `⌘⇧F / Ctrl+Shift+F` | Toggle fullscreen |  |
+
+### Dialogs
+
+An open dialog takes every key until it closes. `Esc` closes any of them without changing anything, and so does `q` where nothing is typed; `Enter` presses the highlighted button, and in a yes-or-no question `y` is yes and `n` is no.
+
+#### Help
+
+`?` opens it. Letters type into its filter.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `?` | Close help |  |
+
+#### Command palette
+
+`⌘K` / `Ctrl+K` or `:` opens it. Letters type into its filter.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc` | Close | The browser's own key |
+| `ArrowDown`, `Ctrl+N` (macOS) | Move down |  |
+| `ArrowUp`, `Ctrl+P` (macOS) | Move up |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+
+#### Search palette
+
+`/` opens it. Letters type the search.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc` | Close | The browser's own key |
+| `ArrowDown`, `Ctrl+J` | Next result | The TUI searches on its Search screen |
+| `ArrowUp`, `Ctrl+K` | Previous result | The TUI searches on its Search screen |
+| `Enter` | Open the result | The TUI searches on its Search screen |
+| `⌘Enter / Ctrl+Enter`, `Ctrl+ENTER` (macOS) | Search everything on the Search page | The TUI searches on its Search screen |
+
+#### Labels
+
+`l` labels and `v` moves. Letters type into its filter, and `Enter` ticks a label.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc` | Close | The browser's own key |
+| `ArrowDown`, `Ctrl+N` (macOS) | Move down |  |
+| `ArrowUp`, `Ctrl+P` (macOS) | Move up |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+| `⌘Enter / Ctrl+Enter` | Apply the ticked labels | The web's label picker ticks several labels with Enter, then applies them; the TUI's picks one |
+
+#### Links
+
+`L` opens it.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `j`, `ArrowDown` | Move down |  |
+| `k`, `ArrowUp` | Move up |  |
+| `Enter`, `o` | Open the link |  |
+| `y` | Copy the link |  |
+
+#### Unsubscribe
+
+`D` opens it.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `n` | No |  |
+| `Enter`, `u`, `U` | Unsubscribe |  |
+| `e`, `E` | Unsubscribe and archive their mail |  |
+
+#### Move to
+
+`X` moves this email; a capital moves everything from its sender.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `j`, `ArrowDown` | Move down |  |
+| `k`, `ArrowUp` | Move up |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+| `m` | Move this email to Messages |  |
+| `x` | Move this email to To do |  |
+| `u` | Move this email to Updates |  |
+| `r` | Move this email to Reading |  |
+| `e` | Move this email to Archive |  |
+| `M` | Move the sender to Messages |  |
+| `U` | Move the sender to Updates |  |
+| `R` | Move the sender to Reading |  |
+
+#### Move the sender to
+
+`P` moves everything from the sender. Either case picks.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `j`, `ArrowDown` | Move down |  |
+| `k`, `ArrowUp` | Move up |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+| `m`, `M` | Move the sender to Messages |  |
+| `u`, `U` | Move the sender to Updates |  |
+| `r`, `R` | Move the sender to Reading |  |
+
+#### Move to: a new sender
+
+`X` or `P` on a new sender: a capital answers its question (from `P`, either case does).
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `j`, `ArrowDown` | Move down |  |
+| `k`, `ArrowUp` | Move up |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+| `m` | Move this email to Messages |  |
+| `x` | Move this email to To do |  |
+| `u` | Move this email to Updates |  |
+| `r` | Move this email to Reading |  |
+| `e` | Move this email to Archive |  |
+| `M` | Answer: People |  |
+| `U` | Answer: Paper trail |  |
+| `R` | Answer: Reading |  |
+| `D` | Answer: Screened out |  |
+
+#### Move sender to
+
+`P` in Reading. Either case picks.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `j`, `ArrowDown` | Move down |  |
+| `k`, `ArrowUp` | Move up |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+| `m`, `M` | Move the sender to People |  |
+| `r`, `R` | Move the sender to Reading |  |
+| `u`, `U` | Move the sender to Paper trail |  |
+| `d`, `D` | Move the sender to Screened out |  |
+| `a`, `A` | Automatic: let the rules decide |  |
+
+#### Not now
+
+`b` opens it on Later. Letters type a time of your own.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `ArrowDown`, `Ctrl+N` (macOS) | Move down |  |
+| `ArrowUp`, `Ctrl+P` (macOS) | Move up |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+| `1`, `2`, `3`, `4` | Pick that time |  |
+
+#### Correct a to-do
+
+`X` on a to-do.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `j`, `ArrowDown` | Move down |  |
+| `k`, `ArrowUp` | Move up |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+| `1` | Not a to-do |  |
+| `2` | Not mine |  |
+| `3` | Already done |  |
+| `4` | Wrong details |  |
+
+#### Always for this sender?
+
+After a Not-sure answer.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `y`, `Enter` | Yes, always for this sender |  |
+| `n`, `Esc` | No, this email only |  |
+
+#### Reply later
+
+Letters type when to bring it back; with nothing typed, `Enter` flags it for reply later.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc` | Close | The browser's own key |
+
+#### Delete confirms
+
+Deleting a draft, rule, saved search or label. It opens on Keep, so a bare `Enter` deletes nothing.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+| `y` | Yes |  |
+| `n` | No |  |
+| `Tab`, `Shift+Tab` | Light the other option | The browser's own key |
+
+#### Bulk action preview
+
+A batch action over many conversations shows them first.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+| `y` | Yes |  |
+| `n` | No |  |
+| `Tab`, `Shift+Tab` | Light the other option | The browser's own key |
+
+#### Sweep preview
+
+Sweeping a sender or a whole place. A whole place's sweep opens on Cancel.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+| `Tab`, `Shift+Tab` | Light the other option | The browser's own key |
+
+#### Let go preview
+
+Letting go of everything in To do's catch-up or in Updates.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `y` | Yes |  |
+| `n` | No |  |
+
+#### Send confirm
+
+When the safety check found something. It opens on Cancel.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `Enter` | Run the highlighted option | The browser's own key |
+| `y` | Yes |  |
+| `n` | No |  |
+| `O`, `o` | Override the block and send once |  |
+
+#### Discard draft
+
+Discarding a draft from the composer. It opens on Keep.
+
+| Key | Action | Note |
+|-----|--------|------|
+| `Esc`, `q` | Close |  |
+| `y` | Yes |  |
+| `n` | No |  |
 
 <!-- web-keys:end -->
 

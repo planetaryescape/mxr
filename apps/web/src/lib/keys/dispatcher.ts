@@ -4,6 +4,7 @@
  * multi-key chords ("g i", "* a") work in every view.
  */
 
+import { definedKeys } from "@/lib/actions/definition";
 import type { ActionRegistry, Binding } from "@/lib/actions/registry";
 import { invokeAction } from "@/lib/actions/registry";
 import type { Action, ActionContext, ActionScope } from "@/lib/actions/types";
@@ -138,9 +139,10 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
     if (ownsKeyboard(event.target) || options.isSuspended?.()) {
       clear();
       // `q` closes a dialog where nothing is typed, as Esc does (blueprint
-      // 35's overlay grammar). A dialog that gives `q` a meaning of its own
-      // prevents the default first.
-      if (token === "q" && !options.isSuspended?.() && closesOnQ(event.target)) {
+      // 35's overlay grammar, `overlay.close` in the key definition). A
+      // dialog that gives `q` a meaning of its own prevents the default first.
+      const closes = token !== "Escape" && definedKeys("overlay.close").includes(token);
+      if (closes && !options.isSuspended?.() && closesOnQ(event.target)) {
         event.preventDefault();
         event.target.dispatchEvent(
           new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),

@@ -155,6 +155,7 @@ mod messages;
 mod moves;
 mod mutations_and_bulk;
 mod now;
+mod overlay_keys;
 mod pattern_select;
 mod places;
 mod prefix_guide;

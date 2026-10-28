@@ -242,6 +242,10 @@ Two cross-view interactions:
 
 ## Modals and overlays
 
+Every overlay's keys are in the generated
+[keybindings tables](/reference/keybindings/#overlays), and help (`?`) lists
+them too.
+
 - Command palette
 - Help modal
 - Label picker
@@ -249,7 +253,9 @@ Two cross-view interactions:
   `[n]` sends and sets a follow-up reminder, `[d]` saves a draft,
   `[r]` opens a writing proof for the current body, `[e]` or `Esc` reopens `$EDITOR` on the draft, and
   `[#]` discards it. When the safety check returns an override token, `[O]`
-  overrides that block and sends once; a gap block has no override.
+  overrides that block and sends once; a gap block has no override. A bare
+  `Enter` runs the option marked `›`: Send, or Edit again when the safety
+  check found something or the draft can't go as it is.
 - Writing proof: additions are highlighted and removals are struck through;
   set `NO_COLOR` to show `[-removed-]{+added+}` marks. Gap ranges use the
   warning style, and the warning says sending remains blocked. `Esc` keeps the
@@ -272,14 +278,17 @@ Two cross-view interactions:
   [time phrases](/reference/time-phrases/) as `mxr snooze --until`. Later is
   the reply queue in mail and Messages and the Later shelf in Reading; a time
   snoozes the email, takes a Messages conversation off until then, or
-  schedules a to-do. `Z` says where it went until 0.6.197.
+  schedules a to-do. `j` and `k`, the arrows, or `Ctrl-n` and `Ctrl-p` move,
+  as in the web app's Not now. `Z` says where it went until 0.6.197.
 - Move to (`X`): a lowercase letter moves this email to a mode, a capital
   moves the sender; on Now it also answers a Not-sure question and a new
   sender's question (`D` blocks). `T` and the new-sender digits say where
   they went until 0.6.197.
   Tab switches between readings of an ambiguous phrase such as `fri 3`;
   the send-at and remind prompts work the same way
-- Unsubscribe confirmation
+- Unsubscribe confirmation: `Enter` or `u` unsubscribes, `e` also archives
+  the sender's mail (`a` says where it went until 0.6.204), and `n`, `Esc` or
+  `q` cancels
 - Analytics filter modal
 - Reply-later queue browser: list of flagged messages and due reminders,
   opened with **Reply queue** (`gq`). `F` there replies to each queued

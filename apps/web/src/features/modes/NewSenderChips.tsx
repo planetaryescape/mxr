@@ -6,12 +6,13 @@ import { definedShortcut } from "@/lib/actions/definition";
 import { cn } from "@/lib/utils";
 
 import type { ScreenerQuestion } from "./membership";
+import { optionLetter } from "@/lib/keys/overlayKeys";
 
 const MOVE_KEY = definedShortcut("modes.move");
 
 interface SenderAnswer {
   kind: SenderKind;
-  /** The capital that picks it in the `X` picker (either case in `P`'s). */
+  /** The capital that picks it in the `X` picker (either case in `P`'s), from the key definition. */
   key: string;
   label: string;
   Glyph: LucideIcon;
@@ -26,10 +27,30 @@ interface SenderAnswer {
  * answer that isn't a mode.
  */
 export const NEW_SENDER_ANSWERS: readonly SenderAnswer[] = [
-  { kind: "people", key: "M", label: "Messages", Glyph: MessagesSquare },
-  { kind: "paper_trail", key: "U", label: "Updates", Glyph: Bell },
-  { kind: "reading", key: "R", label: "Reading", Glyph: Newspaper },
-  { kind: "screened_out", key: "D", label: "Block", Glyph: Ban },
+  {
+    kind: "people",
+    key: optionLetter("new-sender-picker.people"),
+    label: "Messages",
+    Glyph: MessagesSquare,
+  },
+  {
+    kind: "paper_trail",
+    key: optionLetter("new-sender-picker.paper-trail"),
+    label: "Updates",
+    Glyph: Bell,
+  },
+  {
+    kind: "reading",
+    key: optionLetter("new-sender-picker.reading"),
+    label: "Reading",
+    Glyph: Newspaper,
+  },
+  {
+    kind: "screened_out",
+    key: optionLetter("new-sender-picker.screened-out"),
+    label: "Block",
+    Glyph: Ban,
+  },
 ];
 
 /** The status bar's wording for the lit new sender (docs/blueprint/27 "Rows"). */

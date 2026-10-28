@@ -487,6 +487,7 @@ fn accounts_page_snapshot() {
         onboarding_modal_open: false,
         new_account_draft: None,
         resume_new_account_draft_prompt_open: false,
+        resume_draft_choice: Default::default(),
         form: AccountFormState::default(),
         active_auth_session: None,
         identity_editor: None,

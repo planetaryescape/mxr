@@ -11,12 +11,14 @@ import { KeyChip } from "@/components/KeyChip";
 import { openMailDialog } from "@/features/mail-actions/mailDialogStore";
 import type { Todo } from "./api";
 import { correctRow } from "./todoVerbs";
+import { optionLetter, pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
+/** Each reason, its label and its key's id in the key definition. */
 const REASONS = [
-  ["not_a_todo", "Not a to-do"],
-  ["not_mine", "Not mine"],
-  ["already_done", "Already done"],
-  ["wrong_details", "Wrong details"],
+  ["not_a_todo", "Not a to-do", "correct-todo.not-a-todo"],
+  ["not_mine", "Not mine", "correct-todo.not-mine"],
+  ["already_done", "Already done", "correct-todo.already-done"],
+  ["wrong_details", "Wrong details", "correct-todo.wrong-details"],
 ] as const;
 
 export function TodoCorrectionDialog({ todo, onClose }: { todo: Todo; onClose: () => void }) {
@@ -64,18 +66,17 @@ export function TodoCorrectionDialog({ todo, onClose }: { todo: Todo; onClose: (
           className="grid gap-1"
           onKeyDown={(event) => {
             if (event.metaKey || event.ctrlKey || event.altKey) return;
-            const picked = REASONS[Number(event.key) - 1];
+            const picked = REASONS.find(([, , id]) => pressedOverlayKey(event, id));
             if (picked) {
               event.preventDefault();
               void choose(picked[0]);
               return;
             }
-            const step =
-              event.key === "j" || event.key === "ArrowDown"
-                ? 1
-                : event.key === "k" || event.key === "ArrowUp"
-                  ? -1
-                  : 0;
+            const step = pressedOverlayKey(event, "overlay.down")
+              ? 1
+              : pressedOverlayKey(event, "overlay.up")
+                ? -1
+                : 0;
             if (step === 0) return;
             event.preventDefault();
             const buttons = [...event.currentTarget.querySelectorAll("button")];
@@ -83,19 +84,19 @@ export function TodoCorrectionDialog({ todo, onClose }: { todo: Todo; onClose: (
             buttons[Math.max(0, Math.min(buttons.length - 1, at + step))]?.focus();
           }}
         >
-          {REASONS.map(([reason, label], index) => (
+          {REASONS.map(([reason, label, id], index) => (
             <Button
               key={reason}
               autoFocus={index === 0}
               variant="ghost"
               disabled={saving}
               onClick={() => void choose(reason)}
-              aria-keyshortcuts={String(index + 1)}
+              aria-keyshortcuts={optionLetter(id)}
               className="justify-between"
             >
               {label}
               <span aria-hidden="true">
-                <KeyChip>{String(index + 1)}</KeyChip>
+                <KeyChip>{optionLetter(id)}</KeyChip>
               </span>
             </Button>
           ))}

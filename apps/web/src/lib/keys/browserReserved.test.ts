@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import "@/lib/actions/catalog";
+import { isOverlayKey } from "@/lib/actions/definition";
 import keymap from "@/lib/actions/keymap.generated.json";
 import { getRegistry } from "@/lib/actions/registry";
 
@@ -8,14 +9,26 @@ import { BROWSER_RESERVED, type Platform } from "./browserReserved";
 import { parseChord } from "./chord";
 
 /**
- * Bindings a page declares outside the registry. Each is a literal in the
- * source named here; the test checks it against the reserved list, so a
- * new literal is caught only once it is added here.
+ * Keys a dialog reads itself: an overlay's, in the key definition, which
+ * the registry doesn't hold (`isOverlayKey`).
  */
-const LITERAL_BINDINGS: { chord: string; source: string }[] = [
-  { chord: "Ctrl+j", source: "features/search/SearchPalette.tsx:90" },
-  { chord: "Ctrl+k", source: "features/search/SearchPalette.tsx:94" },
-];
+const LITERAL_BINDINGS: { chord: string; source: string; macOnly: boolean }[] = (
+  keymap.action as {
+    id: string;
+    scopes?: string[];
+    keys?: string[];
+    mac_keys?: string[];
+    clients?: string[];
+  }[]
+)
+  .filter((action) => (!action.clients || action.clients.includes("web")) && isOverlayKey(action))
+  .flatMap((action) =>
+    (action.keys ?? [])
+      .map((chord) => ({ chord, source: action.id, macOnly: false }))
+      .concat(
+        (action.mac_keys ?? []).map((chord) => ({ chord, source: action.id, macOnly: true })),
+      ),
+  );
 
 /**
  * Registry bindings that do use a reserved combo, kept because this rung of
@@ -127,10 +140,10 @@ describe("browser-reserved shortcuts", () => {
     expect(defined.filter((entry) => !bound.has(entry))).toEqual([]);
   });
 
-  test("no literal binding in dialogs uses a reserved combo", () => {
+  test("no dialog's own key uses a reserved combo", () => {
     const problems: string[] = [];
     for (const literal of LITERAL_BINDINGS) {
-      const hits = conflictsWith(literal.chord);
+      const hits = conflictsWith(literal.chord, literal.macOnly);
       if (hits.length > 0) {
         problems.push(`${literal.source} "${literal.chord}" is ${hits[0]?.reserved}`);
       }
@@ -146,6 +159,8 @@ describe("browser-reserved shortcuts", () => {
       "global Ctrl+p",
       "list Ctrl+f",
       "messages Ctrl+f",
+      "reader Ctrl+f",
+      "sidebar Ctrl+f",
     ]);
     for (const binding of macOnly) {
       expect(getRegistry().resolve(binding.chord, [binding.scope], false)).toBeUndefined();

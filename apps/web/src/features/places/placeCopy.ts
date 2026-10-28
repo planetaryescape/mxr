@@ -5,6 +5,7 @@
 
 import type { MailKind, Place, PlaceBundle, PlaceMessage, SenderKind, SweepPreview } from "./api";
 import { plural } from "@/lib/format";
+import { optionLetter } from "@/lib/keys/overlayKeys";
 
 export const PLACE_TITLES: Record<Place, string> = {
   reading: "Reading",
@@ -23,7 +24,7 @@ export interface KindOption {
   /** `null`: hand the sender back to the automatic rules. */
   kind: SenderKind | null;
   label: string;
-  /** The key that picks this option while the menu is open. */
+  /** The key that picks this option while the menu is open, from the key definition. */
   key: string;
   hint: string;
 }
@@ -34,16 +35,36 @@ export interface KindOption {
  * Reading is `r`; Screened out is `d` and Automatic `a`.
  */
 export const KIND_OPTIONS: readonly KindOption[] = [
-  { kind: "people", label: "People", key: "m", hint: "On the desk, like anyone you write to" },
-  { kind: "reading", label: "Reading", key: "r", hint: "Newsletters and lists, read as a feed" },
+  {
+    kind: "people",
+    label: "People",
+    key: optionLetter("sender-kind-picker.people"),
+    hint: "On the desk, like anyone you write to",
+  },
+  {
+    kind: "reading",
+    label: "Reading",
+    key: optionLetter("sender-kind-picker.reading"),
+    hint: "Newsletters and lists, read as a feed",
+  },
   {
     kind: "paper_trail",
     label: "Paper trail",
-    key: "u",
+    key: optionLetter("sender-kind-picker.paper-trail"),
     hint: "Receipts and notifications, bundled",
   },
-  { kind: "screened_out", label: "Screened out", key: "d", hint: "Off the desk and every place" },
-  { kind: null, label: "Automatic", key: "a", hint: "Let the rules decide again" },
+  {
+    kind: "screened_out",
+    label: "Screened out",
+    key: optionLetter("sender-kind-picker.screened-out"),
+    hint: "Off the desk and every place",
+  },
+  {
+    kind: null,
+    label: "Automatic",
+    key: optionLetter("sender-kind-picker.automatic"),
+    hint: "Let the rules decide again",
+  },
 ];
 
 /** The option a key picks in the kind menu, if any. The menu is the sender's alone, so either case picks. */

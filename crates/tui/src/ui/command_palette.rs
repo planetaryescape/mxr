@@ -291,7 +291,8 @@ pub(crate) fn defined_commands(
     let keymap = mxr_keymap::defaults();
     let mut commands: Vec<PaletteCommand> = Vec::new();
     for action in &keymap.actions {
-        if !action.is_for(Client::Tui) || action.hide_in_palette {
+        // An overlay's keys act only while it is open.
+        if !action.is_for(Client::Tui) || action.hide_in_palette || action.is_overlay() {
             continue;
         }
         // The bindings live here; off the mailbox, the list's (or any).

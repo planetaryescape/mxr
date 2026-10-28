@@ -24,6 +24,7 @@ export interface DefinedAction {
   note?: string;
   clients?: string[];
   moved?: { key: string; contexts: string[]; until: string; to?: string; to_key?: string }[];
+  web_native?: boolean;
 }
 
 // Records rather than arrays so the compiler fails when a group or scope is
@@ -129,6 +130,35 @@ export function withServedKeys(
     result.set(id, { ...action, moved });
   }
   return result;
+}
+
+/**
+ * An overlay's key (blueprint 35, "Overlays share one grammar"): every scope
+ * it names is a dialog, which reads it with `definedKeys` while it owns the
+ * keyboard. It is no dispatcher binding, so the registry never holds it.
+ */
+export function isOverlayKey(action: Pick<DefinedAction, "scopes">): boolean {
+  const scopes = action.scopes ?? [];
+  return scopes.length > 0 && scopes.every((scope) => !isScope(scope));
+}
+
+/** An overlay action's keys on this platform: its keys, and on macOS its mac-only ones too. */
+export function definedOverlayKeys(id: string, mac: boolean): string[] {
+  const action = webActions.get(id);
+  if (!action?.keys?.length) {
+    throw new Error(`Action "${id}" has no web key in crates/keymap/keymap.toml`);
+  }
+  return mac ? [...action.keys, ...(action.mac_keys ?? [])] : action.keys;
+}
+
+/** The action whose key `chord` moved away from in overlay `place`, while the move is announced. */
+export function movedOverlayKey(place: string, chord: string): DefinedAction | undefined {
+  for (const action of webActions.values()) {
+    if (action.moved?.some((move) => move.key === chord && move.contexts.includes(place))) {
+      return action;
+    }
+  }
+  return undefined;
 }
 
 /** Use the daemon's keys from now on; `null` goes back to the definition's. */

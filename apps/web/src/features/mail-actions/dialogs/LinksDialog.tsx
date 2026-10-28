@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 
 import { describeTarget } from "../mailVerbs";
 import type { MailTarget } from "../target";
+import { pressedOverlayKey } from "@/lib/keys/overlayKeys";
 
 export interface ExtractedLink {
   href: string;
@@ -90,16 +91,16 @@ export function LinksDialog({ target, onClose }: { target: MailTarget; onClose: 
       <DialogContent
         className="max-w-2xl"
         onKeyDown={(event) => {
-          if (event.key === "j" || event.key === "ArrowDown") {
+          if (pressedOverlayKey(event, "overlay.down")) {
             event.preventDefault();
             setIndex((value) => Math.min(links.length - 1, value + 1));
-          } else if (event.key === "k" || event.key === "ArrowUp") {
+          } else if (pressedOverlayKey(event, "overlay.up")) {
             event.preventDefault();
             setIndex((value) => Math.max(0, value - 1));
-          } else if (event.key === "Enter" || event.key === "o") {
+          } else if (pressedOverlayKey(event, "links.open")) {
             event.preventDefault();
             openLink(links[index]);
-          } else if (event.key === "y") {
+          } else if (pressedOverlayKey(event, "links.copy")) {
             event.preventDefault();
             copy(links[index]);
           }

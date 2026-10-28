@@ -11,6 +11,7 @@
 import { describe, expect, test } from "vitest";
 
 import "./catalog";
+import { isOverlayKey } from "./definition";
 import keymap from "./keymap.generated.json";
 import { getRegistry } from "./registry";
 
@@ -31,13 +32,21 @@ interface DefinedAction {
   moved?: { key: string; contexts: string[] }[];
 }
 
+// An overlay's keys are read by the overlay, never registered.
 const defined = (keymap.action as DefinedAction[]).filter(
-  (action) => !action.clients || action.clients.includes("web"),
+  (action) => (!action.clients || action.clients.includes("web")) && !isOverlayKey(action),
 );
 
 // The TUI's place view and the screens that still read their own keys have
 // no web scope; Not-sure rows announce their moved keys by hand.
-const TUI_ONLY_CONTEXTS = new Set(["place", "rules", "accounts", "invites", "not-sure"]);
+const TUI_ONLY_CONTEXTS = new Set([
+  "place",
+  "rules",
+  "accounts",
+  "invites",
+  "not-sure",
+  "arrivals-list",
+]);
 
 function definedBindings(): string[] {
   const bindings: string[] = [];

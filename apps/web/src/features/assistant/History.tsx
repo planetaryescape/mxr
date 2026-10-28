@@ -24,6 +24,7 @@ import { Row, RowVerb } from "@/components/Row";
 import { Button } from "@/components/ui/button";
 import { formatRelative, plural } from "@/lib/format";
 import { useKeyScope } from "@/state/keyScopeStore";
+import { definedKeys } from "@/lib/actions/definition";
 
 function standing(summary: AssistantSummary): string {
   if (summary.pending_count > 0) return "Waiting for you";
@@ -88,9 +89,10 @@ export function History({
             // option lit, a bare Enter keeps the conversation, as the TUI's
             // confirm opens on Keep (blueprint 35, "Destroy"). y deletes.
             const onButton = keyEvent.target !== keyEvent.currentTarget;
-            if (key === "y") void remove(confirming.conversation_id);
-            else if (key === "n" || (key === "Enter" && !onButton)) setConfirming(null);
-            else return false;
+            if (definedKeys("overlay.yes").includes(key)) void remove(confirming.conversation_id);
+            else if (definedKeys("overlay.no").includes(key) || (key === "Enter" && !onButton)) {
+              setConfirming(null);
+            } else return false;
             return true;
           }
           const current = list[litIndex];

@@ -117,6 +117,19 @@ impl PendingSend {
             Some(mxr_core::DraftSafetyVerdict::Blocked)
         )
     }
+
+    /// The send review's lit option, which a bare Enter runs: Send, unless
+    /// the draft can't go as it is or the safety check found something (or
+    /// couldn't run), where it is Edit again. The web's send confirm opens
+    /// only in that second case, and on "Back to draft".
+    pub fn opens_on_send(&self) -> bool {
+        self.mode == PendingSendMode::SendOrSave
+            && self.safety_check_failed.is_none()
+            && self
+                .safety_report
+                .as_ref()
+                .is_none_or(|report| report.allowed && report.issues.is_empty())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -8,7 +8,7 @@
 import { hasCommand, runCommand } from "@/lib/keys/controllers";
 import { parseChord } from "@/lib/keys/chord";
 
-import type { Action, ActionContext, ActionScope, ShortcutChord } from "./types";
+import type { Action, ActionContext, ActionScope, CommandAction, ShortcutChord } from "./types";
 
 export interface Binding {
   chord: ShortcutChord;
@@ -182,16 +182,42 @@ function normalize(chord: ShortcutChord): string {
   return parseChord(chord).join(" ");
 }
 
+/**
+ * The panes drawn beside each pane, as in the TUI: the sidebar, the mail
+ * list and the reader sit side by side, so `x` in the reader selects in the
+ * list and `F` in the list widens the reader (blueprint 35, rule 8). A key
+ * bound in a pane that has no such command runs on the action's own pane
+ * (its first scope) when that pane is beside it and mounted.
+ */
+const BESIDE: Partial<Record<ActionScope, readonly ActionScope[]>> = {
+  reader: ["list"],
+  sidebar: ["list", "reader"],
+  list: ["reader"],
+};
+
+/** The controller scope a command action bound in `scope` runs on, if any. */
+function runsOn(action: CommandAction, scope: ActionScope): ActionScope | undefined {
+  if (hasCommand(scope, action.command)) return scope;
+  const home = scopesOf(action)[0];
+  if (!home || !BESIDE[scope]?.includes(home)) return undefined;
+  return hasCommand(home, action.command) ? home : undefined;
+}
+
 function isRunnableIn(action: Action, scope: ActionScope): boolean {
   if (action.command === undefined) return true;
-  return hasCommand(scope, action.command);
+  return runsOn(action, scope) !== undefined;
 }
 
 /** The scope a command action would run in, or undefined if none is live. */
 export function commandScope(action: Action, ctx: ActionContext): ActionScope | undefined {
   if (action.command === undefined) return undefined;
   const allowed = scopesOf(action);
-  return ctx.scopes.find((scope) => allowed.includes(scope) && hasCommand(scope, action.command!));
+  for (const scope of ctx.scopes) {
+    if (!allowed.includes(scope)) continue;
+    const target = runsOn(action, scope);
+    if (target) return target;
+  }
+  return undefined;
 }
 
 export function isAvailable(action: Action, ctx: ActionContext): boolean {

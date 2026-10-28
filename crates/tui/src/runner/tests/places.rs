@@ -393,7 +393,7 @@ fn u_moves_a_sender_back_where_it_was() {
 }
 
 /// Open the whole-place preview the way `E` and the daemon's dry run do.
-fn whole_place_preview() -> App {
+pub(super) fn whole_place_preview() -> App {
     let mut app = paper_trail(vec![bundle(
         "receipts@shop.example",
         vec![message("Receipt", false)],

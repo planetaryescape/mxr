@@ -194,7 +194,7 @@ fn defined(screen: &str) -> BTreeMap<String, String> {
 }
 
 /// The probe's keys plus the ones only screens read.
-fn screen_probe_keys() -> Vec<(KeyEvent, String)> {
+pub(super) fn screen_probe_keys() -> Vec<(KeyEvent, String)> {
     let mut keys = super::keymap::probe_keys();
     keys.push((
         KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT),

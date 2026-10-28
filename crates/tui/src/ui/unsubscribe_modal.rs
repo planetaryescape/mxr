@@ -47,7 +47,7 @@ pub fn draw(
             Span::raw("unsubscribe only"),
         ]),
         Line::from(vec![
-            Span::styled("[a] ", Style::default().fg(theme.accent).bold()),
+            Span::styled("[e] ", Style::default().fg(theme.accent).bold()),
             Span::raw(format!(
                 "unsubscribe + archive all from this sender ({archive_count} messages)"
             )),

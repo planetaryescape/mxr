@@ -180,7 +180,8 @@
             "reading-reader",
             "updates",
             "search",
-            "search-preview"
+            "search-preview",
+            "arrivals-list"
           ]
         }
       ],
@@ -2311,7 +2312,8 @@
       "scopes": [
         "list",
         "reader",
-        "now"
+        "now",
+        "sidebar"
       ],
       "keys": [
         "b"
@@ -2690,7 +2692,8 @@
       "group": "Mail",
       "scopes": [
         "list",
-        "reader"
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "A"
@@ -2715,7 +2718,8 @@
       "group": "Triage",
       "scopes": [
         "list",
-        "reader"
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "i a"
@@ -2730,16 +2734,7 @@
             "list",
             "reader",
             "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
+            "place"
           ]
         }
       ],
@@ -2759,7 +2754,8 @@
       "group": "Triage",
       "scopes": [
         "list",
-        "reader"
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "i m"
@@ -2774,16 +2770,7 @@
             "list",
             "reader",
             "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
+            "place"
           ]
         }
       ],
@@ -2810,7 +2797,8 @@
       "group": "Triage",
       "scopes": [
         "list",
-        "reader"
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "i d"
@@ -2825,16 +2813,7 @@
             "list",
             "reader",
             "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
+            "place"
           ]
         }
       ],
@@ -2854,7 +2833,8 @@
       "group": "Triage",
       "scopes": [
         "list",
-        "reader"
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "i A"
@@ -2869,16 +2849,7 @@
             "list",
             "reader",
             "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
+            "place"
           ]
         }
       ],
@@ -2898,7 +2869,8 @@
       "group": "Triage",
       "scopes": [
         "list",
-        "reader"
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "i M"
@@ -2913,16 +2885,7 @@
             "list",
             "reader",
             "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
+            "place"
           ]
         }
       ],
@@ -2949,7 +2912,8 @@
       "group": "Triage",
       "scopes": [
         "list",
-        "reader"
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "i D"
@@ -2964,16 +2928,7 @@
             "list",
             "reader",
             "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
+            "place"
           ]
         }
       ],
@@ -3465,7 +3420,8 @@
         "expired",
         "updates",
         "reading",
-        "archive"
+        "archive",
+        "sidebar"
       ],
       "keys": [
         "Ctrl+d",
@@ -3518,7 +3474,8 @@
         "expired",
         "updates",
         "reading",
-        "archive"
+        "archive",
+        "sidebar"
       ],
       "keys": [
         "Ctrl+u",
@@ -3649,20 +3606,11 @@
           "name": "OpenSelected",
           "keys": [
             "ArrowRight",
-            "o"
-          ],
-          "contexts": [
-            "list"
-          ]
-        },
-        {
-          "name": "OpenSelected",
-          "keys": [
+            "o",
             "Enter"
           ],
           "contexts": [
-            "list",
-            "reader"
+            "list"
           ]
         }
       ]
@@ -3672,7 +3620,13 @@
       "label": "Go to sidebar",
       "group": "Move",
       "scopes": [
-        "list"
+        "list",
+        "now",
+        "messages",
+        "todo",
+        "updates",
+        "reading",
+        "archive"
       ],
       "keys": [
         "h",
@@ -3723,7 +3677,9 @@
       "short_label": "Select",
       "group": "Select",
       "scopes": [
-        "list"
+        "list",
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "x"
@@ -3750,7 +3706,9 @@
       "description": "Extend a selection with j and k",
       "group": "Select",
       "scopes": [
-        "list"
+        "list",
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "V"
@@ -3776,11 +3734,12 @@
       "label": "Select all",
       "group": "Select",
       "scopes": [
-        "list"
+        "list",
+        "reader",
+        "sidebar"
       ],
       "keys": [
-        "* a",
-        "Mod+a"
+        "* a"
       ],
       "hide_in_palette": true,
       "tui": [
@@ -3793,18 +3752,25 @@
             "list",
             "reader",
             "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
+            "place"
           ]
         }
+      ]
+    },
+    {
+      "id": "list.select-all-chord",
+      "label": "Select all",
+      "group": "Select",
+      "scopes": [
+        "list"
+      ],
+      "keys": [
+        "Mod+a"
+      ],
+      "hide_in_palette": true,
+      "note": "Only in the mail list: in the reader and the sidebar ⌘A / Ctrl+A stays the browser's select-all, and a terminal can't send Ctrl+A",
+      "clients": [
+        "web"
       ]
     },
     {
@@ -3812,7 +3778,9 @@
       "label": "Select none",
       "group": "Select",
       "scopes": [
-        "list"
+        "list",
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "* n"
@@ -3828,16 +3796,7 @@
             "list",
             "reader",
             "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
+            "place"
           ]
         }
       ]
@@ -3847,7 +3806,9 @@
       "label": "Select read",
       "group": "Select",
       "scopes": [
-        "list"
+        "list",
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "* r"
@@ -3863,16 +3824,7 @@
             "list",
             "reader",
             "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
+            "place"
           ]
         }
       ]
@@ -3882,7 +3834,9 @@
       "label": "Select unread",
       "group": "Select",
       "scopes": [
-        "list"
+        "list",
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "* u"
@@ -3898,16 +3852,7 @@
             "list",
             "reader",
             "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
+            "place"
           ]
         }
       ]
@@ -3917,7 +3862,9 @@
       "label": "Select starred",
       "group": "Select",
       "scopes": [
-        "list"
+        "list",
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "* s"
@@ -3933,16 +3880,7 @@
             "list",
             "reader",
             "sidebar",
-            "place",
-            "todo",
-            "catchup",
-            "expired",
-            "now",
-            "messages",
-            "archive",
-            "reading",
-            "reading-reader",
-            "updates"
+            "place"
           ]
         }
       ]
@@ -3953,7 +3891,8 @@
       "short_label": "Clear",
       "group": "Select",
       "scopes": [
-        "list"
+        "list",
+        "sidebar"
       ],
       "keys": [
         "Escape"
@@ -3978,7 +3917,9 @@
       "label": "Filter this list",
       "group": "Search",
       "scopes": [
-        "list"
+        "list",
+        "reader",
+        "sidebar"
       ],
       "keys": [
         "g f"
@@ -4405,7 +4346,8 @@
       "description": "Cleaned text with quotes folded; press again for plain text, as in the TUI",
       "group": "View",
       "scopes": [
-        "reader"
+        "reader",
+        "list"
       ],
       "keys": [
         "R"
@@ -4488,7 +4430,8 @@
       "label": "Show or hide signatures",
       "group": "View",
       "scopes": [
-        "reader"
+        "reader",
+        "list"
       ],
       "keys": [
         "S"
@@ -4549,7 +4492,8 @@
       "label": "Open original in a new tab",
       "group": "View",
       "scopes": [
-        "reader"
+        "reader",
+        "list"
       ],
       "keys": [
         "O"
@@ -4625,7 +4569,9 @@
       "label": "Full-width reader",
       "group": "View",
       "scopes": [
-        "reader"
+        "reader",
+        "list",
+        "sidebar"
       ],
       "keys": [
         "F"
@@ -8152,7 +8098,8 @@
             "messages",
             "reading",
             "reading-reader",
-            "updates"
+            "updates",
+            "arrivals-list"
           ]
         }
       ],
@@ -8211,7 +8158,8 @@
           "contexts": [
             "list",
             "now",
-            "messages"
+            "messages",
+            "arrivals-list"
           ]
         }
       ],
@@ -8220,6 +8168,7 @@
           "key": "K",
           "contexts": [
             "arrivals",
+            "arrivals-list",
             "list",
             "messages",
             "now"
@@ -8240,8 +8189,17 @@
         "ArrowDown"
       ],
       "hide_in_palette": true,
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "inline:down",
+          "keys": [
+            "j",
+            "ArrowDown"
+          ],
+          "contexts": [
+            "arrivals-list"
+          ]
+        }
       ]
     },
     {
@@ -8256,8 +8214,17 @@
         "ArrowUp"
       ],
       "hide_in_palette": true,
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "inline:up",
+          "keys": [
+            "k",
+            "ArrowUp"
+          ],
+          "contexts": [
+            "arrivals-list"
+          ]
+        }
       ]
     },
     {
@@ -8273,8 +8240,17 @@
         "o"
       ],
       "hide_in_palette": true,
-      "clients": [
-        "web"
+      "tui": [
+        {
+          "name": "inline:open",
+          "keys": [
+            "Enter",
+            "o"
+          ],
+          "contexts": [
+            "arrivals-list"
+          ]
+        }
       ]
     },
     {
@@ -12628,6 +12604,2969 @@
           ]
         }
       ]
+    },
+    {
+      "id": "overlay.close",
+      "label": "Close",
+      "group": "Navigate",
+      "scopes": [
+        "links",
+        "unsubscribe",
+        "move-picker",
+        "move-picker-sender",
+        "new-sender-picker",
+        "sender-kind-picker",
+        "correct-todo",
+        "not-now",
+        "delete-confirm",
+        "bulk-confirm",
+        "sweep-confirm",
+        "send-confirm",
+        "let-go-preview",
+        "compose-discard"
+      ],
+      "keys": [
+        "Escape",
+        "q"
+      ],
+      "tui": [
+        {
+          "name": "inline:close",
+          "keys": [
+            "Escape",
+            "q"
+          ],
+          "contexts": [
+            "links",
+            "move-picker",
+            "move-picker-sender",
+            "new-sender-picker",
+            "sender-kind-picker",
+            "correct-todo",
+            "not-now",
+            "delete-confirm",
+            "bulk-confirm",
+            "sweep-confirm",
+            "model-picker",
+            "voice-source",
+            "pass-menu",
+            "categories",
+            "resume-draft"
+          ]
+        },
+        {
+          "name": "CancelUnsubscribe",
+          "keys": [
+            "Escape",
+            "q"
+          ],
+          "contexts": [
+            "unsubscribe"
+          ]
+        },
+        {
+          "name": "CloseSnippetsModal",
+          "keys": [
+            "Escape",
+            "q"
+          ],
+          "contexts": [
+            "snippets"
+          ]
+        },
+        {
+          "name": "CloseSummaryModal",
+          "keys": [
+            "Escape",
+            "q"
+          ],
+          "contexts": [
+            "sheet"
+          ]
+        },
+        {
+          "name": "CloseSenderViewModal",
+          "keys": [
+            "Escape",
+            "q"
+          ],
+          "contexts": [
+            "sender-profile"
+          ]
+        },
+        {
+          "name": "CloseReplyQueueModal",
+          "keys": [
+            "Escape",
+            "q"
+          ],
+          "contexts": [
+            "reply-queue"
+          ]
+        },
+        {
+          "name": "CloseStoredDraftsModal",
+          "keys": [
+            "Escape",
+            "q"
+          ],
+          "contexts": [
+            "drafts"
+          ]
+        },
+        {
+          "name": "CloseArrivals",
+          "keys": [
+            "Escape",
+            "q"
+          ],
+          "contexts": [
+            "arrivals-list"
+          ]
+        },
+        {
+          "name": "inline:close",
+          "keys": [
+            "Escape",
+            "q",
+            "A"
+          ],
+          "contexts": [
+            "attachments"
+          ]
+        },
+        {
+          "name": "inline:close",
+          "keys": [
+            "Escape",
+            "q",
+            "Enter",
+            "x"
+          ],
+          "contexts": [
+            "error",
+            "platform"
+          ]
+        },
+        {
+          "name": "inline:close",
+          "keys": [
+            "Escape",
+            "q",
+            "Ctrl+f"
+          ],
+          "contexts": [
+            "messages-filter"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlay.cancel",
+      "label": "Close",
+      "description": "Where letters type, only Esc closes.",
+      "group": "Navigate",
+      "scopes": [
+        "palette",
+        "label-picker",
+        "reply-later",
+        "search-palette"
+      ],
+      "keys": [
+        "Escape"
+      ],
+      "tui": [
+        {
+          "name": "CloseCommandPalette",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "palette"
+          ]
+        },
+        {
+          "name": "inline:close",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "label-picker",
+            "reply-later",
+            "compose-picker",
+            "save-attachment",
+            "export",
+            "export-destination",
+            "export-path",
+            "saved-search-form",
+            "draft-options",
+            "records-prompt",
+            "todo-prompt",
+            "identity-editor",
+            "account-mode-switch"
+          ]
+        },
+        {
+          "name": "CloseSearch",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "filter-bar"
+          ]
+        },
+        {
+          "name": "CloseAnalyticsFilterModal",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "analytics-filter"
+          ]
+        },
+        {
+          "name": "CancelOutlookAuth",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "auth-session"
+          ]
+        }
+      ],
+      "web_native": true
+    },
+    {
+      "id": "overlay.back",
+      "label": "Back",
+      "group": "Navigate",
+      "note": "The web's time field sits in the picker itself, so there is no step to go back from",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:back",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "not-now-custom",
+            "send-time"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlay.down",
+      "label": "Move down",
+      "group": "Navigate",
+      "scopes": [
+        "links",
+        "move-picker",
+        "move-picker-sender",
+        "new-sender-picker",
+        "sender-kind-picker",
+        "correct-todo"
+      ],
+      "keys": [
+        "j",
+        "ArrowDown"
+      ],
+      "tui": [
+        {
+          "name": "inline:down",
+          "keys": [
+            "j",
+            "ArrowDown"
+          ],
+          "contexts": [
+            "links",
+            "move-picker",
+            "move-picker-sender",
+            "new-sender-picker",
+            "sender-kind-picker",
+            "correct-todo",
+            "help",
+            "error",
+            "bulk-confirm",
+            "voice-source",
+            "attachments",
+            "model-picker",
+            "messages-filter",
+            "categories"
+          ]
+        },
+        {
+          "name": "SnippetsModalNext",
+          "keys": [
+            "j",
+            "ArrowDown"
+          ],
+          "contexts": [
+            "snippets"
+          ]
+        },
+        {
+          "name": "SenderProfileNextMessage",
+          "keys": [
+            "j",
+            "ArrowDown"
+          ],
+          "contexts": [
+            "sender-profile"
+          ]
+        },
+        {
+          "name": "ReplyQueueModalNext",
+          "keys": [
+            "j",
+            "ArrowDown"
+          ],
+          "contexts": [
+            "reply-queue"
+          ]
+        },
+        {
+          "name": "StoredDraftsModalNext",
+          "keys": [
+            "j",
+            "ArrowDown"
+          ],
+          "contexts": [
+            "drafts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlay.up",
+      "label": "Move up",
+      "group": "Navigate",
+      "scopes": [
+        "links",
+        "move-picker",
+        "move-picker-sender",
+        "new-sender-picker",
+        "sender-kind-picker",
+        "correct-todo"
+      ],
+      "keys": [
+        "k",
+        "ArrowUp"
+      ],
+      "tui": [
+        {
+          "name": "inline:up",
+          "keys": [
+            "k",
+            "ArrowUp"
+          ],
+          "contexts": [
+            "links",
+            "move-picker",
+            "move-picker-sender",
+            "new-sender-picker",
+            "sender-kind-picker",
+            "correct-todo",
+            "help",
+            "error",
+            "bulk-confirm",
+            "voice-source",
+            "attachments",
+            "model-picker",
+            "messages-filter",
+            "categories"
+          ]
+        },
+        {
+          "name": "SnippetsModalPrev",
+          "keys": [
+            "k",
+            "ArrowUp"
+          ],
+          "contexts": [
+            "snippets"
+          ]
+        },
+        {
+          "name": "SenderProfilePrevMessage",
+          "keys": [
+            "k",
+            "ArrowUp"
+          ],
+          "contexts": [
+            "sender-profile"
+          ]
+        },
+        {
+          "name": "ReplyQueueModalPrev",
+          "keys": [
+            "k",
+            "ArrowUp"
+          ],
+          "contexts": [
+            "reply-queue"
+          ]
+        },
+        {
+          "name": "StoredDraftsModalPrev",
+          "keys": [
+            "k",
+            "ArrowUp"
+          ],
+          "contexts": [
+            "drafts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlay.filter-down",
+      "label": "Move down",
+      "description": "Where letters type, Ctrl-n moves instead of j.",
+      "group": "Navigate",
+      "scopes": [
+        "not-now",
+        "palette",
+        "label-picker"
+      ],
+      "keys": [
+        "ArrowDown"
+      ],
+      "mac_keys": [
+        "Ctrl+n"
+      ],
+      "tui": [
+        {
+          "name": "inline:down",
+          "keys": [
+            "ArrowDown",
+            "Ctrl+n"
+          ],
+          "contexts": [
+            "not-now",
+            "palette",
+            "label-picker",
+            "compose-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlay.filter-up",
+      "label": "Move up",
+      "description": "Where letters type, Ctrl-p moves instead of k.",
+      "group": "Navigate",
+      "scopes": [
+        "not-now",
+        "palette",
+        "label-picker"
+      ],
+      "keys": [
+        "ArrowUp"
+      ],
+      "mac_keys": [
+        "Ctrl+p"
+      ],
+      "tui": [
+        {
+          "name": "inline:up",
+          "keys": [
+            "ArrowUp",
+            "Ctrl+p"
+          ],
+          "contexts": [
+            "not-now",
+            "palette",
+            "label-picker",
+            "compose-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.overlay.down-letter",
+      "label": "Move down",
+      "group": "Navigate",
+      "note": "The web's Not-now picker types a time as soon as you type, so j there is a letter; the TUI types it in its Custom row",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:down",
+          "keys": [
+            "j"
+          ],
+          "contexts": [
+            "not-now"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.overlay.up-letter",
+      "label": "Move up",
+      "group": "Navigate",
+      "note": "The web's Not-now picker types a time as soon as you type, so k there is a letter; the TUI types it in its Custom row",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:up",
+          "keys": [
+            "k"
+          ],
+          "contexts": [
+            "not-now"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlay.page-down",
+      "label": "Page down",
+      "group": "Navigate",
+      "note": "The web's dialogs scroll with the browser's own keys",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:page_down",
+          "keys": [
+            "Ctrl+d"
+          ],
+          "contexts": [
+            "help"
+          ]
+        },
+        {
+          "name": "inline:page_down",
+          "keys": [
+            "Ctrl+d",
+            "PageDown"
+          ],
+          "contexts": [
+            "error"
+          ]
+        },
+        {
+          "name": "inline:page_down",
+          "keys": [
+            "PageDown"
+          ],
+          "contexts": [
+            "voice-source"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlay.page-up",
+      "label": "Page up",
+      "group": "Navigate",
+      "note": "The web's dialogs scroll with the browser's own keys",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:page_up",
+          "keys": [
+            "Ctrl+u"
+          ],
+          "contexts": [
+            "help"
+          ]
+        },
+        {
+          "name": "inline:page_up",
+          "keys": [
+            "Ctrl+u",
+            "PageUp"
+          ],
+          "contexts": [
+            "error"
+          ]
+        },
+        {
+          "name": "inline:page_up",
+          "keys": [
+            "PageUp"
+          ],
+          "contexts": [
+            "voice-source"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlay.run",
+      "label": "Run the highlighted option",
+      "group": "Navigate",
+      "scopes": [
+        "move-picker",
+        "move-picker-sender",
+        "new-sender-picker",
+        "sender-kind-picker",
+        "correct-todo",
+        "not-now",
+        "delete-confirm",
+        "bulk-confirm",
+        "sweep-confirm",
+        "palette",
+        "label-picker",
+        "send-confirm"
+      ],
+      "keys": [
+        "Enter"
+      ],
+      "tui": [
+        {
+          "name": "lit:run",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "move-picker",
+            "move-picker-sender",
+            "new-sender-picker",
+            "sender-kind-picker",
+            "palette",
+            "label-picker"
+          ]
+        },
+        {
+          "name": "inline:run",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "correct-todo",
+            "delete-confirm",
+            "sweep-confirm",
+            "send-review",
+            "model-picker",
+            "export",
+            "messages-filter",
+            "draft-options",
+            "pass-menu",
+            "categories",
+            "resume-draft",
+            "account-mode-switch",
+            "identity-editor",
+            "save-attachment",
+            "export-path",
+            "records-prompt",
+            "todo-prompt",
+            "send-time"
+          ]
+        },
+        {
+          "name": "Snooze",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "not-now",
+            "not-now-custom"
+          ]
+        },
+        {
+          "name": "OpenSelected",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "bulk-confirm"
+          ]
+        },
+        {
+          "name": "FlagReplyLater",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "reply-later"
+          ]
+        },
+        {
+          "name": "SubmitSearch",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "filter-bar"
+          ]
+        },
+        {
+          "name": "SubmitAnalyticsFilterModal",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "analytics-filter"
+          ]
+        },
+        {
+          "name": "SaveSavedSearchForm",
+          "keys": [
+            "Enter",
+            "Ctrl+s"
+          ],
+          "contexts": [
+            "saved-search-form"
+          ]
+        }
+      ],
+      "web_native": true
+    },
+    {
+      "id": "overlay.yes",
+      "label": "Yes",
+      "description": "In a yes-or-no question, y does what Enter would on the action.",
+      "group": "Navigate",
+      "scopes": [
+        "delete-confirm",
+        "bulk-confirm",
+        "send-confirm",
+        "let-go-preview",
+        "compose-discard"
+      ],
+      "keys": [
+        "y"
+      ],
+      "tui": [
+        {
+          "name": "inline:yes",
+          "keys": [
+            "y"
+          ],
+          "contexts": [
+            "delete-confirm",
+            "sweep-confirm",
+            "resume-draft",
+            "account-mode-switch"
+          ]
+        },
+        {
+          "name": "OpenSelected",
+          "keys": [
+            "y",
+            "Y"
+          ],
+          "contexts": [
+            "bulk-confirm"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlay.no",
+      "label": "No",
+      "description": "In a yes-or-no question, n is Esc.",
+      "group": "Navigate",
+      "scopes": [
+        "unsubscribe",
+        "delete-confirm",
+        "bulk-confirm",
+        "send-confirm",
+        "let-go-preview",
+        "compose-discard"
+      ],
+      "keys": [
+        "n"
+      ],
+      "tui": [
+        {
+          "name": "inline:no",
+          "keys": [
+            "n"
+          ],
+          "contexts": [
+            "delete-confirm",
+            "bulk-confirm",
+            "sweep-confirm",
+            "resume-draft",
+            "account-mode-switch"
+          ]
+        },
+        {
+          "name": "CancelUnsubscribe",
+          "keys": [
+            "n"
+          ],
+          "contexts": [
+            "unsubscribe"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlay.switch",
+      "label": "Light the other option",
+      "group": "Navigate",
+      "scopes": [
+        "delete-confirm",
+        "bulk-confirm",
+        "sweep-confirm"
+      ],
+      "keys": [
+        "Tab",
+        "Shift+Tab"
+      ],
+      "tui": [
+        {
+          "name": "inline:switch",
+          "keys": [
+            "Tab",
+            "Shift+Tab"
+          ],
+          "contexts": [
+            "delete-confirm",
+            "sweep-confirm",
+            "resume-draft"
+          ]
+        }
+      ],
+      "web_native": true
+    },
+    {
+      "id": "tui.confirm.switch",
+      "label": "Light the other option",
+      "group": "Navigate",
+      "note": "The web's two buttons move with Tab, as a browser's do",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:switch",
+          "keys": [
+            "j",
+            "k",
+            "h",
+            "l",
+            "ArrowUp",
+            "ArrowDown",
+            "ArrowLeft",
+            "ArrowRight"
+          ],
+          "contexts": [
+            "delete-confirm",
+            "resume-draft"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlay.other-reading",
+      "label": "Use the other reading of the time",
+      "group": "Navigate",
+      "note": "The web lists every reading of the time under its field to click",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:other_reading",
+          "keys": [
+            "Tab"
+          ],
+          "contexts": [
+            "not-now-custom",
+            "send-time",
+            "reply-later"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "help.close",
+      "label": "Close help",
+      "group": "Navigate",
+      "scopes": [
+        "help"
+      ],
+      "keys": [
+        "Escape",
+        "?"
+      ],
+      "tui": [
+        {
+          "name": "Help",
+          "keys": [
+            "Escape",
+            "?",
+            "Enter",
+            "q"
+          ],
+          "contexts": [
+            "help"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.help.next-place",
+      "label": "Show the next place's keys first",
+      "group": "Navigate",
+      "note": "The web's help lists every place at once",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:next_place",
+          "keys": [
+            "Tab"
+          ],
+          "contexts": [
+            "help"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "links.open",
+      "label": "Open the link",
+      "group": "Read",
+      "scopes": [
+        "links"
+      ],
+      "keys": [
+        "Enter",
+        "o"
+      ],
+      "tui": [
+        {
+          "name": "inline:open",
+          "keys": [
+            "Enter",
+            "o"
+          ],
+          "contexts": [
+            "links"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "links.copy",
+      "label": "Copy the link",
+      "group": "Read",
+      "scopes": [
+        "links"
+      ],
+      "keys": [
+        "y"
+      ],
+      "tui": [
+        {
+          "name": "inline:copy",
+          "keys": [
+            "y"
+          ],
+          "contexts": [
+            "links"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unsubscribe.confirm",
+      "label": "Unsubscribe",
+      "group": "Mail",
+      "scopes": [
+        "unsubscribe"
+      ],
+      "keys": [
+        "Enter",
+        "u",
+        "U"
+      ],
+      "tui": [
+        {
+          "name": "ConfirmUnsubscribeOnly",
+          "keys": [
+            "Enter",
+            "u",
+            "U"
+          ],
+          "contexts": [
+            "unsubscribe"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unsubscribe.and-archive",
+      "label": "Unsubscribe and archive their mail",
+      "group": "Mail",
+      "scopes": [
+        "unsubscribe"
+      ],
+      "keys": [
+        "e",
+        "E"
+      ],
+      "tui": [
+        {
+          "name": "ConfirmUnsubscribeAndArchiveSender",
+          "keys": [
+            "e",
+            "E"
+          ],
+          "contexts": [
+            "unsubscribe"
+          ]
+        }
+      ],
+      "moved": [
+        {
+          "key": "a",
+          "contexts": [
+            "unsubscribe"
+          ],
+          "until": "0.6.204"
+        },
+        {
+          "key": "A",
+          "contexts": [
+            "unsubscribe"
+          ],
+          "until": "0.6.204"
+        }
+      ]
+    },
+    {
+      "id": "move-picker.messages",
+      "label": "Move this email to Messages",
+      "group": "Move",
+      "scopes": [
+        "move-picker",
+        "new-sender-picker"
+      ],
+      "keys": [
+        "m"
+      ],
+      "tui": [
+        {
+          "name": "MoveEmailTo { mode: Messages, sender: false }",
+          "keys": [
+            "m"
+          ],
+          "contexts": [
+            "move-picker",
+            "new-sender-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "move-picker.todo",
+      "label": "Move this email to To do",
+      "group": "Move",
+      "scopes": [
+        "move-picker",
+        "new-sender-picker"
+      ],
+      "keys": [
+        "x"
+      ],
+      "tui": [
+        {
+          "name": "MoveEmailTo { mode: Todo, sender: false }",
+          "keys": [
+            "x"
+          ],
+          "contexts": [
+            "move-picker",
+            "new-sender-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "move-picker.updates",
+      "label": "Move this email to Updates",
+      "group": "Move",
+      "scopes": [
+        "move-picker",
+        "new-sender-picker"
+      ],
+      "keys": [
+        "u"
+      ],
+      "tui": [
+        {
+          "name": "MoveEmailTo { mode: Updates, sender: false }",
+          "keys": [
+            "u"
+          ],
+          "contexts": [
+            "move-picker",
+            "new-sender-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "move-picker.reading",
+      "label": "Move this email to Reading",
+      "group": "Move",
+      "scopes": [
+        "move-picker",
+        "new-sender-picker"
+      ],
+      "keys": [
+        "r"
+      ],
+      "tui": [
+        {
+          "name": "MoveEmailTo { mode: Reading, sender: false }",
+          "keys": [
+            "r"
+          ],
+          "contexts": [
+            "move-picker",
+            "new-sender-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "move-picker.archive",
+      "label": "Move this email to Archive",
+      "group": "Move",
+      "scopes": [
+        "move-picker",
+        "new-sender-picker"
+      ],
+      "keys": [
+        "e"
+      ],
+      "tui": [
+        {
+          "name": "MoveEmailTo { mode: Archive, sender: false }",
+          "keys": [
+            "e"
+          ],
+          "contexts": [
+            "move-picker",
+            "new-sender-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "move-picker.sender-messages",
+      "label": "Move the sender to Messages",
+      "group": "Move",
+      "scopes": [
+        "move-picker"
+      ],
+      "keys": [
+        "M"
+      ],
+      "tui": [
+        {
+          "name": "MoveEmailTo { mode: Messages, sender: true }",
+          "keys": [
+            "M"
+          ],
+          "contexts": [
+            "move-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "move-picker-sender.messages",
+      "label": "Move the sender to Messages",
+      "description": "From P either case picks.",
+      "group": "Move",
+      "scopes": [
+        "move-picker-sender"
+      ],
+      "keys": [
+        "m",
+        "M"
+      ],
+      "tui": [
+        {
+          "name": "MoveEmailTo { mode: Messages, sender: true }",
+          "keys": [
+            "m",
+            "M"
+          ],
+          "contexts": [
+            "move-picker-sender"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "move-picker.sender-updates",
+      "label": "Move the sender to Updates",
+      "group": "Move",
+      "scopes": [
+        "move-picker"
+      ],
+      "keys": [
+        "U"
+      ],
+      "tui": [
+        {
+          "name": "MoveEmailTo { mode: Updates, sender: true }",
+          "keys": [
+            "U"
+          ],
+          "contexts": [
+            "move-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "move-picker-sender.updates",
+      "label": "Move the sender to Updates",
+      "description": "From P either case picks.",
+      "group": "Move",
+      "scopes": [
+        "move-picker-sender"
+      ],
+      "keys": [
+        "u",
+        "U"
+      ],
+      "tui": [
+        {
+          "name": "MoveEmailTo { mode: Updates, sender: true }",
+          "keys": [
+            "u",
+            "U"
+          ],
+          "contexts": [
+            "move-picker-sender"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "move-picker.sender-reading",
+      "label": "Move the sender to Reading",
+      "group": "Move",
+      "scopes": [
+        "move-picker"
+      ],
+      "keys": [
+        "R"
+      ],
+      "tui": [
+        {
+          "name": "MoveEmailTo { mode: Reading, sender: true }",
+          "keys": [
+            "R"
+          ],
+          "contexts": [
+            "move-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "move-picker-sender.reading",
+      "label": "Move the sender to Reading",
+      "description": "From P either case picks.",
+      "group": "Move",
+      "scopes": [
+        "move-picker-sender"
+      ],
+      "keys": [
+        "r",
+        "R"
+      ],
+      "tui": [
+        {
+          "name": "MoveEmailTo { mode: Reading, sender: true }",
+          "keys": [
+            "r",
+            "R"
+          ],
+          "contexts": [
+            "move-picker-sender"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "new-sender-picker.people",
+      "label": "Answer: People",
+      "description": "A new sender's question; from P either case answers.",
+      "group": "Move",
+      "scopes": [
+        "new-sender-picker"
+      ],
+      "keys": [
+        "M"
+      ],
+      "tui": [
+        {
+          "name": "AnswerNewSender(People)",
+          "keys": [
+            "M"
+          ],
+          "contexts": [
+            "new-sender-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "new-sender-picker.paper-trail",
+      "label": "Answer: Paper trail",
+      "description": "A new sender's question; from P either case answers.",
+      "group": "Move",
+      "scopes": [
+        "new-sender-picker"
+      ],
+      "keys": [
+        "U"
+      ],
+      "tui": [
+        {
+          "name": "AnswerNewSender(PaperTrail)",
+          "keys": [
+            "U"
+          ],
+          "contexts": [
+            "new-sender-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "new-sender-picker.reading",
+      "label": "Answer: Reading",
+      "description": "A new sender's question; from P either case answers.",
+      "group": "Move",
+      "scopes": [
+        "new-sender-picker"
+      ],
+      "keys": [
+        "R"
+      ],
+      "tui": [
+        {
+          "name": "AnswerNewSender(Reading)",
+          "keys": [
+            "R"
+          ],
+          "contexts": [
+            "new-sender-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "new-sender-picker.screened-out",
+      "label": "Answer: Screened out",
+      "description": "A new sender's question; from P either case answers.",
+      "group": "Move",
+      "scopes": [
+        "new-sender-picker"
+      ],
+      "keys": [
+        "D"
+      ],
+      "tui": [
+        {
+          "name": "AnswerNewSender(ScreenedOut)",
+          "keys": [
+            "D"
+          ],
+          "contexts": [
+            "new-sender-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sender-kind-picker.people",
+      "label": "Move the sender to People",
+      "group": "Move",
+      "scopes": [
+        "sender-kind-picker"
+      ],
+      "keys": [
+        "m",
+        "M"
+      ],
+      "tui": [
+        {
+          "name": "SetSenderKind(Some(People))",
+          "keys": [
+            "m",
+            "M"
+          ],
+          "contexts": [
+            "sender-kind-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sender-kind-picker.reading",
+      "label": "Move the sender to Reading",
+      "group": "Move",
+      "scopes": [
+        "sender-kind-picker"
+      ],
+      "keys": [
+        "r",
+        "R"
+      ],
+      "tui": [
+        {
+          "name": "SetSenderKind(Some(Reading))",
+          "keys": [
+            "r",
+            "R"
+          ],
+          "contexts": [
+            "sender-kind-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sender-kind-picker.paper-trail",
+      "label": "Move the sender to Paper trail",
+      "group": "Move",
+      "scopes": [
+        "sender-kind-picker"
+      ],
+      "keys": [
+        "u",
+        "U"
+      ],
+      "tui": [
+        {
+          "name": "SetSenderKind(Some(PaperTrail))",
+          "keys": [
+            "u",
+            "U"
+          ],
+          "contexts": [
+            "sender-kind-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sender-kind-picker.screened-out",
+      "label": "Move the sender to Screened out",
+      "group": "Move",
+      "scopes": [
+        "sender-kind-picker"
+      ],
+      "keys": [
+        "d",
+        "D"
+      ],
+      "tui": [
+        {
+          "name": "SetSenderKind(Some(ScreenedOut))",
+          "keys": [
+            "d",
+            "D"
+          ],
+          "contexts": [
+            "sender-kind-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sender-kind-picker.automatic",
+      "label": "Automatic: let the rules decide",
+      "group": "Move",
+      "scopes": [
+        "sender-kind-picker"
+      ],
+      "keys": [
+        "a",
+        "A"
+      ],
+      "tui": [
+        {
+          "name": "SetSenderKind(None)",
+          "keys": [
+            "a",
+            "A"
+          ],
+          "contexts": [
+            "sender-kind-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "not-now.preset",
+      "label": "Pick that time",
+      "description": "The digit printed beside each of the four presets.",
+      "group": "Mail",
+      "scopes": [
+        "not-now"
+      ],
+      "keys": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "tui": [
+        {
+          "name": "inline:preset",
+          "keys": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ],
+          "contexts": [
+            "not-now"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "correct-todo.not-a-todo",
+      "label": "Not a to-do",
+      "group": "Mail",
+      "scopes": [
+        "correct-todo"
+      ],
+      "keys": [
+        "1"
+      ],
+      "tui": [
+        {
+          "name": "inline:reason",
+          "keys": [
+            "1"
+          ],
+          "contexts": [
+            "correct-todo"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "correct-todo.not-mine",
+      "label": "Not mine",
+      "group": "Mail",
+      "scopes": [
+        "correct-todo"
+      ],
+      "keys": [
+        "2"
+      ],
+      "tui": [
+        {
+          "name": "inline:reason",
+          "keys": [
+            "2"
+          ],
+          "contexts": [
+            "correct-todo"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "correct-todo.already-done",
+      "label": "Already done",
+      "group": "Mail",
+      "scopes": [
+        "correct-todo"
+      ],
+      "keys": [
+        "3"
+      ],
+      "tui": [
+        {
+          "name": "inline:reason",
+          "keys": [
+            "3"
+          ],
+          "contexts": [
+            "correct-todo"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "correct-todo.wrong-details",
+      "label": "Wrong details",
+      "group": "Mail",
+      "scopes": [
+        "correct-todo"
+      ],
+      "keys": [
+        "4"
+      ],
+      "tui": [
+        {
+          "name": "inline:reason",
+          "keys": [
+            "4"
+          ],
+          "contexts": [
+            "correct-todo"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sender-ask.yes",
+      "label": "Yes, always for this sender",
+      "group": "Move",
+      "scopes": [
+        "sender-ask"
+      ],
+      "keys": [
+        "y",
+        "Enter"
+      ],
+      "tui": [
+        {
+          "name": "AnswerAlwaysForSender(true)",
+          "keys": [
+            "y",
+            "Enter"
+          ],
+          "contexts": [
+            "sender-ask"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sender-ask.no",
+      "label": "No, this email only",
+      "group": "Move",
+      "scopes": [
+        "sender-ask"
+      ],
+      "keys": [
+        "n",
+        "Escape"
+      ],
+      "tui": [
+        {
+          "name": "AnswerAlwaysForSender(false)",
+          "keys": [
+            "n",
+            "Escape"
+          ],
+          "contexts": [
+            "sender-ask"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "label-picker.apply",
+      "label": "Apply the ticked labels",
+      "group": "Mail",
+      "scopes": [
+        "label-picker"
+      ],
+      "keys": [
+        "Mod+Enter"
+      ],
+      "note": "The web's label picker ticks several labels with Enter, then applies them; the TUI's picks one",
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "send-confirm.override",
+      "label": "Override the block and send once",
+      "group": "Compose",
+      "scopes": [
+        "send-confirm"
+      ],
+      "keys": [
+        "O",
+        "o"
+      ],
+      "tui": [
+        {
+          "name": "inline:override",
+          "keys": [
+            "O",
+            "Ctrl+o"
+          ],
+          "contexts": [
+            "send-review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "search-palette.down",
+      "label": "Next result",
+      "group": "Search",
+      "scopes": [
+        "search-palette"
+      ],
+      "keys": [
+        "ArrowDown",
+        "Ctrl+j"
+      ],
+      "note": "The TUI searches on its Search screen",
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "search-palette.up",
+      "label": "Previous result",
+      "group": "Search",
+      "scopes": [
+        "search-palette"
+      ],
+      "keys": [
+        "ArrowUp",
+        "Ctrl+k"
+      ],
+      "note": "The TUI searches on its Search screen",
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "search-palette.open",
+      "label": "Open the result",
+      "group": "Search",
+      "scopes": [
+        "search-palette"
+      ],
+      "keys": [
+        "Enter"
+      ],
+      "note": "The TUI searches on its Search screen",
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "search-palette.all",
+      "label": "Search everything on the Search page",
+      "group": "Search",
+      "scopes": [
+        "search-palette"
+      ],
+      "keys": [
+        "Mod+Enter"
+      ],
+      "mac_keys": [
+        "Ctrl+Enter"
+      ],
+      "note": "The TUI searches on its Search screen",
+      "clients": [
+        "web"
+      ]
+    },
+    {
+      "id": "send-review.send",
+      "label": "Send",
+      "group": "Compose",
+      "note": "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:send",
+          "keys": [
+            "s"
+          ],
+          "contexts": [
+            "send-review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "send-review.later",
+      "label": "Send later",
+      "group": "Compose",
+      "note": "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:send_later",
+          "keys": [
+            "a"
+          ],
+          "contexts": [
+            "send-review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "send-review.remind",
+      "label": "Send, and remind me if nobody replies",
+      "group": "Compose",
+      "note": "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:remind",
+          "keys": [
+            "n"
+          ],
+          "contexts": [
+            "send-review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "send-review.save",
+      "label": "Save as a draft on the server",
+      "group": "Compose",
+      "note": "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:save",
+          "keys": [
+            "d"
+          ],
+          "contexts": [
+            "send-review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "send-review.edit",
+      "label": "Edit again",
+      "description": "Esc goes back to the draft too; it never throws it away.",
+      "group": "Compose",
+      "note": "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:edit",
+          "keys": [
+            "e",
+            "Escape"
+          ],
+          "contexts": [
+            "send-review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "send-review.refine",
+      "label": "Refine with the assistant",
+      "group": "Compose",
+      "note": "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "RefinePendingDraft",
+          "keys": [
+            "r"
+          ],
+          "contexts": [
+            "send-review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "send-review.discard",
+      "label": "Discard draft",
+      "group": "Compose",
+      "note": "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:discard",
+          "keys": [
+            "#"
+          ],
+          "contexts": [
+            "send-review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "send-review.add-cc",
+      "label": "Add the suggested person to Cc",
+      "group": "Compose",
+      "note": "The TUI composes in $EDITOR and reviews every draft when the editor closes; the web composer sends from the page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:add_cc",
+          "keys": [
+            "Ctrl+a"
+          ],
+          "contexts": [
+            "send-review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "welcome.start",
+      "label": "Start setting up",
+      "group": "Accounts",
+      "note": "The web app's first run is a page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:start",
+          "keys": [
+            "Enter",
+            "Space"
+          ],
+          "contexts": [
+            "welcome"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "welcome.demo",
+      "label": "Try the demo",
+      "group": "Accounts",
+      "note": "The web app's first run is a page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:demo",
+          "keys": [
+            "d"
+          ],
+          "contexts": [
+            "welcome"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "welcome.gmail",
+      "label": "Add Gmail",
+      "group": "Accounts",
+      "note": "The web app's first run is a page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:gmail",
+          "keys": [
+            "g"
+          ],
+          "contexts": [
+            "welcome"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "welcome.imap",
+      "label": "Add IMAP and SMTP",
+      "group": "Accounts",
+      "note": "The web app's first run is a page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:imap",
+          "keys": [
+            "i"
+          ],
+          "contexts": [
+            "welcome"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "welcome.dismiss",
+      "label": "Not now",
+      "group": "Accounts",
+      "note": "The web app's first run is a page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:dismiss",
+          "keys": [
+            "Escape"
+          ],
+          "contexts": [
+            "welcome"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "welcome.quit",
+      "label": "Quit",
+      "group": "Navigate",
+      "note": "The web app's first run is a page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "QuitView",
+          "keys": [
+            "q"
+          ],
+          "contexts": [
+            "welcome"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sender-profile.overview",
+      "label": "Overview",
+      "group": "View",
+      "note": "The web shows a sender on the person page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:overview",
+          "keys": [
+            "1"
+          ],
+          "contexts": [
+            "sender-profile"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sender-profile.relationship",
+      "label": "Relationship",
+      "group": "View",
+      "note": "The web shows a sender on the person page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:relationship",
+          "keys": [
+            "2"
+          ],
+          "contexts": [
+            "sender-profile"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sender-profile.messages",
+      "label": "Their emails",
+      "group": "View",
+      "note": "The web shows a sender on the person page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:messages",
+          "keys": [
+            "3"
+          ],
+          "contexts": [
+            "sender-profile"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sender-profile.open",
+      "label": "Open the email",
+      "group": "Read",
+      "note": "The web shows a sender on the person page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenSenderProfileMessage",
+          "keys": [
+            "Enter",
+            "o"
+          ],
+          "contexts": [
+            "sender-profile"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sender-profile.whois",
+      "label": "Who is this?",
+      "group": "Read",
+      "note": "The web shows a sender on the person page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "OpenWhoisOnFocusedSender",
+          "keys": [
+            "W"
+          ],
+          "contexts": [
+            "sender-profile"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "reply-queue.reply",
+      "label": "Reply",
+      "group": "Mail",
+      "note": "The web's reply queue is the Focus page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ReplyQueueModalReply",
+          "keys": [
+            "Enter",
+            "r"
+          ],
+          "contexts": [
+            "reply-queue"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "reply-queue.focus",
+      "label": "Focus and reply, one at a time",
+      "group": "Mail",
+      "note": "The web's reply queue is the Focus page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ReplyQueueModalFocus",
+          "keys": [
+            "F"
+          ],
+          "contexts": [
+            "reply-queue"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "drafts.edit",
+      "label": "Edit the draft",
+      "group": "Compose",
+      "note": "The web's drafts are a page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "StoredDraftsModalEdit",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "drafts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "drafts.delete",
+      "label": "Delete the draft",
+      "group": "Compose",
+      "note": "The web's drafts are a page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "StoredDraftsModalPreviewDelete",
+          "keys": [
+            "#"
+          ],
+          "contexts": [
+            "drafts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "drafts.cancel-schedule",
+      "label": "Cancel the scheduled send",
+      "group": "Compose",
+      "note": "The web's drafts are a page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "StoredDraftsModalPreviewCancelSchedule",
+          "keys": [
+            "c"
+          ],
+          "contexts": [
+            "drafts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "drafts.push",
+      "label": "Sync the draft to the server",
+      "group": "Compose",
+      "note": "The web's drafts are a page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "StoredDraftsModalPreviewPush",
+          "keys": [
+            "p"
+          ],
+          "contexts": [
+            "drafts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose-picker.next",
+      "label": "Next field: the subject",
+      "group": "Compose",
+      "note": "The web composer has its own fields",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:next",
+          "keys": [
+            "Enter"
+          ],
+          "contexts": [
+            "compose-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compose-picker.add",
+      "label": "Add the highlighted person",
+      "group": "Compose",
+      "note": "The web composer has its own fields",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:add",
+          "keys": [
+            "Tab"
+          ],
+          "contexts": [
+            "compose-picker"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "attachments.open",
+      "label": "Open the attachment",
+      "group": "Read",
+      "note": "The web reader lists attachments in the email",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:open",
+          "keys": [
+            "Enter",
+            "o"
+          ],
+          "contexts": [
+            "attachments"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "attachments.save",
+      "label": "Save it somewhere",
+      "group": "Read",
+      "note": "The web reader lists attachments in the email",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:save",
+          "keys": [
+            "d"
+          ],
+          "contexts": [
+            "attachments"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "save-attachment.preset",
+      "label": "Downloads, Desktop or here",
+      "group": "Read",
+      "note": "The browser saves downloads itself",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:preset",
+          "keys": [
+            "1",
+            "2",
+            "3"
+          ],
+          "contexts": [
+            "save-attachment"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "export.format-down",
+      "label": "Move down",
+      "group": "Navigate",
+      "note": "The web exports from the palette straight to a file",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:down",
+          "keys": [
+            "ArrowDown"
+          ],
+          "contexts": [
+            "export"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "export.format-up",
+      "label": "Move up",
+      "group": "Navigate",
+      "note": "The web exports from the palette straight to a file",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:up",
+          "keys": [
+            "ArrowUp"
+          ],
+          "contexts": [
+            "export"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "export.markdown",
+      "label": "Markdown",
+      "group": "Mail",
+      "note": "The web exports from the palette straight to a file",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:format",
+          "keys": [
+            "m"
+          ],
+          "contexts": [
+            "export"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "export.json",
+      "label": "JSON",
+      "group": "Mail",
+      "note": "The web exports from the palette straight to a file",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:format",
+          "keys": [
+            "j"
+          ],
+          "contexts": [
+            "export"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "export.mbox",
+      "label": "Mbox",
+      "group": "Mail",
+      "note": "The web exports from the palette straight to a file",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:format",
+          "keys": [
+            "x"
+          ],
+          "contexts": [
+            "export"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "export.llm-context",
+      "label": "LLM context",
+      "group": "Mail",
+      "note": "The web exports from the palette straight to a file",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:format",
+          "keys": [
+            "l"
+          ],
+          "contexts": [
+            "export"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "export.clipboard",
+      "label": "Copy to the clipboard",
+      "group": "Mail",
+      "note": "The web exports from the palette straight to a file",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:clipboard",
+          "keys": [
+            "c"
+          ],
+          "contexts": [
+            "export-destination"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "export.save",
+      "label": "Save to a file",
+      "group": "Mail",
+      "note": "The web exports from the palette straight to a file",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:save",
+          "keys": [
+            "s"
+          ],
+          "contexts": [
+            "export-destination"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "filter-bar.mode",
+      "label": "Next search mode",
+      "group": "Search",
+      "note": "The web's list filter is a field above the list",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "CycleSearchMode",
+          "keys": [
+            "Tab"
+          ],
+          "contexts": [
+            "filter-bar"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.form.next",
+      "label": "Next field",
+      "group": "Navigate",
+      "note": "The web's forms are pages, where Tab moves between fields as a browser's does",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:next",
+          "keys": [
+            "Tab"
+          ],
+          "contexts": [
+            "analytics-filter",
+            "saved-search-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tui.form.previous",
+      "label": "Previous field",
+      "group": "Navigate",
+      "note": "The web's forms are pages, where Tab moves between fields as a browser's does",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:previous",
+          "keys": [
+            "Shift+Tab"
+          ],
+          "contexts": [
+            "analytics-filter",
+            "saved-search-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "analytics-filter.cycle",
+      "label": "Next or previous choice",
+      "group": "Analytics",
+      "note": "The web's filters are page controls",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:cycle",
+          "keys": [
+            "ArrowLeft",
+            "ArrowRight"
+          ],
+          "contexts": [
+            "analytics-filter"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "saved-search-form.mode",
+      "label": "Next search mode",
+      "group": "Search",
+      "note": "The web's saved-search form is a page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:mode",
+          "keys": [
+            "Space"
+          ],
+          "contexts": [
+            "saved-search-form"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "messages-filter.pick",
+      "label": "Pick it",
+      "group": "View",
+      "note": "The web's Messages filters are a row of buttons",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:pick",
+          "keys": [
+            "Space"
+          ],
+          "contexts": [
+            "messages-filter"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "draft-options.next",
+      "label": "Next field",
+      "group": "Compose",
+      "note": "The web's draft options sit beside the composer",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:next",
+          "keys": [
+            "Tab",
+            "ArrowUp",
+            "ArrowDown",
+            "j",
+            "k"
+          ],
+          "contexts": [
+            "draft-options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "draft-options.cycle",
+      "label": "Next or previous choice",
+      "group": "Compose",
+      "note": "The web's draft options sit beside the composer",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:cycle",
+          "keys": [
+            "ArrowLeft",
+            "ArrowRight",
+            "h",
+            "l"
+          ],
+          "contexts": [
+            "draft-options"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pass-menu.file",
+      "label": "See what filing would make",
+      "group": "Mail",
+      "note": "The web files from the Archive page's own button",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:file",
+          "keys": [
+            "a"
+          ],
+          "contexts": [
+            "pass-menu"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "promise-prompt.keep",
+      "label": "Yes, remind me",
+      "group": "Mail",
+      "note": "The web asks about a promise on the sent email's row",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:keep",
+          "keys": [
+            "y"
+          ],
+          "contexts": [
+            "promise-prompt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "promise-prompt.let-go",
+      "label": "No, let it go",
+      "group": "Mail",
+      "note": "The web asks about a promise on the sent email's row",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:let_go",
+          "keys": [
+            "n",
+            "Escape"
+          ],
+          "contexts": [
+            "promise-prompt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "arrivals-list.next-bucket",
+      "label": "Next kind of arrival",
+      "group": "View",
+      "note": "The web's arrivals page lists every kind at once",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "ArrivalsNextBucket",
+          "keys": [
+            "Tab"
+          ],
+          "contexts": [
+            "arrivals-list"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resume-draft.resume",
+      "label": "Resume the form",
+      "group": "Accounts",
+      "note": "The web's account form keeps its fields in the page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:resume",
+          "keys": [
+            "c"
+          ],
+          "contexts": [
+            "resume-draft"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "identity-editor.next",
+      "label": "Other field",
+      "group": "Accounts",
+      "note": "The web edits colour and tag in the account's page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:next",
+          "keys": [
+            "Tab",
+            "Shift+Tab",
+            "ArrowUp",
+            "ArrowDown"
+          ],
+          "contexts": [
+            "identity-editor"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "identity-editor.colour",
+      "label": "Next or previous colour",
+      "group": "Accounts",
+      "note": "The web edits colour and tag in the account's page",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:colour",
+          "keys": [
+            "ArrowLeft",
+            "ArrowRight",
+            "Space"
+          ],
+          "contexts": [
+            "identity-editor"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "categories.explain",
+      "label": "Why is this here?",
+      "group": "Mail",
+      "note": "The web's Categories dialog is a filter list: letters type and Enter picks",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:explain",
+          "keys": [
+            "w"
+          ],
+          "contexts": [
+            "categories"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "categories.filter",
+      "label": "Filter",
+      "group": "Mail",
+      "note": "The web's Categories dialog is a filter list: letters type and Enter picks",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:filter",
+          "keys": [
+            "/"
+          ],
+          "contexts": [
+            "categories"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "categories.create",
+      "label": "New category",
+      "group": "Mail",
+      "note": "The web's Categories dialog is a filter list: letters type and Enter picks",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:create",
+          "keys": [
+            "c"
+          ],
+          "contexts": [
+            "categories"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "categories.rename",
+      "label": "Rename",
+      "group": "Mail",
+      "note": "The web's Categories dialog is a filter list: letters type and Enter picks",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:rename",
+          "keys": [
+            "r"
+          ],
+          "contexts": [
+            "categories"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "categories.delete",
+      "label": "Delete the category",
+      "group": "Mail",
+      "note": "The web's Categories dialog is a filter list: letters type and Enter picks",
+      "clients": [
+        "tui"
+      ],
+      "tui": [
+        {
+          "name": "inline:delete",
+          "keys": [
+            "#"
+          ],
+          "contexts": [
+            "categories"
+          ]
+        }
+      ]
     }
   ],
   "strip": [
@@ -12781,36 +15720,6 @@
         "screener.feed",
         "screener.paper-trail"
       ]
-    }
-  ],
-  "tui_pass_through": [
-    {
-      "from": [
-        "sidebar",
-        "reader"
-      ],
-      "to": "list",
-      "why": "The TUI's sidebar and reader sit beside the mail list, so list keys reach the list from them"
-    },
-    {
-      "from": [
-        "list",
-        "sidebar"
-      ],
-      "to": "reader",
-      "why": "The TUI's reader is a preview beside the list, so its view keys work from the list and the sidebar"
-    },
-    {
-      "from": [
-        "todo",
-        "now",
-        "messages",
-        "archive",
-        "updates",
-        "reading"
-      ],
-      "to": "list",
-      "why": "The TUI draws a mode in the mail list's pane, so the list's sidebar, pattern and invite keys reach it; the web's modes don't take them yet"
     }
   ]
 }

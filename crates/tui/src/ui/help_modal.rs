@@ -59,8 +59,13 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HelpModalState<'_>, theme: &cr
     let popup = centered_rect(88, 88, area);
     frame.render_widget(Clear, popup);
 
+    let single_keys = state.keybindings.is_none_or(|config| config.single_keys);
     let block = Block::bordered()
-        .title(" Help ")
+        .title(if single_keys {
+            " Help "
+        } else {
+            " Help: single-key shortcuts are off; Ctrl-k opens the palette "
+        })
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.accent))
         .style(Style::default().bg(theme.modal_bg));

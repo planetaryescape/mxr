@@ -534,3 +534,41 @@ describe("installKeyDispatcher", () => {
     expect(movedNotices).toEqual(["Mail is now g i", "Raw headers is now null"]);
   });
 });
+
+describe("single-key shortcuts off", () => {
+  let off: boolean;
+
+  beforeEach(() => {
+    uninstall();
+    off = true;
+    uninstall = installKeyDispatcher(window, {
+      registry,
+      context: () => ctxWith(scopes),
+      singleKeysOff: () => off,
+      mac: false,
+    });
+  });
+
+  test("a character does nothing and is left to the browser; chords and named keys still run", () => {
+    const archive = runAction("archive", "e");
+    const palette = runAction("palette", "Mod+k");
+    const down = runAction("down", "ArrowDown");
+    const goInbox = runAction("go-inbox", "g i");
+    registry.defineMany([archive.action, palette.action, down.action, goInbox.action]);
+
+    expect(press({ key: "e" })).toBe(true);
+    expect(press({ key: "g" })).toBe(true);
+    press({ key: "i" });
+    expect(archive.run).not.toHaveBeenCalled();
+    expect(goInbox.run).not.toHaveBeenCalled();
+
+    press({ key: "k", ctrlKey: true });
+    press({ key: "ArrowDown" });
+    expect(palette.run).toHaveBeenCalledTimes(1);
+    expect(down.run).toHaveBeenCalledTimes(1);
+
+    off = false;
+    press({ key: "e" });
+    expect(archive.run).toHaveBeenCalledTimes(1);
+  });
+});

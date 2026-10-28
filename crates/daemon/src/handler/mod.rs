@@ -1845,6 +1845,7 @@ async fn dispatch(
             .await
         }
         Request::GetKeymap => keymap::get(),
+        Request::UpdateKeys { change, dry_run } => keymap::update(change, *dry_run),
         Request::GetModeGuide { mode } => mode_guide::get(state, mode.as_deref()).await,
         Request::SetHintSeen { hint, seen } => mode_guide::set_seen(state, hint, *seen).await,
         // Boxed with the other mode requests below: their futures build the
@@ -2558,6 +2559,7 @@ fn classify_request(req: &Request) -> RequestClass {
     use RequestClass::{Admin, Destructive, DraftOnly, Mutate, Read, Send};
     match req {
         Request::RemoteRead { .. } | Request::GetRemoteReady | Request::PreviewDraft { .. } => Read,
+        Request::UpdateKeys { dry_run: true, .. } => Read,
         Request::SetAccountIdentity { dry_run: true, .. } => Read,
         Request::RemoteAuthority { request } if request.is_read_only() => Read,
         Request::RemoteAuthority { .. } => Admin,
@@ -2864,6 +2866,7 @@ fn classify_request(req: &Request) -> RequestClass {
         | Request::UpdateNotificationChimes { .. }
         | Request::PatchNotificationChimes { .. }
         | Request::PreviewNotificationChime { .. }
+        | Request::UpdateKeys { .. }
         | Request::EnableSemantic { .. }
         | Request::InstallSemanticProfile { .. }
         | Request::UseSemanticProfile { .. }
@@ -3267,6 +3270,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetTodoCatchup { .. } => "get_todo_catchup",
         Request::SetTodoCatchup { .. } => "set_todo_catchup",
         Request::GetKeymap => "get_keymap",
+        Request::UpdateKeys { .. } => "update_keys",
         Request::GetModeGuide { .. } => "get_mode_guide",
         Request::SetHintSeen { .. } => "set_hint_seen",
         Request::ListRecords { .. } => "list_records",

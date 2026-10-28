@@ -251,8 +251,8 @@ pub fn app(config: WebServerConfig) -> Router {
         )
         .nest(
             "/platform",
-            chime_routes::extend_platform(insight_routes::extend_platform(
-                routes_v6::extend_platform(platform_router()),
+            keymap_routes::extend_platform(chime_routes::extend_platform(
+                insight_routes::extend_platform(routes_v6::extend_platform(platform_router())),
             )),
         )
         .nest("/client", client_router())

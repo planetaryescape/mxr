@@ -7563,6 +7563,34 @@
         }
       }
     },
+    "/api/v1/platform/keymap": {
+      "get": {
+        "tags": [],
+        "summary": "Every key in every client, with the person's keys.toml applied (the Keymap variant)",
+        "operationId": "platform_keymap_get",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Change keys.toml: an action's keys or the single-key switch; {change: KeysChangeData, dry_run} previews (the KeysUpdate variant)",
+        "operationId": "platform_keymap_update",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
     "/api/v1/platform/llm/config": {
       "get": {
         "tags": [],
@@ -18188,7 +18216,7 @@
       },
       "KeymapData": {
         "type": "object",
-        "description": "Returned in `ResponseData::Keymap`.",
+        "description": "Returned in `ResponseData::Keymap`: the definition with the person's\n`keys.toml` applied.",
         "required": [
           "actions"
         ],
@@ -18198,6 +18226,124 @@
             "items": {
               "$ref": "#/components/schemas/KeyActionData"
             }
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What in `keys.toml` mxr is ignoring, as sentences."
+          },
+          "remapped": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ids of the actions whose keys the person changed (`[actions]`)."
+          },
+          "single_keys": {
+            "type": "boolean",
+            "description": "False when the person turned off every shortcut made of single\ncharacters (`single_keys = false`, WCAG 2.1.4). Clients then ignore\nthose keys outside text fields and overlays."
+          }
+        }
+      },
+      "KeysChangeData": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Give an action these keys, primary first, in every client; none\nleaves it to the palette.",
+            "required": [
+              "id",
+              "keys",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_action"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Give an action back its default keys.",
+            "required": [
+              "id",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reset_action"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Turn single-character shortcuts on or off.",
+            "required": [
+              "on",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "single_keys"
+                ]
+              },
+              "on": {
+                "type": "boolean"
+              }
+            }
+          }
+        ],
+        "description": "A change to `keys.toml` (`Request::UpdateKeys`)."
+      },
+      "KeysUpdateData": {
+        "type": "object",
+        "description": "Returned in `ResponseData::KeysUpdate`.",
+        "required": [
+          "saved",
+          "file",
+          "problems",
+          "keymap"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "The `keys.toml` that was, or would be, written."
+          },
+          "keymap": {
+            "$ref": "#/components/schemas/KeymapData",
+            "description": "The key map with the change applied (when it has no problems)."
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Why the change can't be saved: a key another action has, a key a\nclient can't receive. Empty when it can."
+          },
+          "saved": {
+            "type": "boolean",
+            "description": "True when `keys.toml` was written: not a dry run, and no problems."
           }
         }
       },
@@ -32476,7 +32622,7 @@
           },
           {
             "type": "object",
-            "description": "Every keyboard shortcut in every client, from the one definition\n(blueprint chapter 35). Returns `ResponseData::Keymap`.",
+            "description": "Every keyboard shortcut in every client, from the one definition\nwith the person's `keys.toml` applied (blueprint chapter 35).\nReturns `ResponseData::Keymap`.",
             "required": [
               "cmd"
             ],
@@ -32486,6 +32632,28 @@
                 "enum": [
                   "GetKeymap"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Change `keys.toml`: an action's keys, or the single-key switch.\nNothing is written on a dry run or when the change has problems\n(a key another action has). Returns `ResponseData::KeysUpdate`.",
+            "required": [
+              "change",
+              "cmd"
+            ],
+            "properties": {
+              "change": {
+                "$ref": "#/components/schemas/KeysChangeData"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UpdateKeys"
+                ]
+              },
+              "dry_run": {
+                "type": "boolean"
               }
             }
           },
@@ -38473,6 +38641,25 @@
                 "enum": [
                   "Keymap"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Returned by `Request::UpdateKeys`.",
+            "required": [
+              "update",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "KeysUpdate"
+                ]
+              },
+              "update": {
+                "$ref": "#/components/schemas/KeysUpdateData"
               }
             }
           },

@@ -9,9 +9,14 @@
 //! generated `apps/web/src/lib/actions/keymap.generated.json`.
 
 mod docs;
+mod keys_file;
 mod places;
 mod remaps;
 
+pub use keys_file::{
+    action_keys_problems, edit_keys_toml, is_character_key, new_clashes, tui_key, KeysEdit,
+    KeysFile, Remapped, ACTIONS_SECTION, SINGLE_KEYS_SETTING, TUI_REMAP_CONTEXTS,
+};
 pub use places::place_title;
 pub use remaps::{ModeRemaps, MODE_SECTIONS};
 use serde::{Deserialize, Serialize};

@@ -12,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { ModeHelp, modeOfScopes } from "@/features/modes/ModeHelp";
 import { type ShortcutHint, useActionContext, useShortcutSections } from "@/lib/actions";
+import { useKeymapStore } from "@/state/keymapStore";
 
 interface HelpDialogProps {
   open: boolean;
@@ -29,6 +30,7 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
   const ctx = useActionContext();
   const sections = useShortcutSections(ctx);
   const mode = modeOfScopes(ctx.scopes);
+  const singleKeys = useKeymapStore((state) => state.singleKeys);
   const normalized = query.trim().toLowerCase();
   const visible = useMemo(() => {
     if (!normalized) return sections;
@@ -72,7 +74,11 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
       >
         <DialogHeader>
           <DialogTitle>Help and keyboard shortcuts</DialogTitle>
-          <DialogDescription>Type to filter; Esc closes.</DialogDescription>
+          <DialogDescription>
+            {singleKeys
+              ? "Type to filter; Esc closes."
+              : "Single-key shortcuts are off (Settings, Keybindings): keys with ⌘ or Ctrl still work, and the palette runs everything. Type to filter; Esc closes."}
+          </DialogDescription>
         </DialogHeader>
         {mode ? <ModeHelp mode={mode} /> : null}
         <Input

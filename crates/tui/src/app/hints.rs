@@ -300,7 +300,12 @@ impl App {
     /// per action and profile (D171). The daemon says whether this run is
     /// the first; only then does the toast show.
     pub(crate) fn offer_next_time(&mut self, command: &crate::ui::command_palette::PaletteCommand) {
-        let (Some(id), Some(key)) = (command.id, command.first_key()) else {
+        // With single-character shortcuts off, teach a key that still works.
+        let single_keys = self.keybindings.single_keys;
+        let key = command.shortcut.split(" / ").find(|key| {
+            !key.is_empty() && (single_keys || !crate::keybindings::is_character_shortcut(key))
+        });
+        let (Some(id), Some(key)) = (command.id, key) else {
             return;
         };
         if !self.hints.next_time_asked.insert(id) {

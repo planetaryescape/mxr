@@ -88,6 +88,15 @@ export function ensureCatalogRegistered(): void {
   registered = true;
 }
 
+/**
+ * Rebuild every action from the definition as it stands now (after
+ * `setServedKeys`). Throws, changing nothing, when the keys don't validate.
+ */
+export function reregisterCatalog(): void {
+  getRegistry().replaceAll(featureActions.map(fromDefinition));
+  registered = true;
+}
+
 /** Test-only: re-register on the next call (use after `resetRegistry`). */
 export function resetCatalogRegistration(): void {
   registered = false;

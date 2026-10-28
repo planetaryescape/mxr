@@ -3,6 +3,7 @@
 //! as `mxr keys` prints them and name an action id from the definition;
 //! an empty string unbinds the key.
 
+use crate::keys_file::{tui_key, ACTIONS_SECTION, SINGLE_KEYS_SETTING};
 use crate::{is_well_formed, Keymap};
 use std::collections::BTreeMap;
 
@@ -101,15 +102,66 @@ impl ModeRemaps {
         }
         for name in table.keys() {
             if !MODE_SECTIONS.contains(&name.as_str())
-                && !["mail_list", "message_view", "thread_view"].contains(&name.as_str())
+                && ![
+                    "mail_list",
+                    "message_view",
+                    "thread_view",
+                    ACTIONS_SECTION,
+                    SINGLE_KEYS_SETTING,
+                ]
+                .contains(&name.as_str())
             {
                 problems.push(format!(
-                    "[{name}] is not a keys.toml section; use mail_list, message_view, thread_view or a mode: {}",
+                    "[{name}] is not a keys.toml section; use actions, mail_list, message_view, thread_view or a mode: {}",
                     MODE_SECTIONS.join(", ")
                 ));
             }
         }
         (remaps, problems)
+    }
+
+    /// These remaps with the person's `[actions]` keys underneath, in every
+    /// mode the action has keys in: its new keys do it there, and its
+    /// default keys stop. A mode section's own entries win, key by key, and
+    /// a mode section that moved the action itself keeps it.
+    pub fn with_actions(
+        mut self,
+        actions: &BTreeMap<String, Vec<String>>,
+        keymap: &Keymap,
+    ) -> Self {
+        for (id, keys) in actions {
+            let Some(action) = keymap.get(id) else {
+                continue;
+            };
+            for section in MODE_SECTIONS {
+                let defaults: Vec<&String> = action
+                    .tui
+                    .iter()
+                    .filter(|binding| binding.contexts.includes(section))
+                    .flat_map(|binding| &binding.keys)
+                    .collect();
+                if defaults.is_empty() {
+                    continue;
+                }
+                let entries = self.by_context.entry(section.to_string()).or_default();
+                if entries.values().any(|bound| bound.as_deref() == Some(id)) {
+                    continue;
+                }
+                if keys.is_empty() {
+                    for key in defaults {
+                        entries.entry(key.clone()).or_insert(None);
+                    }
+                } else {
+                    for key in keys {
+                        entries
+                            .entry(tui_key(key))
+                            .or_insert_with(|| Some(id.clone()));
+                    }
+                }
+            }
+        }
+        self.by_context.retain(|_, entries| !entries.is_empty());
+        self
     }
 
     pub fn is_empty(&self) -> bool {

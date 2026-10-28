@@ -292,6 +292,8 @@ expression: summary
     "JobStatusData",
     "KeyActionData",
     "KeymapData",
+    "KeysChangeData",
+    "KeysUpdateData",
     "KindRuleData",
     "Label",
     "LabelCount",

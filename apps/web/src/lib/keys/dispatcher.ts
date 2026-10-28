@@ -9,6 +9,8 @@ import { invokeAction } from "@/lib/actions/registry";
 import type { Action, ActionContext, ActionScope } from "@/lib/actions/types";
 
 import { isMacPlatform, tokenFromEvent, type KeyToken } from "./chord";
+import { isCharacterKey } from "@/state/keymapStore";
+
 import { isComposingKey } from "./composition";
 
 // Leave time to read the continuation guide; fast typists never wait on it.
@@ -70,6 +72,12 @@ export interface DispatcherOptions {
   onMoved?: (action: Action, key: string | null) => void;
   /** Extra veto, e.g. while compose owns the page. */
   isSuspended?: () => boolean;
+  /**
+   * True while single-character shortcuts are off (`single_keys = false`
+   * in keys.toml, WCAG 2.1.4): a character on its own runs nothing and is
+   * left to the browser. Modifier chords and named keys still dispatch.
+   */
+  singleKeysOff?: () => boolean;
   mac?: boolean;
 }
 
@@ -144,6 +152,7 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
       return;
     }
     if (activatesNativeControl(event.target, token)) return;
+    if (buffer.length === 0 && options.singleKeysOff?.() && isCharacterKey(token)) return;
 
     const ctx = options.context();
     const scopes = ctx.scopes;

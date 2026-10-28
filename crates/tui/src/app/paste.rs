@@ -33,7 +33,7 @@ impl App {
     /// The owner of the next key is a text field. Mirrors the order in
     /// `handle_key_press`: the first owner that takes keys decides, so a
     /// menu over a field keeps the paste out of both.
-    fn text_input_focused(&self) -> bool {
+    pub(crate) fn text_input_focused(&self) -> bool {
         let modals = &self.modals;
         if modals.error.is_some() {
             return false;

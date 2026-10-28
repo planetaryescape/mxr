@@ -89,22 +89,31 @@ impl App {
     /// A screen that still reads its own keys (Rules, the drafts list)
     /// calls this with its own place name.
     pub(crate) fn announce_moved(&mut self, place: &str, keys: &str) -> bool {
-        let keymap = mxr_keymap::defaults();
+        // The person's keys: a remap onto the old key drops its notice, and
+        // the notice names the key they gave the action.
+        let keymap = self.keybindings.keymap();
         let Some((action, moved)) = keymap.moved_entry(place, keys) else {
             return false;
         };
         // A retired key whose action has none left names where to go
         // instead (`1` → `g i`), under the old action's name.
         let target = keymap.moved_target(action, moved);
-        let now = moved.to_key.as_ref().or_else(|| {
-            target
-                .tui
-                .iter()
-                .find(|binding| binding.contexts.includes(place))
-                .or_else(|| action.tui.first())
-                .and_then(|binding| binding.keys.first())
-                .or_else(|| target.keys.first())
-        });
+        let remapped = self.keybindings.modes.key_for(place, &target.id);
+        let now = moved
+            .to_key
+            .as_deref()
+            .or(remapped)
+            .or_else(|| {
+                target
+                    .tui
+                    .iter()
+                    .find(|binding| binding.contexts.includes(place))
+                    .or_else(|| action.tui.first())
+                    .and_then(|binding| binding.keys.first())
+                    .or_else(|| target.keys.first())
+                    .map(String::as_str)
+            })
+            .map(String::from);
         let name = action
             .short_label
             .as_deref()

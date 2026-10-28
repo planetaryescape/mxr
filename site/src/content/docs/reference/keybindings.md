@@ -3,11 +3,14 @@ title: Keybindings
 description: Default keybindings for the mxr TUI and web app.
 ---
 
-These tables show defaults. To remap TUI keys in mail panes or in a mode,
-create [`keys.toml`](/reference/config/#custom-keybindings), run
-`mxr keys check`, and restart the TUI.
-Help and the command palette show your effective shortcuts in each mail view;
-the web app keeps its own defaults.
+These tables show defaults. To give an action other keys in both clients,
+use **Settings → Keyboard** in the web app or `mxr keys set <action> <keys>`;
+both write [`keys.toml`](/reference/config/#keys-for-every-client) through the
+daemon after checking for conflicts. The TUI uses the change from its next
+start and the web app when it next loads. To turn off every single-character
+shortcut, use the **Single-key shortcuts** switch there or
+`mxr keys single-keys off` ([details](/reference/config/#turning-single-key-shortcuts-off)).
+Help and the command palette show your effective shortcuts.
 
 Every default in both clients comes from one definition. `mxr keys` lists
 it, and `mxr keys explain <key> --context <place>` says what a key does
@@ -110,6 +113,38 @@ Error: 2 problems in keys.toml
 
 With no `keys.toml` beside your config, it reports `No <path>/keys.toml; every key is the default.` and exits 0.
 
+### Change keys from the command line
+
+`mxr keys set`, `mxr keys reset` and `mxr keys single-keys` change `keys.toml`
+through the daemon. Each checks the change first and writes nothing when a key
+belongs to another action; `--dry-run` only checks. Keys are spelled as
+`mxr keys` prints them, and `Mod` is Cmd on a Mac, Ctrl elsewhere and in the TUI.
+
+```bash
+mxr keys set mail.archive % --dry-run   # check only
+mxr keys set mail.archive %             # Archive is % in the TUI and the web app
+mxr keys set mail.star s Mod+Shift+s    # several keys, primary first
+mxr keys set mail.trash --none          # palette only
+mxr keys reset mail.archive             # back to its default keys
+mxr keys single-keys off                # turn single-character shortcuts off
+```
+
+```text
+$ mxr keys set mail.archive s
+Can't save:
+  [actions] mail.archive: web scope `list`: `s` is bound to mail.archive, mail.star
+  [actions] mail.archive: web scope `reader`: `s` is bound to mail.archive, mail.star
+  [actions] mail.archive: TUI context `list`: `s` is bound to mail.archive, mail.star
+  [actions] mail.archive: TUI context `reader`: `s` is bound to mail.archive, mail.star
+Error: nothing written to /Users/you/.config/mxr/keys.toml
+
+$ mxr keys set mail.archive %
+Archive (mail.archive) is %. Saved /Users/you/.config/mxr/keys.toml; restart the TUI and reload the web app to use it.
+```
+
+`mxr keys` then marks the action's keys `(yours)`, and with single-key
+shortcuts off it says so and marks the keys that do nothing `(off)`.
+
 ## Terminal (TUI)
 
 The tables below are generated from the key definition, so they list exactly
@@ -137,6 +172,11 @@ with your `keys.toml` remaps.
 - In To do, `,` reviews a waiting resolution before it edits fields.
   [Review later evidence](/guides/todo-resolution/) lists the preview's own
   keys.
+- With single-key shortcuts off (`single_keys = false` in `keys.toml`, or
+  `mxr keys single-keys off`), a character typed on its own does nothing in
+  the mail panes, the modes and the tool screens; text fields and open menus
+  keep their letters. `Ctrl-k` opens the palette, and help's title says the
+  switch is off.
 - On any conversation, `X` then `e` files it in Archive. **Pass to a mode** in
   the palette shows the card it would file first, and `Enter` files it.
 
@@ -1432,5 +1472,9 @@ While writing a message. ⌘ and Ctrl both work, on every platform.
 
 ### Customization
 
-The web keymap is built into the app; there is no `keys.toml` equivalent
-yet.
+**Settings → Keyboard** lists every key. The pencil beside an action changes
+its keys: the new keys are checked as you type, any action already on them is
+named, and **Save** writes `keys.toml` through the daemon, so the TUI uses them
+too. **Use the default keys** puts an action back. The **Single-key shortcuts**
+switch turns every single-character shortcut off; `?` then says so, and `⌘K`
+or `Ctrl+K` still opens the palette. The web app reads your keys when it loads.

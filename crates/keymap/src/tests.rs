@@ -632,3 +632,234 @@ fn a_moved_key_names_a_known_place() {
         vec!["tui.drafts-delete: the move of `d` names unknown context `draft`".to_string()]
     );
 }
+
+fn keys_file(text: &str) -> (KeysFile, Vec<String>) {
+    KeysFile::parse(text, defaults())
+}
+
+#[test]
+fn keys_toml_reads_the_switch_and_action_keys() {
+    let (file, problems) = keys_file(
+        r#"
+        single_keys = false
+
+        [actions]
+        "mail.archive" = ";"
+        "mail.star" = ["Mod+e", "S"]
+        "mail.trash" = []
+        "#,
+    );
+    assert_eq!(problems, Vec::<String>::new());
+    assert!(!file.single_keys);
+    assert_eq!(file.actions["mail.archive"], vec![";"]);
+    assert_eq!(file.actions["mail.star"], vec!["Mod+e", "S"]);
+    assert_eq!(file.actions["mail.trash"], Vec::<String>::new());
+    assert!(keys_file("").0.single_keys);
+}
+
+#[test]
+fn unusable_action_keys_are_reported_and_left_out() {
+    let (file, problems) = keys_file(
+        r#"
+        single_keys = "no"
+        [actions]
+        "mail.nope" = "x"
+        "mail.archive" = "Mod+f"
+        "mail.star" = "Ctrl+Shift+s"
+        "mail.trash" = ["x", "x"]
+        "mail.spam" = 3
+        "#,
+    );
+    assert!(file.actions.is_empty(), "{:?}", file.actions);
+    let joined = problems.join("\n");
+    for expected in [
+        "`single_keys` must be true or false",
+        "mail.nope: no such action",
+        "the browser keeps `Mod+f`",
+        "Ctrl+Shift+ as plain Ctrl+",
+        "`x` is listed twice",
+        "mail.spam: give a key",
+    ] {
+        assert!(
+            joined.contains(expected),
+            "missing {expected:?} in:\n{joined}"
+        );
+    }
+    // The mode-section check accepts the new section and setting.
+    let (_, mode_problems) = remaps("single_keys = false\n[actions]\n\"mail.archive\" = \";\"\n");
+    assert_eq!(mode_problems, Vec::<String>::new());
+}
+
+#[test]
+fn an_action_key_replaces_its_keys_in_both_clients() {
+    let actions = BTreeMap::from([("mail.archive".to_string(), vec!["%".to_string()])]);
+    let remapped = defaults().remapped(&actions);
+    assert_eq!(remapped.problems, Vec::<String>::new());
+    assert_eq!(remapped.applied, actions);
+    let archive = remapped
+        .keymap
+        .get("mail.archive")
+        .expect("mail.archive is defined");
+    assert_eq!(archive.keys, vec!["%"]);
+    let tui = &remapped.keymap.tui_keymap();
+    assert_eq!(tui["list"].get("%").map(String::as_str), Some("Archive"));
+    assert_eq!(tui["list"].get("e"), None);
+    assert_eq!(tui["reader"].get("%").map(String::as_str), Some("Archive"));
+}
+
+#[test]
+fn an_action_key_that_clashes_is_left_out() {
+    let star = defaults()
+        .get("mail.star")
+        .expect("mail.star is defined")
+        .keys[0]
+        .clone();
+    let actions = BTreeMap::from([("mail.archive".to_string(), vec![star.clone()])]);
+    let remapped = defaults().remapped(&actions);
+    assert!(remapped.applied.is_empty());
+    assert!(
+        remapped
+            .problems
+            .iter()
+            .any(|p| p.starts_with("mail.archive:") && p.contains(&format!("`{star}`"))),
+        "{:?}",
+        remapped.problems
+    );
+    assert_eq!(remapped.keymap, *defaults());
+}
+
+#[test]
+fn a_remap_onto_a_moved_key_drops_that_notice() {
+    let (action, moved) = defaults()
+        .actions
+        .iter()
+        .find_map(|action| action.moved.first().map(|moved| (action, moved.clone())))
+        .expect("the definition announces a moved key");
+    let target = defaults()
+        .actions
+        .iter()
+        .find(|other| {
+            other.id != action.id
+                && !other.palette_only
+                && other.is_for(Client::Web)
+                && other
+                    .web_scopes()
+                    .iter()
+                    .any(|scope| moved.contexts.iter().any(|c| c == scope))
+        })
+        .expect("another action lives where the key moved");
+    let keys = vec![moved.key.clone()];
+    let remapped = defaults().with_action_keys(&target.id, &keys);
+    let still = remapped.moved_entry(
+        target
+            .web_scopes()
+            .into_iter()
+            .find(|scope| moved.contexts.iter().any(|c| c == scope))
+            .expect("the target lives where the key moved"),
+        &moved.key,
+    );
+    assert!(still.is_none(), "the old notice would hide the new key");
+}
+
+#[test]
+fn single_character_keys_are_the_ones_the_switch_turns_off() {
+    for key in ["e", "E", "#", "?", "g i", "+", "1"] {
+        assert!(is_character_key(key), "{key}");
+    }
+    for key in [
+        "Mod+k",
+        "Ctrl+d",
+        "Enter",
+        "Escape",
+        "Space",
+        "ArrowDown",
+        "Shift+Enter",
+    ] {
+        assert!(!is_character_key(key), "{key}");
+    }
+}
+
+#[test]
+fn edits_keep_the_rest_of_keys_toml() {
+    let text = "# my keys\n[todo]\n\"x\" = \"todo.done\" # tick\n";
+    let set = edit_keys_toml(
+        text,
+        &KeysEdit::SetAction {
+            id: "mail.archive".into(),
+            keys: vec![";".into()],
+        },
+    )
+    .expect("the edit applies");
+    assert!(set.contains("# my keys") && set.contains("# tick"), "{set}");
+    assert!(set.contains("[actions]\n\"mail.archive\" = \";\""), "{set}");
+    let several = edit_keys_toml(
+        &set,
+        &KeysEdit::SetAction {
+            id: "mail.star".into(),
+            keys: vec!["s".into(), "S".into()],
+        },
+    )
+    .expect("the edit applies");
+    assert!(
+        several.contains("\"mail.star\" = [\"s\", \"S\"]"),
+        "{several}"
+    );
+    let off = edit_keys_toml(&several, &KeysEdit::SingleKeys(false)).expect("the edit applies");
+    let (file, problems) = keys_file(&off);
+    assert_eq!(problems, Vec::<String>::new(), "{off}");
+    assert!(!file.single_keys);
+    assert_eq!(file.actions.len(), 2);
+    let on = edit_keys_toml(&off, &KeysEdit::SingleKeys(true)).expect("the edit applies");
+    assert!(!on.contains("single_keys"), "{on}");
+    let reset = edit_keys_toml(
+        &on,
+        &KeysEdit::ResetAction {
+            id: "mail.star".into(),
+        },
+    )
+    .expect("the edit applies");
+    let reset = edit_keys_toml(
+        &reset,
+        &KeysEdit::ResetAction {
+            id: "mail.archive".into(),
+        },
+    )
+    .expect("the edit applies");
+    assert!(!reset.contains("[actions]"), "{reset}");
+    assert!(reset.contains("# tick"), "{reset}");
+    assert!(edit_keys_toml("[todo", &KeysEdit::SingleKeys(false)).is_err());
+}
+
+#[test]
+fn action_keys_reach_the_modes_under_their_own_sections() {
+    let actions = BTreeMap::from([
+        ("todo.done".to_string(), vec!["x".to_string()]),
+        ("now.done".to_string(), Vec::new()),
+    ]);
+    let (sections, _) = remaps("[todo]\n\"y\" = \"todo.edit\"\n");
+    let remaps = sections.with_actions(&actions, defaults());
+    assert_eq!(remaps.lookup("todo", "x"), Some(Some("todo.done")));
+    assert!(remaps.retires("todo", "todo.done"));
+    assert_eq!(remaps.lookup("todo", "y"), Some(Some("todo.edit")));
+    assert_eq!(remaps.lookup("now", "e"), Some(None));
+    // A mode section that moved the action itself wins.
+    let (own, _) = remaps_text("[todo]\n\"z\" = \"todo.done\"\n");
+    let own = own.with_actions(&actions, defaults());
+    assert_eq!(own.lookup("todo", "x"), None);
+    assert_eq!(own.key_for("todo", "todo.done"), Some("z"));
+}
+
+fn remaps_text(text: &str) -> (ModeRemaps, Vec<String>) {
+    remaps(text)
+}
+
+#[test]
+fn a_tui_screen_key_is_not_remapped_through_actions() {
+    let problems = action_keys_problems(defaults(), "tui.rules.new", &["n".to_string()]);
+    assert!(
+        problems
+            .iter()
+            .any(|problem| problem.contains("TUI screen or overlay")),
+        "{problems:?}"
+    );
+}

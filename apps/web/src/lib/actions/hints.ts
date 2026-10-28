@@ -7,6 +7,7 @@
 import { useMemo } from "react";
 
 import { formatChord, isMacPlatform } from "@/lib/keys/chord";
+import { useKeymapStore } from "@/state/keymapStore";
 
 import "./catalog";
 import { chordsOf, getRegistry, isAvailable, scopesOf } from "./registry";
@@ -140,7 +141,10 @@ export function shortcutSections(ctx: ActionContext): ShortcutSection[] {
 }
 
 export function useShortcutSections(ctx: ActionContext): ShortcutSection[] {
-  return useMemo(() => shortcutSections(ctx), [ctx]);
+  // `version` changes when the person's keys arrive or change.
+  const version = useKeymapStore((state) => state.version);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the registry is rebuilt when version changes
+  return useMemo(() => shortcutSections(ctx), [ctx, version]);
 }
 
 /** A few live hints for the status bar: the current view's keys first. */
@@ -170,7 +174,9 @@ export function pageKeyHints(ids: readonly string[], ctx: ActionContext): Shortc
 }
 
 export function useVisibleActions(ctx: ActionContext): Action[] {
-  return useMemo(() => getRegistry().getVisibleActions(ctx), [ctx]);
+  const version = useKeymapStore((state) => state.version);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the registry is rebuilt when version changes
+  return useMemo(() => getRegistry().getVisibleActions(ctx), [ctx, version]);
 }
 
 export function useActionsByGroup(ctx: ActionContext): Map<ActionGroup, Action[]> {

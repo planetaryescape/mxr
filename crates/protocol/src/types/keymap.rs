@@ -4,11 +4,56 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Returned in `ResponseData::Keymap`.
+/// Returned in `ResponseData::Keymap`: the definition with the person's
+/// `keys.toml` applied.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct KeymapData {
     pub actions: Vec<KeyActionData>,
+    /// False when the person turned off every shortcut made of single
+    /// characters (`single_keys = false`, WCAG 2.1.4). Clients then ignore
+    /// those keys outside text fields and overlays.
+    #[serde(default = "single_keys_default")]
+    pub single_keys: bool,
+    /// Ids of the actions whose keys the person changed (`[actions]`).
+    #[serde(default)]
+    pub remapped: Vec<String>,
+    /// What in `keys.toml` mxr is ignoring, as sentences.
+    #[serde(default)]
+    pub problems: Vec<String>,
+}
+
+fn single_keys_default() -> bool {
+    true
+}
+
+/// A change to `keys.toml` (`Request::UpdateKeys`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum KeysChangeData {
+    /// Give an action these keys, primary first, in every client; none
+    /// leaves it to the palette.
+    SetAction { id: String, keys: Vec<String> },
+    /// Give an action back its default keys.
+    ResetAction { id: String },
+    /// Turn single-character shortcuts on or off.
+    SingleKeys { on: bool },
+}
+
+/// Returned in `ResponseData::KeysUpdate`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct KeysUpdateData {
+    /// True when `keys.toml` was written: not a dry run, and no problems.
+    pub saved: bool,
+    /// The `keys.toml` that was, or would be, written.
+    pub file: String,
+    /// Why the change can't be saved: a key another action has, a key a
+    /// client can't receive. Empty when it can.
+    pub problems: Vec<String>,
+    /// The key map with the change applied (when it has no problems).
+    pub keymap: KeymapData,
 }
 
 /// One thing a key can do, and the keys each client binds it to.

@@ -903,6 +903,7 @@ impl App {
             frame,
             area,
             self.modals.pending_saved_search_delete_confirm.as_deref(),
+            self.modals.saved_search_delete_choice,
             theme,
         );
 

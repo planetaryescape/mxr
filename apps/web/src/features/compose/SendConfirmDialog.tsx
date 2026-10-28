@@ -85,9 +85,23 @@ export function SendConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
+          const plain = !event.ctrlKey && !event.metaKey && !event.altKey;
+          // Enter on Cancel keeps its own meaning (blueprint 35: Enter runs
+          // the highlighted option).
+          const onCancel =
+            event.target instanceof Element && event.target.closest("[data-send-cancel]");
+          if (
+            (event.key === "Enter" && !event.shiftKey && !onCancel) ||
+            (plain && event.key === "y")
+          ) {
             event.preventDefault();
             if (canSend) confirm(overridden);
+            return;
+          }
+          // A yes or no question: n is Esc.
+          if (plain && event.key === "n") {
+            event.preventDefault();
+            onOpenChange(false);
             return;
           }
           // The dialog traps focus and holds no text field, so a bare letter
@@ -202,7 +216,7 @@ export function SendConfirmDialog({
         ) : null}
 
         <AlertDialogFooter>
-          <AlertDialogCancel variant="outline" disabled={sending}>
+          <AlertDialogCancel data-send-cancel variant="outline" disabled={sending}>
             {blocked ? "Back to draft" : "Cancel"}
           </AlertDialogCancel>
           <AlertDialogAction

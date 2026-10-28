@@ -678,7 +678,7 @@ impl App {
                 return commit;
             }
             return match key.code {
-                KeyCode::Esc | KeyCode::Char('n') => {
+                KeyCode::Esc | KeyCode::Char('n' | 'q') => {
                     self.mailbox.reading_page.confirm = None;
                     self.status_message = Some("Nothing changed".into());
                     None

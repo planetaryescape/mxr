@@ -702,9 +702,15 @@ function DiscardConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !discarding) {
+          if (discarding || event.ctrlKey || event.metaKey || event.altKey) return;
+          // A yes or no question (blueprint 35): y discards and n keeps it.
+          // Enter runs the focused option, so it never destroys from Cancel.
+          if (event.key === "y") {
             event.preventDefault();
             onConfirm();
+          } else if (event.key === "n") {
+            event.preventDefault();
+            onOpenChange(false);
           }
         }}
       >
@@ -735,7 +741,7 @@ function DiscardConfirmDialog({
             ) : (
               <Trash2 className="size-3" />
             )}
-            Discard
+            Discard draft
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

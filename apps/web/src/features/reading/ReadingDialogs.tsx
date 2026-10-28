@@ -103,6 +103,10 @@ export function ReadingUnsubscribeDialog({
           } else if (event.key === "a") {
             event.preventDefault();
             void commitUnsubscribe(true);
+          } else if (event.key === "n") {
+            // n is Esc, as in the TUI (blueprint 35).
+            event.preventDefault();
+            onClose();
           }
         }}
       >

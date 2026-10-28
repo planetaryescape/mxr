@@ -64,6 +64,7 @@ impl App {
                     if let Some(rule_id) = rule["id"].as_str() {
                         let name = rule["name"].as_str().unwrap_or(rule_id).to_string();
                         self.rules.page.delete_confirm = Some((rule_id.to_string(), name));
+                        self.rules.page.delete_choice = ConfirmChoice::default();
                     }
                 }
             }

@@ -98,7 +98,7 @@ describe("History", () => {
     );
   });
 
-  test("n and Esc keep the conversation; Enter confirms", async () => {
+  test("n, Esc and a bare Enter keep the conversation; y deletes it", async () => {
     const onClose = vi.fn<() => void>();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -125,6 +125,12 @@ describe("History", () => {
     fireEvent.keyDown(history, { key: "#" });
     await screen.findByText(/^Delete "Receipts"/);
     fireEvent.keyDown(history, { key: "Enter" });
+    expect(screen.queryByText(/^Delete "Receipts"/)).not.toBeInTheDocument();
+    expect(deletes().every((call) => call.dryRun)).toBe(true);
+
+    fireEvent.keyDown(history, { key: "#" });
+    await screen.findByText(/^Delete "Receipts"/);
+    fireEvent.keyDown(history, { key: "y" });
     await waitFor(() => expect(deletes().at(-1)).toMatchObject({ dryRun: false }));
   });
 });

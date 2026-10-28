@@ -849,8 +849,8 @@ pub fn draw_prompt(
     let (title, lead, hint) = match prompt.kind {
         TodoPromptKind::Correct { .. } => (
             " Correct to-do ",
-            "1 Not a to-do · 2 Not mine · 3 Already done · 4 Wrong details",
-            "Choose 1–4 and Enter; Escape cancels. Wrong details opens the editor.",
+            "Why is this wrong?",
+            "Wrong details opens the editor.",
         ),
         TodoPromptKind::Edit { .. } => (
             " Edit ",
@@ -887,9 +887,34 @@ pub fn draw_prompt(
             .wrap(Wrap { trim: true }),
         chunks[0],
     );
+    let field = if matches!(prompt.kind, TodoPromptKind::Correct { .. }) {
+        // The reasons, each with its digit, the highlighted one lit.
+        let reasons = ["Not a to-do", "Not mine", "Already done", "Wrong details"];
+        Line::from(
+            reasons
+                .iter()
+                .enumerate()
+                .flat_map(|(index, reason)| {
+                    let lit = index == prompt.selected;
+                    let style = if lit {
+                        Style::default().fg(theme.accent).bold()
+                    } else {
+                        Style::default().fg(theme.text_primary)
+                    };
+                    [
+                        Span::raw(if lit { " \u{203a} " } else { "   " }),
+                        Span::styled(format!("{} {reason}", index + 1), style),
+                    ]
+                })
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        Line::from(format!(" \u{203a} {}_", prompt.input))
+    };
     frame.render_widget(
-        Paragraph::new(format!(" \u{203a} {}_", prompt.input))
-            .style(Style::default().fg(theme.text_primary)),
+        Paragraph::new(field)
+            .style(Style::default().fg(theme.text_primary))
+            .wrap(Wrap { trim: false }),
         chunks[1],
     );
     let (lines, style) = if let Some(error) = &prompt.error {
@@ -907,7 +932,12 @@ pub fn draw_prompt(
         chunks[2],
     );
     frame.render_widget(
-        Paragraph::new("Enter save  Esc cancel").style(Style::default().fg(theme.text_muted)),
+        Paragraph::new(if matches!(prompt.kind, TodoPromptKind::Correct { .. }) {
+            "j/k move  Enter or 1\u{2013}4 choose  Esc cancel"
+        } else {
+            "Enter save  Esc cancel"
+        })
+        .style(Style::default().fg(theme.text_muted)),
         chunks[3],
     );
 }

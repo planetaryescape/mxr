@@ -98,13 +98,19 @@ pub fn draw(
         theme,
     );
     if let Some((_, name)) = &state.delete_confirm {
-        draw_delete_confirm(frame, area, name, theme);
+        draw_delete_confirm(frame, area, name, state.delete_choice, theme);
     }
 }
 
 /// The same confirm the saved-search delete shows, naming the rule.
-fn draw_delete_confirm(frame: &mut Frame, area: Rect, name: &str, theme: &crate::theme::Theme) {
-    let popup = super::centered_rect(60, 22, area);
+fn draw_delete_confirm(
+    frame: &mut Frame,
+    area: Rect,
+    name: &str,
+    choice: crate::app::ConfirmChoice,
+    theme: &crate::theme::Theme,
+) {
+    let popup = super::centered_rect(60, 30, area);
     frame.render_widget(Clear, popup);
     let block = Block::bordered()
         .title(" Delete Rule ")
@@ -115,7 +121,11 @@ fn draw_delete_confirm(frame: &mut Frame, area: Rect, name: &str, theme: &crate:
     frame.render_widget(block, popup);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
         .split(inner);
     frame.render_widget(
         Paragraph::new(format!("Delete rule '{name}'?"))
@@ -124,9 +134,17 @@ fn draw_delete_confirm(frame: &mut Frame, area: Rect, name: &str, theme: &crate:
         chunks[0],
     );
     frame.render_widget(
-        Paragraph::new("[y / Enter] delete   [n / Esc] cancel")
-            .style(Style::default().fg(theme.text_secondary)),
+        Paragraph::new(super::confirm_choice::options(
+            "Keep it",
+            "Delete rule",
+            choice,
+            theme,
+        )),
         chunks[1],
+    );
+    frame.render_widget(
+        Paragraph::new(super::confirm_choice::keys_hint(theme)),
+        chunks[2],
     );
 }
 

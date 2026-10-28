@@ -76,8 +76,8 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
           <DialogTitle>Help and keyboard shortcuts</DialogTitle>
           <DialogDescription>
             {singleKeys
-              ? "Type to filter; Esc closes."
-              : "Single-key shortcuts are off (Settings, Keybindings): keys with ⌘ or Ctrl still work, and the palette runs everything. Type to filter; Esc closes."}
+              ? "Type to filter; Esc or ? closes."
+              : "Single-key shortcuts are off (Settings, Keybindings): keys with ⌘ or Ctrl still work, and the palette runs everything. Type to filter; Esc or ? closes."}
           </DialogDescription>
         </DialogHeader>
         {mode ? <ModeHelp mode={mode} /> : null}
@@ -85,6 +85,13 @@ export function HelpDialog({ open, onOpenChange }: HelpDialogProps) {
           aria-label="Filter shortcuts"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
+          // `?` opened help, so it closes it while nothing is typed
+          // (blueprint 35's toggle); in a filter it types.
+          onKeyDown={(event) => {
+            if (event.key !== "?" || query !== "") return;
+            event.preventDefault();
+            onOpenChange(false);
+          }}
           placeholder="archive, label, g i…"
           className="h-9"
         />

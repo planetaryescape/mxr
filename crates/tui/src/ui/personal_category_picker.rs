@@ -37,6 +37,8 @@ pub struct PersonalCategoryPicker {
     pub membership_failed: bool,
     pub membership_preview: Option<mxr_protocol::CategoryMembershipPreview>,
     pub delete_preview: Option<mxr_protocol::CategoryDeletePreview>,
+    /// Which of the delete confirm's two options is lit.
+    pub delete_choice: crate::app::ConfirmChoice,
     pub name_action: Option<CategoryNameAction>,
     pub name_preview_pending: bool,
     pub viewing: Option<CategoryId>,
@@ -204,10 +206,20 @@ pub fn draw(
     }
     if let Some(preview) = &picker.delete_preview {
         frame.render_widget(
-            Paragraph::new(format!(
-                "Delete ‘{}’? This removes it from {} message(s), not the mail.\nEnter confirms this preview · Esc cancels",
-                preview.name, preview.affected_messages
-            ))
+            Paragraph::new(vec![
+                Line::from(format!(
+                    "Delete ‘{}’? This removes it from {} message(s), not the mail.",
+                    preview.name, preview.affected_messages
+                )),
+                Line::from(""),
+                super::confirm_choice::options(
+                    "Keep it",
+                    "Delete category",
+                    picker.delete_choice,
+                    theme,
+                ),
+                super::confirm_choice::keys_hint(theme),
+            ])
             .wrap(Wrap { trim: true }),
             inner,
         );

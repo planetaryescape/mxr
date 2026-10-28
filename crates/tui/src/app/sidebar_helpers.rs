@@ -414,6 +414,18 @@ impl App {
 
     /// `}` moves the cursor to the next section's header, `{` to the
     /// previous one, or to the top of the rail (which has no header).
+    /// First and last (`g g`, `G`, Home, End) move within the sidebar, as
+    /// in the web app, not the list beside it. Any other action passes.
+    pub(super) fn sidebar_ends(&mut self, action: Option<Action>) -> Option<Action> {
+        self.mailbox.sidebar_selected = match action {
+            Some(Action::JumpTop) => 0,
+            Some(Action::JumpBottom) => self.sidebar_items().len().saturating_sub(1),
+            other => return other,
+        };
+        self.sync_sidebar_section();
+        None
+    }
+
     pub(super) fn sidebar_jump_section(&mut self, forward: bool) {
         let selected = self.mailbox.sidebar_selected;
         let headers: Vec<usize> = self

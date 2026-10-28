@@ -653,7 +653,7 @@ impl App {
         };
         let plain = key.modifiers == KeyModifiers::NONE;
         match key.code {
-            KeyCode::Esc => self.modals.messages_filter = None,
+            KeyCode::Esc | KeyCode::Char('q') => self.modals.messages_filter = None,
             KeyCode::Char('f') if key.modifiers == KeyModifiers::CONTROL => {
                 self.modals.messages_filter = None;
             }

@@ -13,6 +13,7 @@ pub mod calendar_invites_lens;
 pub mod command_palette;
 pub mod compose_assist_proof;
 pub mod compose_picker;
+pub mod confirm_choice;
 pub mod deliveries_page;
 pub mod desk_lens;
 pub mod diagnostics_page;

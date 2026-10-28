@@ -352,7 +352,7 @@ impl App {
         if self.mailbox.now_page.digest_preview.is_some() {
             return match key.code {
                 KeyCode::Enter | KeyCode::Char('y') => Some(Action::NowLetGoDigest),
-                KeyCode::Esc | KeyCode::Char('n') => {
+                KeyCode::Esc | KeyCode::Char('n' | 'q') => {
                     self.mailbox.now_page.digest_preview = None;
                     self.status_message = Some("Kept the digest".into());
                     None

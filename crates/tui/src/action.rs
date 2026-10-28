@@ -73,6 +73,10 @@ pub enum Action {
     GoToSent,
     GoToDrafts,
     GoToAllMail,
+    /// `g #` and `g !`: the Trash and Spam labels, which the web app shows
+    /// as pages.
+    GoToTrash,
+    GoToSpam,
     OpenSubscriptions,
     OpenOwedReplies,
     OpenDesk,

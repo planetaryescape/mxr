@@ -60,7 +60,7 @@ pub fn draw(
         lines.push(Line::from(format!("{not_in_view} not in this view")));
     }
     lines.push(Line::from(""));
-    lines.push(Line::from("[Enter] confirm   [y] confirm   [Esc] cancel"));
+    lines.push(Line::from("[Enter/y] confirm   [Esc/n/q] cancel"));
     frame.render_widget(Paragraph::new(lines), inner);
 }
 

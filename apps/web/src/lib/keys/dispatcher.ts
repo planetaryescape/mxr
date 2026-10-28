@@ -137,6 +137,16 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
     if (!token) return;
     if (ownsKeyboard(event.target) || options.isSuspended?.()) {
       clear();
+      // `q` closes a dialog where nothing is typed, as Esc does (blueprint
+      // 35's overlay grammar). A dialog that gives `q` a meaning of its own
+      // prevents the default first.
+      if (token === "q" && !options.isSuspended?.() && closesOnQ(event.target)) {
+        event.preventDefault();
+        event.target.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+        );
+        return;
+      }
       // A global modifier chord (⌘K) is never text input, so it works from
       // a search box or a dialog that is still animating closed. Editing
       // chords stay with the field.
@@ -148,7 +158,8 @@ export function installKeyDispatcher(target: Window, options: DispatcherOptions)
       event.preventDefault();
       if (event.repeat) return;
       clear();
-      invokeAction(global.action, options.context(), "key");
+      // A moved chord only says where its action went, from a field too.
+      fire(global, options.context());
       return;
     }
     if (activatesNativeControl(event.target, token)) return;
@@ -296,6 +307,21 @@ export function ownsKeyboard(target: EventTarget | null): boolean {
   return (
     target.closest(
       'input, textarea, select, [contenteditable="true"], [role="dialog"], [role="alertdialog"], [role="menu"], [data-radix-popper-content-wrapper], [cmdk-root], [data-keys-owner]',
+    ) !== null
+  );
+}
+
+/** True inside an open dialog, away from any field or list that takes letters. */
+function closesOnQ(target: EventTarget | null): target is Element {
+  if (!(target instanceof Element)) return false;
+  if (target instanceof HTMLElement && target.isContentEditable) return false;
+  if (
+    target.closest('input, textarea, select, [contenteditable="true"], [cmdk-root], [role="menu"]')
+  )
+    return false;
+  return (
+    target.closest(
+      '[role="dialog"]:not([data-state="closed"]), [role="alertdialog"]:not([data-state="closed"])',
     ) !== null
   );
 }

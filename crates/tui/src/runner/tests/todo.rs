@@ -649,7 +649,34 @@ fn x_chooses_a_durable_correction_before_changing_the_row() {
     press_shifted(&mut app, 'X');
     assert!(queued(&app).is_empty());
     assert!(app.mailbox.todo_page.prompt.is_some());
+    // A reason's digit picks it at once, as in any picker (blueprint 35).
     press(&mut app, KeyCode::Char('2'));
+    assert!(matches!(
+        queued(&app).as_slice(),
+        [Request::CorrectTodo {
+            reason: mxr_protocol::TodoCorrectionData::NotMine,
+            dry_run: false,
+            ..
+        }]
+    ));
+}
+
+#[test]
+fn correcting_a_to_do_moves_with_j_k_runs_the_lit_reason_and_q_closes() {
+    let mut app = todo_app(true);
+    press_shifted(&mut app, 'X');
+    press(&mut app, KeyCode::Char('q'));
+    assert!(
+        app.mailbox.todo_page.prompt.is_none(),
+        "q closes, changing nothing"
+    );
+    assert!(queued(&app).is_empty());
+
+    press_shifted(&mut app, 'X');
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('j'));
+    press(&mut app, KeyCode::Char('k'));
+    assert!(queued(&app).is_empty(), "moving runs nothing");
     press(&mut app, KeyCode::Enter);
     assert!(matches!(
         queued(&app).as_slice(),

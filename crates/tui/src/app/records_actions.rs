@@ -609,7 +609,7 @@ impl App {
             return;
         };
         match code {
-            KeyCode::Esc => self.mailbox.records_page.pass_menu = None,
+            KeyCode::Esc | KeyCode::Char('q') => self.mailbox.records_page.pass_menu = None,
             KeyCode::Enter if menu.preview.is_some() => {
                 let message_id = menu.message_id.clone();
                 self.mailbox.records_page.pass_menu = None;
@@ -795,7 +795,7 @@ impl App {
                     self.status_message = Some("Exporting…".into());
                     None
                 }
-                KeyCode::Esc | KeyCode::Char('n') => {
+                KeyCode::Esc | KeyCode::Char('n' | 'q') => {
                     self.mailbox.records_page.export_preview = None;
                     None
                 }

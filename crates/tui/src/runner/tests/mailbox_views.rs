@@ -118,6 +118,22 @@ fn goto_inbox_sets_active_label() {
 }
 
 #[test]
+fn g_hash_and_g_bang_open_the_trash_and_spam_labels() {
+    for (key, name) in [('#', "TRASH"), ('!', "SPAM")] {
+        let mut app = App::new();
+        app.mailbox.labels = make_test_labels();
+        assert_eq!(
+            app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
+            None
+        );
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::SHIFT));
+        app.apply(action.expect("g then a symbol goes somewhere"));
+        let label = app.mailbox.labels.iter().find(|l| l.name == name).unwrap();
+        assert_eq!(app.mailbox.pending_active_label.as_ref(), Some(&label.id));
+    }
+}
+
+#[test]
 fn goto_inbox_without_labels_records_desired_mailbox() {
     let mut app = App::new();
     app.apply(Action::GoToInbox);

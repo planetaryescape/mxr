@@ -30,8 +30,8 @@ pub enum AssistantPrompt {
     /// The user's own answer to the active question.
     Other { text: String },
     /// The daemon's dry run of deleting the open conversation, or the one
-    /// highlighted in the history list.
-    ConfirmDelete(AssistantDeleteData),
+    /// highlighted in the history list, with which option is lit.
+    ConfirmDelete(AssistantDeleteData, super::ConfirmChoice),
 }
 
 /// What a request was for, so its answer lands in the right place.

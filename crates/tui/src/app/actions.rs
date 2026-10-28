@@ -287,6 +287,8 @@ impl App {
             | Action::GoToSent
             | Action::GoToDrafts
             | Action::GoToAllMail
+            | Action::GoToTrash
+            | Action::GoToSpam
             | Action::OpenSubscriptions
             | Action::OpenOwedReplies
             | Action::OpenDesk

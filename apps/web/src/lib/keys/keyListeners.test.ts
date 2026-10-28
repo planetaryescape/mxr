@@ -35,6 +35,10 @@ type Rule =
  */
 const ALLOWED = {
   // Text fields and editors: keys there are typing.
+  "components/HelpDialog.tsx": {
+    rule: "text field or editor",
+    why: "? closes help from its empty filter field, which otherwise types it",
+  },
   "features/archive/ArchiveRoute.tsx": {
     rule: "text field or editor",
     why: "Esc clears or leaves the ask field",
@@ -127,7 +131,7 @@ const ALLOWED = {
   },
   "features/compose/SendConfirmDialog.tsx": {
     rule: "overlay with its own letters",
-    why: "the send confirmation's Enter and override letter",
+    why: "the send confirmation's Enter, y and n, and override letter",
   },
   "features/mail-actions/dialogs/CategoriesDialog.tsx": {
     rule: "overlay with its own letters",
@@ -155,7 +159,7 @@ const ALLOWED = {
   },
   "features/mail-actions/dialogs/UnsubscribeDialog.tsx": {
     rule: "overlay with its own letters",
-    why: "u and a pick the printed unsubscribe options",
+    why: "u and a pick the printed unsubscribe options; n is Esc",
   },
   "features/messages/ConversationPeople.tsx": {
     rule: "overlay with its own letters",
@@ -171,7 +175,19 @@ const ALLOWED = {
   },
   "features/reading/ReadingDialogs.tsx": {
     rule: "overlay with its own letters",
-    why: "u and a pick the printed unsubscribe options",
+    why: "u and a pick the printed unsubscribe options; n is Esc",
+  },
+  "features/todo/TodoCorrectionDialog.tsx": {
+    rule: "overlay with its own letters",
+    why: "the correction picker's digits, j and k",
+  },
+  "features/todo/TodoDialogs.tsx": {
+    rule: "overlay with its own letters",
+    why: "the let-go-all preview's y and n",
+  },
+  "features/updates/UpdatesDialogs.tsx": {
+    rule: "overlay with its own letters",
+    why: "the let-go preview's y and n",
   },
   "features/search/SearchPalette.tsx": {
     rule: "overlay with its own letters",
@@ -223,7 +239,7 @@ const ALLOWED = {
   // (`composeShortcuts.ts`; the dispatcher stands aside while it is open).
   "features/compose/ComposeEditorPanel.tsx": {
     rule: "compose",
-    why: "runs the compose chords, by id, and the discard dialog's Enter",
+    why: "runs the compose chords, by id, and the discard dialog's y and n",
   },
   "features/compose/ComposeHost.tsx": {
     rule: "compose",

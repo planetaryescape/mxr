@@ -425,7 +425,7 @@ impl App {
         if page.let_go_preview.is_some() {
             return match key.code {
                 KeyCode::Enter | KeyCode::Char('y') => Some(Action::UpdatesLetGoAll),
-                KeyCode::Esc | KeyCode::Char('n') => Some(Action::UpdatesClose),
+                KeyCode::Esc | KeyCode::Char('n' | 'q') => Some(Action::UpdatesClose),
                 _ => None,
             };
         }
@@ -434,7 +434,7 @@ impl App {
                 KeyCode::Char(digit @ '1'..='4') => {
                     Some(Action::UpdatesTuneChoice(digit as usize - '0' as usize))
                 }
-                KeyCode::Esc => Some(Action::UpdatesClose),
+                KeyCode::Esc | KeyCode::Char('q') => Some(Action::UpdatesClose),
                 _ => None,
             };
         }

@@ -43,22 +43,11 @@ impl App {
                 self.mailbox.selected_index = 0;
                 self.mailbox.scroll_offset = 0;
             }
-            Action::NextSearchResult => {
-                if self.search.active
-                    && self.mailbox.selected_index + 1 < self.mailbox.envelopes.len()
-                {
-                    self.mailbox.selected_index += 1;
-                    self.ensure_visible();
-                    self.auto_preview();
-                }
-            }
-            Action::PrevSearchResult => {
-                if self.search.active && self.mailbox.selected_index > 0 {
-                    self.mailbox.selected_index -= 1;
-                    self.ensure_visible();
-                    self.auto_preview();
-                }
-            }
+            // `n` and `N` in the reader: the next or previous conversation in
+            // the list it came from, searched or not, as in the web reader
+            // (blueprint 35). The names stay for `keys.toml`.
+            Action::NextSearchResult => self.apply_mailbox_action(Action::MoveDown),
+            Action::PrevSearchResult => self.apply_mailbox_action(Action::MoveUp),
             // Navigation
             _ => unreachable!("action routed to wrong handler"),
         }

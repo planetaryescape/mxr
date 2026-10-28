@@ -249,6 +249,18 @@ impl App {
                     self.mailbox.desired_system_mailbox = Some("DRAFT".into());
                 }
             }
+            Action::GoToTrash | Action::GoToSpam => {
+                let name = if action == Action::GoToTrash {
+                    "TRASH"
+                } else {
+                    "SPAM"
+                };
+                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == name) {
+                    self.apply(Action::SelectLabel(label.id.clone()));
+                } else {
+                    self.mailbox.desired_system_mailbox = Some(name.into());
+                }
+            }
             Action::GoToAllMail => {
                 self.mailbox.mailbox_view = MailboxView::Messages;
                 self.apply(Action::ClearFilter);

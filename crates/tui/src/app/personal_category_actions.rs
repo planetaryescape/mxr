@@ -239,6 +239,7 @@ impl App {
                 }
                 ResponseData::CategoryDeletePreview { preview } => {
                     state.delete_preview = Some(preview);
+                    state.delete_choice = crate::app::ConfirmChoice::default();
                     state.error = None;
                 }
                 ResponseData::CategoryDeleted { name, .. } => {
@@ -302,7 +303,7 @@ impl App {
         }
         let generation = state.generation;
         if state.why.is_some() {
-            if key.code == KeyCode::Esc {
+            if matches!(key.code, KeyCode::Esc | KeyCode::Char('q')) {
                 state.why = None;
             }
             return true;
@@ -354,7 +355,7 @@ impl App {
         }
         if state.membership_preview.is_some() {
             match key.code {
-                KeyCode::Esc => state.membership_preview = None,
+                KeyCode::Esc | KeyCode::Char('q') => state.membership_preview = None,
                 KeyCode::Enter => {
                     if let Some(preview) = state.membership_preview.take() {
                         self.pending_category_requests.push((
@@ -370,10 +371,11 @@ impl App {
             }
             return true;
         }
+        // It opens on Keep, so a bare Enter deletes nothing.
         if state.delete_preview.is_some() {
-            match key.code {
-                KeyCode::Esc => state.delete_preview = None,
-                KeyCode::Enter => {
+            match state.delete_choice.key(key.code) {
+                crate::app::ConfirmKey::Keep => state.delete_preview = None,
+                crate::app::ConfirmKey::Confirm => {
                     if let Some(preview) = state.delete_preview.take() {
                         self.pending_category_requests.push((
                             generation,

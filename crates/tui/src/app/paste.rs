@@ -131,7 +131,7 @@ impl App {
             }
             return match &assistant.prompt {
                 Some(AssistantPrompt::RejectReason { .. } | AssistantPrompt::Other { .. }) => true,
-                Some(AssistantPrompt::ConfirmDelete(_)) => false,
+                Some(AssistantPrompt::ConfirmDelete(..)) => false,
                 None => assistant.focus == AssistantFocus::Input,
             };
         }

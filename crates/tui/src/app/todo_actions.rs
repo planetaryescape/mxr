@@ -11,6 +11,9 @@ use mxr_protocol::{
     TodoCatchupDecisionData, TodoChangeData, TodoData, TodoEditData, TodoStateActionData,
 };
 
+/// Not a to-do, Not mine, Already done, Wrong details.
+const CORRECT_REASONS: usize = 4;
+
 /// The mode id `GetModeGuide` takes for To do.
 pub(crate) const TODO_MODE: &str = mxr_protocol::TODO_GUIDE.mode;
 
@@ -455,6 +458,29 @@ impl App {
         if prompt.pending.is_some() && code != KeyCode::Esc {
             return;
         }
+        // Correcting is a picker, not a text prompt (blueprint 35): j and k
+        // move, Enter runs the highlighted reason, its digit runs it at once.
+        if matches!(prompt.kind, TodoPromptKind::Correct { .. }) {
+            match code {
+                KeyCode::Down | KeyCode::Char('j') => {
+                    prompt.selected = (prompt.selected + 1).min(CORRECT_REASONS - 1);
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    prompt.selected = prompt.selected.saturating_sub(1);
+                }
+                KeyCode::Enter => {
+                    prompt.input = (prompt.selected + 1).to_string();
+                    self.confirm_todo_prompt();
+                }
+                KeyCode::Char(c @ '1'..='4') => {
+                    prompt.input = c.to_string();
+                    self.confirm_todo_prompt();
+                }
+                KeyCode::Esc | KeyCode::Char('q') => self.mailbox.todo_page.prompt = None,
+                _ => {}
+            }
+            return;
+        }
         match code {
             KeyCode::Enter => self.confirm_todo_prompt(),
             KeyCode::Esc => self.mailbox.todo_page.prompt = None,
@@ -644,7 +670,7 @@ impl App {
                     .map(|r| r.might_need_you.as_slice())
                     .unwrap_or_default();
                 match key.code {
-                    KeyCode::Esc => page.uncertain_open = false,
+                    KeyCode::Esc | KeyCode::Char('q') => page.uncertain_open = false,
                     KeyCode::Down | KeyCode::Char('j') => {
                         page.uncertain_selected = page
                             .uncertain_selected
@@ -678,7 +704,7 @@ impl App {
         {
             let page = &mut self.mailbox.todo_page;
             match key.code {
-                KeyCode::Esc => {
+                KeyCode::Esc | KeyCode::Char('q') => {
                     page.microsoft_preview = None;
                     page.microsoft_review_visible.set(false);
                 }
@@ -710,7 +736,7 @@ impl App {
         }
         if plain_or_shift(key.modifiers) {
             let page = &mut self.mailbox.todo_page;
-            if key.code == KeyCode::Esc {
+            if matches!(key.code, KeyCode::Esc | KeyCode::Char('q')) {
                 let had_preview = page.microsoft_preview.take().is_some()
                     | page.microsoft_sync_preview.take().is_some();
                 if had_preview {
@@ -742,7 +768,7 @@ impl App {
         if page.catchup_preview.is_some() {
             return match key.code {
                 KeyCode::Enter | KeyCode::Char('y') => Some(Action::CatchupLetGoAll),
-                KeyCode::Esc | KeyCode::Char('n') => {
+                KeyCode::Esc | KeyCode::Char('n' | 'q') => {
                     self.mailbox.todo_page.catchup_preview = None;
                     self.status_message = Some("Kept them all for now".into());
                     None
@@ -755,7 +781,8 @@ impl App {
                 KeyCode::Enter | KeyCode::Char('y') => Some(Action::TodoConfirmResolution),
                 KeyCode::Char('x') => Some(Action::TodoDismissResolution),
                 KeyCode::Char('o') => Some(Action::TodoOpenEmail),
-                KeyCode::Esc => {
+                // y is Enter and n is Esc (blueprint 35); q closes too.
+                KeyCode::Esc | KeyCode::Char('n' | 'q') => {
                     self.mailbox.todo_page.resolution_preview = None;
                     None
                 }

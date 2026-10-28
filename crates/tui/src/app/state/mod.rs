@@ -4,6 +4,7 @@ mod arrivals;
 mod assistant;
 mod command_palette;
 mod compose;
+mod confirm_choice;
 mod deliveries;
 mod diagnostics;
 mod export_modal;
@@ -40,6 +41,7 @@ pub use compose::{
     ComposeAction, ComposeAssistReview, ComposeModelPicker, ComposeModelPickerPurpose,
     ComposeState, DeferredCompose, PendingSend, PendingSendMode, ReplyContextPair,
 };
+pub use confirm_choice::{ConfirmChoice, ConfirmKey};
 pub use deliveries::{DeliveriesState, DeliveryFilter};
 pub use diagnostics::{
     DiagnosticsPageState, DiagnosticsPaneKind, DiagnosticsState, RecoveryPreview,

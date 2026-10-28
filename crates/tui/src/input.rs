@@ -38,6 +38,13 @@ fn g_view_chord(second: char) -> Option<Action> {
         'x' => Some(Action::OpenTodo),
         'm' => Some(Action::OpenMessages),
         'e' => Some(Action::OpenArchiveMode),
+        // Labels here; the web app shows them as pages.
+        '#' => Some(Action::GoToTrash),
+        '!' => Some(Action::GoToSpam),
+        // Waiting on lives in Messages here, as the sidebar's item does.
+        'w' => Some(Action::OpenMessages),
+        // Filter this list, as the web app does (Ctrl-f works too).
+        'f' => Some(Action::OpenMailboxFilter),
         _ => None,
     }
 }
@@ -546,6 +553,11 @@ impl InputHandler {
             }
             (KeyState::Normal, KeyCode::Char('d'), KeyModifiers::CONTROL) => Some(Action::PageDown),
             (KeyState::Normal, KeyCode::Char('u'), KeyModifiers::CONTROL) => Some(Action::PageUp),
+            // The keyboard's own motion keys, as in the web app.
+            (KeyState::Normal, KeyCode::Home, KeyModifiers::NONE) => Some(Action::JumpTop),
+            (KeyState::Normal, KeyCode::End, KeyModifiers::NONE) => Some(Action::JumpBottom),
+            (KeyState::Normal, KeyCode::PageDown, KeyModifiers::NONE) => Some(Action::PageDown),
+            (KeyState::Normal, KeyCode::PageUp, KeyModifiers::NONE) => Some(Action::PageUp),
             (KeyState::Normal, KeyCode::Tab, _) => Some(Action::SwitchPane),
             (KeyState::Normal, KeyCode::Enter, _)
             | (KeyState::Normal, KeyCode::Char('o'), KeyModifiers::NONE) => {

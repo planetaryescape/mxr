@@ -30365,7 +30365,7 @@
               "cmd": {
                 "type": "string",
                 "enum": [
-                  "DraftEval"
+                  "DraftEvalWithPolicy"
                 ]
               },
               "limit": {

@@ -11962,7 +11962,7 @@ export interface components {
             | {
                   account_id?: components["schemas"]["AccountId"] | null;
                   /** @enum {string} */
-                  cmd: "DraftEval";
+                  cmd: "DraftEvalWithPolicy";
                   /** Format: int32 */
                   limit: number;
                   /**

@@ -1616,6 +1616,7 @@ pub enum Request {
     /// Replay the user's most recent replies: draft each one from what was
     /// known just before they replied, and compare with what they sent.
     /// Calls the configured LLM once per case; nothing is saved or sent.
+    #[serde(rename = "DraftEvalWithPolicy", alias = "DraftEval")]
     DraftEval {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         account_id: Option<AccountId>,

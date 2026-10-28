@@ -167,6 +167,8 @@ impl App {
                                 let source = &sources[index];
                                 self.mailbox.pending_invite_open = Some(source.message_id.clone());
                                 self.compose.viewing_voice_source = true;
+                                self.compose.voice_source_request_id =
+                                    self.compose.voice_source_request_id.wrapping_add(1);
                                 self.status_message = Some(format!(
                                     "Opening voice example {} of {}…",
                                     index + 1,

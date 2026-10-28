@@ -198,6 +198,7 @@ pub(crate) enum AsyncResult {
     PlaceSwept(Result<(u32, Vec<String>), MxrError>),
     CalendarInvites(Result<Vec<mxr_protocol::CalendarInviteData>, MxrError>),
     /// Envelope fetched for an invite opened from the calendar-invites lens.
+    VoiceSourceOpened(u64, Result<Envelope, MxrError>),
     InviteEnvelopeOpened(Result<Envelope, MxrError>),
     /// Archive's ledger and, when the daemon served it, its guide. Boxed:
     /// a ledger is large next to the other variants.

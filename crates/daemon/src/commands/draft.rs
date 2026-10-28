@@ -58,11 +58,14 @@ pub async fn run(
                     None => None,
                 };
                 let resp = client
-                    .request(Request::DraftEval {
-                        account_id,
-                        limit,
-                        rewrite,
-                    })
+                    .request_with_events(
+                        Request::DraftEval {
+                            account_id,
+                            limit,
+                            rewrite,
+                        },
+                        |_| {},
+                    )
                     .await?;
                 match resp {
                     Response::Ok {

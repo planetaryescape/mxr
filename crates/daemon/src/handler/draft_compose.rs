@@ -271,11 +271,13 @@ async fn draft_with(
     if let Some(words) = material.median_words {
         prompt_habits.push(format!("I usually write about {words} words."));
     }
-    if share {
+    if share && request.register.is_none() {
         prompt_habits.push(format!(
             "My usual register is {}.",
             draft_context::register_label(context.inferred_register)
         ));
+    }
+    if share && request.length_hint.is_none() {
         prompt_habits.push(format!(
             "My usual email length is {}.",
             draft_context::length_label(context.inferred_length)

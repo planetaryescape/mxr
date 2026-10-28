@@ -1816,6 +1816,13 @@ fn proof_open_source_cycles_through_the_exact_voice_examples() {
     assert!(app.compose.assist_review.is_some());
     app.handle_key(key);
     assert_eq!(app.mailbox.pending_invite_open, Some(second));
+    let review = app.compose.assist_review.as_mut().unwrap();
+    review.select_version(0);
+    assert_eq!(review.voice_source_index, 0);
+    review.voice_source_index = 1;
+    let proposal = review.proposal().unwrap().clone();
+    review.push_proposal(proposal, None);
+    assert_eq!(review.voice_source_index, 0);
 }
 
 fn test_pending_send(path: &str) -> PendingSend {

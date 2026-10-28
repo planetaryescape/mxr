@@ -110,7 +110,7 @@ pub(super) async fn draft_refine(
     }
     if share && context.history_used {
         prompt.push_str(&format!(
-            "My usual register is {}. My usual email length is {}.\n\n",
+            "This draft uses a {} register and {} length.\n\n",
             draft_context::register_label(context.inferred_register),
             draft_context::length_label(context.inferred_length),
         ));
